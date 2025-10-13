@@ -1,0 +1,264 @@
+=== Application started ===
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+
+Instanced Layers
+================
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+
+AMD switchable graphics layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_AMD_switchable_graphics
+
+Open Broadcaster Software hook
+	|
+	\ --- [Layer Name] --> VK_LAYER_OBS_HOOK
+
+Steam Pipeline Caching Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_VALVE_steam_fossilize
+
+Steam Overlay Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_VALVE_steam_overlay
+
+NVIDIA Optimus layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_NV_optimus
+
+NVIDIA GR2608 layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_NV_present
+
+Open Broadcaster Software hook
+	|
+	\ --- [Layer Name] --> VK_LAYER_OBS_HOOK
+
+Khronos Validation Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_validation
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_report
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_utils
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+		|
+		|--- [LayerExtension] --> VK_EXT_validation_features
+
+LunarG API dump layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_api_dump
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Crash Diagnostic Layer is a crash/hang debugging tool that helps determines GPU progress in a Vulkan application.
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_crash_diagnostic
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_report
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_utils
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+GFXReconstruct Capture Layer Version 1.0.5
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_gfxreconstruct
+
+Execution Monitoring Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_monitor
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+LunarG image capture layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_screenshot
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Profiles layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_profiles
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Shader object layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_shader_object
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Synchronization2 layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_synchronization2
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+Starting Vulkan application initialization...
+Layer support found, keep the layer: VK_LAYER_KHRONOS_validation
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win32.json
+[Vulkan Loader] ERROR:          loader_get_json: Failed to open JSON file C:\Program Files (x86)\Epic Games\Launcher\Portal\Extras\Overlay\EOSOverlayVkLayer-Win64.json
+GetProcAddr: Found vkCreateDebugReportCallbackEXT function.
+GetProcAddr: Found vkDestroyDebugReportCallbackEXT function.
+Debug Callback: Successfully created.
+
+Device Extensions
+=================
+Vertex buffers created!
+Loaded vertex shader: 297 bytes
+Loaded fragment shader: 137 bytes
+BuildShader called!
+Initializing glslang...
+Compiling vertex shader...
+GLSL Parsing FAILED!
+ERROR: 0:13: '€' : unexpected token 
+ERROR: 1 compilation errors.  No code generated.
+
+
+
+Vertex shader compilation FAILED!
+Shaders compiled successfully!
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-sType-sType ] | MessageID = 0x567efb65
+vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO.
+The Vulkan spec states: sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-sType-sType)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO.
+The Vulkan spec states: sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-sType-sType)
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-sType-sType ] | MessageID = 0x567efb65
+vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO.
+The Vulkan spec states: sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-sType-sType)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO.
+The Vulkan spec states: sType must be VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-sType-sType)
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-stage-parameter ] | MessageID = 0x681287fd
+vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].stage is zero.
+The Vulkan spec states: stage must be a valid VkShaderStageFlagBits value (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-stage-parameter)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].stage is zero.
+The Vulkan spec states: stage must be a valid VkShaderStageFlagBits value (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-stage-parameter)
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-pName-parameter ] | MessageID = 0x7abf6962
+vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].pName is NULL.
+The Vulkan spec states: pName must be a null-terminated UTF-8 string (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-pName-parameter)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[1].pName is NULL.
+The Vulkan spec states: pName must be a null-terminated UTF-8 string (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-pName-parameter)
+Validation Error: [ VUID-VkGraphicsPipelineCreateInfo-None-07826 ] | MessageID = 0xd3855fbc
+vkCreateGraphicsPipelines(): pCreateInfos[0].layout is not a valid VkPipelineLayout, but defines a complete set of state.
+The Vulkan spec states: If the pipeline includes a complete set of state, and there are no libraries included in VkPipelineLibraryCreateInfoKHR::pLibraries, then VkPipelineLayout must be a valid pipeline layout (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkGraphicsPipelineCreateInfo-None-07826)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].layout is not a valid VkPipelineLayout, but defines a complete set of state.
+The Vulkan spec states: If the pipeline includes a complete set of state, and there are no libraries included in VkPipelineLibraryCreateInfoKHR::pLibraries, then VkPipelineLayout must be a valid pipeline layout (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkGraphicsPipelineCreateInfo-None-07826)
+Validation Error: [ VUID-VkGraphicsPipelineCreateInfo-layout-06602 ] | MessageID = 0xbfe00809
+vkCreateGraphicsPipelines(): pCreateInfos[0].layout is not a valid VkPipelineLayout.
+The Vulkan spec states: If the pipeline requires fragment shader state or pre-rasterization shader state, layout must be a valid VkPipelineLayout handle (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkGraphicsPipelineCreateInfo-layout-06602)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].layout is not a valid VkPipelineLayout.
+The Vulkan spec states: If the pipeline requires fragment shader state or pre-rasterization shader state, layout must be a valid VkPipelineLayout handle (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/pipelines.html#VUID-VkGraphicsPipelineCreateInfo-layout-06602)
+Validation Error: [ VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782 ] | MessageID = 0xed1c6528
+vkCreateGraphicsPipelines(): pCreateInfos[0].pRasterizationState->depthClampEnable is VK_TRUE, but the depthClamp feature was not enabled.
+The Vulkan spec states: If the depthClamp feature is not enabled, depthClampEnable must be VK_FALSE (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/primsrast.html#VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782)
+
+[VK_DEBUG_REPORT] ERROR: [Validation] Code 0 : vkCreateGraphicsPipelines(): pCreateInfos[0].pRasterizationState->depthClampEnable is VK_TRUE, but the depthClamp feature was not enabled.
+The Vulkan spec states: If the depthClamp feature is not enabled, depthClampEnable must be VK_FALSE (https://vulkan.lunarg.com/doc/view/1.4.321.1/windows/antora/spec/latest/chapters/primsrast.html#VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782)
