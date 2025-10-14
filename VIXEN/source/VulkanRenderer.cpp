@@ -8,8 +8,10 @@
 #include "MeshData.h"
 
 VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject) {
-    assert(app != nullptr);
-    assert(deviceObject != nullptr);
+    if (!app || !deviceObject) {
+        std::cerr << "Fatal error: VulkanRenderer requires non-null application and device objects" << std::endl;
+        exit(1);
+    }
 
     memset(&Depth, 0, sizeof(Depth));
     connection = GetModuleHandle(nullptr);
@@ -35,7 +37,12 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     isResizing = false;
 
     // Create a drawable object for rendering
-    vecDrawables.push_back(std::make_unique<VulkanDrawable>(this));
+    auto drawable = std::make_unique<VulkanDrawable>(this);
+    if (auto result = drawable->Initialize(); !result) {
+        std::cerr << "Failed to initialize drawable: " << result.error().toString() << std::endl;
+        exit(1);
+    }
+    vecDrawables.push_back(std::move(drawable));
 
 }
 
@@ -68,7 +75,12 @@ void VulkanRenderer::Initialize()
 
     // Drawables are created in constructor, no need to recreate
     if (vecDrawables.empty()) {
-        vecDrawables.push_back(std::make_unique<VulkanDrawable>(this));
+        auto drawable = std::make_unique<VulkanDrawable>(this);
+        if (auto result = drawable->Initialize(); !result) {
+            std::cerr << "Failed to initialize drawable: " << result.error().toString() << std::endl;
+            exit(1);
+        }
+        vecDrawables.push_back(std::move(drawable));
     }
 
     CreateVertexBuffer();
@@ -189,7 +201,10 @@ void VulkanRenderer::CreatePresentationWindow(const int &windowWidth, const int 
 #ifdef _WIN32
 void  VulkanRenderer::CreatePresentationWindowWin32(const int &windowWidth, const int &windowHeight)
 {
-    assert(windowWidth > 0 && windowHeight > 0);
+    if (windowWidth <= 0 || windowHeight <= 0) {
+        std::cerr << "Invalid window dimensions: " << windowWidth << "x" << windowHeight << std::endl;
+        exit(1);
+    }
 
     width = windowWidth;
     height = windowHeight;
@@ -343,8 +358,11 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 #ifdef _linux
 void VulkanRenderer::CreatePresentationWindowX(const int &windowWidth, const int &windowHeight) {
-    assert(windowWidth > 0 && windowHeight > 0);
-    
+    if (windowWidth <= 0 || windowHeight <= 0) {
+        std::cerr << "Invalid window dimensions: " << windowWidth << "x" << windowHeight << std::endl;
+        exit(1);
+    }
+
     const xcb_setup_t *setup;
     xcb_screen_iterator_t iter;
     int scr;
@@ -452,14 +470,11 @@ void VulkanRenderer::CreateCommandPool()
     cmdPoolInfo.queueFamilyIndex = deviceObj->graphicsQueueIndex;
     cmdPoolInfo.flags = 0;
 
-    result = vkCreateCommandPool(
-        deviceObj->device, 
-        &cmdPoolInfo, 
-        nullptr, 
-        &cmdPool
-    );
-
-    assert(result == VK_SUCCESS);
+    result = vkCreateCommandPool(deviceObj->device, &cmdPoolInfo, nullptr, &cmdPool);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create command pool: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 }
 
 void VulkanRenderer::CreateDepthImage()
@@ -504,14 +519,11 @@ void VulkanRenderer::CreateDepthImage()
     imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     imageInfo.flags = 0;
     
-    result = vkCreateImage(
-        deviceObj->device, 
-        &imageInfo, 
-        nullptr, 
-        &Depth.image
-    );
-
-    assert(result == VK_SUCCESS);
+    result = vkCreateImage(deviceObj->device, &imageInfo, nullptr, &Depth.image);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create depth image: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 
     VkMemoryRequirements memReqs;
     vkGetImageMemoryRequirements(
@@ -527,28 +539,24 @@ void VulkanRenderer::CreateDepthImage()
     memAlloc.memoryTypeIndex = 0;
     memAlloc.allocationSize = memReqs.size;
 
-    auto memTypeResult = deviceObj->MemoryTypeFromProperties(
-        memReqs.memoryTypeBits,
-        0
-    );
-    assert(memTypeResult);
+    auto memTypeResult = deviceObj->MemoryTypeFromProperties(memReqs.memoryTypeBits, 0);
+    if (!memTypeResult) {
+        std::cerr << "Failed to find suitable memory type for depth buffer: " << memTypeResult.error().toString() << std::endl;
+        exit(1);
+    }
     memAlloc.memoryTypeIndex = memTypeResult.value();
 
-    result = vkAllocateMemory(
-        deviceObj->device, 
-        &memAlloc, 
-        nullptr, 
-        &Depth.mem
-    );
-    assert(result == VK_SUCCESS);
+    result = vkAllocateMemory(deviceObj->device, &memAlloc, nullptr, &Depth.mem);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to allocate depth image memory: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 
-    result = vkBindImageMemory(
-        deviceObj->device, 
-        Depth.image, 
-        Depth.mem, 
-        0
-    );
-    assert(result == VK_SUCCESS);
+    result = vkBindImageMemory(deviceObj->device, Depth.image, Depth.mem, 0);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to bind depth image memory: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 
     VkImageViewCreateInfo imgViewInfo = {};
     imgViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -594,13 +602,11 @@ void VulkanRenderer::CreateDepthImage()
     );
 
     imgViewInfo.image = Depth.image;
-    result = vkCreateImageView(
-        deviceObj->device, 
-        &imgViewInfo, 
-        nullptr, 
-        &Depth.view
-    );
-    assert(result == VK_SUCCESS);
+    result = vkCreateImageView(deviceObj->device, &imgViewInfo, nullptr, &Depth.view);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create depth image view: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 }
 
 void VulkanRenderer::CreateRenderPass(bool isDepthSupported, bool clear)
@@ -683,24 +689,22 @@ void VulkanRenderer::CreateRenderPass(bool isDepthSupported, bool clear)
     rpInfo.dependencyCount = 1;
     rpInfo.pDependencies = &dependency;
 
-    result = vkCreateRenderPass(
-        deviceObj->device, 
-        &rpInfo, 
-        nullptr, 
-        &renderPass
-    );
-
-    assert(result == VK_SUCCESS);
+    result = vkCreateRenderPass(deviceObj->device, &rpInfo, nullptr, &renderPass);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create render pass: " << VulkanError{result, ""}.toString() << std::endl;
+        exit(1);
+    }
 }
 
 void VulkanRenderer::CreateFrameBuffer(bool includeDepth, bool clear)
 {
     // Dependecy on CreateDepthBuffer(), CreateRenderPass()
     // and VulkanSwapChain::CreateSwapChain()
-    assert(Depth.view != VK_NULL_HANDLE);
-    assert(renderPass != VK_NULL_HANDLE);
-    assert(swapChainObj != VK_NULL_HANDLE);
-    assert(swapChainObj->scPublicVars.swapChainImageCount > 0);
+    if (Depth.view == VK_NULL_HANDLE || renderPass == VK_NULL_HANDLE ||
+        !swapChainObj || swapChainObj->scPublicVars.swapChainImageCount == 0) {
+        std::cerr << "CreateFrameBuffer: Prerequisites not met (depth view, render pass, or swapchain)" << std::endl;
+        exit(1);
+    }
 
     VkResult result;
     VkImageView attachments[2];
@@ -722,14 +726,11 @@ void VulkanRenderer::CreateFrameBuffer(bool includeDepth, bool clear)
 
     for (i = 0; i < swapChainObj->scPublicVars.swapChainImageCount; i++) {
         attachments[0] = swapChainObj->scPublicVars.colorBuffers[i].view;
-        result = vkCreateFramebuffer(
-            deviceObj->device, 
-            &fbInfo, 
-            nullptr, 
-            &frameBuffers.at(i)
-        );
-        assert(result == VK_SUCCESS);
-
+        result = vkCreateFramebuffer(deviceObj->device, &fbInfo, nullptr, &frameBuffers.at(i));
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to create framebuffer: " << VulkanError{result, ""}.toString() << std::endl;
+            exit(1);
+        }
     }
 }
 
@@ -755,8 +756,14 @@ void VulkanRenderer::CreateVertexBuffer()
     CommandBufferMgr::BeginCommandBuffer(cmdVertexBuffer);
     for (size_t i = 0; i < vecDrawables.size(); i++)
     {
-        vecDrawables[i]->CreateVertexBuffer(squareData, sizeof(squareData), sizeof(squareData[0]), false);
-		vecDrawables[i]->CreateVertexIndex(squareIndices, sizeof(squareIndices), 0);
+        if (auto result = vecDrawables[i]->CreateVertexBuffer(squareData, sizeof(squareData), sizeof(squareData[0]), false); !result) {
+            std::cerr << "Failed to create vertex buffer: " << result.error().toString() << std::endl;
+            exit(1);
+        }
+        if (auto result = vecDrawables[i]->CreateVertexIndex(squareIndices, sizeof(squareIndices), 0); !result) {
+            std::cerr << "Failed to create vertex index buffer: " << result.error().toString() << std::endl;
+            exit(1);
+        }
     }
     CommandBufferMgr::EndCommandBuffer(cmdVertexBuffer);
     CommandBufferMgr::SubmitCommandBuffer(
@@ -930,8 +937,10 @@ void VulkanRenderer::DestroyShaders()
 }
 
 void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkAccessFlagBits srcAccessMask, const VkCommandBuffer& cmd) {
-    assert(cmd != VK_NULL_HANDLE);
-    assert(deviceObj->queue != VK_NULL_HANDLE);
+    if (cmd == VK_NULL_HANDLE || deviceObj->queue == VK_NULL_HANDLE) {
+        std::cerr << "SetImageLayout: Invalid command buffer or device queue" << std::endl;
+        exit(1);
+    }
 
     VkImageMemoryBarrier imgMemoryBarrier = {};
     imgMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

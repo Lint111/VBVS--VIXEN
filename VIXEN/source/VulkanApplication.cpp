@@ -23,14 +23,14 @@ VulkanApplication* VulkanApplication::GetInstance() {
     return instance.get();
 }
 
-VulkanSuccess VulkanApplication::CreateVulkanInstance(std::vector<const char*>& layers,
+VulkanStatus VulkanApplication::CreateVulkanInstance(std::vector<const char*>& layers,
                                                       std::vector<const char*>& extensions,
                                                       const char* applicationName) {
     instanceObj.CreateInstance(layers, extensions, applicationName);
     return {};
 }
 
-VulkanSuccess VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
+VulkanStatus VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
                                                      std::vector<const char*>& layers,
                                                      std::vector<const char*>& extensions) {
     deviceObj = std::make_unique<VulkanDevice>(gpu);
@@ -105,6 +105,11 @@ bool VulkanApplication::render()
     return renderObj->Render();
 }
 
+void VulkanApplication::Update() {
+    // Placeholder for application update logic
+    // (e.g., input handling, physics, animation updates)
+}
+
 void VulkanApplication::DeInitialize() {
     // Wait for device to finish all operations
     if (deviceObj && deviceObj->device != VK_NULL_HANDLE) {
@@ -117,7 +122,7 @@ void VulkanApplication::DeInitialize() {
     instanceObj.DestroyInstance();
 }
 
-VulkanSuccess VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {
+VulkanStatus VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {
     // holds gpu count
     uint32_t gpuDeviceCount;
     //get physical device count

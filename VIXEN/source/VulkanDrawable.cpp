@@ -2,40 +2,40 @@
 #include "VulkanApplication.h"
 #include "VulkanRenderer.h"
 #include "VulkanSwapChain.h"
+#include "VulkanDevice.h"
 
 VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
+    : rendererObj(parent),
+      presentCompleteSemaphore(VK_NULL_HANDLE),
+      drawingCompleteSemaphore(VK_NULL_HANDLE)
 {
     memset(&VertexBuffer, 0, sizeof(VertexBuffer));
-    rendererObj = parent;
+    memset(&IndexBuffer, 0, sizeof(IndexBuffer));
+}
+
+VulkanStatus VulkanDrawable::Initialize()
+{
+    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
 
     // Prepare the semaphore create info data structure
     VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo = {};
     presentCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     presentCompleteSemaphoreCreateInfo.pNext = nullptr;
     presentCompleteSemaphoreCreateInfo.flags = 0;
+
     VkSemaphoreCreateInfo drawingCompleteSemaphoreCreateInfo = {};
     drawingCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     drawingCompleteSemaphoreCreateInfo.pNext = nullptr;
     drawingCompleteSemaphoreCreateInfo.flags = 0;
 
-    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
-
     // Create the semaphores
-    VkResult result = vkCreateSemaphore(
-        deviceObj->device, 
-        &presentCompleteSemaphoreCreateInfo, 
-        nullptr, 
-        &presentCompleteSemaphore
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkCreateSemaphore(deviceObj->device, &presentCompleteSemaphoreCreateInfo, nullptr, &presentCompleteSemaphore),
+             "Failed to create present complete semaphore");
 
-    result = vkCreateSemaphore(
-        deviceObj->device, 
-        &drawingCompleteSemaphoreCreateInfo, 
-        nullptr, 
-        &drawingCompleteSemaphore
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkCreateSemaphore(deviceObj->device, &drawingCompleteSemaphoreCreateInfo, nullptr, &drawingCompleteSemaphore),
+             "Failed to create drawing complete semaphore");
+
+    return {};
 }
 
 VulkanDrawable::~VulkanDrawable()
@@ -269,13 +269,10 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
 
 
 
-void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSize, uint32_t dataStride, bool useTexture)
+VulkanStatus VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSize, uint32_t dataStride, bool useTexture)
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
     VulkanDevice* deviceObj = appObj->deviceObj.get();
-
-    VkResult result;
-    bool pass;
 
     // Create the buffer resource metadata
     VkBufferCreateInfo bufInfo = {};
@@ -289,13 +286,8 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     bufInfo.flags = 0;
 
     // Create the buffer resource
-    result = vkCreateBuffer(
-        deviceObj->device, 
-        &bufInfo, 
-        nullptr, 
-        &VertexBuffer.buf
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkCreateBuffer(deviceObj->device, &bufInfo, nullptr, &VertexBuffer.buf),
+             "Failed to create vertex buffer");
 
 
     // Get the memory requirements for this buffer resource
@@ -320,20 +312,14 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
-    assert(memTypeResult);
+    VK_PROPAGATE_ERROR(memTypeResult);
     alloc_info_vertex_buffer.memoryTypeIndex = memTypeResult.value();
 
 
 
     // Allocate the physical backing for buffer resource
-    result = vkAllocateMemory(
-        deviceObj->device, 
-        &alloc_info_vertex_buffer, 
-        nullptr, 
-        &VertexBuffer.mem
-    );
-
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkAllocateMemory(deviceObj->device, &alloc_info_vertex_buffer, nullptr, &VertexBuffer.mem),
+             "Failed to allocate vertex buffer memory");
 
 
     VertexBuffer.bufferInfo.range = memRqrmntVertexBuffer.size;
@@ -341,16 +327,8 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
 
     // Map the physical device memory region to the host
     uint8_t* pVertexData = nullptr;
-    result = vkMapMemory(
-        deviceObj->device, 
-        VertexBuffer.mem, 
-        0, 
-        memRqrmntVertexBuffer.size, 
-        0, 
-        (void **)&pVertexData
-    );
-
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkMapMemory(deviceObj->device, VertexBuffer.mem, 0, memRqrmntVertexBuffer.size, 0, (void **)&pVertexData),
+             "Failed to map vertex buffer memory");
 
 
 
@@ -362,14 +340,8 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     vkUnmapMemory(deviceObj->device, VertexBuffer.mem);
 
     // Bind the allocated buffer resource to the device memory
-    result = vkBindBufferMemory(
-        deviceObj->device, 
-        VertexBuffer.buf, 
-        VertexBuffer.mem, 
-        0
-    );
-
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkBindBufferMemory(deviceObj->device, VertexBuffer.buf, VertexBuffer.mem, 0),
+             "Failed to bind vertex buffer memory");
 
     // The VkVertexInputVinding viIpBind, stores the rate at 
     // which the information will be injected for vertex input.
@@ -388,20 +360,13 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     viIpAttr[1].format = useTexture ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;  // vec4
     viIpAttr[1].offset = 16;  // 4 floats for position = 16 bytes
 
-
-
-
-
+    return {};
 }
 
-void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize, uint32_t dataStride)
+VulkanStatus VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize, uint32_t dataStride)
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
     VulkanDevice* deviceObj = appObj->deviceObj.get();
-
-    VkResult result;
-    bool pass;
-
 
     // Create the Index buffer resource metadata
     VkBufferCreateInfo indexBufInfo = {};
@@ -415,13 +380,8 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
     indexBufInfo.flags = 0;
 
     // Create the buffer resource
-    result = vkCreateBuffer(
-        deviceObj->device,
-        &indexBufInfo,
-        nullptr,
-        &IndexBuffer.buf
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkCreateBuffer(deviceObj->device, &indexBufInfo, nullptr, &IndexBuffer.buf),
+             "Failed to create index buffer");
 
     VkMemoryRequirements memRqrmntIndexBuffer;
     vkGetBufferMemoryRequirements(
@@ -443,44 +403,343 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
-    assert(memTypeResult);
+    VK_PROPAGATE_ERROR(memTypeResult);
     alloc_info_index_buffer.memoryTypeIndex = memTypeResult.value();
 
 
-    result = vkAllocateMemory(
-        deviceObj->device,
-        &alloc_info_index_buffer,
-        nullptr,
-        &IndexBuffer.mem
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkAllocateMemory(deviceObj->device, &alloc_info_index_buffer, nullptr, &IndexBuffer.mem),
+             "Failed to allocate index buffer memory");
 
     IndexBuffer.bufferInfo.range = memRqrmntIndexBuffer.size;
     IndexBuffer.bufferInfo.offset = 0;
 
 
     uint8_t* pIndexData = nullptr;
-    result = vkMapMemory(
-        deviceObj->device,
-        IndexBuffer.mem,
-        0,
-        memRqrmntIndexBuffer.size,
-        0,
-        (void**)&pIndexData
-    );
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkMapMemory(deviceObj->device, IndexBuffer.mem, 0, memRqrmntIndexBuffer.size, 0, (void**)&pIndexData),
+             "Failed to map index buffer memory");
 
     memcpy(pIndexData, indexData , dataSize);
 
     vkUnmapMemory(deviceObj->device, IndexBuffer.mem);
     
-	result = vkBindBufferMemory(
-		deviceObj->device,
-		IndexBuffer.buf,
-		IndexBuffer.mem,
-		0
-	);
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkBindBufferMemory(deviceObj->device, IndexBuffer.buf, IndexBuffer.mem, 0),
+             "Failed to bind index buffer memory");
 
+    return {};
+}
 
+// CreatePipelineLayout is a virtual funciton from 
+// VulkanDescriptor and defined in the VulkanDrawable class.
+// Virtual VulkanStatus VulkanDescriptor::vkCreatePipelineLayout() = 0;
+// Create the pipeline layout to inject into the pipeline.
+VulkanStatus VulkanDrawable::CreatePipelineLayout()
+{
+    // Create the pipeline layout using descriptor layout.
+    VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {};
+    pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pPipelineLayoutCreateInfo.pNext = nullptr;
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+    pPipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+    pPipelineLayoutCreateInfo.setLayoutCount = static_cast<uint32_t>(descLayout.size());
+    pPipelineLayoutCreateInfo.pSetLayouts = descLayout.data();
+
+    auto result = vkCreatePipelineLayout(
+        deviceObj->device,
+        &pPipelineLayoutCreateInfo,
+        nullptr,
+        &pipelineLayout
+    );
+
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to create pipeline layout!" });
+    }
+
+    return {};
+}
+
+// Descriptor class for managing descriptor sets and layouts
+VulkanStatus VulkanDrawable::CreateDescriptorSetLayout(bool useTexture)
+{
+    // Define the layout binding for the 
+    // descriptor set (before creating it), specify binding point,
+    // shader type (vertex, fragment etc.), count etc.
+    const int NUMBER_OF_BINDINGS = 2;
+
+    VkDescriptorSetLayoutBinding layoutBinding[NUMBER_OF_BINDINGS];
+    layoutBinding[0].binding = 0; // DESCRIPTOR_SET_BINDING_INDEX
+    layoutBinding[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layoutBinding[0].descriptorCount = 1;
+    layoutBinding[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    layoutBinding[0].pImmutableSamplers = nullptr;
+
+    // If texture is used then there exists a 
+    // second binding in the fragment shader
+    if (useTexture) {
+        layoutBinding[1].binding = 1;
+        layoutBinding[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        layoutBinding[1].descriptorCount = 1;
+        layoutBinding[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        layoutBinding[1].pImmutableSamplers = nullptr;
+    }
+
+    // Specify the layout bind into VkDescriptorSetLayoutCreateInfo
+    // and use it to create the descriptor set layout
+    VkDescriptorSetLayoutCreateInfo descriptorLayout = {};
+    descriptorLayout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptorLayout.pNext = nullptr;
+    descriptorLayout.bindingCount = useTexture ? 2 : 1;
+    descriptorLayout.pBindings = layoutBinding;
+
+    VkResult result;
+
+    // Allocate required number of descriptor set layout objects and
+    // create them using vkCreateDescriptorSetLayout
+    descLayout.resize(1);
+    result = vkCreateDescriptorSetLayout(
+        deviceObj->device,
+        &descriptorLayout,
+        nullptr,
+        descLayout.data()
+    );
+
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to create descriptor set layout!" });
+    }
+    return {};
+}
+
+// Creates the descriptor pool, this function depends on -
+// CreateDescriptorSetLayout() to be called first.
+VulkanStatus VulkanDrawable::CreateDescriptorPool(bool useTexture)
+{
+    VkResult result;
+
+    // Define the size of the descriptor pool based on the 
+    // type of descriptor set being used.
+    const int NUMBER_OF_POOL_SIZES = 2;
+    VkDescriptorPoolSize descriptorTypePool[NUMBER_OF_POOL_SIZES];
+
+    // The first descriptor pool object is of type Uniform buffer
+    descriptorTypePool[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorTypePool[0].descriptorCount = 1;
+
+    // If texture is used then define the second object with
+    // descriptor type to be imgage sampler
+    if (useTexture) {
+        descriptorTypePool[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorTypePool[1].descriptorCount = 1;
+    }
+
+    // Populate the descriptor pool state information
+    // in the create info structure.
+    VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
+    descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptorPoolInfo.pNext = nullptr;
+    descriptorPoolInfo.maxSets = 1;
+    descriptorPoolInfo.poolSizeCount = useTexture ? 2 : 1;
+    descriptorPoolInfo.pPoolSizes = descriptorTypePool;
+
+    // Create the descriptor pool using the descriptor
+    // pool create info structure
+    result = vkCreateDescriptorPool(
+        deviceObj->device,
+        &descriptorPoolInfo,
+        nullptr,
+        &descriptorPool
+    );
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to create descriptor pool!" });
+    }
+    return {};
+}
+
+VulkanStatus VulkanDrawable::CreateDescriptorResources()
+{
+    VK_PROPAGATE_ERROR(CreateUniformBuffer());
+    return {};
+}
+
+VulkanStatus VulkanDrawable::CreateUniformBuffer()
+{
+    VkResult result;
+    Projection = glm::perspective(
+        glm::radians(45.f),
+        (float)rendererObj->width / (float)rendererObj->height,
+        0.1f,
+        100.0f
+    );
+    View = glm::lookAt(
+        glm::vec3(10, 3, 10),
+        glm::vec3(0, 0, 0),
+        glm::vec3(0, -1, 0)
+    );
+    Model = glm::mat4(1.0f);
+    MVP = Projection * View * Model;
+
+    // Create the buffer resource metadata
+    VkBufferCreateInfo bufInfo = {};
+    bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufInfo.pNext = nullptr;
+    bufInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufInfo.size = sizeof(MVP);
+    bufInfo.queueFamilyIndexCount = 0;
+    bufInfo.pQueueFamilyIndices = nullptr;
+    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    bufInfo.flags = 0;
+
+    // Create the buffer resource
+    result = vkCreateBuffer(
+        deviceObj->device,
+        &bufInfo,
+        nullptr,
+        &UniformData.buf
+    );
+
+    if( result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to create uniform buffer!" });
+    }
+
+    // Get the memory requirements for this buffer resource
+    VkMemoryRequirements memRqrmnt;
+    vkGetBufferMemoryRequirements(
+        deviceObj->device,
+        UniformData.buf,
+        &memRqrmnt
+    );
+
+    // Create memory allocation information
+    VkMemoryAllocateInfo memAllocInfo = {};
+    memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memAllocInfo.pNext = nullptr;
+    memAllocInfo.memoryTypeIndex = 0;
+    memAllocInfo.allocationSize = memRqrmnt.size;
+
+    // Get the memory type index that has the properties we require
+    auto memTypeIndex = deviceObj->MemoryTypeFromProperties(
+        memRqrmnt.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT        
+    );
+    if (!memTypeIndex) {
+        return std::unexpected(VulkanError{ VK_ERROR_INITIALIZATION_FAILED, "Failed to get memory type for uniform buffer!" });
+    }
+    memAllocInfo.memoryTypeIndex = memTypeIndex.value();
+
+    // Allocate the physical backing for buffer resource
+    result = vkAllocateMemory(
+        deviceObj->device,
+        &memAllocInfo,
+        nullptr,
+        &UniformData.mem
+    );
+
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to allocate memory for uniform buffer!" });
+    }
+
+    // Map the physical device memory region to the host
+    memcpy(UniformData.pData, &MVP, sizeof(MVP));
+
+    // We have only one uniform buffer, so only one range
+    UniformData.mappedRange.resize(1);
+
+    // Populate the VkMappedMemoryRange structure
+    UniformData.mappedRange[0].sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    UniformData.mappedRange[0].memory = UniformData.mem;
+    UniformData.mappedRange[0].offset = 0;
+    UniformData.mappedRange[0].size = sizeof(MVP);
+
+    // Invalidate the mapped memory range to make it visible to the device
+    result = vkInvalidateMappedMemoryRanges(
+        deviceObj->device,
+        1,
+        &UniformData.mappedRange[0]
+    );
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to invalidate mapped memory range for uniform buffer!" });
+    }
+
+    // Bind the allocated buffer resource to the device memory
+    result = vkBindBufferMemory(
+        deviceObj->device,
+        UniformData.buf,
+        UniformData.mem,
+        0
+    );
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to bind buffer memory for uniform buffer!" });
+    }
+
+    // Update the local data structure with uniform buffer for house keeping
+    UniformData.bufInfo.buffer = UniformData.buf;
+    UniformData.bufInfo.offset = 0;
+    UniformData.bufInfo.range = sizeof(MVP);
+    UniformData.memRqrmnt = memRqrmnt;
+
+    return {};
+}
+
+// Create descriptor set - stub implementation
+VulkanStatus VulkanDrawable::CreateDescriptorSet(bool useTexture)
+{
+    VulkanPipeline* pipelineObj = rendererObj->GetPipeline();
+
+    // Create the descriptor allocation structure and specify 
+    // the descriptor pool and layout to be used for allocation
+    VkDescriptorSetAllocateInfo descAllocInfo = {};
+    descAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descAllocInfo.pNext = nullptr;
+    descAllocInfo.descriptorPool = descriptorPool;
+    descAllocInfo.descriptorSetCount = 1;
+    descAllocInfo.pSetLayouts = descLayout.data();
+
+    // Allocate the number of descriptor set needs to be created
+    descriptorSet.resize(1);
+
+    // Allocate the descriptor set(s)
+    VK_CHECK(vkAllocateDescriptorSets(
+        deviceObj->device, 
+        &descAllocInfo, 
+        descriptorSet.data()
+    ), "Failed to allocate descriptor sets");
+
+    // Allocate two write descriptors for - 1. MVP and 2. Texture
+    const int NUMBER_OF_WRITE_DESCRIPTORS = 2;
+    VkWriteDescriptorSet writes[NUMBER_OF_WRITE_DESCRIPTORS]; 
+    memset(&writes, 0, sizeof(writes));
+
+    // Specify the uniform buffer related information
+    // into first write descriptor
+    writes[0] = {};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].pNext = nullptr;
+    writes[0].dstSet = descriptorSet[0];
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[0].pBufferInfo = &UniformData.bufInfo;
+    writes[0].dstArrayElement = 0;
+    writes[0].dstBinding = 0;
+
+    // If texture is used then populate the second write descriptor
+    if (useTexture) {
+        writes[1] = {};
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].pNext = nullptr;
+        writes[1].dstSet = descriptorSet[0];
+        writes[1].dstBinding = 1;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].pImageInfo = nullptr;
+        writes[1].dstArrayElement = 0;
+    }
+
+    // Update the descriptor set with new data
+    vkUpdateDescriptorSets(
+        deviceObj->device,
+        useTexture ? 2 : 1,
+        writes,
+        0,
+        nullptr
+    );
+
+    return {};
 }

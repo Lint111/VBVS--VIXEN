@@ -3,7 +3,7 @@
 #include <Headers.h>
 #include "VulkanInstance.h"
 #include "VulkanDevice.h"
-#include "VulkanError.h"
+#include "error/VulkanError.h"
 
 class VulkanRenderer;
 
@@ -30,12 +30,12 @@ public:
 
 
 private:
-    VulkanSuccess CreateVulkanInstance(std::vector<const char*>& layers,
+    VulkanStatus CreateVulkanInstance(std::vector<const char*>& layers,
                                        std::vector<const char*>& extensions,
                                        const char* applicationName);
 
-    VulkanSuccess HandShakeWithDevice(VkPhysicalDevice *gpu, std::vector<const char *> &layers, std::vector<const char *> &extensions);
-    VulkanSuccess EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList);
+    VulkanStatus HandShakeWithDevice(VkPhysicalDevice *gpu, std::vector<const char *> &layers, std::vector<const char *> &extensions);
+    VulkanStatus EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList);
 
 
 public:

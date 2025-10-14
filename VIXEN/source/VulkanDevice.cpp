@@ -8,7 +8,7 @@ VulkanDevice::~VulkanDevice() {
     DestroyDevice();
 }
 
-VulkanSuccess VulkanDevice::CreateDevice(std::vector<const char*>& layers,
+VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
                                          std::vector<const char*>& extensions) {
 
     layerExtension.appRequestedLayerNames = layers;

@@ -2,7 +2,7 @@
 
 #include "Headers.h"
 #include "VulkanLayerAndExtension.h"
-#include "VulkanError.h"
+#include "error/VulkanError.h"
 
 class VulkanDevice {
 public:
@@ -24,7 +24,7 @@ public:
     VulkanLayerAndExtension layerExtension;
 
     //this class exposes the below functions to the outer world
-    VulkanSuccess CreateDevice(std::vector<const char *> &layers, std::vector<const char *> &extensions);
+    VulkanStatus CreateDevice(std::vector<const char *> &layers, std::vector<const char *> &extensions);
     void DestroyDevice();
 
     VulkanResult<uint32_t> MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask);

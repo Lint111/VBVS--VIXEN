@@ -18,6 +18,10 @@
 #include <glslang/SPIRV/GlslangToSpv.h>
 #endif // AUTO_COMPILE_GLSL_TO_SPV
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -25,6 +29,9 @@
 #include <iomanip>
 #include <assert.h>
 #include <fileapi.h>
+
+// error handling
+#include "error/VulkanError.h"
 
 #include <memory>
 #include <mutex>

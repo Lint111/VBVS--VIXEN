@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
 
         bool isWindowOpen = true;
         while(isWindowOpen) {
+            appObj -> Update();
             isWindowOpen = appObj->render();
         }
 

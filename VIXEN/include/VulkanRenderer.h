@@ -58,7 +58,7 @@ class VulkanRenderer {
     inline const std::vector<std::unique_ptr<VulkanDrawable>>& GetDrawingItems() const { return vecDrawables; }
     inline VkCommandPool GetCommandPool() const { return cmdPool; }
     inline VulkanShader* GetShader() const { return shaderObj.get(); }
-    inline VulkanPipeline* GetPipelineObject() const { return pipelineState.get(); }
+    inline VulkanPipeline* GetPipeline() const { return pipelineState.get(); }
 
 
     #ifdef _WIN32

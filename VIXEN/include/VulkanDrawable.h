@@ -1,12 +1,14 @@
 #pragma once
 #include "Headers.h"
 #include "wrapper.h"
+#include "VulkanDescriptor.h"
+
 class VulkanRenderer;
 class VulkanApplication;
 class VulkanSwapChain;
 
 
-class VulkanDrawable {
+class VulkanDrawable : public VulkanDescriptor {
     struct VertAttBuffer {
         VkBuffer buf;
         VkDeviceMemory mem;
@@ -17,14 +19,16 @@ class VulkanDrawable {
     VulkanDrawable(VulkanRenderer* parent = 0);
     ~VulkanDrawable();
 
-    void CreateVertexBuffer(const void* vertexData,
-                            uint32_t dataSize,
-                            uint32_t dataStride,
-                            bool useTexture = false);
+    VulkanStatus Initialize();
 
-	void CreateVertexIndex(const void* indexData, 
-                          uint32_t dataSize, 
-                          uint32_t dataStride);
+    VulkanStatus CreateVertexBuffer(const void* vertexData,
+                                     uint32_t dataSize,
+                                     uint32_t dataStride,
+                                     bool useTexture = false);
+
+	VulkanStatus CreateVertexIndex(const void* indexData,
+                                    uint32_t dataSize,
+                                    uint32_t dataStride);
     
     void Prepare();
     VkResult Render();
@@ -35,7 +39,32 @@ class VulkanDrawable {
     void SetPipeline(VkPipeline vulkanPipeline) { pipelineHandle = vulkanPipeline; }
     VkPipeline GetPipeline() { return pipelineHandle; }
     VulkanRenderer* GetRenderer() { return rendererObj; }
-    
+
+    struct UniformData {
+        VkBuffer buf;
+        VkDeviceMemory mem;
+        VkDescriptorBufferInfo bufInfo;
+        VkMemoryRequirements memRqrmnt;
+
+        std::vector<VkMappedMemoryRange> mappedRange;
+        uint8_t* pData;
+    } UniformData;
+
+    VulkanStatus CreateDescriptor(bool useTexture);
+    VulkanStatus CreatePipelineLayout() override;
+    VulkanStatus CreateDescriptorSetLayout(bool useTexture) override;
+    VulkanStatus CreateDescriptorPool(bool useTexture) override;
+    VulkanStatus CreateDescriptorSet(bool useTexture) override;
+    VulkanStatus CreateDescriptorResources() override;
+
+    VulkanStatus CreateUniformBuffer();
+
+    // Transformation matrices
+    glm::mat4 Projection;
+    glm::mat4 View;
+    glm::mat4 Model;
+    glm::mat4 MVP;
+
     void DestroyCommandBuffer();
     void DestroyVertexBuffer();
 	void DestroyIndexBuffer();

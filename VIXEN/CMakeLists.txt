@@ -2,7 +2,7 @@
 # Chapter 3 - Device Hand Shake CMake file.
 #
 
-cmake_minimum_required(VERSION 4.0.3)
+cmake_minimum_required(VERSION 3.11)
 
 set(Recipe_Name "7e_ShadersWithSPIRV")
 
@@ -58,7 +58,7 @@ endif()
 # ON - Reads the GLSL shader file and auto convert in SPIR-V form (.spv).
 # This requires additional libraries support from VulkanSDK like
 # SPIRV glslang OGLCompiler OSDependent HLSL.
-# OFF - Only reads .spv files, which need to be compiled offline using 
+# OFF - Only reads .spv files, which need to be compiled offline using
 # glslangValidator.exe.
 # For example: glslangValidator.exe <GLSL file name> -V -o <output fileneame in SPIR-V(.spv) form>
 option(BUILD_SPV_ON_COMPILE_TIME "BUILD_SPV_ON_COMPILE_TIME" ON)
@@ -97,6 +97,16 @@ if(BUILD_SPV_ON_COMPILE_TIME)
 	# No additional link_directories needed - already configured at line 125
 endif()
 
+# GLM SETUP using FetchContent
+include(FetchContent)
+
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1 # Use tag name directly
+)
+
+FetchContent_MakeAvailable(glm)
 
 
 	
@@ -142,7 +152,7 @@ file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
 add_executable(${Recipe_Name} ${CPP_FILES} ${HPP_FILES})
 
 # Link the debug and release libraries to the project
-target_link_libraries( ${Recipe_Name} ${VULKAN_LIB_LIST} )
+target_link_libraries( ${Recipe_Name} ${VULKAN_LIB_LIST} glm::glm )
 
 # Define project properties
 set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/binaries)

@@ -48,11 +48,16 @@ template<typename T>
 using VulkanResult = std::expected<T, VulkanError>;
 
 /**
- * @brief Result type for Vulkan operations that return void
+ * @brief Status type for Vulkan operations that don't return a value
+ *
+ * Represents the success or failure status of an operation.
+ * Can be in one of two states:
+ * - Success: return {}
+ * - Failure: return std::unexpected(VulkanError{...})
  *
  * Usage:
  * @code
- * VulkanSuccess destroyDevice(VkDevice device) {
+ * VulkanStatus destroyDevice(VkDevice device) {
  *     if (!device) {
  *         return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, "Invalid device"});
  *     }
@@ -61,7 +66,7 @@ using VulkanResult = std::expected<T, VulkanError>;
  * }
  * @endcode
  */
-using VulkanSuccess = std::expected<void, VulkanError>;
+using VulkanStatus = std::expected<void, VulkanError>;
 
 /**
  * @brief Helper macro to check Vulkan result and return error if failed
@@ -106,7 +111,7 @@ using VulkanSuccess = std::expected<void, VulkanError>;
  *
  * Usage:
  * @code
- * VulkanSuccess initialize() {
+ * VulkanStatus initialize() {
  *     auto device = createDevice();
  *     VK_PROPAGATE_ERROR(device);  // Return error if device creation failed
  *
