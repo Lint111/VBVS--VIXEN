@@ -1,7 +1,8 @@
-#pragma once 
+#pragma once
 
 #include "Headers.h"
 #include "VulkanLayerAndExtension.h"
+#include "VulkanError.h"
 
 class VulkanDevice {
 public:
@@ -23,11 +24,11 @@ public:
     VulkanLayerAndExtension layerExtension;
 
     //this class exposes the below functions to the outer world
-    VkResult CreateDevice(std::vector<const char *> &layers, std::vector<const char *> &extensions);
+    VulkanSuccess CreateDevice(std::vector<const char *> &layers, std::vector<const char *> &extensions);
     void DestroyDevice();
 
-    bool MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask, uint32_t *typeIndex);
+    VulkanResult<uint32_t> MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask);
     void GetPhysicalDeviceQueuesAndProperties();
-    uint32_t GetGraphicsQueueHandle();
+    VulkanResult<uint32_t> GetGraphicsQueueHandle();
     void GetDeviceQueue();
 };

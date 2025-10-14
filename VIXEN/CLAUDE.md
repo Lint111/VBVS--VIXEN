@@ -2,6 +2,63 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication Style - MANDATORY
+
+**Read and follow `documentation/Communication Guidelines.md` for all communication.** Key principles:
+
+### Radical Conciseness
+- **Maximum signal, minimum noise** - every word must serve a purpose
+- **No conversational filler** - eliminate phrases like "Certainly!", "I hope this helps!", "As you requested..."
+- **Lead with conclusion** - state the most important information first
+- **Use structured data** - lists, tables, code blocks over prose
+- **Report facts, not process** - state the plan/action/result, not your thinking process
+- **Be economical** - if a sentence can be shorter, make it shorter
+
+### No Sycophantic Language
+- **NEVER** use "You're absolutely right!", "Excellent point!", or similar flattery
+- **Brief acknowledgments only**: "Got it.", "I understand.", "I see the issue."
+- **Proceed directly** to execution when possible
+
+### Examples
+- ❌ "Certainly! I'll help you with that. Let me start by reading the file..."
+- ✅ [Proceeds directly with Read tool]
+
+- ❌ "You're absolutely right! That's a great decision."
+- ✅ "Got it." [proceeds with action]
+
+**See `documentation/Communication Guidelines.md` for complete directive and examples.**
+
+## Memory Bank - CRITICAL
+
+The Memory Bank in `memory-bank/` provides persistent project context across sessions. **Read the appropriate files based on session type.**
+
+### Quick Start (Every Task/Prompt)
+Read these "hot" files that change frequently:
+1. `memory-bank/activeContext.md` - Current focus, recent changes, active decisions
+2. `memory-bank/progress.md` - Implementation status, what's done, what's left
+
+### Full Context (New Conversation / After Reset)
+When starting a fresh conversation or after conversation compression, read ALL files IN ORDER:
+1. `memory-bank/projectbrief.md` - Project goals, scope, and success criteria
+2. `memory-bank/productContext.md` - Why the project exists and design philosophy
+3. `memory-bank/systemPatterns.md` - Architecture patterns and component design
+4. `memory-bank/techContext.md` - Technology stack and development setup
+5. `memory-bank/activeContext.md` - Current focus and recent decisions
+6. `memory-bank/progress.md` - Implementation status and what's left to build
+
+### Keeping Memory Bank Updated
+Update the Memory Bank when:
+- Implementing significant features or architectural changes
+- Discovering new patterns or making important decisions
+- User explicitly requests **"update memory bank"** (must review ALL files)
+- Project status changes meaningfully
+
+When updating:
+- **Always update**: `activeContext.md` (current focus) and `progress.md` (status)
+- **Update if changed**: `systemPatterns.md` (new patterns), `techContext.md` (tech changes)
+- **Rarely update**: `projectbrief.md` and `productContext.md` (stable foundations)
+- Keep documentation concise but comprehensive
+
 ## Build System
 
 This is a CMake-based C++ Vulkan application project. The build system is configured for Windows with Visual Studio.
@@ -87,3 +144,16 @@ include/
 ```
 
 This is Chapter 3 example code focusing on establishing the initial handshake between the application and Vulkan drivers/devices.
+
+## Coding Standards
+
+All C++ code in this project must follow the guidelines specified in `documentation/cpp-programming-guidelins.md`. Key standards include:
+
+- **Nomenclature**: PascalCase for classes, camelCase for functions/variables, ALL_CAPS for constants
+- **Functions**: Keep functions short (<20 instructions), single purpose, use early returns to avoid nesting
+- **Data**: Use const-correctness, prefer immutability, use std::optional for nullable values
+- **Classes**: Follow SOLID principles, prefer composition over inheritance, keep classes small (<200 instructions, <10 public methods)
+- **Memory**: Use smart pointers (std::unique_ptr, std::shared_ptr) over raw pointers, follow RAII principles
+- **Modern C++**: Leverage C++23 features and the standard library (std::string, std::vector, std::filesystem, std::chrono, etc.)
+
+See the full guidelines in `documentation/cpp-programming-guidelins.md` for complete details.

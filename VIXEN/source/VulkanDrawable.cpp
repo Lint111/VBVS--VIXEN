@@ -315,14 +315,13 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     alloc_info_vertex_buffer.allocationSize = memRqrmntVertexBuffer.size;
 
     // Get the memory type index that has the properties we require
-    pass = deviceObj->MemoryTypeFromProperties(
-        memRqrmntVertexBuffer.memoryTypeBits, 
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-        &alloc_info_vertex_buffer.memoryTypeIndex
+    auto memTypeResult = deviceObj->MemoryTypeFromProperties(
+        memRqrmntVertexBuffer.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
-
-    assert(pass);
+    assert(memTypeResult);
+    alloc_info_vertex_buffer.memoryTypeIndex = memTypeResult.value();
 
 
 
@@ -439,13 +438,13 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
 	alloc_info_index_buffer.memoryTypeIndex = 0;
 	alloc_info_index_buffer.allocationSize = memRqrmntIndexBuffer.size;
 
-    pass = deviceObj->MemoryTypeFromProperties(
+    auto memTypeResult = deviceObj->MemoryTypeFromProperties(
         memRqrmntIndexBuffer.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &alloc_info_index_buffer.memoryTypeIndex
+        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
-    assert(pass);
+    assert(memTypeResult);
+    alloc_info_index_buffer.memoryTypeIndex = memTypeResult.value();
 
 
     result = vkAllocateMemory(

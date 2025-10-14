@@ -21,11 +21,41 @@
 4. ✅ Created code quality improvement plan (memory-bank/codeQualityPlan.md)
 5. ✅ Completed Phase 1 critical fixes (smart pointers, const-correctness)
 6. ✅ Completed Phase 2 quick wins (NULL→nullptr, typos, magic numbers)
-7. **Next**: Update memory bank and commit code quality improvements
+7. ✅ Completed Phase 3A (VulkanDevice + VulkanApplication error handling)
+8. **Next**: Continue Phase 3 - convert remaining assert() calls to std::expected
 
 ## Recent Changes
 
-### Code Quality Improvements (Current Session)
+### Phase 3: Error Handling with std::expected (Current Session)
+**Rust-like Error Handling Implementation:**
+- **Created VulkanError infrastructure**:
+  - `VulkanError.h`: Defines `VulkanError` struct, `VulkanResult<T>` and `VulkanSuccess` type aliases
+  - `VulkanError.cpp`: Provides VkResult → string conversion for human-readable error messages
+  - Macros: `VK_CHECK`, `VK_CHECK_FMT`, `VK_PROPAGATE_ERROR` for ergonomic error handling
+- **Converted VulkanDevice.cpp** (3 functions):
+  - `CreateDevice`: VkResult → VulkanSuccess with VK_CHECK macro
+  - `MemoryTypeFromProperties`: bool+outparam → VulkanResult<uint32_t> (cleaner API)
+  - `GetGraphicsQueueHandle`: uint32_t → VulkanResult<uint32_t> (explicit error returns)
+- **Converted VulkanApplication.cpp** (3 functions):
+  - `CreateVulkanInstance`: VkResult → VulkanSuccess
+  - `HandShakeWithDevice`: Added error propagation with VK_PROPAGATE_ERROR
+  - `EnumeratePhysicalDevices`: assert → VK_CHECK + device count validation
+  - `Initialize`: Added error logging with descriptive messages
+- **Updated call sites**:
+  - VulkanRenderer.cpp: Updated MemoryTypeFromProperties usage (depth buffer allocation)
+  - VulkanDrawable.cpp: Updated MemoryTypeFromProperties usage (vertex + index buffers)
+  - All callers now use `.value()` to extract successful results
+
+**Pattern Benefits:**
+- ✅ Rust-like ergonomics with `if (!result)` pattern
+- ✅ Explicit error handling at call sites - no silent failures
+- ✅ Human-readable error messages via `VulkanError::toString()`
+- ✅ Zero overhead when successful (std::expected optimizes to raw values)
+- ✅ Compiler-enforced error checking (can't ignore results)
+
+**Build Status**: ✅ Success - application runs, error handling framework tested
+
+### Code Quality Improvements (Previous Session)
 **Phase 1 Critical Fixes:**
 - **Smart Pointer Conversion**: Replaced raw pointers with std::unique_ptr for proper RAII
   - `VulkanApplication::deviceObj` and `renderObj` now use unique_ptr
@@ -71,6 +101,22 @@
 
 ## Active Decisions
 
+### Error Handling Strategy
+- **Decision**: Use std::expected<T, VulkanError> (C++23) for Vulkan error handling
+- **Rationale**:
+  - Rust-like ergonomics preferred by user ("more rust like return value with left or right value")
+  - Standard library solution (no custom Result type needed)
+  - Zero-overhead abstraction when operations succeed
+  - Forces explicit error handling at call sites (compiler error if ignored)
+  - Better than exceptions for Vulkan (most errors are recoverable)
+- **Implementation**:
+  - VulkanResult<T> for operations returning values
+  - VulkanSuccess for void operations
+  - VK_CHECK macro for inline error checking with early returns
+  - VK_PROPAGATE_ERROR for bubbling errors up call stack
+- **Pattern**: Converted 6 functions in Phase 3A (VulkanDevice + VulkanApplication), ~44 asserts remaining
+- **API Improvement**: Changed out-parameter patterns to return values (e.g., MemoryTypeFromProperties)
+
 ### Window Resize Approach
 - **Decision**: Use VK_EXT_swapchain_maintenance1 with fallback to frozen content
 - **Rationale**: Live scaling when available, safe behavior when not - no GPU freeze risk
@@ -90,6 +136,40 @@
 - **Future-proof**: Easy to add more extensions to chain later
 
 ## Important Patterns
+
+### Error Handling Pattern (Phase 3)
+**std::expected Usage:**
+```cpp
+// Function returning value
+VulkanResult<uint32_t> GetGraphicsQueueHandle() {
+    if (found) return queueIndex;  // Success
+    return std::unexpected(VulkanError{VK_ERROR_FEATURE_NOT_PRESENT, "No graphics queue"});
+}
+
+// Function returning void
+VulkanSuccess CreateDevice(...) {
+    VK_CHECK(vkCreateDevice(...), "Failed to create device");
+    return {};  // Success
+}
+
+// Error propagation
+auto result = deviceObj->GetGraphicsQueueHandle();
+VK_PROPAGATE_ERROR(result);  // Returns early if error
+uint32_t index = result.value();  // Safe to access value
+
+// Error handling at top level
+if (auto result = CreateVulkanInstance(...); !result) {
+    std::cerr << "Error: " << result.error().toString() << std::endl;
+    exit(1);
+}
+```
+
+**Key Principles:**
+1. Return VulkanResult<T> for operations with values, VulkanSuccess for void ops
+2. Use VK_CHECK for inline Vulkan API calls with early return
+3. Use VK_PROPAGATE_ERROR to bubble errors up the call stack
+4. Handle errors at application boundaries (Initialize, main loop)
+5. Provide descriptive error messages for debugging
 
 ### Documentation Maintenance
 - Memory Bank files should be reviewed and updated when:
@@ -177,8 +257,14 @@ Need to verify by code review:
   - ✅ NULL → nullptr global replacement (150+ occurrences)
   - ✅ Fixed extention → extension typos globally
   - ✅ Extracted magic numbers (MAX_MEMORY_TYPES, DEFAULT_WINDOW_*, MAX_CLEAR_VALUES, ACQUIRE_IMAGE_TIMEOUT_NS)
+- [IN PROGRESS] Phase 3: Error handling improvements (replace 50+ assert with std::expected)
+  - ✅ Phase 3A: Created VulkanError infrastructure (VulkanError.h/.cpp)
+  - ✅ Phase 3A: Converted VulkanDevice.cpp (3 functions)
+  - ✅ Phase 3A: Converted VulkanApplication.cpp (3 functions)
+  - ✅ Phase 3A: Updated all callers (VulkanRenderer, VulkanDrawable)
+  - ✅ Phase 3A: Build and test successful
+  - [PENDING] Phase 3B: Convert remaining ~44 assert() calls in other files
 - [DEFERRED] Function length enforcement (relaxed to 100-150 lines for Vulkan verbosity)
-- [PENDING] Phase 3: Error handling improvements (replace assert with exceptions)
 - [PENDING] Phase 4: Architecture improvements (class splitting, documentation)
 
 ## Key Learnings

@@ -8,13 +8,12 @@ VulkanDevice::~VulkanDevice() {
     DestroyDevice();
 }
 
-VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
-                                    std::vector<const char*>& extensions) {
+VulkanSuccess VulkanDevice::CreateDevice(std::vector<const char*>& layers,
+                                         std::vector<const char*>& extensions) {
 
     layerExtension.appRequestedLayerNames = layers;
     layerExtension.appRequestedExtensionNames = extensions;
 
-    VkResult result;
     float queuePriorities[1] = { 0.0 };
 
     // Create the object information
@@ -56,9 +55,8 @@ VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : nullptr;
     deviceInfo.pEnabledFeatures = nullptr;
 
-    result = vkCreateDevice(*gpu, &deviceInfo, nullptr, &device);
-    assert(result == VK_SUCCESS);
-    return result;
+    VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
+    return {};
 }
 
 void VulkanDevice::DestroyDevice()
@@ -70,21 +68,20 @@ void VulkanDevice::DestroyDevice()
     device = VK_NULL_HANDLE;
 }
 
-bool VulkanDevice::MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask, uint32_t *typeIndex)
+VulkanResult<uint32_t> VulkanDevice::MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask)
 {
     constexpr uint32_t MAX_MEMORY_TYPES = 32;
     for (uint32_t i = 0; i < MAX_MEMORY_TYPES; i++) {
         if ((typeBits & 1) == 1) {
             // Type is available, does it match user properties?
             if ((gpuMemoryProperties.memoryTypes[i].propertyFlags & requirementsMask) == requirementsMask) {
-                *typeIndex = i;
-                return true;
+                return i;
             }
         }
         typeBits >>= 1;
     }
 
-    return false;
+    return std::unexpected(VulkanError{VK_ERROR_FORMAT_NOT_SUPPORTED, "No suitable memory type found"});
 }
 
 void VulkanDevice::GetPhysicalDeviceQueuesAndProperties()
@@ -95,16 +92,14 @@ void VulkanDevice::GetPhysicalDeviceQueuesAndProperties()
     vkGetPhysicalDeviceQueueFamilyProperties(*gpu, &queueFamilyCount, queueFamilyProperties.data());
 }
 
-uint32_t VulkanDevice::GetGraphicsQueueHandle() {
-    bool found = false;
+VulkanResult<uint32_t> VulkanDevice::GetGraphicsQueueHandle() {
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
         if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             graphicsQueueIndex = i;
-            found = true;
-            break;
+            return i;
         }
     }
-    return 0;
+    return std::unexpected(VulkanError{VK_ERROR_FEATURE_NOT_PRESENT, "No graphics queue family found"});
 }
 
 void VulkanDevice::GetDeviceQueue() {

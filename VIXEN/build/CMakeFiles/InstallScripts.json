@@ -1,7 +1,7 @@
 {
 	"InstallScripts" : 
 	[
-		"C:/cpp/LearningVulkan/build/cmake_install.cmake"
+		"C:/cpp/VBVS--VIXEN/VIXEN/build/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

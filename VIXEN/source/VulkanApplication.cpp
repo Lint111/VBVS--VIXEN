@@ -23,22 +23,21 @@ VulkanApplication* VulkanApplication::GetInstance() {
     return instance.get();
 }
 
-VkResult VulkanApplication::CreateVulkanInstance(std::vector<const char*>& layers,
-                                                  std::vector<const char*>& extensions,
-                                                  const char* applicationName) {
+VulkanSuccess VulkanApplication::CreateVulkanInstance(std::vector<const char*>& layers,
+                                                      std::vector<const char*>& extensions,
+                                                      const char* applicationName) {
     instanceObj.CreateInstance(layers, extensions, applicationName);
-    
-    return VK_SUCCESS;
+    return {};
 }
 
-VkResult VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
-                                            std::vector<const char*>& layers,
-                                            std::vector<const char*>& extensions) {
+VulkanSuccess VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
+                                                     std::vector<const char*>& layers,
+                                                     std::vector<const char*>& extensions) {
     deviceObj = std::make_unique<VulkanDevice>(gpu);
-    
+
     //print the devices avilable layer and their extensions
     deviceObj->layerExtension.GetDeviceExtentionProperties(gpu);
-    
+
     //get the physical device gpu properties
     vkGetPhysicalDeviceProperties(*gpu, &deviceObj->gpuProperties);
     //get the physical device gpu memory properties
@@ -47,10 +46,15 @@ VkResult VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
     //query physical device queue and properties
     deviceObj->GetPhysicalDeviceQueuesAndProperties();
 
-    deviceObj->GetGraphicsQueueHandle();
+    // Get graphics queue handle
+    auto queueResult = deviceObj->GetGraphicsQueueHandle();
+    VK_PROPAGATE_ERROR(queueResult);
 
     //create logical device
-    return deviceObj->CreateDevice(layers, extensions);
+    auto deviceResult = deviceObj->CreateDevice(layers, extensions);
+    VK_PROPAGATE_ERROR(deviceResult);
+
+    return {};
 }
 
 void VulkanApplication::Initialize() {
@@ -59,17 +63,27 @@ void VulkanApplication::Initialize() {
     if(debugFlag)
         instanceObj.layerExtension.AreLayersSupported(layerNames);
 
-
-    CreateVulkanInstance(layerNames, instanceExtensionNames, title);
+    // Create Vulkan instance
+    if (auto result = CreateVulkanInstance(layerNames, instanceExtensionNames, title); !result) {
+        std::cerr << "Failed to create Vulkan instance: " << result.error().toString() << std::endl;
+        exit(1);
+    }
 
     if(debugFlag)
         instanceObj.layerExtension.CreateDebugReportCallBack();
 
-    // Use member variable instead of local variable to keep gpuList alive
-    EnumeratePhysicalDevices(gpuList);
+    // Enumerate physical devices
+    if (auto result = EnumeratePhysicalDevices(gpuList); !result) {
+        std::cerr << "Failed to enumerate devices: " << result.error().toString() << std::endl;
+        exit(1);
+    }
 
+    // Handshake with first device
     if(gpuList.size() > 0) {
-        HandShakeWithDevice(&gpuList[0],layerNames,deviceExtensionNames);
+        if (auto result = HandShakeWithDevice(&gpuList[0], layerNames, deviceExtensionNames); !result) {
+            std::cerr << "Failed device handshake: " << result.error().toString() << std::endl;
+            exit(1);
+        }
     }
 
     if(!renderObj)
@@ -103,17 +117,21 @@ void VulkanApplication::DeInitialize() {
     instanceObj.DestroyInstance();
 }
 
-VkResult VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {
+VulkanSuccess VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {
     // holds gpu count
     uint32_t gpuDeviceCount;
     //get physical device count
-    VkResult result = vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, nullptr);
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, nullptr),
+             "Failed to get physical device count");
+
+    if (gpuDeviceCount == 0) {
+        return std::unexpected(VulkanError{VK_ERROR_INITIALIZATION_FAILED, "No Vulkan-capable devices found"});
+    }
 
     // make space to hold all devices
     gpuList.resize(gpuDeviceCount);
-    result = vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, gpuList.data());
-    assert(result == VK_SUCCESS);
+    VK_CHECK(vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, gpuList.data()),
+             "Failed to enumerate physical devices");
 
-    return result;
+    return {};
 }

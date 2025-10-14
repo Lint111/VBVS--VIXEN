@@ -19,6 +19,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+*.vcxproj
+*.sln
 
 # Visual Studio cache/options
 .vs/
@@ -41,6 +43,9 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+
+# build folder
+build/*
 
 # Build artifacts
 *.dll
@@ -68,6 +73,7 @@ bld/
 *.pidb
 *.svclog
 *.scc
+
 
 # Claude Code files
 .claude/
