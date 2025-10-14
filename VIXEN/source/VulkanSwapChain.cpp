@@ -5,14 +5,14 @@
 #define INSTANCE_FUNC_PTR(instance, entrypoint){                \
     fp##entrypoint = (PFN_vk##entrypoint) vkGetInstanceProcAddr \
     (instance, "vk"#entrypoint);                                \
-    if (fp##entrypoint == NULL) { exit(-1);                     \
+    if (fp##entrypoint == nullptr) { exit(-1);                     \
     }                                                           \
 }
 
 #define DEVICE_FUNC_PTR(dev, entrypoint){                       \
     fp##entrypoint = (PFN_vk##entrypoint)vkGetDeviceProcAddr    \
     (dev, "vk"#entrypoint);                                     \
-    if (fp##entrypoint == NULL) { exit(-1);                     \
+    if (fp##entrypoint == nullptr) { exit(-1);                     \
     }                                                           \
 }
 
@@ -115,7 +115,7 @@ void VulkanSwapChain::CreateSwapChain(const VkCommandBuffer& cmd) {
 void VulkanSwapChain::DestroySwapChain()
 {
 
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
     if (!deviceObj || deviceObj->device == VK_NULL_HANDLE) {
         return;
     }
@@ -123,7 +123,7 @@ void VulkanSwapChain::DestroySwapChain()
     // Destroy image views
     for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
         if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
-            vkDestroyImageView(deviceObj->device, scPublicVars.colorBuffers[i].view, NULL);
+            vkDestroyImageView(deviceObj->device, scPublicVars.colorBuffers[i].view, nullptr);
             scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
         }
     }
@@ -133,7 +133,7 @@ void VulkanSwapChain::DestroySwapChain()
     // Destroy swap chain (but not the surface - it stays alive)
     if(scPublicVars.swapChain != VK_NULL_HANDLE) {
         if (fpDestroySwapchainKHR) {
-            fpDestroySwapchainKHR(deviceObj->device, scPublicVars.swapChain, NULL);
+            fpDestroySwapchainKHR(deviceObj->device, scPublicVars.swapChain, nullptr);
             scPublicVars.swapChain = VK_NULL_HANDLE;
             scPublicVars.swapChainImageCount = 0;
             scPublicVars.currentColorBuffer = 0;
@@ -149,7 +149,7 @@ void VulkanSwapChain::DestroySurface()
     if(scPublicVars.surface != VK_NULL_HANDLE) {
         std::cout << "  Destroying VkSurfaceKHR" << std::endl;
         if (fpDestroySurfaceKHR) {
-            fpDestroySurfaceKHR(appObj->instanceObj.instance, scPublicVars.surface, NULL);
+            fpDestroySurfaceKHR(appObj->instanceObj.instance, scPublicVars.surface, nullptr);
             scPublicVars.surface = VK_NULL_HANDLE;
         } else {
             std::cerr << "ERROR: fpDestroySurfaceKHR is null!" << std::endl;
@@ -202,7 +202,7 @@ void VulkanSwapChain::GetSupportedFormats()
     VkResult result;
     // Get the number of supported surface formats
     uint32_t formatCount;
-    fpGetPhysicalDeviceSurfaceFormatsKHR(gpu, scPublicVars.surface, &formatCount, NULL);
+    fpGetPhysicalDeviceSurfaceFormatsKHR(gpu, scPublicVars.surface, &formatCount, nullptr);
     scPrivateVars.surfaceFormats.clear();
     scPrivateVars.surfaceFormats.resize(formatCount);
 
@@ -226,11 +226,11 @@ VkResult VulkanSwapChain::CreateSurface()
     // Construct the surface description structure
     VkWin32SurfaceCreateInfoKHR createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    createInfo.pNext = NULL;
+    createInfo.pNext = nullptr;
     createInfo.hinstance = rendererObj->connection;
     createInfo.hwnd = rendererObj->window;
 
-    return vkCreateWin32SurfaceKHR(*instance, &createInfo, NULL, &scPublicVars.surface);
+    return vkCreateWin32SurfaceKHR(*instance, &createInfo, nullptr, &scPublicVars.surface);
 
 }
 
@@ -239,7 +239,7 @@ uint32_t VulkanSwapChain::GetGraphicsQueueWithPresentationSupport()
     std::cout << "[GetGraphicsQueue] ENTRY - surface = " << std::hex << (uint64_t)scPublicVars.surface << std::dec << std::endl;
     std::cout << "[GetGraphicsQueue] fpGetPhysicalDeviceSurfaceSupportKHR = " << std::hex << (void*)fpGetPhysicalDeviceSurfaceSupportKHR << std::dec << std::endl;
 
-    VulkanDevice* device = appObj->deviceObj;
+    VulkanDevice* device = appObj->deviceObj.get();
     std::cout << "[GetGraphicsQueue] device = " << std::hex << (void*)device << std::dec << std::endl;
 
     if (!device) {
@@ -326,7 +326,7 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode()
         exit(-1);
     }
 
-    fpGetPhysicalDeviceSurfacePresentModesKHR(gpu, scPublicVars.surface, &scPrivateVars.presentModeCount, NULL);
+    fpGetPhysicalDeviceSurfacePresentModesKHR(gpu, scPublicVars.surface, &scPrivateVars.presentModeCount, nullptr);
 
     scPrivateVars.presentModes.clear();
     scPrivateVars.presentModes.resize(scPrivateVars.presentModeCount);
@@ -403,7 +403,7 @@ void VulkanSwapChain::CreateSwapChainColorImages()
     VkSwapchainPresentScalingCreateInfoEXT scalingInfo = {};
     if (supportsScalingExtension) {
         scalingInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_SCALING_CREATE_INFO_EXT;
-        scalingInfo.pNext = NULL;
+        scalingInfo.pNext = nullptr;
         scalingInfo.scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
         scalingInfo.presentGravityX = VK_PRESENT_GRAVITY_CENTERED_BIT_EXT;
         scalingInfo.presentGravityY = VK_PRESENT_GRAVITY_CENTERED_BIT_EXT;
@@ -411,7 +411,7 @@ void VulkanSwapChain::CreateSwapChainColorImages()
 
     VkSwapchainCreateInfoKHR scInfo = {};
     scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    scInfo.pNext = supportsScalingExtension ? &scalingInfo : NULL;
+    scInfo.pNext = supportsScalingExtension ? &scalingInfo : nullptr;
     scInfo.surface = scPublicVars.surface;
     scInfo.minImageCount = scPrivateVars.desiredNumberOfSwapChainImages;
     scInfo.imageFormat = scPublicVars.Format;
@@ -428,13 +428,13 @@ void VulkanSwapChain::CreateSwapChainColorImages()
                         VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     scInfo.queueFamilyIndexCount = 0;
-    scInfo.pQueueFamilyIndices = NULL;
+    scInfo.pQueueFamilyIndices = nullptr;
 
     // Create the swapchain object
     result = fpCreateSwapchainKHR(
         rendererObj->GetDevice()->device,
         &scInfo,
-        NULL,
+        nullptr,
         &scPublicVars.swapChain
     );
 
@@ -446,7 +446,7 @@ void VulkanSwapChain::CreateSwapChainColorImages()
         rendererObj->GetDevice()->device,
         scPublicVars.swapChain,
         &scPublicVars.swapChainImageCount,
-        NULL
+        nullptr
     );
 
     assert(result == VK_SUCCESS);
@@ -474,7 +474,7 @@ void VulkanSwapChain::CreateColorImageView(const VkCommandBuffer &cmd)
         SwapChainBuffer sc_buffer;
         VkImageViewCreateInfo imgViewInfo = {};
         imgViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        imgViewInfo.pNext = NULL;
+        imgViewInfo.pNext = nullptr;
         imgViewInfo.format = scPublicVars.Format;
         imgViewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
         imgViewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
@@ -494,7 +494,7 @@ void VulkanSwapChain::CreateColorImageView(const VkCommandBuffer &cmd)
         result = vkCreateImageView(
             rendererObj->GetDevice()->device,
             &imgViewInfo,
-            NULL,
+            nullptr,
             &sc_buffer.view
         );
 

@@ -37,7 +37,7 @@ void CommandBufferMgr::AllocateCommandBuffer(const VkDevice *pDevice, const VkCo
 
     VkCommandBufferAllocateInfo cmdInfo = {};
     cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdInfo.pNext = NULL;
+    cmdInfo.pNext = nullptr;
     cmdInfo.commandPool = cmdPool;
     cmdInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cmdInfo.commandBufferCount = (uint32_t) sizeof(pCmdBuf) / sizeof(VkCommandBuffer);
@@ -60,7 +60,7 @@ void CommandBufferMgr::BeginCommandBuffer(VkCommandBuffer cmdBuf, VkCommandBuffe
     // default implementation, create the command buffer
     VkCommandBufferInheritanceInfo cmdBufInheritInfo = {};
     cmdBufInheritInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-    cmdBufInheritInfo.pNext = NULL;
+    cmdBufInheritInfo.pNext = nullptr;
     cmdBufInheritInfo.renderPass = VK_NULL_HANDLE;
     cmdBufInheritInfo.subpass = 0;
     cmdBufInheritInfo.framebuffer = VK_NULL_HANDLE;
@@ -70,7 +70,7 @@ void CommandBufferMgr::BeginCommandBuffer(VkCommandBuffer cmdBuf, VkCommandBuffe
 
     VkCommandBufferBeginInfo cmdBufInfo = {};
     cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmdBufInfo.pNext = NULL;
+    cmdBufInfo.pNext = nullptr;
     cmdBufInfo.flags = 0;
     cmdBufInfo.pInheritanceInfo = &cmdBufInheritInfo;
 
@@ -107,14 +107,14 @@ void CommandBufferMgr::SubmitCommandBuffer(const VkQueue &queue, const VkCommand
     // default implementation, create the submit info structure
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = NULL;
+    submitInfo.pNext = nullptr;
     submitInfo.waitSemaphoreCount = 0;
-    submitInfo.pWaitSemaphores = NULL;
-    submitInfo.pWaitDstStageMask = NULL;
+    submitInfo.pWaitSemaphores = nullptr;
+    submitInfo.pWaitDstStageMask = nullptr;
     submitInfo.commandBufferCount = (uint32_t) sizeof(pCmdBufList) / sizeof(VkCommandBuffer);
     submitInfo.pCommandBuffers = pCmdBufList;
     submitInfo.signalSemaphoreCount = 0;
-    submitInfo.pSignalSemaphores = NULL;
+    submitInfo.pSignalSemaphores = nullptr;
 
     result = vkQueueSubmit(queue,1,&submitInfo,fence);
     assert(!result);

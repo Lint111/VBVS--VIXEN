@@ -11,20 +11,20 @@ VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
     // Prepare the semaphore create info data structure
     VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo = {};
     presentCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    presentCompleteSemaphoreCreateInfo.pNext = NULL;
+    presentCompleteSemaphoreCreateInfo.pNext = nullptr;
     presentCompleteSemaphoreCreateInfo.flags = 0;
     VkSemaphoreCreateInfo drawingCompleteSemaphoreCreateInfo = {};
     drawingCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    drawingCompleteSemaphoreCreateInfo.pNext = NULL;
+    drawingCompleteSemaphoreCreateInfo.pNext = nullptr;
     drawingCompleteSemaphoreCreateInfo.flags = 0;
 
-    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj;
+    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
 
     // Create the semaphores
     VkResult result = vkCreateSemaphore(
         deviceObj->device, 
         &presentCompleteSemaphoreCreateInfo, 
-        NULL, 
+        nullptr, 
         &presentCompleteSemaphore
     );
     assert(result == VK_SUCCESS);
@@ -32,7 +32,7 @@ VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
     result = vkCreateSemaphore(
         deviceObj->device, 
         &drawingCompleteSemaphoreCreateInfo, 
-        NULL, 
+        nullptr, 
         &drawingCompleteSemaphore
     );
     assert(result == VK_SUCCESS);
@@ -78,10 +78,11 @@ VkResult VulkanDrawable::Render()
 
     // Create semaphores for synchronization
 
+    constexpr uint64_t ACQUIRE_IMAGE_TIMEOUT_NS = UINT64_MAX; // No timeout
     VkResult result = swapChainObj->fpAcquireNextImageKHR(
         deviceObj->device,
         swapChain,
-        UINT64_MAX,
+        ACQUIRE_IMAGE_TIMEOUT_NS,
         presentCompleteSemaphore,
         nullFence,
         &currentColorImage
@@ -95,7 +96,7 @@ VkResult VulkanDrawable::Render()
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = NULL;
+    submitInfo.pNext = nullptr;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &presentCompleteSemaphore;
     submitInfo.pWaitDstStageMask = &submitPipelineStages;
@@ -113,14 +114,14 @@ VkResult VulkanDrawable::Render()
     // Present the image, waiting for render to complete
     VkPresentInfoKHR present = {};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present.pNext = NULL;
+    present.pNext = nullptr;
     present.waitSemaphoreCount = 1;
     present.swapchainCount = 1;
     present.pSwapchains = &swapChain;
     present.pImageIndices = &currentColorImage;
     present.pWaitSemaphores = &drawingCompleteSemaphore;
     present.waitSemaphoreCount = 1;
-    present.pResults = NULL;
+    present.pResults = nullptr;
 
     result = swapChainObj->fpQueuePresentKHR(deviceObj->queue, &present);
 
@@ -152,7 +153,7 @@ void VulkanDrawable::InitScissors(VkCommandBuffer *cmd)
 void VulkanDrawable::DestroyCommandBuffer()
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
     for (int i = 0; i < vecCmdDraw.size(); i++) {
         
         if (vecCmdDraw[i] == VK_NULL_HANDLE)
@@ -172,8 +173,8 @@ void VulkanDrawable::DestroyVertexBuffer()
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
     if (VertexBuffer.buf != VK_NULL_HANDLE) {
-        vkDestroyBuffer(deviceObj->device, VertexBuffer.buf, NULL);
-        vkFreeMemory(deviceObj->device, VertexBuffer.mem, NULL);
+        vkDestroyBuffer(deviceObj->device, VertexBuffer.buf, nullptr);
+        vkFreeMemory(deviceObj->device, VertexBuffer.mem, nullptr);
         VertexBuffer.mem = VK_NULL_HANDLE;
         VertexBuffer.buf = VK_NULL_HANDLE;
     }
@@ -183,8 +184,8 @@ void VulkanDrawable::DestroyIndexBuffer()
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
     if (IndexBuffer.buf != VK_NULL_HANDLE) {
-        vkDestroyBuffer(deviceObj->device, IndexBuffer.buf, NULL);
-        vkFreeMemory(deviceObj->device, IndexBuffer.mem, NULL);
+        vkDestroyBuffer(deviceObj->device, IndexBuffer.buf, nullptr);
+        vkFreeMemory(deviceObj->device, IndexBuffer.mem, nullptr);
         IndexBuffer.mem = VK_NULL_HANDLE;
         IndexBuffer.buf = VK_NULL_HANDLE;
     }
@@ -193,13 +194,13 @@ void VulkanDrawable::DestroyIndexBuffer()
 void VulkanDrawable::DestroySynchronizationObjects()
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
     if (presentCompleteSemaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(deviceObj->device, presentCompleteSemaphore, NULL);
+        vkDestroySemaphore(deviceObj->device, presentCompleteSemaphore, nullptr);
         presentCompleteSemaphore = VK_NULL_HANDLE;
     }
     if (drawingCompleteSemaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(deviceObj->device, drawingCompleteSemaphore, NULL);
+        vkDestroySemaphore(deviceObj->device, drawingCompleteSemaphore, nullptr);
         drawingCompleteSemaphore = VK_NULL_HANDLE;
     }
 }
@@ -208,7 +209,8 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
 
-    VkClearValue clearValues[2];
+    constexpr uint32_t MAX_CLEAR_VALUES = 2;
+    VkClearValue clearValues[MAX_CLEAR_VALUES];
     clearValues[0].color.float32[0] = 0.0f;  // Clear to black
     clearValues[0].color.float32[1] = 0.0f;
     clearValues[0].color.float32[2] = 0.0f;
@@ -219,14 +221,14 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
 
     VkRenderPassBeginInfo rpBeginInfo = {};
     rpBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rpBeginInfo.pNext = NULL;
+    rpBeginInfo.pNext = nullptr;
     rpBeginInfo.renderPass = rendererObj->renderPass;
     rpBeginInfo.framebuffer = rendererObj->frameBuffers[currentImage];
     rpBeginInfo.renderArea.offset.x = 0;
     rpBeginInfo.renderArea.offset.y = 0;
     rpBeginInfo.renderArea.extent.width = rendererObj->width;
     rpBeginInfo.renderArea.extent.height = rendererObj->height;
-    rpBeginInfo.clearValueCount = 2;
+    rpBeginInfo.clearValueCount = MAX_CLEAR_VALUES;
     rpBeginInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(
@@ -238,7 +240,7 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
     vkCmdBindPipeline(
         *cmdDraw, 
         VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        *pipelineHandle
+        pipelineHandle
     );
 
     const VkDeviceSize offsets[1] = {0};
@@ -270,7 +272,7 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
 void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSize, uint32_t dataStride, bool useTexture)
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
 
     VkResult result;
     bool pass;
@@ -278,11 +280,11 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     // Create the buffer resource metadata
     VkBufferCreateInfo bufInfo = {};
     bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufInfo.pNext = NULL;
+    bufInfo.pNext = nullptr;
     bufInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     bufInfo.size = dataSize;
     bufInfo.queueFamilyIndexCount = 0;
-    bufInfo.pQueueFamilyIndices = NULL;
+    bufInfo.pQueueFamilyIndices = nullptr;
     bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufInfo.flags = 0;
 
@@ -290,7 +292,7 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     result = vkCreateBuffer(
         deviceObj->device, 
         &bufInfo, 
-        NULL, 
+        nullptr, 
         &VertexBuffer.buf
     );
     assert(result == VK_SUCCESS);
@@ -308,7 +310,7 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     // Create memory allocation information
     VkMemoryAllocateInfo alloc_info_vertex_buffer = {};
     alloc_info_vertex_buffer.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info_vertex_buffer.pNext = NULL;
+    alloc_info_vertex_buffer.pNext = nullptr;
     alloc_info_vertex_buffer.memoryTypeIndex = 0;
     alloc_info_vertex_buffer.allocationSize = memRqrmntVertexBuffer.size;
 
@@ -328,7 +330,7 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
     result = vkAllocateMemory(
         deviceObj->device, 
         &alloc_info_vertex_buffer, 
-        NULL, 
+        nullptr, 
         &VertexBuffer.mem
     );
 
@@ -396,7 +398,7 @@ void VulkanDrawable::CreateVertexBuffer(const void *vertexData, uint32_t dataSiz
 void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize, uint32_t dataStride)
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
 
     VkResult result;
     bool pass;
@@ -405,11 +407,11 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
     // Create the Index buffer resource metadata
     VkBufferCreateInfo indexBufInfo = {};
     indexBufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    indexBufInfo.pNext = NULL;
+    indexBufInfo.pNext = nullptr;
     indexBufInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     indexBufInfo.size = dataSize;
     indexBufInfo.queueFamilyIndexCount = 0;
-    indexBufInfo.pQueueFamilyIndices = NULL;
+    indexBufInfo.pQueueFamilyIndices = nullptr;
     indexBufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     indexBufInfo.flags = 0;
 
@@ -417,7 +419,7 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
     result = vkCreateBuffer(
         deviceObj->device,
         &indexBufInfo,
-        NULL,
+        nullptr,
         &IndexBuffer.buf
     );
     assert(result == VK_SUCCESS);
@@ -433,7 +435,7 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
     // Get the memory type index that has the properties we require
     VkMemoryAllocateInfo alloc_info_index_buffer = {};
 	alloc_info_index_buffer.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	alloc_info_index_buffer.pNext = NULL;
+	alloc_info_index_buffer.pNext = nullptr;
 	alloc_info_index_buffer.memoryTypeIndex = 0;
 	alloc_info_index_buffer.allocationSize = memRqrmntIndexBuffer.size;
 
@@ -449,7 +451,7 @@ void VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t dataSize,
     result = vkAllocateMemory(
         deviceObj->device,
         &alloc_info_index_buffer,
-        NULL,
+        nullptr,
         &IndexBuffer.mem
     );
     assert(result == VK_SUCCESS);

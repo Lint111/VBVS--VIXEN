@@ -33,7 +33,7 @@ VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
 	// quary all the layers
 
 	do {
-		result = vkEnumerateInstanceLayerProperties(&instanceLayerCount, NULL);
+		result = vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
 
 		if(result)
 			return result;
@@ -81,7 +81,7 @@ VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
 // This function rerieves extensions and its 
 // properties at instasnce and device level.
 // Pass a valid physical device pointer (gpu) to retrieve
-// device level extensions. otherwise use NULL to retrieve 
+// device level extensions. otherwise use nullptr to retrieve 
 // extension specific to instance level.
 VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerProps, VkPhysicalDevice* gpu) {
 	// stores number of extensions per layer
@@ -97,13 +97,13 @@ VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerP
 			result = vkEnumerateDeviceExtensionProperties(*gpu,
 				layerName,
 				&extensionCount,
-				NULL);
+				nullptr);
 		}
 		else {
 			result = vkEnumerateInstanceExtensionProperties(
 				layerName,
 				&extensionCount,
-				NULL);
+				nullptr);
 		}
 
 		if (result || extensionCount == 0)
@@ -216,8 +216,8 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack() {
 	// this function prints the debug information on the console
 	dbgReportCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
 	dbgReportCreateInfo.pfnCallback = DebugFunction;
-	dbgReportCreateInfo.pUserData = NULL;
-	dbgReportCreateInfo.pNext = NULL;
+	dbgReportCreateInfo.pUserData = nullptr;
+	dbgReportCreateInfo.pNext = nullptr;
 	dbgReportCreateInfo.flags = VK_DEBUG_REPORT_WARNING_BIT_EXT |
 								VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
 								VK_DEBUG_REPORT_ERROR_BIT_EXT |
@@ -225,7 +225,7 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack() {
 	
 	result = dbgCreateDebugReportCallback(*instance,
 										 &dbgReportCreateInfo,
-										 NULL,
+										 nullptr,
 										 &DebugReportCallback);
 
 	if (result == VK_SUCCESS) {
@@ -277,7 +277,7 @@ void VulkanLayerAndExtension::DestroyDebugReportCallback() {
 	VkInstance& instance = appObj->instanceObj.instance;
 
 	if (dbgDestroyDebugReportCallback && DebugReportCallback != VK_NULL_HANDLE) {
-		dbgDestroyDebugReportCallback(instance, DebugReportCallback, NULL);
+		dbgDestroyDebugReportCallback(instance, DebugReportCallback, nullptr);
 		DebugReportCallback = VK_NULL_HANDLE;
 	}
 }

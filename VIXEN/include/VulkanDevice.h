@@ -17,7 +17,7 @@ public:
     VkQueue queue;
     std::vector<VkQueueFamilyProperties> queueFamilyProperties;    
     uint32_t graphicsQueueIndex;
-    uint32_t grraphicsQueueWithPresentIndex;
+    uint32_t graphicsQueueWithPresentIndex;
     uint32_t queueFamilyCount;
     
     VulkanLayerAndExtension layerExtension;

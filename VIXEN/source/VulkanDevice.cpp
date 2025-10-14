@@ -21,7 +21,7 @@ VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     VkDeviceQueueCreateInfo queueInfo = {};
     queueInfo.queueFamilyIndex = graphicsQueueIndex;
     queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo.pNext = NULL;
+    queueInfo.pNext = nullptr;
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = queuePriorities;
 
@@ -38,23 +38,23 @@ VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance1Features = {};
     if (hasSwapchainMaintenance) {
         swapchainMaintenance1Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT;
-        swapchainMaintenance1Features.pNext = NULL;
+        swapchainMaintenance1Features.pNext = nullptr;
         swapchainMaintenance1Features.swapchainMaintenance1 = VK_TRUE;
     }
 
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = hasSwapchainMaintenance ? &swapchainMaintenance1Features : NULL;
+    deviceInfo.pNext = hasSwapchainMaintenance ? &swapchainMaintenance1Features : nullptr;
     deviceInfo.queueCreateInfoCount = 1;
     deviceInfo.pQueueCreateInfos = &queueInfo;
     deviceInfo.enabledLayerCount = 0;
 
     // deprecated and should not be used
-    deviceInfo.ppEnabledLayerNames = NULL;
+    deviceInfo.ppEnabledLayerNames = nullptr;
     deviceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : NULL;
-    deviceInfo.pEnabledFeatures = NULL;
+    deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : nullptr;
+    deviceInfo.pEnabledFeatures = nullptr;
 
     result = vkCreateDevice(*gpu, &deviceInfo, nullptr, &device);
     assert(result == VK_SUCCESS);
@@ -66,13 +66,14 @@ void VulkanDevice::DestroyDevice()
     if (device == VK_NULL_HANDLE)
         return;
         
-    vkDestroyDevice(device, NULL);
+    vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;
 }
 
 bool VulkanDevice::MemoryTypeFromProperties(uint32_t typeBits, VkFlags requirementsMask, uint32_t *typeIndex)
 {
-    for (uint32_t i = 0; i < 32; i++) {
+    constexpr uint32_t MAX_MEMORY_TYPES = 32;
+    for (uint32_t i = 0; i < MAX_MEMORY_TYPES; i++) {
         if ((typeBits & 1) == 1) {
             // Type is available, does it match user properties?
             if ((gpuMemoryProperties.memoryTypes[i].propertyFlags & requirementsMask) == requirementsMask) {
@@ -88,8 +89,8 @@ bool VulkanDevice::MemoryTypeFromProperties(uint32_t typeBits, VkFlags requireme
 
 void VulkanDevice::GetPhysicalDeviceQueuesAndProperties()
 {
-    // query queue families count by passing NULL
-    vkGetPhysicalDeviceQueueFamilyProperties(*gpu, &queueFamilyCount, NULL);
+    // query queue families count by passing nullptr
+    vkGetPhysicalDeviceQueueFamilyProperties(*gpu, &queueFamilyCount, nullptr);
     queueFamilyProperties.resize(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(*gpu, &queueFamilyCount, queueFamilyProperties.data());
 }

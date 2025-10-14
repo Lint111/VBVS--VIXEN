@@ -18,7 +18,7 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	//define the vulkan application structure
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pNext = NULL;
+	appInfo.pNext = nullptr;
 	appInfo.pApplicationName = appName;
 	appInfo.applicationVersion = 1;
 	appInfo.pEngineName = appName;
@@ -28,7 +28,7 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	//define the vulkan instance create info structure
 	VkInstanceCreateInfo instInfo = {};
 	instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	instInfo.pNext = NULL;  // Don't create debug callback during instance creation
+	instInfo.pNext = nullptr;  // Don't create debug callback during instance creation
 	instInfo.flags = 0;
 	instInfo.pApplicationInfo = &appInfo;
 	// specify the list of layers to be enabled
@@ -38,7 +38,7 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	instInfo.enabledExtensionCount = extensionNames.size();
 	instInfo.ppEnabledExtensionNames = extensionNames.data();
 
-	VkResult res = vkCreateInstance(&instInfo, NULL, &instance);
+	VkResult res = vkCreateInstance(&instInfo, nullptr, &instance);
 	return res;
 }
 
@@ -49,7 +49,7 @@ void VulkanInstance::DestroyInstance() {
 	}
 
 	if(instance != VK_NULL_HANDLE) {
-		vkDestroyInstance(instance, NULL); // Destroy the Vulkan instance
+		vkDestroyInstance(instance, nullptr); // Destroy the Vulkan instance
 		instance = VK_NULL_HANDLE;  // Set to null to prevent double-destruction
 	}
 }

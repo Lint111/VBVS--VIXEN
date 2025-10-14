@@ -3,21 +3,54 @@
 ## Current Focus
 
 ### Just Completed
+- **Code Quality Improvements (Phase 1 & 2)**: Completed all critical fixes and quick wins
+  - Converted raw pointers to smart pointers (VulkanApplication, VulkanRenderer ownership)
+  - Added const-correctness to all getter functions
+  - Fixed naming typos (grraphicsQueueWithPresentIndex → graphicsQueueWithPresentIndex)
+  - Global NULL → nullptr replacement
+  - Extracted magic numbers to named constants
 - **Window Resize Handling**: Fixed critical GPU freeze bug and implemented safe resize behavior
 - **Vulkan Extension System**: Implemented VK_EXT_swapchain_maintenance1 for live resize scaling
 - **Feature Enablement Pattern**: Learned and applied proper extension + feature enablement workflow
 - **Validation Configuration**: Set up conditional validation (debug only) for optimal performance
-- **pNext Chain Understanding**: Deep dive into Vulkan's extension chaining mechanism
 
 ### Immediate Next Steps
-1. Update memory bank to document resize work and extension patterns
-2. Create git commit for recent changes
-3. Review entire codebase against C++ programming guidelines
-4. Refactor any non-compliant code patterns
+1. ✅ Updated memory bank with resize work and extension patterns
+2. ✅ Created git commit (e1b6891) for resize fixes
+3. ✅ Completed C++ guidelines review (87 violations found)
+4. ✅ Created code quality improvement plan (memory-bank/codeQualityPlan.md)
+5. ✅ Completed Phase 1 critical fixes (smart pointers, const-correctness)
+6. ✅ Completed Phase 2 quick wins (NULL→nullptr, typos, magic numbers)
+7. **Next**: Update memory bank and commit code quality improvements
 
 ## Recent Changes
 
-### Window Resize System (Latest Session)
+### Code Quality Improvements (Current Session)
+**Phase 1 Critical Fixes:**
+- **Smart Pointer Conversion**: Replaced raw pointers with std::unique_ptr for proper RAII
+  - `VulkanApplication::deviceObj` and `renderObj` now use unique_ptr
+  - `VulkanRenderer::swapChainObj` now uses unique_ptr
+  - `VulkanRenderer::vecDrawables` changed from `vector<VulkanDrawable*>` to `vector<unique_ptr<VulkanDrawable>>`
+  - All accessor code updated to use `.get()` for non-owning access
+  - Automatic memory management via RAII - no manual delete calls needed
+- **Const-correctness**: Added const qualifier to all VulkanRenderer getter functions
+  - `GetApp()`, `GetDevice()`, `GetSwapChain()`, `GetCommandPool()`, `GetShader()`, `GetPipelineObject()`
+  - Ensures getters don't modify object state
+
+**Phase 2 Quick Wins:**
+- **NULL → nullptr**: Global replacement across all source and header files (150+ occurrences)
+- **Naming typo fixes**:
+  - `grraphicsQueueWithPresentIndex` → `graphicsQueueWithPresentIndex`
+  - `extention`/`Extention` → `extension`/`Extension` (global replacement)
+- **Magic number extraction**:
+  - `MAX_MEMORY_TYPES = 32` (VulkanDevice.cpp)
+  - `DEFAULT_WINDOW_WIDTH/HEIGHT = 500` (VulkanRenderer.cpp)
+  - `MAX_CLEAR_VALUES = 2` (VulkanDrawable.cpp)
+  - `ACQUIRE_IMAGE_TIMEOUT_NS = UINT64_MAX` (VulkanDrawable.cpp)
+
+**Build Status**: ✅ Success with only harmless PDB warnings
+
+### Window Resize System (Previous Session)
 - **Removed unsafe blit operation**: Eliminated GPU-freezing self-blit code in `VulkanRenderer::BlitLastFrameDuringResize()`
 - **Implemented extension-based scaling**: Added `VK_EXT_swapchain_maintenance1` support for live resize
 - **Feature enablement**: Properly enabled `swapchainMaintenance1` feature via `pNext` chain in device creation
@@ -130,14 +163,23 @@ Need to verify by code review:
 ## Current Work Items
 
 ### Documentation
-- [IN PROGRESS] Complete progress.md with implementation status
-- [PENDING] Review existing code against coding guidelines
+- [COMPLETE] progress.md updated with resize fixes
+- [COMPLETE] Code review against cpp-programming-guidelins.md
+- [COMPLETE] Created codeQualityPlan.md with 87 violations tracked
 - [PENDING] Document current rendering capabilities
 
-### Code
-- [PENDING] Awaiting user direction for next feature/chapter
-- [PENDING] Code review against cpp-programming-guidelins.md
-- [PENDING] Identify refactoring opportunities
+### Code Quality Improvements
+- [COMPLETE] Phase 1 Critical Fixes:
+  - ✅ Converted raw pointers to smart pointers (deviceObj, renderObj, swapChainObj, vecDrawables)
+  - ✅ Added const to all getter functions
+  - ✅ Fixed naming typos (grraphicsQueueWithPresentIndex → graphicsQueueWithPresentIndex)
+- [COMPLETE] Phase 2 Quick Wins:
+  - ✅ NULL → nullptr global replacement (150+ occurrences)
+  - ✅ Fixed extention → extension typos globally
+  - ✅ Extracted magic numbers (MAX_MEMORY_TYPES, DEFAULT_WINDOW_*, MAX_CLEAR_VALUES, ACQUIRE_IMAGE_TIMEOUT_NS)
+- [DEFERRED] Function length enforcement (relaxed to 100-150 lines for Vulkan verbosity)
+- [PENDING] Phase 3: Error handling improvements (replace assert with exceptions)
+- [PENDING] Phase 4: Architecture improvements (class splitting, documentation)
 
 ## Key Learnings
 

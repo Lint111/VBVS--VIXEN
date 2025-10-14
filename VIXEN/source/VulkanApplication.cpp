@@ -11,10 +11,7 @@ extern std::vector<const char*> deviceExtensionNames;
 
 VulkanApplication::VulkanApplication() {
     instanceObj.layerExtension.GetInstanceLayerProperties();
-
-    deviceObj = NULL;
     debugFlag = true; // enable or disable debug callback
-    renderObj = NULL;
 }
 
 VulkanApplication::~VulkanApplication() {
@@ -37,9 +34,7 @@ VkResult VulkanApplication::CreateVulkanInstance(std::vector<const char*>& layer
 VkResult VulkanApplication::HandShakeWithDevice(VkPhysicalDevice* gpu,
                                             std::vector<const char*>& layers,
                                             std::vector<const char*>& extensions) {
-    deviceObj = new VulkanDevice(gpu);
-    if(!deviceObj)
-        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    deviceObj = std::make_unique<VulkanDevice>(gpu);
     
     //print the devices avilable layer and their extensions
     deviceObj->layerExtension.GetDeviceExtentionProperties(gpu);
@@ -78,7 +73,7 @@ void VulkanApplication::Initialize() {
     }
 
     if(!renderObj)
-        renderObj = new VulkanRenderer(this, deviceObj);
+        renderObj = std::make_unique<VulkanRenderer>(this, deviceObj.get());
     renderObj->Initialize();
 }
 
@@ -102,11 +97,8 @@ void VulkanApplication::DeInitialize() {
         vkDeviceWaitIdle(deviceObj->device);
     }
 
-    delete renderObj;
-    renderObj = nullptr;
-
-    delete deviceObj;
-    deviceObj = nullptr;
+    renderObj.reset();
+    deviceObj.reset();
 
     instanceObj.DestroyInstance();
 }
@@ -115,7 +107,7 @@ VkResult VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevic
     // holds gpu count
     uint32_t gpuDeviceCount;
     //get physical device count
-    VkResult result = vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, NULL);
+    VkResult result = vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, nullptr);
     assert(result == VK_SUCCESS);
 
     // make space to hold all devices

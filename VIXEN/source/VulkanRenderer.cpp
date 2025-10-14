@@ -8,11 +8,11 @@
 #include "MeshData.h"
 
 VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject) {
-    assert(app != NULL);
-    assert(deviceObject != NULL);
+    assert(app != nullptr);
+    assert(deviceObject != nullptr);
 
     memset(&Depth, 0, sizeof(Depth));
-    connection = GetModuleHandle(NULL);
+    connection = GetModuleHandle(nullptr);
     wcscpy_s(name, APP_NAME_STR_LEN, L"Vulkan Window");
 
     appObj = app;
@@ -23,7 +23,7 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     height = 0;
     window = nullptr;
 
-    swapChainObj = new VulkanSwapChain(this);
+    swapChainObj = std::make_unique<VulkanSwapChain>(this);
 
     // Initialize Vulkan handles
     renderPass = VK_NULL_HANDLE;
@@ -35,8 +35,7 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     isResizing = false;
 
     // Create a drawable object for rendering
-    VulkanDrawable* drawableObj = new VulkanDrawable(this);
-    vecDrawables.push_back(drawableObj);
+    vecDrawables.push_back(std::make_unique<VulkanDrawable>(this));
 
 }
 
@@ -47,15 +46,17 @@ VulkanRenderer::~VulkanRenderer() {
 void VulkanRenderer::Initialize()
 {
     // Only create window if it doesn't exist (initial setup)
+    constexpr int DEFAULT_WINDOW_WIDTH = 500;
+    constexpr int DEFAULT_WINDOW_HEIGHT = 500;
     if (window == nullptr) {
-        CreatePresentationWindow(500,500);
+        CreatePresentationWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
     }
 
     // Swap chain object is created in constructor, but Initialize() needs to be called
     // During first run: creates surface, loads extension function pointers
     // During resize: surface already exists, function pointers already loaded
     if (!swapChainObj) {
-        swapChainObj = new VulkanSwapChain(this);
+        swapChainObj = std::make_unique<VulkanSwapChain>(this);
     }
 
     // Always call Initialize - it handles both first-time and resize scenarios
@@ -67,8 +68,7 @@ void VulkanRenderer::Initialize()
 
     // Drawables are created in constructor, no need to recreate
     if (vecDrawables.empty()) {
-        VulkanDrawable* drawableObj = new VulkanDrawable(this);
-        vecDrawables.push_back(drawableObj);
+        vecDrawables.push_back(std::make_unique<VulkanDrawable>(this));
     }
 
     CreateVertexBuffer();
@@ -95,19 +95,14 @@ void VulkanRenderer::DeInitialize()
     DestroyPipeline();
     DestroyShaders();
 
-    for (VulkanDrawable* drawable : vecDrawables) {
-        delete drawable;
-    }
     vecDrawables.clear();
 
-    swapChainObj->DestroySwapChain();
-
-    DestroyCommandPool();
     if (swapChainObj) {
-        delete swapChainObj;
-        swapChainObj = NULL;
+        swapChainObj->DestroySwapChain();
+        swapChainObj.reset();
     }
 
+    DestroyCommandPool();
     DestroyPresentationWindow();
 }
 
@@ -145,7 +140,7 @@ void VulkanRenderer::HandleResize()
     CreateFrameBuffer(true);
 
     // Re-record drawable command buffers with new framebuffers
-    for (VulkanDrawable* drawable : vecDrawables) {
+    for (auto& drawable : vecDrawables) {
         drawable->Prepare();
     }
 
@@ -155,7 +150,7 @@ void VulkanRenderer::HandleResize()
 
 void VulkanRenderer::Prepare()
 {
-    for (VulkanDrawable* drawable : vecDrawables) {
+    for (auto& drawable : vecDrawables) {
         drawable->Prepare();
     }
 }
@@ -164,7 +159,7 @@ bool VulkanRenderer::Render()
 {
     // Process one window message per call (main loop calls this repeatedly)
     MSG msg;
-    PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE);
+    PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);
     if(msg.message == WM_QUIT) {
         return false;
     }
@@ -175,7 +170,7 @@ bool VulkanRenderer::Render()
         HandleResize();
     }
 
-    RedrawWindow(window, NULL, NULL, RDW_INTERNALPAINT);
+    RedrawWindow(window, nullptr, nullptr, RDW_INTERNALPAINT);
 
     return true;
 }
@@ -207,12 +202,12 @@ void  VulkanRenderer::CreatePresentationWindowWin32(const int &windowWidth, cons
     winInfo.cbClsExtra = 0;
     winInfo.cbWndExtra = 0;
     winInfo.hInstance = connection;
-    winInfo.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    winInfo.hCursor = LoadCursor(NULL, IDC_ARROW);
+    winInfo.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    winInfo.hCursor = LoadCursor(nullptr, IDC_ARROW);
     winInfo.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-    winInfo.lpszMenuName = NULL;
+    winInfo.lpszMenuName = nullptr;
     winInfo.lpszClassName = name;
-    winInfo.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    winInfo.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
 
     // Try to register the window class
     // If it's already registered (during resize), that's okay
@@ -263,7 +258,7 @@ void  VulkanRenderer::CreatePresentationWindowWin32(const int &windowWidth, cons
 LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanRenderer* renderObj = appObj ? appObj->renderObj : nullptr;
+    VulkanRenderer* renderObj = appObj ? appObj->renderObj.get() : nullptr;
 
     if(!appObj || !renderObj) {
         std::cerr << "Fatal Error: Application or Renderer object is null in WndProc!" << std::endl;
@@ -298,13 +293,13 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             // Windows will show frozen content at old dimensions (standard Vulkan behavior)
             // Once resize completes, HandleResize() rebuilds swapchain at new size
             if (renderObj->isResizing) {
-                ValidateRect(hWnd, NULL);
+                ValidateRect(hWnd, nullptr);
                 return 0;
             }
 
             // Normal rendering (only if renderer is fully initialized)
             if (appObj && appObj->renderObj && appObj->renderObj->isInitialized) {
-                for (VulkanDrawable* drawableObj : appObj->renderObj->vecDrawables) {
+                for (auto& drawableObj : appObj->renderObj->vecDrawables) {
                     result = drawableObj->Render();
                     switch (result)
                     {
@@ -354,7 +349,7 @@ void VulkanRenderer::CreatePresentationWindowX(const int &windowWidth, const int
     xcb_screen_iterator_t iter;
     int scr;
 
-    connection = xcb_connect(NULL, &scr);
+    connection = xcb_connect(nullptr, &scr);
     if(xcb_connection_has_error(connection)) {
         std::cerr << "Cannot find a compatible Vulkan ICD.\n" << std::endl;
         exit(1);
@@ -448,19 +443,19 @@ void VulkanRenderer::DestroyWindow()
 
 void VulkanRenderer::CreateCommandPool()
 {
-    VulkanDevice* deviceObj = appObj->deviceObj;
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
     VkResult result;
 
     VkCommandPoolCreateInfo cmdPoolInfo = {};
     cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    cmdPoolInfo.pNext = NULL;
+    cmdPoolInfo.pNext = nullptr;
     cmdPoolInfo.queueFamilyIndex = deviceObj->graphicsQueueIndex;
     cmdPoolInfo.flags = 0;
 
     result = vkCreateCommandPool(
         deviceObj->device, 
         &cmdPoolInfo, 
-        NULL, 
+        nullptr, 
         &cmdPool
     );
 
@@ -494,7 +489,7 @@ void VulkanRenderer::CreateDepthImage()
         exit(-1);
     }
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.pNext = NULL;
+    imageInfo.pNext = nullptr;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
     imageInfo.format = depthFormat;
     imageInfo.extent.width = width;
@@ -504,7 +499,7 @@ void VulkanRenderer::CreateDepthImage()
     imageInfo.arrayLayers = 1;
     imageInfo.samples = NUM_SAMPLES;
     imageInfo.queueFamilyIndexCount = 0;
-    imageInfo.pQueueFamilyIndices = NULL;
+    imageInfo.pQueueFamilyIndices = nullptr;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     imageInfo.flags = 0;
@@ -512,7 +507,7 @@ void VulkanRenderer::CreateDepthImage()
     result = vkCreateImage(
         deviceObj->device, 
         &imageInfo, 
-        NULL, 
+        nullptr, 
         &Depth.image
     );
 
@@ -527,7 +522,7 @@ void VulkanRenderer::CreateDepthImage()
 
     VkMemoryAllocateInfo memAlloc = {};
     memAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memAlloc.pNext = NULL;
+    memAlloc.pNext = nullptr;
     memAlloc.allocationSize = 0;
     memAlloc.memoryTypeIndex = 0;
     memAlloc.allocationSize = memReqs.size;
@@ -544,7 +539,7 @@ void VulkanRenderer::CreateDepthImage()
     result = vkAllocateMemory(
         deviceObj->device, 
         &memAlloc, 
-        NULL, 
+        nullptr, 
         &Depth.mem
     );
     assert(result == VK_SUCCESS);
@@ -559,7 +554,7 @@ void VulkanRenderer::CreateDepthImage()
 
     VkImageViewCreateInfo imgViewInfo = {};
     imgViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    imgViewInfo.pNext = NULL;
+    imgViewInfo.pNext = nullptr;
     imgViewInfo.format = depthFormat;
     imgViewInfo.components = {VK_COMPONENT_SWIZZLE_IDENTITY};
     imgViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -604,7 +599,7 @@ void VulkanRenderer::CreateDepthImage()
     result = vkCreateImageView(
         deviceObj->device, 
         &imgViewInfo, 
-        NULL, 
+        nullptr, 
         &Depth.view
     );
     assert(result == VK_SUCCESS);
@@ -661,13 +656,13 @@ void VulkanRenderer::CreateRenderPass(bool isDepthSupported, bool clear)
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.flags = 0;
     subpass.inputAttachmentCount = 0;
-    subpass.pInputAttachments = NULL;
+    subpass.pInputAttachments = nullptr;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorReference;
-    subpass.pResolveAttachments = NULL;
-    subpass.pDepthStencilAttachment = isDepthSupported ? &depthReference : NULL;
+    subpass.pResolveAttachments = nullptr;
+    subpass.pDepthStencilAttachment = isDepthSupported ? &depthReference : nullptr;
     subpass.preserveAttachmentCount = 0;
-    subpass.pPreserveAttachments = NULL;
+    subpass.pPreserveAttachments = nullptr;
 
     // Add subpass dependency to handle layout transition from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
     VkSubpassDependency dependency = {};
@@ -682,7 +677,7 @@ void VulkanRenderer::CreateRenderPass(bool isDepthSupported, bool clear)
     // Specify the attachment and subpass associate with render pass.
     VkRenderPassCreateInfo rpInfo = {};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    rpInfo.pNext = NULL;
+    rpInfo.pNext = nullptr;
     rpInfo.attachmentCount = isDepthSupported ? 2 : 1;
     rpInfo.pAttachments = attachments;
     rpInfo.subpassCount = 1;
@@ -693,7 +688,7 @@ void VulkanRenderer::CreateRenderPass(bool isDepthSupported, bool clear)
     result = vkCreateRenderPass(
         deviceObj->device, 
         &rpInfo, 
-        NULL, 
+        nullptr, 
         &renderPass
     );
 
@@ -715,7 +710,7 @@ void VulkanRenderer::CreateFrameBuffer(bool includeDepth, bool clear)
 
     VkFramebufferCreateInfo fbInfo = {};
     fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    fbInfo.pNext = NULL;
+    fbInfo.pNext = nullptr;
     fbInfo.renderPass = renderPass;
     fbInfo.attachmentCount = includeDepth ? 2 : 1;
     fbInfo.pAttachments = attachments;
@@ -732,7 +727,7 @@ void VulkanRenderer::CreateFrameBuffer(bool includeDepth, bool clear)
         result = vkCreateFramebuffer(
             deviceObj->device, 
             &fbInfo, 
-            NULL, 
+            nullptr, 
             &frameBuffers.at(i)
         );
         assert(result == VK_SUCCESS);
@@ -833,9 +828,9 @@ void VulkanRenderer::CreatePipelineStateManagement()
     config.scissor = {{0, 0}, {(unsigned int)width, (unsigned int)height}};
 
     VkPipeline pipelineHandle = VK_NULL_HANDLE;
-    for (VulkanDrawable* drawable : vecDrawables) {
+    for (auto& drawable : vecDrawables) {
         if(pipelineState->CreatePipeline(
-            drawable,
+            drawable.get(),
             shaderObj.get(),
             config,
             pipelineHandle
@@ -854,7 +849,7 @@ void VulkanRenderer::CreatePipelineStateManagement()
 void VulkanRenderer::DestroyRenderPass()
 {
     if(renderPass != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(deviceObj->device, renderPass, NULL);
+        vkDestroyRenderPass(deviceObj->device, renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
 }
@@ -871,8 +866,8 @@ void VulkanRenderer::DestroyCommandBuffer()
 }
 
 void VulkanRenderer::DestroyCommandPool() {
-    VulkanDevice* deviceObj = appObj->deviceObj;
-    vkDestroyCommandPool(deviceObj->device, cmdPool, NULL);
+    VulkanDevice* deviceObj = appObj->deviceObj.get();
+    vkDestroyCommandPool(deviceObj->device, cmdPool, nullptr);
     cmdPool = VK_NULL_HANDLE;
     cmdDepthImage = VK_NULL_HANDLE;
 }
@@ -880,11 +875,11 @@ void VulkanRenderer::DestroyCommandPool() {
 void VulkanRenderer::DestroyDepthBuffer()
 {
     if(Depth.view != VK_NULL_HANDLE)
-        vkDestroyImageView(deviceObj->device, Depth.view, NULL);
+        vkDestroyImageView(deviceObj->device, Depth.view, nullptr);
     if(Depth.image != VK_NULL_HANDLE)
-        vkDestroyImage(deviceObj->device, Depth.image, NULL);
+        vkDestroyImage(deviceObj->device, Depth.image, nullptr);
     if(Depth.mem != VK_NULL_HANDLE)
-        vkFreeMemory(deviceObj->device, Depth.mem, NULL);
+        vkFreeMemory(deviceObj->device, Depth.mem, nullptr);
         
     Depth.view = VK_NULL_HANDLE;
     Depth.image = VK_NULL_HANDLE;
@@ -909,7 +904,7 @@ void VulkanRenderer::DestroyFrameBuffer()
 {
     for (auto& framebuffer : frameBuffers) {
         if (framebuffer != VK_NULL_HANDLE) {
-            vkDestroyFramebuffer(deviceObj->device, framebuffer, NULL);
+            vkDestroyFramebuffer(deviceObj->device, framebuffer, nullptr);
         }
     }
     frameBuffers.clear();
@@ -922,7 +917,7 @@ void VulkanRenderer::DestroyPipeline()
     }
     for (auto pipeline : pipelineHandles) {
         if (pipeline != VK_NULL_HANDLE) {
-            vkDestroyPipeline(deviceObj->device, pipeline, NULL);
+            vkDestroyPipeline(deviceObj->device, pipeline, nullptr);
         }
     }
     pipelineHandles.clear();
@@ -942,7 +937,7 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
 
     VkImageMemoryBarrier imgMemoryBarrier = {};
     imgMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imgMemoryBarrier.pNext = NULL;
+    imgMemoryBarrier.pNext = nullptr;
     imgMemoryBarrier.srcAccessMask = srcAccessMask;
     imgMemoryBarrier.dstAccessMask = 0;
     imgMemoryBarrier.oldLayout = oldImageLayout;
@@ -1012,9 +1007,9 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
         destStages,
         0,
         0,
-        NULL,
+        nullptr,
         0,
-        NULL,
+        nullptr,
         1,
         &imgMemoryBarrier
     );

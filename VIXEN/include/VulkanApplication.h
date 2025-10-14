@@ -39,8 +39,8 @@ private:
 
 public:
     VulkanInstance instanceObj; // Vulkan instance object variable
-    VulkanDevice* deviceObj; // Vulkan device object variable
-    VulkanRenderer* renderObj; // Vulkan renderer object variable
+    std::unique_ptr<VulkanDevice> deviceObj; // Vulkan device object variable
+    std::unique_ptr<VulkanRenderer> renderObj; // Vulkan renderer object variable
 
 private:
     bool debugFlag; // enable or disable debug callback

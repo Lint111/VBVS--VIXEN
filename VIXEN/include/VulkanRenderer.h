@@ -52,13 +52,13 @@ class VulkanRenderer {
     void DestroyPipeline();
 	void DestroyShaders();
 
-    inline VulkanApplication* GetApp() { return appObj; }
-    inline VulkanDevice* GetDevice() { return deviceObj; }
-    inline VulkanSwapChain* GetSwapChain() { return swapChainObj; }
-    inline std::vector<VulkanDrawable*>& GetDrawingItems() { return vecDrawables; }
-    inline VkCommandPool GetCommandPool() { return cmdPool; }
-    inline VulkanShader* GetShader() { return shaderObj.get(); }
-    inline VulkanPipeline* GetPipelineObject() { return pipelineState.get(); }
+    inline VulkanApplication* GetApp() const { return appObj; }
+    inline VulkanDevice* GetDevice() const { return deviceObj; }
+    inline VulkanSwapChain* GetSwapChain() const { return swapChainObj.get(); }
+    inline const std::vector<std::unique_ptr<VulkanDrawable>>& GetDrawingItems() const { return vecDrawables; }
+    inline VkCommandPool GetCommandPool() const { return cmdPool; }
+    inline VulkanShader* GetShader() const { return shaderObj.get(); }
+    inline VulkanPipeline* GetPipelineObject() const { return pipelineState.get(); }
 
 
     #ifdef _WIN32
@@ -114,10 +114,10 @@ class VulkanRenderer {
     // --- Persistent ---
     std::unique_ptr<VulkanShader> shaderObj;
 
-    
-    VulkanSwapChain* swapChainObj;
 
-    std::vector<VulkanDrawable*> vecDrawables;
+    std::unique_ptr<VulkanSwapChain> swapChainObj;
+
+    std::vector<std::unique_ptr<VulkanDrawable>> vecDrawables;
     std::unique_ptr<VulkanPipeline> pipelineState;
 
     bool isInitialized;

@@ -27,7 +27,7 @@ public:
 	VkResult GetInstanceLayerProperties(); // Instance / Global
 
 	//Globbal extensions
-	VkResult GetExtentionProperties(LayerProperties& layerProps, VkPhysicalDevice* gpu = NULL);
+	VkResult GetExtentionProperties(LayerProperties& layerProps, VkPhysicalDevice* gpu = nullptr);
 
 	// device extensions
 	VkResult GetDeviceExtentionProperties(VkPhysicalDevice* gpu);

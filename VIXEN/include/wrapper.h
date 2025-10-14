@@ -11,11 +11,11 @@ public:
     static void AllocateCommandBuffer(const VkDevice* pDevice,
                                       const VkCommandPool commandPool,
                                       VkCommandBuffer* pCmdBuffer,
-                                      const VkCommandBufferAllocateInfo* pCmdBufferInfo = NULL);
+                                      const VkCommandBufferAllocateInfo* pCmdBufferInfo = nullptr);
 
     //Start Command buffer recording
     static void BeginCommandBuffer(VkCommandBuffer cmdBuf,
-                                   VkCommandBufferBeginInfo* pInCmdBufInfo = NULL);
+                                   VkCommandBufferBeginInfo* pInCmdBufInfo = nullptr);
 
     //End Command buffer recording
     static void EndCommandBuffer(VkCommandBuffer cmdBuf);
@@ -26,7 +26,7 @@ public:
     //submit the command buffer for execution
     static void SubmitCommandBuffer(const VkQueue& queue,
                                     const VkCommandBuffer* pCmdBufList,
-                                    const VkSubmitInfo* pSubmitInfo = NULL,
+                                    const VkSubmitInfo* pSubmitInfo = nullptr,
                                     const VkFence& fence = VK_NULL_HANDLE);
 
 
