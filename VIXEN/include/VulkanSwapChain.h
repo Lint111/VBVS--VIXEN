@@ -107,5 +107,5 @@ class VulkanSwapChain {
     VulkanRenderer* rendererObj;
     VulkanApplication* appObj;
 
-    
+    bool supportsScalingExtension = false;
 };

@@ -74,6 +74,25 @@ void VulkanSwapChain::Initialize() {
         std::cout << "[Initialize] Surface created = " << std::hex << (uint64_t)scPublicVars.surface << std::dec << std::endl;
     }
 
+    // Check if scaling extension was successfully enabled during device creation
+    // (Extension is requested in main.cpp, but may not be available on all hardware)
+    static bool extensionChecked = false;
+    if (!extensionChecked) {
+        // Check if extension is in the enabled list
+        VulkanDevice* device = rendererObj->GetDevice();
+        for (const char* extName : device->layerExtension.appRequestedExtensionNames) {
+            if (strcmp(extName, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0) {
+                supportsScalingExtension = true;
+                std::cout << "[Initialize] VK_EXT_swapchain_maintenance1 enabled - live resize scaling available" << std::endl;
+                break;
+            }
+        }
+        if (!supportsScalingExtension) {
+            std::cout << "[Initialize] VK_EXT_swapchain_maintenance1 NOT available - resize will show frozen content" << std::endl;
+        }
+        extensionChecked = true;
+    }
+
     std::cout << "[Initialize] Before GetGraphicsQueue - surface = " << std::hex << (uint64_t)scPublicVars.surface << std::dec << std::endl;
     uint32_t index = GetGraphicsQueueWithPresentationSupport();
     if(index == UINT32_MAX) {
@@ -380,9 +399,19 @@ void VulkanSwapChain::CreateSwapChainColorImages()
 {
     VkResult result;
 
+    // If scaling extension is available, configure it for live resize
+    VkSwapchainPresentScalingCreateInfoEXT scalingInfo = {};
+    if (supportsScalingExtension) {
+        scalingInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_SCALING_CREATE_INFO_EXT;
+        scalingInfo.pNext = NULL;
+        scalingInfo.scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
+        scalingInfo.presentGravityX = VK_PRESENT_GRAVITY_CENTERED_BIT_EXT;
+        scalingInfo.presentGravityY = VK_PRESENT_GRAVITY_CENTERED_BIT_EXT;
+    }
+
     VkSwapchainCreateInfoKHR scInfo = {};
     scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    scInfo.pNext = NULL;
+    scInfo.pNext = supportsScalingExtension ? &scalingInfo : NULL;
     scInfo.surface = scPublicVars.surface;
     scInfo.minImageCount = scPrivateVars.desiredNumberOfSwapChainImages;
     scInfo.imageFormat = scPublicVars.Format;

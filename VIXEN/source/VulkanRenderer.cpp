@@ -32,6 +32,7 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     cmdVertexBuffer = VK_NULL_HANDLE;
     isInitialized = false;
     frameBufferResized = false;
+    isResizing = false;
 
     // Create a drawable object for rendering
     VulkanDrawable* drawableObj = new VulkanDrawable(this);
@@ -87,9 +88,6 @@ void VulkanRenderer::DeInitialize()
 {
     isInitialized = false;
 
-    for (VulkanDrawable* drawable : vecDrawables) {
-        delete drawable;
-    }
     DestroyDrawableVertexBuffer();
     DestroyFrameBuffer();
     DestroyDepthBuffer();
@@ -97,9 +95,10 @@ void VulkanRenderer::DeInitialize()
     DestroyPipeline();
     DestroyShaders();
 
-    
+    for (VulkanDrawable* drawable : vecDrawables) {
+        delete drawable;
+    }
     vecDrawables.clear();
-
 
     swapChainObj->DestroySwapChain();
 
@@ -113,43 +112,42 @@ void VulkanRenderer::DeInitialize()
 }
 
 void VulkanRenderer::HandleResize()
-{    
+{
     if (!isInitialized || !frameBufferResized) {
         return; // No need to resize if not initialized or no resize event
     }
     isInitialized = false;
 
-    // DestroyPipeline();
-    // DestroyShaders();
+    // Get current window dimensions
+    RECT rect;
+    if (GetClientRect(window, &rect)) {
+        width = rect.right - rect.left;
+        height = rect.bottom - rect.top;
 
-    // DestroyFrameBuffer();
-
-    // DestroyRenderPass();
-
-    // DestroyDrawableVertexBuffer();
-
-    // for (VulkanDrawable* drawable : vecDrawables) {
-    //     delete drawable;
-    // }
-    // vecDrawables.clear();
-
-    // DestroyDepthBuffer();
-
-    // if (swapChainObj) {
-    //     swapChainObj->DestroySwapChain();
-    // }
-
-    // DestroyCommandPool();
-
-    // Initialize();
+        if (swapChainObj) {
+            swapChainObj->SetSwapChainExtent(width, height);
+        }
+    }
 
     vkDeviceWaitIdle(deviceObj->device);
+
+    // Free command buffers before recreating resources
+    if (cmdDepthImage != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(deviceObj->device, cmdPool, 1, &cmdDepthImage);
+        cmdDepthImage = VK_NULL_HANDLE;
+    }
+
     DestroyFrameBuffer();
     DestroyDepthBuffer();
     swapChainObj->DestroySwapChain();
 
     BuildSwapChainAndDepthImage();
     CreateFrameBuffer(true);
+
+    // Re-record drawable command buffers with new framebuffers
+    for (VulkanDrawable* drawable : vecDrawables) {
+        drawable->Prepare();
+    }
 
     isInitialized = true;
     frameBufferResized = false;
@@ -172,6 +170,10 @@ bool VulkanRenderer::Render()
     }
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
+
+    if(frameBufferResized) {
+        HandleResize();
+    }
 
     RedrawWindow(window, NULL, NULL, RDW_INTERNALPAINT);
 
@@ -275,8 +277,32 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CLOSE:
             PostQuitMessage(0);
             break;
+
+        case WM_ENTERSIZEMOVE:
+            // User started resizing
+            if (renderObj->isInitialized) {
+                renderObj->isResizing = true;
+            }
+            break;
+
+        case WM_EXITSIZEMOVE:
+            // User finished resizing - rebuild swapchain
+            if (renderObj->isResizing) {
+                renderObj->isResizing = false;
+                renderObj->frameBufferResized = true;
+            }
+            break;
+
         case WM_PAINT: {
-            // Render all drawables (only if renderer is fully initialized)
+            // During resize, skip rendering - swapchain images are old size
+            // Windows will show frozen content at old dimensions (standard Vulkan behavior)
+            // Once resize completes, HandleResize() rebuilds swapchain at new size
+            if (renderObj->isResizing) {
+                ValidateRect(hWnd, NULL);
+                return 0;
+            }
+
+            // Normal rendering (only if renderer is fully initialized)
             if (appObj && appObj->renderObj && appObj->renderObj->isInitialized) {
                 for (VulkanDrawable* drawableObj : appObj->renderObj->vecDrawables) {
                     result = drawableObj->Render();
@@ -302,32 +328,13 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_SIZE: {
-            // Only process resize if application is fully prepared AND renderer is initialized
-            // IMPORTANT: Also check we're not already resizing to prevent reentrancy!
             if(wParam != SIZE_MINIMIZED && appObj && appObj->IsPrepared() &&
                appObj->renderObj && appObj->renderObj->isInitialized) {
 
-                // Check isResizing flag BEFORE doing anything
-                
-                if (renderObj->frameBufferResized) {
-                    std::cout << "[WM_SIZE] Already handling resize, ignoring..." << std::endl;
-                    break;  // Already processing a resize, ignore this message
+                // If not actively resizing, trigger immediate swapchain rebuild
+                if (!renderObj->isResizing && !renderObj->frameBufferResized) {
+                    renderObj->frameBufferResized = true;
                 }
-
-                renderObj->frameBufferResized = true;
-
-                VulkanSwapChain* swapChain = appObj->renderObj->GetSwapChain();
-                if (swapChain) {
-                    appObj->renderObj->width = LOWORD(lParam);
-                    appObj->renderObj->height = HIWORD(lParam);
-                    swapChain->SetSwapChainExtent(
-                        appObj->renderObj->width,
-                        appObj->renderObj->height
-                    );
-                    renderObj->HandleResize();
-                }
-
-                renderObj->frameBufferResized = false;
             }
             break;
         }
@@ -768,7 +775,7 @@ void VulkanRenderer::CreateVertexBuffer()
 void VulkanRenderer::CreateShaders()
 {
     if(!shaderObj) {
-        shaderObj = std::make_unique<VulkanShader>(deviceObj);
+        shaderObj = std::make_unique<VulkanShader>();
     }
 
     if(shaderObj->initialized) {
@@ -814,7 +821,7 @@ void VulkanRenderer::CreateShaders()
 
 void VulkanRenderer::CreatePipelineStateManagement()
 {
-    pipelineState = std::make_unique<VulkanPipeline>(deviceObj, renderPass);
+    pipelineState = std::make_unique<VulkanPipeline>();
 
     pipelineState->CreatePipelineCache();
 
@@ -825,7 +832,7 @@ void VulkanRenderer::CreatePipelineStateManagement()
     config.viewPort = {0, 0, (float)width, (float)height};
     config.scissor = {{0, 0}, {(unsigned int)width, (unsigned int)height}};
 
-    VkPipeline pipelineHandle;
+    VkPipeline pipelineHandle = VK_NULL_HANDLE;
     for (VulkanDrawable* drawable : vecDrawables) {
         if(pipelineState->CreatePipeline(
             drawable,
@@ -916,8 +923,6 @@ void VulkanRenderer::DestroyPipeline()
     for (auto pipeline : pipelineHandles) {
         if (pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(deviceObj->device, pipeline, NULL);
-            free(pipeline);
-            pipeline = VK_NULL_HANDLE;
         }
     }
     pipelineHandles.clear();
@@ -968,17 +973,21 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
             imgMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             imgMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             break;
-        
-        // An image in this layout can only be used as a 
+
+        // An image in this layout can only be used as a
         //framebuffer color attachment
         case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
             imgMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             break;
-        
-        // An image in this layout can only be used as a 
+
+        // An image in this layout can only be used as a
         //framebuffer depth/stencil attachment
         case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
             imgMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+            imgMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             break;
     }
 
@@ -992,6 +1001,9 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
         destStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     } else if (newImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         destStages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ||
+               newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        destStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
 
     vkCmdPipelineBarrier(
@@ -999,12 +1011,15 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
         srcStages,
         destStages,
         0,
-        0, 
+        0,
         NULL,
-        0, 
+        0,
         NULL,
-        1, 
+        1,
         &imgMemoryBarrier
     );
 
 }
+
+// REMOVED: BlitLastFrameDuringResize() - unsafe self-blit operation
+// DWM compositor now handles resize scaling automatically

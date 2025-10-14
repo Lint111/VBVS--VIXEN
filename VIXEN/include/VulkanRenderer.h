@@ -122,6 +122,7 @@ class VulkanRenderer {
 
     bool isInitialized;
     bool frameBufferResized;
+    bool isResizing;
 
 };
 

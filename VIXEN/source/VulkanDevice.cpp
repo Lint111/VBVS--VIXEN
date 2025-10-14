@@ -10,10 +10,10 @@ VulkanDevice::~VulkanDevice() {
 
 VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
                                     std::vector<const char*>& extensions) {
-    
+
     layerExtension.appRequestedLayerNames = layers;
     layerExtension.appRequestedExtensionNames = extensions;
-                                        
+
     VkResult result;
     float queuePriorities[1] = { 0.0 };
 
@@ -25,10 +25,27 @@ VkResult VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = queuePriorities;
 
+    // Check if swapchain maintenance extension is requested
+    bool hasSwapchainMaintenance = false;
+    for (const char* ext : extensions) {
+        if (strcmp(ext, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0) {
+            hasSwapchainMaintenance = true;
+            break;
+        }
+    }
+
+    // Enable swapchainMaintenance1 feature if extension is present
+    VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance1Features = {};
+    if (hasSwapchainMaintenance) {
+        swapchainMaintenance1Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT;
+        swapchainMaintenance1Features.pNext = NULL;
+        swapchainMaintenance1Features.swapchainMaintenance1 = VK_TRUE;
+    }
+
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = NULL;
+    deviceInfo.pNext = hasSwapchainMaintenance ? &swapchainMaintenance1Features : NULL;
     deviceInfo.queueCreateInfoCount = 1;
     deviceInfo.pQueueCreateInfos = &queueInfo;
     deviceInfo.enabledLayerCount = 0;
