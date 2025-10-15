@@ -1,4 +1,6 @@
-#include "VulkanInstance.h"
+#include "VulkanResources/VulkanInstance.h"
+
+using namespace Vixen::Vulkan::Resources;
 
 VulkanInstance::VulkanInstance() {
 	// constructor

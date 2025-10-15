@@ -362,21 +362,32 @@ void VulkanSwapChain::GetSurfaceCapabilitiesAndPresentMode()
 
 void VulkanSwapChain::ManagePresentMode()
 {
-    // MAILBOX -lowest-latency non tearing mode.
-    // If not try Immediate, the fastest (but tears).
-    // Else FIFO which is guaranteed to be supported
+    // Prioritize IMMEDIATE for maximum uncapped FPS
+    // Then MAILBOX for low-latency triple buffering
+    // Fallback to FIFO which is guaranteed to be supported
     scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
+    std::cout << "[ManagePresentMode] Available present modes: ";
     for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
-        if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
-            scPrivateVars.presentModes[i] = VK_PRESENT_MODE_MAILBOX_KHR;
+        std::cout << scPrivateVars.presentModes[i] << " ";
+    }
+    std::cout << std::endl;
+
+    for (size_t i = 0; i < scPrivateVars.presentModeCount; i++) {
+        if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+            scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+            std::cout << "[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)" << std::endl;
             break;
         }
 
-        if(scPrivateVars.presentModes[i] != VK_PRESENT_MODE_MAILBOX_KHR &&
-           scPrivateVars.presentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) {
-            scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        if(scPrivateVars.presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+            scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+            std::cout << "[ManagePresentMode] Selected MAILBOX mode" << std::endl;
         }
+    }
+
+    if (scPrivateVars.swapChainPresentMode == VK_PRESENT_MODE_FIFO_KHR) {
+        std::cout << "[ManagePresentMode] Using FIFO mode (V-Sync enabled)" << std::endl;
     }
 
     // Determine the number of images

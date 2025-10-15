@@ -2,6 +2,8 @@
 #include "VulkanRenderer.h"
 #include "VulkanSwapChain.h"
 
+using namespace Vixen::Vulkan::Resources;
+
 std::unique_ptr<VulkanApplication> VulkanApplication::instance;
 std::once_flag VulkanApplication::onlyOnce;
 
@@ -12,9 +14,24 @@ extern std::vector<const char*> deviceExtensionNames;
 VulkanApplication::VulkanApplication() {
     instanceObj.layerExtension.GetInstanceLayerProperties();
     debugFlag = true; // enable or disable debug callback
+
+    // Create main logger
+    mainLogger = std::make_shared<Logger>("VulkanApp", true);
+    mainLogger->Info("Vulkan Application Starting");
 }
 
 VulkanApplication::~VulkanApplication() {
+    // Write logs to file before cleanup
+    if (mainLogger) {
+        std::string logs = mainLogger->ExtractLogs();
+        std::ofstream logFile("vulkan_app_log.txt");
+        if (logFile.is_open()) {
+            logFile << logs;
+            logFile.close();
+            std::cout << "Logs written to vulkan_app_log.txt" << std::endl;
+        }
+    }
+
     DeInitialize();
 }
 

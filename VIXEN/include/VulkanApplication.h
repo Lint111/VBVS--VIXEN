@@ -1,11 +1,14 @@
 #pragma once
 
 #include <Headers.h>
-#include "VulkanInstance.h"
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanInstance.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "error/VulkanError.h"
+#include "Logger.h"
 
 class VulkanRenderer;
+
+using namespace Vixen::Vulkan::Resources;
 
 class VulkanApplication {
 private:
@@ -42,6 +45,7 @@ public:
     VulkanInstance instanceObj; // Vulkan instance object variable
     std::unique_ptr<VulkanDevice> deviceObj; // Vulkan device object variable
     std::unique_ptr<VulkanRenderer> renderObj; // Vulkan renderer object variable
+    std::shared_ptr<Logger> mainLogger; // Main application logger
 
 private:
     bool debugFlag; // enable or disable debug callback

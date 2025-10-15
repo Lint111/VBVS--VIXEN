@@ -1,6 +1,6 @@
 #include "VulkanRenderer.h"
 #include "VulkanApplication.h"
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "wrapper.h"
 #include "VulkanDrawable.h"
@@ -35,6 +35,12 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     isInitialized = false;
     frameBufferResized = false;
     isResizing = false;
+
+    // Create FPS logger and add to main logger hierarchy
+    fpsLogger = std::make_shared<FrameRateLogger>("Renderer", true);
+    if (appObj && appObj->mainLogger) {
+        appObj->mainLogger->AddChild(fpsLogger);
+    }
 
     // Create a drawable object for rendering
     auto drawable = std::make_unique<VulkanDrawable>(this);
@@ -171,28 +177,61 @@ void VulkanRenderer::Prepare()
 
 bool VulkanRenderer::Render()
 {
-    // Process one window message per call (main loop calls this repeatedly)
-    MSG msg;
-    PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);
-    if(msg.message == WM_QUIT) {
-        return false;
+    // Start frame timing
+    if (fpsLogger) {
+        fpsLogger->FrameStart();
     }
-    TranslateMessage(&msg);
-    DispatchMessageW(&msg);
+
+    // Process all pending window messages (non-blocking)
+    MSG msg;
+    while(PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        if(msg.message == WM_QUIT) {
+            return false;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
 
     if(frameBufferResized) {
         HandleResize();
     }
 
-    RedrawWindow(window, nullptr, nullptr, RDW_INTERNALPAINT);
+    // Skip rendering during resize
+    if (isResizing) {
+        return true;
+    }
+
+    // Render directly here (not in WM_PAINT) for maximum framerate
+    if (isInitialized) {
+        for (auto& drawableObj : vecDrawables) {
+            VkResult result = drawableObj->Render();
+            if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+                frameBufferResized = true;
+                return true;
+            }
+            if (result != VK_SUCCESS) {
+                std::cerr << "Render Error: " << result << std::endl;
+                return false;
+            }
+        }
+    }
+
+    // End frame timing
+    if (fpsLogger) {
+        fpsLogger->FrameEnd();
+    }
 
     return true;
 }
 
 void VulkanRenderer::Update()
 {
+    // Update time system
+    time.Update();
+
+    // Update all drawables with delta time
     for (auto& drawable : vecDrawables) {
-        if (auto result = drawable->Update(); !result) {
+        if (auto result = drawable->Update(time.GetDeltaTime()); !result) {
             std::cerr << "Failed to update drawable: " << result.error().toString() << std::endl;
             exit(1);
         }
@@ -1036,7 +1075,13 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
 void VulkanRenderer::CreateDescriptors()
 {
     for (auto& drawAble : vecDrawables) {
-        drawAble->CreateDescriptorSetLayout(false);
-        drawAble->CreateDescriptor(false);
+        if (auto result = drawAble->CreateDescriptorSetLayout(false); !result) {
+            std::cerr << "Failed to create descriptor set layout: " << result.error().toString() << std::endl;
+            exit(1);
+        }
+        if (auto result = drawAble->CreateDescriptor(false); !result) {
+            std::cerr << "Failed to create descriptor: " << result.error().toString() << std::endl;
+            exit(1);
+        }
     }
 }

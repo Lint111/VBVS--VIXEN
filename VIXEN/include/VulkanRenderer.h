@@ -1,12 +1,17 @@
 #pragma once
 
 #include "Headers.h"
+#include "Time/EngineTime.h"
 #include "VulkanPipeline.h"
 #include "VulkanShader.h"
+#include "FrameRateLogger.h"
+#include "VulkanResources/VulkanDevice.h"
+
+using namespace Vixen::Core;
+using namespace Vixen::Vulkan::Resources;
 
 class VulkanApplication;
-class VulkanDevice;
-class VulkanSwapChain;   
+class VulkanSwapChain;
 class VulkanRenderer;
 class VulkanDrawable;
 
@@ -125,6 +130,12 @@ class VulkanRenderer {
     bool isInitialized;
     bool frameBufferResized;
     bool isResizing;
+
+    // Logging
+    std::shared_ptr<FrameRateLogger> fpsLogger;
+
+    // Time management
+    EngineTime time;
 
 };
 

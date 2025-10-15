@@ -86,7 +86,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -107,10 +107,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;AUTO_COMPILE_GLSL_TO_SPV;VK_USE_PLATFORM_WIN32_KHR;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -133,7 +133,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -155,10 +155,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;AUTO_COMPILE_GLSL_TO_SPV;VK_USE_PLATFORM_WIN32_KHR;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -181,7 +181,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -203,10 +203,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;AUTO_COMPILE_GLSL_TO_SPV;VK_USE_PLATFORM_WIN32_KHR;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -229,7 +229,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -250,10 +250,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;AUTO_COMPILE_GLSL_TO_SPV;VK_USE_PLATFORM_WIN32_KHR;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.321.1\include;C:\cpp\VBVS--VIXEN\VIXEN\include;C:\cpp\VBVS--VIXEN\VIXEN\logger;C:\cpp\VBVS--VIXEN\VIXEN\time;C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -332,8 +332,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VULKANDESCRIPTOR.CPP" />
+    <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\Time\EngineTime.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VulkanApplication.cpp" />
+    <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VulkanDescriptor.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VulkanDevice.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VulkanDrawable.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\VulkanInstance.cpp" />
@@ -345,8 +346,11 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\error\VulkanError.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\main.cpp" />
     <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\source\wrapper.cpp" />
+    <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\logger\FrameRateLogger.cpp" />
+    <ClCompile Include="C:\cpp\VBVS--VIXEN\VIXEN\logger\Logger.cpp" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\Headers.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\MeshData.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\Time\EngineTime.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanApplication.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanDescriptor.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanDevice.h" />
@@ -355,10 +359,15 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanLayerAndExtension.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanPipeline.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanRenderer.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanResources\VulkanDevice.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanResources\VulkanInstance.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanResources\VulkanLayerAndExtension.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanShader.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\VulkanSwapChain.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\error\VulkanError.h" />
     <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\include\wrapper.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\logger\FrameRateLogger.h" />
+    <ClInclude Include="C:\cpp\VBVS--VIXEN\VIXEN\logger\Logger.h" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

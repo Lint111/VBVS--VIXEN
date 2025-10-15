@@ -31,7 +31,7 @@ class VulkanDrawable : public VulkanDescriptor {
                                     uint32_t dataStride);
     
     void Prepare();
-    VulkanStatus Update();
+    VulkanStatus Update(float deltaTime);
     VkResult Render();
 
     void InitViewports(VkCommandBuffer* cmd);

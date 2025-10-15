@@ -1,8 +1,9 @@
 #pragma once
 
 #include "Headers.h"
+#include "VulkanResources/VulkanDevice.h"
 
-class VulkanDevice;
+using namespace Vixen::Vulkan::Resources;
 
 class VulkanDescriptor {
 public:

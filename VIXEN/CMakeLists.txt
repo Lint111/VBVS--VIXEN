@@ -143,10 +143,24 @@ endif(WIN32)
 
 # Define include path
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/logger)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/time)
 
 # Gather list of header and source files for compilation
 file(GLOB_RECURSE CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
 file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
+
+# Add logger files
+file(GLOB LOGGER_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.cpp)
+file(GLOB LOGGER_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.h)
+list(APPEND CPP_FILES ${LOGGER_CPP_FILES})
+list(APPEND HPP_FILES ${LOGGER_HPP_FILES})
+
+# Add time files
+file(GLOB TIME_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/time/*.cpp)
+file(GLOB TIME_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/time/*.h)
+list(APPEND CPP_FILES ${TIME_CPP_FILES})
+list(APPEND HPP_FILES ${TIME_HPP_FILES})
 
 # Build project, give it a name and includes list of file to be compiled
 add_executable(${Recipe_Name} ${CPP_FILES} ${HPP_FILES})

@@ -18,6 +18,8 @@
 #include <glslang/SPIRV/GlslangToSpv.h>
 #endif // AUTO_COMPILE_GLSL_TO_SPV
 
+// GLM Header files
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -28,7 +30,11 @@
 #include <vector>
 #include <iomanip>
 #include <assert.h>
-#include <fileapi.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 // error handling
 #include "error/VulkanError.h"

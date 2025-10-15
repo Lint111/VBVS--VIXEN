@@ -1,5 +1,5 @@
 #include "VulkanDescriptor.h"
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanDevice.h"
 
 VulkanStatus VulkanDescriptor::DestroyPipelineLayout()
 {

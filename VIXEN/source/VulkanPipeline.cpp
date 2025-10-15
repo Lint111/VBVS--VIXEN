@@ -1,7 +1,7 @@
 #include "VulkanPipeline.h"
 
 #include "VulkanApplication.h"
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "VulkanShader.h"
 #include "VulkanDrawable.h"
 #include "VulkanRenderer.h"

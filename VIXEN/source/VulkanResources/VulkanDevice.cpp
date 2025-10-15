@@ -1,4 +1,6 @@
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanDevice.h"
+
+using namespace Vixen::Vulkan::Resources;
 
 VulkanDevice::VulkanDevice(VkPhysicalDevice* physicalDevice) {
     gpu = physicalDevice;

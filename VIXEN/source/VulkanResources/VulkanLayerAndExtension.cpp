@@ -1,17 +1,19 @@
-#include "VulkanLayerAndExtension.h"
+#include "VulkanResources/VulkanLayerAndExtension.h"
 #include "VulkanApplication.h"
+
+using namespace Vixen::Vulkan::Resources;
 
 // Define static members
 PFN_vkCreateDebugReportCallbackEXT VulkanLayerAndExtension::dbgCreateDebugReportCallback = nullptr;
 PFN_vkDestroyDebugReportCallbackEXT VulkanLayerAndExtension::dbgDestroyDebugReportCallback = nullptr;
 VkDebugReportCallbackEXT VulkanLayerAndExtension::DebugReportCallback = nullptr;
 VkDebugReportCallbackCreateInfoEXT VulkanLayerAndExtension::dbgReportCreateInfo = {
-    VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
-    nullptr,
-    VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
-    VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_DEBUG_BIT_EXT,
-    VulkanLayerAndExtension::DebugFunction,
-    nullptr
+	VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
+	nullptr,
+	VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
+	VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_DEBUG_BIT_EXT,
+	VulkanLayerAndExtension::DebugFunction,
+	nullptr
 };
 
 VulkanLayerAndExtension::VulkanLayerAndExtension() {

@@ -4,12 +4,14 @@
 #include "VulkanLayerAndExtension.h"
 #include "error/VulkanError.h"
 
+namespace Vixen::Vulkan::Resources {
+
 class VulkanDevice {
 public:
     VulkanDevice(VkPhysicalDevice* gpu);
     ~VulkanDevice();
 
-    // device related meber variables
+    // device related member variables
     VkDevice device; // logical device
     VkPhysicalDevice* gpu; // physical device
     VkPhysicalDeviceProperties gpuProperties; // physical device properties
@@ -32,3 +34,5 @@ public:
     VulkanResult<uint32_t> GetGraphicsQueueHandle();
     void GetDeviceQueue();
 };
+
+} // namespace Vixen::Vulkan::Resources

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Headers.h"
+#include "VulkanResources/VulkanDevice.h"
+
+using namespace Vixen::Vulkan::Resources;
 
 class VulkanShader;
 class VulkanDrawable;
-class VulkanDevice;
 class VulkanApplication;
 
 #define NUMBER_OF_VIEWPORTS 1

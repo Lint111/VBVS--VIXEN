@@ -2,7 +2,9 @@
 #include "VulkanApplication.h"
 #include "VulkanRenderer.h"
 #include "VulkanSwapChain.h"
-#include "VulkanDevice.h"
+#include "VulkanResources/VulkanDevice.h"
+
+using namespace Vixen::Vulkan::Resources;
 
 VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
     : rendererObj(parent),
@@ -66,14 +68,14 @@ void VulkanDrawable::Prepare()
 
 }
 
-VulkanStatus VulkanDrawable::Update()
+VulkanStatus VulkanDrawable::Update(float deltaTime)
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
-    uint8_t* pData;
+
     glm::mat4 Projection = glm::perspective(
-        glm::radians(45.0f), 
-        (float)rendererObj->width / (float)rendererObj->height, 
-        0.1f, 
+        glm::radians(45.0f),
+        (float)rendererObj->width / (float)rendererObj->height,
+        0.1f,
         256.0f
     );
     glm::mat4 View = glm::lookAt(
@@ -82,18 +84,20 @@ VulkanStatus VulkanDrawable::Update()
         glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
     );
     glm::mat4 Model = glm::mat4(1.0f);
+
+    // Frame-rate independent rotation: rotate at 45 degrees per second
     static float rot = 0.0f;
-    rot += 0.03f;
+    rot += glm::radians(45.0f) * deltaTime;
+
     Model = glm::rotate(Model, rot, glm::vec3(0.0f, 1.0f, 0.0f)) *
             glm::rotate(Model, rot, glm::vec3(1.0f, 1.0f, 1.0f));
 
     glm::mat4 MVP = Projection * View * Model;
 
-    VK_CHECK(vkMapMemory(deviceObj->device, UniformData.mem, 0, sizeof(MVP), 0, (void**)&pData),
-             "Failed to map uniform buffer memory");
+    // Memory is already persistently mapped - just copy directly
+    memcpy(UniformData.pData, &MVP, sizeof(MVP));
 
-    memcpy(pData, &MVP, sizeof(MVP));
-
+    // Flush to make changes visible to GPU
     VK_CHECK(vkFlushMappedMemoryRanges(deviceObj->device, static_cast<uint32_t>(UniformData.mappedRange.size()), UniformData.mappedRange.data()),
              "Failed to flush mapped memory range");
 
