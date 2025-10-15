@@ -33,6 +33,21 @@ public:
     void GetPhysicalDeviceQueuesAndProperties();
     VulkanResult<uint32_t> GetGraphicsQueueHandle();
     void GetDeviceQueue();
+
+    struct DeviceFeatureMapping {
+        const char* extensionName;
+        VkStructureType structType;
+        size_t structSize;
+    };
+
+    std::vector<std::unique_ptr<uint8_t[]>> deviceFeatureStorage; // to hold extension feature structures
+
+    private:
+    // Helper to append a feature struct to the pNext chain
+    inline void* AppendToPNext(void** chainEnd, void* featureStruct);
+
+    inline bool HasExtension(const std::vector<const char*>& extensions, const char* name);
+
 };
 
 } // namespace Vixen::Vulkan::Resources

@@ -24,7 +24,7 @@ events:
       The output was:
       0
       MSBuild version 17.14.23+b0019275e for .NET Framework
-      Build started 15/10/2025 14:26:04.
+      Build started 15/10/2025 21:01:35.
       
       Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\4.0.3\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -53,7 +53,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:01.31
+      Time Elapsed 00:00:00.96
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -72,8 +72,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lvr6e4"
-      binary: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lvr6e4"
+      source: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-39c8un"
+      binary: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-39c8un"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /W3 /GR /EHsc"
       CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
@@ -82,40 +82,40 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lvr6e4'
+        Change Dir: 'C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-39c8un'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_05b2b.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_c27c7.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.14.23+b0019275e for .NET Framework
-        Build started 15/10/2025 14:26:07.
+        Build started 15/10/2025 21:01:37.
         
-        Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lvr6e4\\cmTC_05b2b.vcxproj" on node 1 (default targets).
+        Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-39c8un\\cmTC_c27c7.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_05b2b.dir\\Debug\\".
+          Creating directory "cmTC_c27c7.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lvr6e4\\Debug\\".
-          Creating directory "cmTC_05b2b.dir\\Debug\\cmTC_05b2b.tlog\\".
+          Creating directory "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-39c8un\\Debug\\".
+          Creating directory "cmTC_c27c7.dir\\Debug\\cmTC_c27c7.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_05b2b.dir\\Debug\\cmTC_05b2b.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_05b2b.dir\\Debug\\cmTC_05b2b.tlog\\unsuccessfulbuild".
+          Creating "cmTC_c27c7.dir\\Debug\\cmTC_c27c7.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_c27c7.dir\\Debug\\cmTC_c27c7.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_05b2b.dir\\Debug\\\\" /Fd"cmTC_05b2b.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_c27c7.dir\\Debug\\\\" /Fd"cmTC_c27c7.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35216 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_05b2b.dir\\Debug\\\\" /Fd"cmTC_05b2b.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
+          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_c27c7.dir\\Debug\\\\" /Fd"cmTC_c27c7.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lvr6e4\\Debug\\cmTC_05b2b.exe" /INCREMENTAL /ILK:"cmTC_05b2b.dir\\Debug\\cmTC_05b2b.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lvr6e4/Debug/cmTC_05b2b.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lvr6e4/Debug/cmTC_05b2b.lib" /MACHINE:X64  /machine:x64 cmTC_05b2b.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_05b2b.vcxproj -> C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lvr6e4\\Debug\\cmTC_05b2b.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-39c8un\\Debug\\cmTC_c27c7.exe" /INCREMENTAL /ILK:"cmTC_c27c7.dir\\Debug\\cmTC_c27c7.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-39c8un/Debug/cmTC_c27c7.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-39c8un/Debug/cmTC_c27c7.lib" /MACHINE:X64  /machine:x64 cmTC_c27c7.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_c27c7.vcxproj -> C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-39c8un\\Debug\\cmTC_c27c7.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_05b2b.dir\\Debug\\cmTC_05b2b.tlog\\unsuccessfulbuild".
-          Touching "cmTC_05b2b.dir\\Debug\\cmTC_05b2b.tlog\\cmTC_05b2b.lastbuildstate".
-        Done Building Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lvr6e4\\cmTC_05b2b.vcxproj" (default targets).
+          Deleting file "cmTC_c27c7.dir\\Debug\\cmTC_c27c7.tlog\\unsuccessfulbuild".
+          Touching "cmTC_c27c7.dir\\Debug\\cmTC_c27c7.tlog\\cmTC_c27c7.lastbuildstate".
+        Done Building Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-39c8un\\cmTC_c27c7.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.86
+        Time Elapsed 00:00:00.88
         
       exitCode: 0
   -
@@ -152,7 +152,7 @@ events:
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
-      - "CMakeLists.txt:117 (project)"
+      - "CMakeLists.txt:127 (project)"
     message: |
       Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
       Compiler:  
@@ -162,7 +162,7 @@ events:
       The output was:
       0
       MSBuild version 17.14.23+b0019275e for .NET Framework
-      Build started 15/10/2025 14:26:09.
+      Build started 15/10/2025 21:01:52.
       
       Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\4.0.3\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -191,7 +191,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:01.00
+      Time Elapsed 00:00:01.08
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -206,12 +206,12 @@ events:
     backtrace:
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
-      - "CMakeLists.txt:117 (project)"
+      - "CMakeLists.txt:127 (project)"
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-xapi3c"
-      binary: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-xapi3c"
+      source: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lm4rre"
+      binary: "C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lm4rre"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS /W3"
       CMAKE_C_FLAGS_DEBUG: "/MDd /Zi /Ob0 /Od /RTC1"
@@ -220,40 +220,40 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-xapi3c'
+        Change Dir: 'C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lm4rre'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_924aa.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_0c8c8.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.14.23+b0019275e for .NET Framework
-        Build started 15/10/2025 14:26:10.
+        Build started 15/10/2025 21:01:54.
         
-        Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-xapi3c\\cmTC_924aa.vcxproj" on node 1 (default targets).
+        Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lm4rre\\cmTC_0c8c8.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_924aa.dir\\Debug\\".
+          Creating directory "cmTC_0c8c8.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-xapi3c\\Debug\\".
-          Creating directory "cmTC_924aa.dir\\Debug\\cmTC_924aa.tlog\\".
+          Creating directory "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lm4rre\\Debug\\".
+          Creating directory "cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_924aa.dir\\Debug\\cmTC_924aa.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_924aa.dir\\Debug\\cmTC_924aa.tlog\\unsuccessfulbuild".
+          Creating "cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_924aa.dir\\Debug\\\\" /Fd"cmTC_924aa.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_0c8c8.dir\\Debug\\\\" /Fd"cmTC_0c8c8.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35216 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_924aa.dir\\Debug\\\\" /Fd"cmTC_924aa.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
+          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_0c8c8.dir\\Debug\\\\" /Fd"cmTC_0c8c8.dir\\Debug\\vc143.pdb" /external:W3 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-xapi3c\\Debug\\cmTC_924aa.exe" /INCREMENTAL /ILK:"cmTC_924aa.dir\\Debug\\cmTC_924aa.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-xapi3c/Debug/cmTC_924aa.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-xapi3c/Debug/cmTC_924aa.lib" /MACHINE:X64  /machine:x64 cmTC_924aa.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_924aa.vcxproj -> C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-xapi3c\\Debug\\cmTC_924aa.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lm4rre\\Debug\\cmTC_0c8c8.exe" /INCREMENTAL /ILK:"cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lm4rre/Debug/cmTC_0c8c8.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/CMakeScratch/TryCompile-lm4rre/Debug/cmTC_0c8c8.lib" /MACHINE:X64  /machine:x64 cmTC_0c8c8.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_0c8c8.vcxproj -> C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lm4rre\\Debug\\cmTC_0c8c8.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_924aa.dir\\Debug\\cmTC_924aa.tlog\\unsuccessfulbuild".
-          Touching "cmTC_924aa.dir\\Debug\\cmTC_924aa.tlog\\cmTC_924aa.lastbuildstate".
-        Done Building Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-xapi3c\\cmTC_924aa.vcxproj" (default targets).
+          Deleting file "cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.tlog\\unsuccessfulbuild".
+          Touching "cmTC_0c8c8.dir\\Debug\\cmTC_0c8c8.tlog\\cmTC_0c8c8.lastbuildstate".
+        Done Building Project "C:\\cpp\\VBVS--VIXEN\\VIXEN\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lm4rre\\cmTC_0c8c8.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.91
+        Time Elapsed 00:00:00.85
         
       exitCode: 0
   -
@@ -261,7 +261,7 @@ events:
     backtrace:
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:227 (message)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
-      - "CMakeLists.txt:117 (project)"
+      - "CMakeLists.txt:127 (project)"
     message: |
       Parsed C implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
@@ -279,7 +279,7 @@ events:
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:270 (cmake_determine_linker_id)"
       - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
-      - "CMakeLists.txt:117 (project)"
+      - "CMakeLists.txt:127 (project)"
     message: |
       Running the C compiler's linker: "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64/link.exe" "-v"
       Microsoft (R) Incremental Linker Version 14.44.35216.0

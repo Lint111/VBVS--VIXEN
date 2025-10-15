@@ -40,6 +40,8 @@ private:
     VulkanStatus HandShakeWithDevice(VkPhysicalDevice *gpu, std::vector<const char *> &layers, std::vector<const char *> &extensions);
     VulkanStatus EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList);
 
+    VulkanStatus DestroyDevices();
+
 
 public:
     VulkanInstance instanceObj; // Vulkan instance object variable

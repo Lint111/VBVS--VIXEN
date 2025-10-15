@@ -139,6 +139,8 @@ void VulkanApplication::DeInitialize() {
     deviceObj.reset();
 
     instanceObj.DestroyInstance();
+
+    DestroyDevices();
 }
 
 VulkanStatus VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {
@@ -156,6 +158,16 @@ VulkanStatus VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalD
     gpuList.resize(gpuDeviceCount);
     VK_CHECK(vkEnumeratePhysicalDevices(instanceObj.instance, &gpuDeviceCount, gpuList.data()),
              "Failed to enumerate physical devices");
+
+    return {};
+}
+
+VulkanStatus VulkanApplication::DestroyDevices()
+{
+    if (deviceObj) {
+        deviceObj->DestroyDevice();
+        deviceObj.reset();
+    }
 
     return {};
 }

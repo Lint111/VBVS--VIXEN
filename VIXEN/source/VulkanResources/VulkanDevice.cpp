@@ -22,37 +22,64 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     VkDeviceQueueCreateInfo queueInfo = {};
     queueInfo.queueFamilyIndex = graphicsQueueIndex;
     queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo.pNext = nullptr;
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = queuePriorities;
 
-    // Check if swapchain maintenance extension is requested
-    bool hasSwapchainMaintenance = false;
-    for (const char* ext : extensions) {
-        if (strcmp(ext, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0) {
-            hasSwapchainMaintenance = true;
-            break;
-        }
-    }
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    void** pNextChainEnd = &deviceFeatures2.pNext;
 
     // Enable swapchainMaintenance1 feature if extension is present
-    VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT swapchainMaintenance1Features = {};
-    if (hasSwapchainMaintenance) {
-        swapchainMaintenance1Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT;
-        swapchainMaintenance1Features.pNext = nullptr;
-        swapchainMaintenance1Features.swapchainMaintenance1 = VK_TRUE;
-    }
 
+    std::vector<DeviceFeatureMapping> featureMappings = {
+        {
+            VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, 
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, 
+            sizeof(VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT)
+        },
+        {
+            VK_KHR_MAINTENANCE_6_EXTENSION_NAME, 
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR, 
+            sizeof(VkPhysicalDeviceMaintenance6FeaturesKHR)
+        }
+    };
+
+    for (auto& mapping : featureMappings) {
+        if (!HasExtension(extensions, mapping.extensionName)) {
+            continue;
+        }
+        auto featureStruct = std::make_unique<uint8_t[]>(mapping.structSize);
+        memset(featureStruct.get(), 0, mapping.structSize);
+
+        VkBaseOutStructure* baseStruct = reinterpret_cast<VkBaseOutStructure*>(featureStruct.get());
+        baseStruct->sType = mapping.structType;
+        baseStruct->pNext = nullptr;
+
+        if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT) {
+            VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT* swapchainFeatures = reinterpret_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT*>(featureStruct.get());
+            swapchainFeatures->swapchainMaintenance1 = VK_TRUE;
+        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR) {
+            VkPhysicalDeviceMaintenance6FeaturesKHR* maintenance6Features = reinterpret_cast<VkPhysicalDeviceMaintenance6FeaturesKHR*>(featureStruct.get());
+            maintenance6Features->maintenance6 = VK_TRUE;
+        }
+
+        // Append to pNext chain
+        pNextChainEnd = reinterpret_cast<void**>(AppendToPNext(pNextChainEnd, featureStruct.get()));
+
+        // Store the unique_ptr to keep the memory alive
+        deviceFeatureStorage.push_back(std::move(featureStruct));
+    }
+    
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = hasSwapchainMaintenance ? &swapchainMaintenance1Features : nullptr;
+    deviceInfo.pNext = &deviceFeatures2;
     deviceInfo.queueCreateInfoCount = 1;
     deviceInfo.pQueueCreateInfos = &queueInfo;
-    deviceInfo.enabledLayerCount = 0;
+    deviceInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
 
-    // deprecated and should not be used
-    deviceInfo.ppEnabledLayerNames = nullptr;
+    deviceInfo.ppEnabledLayerNames = layers.size() ? layers.data() : nullptr;
     deviceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : nullptr;
     deviceInfo.pEnabledFeatures = nullptr;
@@ -66,6 +93,7 @@ void VulkanDevice::DestroyDevice()
     if (device == VK_NULL_HANDLE)
         return;
         
+    
     vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;
 }
@@ -106,4 +134,19 @@ VulkanResult<uint32_t> VulkanDevice::GetGraphicsQueueHandle() {
 
 void VulkanDevice::GetDeviceQueue() {
     vkGetDeviceQueue(device, graphicsQueueIndex, 0, &queue);
+}
+
+// Helper to append a feature struct to the pNext chain
+inline void* VulkanDevice::AppendToPNext(void** chainEnd, void* featureStruct) {
+    *chainEnd = featureStruct;
+    return &reinterpret_cast<VkBaseOutStructure*>(featureStruct)->pNext;
+}
+
+inline bool VulkanDevice::HasExtension(const std::vector<const char*>& extensions, const char* name) {
+    for (const auto& ext : extensions) {
+        if (strcmp(ext, name) == 0) {
+            return true;
+        }
+    }
+    return false;
 }

@@ -108,8 +108,18 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glm)
 
+# Fetch the latest Khronos Vulkan header files
+FetchContent_Declare(
+    VulkanHeaders
+    GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+    GIT_TAG main  # or pick a specific release, e.g., v1.3.300
+)
 
-	
+# Just download it — don't auto-add targets that conflict
+FetchContent_GetProperties(VulkanHeaders)
+if(NOT vulkanheaders_POPULATED)
+    FetchContent_Populate(VulkanHeaders)
+endif()
 
 
 
@@ -118,6 +128,7 @@ project(${Recipe_Name})
 
 # Add any required preprocessor definitions here
 add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+add_definitions(-DVK_ENABLE_BETA_EXTENSIONS -DVK_USE_PLATFORM_WIN32_KHR)
 
 # vulkan-1 library for build Vulkan application.
 # Note: Do NOT use set() here as it would overwrite glslang libraries if they were added above
@@ -127,6 +138,8 @@ endif()
 list(APPEND VULKAN_LIB_LIST "vulkan-1")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+	include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
+
 	# Include Vulkan header files from Vulkan SDK
 	include_directories(AFTER ${VULKAN_PATH}/include)
 

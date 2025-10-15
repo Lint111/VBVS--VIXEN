@@ -42,6 +42,12 @@ VulkanStatus VulkanDrawable::Initialize()
 
 VulkanDrawable::~VulkanDrawable()
 {
+    // Ensure all GPU resources owned by this drawable are freed.
+    // DestroyUniformBuffer must be called here so the uniform VkBuffer and
+    // VkDeviceMemory are released before the base-class destructor runs
+    // (which destroys descriptor sets/pools and pipeline layout).
+    (void)DestroyUniformBuffer();
+
     DestroyVertexBuffer();
 
     DestroyCommandBuffer();
@@ -604,6 +610,7 @@ VulkanStatus VulkanDrawable::CreateDescriptorPool(bool useTexture)
     descriptorPoolInfo.maxSets = 1;
     descriptorPoolInfo.poolSizeCount = useTexture ? 2 : 1;
     descriptorPoolInfo.pPoolSizes = descriptorTypePool;
+    descriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 
     // Create the descriptor pool using the descriptor
     // pool create info structure

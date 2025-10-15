@@ -11,6 +11,7 @@
 #include <unistd.h>
 #endif // _WIN32
 
+#define VK_Enable_Beta_Extensions
 #include <vulkan/vulkan.h>
 #ifdef AUTO_COMPILE_GLSL_TO_SPV
 #include <glslang/Public/ShaderLang.h>
