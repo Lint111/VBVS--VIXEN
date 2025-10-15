@@ -29,15 +29,15 @@
 ### Phase 3: Error Handling with std::expected (Current Session)
 **Rust-like Error Handling Implementation:**
 - **Created VulkanError infrastructure**:
-  - `VulkanError.h`: Defines `VulkanError` struct, `VulkanResult<T>` and `VulkanSuccess` type aliases
+  - `VulkanError.h`: Defines `VulkanError` struct, `VulkanResult<T>` and `VulkanStatus` type aliases
   - `VulkanError.cpp`: Provides VkResult → string conversion for human-readable error messages
   - Macros: `VK_CHECK`, `VK_CHECK_FMT`, `VK_PROPAGATE_ERROR` for ergonomic error handling
 - **Converted VulkanDevice.cpp** (3 functions):
-  - `CreateDevice`: VkResult → VulkanSuccess with VK_CHECK macro
+  - `CreateDevice`: VkResult → VulkanStatus with VK_CHECK macro
   - `MemoryTypeFromProperties`: bool+outparam → VulkanResult<uint32_t> (cleaner API)
   - `GetGraphicsQueueHandle`: uint32_t → VulkanResult<uint32_t> (explicit error returns)
 - **Converted VulkanApplication.cpp** (3 functions):
-  - `CreateVulkanInstance`: VkResult → VulkanSuccess
+  - `CreateVulkanInstance`: VkResult → VulkanStatus
   - `HandShakeWithDevice`: Added error propagation with VK_PROPAGATE_ERROR
   - `EnumeratePhysicalDevices`: assert → VK_CHECK + device count validation
   - `Initialize`: Added error logging with descriptive messages
@@ -111,7 +111,7 @@
   - Better than exceptions for Vulkan (most errors are recoverable)
 - **Implementation**:
   - VulkanResult<T> for operations returning values
-  - VulkanSuccess for void operations
+  - VulkanStatus for void operations
   - VK_CHECK macro for inline error checking with early returns
   - VK_PROPAGATE_ERROR for bubbling errors up call stack
 - **Pattern**: Converted 6 functions in Phase 3A (VulkanDevice + VulkanApplication), ~44 asserts remaining
@@ -147,7 +147,7 @@ VulkanResult<uint32_t> GetGraphicsQueueHandle() {
 }
 
 // Function returning void
-VulkanSuccess CreateDevice(...) {
+VulkanStatus CreateDevice(...) {
     VK_CHECK(vkCreateDevice(...), "Failed to create device");
     return {};  // Success
 }
@@ -165,7 +165,7 @@ if (auto result = CreateVulkanInstance(...); !result) {
 ```
 
 **Key Principles:**
-1. Return VulkanResult<T> for operations with values, VulkanSuccess for void ops
+1. Return VulkanResult<T> for operations with values, VulkanStatus for void ops
 2. Use VK_CHECK for inline Vulkan API calls with early return
 3. Use VK_PROPAGATE_ERROR to bubble errors up the call stack
 4. Handle errors at application boundaries (Initialize, main loop)

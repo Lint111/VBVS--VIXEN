@@ -91,6 +91,8 @@ void VulkanRenderer::Initialize()
 
     CreateShaders();
 
+    CreateDescriptors();
+
     CreatePipelineStateManagement();
 
     isInitialized = true;
@@ -187,7 +189,15 @@ bool VulkanRenderer::Render()
     return true;
 }
 
-
+void VulkanRenderer::Update()
+{
+    for (auto& drawable : vecDrawables) {
+        if (auto result = drawable->Update(); !result) {
+            std::cerr << "Failed to update drawable: " << result.error().toString() << std::endl;
+            exit(1);
+        }
+    }
+}
 
 void VulkanRenderer::CreatePresentationWindow(const int &windowWidth, const int &windowHeight)
 {
@@ -756,14 +766,14 @@ void VulkanRenderer::CreateVertexBuffer()
     CommandBufferMgr::BeginCommandBuffer(cmdVertexBuffer);
     for (size_t i = 0; i < vecDrawables.size(); i++)
     {
-        if (auto result = vecDrawables[i]->CreateVertexBuffer(squareData, sizeof(squareData), sizeof(squareData[0]), false); !result) {
+        if (auto result = vecDrawables[i]->CreateVertexBuffer(geometryData, sizeof(geometryData), sizeof(geometryData[0]), false); !result) {
             std::cerr << "Failed to create vertex buffer: " << result.error().toString() << std::endl;
             exit(1);
         }
-        if (auto result = vecDrawables[i]->CreateVertexIndex(squareIndices, sizeof(squareIndices), 0); !result) {
-            std::cerr << "Failed to create vertex index buffer: " << result.error().toString() << std::endl;
-            exit(1);
-        }
+        // if (auto result = vecDrawables[i]->CreateVertexIndex(squareIndices, sizeof(squareIndices), 0); !result) {
+        //     std::cerr << "Failed to create vertex index buffer: " << result.error().toString() << std::endl;
+        //     exit(1);
+        // }
     }
     CommandBufferMgr::EndCommandBuffer(cmdVertexBuffer);
     CommandBufferMgr::SubmitCommandBuffer(
@@ -1023,5 +1033,10 @@ void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask
 
 }
 
-// REMOVED: BlitLastFrameDuringResize() - unsafe self-blit operation
-// DWM compositor now handles resize scaling automatically
+void VulkanRenderer::CreateDescriptors()
+{
+    for (auto& drawAble : vecDrawables) {
+        drawAble->CreateDescriptorSetLayout(false);
+        drawAble->CreateDescriptor(false);
+    }
+}

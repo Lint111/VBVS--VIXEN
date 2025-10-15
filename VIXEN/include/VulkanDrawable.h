@@ -31,6 +31,7 @@ class VulkanDrawable : public VulkanDescriptor {
                                     uint32_t dataStride);
     
     void Prepare();
+    VulkanStatus Update();
     VkResult Render();
 
     void InitViewports(VkCommandBuffer* cmd);
@@ -50,7 +51,6 @@ class VulkanDrawable : public VulkanDescriptor {
         uint8_t* pData;
     } UniformData;
 
-    VulkanStatus CreateDescriptor(bool useTexture);
     VulkanStatus CreatePipelineLayout() override;
     VulkanStatus CreateDescriptorSetLayout(bool useTexture) override;
     VulkanStatus CreateDescriptorPool(bool useTexture) override;
@@ -69,6 +69,7 @@ class VulkanDrawable : public VulkanDescriptor {
     void DestroyVertexBuffer();
 	void DestroyIndexBuffer();
     void DestroySynchronizationObjects();
+    VulkanStatus DestroyUniformBuffer();
 
     VertAttBuffer VertexBuffer;
 

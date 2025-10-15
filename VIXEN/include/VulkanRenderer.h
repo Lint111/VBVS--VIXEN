@@ -23,6 +23,7 @@ class VulkanRenderer {
     void DeInitialize();
     void HandleResize();
     bool Render();
+    void Update();
     void Prepare();
 
     // create an empty window for presentation
@@ -41,6 +42,7 @@ class VulkanRenderer {
     void CreateFrameBuffer(bool includeDepth, bool clear = true);
     void CreateShaders();
     void CreatePipelineStateManagement();
+    void CreateDescriptors();
 
 
     void DestroyCommandBuffer();

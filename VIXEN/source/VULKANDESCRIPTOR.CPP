@@ -61,3 +61,12 @@ VulkanDescriptor::~VulkanDescriptor()
     (void)DestroyPipelineLayout();
 }
 
+VulkanStatus VulkanDescriptor::CreateDescriptor(bool useTexture)
+{
+    VK_PROPAGATE_ERROR(CreatePipelineLayout());
+    VK_PROPAGATE_ERROR(CreateDescriptorResources());
+    VK_PROPAGATE_ERROR(CreateDescriptorPool(useTexture));
+    VK_PROPAGATE_ERROR(CreateDescriptorSet(useTexture));
+    return {};
+}
+

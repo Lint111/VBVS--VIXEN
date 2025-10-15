@@ -106,8 +106,10 @@ bool VulkanApplication::render()
 }
 
 void VulkanApplication::Update() {
-    // Placeholder for application update logic
-    // (e.g., input handling, physics, animation updates)
+    if(!isPrepared)
+        return;
+
+    renderObj->Update();
 }
 
 void VulkanApplication::DeInitialize() {

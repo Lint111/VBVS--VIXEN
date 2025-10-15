@@ -197,26 +197,11 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
     multisampleStateInfo.rasterizationSamples = NUM_SAMPLES;
 
 
-    // Create pipeline layout (required even if empty)
-    if (pipelineLayout == VK_NULL_HANDLE) {
-        VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
-        pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutCreateInfo.pNext = nullptr;
-        pipelineLayoutCreateInfo.setLayoutCount = 0;
-        pipelineLayoutCreateInfo.pSetLayouts = nullptr;
-        pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-        pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
-
-        result = vkCreatePipelineLayout(
-            deviceObj->device,
-            &pipelineLayoutCreateInfo,
-            nullptr,
-            &pipelineLayout
-        );
-        if(result != VK_SUCCESS) {
-            std::cerr << "CreatePipeline: failed to create pipeline layout" << std::endl;
-            return false;
-        }
+    // Use the drawable's pipeline layout (which includes descriptor set layouts)
+    VkPipelineLayout drawablePipelineLayout = drawableObj->pipelineLayout;
+    if (drawablePipelineLayout == VK_NULL_HANDLE) {
+        std::cerr << "CreatePipeline: drawable pipelineLayout is VK_NULL_HANDLE" << std::endl;
+        return false;
     }
 
     // Populate the VkGraphicsPipelineCreateInfo structure to specify
@@ -237,7 +222,7 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
     pipelineInfo.stageCount = 2;
     pipelineInfo.renderPass = drawableObj->GetRenderer()->renderPass;
     pipelineInfo.subpass = 0;
-    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.layout = drawablePipelineLayout;
 
     // Create the pipilne using the meta-data store in the
     // VkGraphicsPipelineCreateInfo object
@@ -264,8 +249,5 @@ void VulkanPipeline::DestroyPipelineCache()
         vkDestroyPipelineCache(deviceObj->device, pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
-    if(pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(deviceObj->device, pipelineLayout, nullptr);
-        pipelineLayout = VK_NULL_HANDLE;
-    }
+    // Note: pipelineLayout is owned by VulkanDrawable, not destroyed here
 }

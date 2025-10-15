@@ -15,7 +15,7 @@ VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
 
 VulkanStatus VulkanDrawable::Initialize()
 {
-    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
+    deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
 
     // Prepare the semaphore create info data structure
     VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo = {};
@@ -64,6 +64,40 @@ void VulkanDrawable::Prepare()
         CommandBufferMgr::EndCommandBuffer(vecCmdDraw[i]);
     }
 
+}
+
+VulkanStatus VulkanDrawable::Update()
+{
+    VulkanDevice* deviceObj = rendererObj->GetDevice();
+    uint8_t* pData;
+    glm::mat4 Projection = glm::perspective(
+        glm::radians(45.0f), 
+        (float)rendererObj->width / (float)rendererObj->height, 
+        0.1f, 
+        256.0f
+    );
+    glm::mat4 View = glm::lookAt(
+        glm::vec3(0, 0, 5), // Camera is at (0,0,5), in World Space
+        glm::vec3(0, 0, 0), // and looks at the origin
+        glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
+    );
+    glm::mat4 Model = glm::mat4(1.0f);
+    static float rot = 0.0f;
+    rot += 0.03f;
+    Model = glm::rotate(Model, rot, glm::vec3(0.0f, 1.0f, 0.0f)) *
+            glm::rotate(Model, rot, glm::vec3(1.0f, 1.0f, 1.0f));
+
+    glm::mat4 MVP = Projection * View * Model;
+
+    VK_CHECK(vkMapMemory(deviceObj->device, UniformData.mem, 0, sizeof(MVP), 0, (void**)&pData),
+             "Failed to map uniform buffer memory");
+
+    memcpy(pData, &MVP, sizeof(MVP));
+
+    VK_CHECK(vkFlushMappedMemoryRanges(deviceObj->device, static_cast<uint32_t>(UniformData.mappedRange.size()), UniformData.mappedRange.data()),
+             "Failed to flush mapped memory range");
+
+    return {};
 }
 
 VkResult VulkanDrawable::Render()
@@ -205,6 +239,23 @@ void VulkanDrawable::DestroySynchronizationObjects()
     }
 }
 
+VulkanStatus VulkanDrawable::DestroyUniformBuffer()
+{
+    if(UniformData.mem == VK_NULL_HANDLE)
+        return {};
+
+
+    vkUnmapMemory(deviceObj->device, UniformData.mem);
+    vkDestroyBuffer(deviceObj->device, UniformData.buf, nullptr);
+    vkFreeMemory(deviceObj->device, UniformData.mem, nullptr);
+    UniformData.mem = VK_NULL_HANDLE;
+    UniformData.buf = VK_NULL_HANDLE;
+    UniformData.pData = nullptr;
+    UniformData.mappedRange.clear();
+
+    return {};
+}
+
 void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdDraw)
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
@@ -243,6 +294,17 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
         pipelineHandle
     );
 
+    vkCmdBindDescriptorSets(
+        *cmdDraw,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        pipelineLayout,
+        0,
+        1,
+        descriptorSet.data(),
+        0,
+        nullptr 
+    );
+
     const VkDeviceSize offsets[1] = {0};
     vkCmdBindVertexBuffers(
         *cmdDraw,
@@ -262,7 +324,7 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
     InitViewports(cmdDraw);
     InitScissors(cmdDraw);
 
-    vkCmdDrawIndexed(*cmdDraw, 6, 1, 0, 0, 0);
+    vkCmdDraw(*cmdDraw, 3 * 2 * 6, 1, 0, 0);
 
     vkCmdEndRenderPass(*cmdDraw);
 }
@@ -428,7 +490,7 @@ VulkanStatus VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t d
     return {};
 }
 
-// CreatePipelineLayout is a virtual funciton from 
+// CreatePipelineLayout is a virtual funciton from
 // VulkanDescriptor and defined in the VulkanDrawable class.
 // Virtual VulkanStatus VulkanDescriptor::vkCreatePipelineLayout() = 0;
 // Create the pipeline layout to inject into the pipeline.
@@ -637,6 +699,19 @@ VulkanStatus VulkanDrawable::CreateUniformBuffer()
     }
 
     // Map the physical device memory region to the host
+    result = vkMapMemory(
+        deviceObj->device,
+        UniformData.mem,
+        0,
+        memRqrmnt.size,
+        0,
+        (void**)&UniformData.pData
+    );
+    if (result != VK_SUCCESS) {
+        return std::unexpected(VulkanError{ result, "Failed to map uniform buffer memory!" });
+    }
+
+    // Copy MVP data to mapped memory
     memcpy(UniformData.pData, &MVP, sizeof(MVP));
 
     // We have only one uniform buffer, so only one range
