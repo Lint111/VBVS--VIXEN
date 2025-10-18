@@ -473,8 +473,33 @@ void TextureLoader::SetImageLayout(
             break;
     }
 
-    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    // Determine appropriate pipeline stages based on layouts and access masks
+    VkPipelineStageFlags srcStage;
+    VkPipelineStageFlags dstStage;
+
+    // Source stage
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
+        srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_PREINITIALIZED) {
+        srcStage = VK_PIPELINE_STAGE_HOST_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else {
+        srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+
+    // Destination stage
+    if (newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL || newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+        dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    } else if (newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else {
+        dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
 
     vkCmdPipelineBarrier(
         cmdBuf,

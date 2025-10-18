@@ -19,6 +19,7 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     }
 
     memset(&Depth, 0, sizeof(Depth));
+    memset(&texture, 0, sizeof(texture));
     connection = GetModuleHandle(nullptr);
     wcscpy_s(name, APP_NAME_STR_LEN, L"Vulkan Window");
 
@@ -83,7 +84,7 @@ void VulkanRenderer::Initialize()
     CreateCommandPool();
 
     // Set loader for texture handling BEFORE BuildSwapChainAndDepthImage (needed for CreateDepthImage)
-    textureLoader = new STBTextureLoader(deviceObj, cmdPool);
+    textureLoader = std::make_unique<STBTextureLoader>(deviceObj, cmdPool);
 
 
     BuildSwapChainAndDepthImage();
@@ -141,6 +142,7 @@ void VulkanRenderer::DeInitialize()
     DestroyRenderPass();
     DestroyPipeline();
     DestroyShaders();
+    DestroyTexture();
 
     vecDrawables.clear();
 
@@ -871,8 +873,8 @@ void VulkanRenderer::CreateShaders()
     size_t vertShaderSize, fragShaderSize;
 
     #ifdef AUTO_COMPILE_GLSL_TO_SPV
-    vertShaderCode = ReadFile("Shaders/Draw.vert", &vertShaderSize);
-    fragShaderCode = ReadFile("Shaders/Draw.frag", &fragShaderSize);
+    vertShaderCode = ReadFile("../Shaders/Draw.vert", &vertShaderSize);
+    fragShaderCode = ReadFile("../Shaders/Draw.frag", &fragShaderSize);
 
     std::cout << "Loaded vertex shader: " << vertShaderSize << " bytes" << std::endl;
     std::cout << "Loaded fragment shader: " << fragShaderSize << " bytes" << std::endl;
@@ -1039,5 +1041,29 @@ void VulkanRenderer::CreateDescriptors()
             std::cerr << "Failed to create descriptor: " << result.error().toString() << std::endl;
             exit(1);
         }
+    }
+}
+
+void VulkanRenderer::DestroyTexture()
+{
+    if (texture.sampler != VK_NULL_HANDLE) {
+        vkDestroySampler(deviceObj->device, texture.sampler, nullptr);
+        texture.sampler = VK_NULL_HANDLE;
+    }
+    if (texture.view != VK_NULL_HANDLE) {
+        vkDestroyImageView(deviceObj->device, texture.view, nullptr);
+        texture.view = VK_NULL_HANDLE;
+    }
+    if (texture.image != VK_NULL_HANDLE) {
+        vkDestroyImage(deviceObj->device, texture.image, nullptr);
+        texture.image = VK_NULL_HANDLE;
+    }
+    if (texture.mem != VK_NULL_HANDLE) {
+        vkFreeMemory(deviceObj->device, texture.mem, nullptr);
+        texture.mem = VK_NULL_HANDLE;
+    }
+    if (texture.cmdTexture != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(deviceObj->device, cmdPool, 1, &texture.cmdTexture);
+        texture.cmdTexture = VK_NULL_HANDLE;
     }
 }

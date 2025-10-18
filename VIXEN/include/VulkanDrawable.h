@@ -90,9 +90,9 @@ class VulkanDrawable : public VulkanDescriptor {
 
     VkViewport viewport;
     VkRect2D scissor;
-    VkSemaphore presentCompleteSemaphore;
-    VkSemaphore drawingCompleteSemaphore;
-    
+    std::vector<VkSemaphore> presentCompleteSemaphores;
+    std::vector<VkSemaphore> drawingCompleteSemaphores;
+
     VulkanRenderer* rendererObj;
     VkPipeline pipelineHandle;
 

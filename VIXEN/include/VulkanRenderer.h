@@ -59,6 +59,7 @@ class VulkanRenderer {
     void DestroyFrameBuffer();
     void DestroyPipeline();
 	void DestroyShaders();
+    void DestroyTexture();
 
     inline VulkanApplication* GetApp() const { return appObj; }
     inline VulkanDevice* GetDevice() const { return deviceObj; }
@@ -112,7 +113,7 @@ class VulkanRenderer {
     std::vector<VkPipeline> pipelineHandles;
 
     TextureData texture; // Pointer to texture data, if any
-    TextureLoader* textureLoader = nullptr;
+    std::unique_ptr<TextureLoader> textureLoader;
 
     int width, height;
 

@@ -14,29 +14,17 @@ VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
     memset(&viIpAttr, 0, sizeof(viIpAttr));
     memset(&VertexBuffer, 0, sizeof(VertexBuffer));
     memset(&IndexBuffer, 0, sizeof(IndexBuffer));
+
+    // Initialize Vulkan handles to null
+    pipelineHandle = VK_NULL_HANDLE;
 }
 
 VulkanStatus VulkanDrawable::Initialize()
 {
     deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
 
-    // Prepare the semaphore create info data structure
-    VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo = {};
-    presentCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    presentCompleteSemaphoreCreateInfo.pNext = nullptr;
-    presentCompleteSemaphoreCreateInfo.flags = 0;
-
-    VkSemaphoreCreateInfo drawingCompleteSemaphoreCreateInfo = {};
-    drawingCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    drawingCompleteSemaphoreCreateInfo.pNext = nullptr;
-    drawingCompleteSemaphoreCreateInfo.flags = 0;
-
-    // Create the semaphores
-    VK_CHECK(vkCreateSemaphore(deviceObj->device, &presentCompleteSemaphoreCreateInfo, nullptr, &presentCompleteSemaphore),
-             "Failed to create present complete semaphore");
-
-    VK_CHECK(vkCreateSemaphore(deviceObj->device, &drawingCompleteSemaphoreCreateInfo, nullptr, &drawingCompleteSemaphore),
-             "Failed to create drawing complete semaphore");
+    // Semaphores will be created later in Prepare() when we know swapchain image count
+    // This is because we need one semaphore per swapchain image
 
     return {};
 }
@@ -59,9 +47,35 @@ VulkanDrawable::~VulkanDrawable()
 void VulkanDrawable::Prepare()
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
-    vecCmdDraw.resize(rendererObj->GetSwapChain()->scPublicVars.colorBuffers.size());
+    const uint32_t imageCount = rendererObj->GetSwapChain()->scPublicVars.colorBuffers.size();
 
-    for (int i = 0; i < rendererObj->GetSwapChain()->scPublicVars.colorBuffers.size(); i++) {
+    vecCmdDraw.resize(imageCount);
+
+    // Create one semaphore per swapchain image if not already created
+    if (presentCompleteSemaphores.empty()) {
+        presentCompleteSemaphores.resize(imageCount);
+        drawingCompleteSemaphores.resize(imageCount);
+
+        VkSemaphoreCreateInfo semaphoreInfo = {};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreInfo.pNext = nullptr;
+        semaphoreInfo.flags = 0;
+
+        for (uint32_t i = 0; i < imageCount; i++) {
+            VkResult result = vkCreateSemaphore(deviceObj->device, &semaphoreInfo, nullptr, &presentCompleteSemaphores[i]);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to create present complete semaphore: " << VulkanError{result, ""}.toString() << std::endl;
+                exit(1);
+            }
+            result = vkCreateSemaphore(deviceObj->device, &semaphoreInfo, nullptr, &drawingCompleteSemaphores[i]);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Failed to create drawing complete semaphore: " << VulkanError{result, ""}.toString() << std::endl;
+                exit(1);
+            }
+        }
+    }
+
+    for (int i = 0; i < imageCount; i++) {
         CommandBufferMgr::AllocateCommandBuffer(
             &deviceObj->device,
             rendererObj->GetCommandPool(),
@@ -124,34 +138,39 @@ VkResult VulkanDrawable::Render()
 
     VkFence nullFence = VK_NULL_HANDLE;
 
-    // Create semaphores for synchronization
+    // Track current frame for semaphore indexing
+    static uint32_t currentFrame = 0;
+    const uint32_t frameIndex = currentFrame % presentCompleteSemaphores.size();
 
+    // Acquire the next image from the swapchain
+    // Use semaphore for THIS frame (not based on image index)
     constexpr uint64_t ACQUIRE_IMAGE_TIMEOUT_NS = UINT64_MAX; // No timeout
     VkResult result = swapChainObj->fpAcquireNextImageKHR(
         deviceObj->device,
         swapChain,
         ACQUIRE_IMAGE_TIMEOUT_NS,
-        presentCompleteSemaphore,
+        presentCompleteSemaphores[frameIndex],
         nullFence,
         &currentColorImage
     );
     if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || result != VK_SUCCESS) {
         return result;
     }
-    
+
     // Setup submit info to wait on image acquired and signal when render complete
+    // Use the semaphores corresponding to the current frame
     VkPipelineStageFlags submitPipelineStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.pNext = nullptr;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &presentCompleteSemaphore;
+    submitInfo.pWaitSemaphores = &presentCompleteSemaphores[frameIndex];
     submitInfo.pWaitDstStageMask = &submitPipelineStages;
     submitInfo.commandBufferCount = (uint32_t)sizeof(vecCmdDraw[currentColorImage]) / sizeof(VkCommandBuffer);
     submitInfo.pCommandBuffers = &vecCmdDraw[currentColorImage];
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &drawingCompleteSemaphore;
+    submitInfo.pSignalSemaphores = &drawingCompleteSemaphores[frameIndex];
 
     CommandBufferMgr::SubmitCommandBuffer(
         deviceObj->queue,
@@ -167,12 +186,17 @@ VkResult VulkanDrawable::Render()
     present.swapchainCount = 1;
     present.pSwapchains = &swapChain;
     present.pImageIndices = &currentColorImage;
-    present.pWaitSemaphores = &drawingCompleteSemaphore;
-    present.waitSemaphoreCount = 1;
+    present.pWaitSemaphores = &drawingCompleteSemaphores[frameIndex];
     present.pResults = nullptr;
 
     result = swapChainObj->fpQueuePresentKHR(deviceObj->queue, &present);
 
+    // Wait for GPU to finish this frame before starting the next one
+    // This ensures semaphores are properly synchronized
+    // TODO: Replace with per-frame fences for better performance
+    vkDeviceWaitIdle(deviceObj->device);
+
+    currentFrame++;
     return result;
 }
 
@@ -243,14 +267,22 @@ void VulkanDrawable::DestroySynchronizationObjects()
 {
     VulkanApplication* appObj = VulkanApplication::GetInstance();
     VulkanDevice* deviceObj = appObj->deviceObj.get();
-    if (presentCompleteSemaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(deviceObj->device, presentCompleteSemaphore, nullptr);
-        presentCompleteSemaphore = VK_NULL_HANDLE;
+
+    for (auto& semaphore : presentCompleteSemaphores) {
+        if (semaphore != VK_NULL_HANDLE) {
+            vkDestroySemaphore(deviceObj->device, semaphore, nullptr);
+            semaphore = VK_NULL_HANDLE;
+        }
     }
-    if (drawingCompleteSemaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(deviceObj->device, drawingCompleteSemaphore, nullptr);
-        drawingCompleteSemaphore = VK_NULL_HANDLE;
+    presentCompleteSemaphores.clear();
+
+    for (auto& semaphore : drawingCompleteSemaphores) {
+        if (semaphore != VK_NULL_HANDLE) {
+            vkDestroySemaphore(deviceObj->device, semaphore, nullptr);
+            semaphore = VK_NULL_HANDLE;
+        }
     }
+    drawingCompleteSemaphores.clear();
 }
 
 VulkanStatus VulkanDrawable::DestroyUniformBuffer()
@@ -273,6 +305,13 @@ VulkanStatus VulkanDrawable::DestroyUniformBuffer()
 void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdDraw)
 {
     VulkanDevice* deviceObj = rendererObj->GetDevice();
+
+    // Validate pipeline handle before recording
+    if (pipelineHandle == VK_NULL_HANDLE) {
+        std::cerr << "ERROR: pipelineHandle is VK_NULL_HANDLE in RecordCommandBuffer!" << std::endl;
+        std::cerr << "  Make sure SetPipeline() is called before Prepare()" << std::endl;
+        exit(1);
+    }
 
     constexpr uint32_t MAX_CLEAR_VALUES = 2;
     VkClearValue clearValues[MAX_CLEAR_VALUES];
@@ -297,14 +336,14 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
     rpBeginInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(
-        *cmdDraw, 
-        &rpBeginInfo, 
+        *cmdDraw,
+        &rpBeginInfo,
         VK_SUBPASS_CONTENTS_INLINE
     );
 
     vkCmdBindPipeline(
-        *cmdDraw, 
-        VK_PIPELINE_BIND_POINT_GRAPHICS, 
+        *cmdDraw,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelineHandle
     );
 
