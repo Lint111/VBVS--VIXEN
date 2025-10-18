@@ -192,6 +192,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/logger)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/time)
 
 # Gather list of header and source files for compilation
+# Includes all source files:
+#  - Main application (source/*.cpp)
+#  - Vulkan wrappers (source/VulkanResources/*.cpp, source/TextureHandling/*.cpp, etc.)
+#  - Render Graph system (source/RenderGraph/*.cpp) - Graph-based rendering pipeline
 file(GLOB_RECURSE CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
 file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
 
@@ -227,3 +231,8 @@ set_property(TARGET ${Recipe_Name} PROPERTY CXX_STANDARD_REQUIRED ON)
 # Define C version to be used for building the project
 set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD 23)
 set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD_REQUIRED ON)
+
+# Add /FS flag for MSVC to allow multiple CL.EXE to write to the same PDB file
+if(MSVC)
+    target_compile_options(${Recipe_Name} PRIVATE /FS)
+endif()

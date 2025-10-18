@@ -1,8 +1,7 @@
 #pragma once
 
 #include <Headers.h>
-#include "VulkanResources/VulkanInstance.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanApplicationBase.h"
 #include "error/VulkanError.h"
 #include "Logger.h"
 
@@ -10,51 +9,40 @@ class VulkanRenderer;
 
 using namespace Vixen::Vulkan::Resources;
 
-class VulkanApplication {
+/**
+ * @brief Traditional Vulkan application with renderer-based rendering
+ * 
+ * Uses VulkanRenderer for traditional forward rendering pipeline.
+ * Maintains singleton pattern for backward compatibility.
+ */
+class VulkanApplication : public VulkanApplicationBase {
 private:
 	VulkanApplication();
+	
 public:
-	~VulkanApplication();
+	~VulkanApplication() override;
 
 private:
-    // variable for singleton pattern
+    // Variable for singleton pattern
     static std::unique_ptr<VulkanApplication> instance;
     static std::once_flag onlyOnce;
 
 public:
     static VulkanApplication* GetInstance();
-    void Initialize();
-    void DeInitialize();
-    void Prepare();
-    void Update();
-    bool render();
+    
+    // Override base class methods
+    void Initialize() override;
+    void DeInitialize() override;
+    void Prepare() override;
+    void Update() override;
+    bool Render() override;
 
-    inline bool IsPrepared() const { return isPrepared; }
+    // Legacy method name support
+    inline bool render() { return Render(); }
 
+    // Renderer access
+    inline VulkanRenderer* GetRenderer() const { return renderObj.get(); }
 
-private:
-    VulkanStatus CreateVulkanInstance(std::vector<const char*>& layers,
-                                       std::vector<const char*>& extensions,
-                                       const char* applicationName);
-
-    VulkanStatus HandShakeWithDevice(VkPhysicalDevice *gpu, std::vector<const char *> &layers, std::vector<const char *> &extensions);
-    VulkanStatus EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList);
-
-    VulkanStatus DestroyDevices();
-
-
-public:
-    VulkanInstance instanceObj; // Vulkan instance object variable
-    std::unique_ptr<VulkanDevice> deviceObj; // Vulkan device object variable
+    // Public for compatibility
     std::unique_ptr<VulkanRenderer> renderObj; // Vulkan renderer object variable
-    std::shared_ptr<Logger> mainLogger; // Main application logger
-
-private:
-    bool debugFlag; // enable or disable debug callback
-    bool isPrepared = false;
-
-    // Store gpuList as member to prevent it from going out of scope
-    std::vector<VkPhysicalDevice> gpuList;
-
-
 };

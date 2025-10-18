@@ -1,5 +1,6 @@
 #include "Headers.h"
-#include "VulkanApplication.h"
+#include "VulkanApplicationBase.h"
+#include "VulkanGraphApplication.h"
 
 std::vector<const char*> deviceExtensionNames = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -25,7 +26,7 @@ std::vector<const char*> layerNames = {
 
 int main(int argc, char** argv) {
     try {
-        VulkanApplication* appObj = VulkanApplication::GetInstance();
+        VulkanApplicationBase* appObj = VulkanGraphApplication::GetInstance();
 
         appObj -> Initialize();
         appObj -> Prepare();
@@ -33,7 +34,7 @@ int main(int argc, char** argv) {
         bool isWindowOpen = true;
         while(isWindowOpen) {
             appObj -> Update();
-            isWindowOpen = appObj->render();
+            isWindowOpen = appObj->Render();
         }
 
         appObj -> DeInitialize();

@@ -278,10 +278,6 @@ FETCHCONTENT_QUIET:BOOL=ON
 FETCHCONTENT_SOURCE_DIR_GLI:PATH=
 
 //When not empty, overrides where to find pre-populated content
-// for GLIU
-FETCHCONTENT_SOURCE_DIR_GLIU:PATH=
-
-//When not empty, overrides where to find pre-populated content
 // for glm
 FETCHCONTENT_SOURCE_DIR_GLM:PATH=
 
@@ -298,9 +294,6 @@ FETCHCONTENT_UPDATES_DISCONNECTED:BOOL=OFF
 
 //Enables UPDATE_DISCONNECTED behavior just for population of gli
 FETCHCONTENT_UPDATES_DISCONNECTED_GLI:BOOL=OFF
-
-//Enables UPDATE_DISCONNECTED behavior just for population of GLIU
-FETCHCONTENT_UPDATES_DISCONNECTED_GLIU:BOOL=OFF
 
 //Enables UPDATE_DISCONNECTED behavior just for population of glm
 FETCHCONTENT_UPDATES_DISCONNECTED_GLM:BOOL=OFF
@@ -384,15 +377,6 @@ Vulkan_INCLUDE_DIR:PATH=C:/VulkanSDK/1.4.321.1/include
 
 //Path to a library.
 Vulkan_LIBRARY:FILEPATH=C:/VulkanSDK/1.4.321.1/Lib/vulkan-1.lib
-
-//Value Computed by CMake
-gli_BINARY_DIR:STATIC=C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/gliu-build
-
-//Value Computed by CMake
-gli_IS_TOP_LEVEL:STATIC=OFF
-
-//Value Computed by CMake
-gli_SOURCE_DIR:STATIC=C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/gliu-src
 
 //Value Computed by CMake
 glm_BINARY_DIR:STATIC=C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/glm-build
