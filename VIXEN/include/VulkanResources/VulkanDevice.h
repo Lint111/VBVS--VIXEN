@@ -22,6 +22,7 @@ public:
     uint32_t graphicsQueueIndex;
     uint32_t graphicsQueueWithPresentIndex;
     uint32_t queueFamilyCount;
+    VkPhysicalDeviceFeatures deviceFeatures; // physical device features
     
     VulkanLayerAndExtension layerExtension;
 

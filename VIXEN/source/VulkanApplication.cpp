@@ -140,7 +140,8 @@ void VulkanApplication::DeInitialize() {
 
     instanceObj.DestroyInstance();
 
-    DestroyDevices();
+    // DestroyDevices already called via deviceObj.reset(), but call anyway for safety
+    (void)DestroyDevices();
 }
 
 VulkanStatus VulkanApplication::EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList) {

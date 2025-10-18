@@ -4,6 +4,8 @@
 
 cmake_minimum_required(VERSION 3.11)
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 set(Recipe_Name "7e_ShadersWithSPIRV")
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
@@ -121,7 +123,34 @@ if(NOT vulkanheaders_POPULATED)
     FetchContent_Populate(VulkanHeaders)
 endif()
 
+# GLI Setup - header-only library for compressed texture loading (DDS/KTX)
+set(GLI_TEST_ENABLE OFF CACHE BOOL "" FORCE)  # Disable GLI tests
+FetchContent_Declare(
+	gli
+	GIT_REPOSITORY https://github.com/g-truc/gli.git
+	GIT_TAG        master
+	GIT_SHALLOW    TRUE  # Shallow clone to reduce download size
+)
 
+FetchContent_GetProperties(gli)
+if(NOT gli_POPULATED)
+    FetchContent_Populate(gli)
+    # GLI is header-only, just use the source directory
+endif()
+
+# STB Setup - header-only library for uncompressed image loading (PNG/JPG/etc)
+FetchContent_Declare(
+	stb
+	GIT_REPOSITORY https://github.com/nothings/stb.git
+	GIT_TAG        master
+	GIT_SHALLOW    TRUE
+)
+
+FetchContent_GetProperties(stb)
+if(NOT stb_POPULATED)
+    FetchContent_Populate(stb)
+    # STB is header-only, just use the source directory
+endif()
 
 # Specify a suitable project name
 project(${Recipe_Name})
@@ -139,12 +168,15 @@ list(APPEND VULKAN_LIB_LIST "vulkan-1")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
+	include_directories(BEFORE ${gli_SOURCE_DIR})  # GLI is header-only
+	include_directories(BEFORE ${stb_SOURCE_DIR})  # STB is header-only
 
 	# Include Vulkan header files from Vulkan SDK
 	include_directories(AFTER ${VULKAN_PATH}/include)
 
 	# Link directory for vulkan-1
 	link_directories(${VULKAN_PATH}/Bin;${VULKAN_PATH}/Lib;)
+
 endif()
 
 

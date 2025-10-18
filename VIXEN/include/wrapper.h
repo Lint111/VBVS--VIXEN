@@ -2,6 +2,14 @@
 
 #include "Headers.h"
 
+// Forward declare TextureData from texture loading namespace
+namespace Vixen::TextureHandling {
+    struct TextureData;
+}
+
+// Type alias for convenience
+using TextureData = Vixen::TextureHandling::TextureData;
+
 // Utility function to read file into memory
 void* ReadFile(const char* filePath, size_t* outSize);
 
@@ -28,7 +36,5 @@ public:
                                     const VkCommandBuffer* pCmdBufList,
                                     const VkSubmitInfo* pSubmitInfo = nullptr,
                                     const VkFence& fence = VK_NULL_HANDLE);
-
-
 
 };

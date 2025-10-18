@@ -38,7 +38,7 @@ public:
         VulkanDrawable* drawableObj,
         VulkanShader* shaderObj,
         Config config,
-        VkPipeline& pipeline
+        VkPipeline* pipeline
     );
 
     // Destruct the pipeline cache object.

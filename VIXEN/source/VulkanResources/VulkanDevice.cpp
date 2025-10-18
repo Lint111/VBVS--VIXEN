@@ -32,7 +32,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     // Enable swapchainMaintenance1 feature if extension is present
 
-    std::vector<DeviceFeatureMapping> featureMappings = {
+    std::vector<DeviceFeatureMapping> deviceExtentionMappings = {
         {
             VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, 
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, 
@@ -45,7 +45,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         }
     };
 
-    for (auto& mapping : featureMappings) {
+    for (auto& mapping : deviceExtentionMappings) {
         if (!HasExtension(extensions, mapping.extensionName)) {
             continue;
         }
@@ -70,7 +70,12 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         // Store the unique_ptr to keep the memory alive
         deviceFeatureStorage.push_back(std::move(featureStruct));
     }
-    
+
+    vkGetPhysicalDeviceFeatures(*gpu, &deviceFeatures);
+
+    // When using VkPhysicalDeviceFeatures2 in pNext, features go in deviceFeatures2.features, not pEnabledFeatures
+    deviceFeatures2.features.samplerAnisotropy = deviceFeatures.samplerAnisotropy;
+
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -82,7 +87,7 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.ppEnabledLayerNames = layers.size() ? layers.data() : nullptr;
     deviceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : nullptr;
-    deviceInfo.pEnabledFeatures = nullptr;
+    deviceInfo.pEnabledFeatures = nullptr;  // Must be NULL when using VkPhysicalDeviceFeatures2
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
     return {};

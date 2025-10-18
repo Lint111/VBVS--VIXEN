@@ -7,6 +7,11 @@
 #include "VulkanPipeline.h"
 #include "MeshData.h"
 
+// STB Image - define implementation in this single translation unit
+#include "TextureHandling/Loading/STBTextureLoader.h"
+// GLI Texture Loader
+#include "TextureHandling/Loading/GLITextureLoader.h"
+
 VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject) {
     if (!app || !deviceObject) {
         std::cerr << "Fatal error: VulkanRenderer requires non-null application and device objects" << std::endl;
@@ -77,6 +82,10 @@ void VulkanRenderer::Initialize()
 
     CreateCommandPool();
 
+    // Set loader for texture handling BEFORE BuildSwapChainAndDepthImage (needed for CreateDepthImage)
+    textureLoader = new STBTextureLoader(deviceObj, cmdPool);
+
+
     BuildSwapChainAndDepthImage();
 
     // Drawables are created in constructor, no need to recreate
@@ -97,12 +106,30 @@ void VulkanRenderer::Initialize()
 
     CreateShaders();
 
+    const char* fileName = "C:\\Users\\liory\\Downloads\\earthmap.jpg";
+
+    if (!textureLoader) {
+        std::cerr << "ERROR: textureLoader is NULL!" << std::endl;
+        exit(1);
+    }
+
+    TextureLoadConfig config;
+    config.uploadMode = TextureLoadConfig::UploadMode::Optimal;
+    texture = textureLoader->Load(fileName, config);
+    std::cout << "Texture loaded successfully!" << std::endl;
+
+
+    for (auto& drawable : vecDrawables) {
+        drawable->SetTexture(&texture);
+    }
+
     CreateDescriptors();
 
     CreatePipelineStateManagement();
-
+    
     isInitialized = true;
 }
+
 
 void VulkanRenderer::DeInitialize()
 {
@@ -633,16 +660,24 @@ void VulkanRenderer::CreateDepthImage()
     ); 
 
     CommandBufferMgr::BeginCommandBuffer(cmdDepthImage);
-    {
-        SetImageLayout(
-            Depth.image,
-            VK_IMAGE_ASPECT_DEPTH_BIT,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            (VkAccessFlagBits)0,
-            cmdDepthImage
-        );
-    }
+
+    VkImageSubresourceRange subresourceRange{};
+    subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = 1;
+    subresourceRange.layerCount = 1;
+
+
+
+    textureLoader->SetImageLayout(
+        Depth.image,
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        subresourceRange,
+        cmdDepthImage
+    );
+
 
     CommandBufferMgr::EndCommandBuffer(cmdDepthImage);
     CommandBufferMgr::SubmitCommandBuffer(
@@ -836,8 +871,8 @@ void VulkanRenderer::CreateShaders()
     size_t vertShaderSize, fragShaderSize;
 
     #ifdef AUTO_COMPILE_GLSL_TO_SPV
-    vertShaderCode = ReadFile("../shaders/Draw.vert", &vertShaderSize);
-    fragShaderCode = ReadFile("../shaders/Draw.frag", &fragShaderSize);
+    vertShaderCode = ReadFile("Shaders/Draw.vert", &vertShaderSize);
+    fragShaderCode = ReadFile("Shaders/Draw.frag", &fragShaderSize);
 
     std::cout << "Loaded vertex shader: " << vertShaderSize << " bytes" << std::endl;
     std::cout << "Loaded fragment shader: " << fragShaderSize << " bytes" << std::endl;
@@ -870,8 +905,15 @@ void VulkanRenderer::CreateShaders()
 
 void VulkanRenderer::CreatePipelineStateManagement()
 {
-    pipelineState = std::make_unique<VulkanPipeline>();
+    for (auto& drawable : vecDrawables) {
+        if (auto result = drawable->CreatePipelineLayout(); !result) {
+            std::cerr << "Failed to create pipeline layout: " << result.error().toString() << std::endl;
+            exit(1);
+        }
+    }
 
+
+    pipelineState = std::make_unique<VulkanPipeline>();
     pipelineState->CreatePipelineCache();
 
     VulkanPipeline::Config config = {};
@@ -881,21 +923,22 @@ void VulkanRenderer::CreatePipelineStateManagement()
     config.viewPort = {0, 0, (float)width, (float)height};
     config.scissor = {{0, 0}, {(unsigned int)width, (unsigned int)height}};
 
-    VkPipeline pipelineHandle = VK_NULL_HANDLE;
     for (auto& drawable : vecDrawables) {
+        VkPipeline pipelineHandle = VK_NULL_HANDLE; // Direct handle, not a pointer
+        
         if(pipelineState->CreatePipeline(
             drawable.get(),
             shaderObj.get(),
             config,
-            pipelineHandle
+            &pipelineHandle // Pass address to receive the handle
         )) {
-            drawable->SetPipeline(pipelineHandle);
+            drawable->SetPipeline(pipelineHandle); // Pass the actual handle
             pipelineHandles.push_back(pipelineHandle);
         }
         else {
             std::cerr << "Failed to create pipeline for drawable!" << std::endl;
-            free(pipelineHandle);
-            pipelineHandle = nullptr;
+            // VkPipeline is a handle, not allocated memory - don't free it
+            // pipelineHandle is already VK_NULL_HANDLE from initialization
         }
     }
 }
@@ -985,101 +1028,14 @@ void VulkanRenderer::DestroyShaders()
     shaderObj->DestroyShader();
 }
 
-void VulkanRenderer::SetImageLayout(VkImage image, VkImageAspectFlags aspectMask, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkAccessFlagBits srcAccessMask, const VkCommandBuffer& cmd) {
-    if (cmd == VK_NULL_HANDLE || deviceObj->queue == VK_NULL_HANDLE) {
-        std::cerr << "SetImageLayout: Invalid command buffer or device queue" << std::endl;
-        exit(1);
-    }
-
-    VkImageMemoryBarrier imgMemoryBarrier = {};
-    imgMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imgMemoryBarrier.pNext = nullptr;
-    imgMemoryBarrier.srcAccessMask = srcAccessMask;
-    imgMemoryBarrier.dstAccessMask = 0;
-    imgMemoryBarrier.oldLayout = oldImageLayout;
-    imgMemoryBarrier.newLayout = newImageLayout;
-    imgMemoryBarrier.image = image;
-    imgMemoryBarrier.subresourceRange.aspectMask = aspectMask;
-    imgMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imgMemoryBarrier.subresourceRange.levelCount = 1;
-    imgMemoryBarrier.subresourceRange.layerCount = 1;
-
-    if (oldImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-        imgMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    }
-
-    switch (newImageLayout) {
-        // Ensure that anything that was copying from this image
-        // has completed. An image in this layout can only be
-        // used as the destination operand of the commands
-
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-            imgMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            break;
-
-        // Ensure any copy or CPU writes to image are flushed. An image
-        // in this layout can only be used as a read-only shader resource.
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            imgMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            imgMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            break;
-
-        // An image in this layout can only be used as a
-        //framebuffer color attachment
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            imgMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            break;
-
-        // An image in this layout can only be used as a
-        //framebuffer depth/stencil attachment
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-            imgMemoryBarrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            break;
-
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            imgMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            break;
-    }
-
-    VkPipelineStageFlags srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    VkPipelineStageFlags destStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-
-    // Set appropriate destination stage based on new layout
-    if (newImageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        destStages = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    } else if (newImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-        destStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    } else if (newImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        destStages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    } else if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ||
-               newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        destStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    }
-
-    vkCmdPipelineBarrier(
-        cmd,
-        srcStages,
-        destStages,
-        0,
-        0,
-        nullptr,
-        0,
-        nullptr,
-        1,
-        &imgMemoryBarrier
-    );
-
-}
-
 void VulkanRenderer::CreateDescriptors()
 {
     for (auto& drawAble : vecDrawables) {
-        if (auto result = drawAble->CreateDescriptorSetLayout(false); !result) {
+        if (auto result = drawAble->CreateDescriptorSetLayout(true); !result) {
             std::cerr << "Failed to create descriptor set layout: " << result.error().toString() << std::endl;
             exit(1);
         }
-        if (auto result = drawAble->CreateDescriptor(false); !result) {
+        if (auto result = drawAble->CreateDescriptor(true); !result) {
             std::cerr << "Failed to create descriptor: " << result.error().toString() << std::endl;
             exit(1);
         }

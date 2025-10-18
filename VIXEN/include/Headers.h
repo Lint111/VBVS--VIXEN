@@ -25,6 +25,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+// GLI Header files - for compressed textures (DDS/KTX)
+#include <gli/gli.hpp>
+
 #include <iostream>
 #include <string>
 #include <sstream>

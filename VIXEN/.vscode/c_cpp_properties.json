@@ -5,7 +5,11 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "C:\\VulkanSDK\\1.4.321.1\\Include",
-                "C:\\VulkanSDK\\1.4.321.1\\Include\\glslang"
+                "C:\\VulkanSDK\\1.4.321.1\\Include\\glslang",
+                "${workspaceFolder}/build/_deps/gli-src",
+                "${workspaceFolder}/build/_deps/stb-src",
+                "${workspaceFolder}/build/_deps/glm-src",
+                "${workspaceFolder}/build/_deps/vulkanheaders-src/include"
             ],
             "defines": [
                 "_DEBUG",

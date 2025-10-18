@@ -6,9 +6,12 @@
 #include "VulkanShader.h"
 #include "FrameRateLogger.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "wrapper.h"
+#include "TextureHandling/Loading/TextureLoader.h"
 
 using namespace Vixen::Core;
 using namespace Vixen::Vulkan::Resources;
+using namespace Vixen::TextureHandling;
 
 class VulkanApplication;
 class VulkanSwapChain;
@@ -33,7 +36,6 @@ class VulkanRenderer {
 
     // create an empty window for presentation
     void CreatePresentationWindow(const int& width = 500, const int& height = 500);
-    void SetImageLayout(VkImage image, VkImageAspectFlags aspectMask, VkImageLayout oldImageLayout, VkImageLayout newImageLayout, VkAccessFlagBits srcAccessMask, const VkCommandBuffer &cmd);
 
     void DestroyPresentationWindow();
 
@@ -48,7 +50,6 @@ class VulkanRenderer {
     void CreateShaders();
     void CreatePipelineStateManagement();
     void CreateDescriptors();
-
 
     void DestroyCommandBuffer();
     void DestroyCommandPool();
@@ -109,6 +110,9 @@ class VulkanRenderer {
     VkRenderPass renderPass;
     std::vector<VkFramebuffer> frameBuffers;
     std::vector<VkPipeline> pipelineHandles;
+
+    TextureData texture; // Pointer to texture data, if any
+    TextureLoader* textureLoader = nullptr;
 
     int width, height;
 

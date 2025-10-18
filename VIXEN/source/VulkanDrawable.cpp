@@ -7,10 +7,11 @@
 using namespace Vixen::Vulkan::Resources;
 
 VulkanDrawable::VulkanDrawable(VulkanRenderer *parent)
-    : rendererObj(parent),
-      presentCompleteSemaphore(VK_NULL_HANDLE),
-      drawingCompleteSemaphore(VK_NULL_HANDLE)
+    : rendererObj(parent)
 {
+    // Initialize vertex input structures to zero
+    memset(&viIpBind, 0, sizeof(viIpBind));
+    memset(&viIpAttr, 0, sizeof(viIpAttr));
     memset(&VertexBuffer, 0, sizeof(VertexBuffer));
     memset(&IndexBuffer, 0, sizeof(IndexBuffer));
 }
@@ -100,6 +101,9 @@ VulkanStatus VulkanDrawable::Update(float deltaTime)
 
     glm::mat4 MVP = Projection * View * Model;
 
+    VK_CHECK(vkInvalidateMappedMemoryRanges(deviceObj->device, static_cast<uint32_t>(UniformData.mappedRange.size()), UniformData.mappedRange.data()),
+             "Failed to invalidate mapped memory range");
+
     // Memory is already persistently mapped - just copy directly
     memcpy(UniformData.pData, &MVP, sizeof(MVP));
 
@@ -144,7 +148,7 @@ VkResult VulkanDrawable::Render()
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &presentCompleteSemaphore;
     submitInfo.pWaitDstStageMask = &submitPipelineStages;
-    submitInfo.commandBufferCount = 1;
+    submitInfo.commandBufferCount = (uint32_t)sizeof(vecCmdDraw[currentColorImage]) / sizeof(VkCommandBuffer);
     submitInfo.pCommandBuffers = &vecCmdDraw[currentColorImage];
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = &drawingCompleteSemaphore;
@@ -313,6 +317,31 @@ void VulkanDrawable::RecordCommandBuffer(int currentImage, VkCommandBuffer *cmdD
         descriptorSet.data(),
         0,
         nullptr 
+    );
+
+    // Push constants for fragment shader
+    enum ColorFlag {
+        RED = 0,
+        GREEN = 1,
+        BLUE = 2,
+        YELLOW = 3,
+        MIXED_COLOR = 4
+    };
+
+    float mixerValue = 0.3f;
+    unsigned int constColorRGPFlag = YELLOW;
+
+    unsigned pushConstants[2] = {};
+    pushConstants[0] = constColorRGPFlag;
+    memcpy(&pushConstants[1], &mixerValue, sizeof(float));
+
+    vkCmdPushConstants(
+        *cmdDraw,
+        pipelineLayout,
+        VK_SHADER_STAGE_FRAGMENT_BIT,
+        0,
+        sizeof(pushConstants),
+        pushConstants
     );
 
     const VkDeviceSize offsets[1] = {0};
@@ -506,12 +535,20 @@ VulkanStatus VulkanDrawable::CreateVertexIndex(const void* indexData, uint32_t d
 // Create the pipeline layout to inject into the pipeline.
 VulkanStatus VulkanDrawable::CreatePipelineLayout()
 {
+
+    // Setup the push constant range
+    const unsigned int pushConstantRangeCount = 1;
+    VkPushConstantRange pushConstantRange[pushConstantRangeCount] = {};
+    pushConstantRange[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange[0].offset = 0;
+    pushConstantRange[0].size = sizeof(int) + sizeof(float); // int + float = 8 bytes
+
     // Create the pipeline layout using descriptor layout.
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = {};
     pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pPipelineLayoutCreateInfo.pNext = nullptr;
-    pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-    pPipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = pushConstantRangeCount;
+    pPipelineLayoutCreateInfo.pPushConstantRanges = pushConstantRange;
     pPipelineLayoutCreateInfo.setLayoutCount = static_cast<uint32_t>(descLayout.size());
     pPipelineLayoutCreateInfo.pSetLayouts = descLayout.data();
 
@@ -771,12 +808,12 @@ VulkanStatus VulkanDrawable::CreateDescriptorSet(bool useTexture)
 
     // Create the descriptor allocation structure and specify 
     // the descriptor pool and layout to be used for allocation
-    VkDescriptorSetAllocateInfo descAllocInfo = {};
-    descAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    descAllocInfo.pNext = nullptr;
-    descAllocInfo.descriptorPool = descriptorPool;
-    descAllocInfo.descriptorSetCount = 1;
-    descAllocInfo.pSetLayouts = descLayout.data();
+    VkDescriptorSetAllocateInfo descAllocInfo[1];
+    descAllocInfo[0].sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descAllocInfo[0].pNext = nullptr;
+    descAllocInfo[0].descriptorPool = descriptorPool;
+    descAllocInfo[0].descriptorSetCount = 1;
+    descAllocInfo[0].pSetLayouts = descLayout.data();
 
     // Allocate the number of descriptor set needs to be created
     descriptorSet.resize(1);
@@ -784,7 +821,7 @@ VulkanStatus VulkanDrawable::CreateDescriptorSet(bool useTexture)
     // Allocate the descriptor set(s)
     VK_CHECK(vkAllocateDescriptorSets(
         deviceObj->device, 
-        &descAllocInfo, 
+        descAllocInfo, 
         descriptorSet.data()
     ), "Failed to allocate descriptor sets");
 
@@ -814,7 +851,7 @@ VulkanStatus VulkanDrawable::CreateDescriptorSet(bool useTexture)
         writes[1].dstBinding = 1;
         writes[1].descriptorCount = 1;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writes[1].pImageInfo = nullptr;
+        writes[1].pImageInfo = &textures->descsImageInfo;
         writes[1].dstArrayElement = 0;
     }
 

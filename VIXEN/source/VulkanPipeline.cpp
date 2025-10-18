@@ -43,7 +43,7 @@ void VulkanPipeline::CreatePipelineCache()
     assert(result == VK_SUCCESS);
 }
 
-bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *shaderObj, Config config, VkPipeline& pipelineHandle)
+bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *shaderObj, Config config, VkPipeline* pipelineHandle)
 {
     if(!drawableObj || !shaderObj || !shaderObj->initialized) {
         std::string nullArgs = "";
@@ -93,14 +93,15 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
     vertexInputStateInfo.pNext = nullptr;
     vertexInputStateInfo.flags = 0;
     if(config.enableVertexInput) {
-        vertexInputStateInfo.vertexBindingDescriptionCount = sizeof(drawableObj->viIpBind) / sizeof(VkVertexInputBindingDescription);
+        vertexInputStateInfo.vertexBindingDescriptionCount = 1; // viIpBind is a single struct
         vertexInputStateInfo.pVertexBindingDescriptions = &drawableObj->viIpBind;
-        vertexInputStateInfo.vertexAttributeDescriptionCount = sizeof(drawableObj->viIpAttr) / sizeof(VkVertexInputAttributeDescription);
+        vertexInputStateInfo.vertexAttributeDescriptionCount = 2; // viIpAttr is an array of 2
         vertexInputStateInfo.pVertexAttributeDescriptions = drawableObj->viIpAttr;
 
-        if(vertexInputStateInfo.vertexBindingDescriptionCount == 0 || 
-           vertexInputStateInfo.vertexAttributeDescriptionCount == 0) {
-            std::cerr << "CreatePipeline: vertex input enabled but no vertex input bindings or attributes found" << std::endl;
+        // Validate that vertex buffer was created (stride > 0 indicates initialization)
+        if(drawableObj->viIpBind.stride == 0) {
+            std::cerr << "CreatePipeline: vertex input enabled but vertex buffer not created (stride is 0)" << std::endl;
+            std::cerr << "  Make sure CreateVertexBuffer() is called before CreatePipeline()" << std::endl;
             return false;
         }
     } else {
@@ -232,7 +233,7 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
         1,
         &pipelineInfo,
         nullptr,
-        &pipelineHandle
+        pipelineHandle
     );
 
     if(result != VK_SUCCESS) {

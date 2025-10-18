@@ -57,6 +57,9 @@ class VulkanDrawable : public VulkanDescriptor {
     VulkanStatus CreateDescriptorSet(bool useTexture) override;
     VulkanStatus CreateDescriptorResources() override;
 
+    void SetTexture(TextureData* tex) { textures = tex; }
+    TextureData* GetTexture() const { return textures; }
+
     VulkanStatus CreateUniformBuffer();
 
     // Transformation matrices
@@ -78,6 +81,8 @@ class VulkanDrawable : public VulkanDescriptor {
     VkVertexInputBindingDescription viIpBind;
     VkVertexInputAttributeDescription viIpAttr[2];
 
+    TextureData* textures = nullptr; // Pointer to texture data, if any
+
     private:
     std::vector<VkCommandBuffer> vecCmdDraw;
     
@@ -90,4 +95,5 @@ class VulkanDrawable : public VulkanDescriptor {
     
     VulkanRenderer* rendererObj;
     VkPipeline pipelineHandle;
+
 };
