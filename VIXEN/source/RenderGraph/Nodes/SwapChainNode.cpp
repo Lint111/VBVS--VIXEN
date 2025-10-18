@@ -53,6 +53,25 @@ SwapChainNode::~SwapChainNode() {
 void SwapChainNode::Setup() {
     // Swapchain setup happens via SetSwapChainWrapper
     // This node wraps the existing VulkanSwapChain infrastructure
+
+    // Create semaphores for image acquisition
+    // We need one per swapchain image for proper frame pacing
+    if (swapChainWrapper) {
+        uint32_t imageCount = swapChainWrapper->scPublicVars.swapChainImageCount;
+        imageAvailableSemaphores.resize(imageCount);
+
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        for (uint32_t i = 0; i < imageCount; i++) {
+            VkResult result = vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
+            if (result != VK_SUCCESS) {
+                throw std::runtime_error("SwapChainNode: Failed to create semaphore");
+            }
+        }
+
+        currentFrame = 0;
+    }
 }
 
 void SwapChainNode::Compile() {
@@ -74,11 +93,25 @@ void SwapChainNode::Compile() {
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
-    // Swapchain doesn't execute commands per se
-    // Image acquisition and presentation happen via AcquireNextImage and PresentNode
+    // Acquire next swapchain image
+    const uint32_t frameIndex = currentFrame % imageAvailableSemaphores.size();
+    currentImageIndex = AcquireNextImage(imageAvailableSemaphores[frameIndex]);
+
+    // Store outputs for downstream nodes
+    // These are accessed via GetCurrentImageIndex() and GetImageAvailableSemaphore()
+    currentFrame++;
 }
 
 void SwapChainNode::Cleanup() {
+    // Destroy semaphores
+    for (auto& semaphore : imageAvailableSemaphores) {
+        if (semaphore != VK_NULL_HANDLE) {
+            vkDestroySemaphore(device->device, semaphore, nullptr);
+            semaphore = VK_NULL_HANDLE;
+        }
+    }
+    imageAvailableSemaphores.clear();
+
     // SwapChain cleanup is handled by VulkanSwapChain wrapper
     // Don't destroy it here as it may be owned externally
     swapChainWrapper = nullptr;

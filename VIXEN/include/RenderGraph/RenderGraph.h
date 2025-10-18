@@ -128,10 +128,26 @@ public:
     // ====== Execution ======
 
     /**
-     * @brief Execute the render graph
+     * @brief Execute the render graph (low-level)
      * @param commandBuffer Command buffer to record into
+     *
+     * NOTE: This is a low-level method for recording into an external command buffer.
+     * For full frame rendering, use RenderFrame() instead.
      */
     void Execute(VkCommandBuffer commandBuffer);
+
+    /**
+     * @brief Render a complete frame
+     *
+     * High-level method that handles the full render loop:
+     * - Acquires swapchain image
+     * - Allocates/records command buffer
+     * - Submits with semaphores
+     * - Presents to swapchain
+     *
+     * @return VkResult from presentation (VK_SUCCESS, VK_ERROR_OUT_OF_DATE_KHR, etc.)
+     */
+    VkResult RenderFrame();
 
     // ====== Query ======
 

@@ -13,8 +13,9 @@
 #include "TextureHandling/Loading/GLITextureLoader.h"
 
 VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject) {
-    if (!app || !deviceObject) {
-        std::cerr << "Fatal error: VulkanRenderer requires non-null application and device objects" << std::endl;
+    // Note: app can be nullptr when used only for window creation (e.g., VulkanGraphApplication)
+    if (!deviceObject) {
+        std::cerr << "Fatal error: VulkanRenderer requires non-null device object" << std::endl;
         exit(1);
     }
 
@@ -23,7 +24,7 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     connection = GetModuleHandle(nullptr);
     wcscpy_s(name, APP_NAME_STR_LEN, L"Vulkan Window");
 
-    appObj = app;
+    appObj = app;  // Can be nullptr
     deviceObj = deviceObject;
 
     // Initialize window dimensions (will be set properly in CreatePresentationWindow)

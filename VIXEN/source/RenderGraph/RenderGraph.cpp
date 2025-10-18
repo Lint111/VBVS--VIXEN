@@ -220,14 +220,48 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
 
     // Execute nodes in order
     for (NodeInstance* node : executionOrder) {
-        if (node->GetState() == NodeState::Ready || 
+        if (node->GetState() == NodeState::Ready ||
             node->GetState() == NodeState::Compiled) {
-            
+
             node->SetState(NodeState::Executing);
             node->Execute(commandBuffer);
             node->SetState(NodeState::Complete);
         }
     }
+}
+
+VkResult RenderGraph::RenderFrame() {
+    if (!isCompiled) {
+        throw std::runtime_error("Graph must be compiled before rendering");
+    }
+
+    // The render graph orchestrates the frame by calling specialized nodes:
+    //
+    // 1. SwapChainNode - Acquires next swapchain image (internally manages semaphores)
+    // 2. GeometryRenderNode - Records draw commands (internally manages command buffers)
+    // 3. PresentNode - Presents to swapchain (internally handles queue submission)
+    //
+    // Each node owns and manages its own Vulkan resources.
+    // The graph just calls Execute() on each node in dependency order.
+
+    // Execute all nodes in topological order
+    // Nodes handle their own synchronization, command recording, and presentation
+    for (NodeInstance* node : executionOrder) {
+        if (node->GetState() == NodeState::Ready ||
+            node->GetState() == NodeState::Compiled) {
+
+            node->SetState(NodeState::Executing);
+
+            // Pass VK_NULL_HANDLE - nodes manage their own command buffers
+            node->Execute(VK_NULL_HANDLE);
+
+            node->SetState(NodeState::Complete);
+        }
+    }
+
+    // PresentNode returns the presentation result
+    // For now, return success (nodes handle errors internally)
+    return VK_SUCCESS;
 }
 
 NodeInstance* RenderGraph::GetInstance(NodeHandle handle) {

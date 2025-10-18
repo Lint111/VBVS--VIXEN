@@ -59,11 +59,16 @@ public:
     const std::vector<VkImageView>& GetColorImageViews() const;
     uint32_t GetImageCount() const;
     uint32_t GetCurrentImageIndex() const { return currentImageIndex; }
+    VkSemaphore GetImageAvailableSemaphore() const {
+        if (imageAvailableSemaphores.empty()) return VK_NULL_HANDLE;
+        const uint32_t frameIndex = (currentFrame > 0 ? currentFrame - 1 : 0) % imageAvailableSemaphores.size();
+        return imageAvailableSemaphores[frameIndex];
+    }
     VkFormat GetFormat() const;
 
     // Set the VulkanSwapChain wrapper to use
     void SetSwapChainWrapper(VulkanSwapChain* swapchain);
-    
+
     // Acquire next swapchain image (returns image index)
     uint32_t AcquireNextImage(VkSemaphore presentCompleteSemaphore);
 
@@ -73,6 +78,10 @@ public:
 private:
     // Swapchain wrapper (from existing VulkanSwapChain)
     VulkanSwapChain* swapChainWrapper = nullptr;
+
+    // Synchronization
+    std::vector<VkSemaphore> imageAvailableSemaphores;  // Signaled when image is acquired
+    uint32_t currentFrame = 0;
 
     // Current state
     uint32_t currentImageIndex = 0;

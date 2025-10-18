@@ -6,11 +6,14 @@
 #include <functional>
 #include <memory>
 
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declaration
 class NodeInstance;
-class VulkanDevice;
 
 /**
  * @brief Unique identifier for node types

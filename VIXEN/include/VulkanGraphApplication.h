@@ -4,7 +4,14 @@
 #include "RenderGraph/RenderGraph.h"
 #include "RenderGraph/NodeTypeRegistry.h"
 #include "error/VulkanError.h"
+#include "Time/EngineTime.h"
 #include <memory>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+// Forward declarations
+class VulkanRenderer;
+class VulkanSwapChain;
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -72,45 +79,26 @@ public:
 protected:
     /**
      * @brief Register all node types
-     * 
+     *
      * Override to register custom node types with the registry.
      */
     virtual void RegisterNodeTypes();
-
-    /**
-     * @brief Create command pool for rendering
-     */
-    void CreateCommandPool();
-
-    /**
-     * @brief Create command buffers
-     */
-    void CreateCommandBuffers();
-
-    /**
-     * @brief Destroy command pool
-     */
-    void DestroyCommandPool();
-
-    /**
-     * @brief Destroy command buffers
-     */
-    void DestroyCommandBuffers();
-
-    /**
-     * @brief Record command buffer for a frame
-     */
-    void RecordCommandBuffer(uint32_t imageIndex);
 
 private:
     // ====== Graph Components ======
     std::unique_ptr<NodeTypeRegistry> nodeRegistry;  // Node type registry
     std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
 
-    // ====== Command Execution ======
-    VkCommandPool commandPool;                       // Command pool
-    std::vector<VkCommandBuffer> commandBuffers;     // Command buffers
+    // ====== Window & SwapChain (Temporary - TODO: Extract to WindowManager) ======
+    std::unique_ptr<VulkanRenderer> rendererObj;     // For window creation only
+    std::unique_ptr<VulkanSwapChain> swapChainObj;   // SwapChain wrapper
 
-    // ====== State ======
+    // ====== Application State ======
+    uint32_t currentFrame;                           // Current frame index
+    Vixen::Core::EngineTime time;                    // Time management
     bool graphCompiled;                              // Graph compilation state
+    int width, height;                               // Window dimensions
+
+    // NOTE: Command buffers, semaphores, and all Vulkan resources
+    // are managed by the render graph nodes, not the application
 };
