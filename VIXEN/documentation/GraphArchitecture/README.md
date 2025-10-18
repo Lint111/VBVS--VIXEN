@@ -1,0 +1,232 @@
+# Render Graph Architecture Documentation
+
+## Overview
+
+This directory contains the complete design documentation for the Render Graph system - a dynamic, graph-based rendering pipeline for Vulkan.
+
+**Project Goal:** Transition from static resource management to a flexible, node-based system where rendering pipelines are dynamically compiled from reusable components with automatic resource management and caching.
+
+---
+
+## Documentation Structure
+
+### 📋 Quick Start
+- **[Quick Reference](render-graph-quick-reference.md)** - Fast overview with code examples
+
+### 📚 Core Documentation
+
+1. **[Node System](01-node-system.md)**
+   - Node Type vs Node Instance architecture
+   - Type registry and instancing
+   - Resource types and schemas
+   - Pipeline sharing across instances
+
+2. **[Graph Compilation](02-graph-compilation.md)**
+   - Graph construction API
+   - Compilation phases (5-phase process)
+   - Dependency analysis
+   - Resource allocation
+   - Pipeline generation
+
+3. **[Multi-Device Support](03-multi-device.md)**
+   - Device affinity rules
+   - Cross-device transfer nodes
+   - Multi-GPU execution
+   - Synchronization strategies
+   - Resource ownership transfer
+
+4. **[Caching System](04-caching.md)**
+   - Multi-level caching strategy
+   - Pipeline cache (VkPipelineCache)
+   - Descriptor set cache
+   - Resource cache
+   - Cache key generation
+   - Invalidation policies
+
+5. **[Implementation Guide](05-implementation.md)**
+   - Directory structure
+   - Key classes and responsibilities
+   - Migration strategy (10-week plan)
+   - Performance considerations
+   - Testing strategy
+
+6. **[Usage Examples](06-examples.md)**
+   - Simple forward rendering
+   - Shadow mapping with multiple lights
+   - Multi-GPU rendering
+   - Load balancing across GPUs
+
+7. **[Cache-Aware Batching](07-cache-aware-batching.md)**
+   - GPU cache hierarchy (L1/L2)
+   - Working set calculation
+   - Batch creation algorithms
+   - Resource sharing optimization
+   - Performance analysis
+
+### 📖 Reference
+
+- **[API Reference](api-reference.md)** - Complete class and method documentation
+- **[Type Registry](type-registry.md)** - Built-in node types and schemas
+
+---
+
+## Key Concepts
+
+### Node Type vs Node Instance
+
+| Concept | Role | Count | Example |
+|---------|------|-------|---------|
+| **Node Type** | Template/Definition | 1 per process | `ShadowMapPass` |
+| **Node Instance** | Concrete usage | N per scene | `ShadowMap_Light0`, `ShadowMap_Light1` |
+
+### System Architecture
+
+```
+┌──────────────────────────────────────────────┐
+│         Node Type Registry                   │
+│  (ShadowMapPass, GeometryPass, etc.)        │
+└─────────────┬────────────────────────────────┘
+              │ instantiate
+              ▼
+┌──────────────────────────────────────────────┐
+│         Render Graph                         │
+│  ┌────────┐  ┌────────┐  ┌────────┐        │
+│  │Instance│  │Instance│  │Instance│  ...   │
+│  └────────┘  └────────┘  └────────┘        │
+└─────────────┬────────────────────────────────┘
+              │ compile
+              ▼
+┌──────────────────────────────────────────────┐
+│      Pipeline Instance Groups                 │
+│  (Shared pipelines + Variants)               │
+└─────────────┬────────────────────────────────┘
+              │ execute
+              ▼
+┌──────────────────────────────────────────────┐
+│         Vulkan Commands                      │
+│  (Per-device command buffers)                │
+└──────────────────────────────────────────────┘
+```
+
+---
+
+## Core Features
+
+### ✅ Dynamic Pipeline Compilation
+Replace static resource allocation with runtime graph compilation
+
+### ✅ Reusable Components
+- Node types define process templates
+- Unlimited instances per type
+- Automatic pipeline sharing when compatible
+
+### ✅ Resource Optimization
+- Transient resource aliasing (30-50% memory reduction)
+- Automatic barrier insertion
+- Smart caching at multiple levels
+
+### ✅ Multi-Device Support
+- First-class multi-GPU architecture
+- Automatic cross-device transfer
+- Device affinity propagation
+- Parallel execution per device
+
+### ✅ Intelligent Caching
+- Pipeline cache (shared across compatible instances)
+- Descriptor set pooling
+- Resource output caching
+- LRU eviction
+
+---
+
+## Workflow
+
+### 1. Setup (Once)
+```cpp
+NodeTypeRegistry registry;
+RegisterBuiltInNodeTypes(registry);
+```
+
+### 2. Build Graph (Per Scene)
+```cpp
+RenderGraph graph(device, &registry);
+auto scene = graph.AddNode("GeometryPass", "MainScene");
+auto shadow = graph.AddNode("ShadowMapPass", "Shadow_Light0");
+graph.ConnectNodes(scene, 0, shadow, 0);
+```
+
+### 3. Compile & Execute
+```cpp
+graph.Compile();  // Analyzes instances, creates pipelines
+graph.Execute(commandBuffer);
+```
+
+---
+
+## Migration Path
+
+**Current State:** Static resource management requiring manual updates across multiple areas
+
+**Phase 1:** Foundation (Weeks 1-2)
+- Implement base node and graph classes
+- Resource abstraction
+
+**Phase 2:** Node Types (Weeks 3-4)
+- Port existing operations to node types
+- Type registry and factory
+
+**Phase 3:** Resource Management (Weeks 5-6)
+- Resource allocator
+- Transient aliasing
+
+**Phase 4:** Caching (Week 7)
+- Multi-level cache implementation
+
+**Phase 5:** Optimization (Week 8)
+- Multi-threading
+- Performance tuning
+
+**Phase 6:** Integration (Weeks 9-10)
+- Replace current renderer
+- Migration tools
+
+**Target State:** Dynamic graph-based system with automatic optimization
+
+---
+
+## Performance Targets
+
+| Metric | Target |
+|--------|--------|
+| Runtime Overhead | < 5% vs static |
+| Memory Reduction | 30-50% (transient aliasing) |
+| Compilation Time | < 100ms for typical scene |
+| Cache Hit Rate | > 90% for stable scenes |
+
+---
+
+## Getting Started
+
+1. **Read the [Quick Reference](render-graph-quick-reference.md)** for a rapid overview
+2. **Study [Node System](01-node-system.md)** to understand types vs instances
+3. **Review [Usage Examples](06-examples.md)** for practical patterns
+4. **Follow [Implementation Guide](05-implementation.md)** to begin coding
+
+---
+
+## Additional Resources
+
+### Academic References
+- "FrameGraph: Extensible Rendering Architecture in Frostbite" (GDC 2017)
+- "Render Graphs and Vulkan — a deep dive" (Khronos)
+
+### Similar Systems
+- Frostbite FrameGraph
+- Unity Scriptable Render Pipeline
+- Unreal Engine 5 Render Dependency Graph
+
+---
+
+**Version:** 1.0
+**Status:** Design Complete - Ready for Implementation
+**Last Updated:** 2025-10-18
