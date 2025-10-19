@@ -47,6 +47,15 @@ bld/
 # build folder
 build/*
 
+# Binaries and generated logs
+binaries/
+vulkan_app_log.txt
+
+# CMake user/cache files
+CMakeCache.txt
+cmake_install.cmake
+build/**/CMakeFiles/
+
 # Build artifacts
 *.dll
 *.exe
