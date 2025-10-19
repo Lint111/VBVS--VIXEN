@@ -1,4 +1,0 @@
-=== Logger: VulkanApp ===
-[11:52:45.345] [VulkanApp] [INFO] Vulkan Application Starting
-
-  === Logger: Renderer ===

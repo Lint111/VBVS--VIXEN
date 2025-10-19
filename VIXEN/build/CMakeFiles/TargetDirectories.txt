@@ -1,5 +1,0 @@
-C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/7e_ShadersWithSPIRV.dir
-C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/ALL_BUILD.dir
-C:/cpp/VBVS--VIXEN/VIXEN/build/CMakeFiles/ZERO_CHECK.dir
-C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/glm-build/CMakeFiles/ALL_BUILD.dir
-C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/glm-build/glm/CMakeFiles/glm.dir
