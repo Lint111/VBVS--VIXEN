@@ -58,11 +58,7 @@ void PresentNode::Compile() {
     // Get parameters
     waitForIdle = GetParameterValue<bool>("waitForIdle", true);
 
-    // Validate inputs
-    if (swapchain == VK_NULL_HANDLE) {
-        throw std::runtime_error("PresentNode: swapchain not set");
-    }
-
+    // Validate inputs (swapchain/imageIndex are set dynamically, so only check queue and function pointer)
     if (queue == VK_NULL_HANDLE) {
         throw std::runtime_error("PresentNode: queue not set");
     }
@@ -73,8 +69,9 @@ void PresentNode::Compile() {
 }
 
 void PresentNode::Execute(VkCommandBuffer commandBuffer) {
-    // Presentation happens via Present() method
-    // Execute is a no-op for this node
+    // Call Present() during graph execution
+    // Swapchain and imageIndex must be set before this is called
+    Present();
 }
 
 void PresentNode::Cleanup() {

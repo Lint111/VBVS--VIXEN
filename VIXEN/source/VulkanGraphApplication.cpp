@@ -1,9 +1,12 @@
 #include "VulkanGraphApplication.h"
-#include "VulkanRenderer.h"
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 
+// Global VkInstance for nodes to access (temporary Phase 1 hack)
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+
 // Include all node types
+#include "RenderGraph/Nodes/WindowNode.h"
 #include "RenderGraph/Nodes/TextureLoaderNode.h"
 #include "RenderGraph/Nodes/DepthBufferNode.h"
 #include "RenderGraph/Nodes/SwapChainNode.h"
@@ -45,17 +48,17 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
 }
 
 void VulkanGraphApplication::Initialize() {
+    std::cout << "[VulkanGraphApplication] Initialize START" << std::endl;
+
     // Initialize base Vulkan core (instance, device)
     VulkanApplicationBase::Initialize();
 
-    // Create renderer ONLY for window management (temporary workaround)
-    // TODO: Extract window creation to standalone WindowManager
-    rendererObj = std::make_unique<VulkanRenderer>(nullptr, deviceObj.get());
-    rendererObj->CreatePresentationWindow(width, height);
+    std::cout << "[VulkanGraphApplication] Base initialized" << std::endl;
 
-    // Create swap chain wrapper
-    swapChainObj = std::make_unique<VulkanSwapChain>(rendererObj.get());
-    swapChainObj->Initialize();
+    // PHASE 1: Export instance globally for nodes to access
+    g_VulkanInstance = instanceObj.instance;
+
+    std::cout << "[VulkanGraphApplication] Instance exported globally" << std::endl;
 
     // Create node type registry
     nodeRegistry = std::make_unique<NodeTypeRegistry>();
@@ -84,9 +87,7 @@ void VulkanGraphApplication::Initialize() {
 void VulkanGraphApplication::Prepare() {
     isPrepared = false;
 
-    // Build the swap chain (needed for graph nodes to query)
-    swapChainObj->CreateSwapChain(VK_NULL_HANDLE);
-
+    // PHASE 1: Nodes manage their own resources
     // Build the render graph - nodes allocate their own resources
     BuildRenderGraph();
 
@@ -188,17 +189,7 @@ void VulkanGraphApplication::DeInitialize() {
     // Destroy node registry
     nodeRegistry.reset();
 
-    // Destroy swap chain
-    if (swapChainObj) {
-        swapChainObj->DestroySwapChain();
-        swapChainObj.reset();
-    }
-
-    // Destroy renderer (window)
-    if (rendererObj) {
-        rendererObj->DestroyPresentationWindow();
-        rendererObj.reset();
-    }
+    // Graph nodes handle their own cleanup (including window)
 
     // Call base class cleanup
     VulkanApplicationBase::DeInitialize();
@@ -208,104 +199,18 @@ void VulkanGraphApplication::DeInitialize() {
     }
 }
 
-void VulkanGraphApplication::BuildRenderGraph() {
-    if (!renderGraph) {
-        mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
-        return;
-    }
-
-    mainLogger->Info("Building render graph for textured rotating cube");
-
-    // ==== Add Nodes ====
-    // Each node will allocate its own Vulkan resources during Setup/Compile
-
-    // 1. Swap Chain Node (manages swapchain, image acquisition, semaphores)
-    NodeHandle swapChainHandle = renderGraph->AddNode("SwapChain", "main_swapchain");
-    auto* swapChainNode = static_cast<SwapChainNode*>(renderGraph->GetInstance(swapChainHandle));
-    swapChainNode->SetParameter("width", width);
-    swapChainNode->SetParameter("height", height);
-    swapChainNode->SetSwapChainWrapper(swapChainObj.get());
-
-    // 2. Depth Buffer Node (creates depth image, view, memory)
-    NodeHandle depthHandle = renderGraph->AddNode("DepthBuffer", "main_depth");
-    auto* depthNode = static_cast<DepthBufferNode*>(renderGraph->GetInstance(depthHandle));
-    depthNode->SetParameter("width", width);
-    depthNode->SetParameter("height", height);
-    depthNode->SetParameter("format", std::string("D32"));
-
-    // 3. Vertex Buffer Node (creates vertex buffer, uploads data)
-    NodeHandle vertexHandle = renderGraph->AddNode("VertexBuffer", "cube_vertices");
-    auto* vertexNode = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexHandle));
-    vertexNode->SetParameter("vertexData", reinterpret_cast<uint64_t>(geometryData));
-    vertexNode->SetParameter("vertexDataSize", static_cast<uint32_t>(sizeof(geometryData)));
-    vertexNode->SetParameter("vertexStride", static_cast<uint32_t>(sizeof(geometryData[0])));
-    vertexNode->SetParameter("vertexCount", static_cast<uint32_t>(sizeof(geometryData) / sizeof(geometryData[0])));
-
-    // 4. Texture Loader Node (loads texture, creates image/view/sampler)
-    NodeHandle textureHandle = renderGraph->AddNode("TextureLoader", "earth_texture");
-    auto* textureNode = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureHandle));
-    textureNode->SetParameter("filePath", std::string("C:\\Users\\liory\\Downloads\\earthmap.jpg"));
-    textureNode->SetParameter("uploadMode", std::string("Optimal"));
-
-    // 5. Descriptor Set Node (creates layout, pool, sets, uniform buffer)
-    NodeHandle descriptorHandle = renderGraph->AddNode("DescriptorSet", "mvp_descriptor");
-    auto* descriptorNode = static_cast<DescriptorSetNode*>(renderGraph->GetInstance(descriptorHandle));
-    descriptorNode->SetParameter("uniformBufferSize", static_cast<uint32_t>(sizeof(glm::mat4)));
-    descriptorNode->SetParameter("useTexture", true);
-
-    // 6. Render Pass Node (creates render pass)
-    NodeHandle renderPassHandle = renderGraph->AddNode("RenderPass", "main_renderpass");
-    auto* renderPassNode = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassHandle));
-    renderPassNode->SetParameter("includeDepth", true);
-    renderPassNode->SetParameter("clear", true);
-    renderPassNode->SetParameter("format", static_cast<uint32_t>(swapChainObj->scPublicVars.Format));
-    renderPassNode->SetParameter("depthFormat", static_cast<uint32_t>(VK_FORMAT_D32_SFLOAT));
-
-    // 7. Framebuffer Node (creates framebuffers per swapchain image)
-    NodeHandle framebufferHandle = renderGraph->AddNode("Framebuffer", "main_framebuffers");
-    auto* framebufferNode = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferHandle));
-    framebufferNode->SetParameter("width", width);
-    framebufferNode->SetParameter("height", height);
-    framebufferNode->SetParameter("includeDepth", true);
-
-    // 8. Shader Node (compiles shaders, creates modules)
-    NodeHandle shaderHandle = renderGraph->AddNode("Shader", "main_shader");
-    auto* shaderNode = static_cast<ShaderNode*>(renderGraph->GetInstance(shaderHandle));
-    shaderNode->SetParameter("vertexShaderPath", std::string("../Shaders/Draw.vert"));
-    shaderNode->SetParameter("fragmentShaderPath", std::string("../Shaders/Draw.frag"));
-    shaderNode->SetParameter("compileGLSL", true);
-
-    // 9. Graphics Pipeline Node (creates pipeline cache, layout, pipeline)
-    NodeHandle pipelineHandle = renderGraph->AddNode("GraphicsPipeline", "main_pipeline");
-    auto* pipelineNode = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(pipelineHandle));
-    pipelineNode->SetParameter("enableDepthTest", true);
-    pipelineNode->SetParameter("enableDepthWrite", true);
-    pipelineNode->SetParameter("enableVertexInput", true);
-    pipelineNode->SetParameter("width", width);
-    pipelineNode->SetParameter("height", height);
-
-    // 10. Geometry Render Node (records draw commands)
-    NodeHandle geometryHandle = renderGraph->AddNode("GeometryRender", "cube_render");
-    auto* geometryNode = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryHandle));
-    geometryNode->SetParameter("vertexCount", static_cast<uint32_t>(sizeof(geometryData) / sizeof(geometryData[0])));
-    geometryNode->SetParameter("instanceCount", static_cast<uint32_t>(1));
-    geometryNode->SetParameter("clearColorR", 0.0f);
-    geometryNode->SetParameter("clearColorG", 0.0f);
-    geometryNode->SetParameter("clearColorB", 0.0f);
-    geometryNode->SetParameter("clearColorA", 1.0f);
-
-    // 11. Present Node (presents to swapchain)
-    NodeHandle presentHandle = renderGraph->AddNode("Present", "present");
-    auto* presentNode = static_cast<PresentNode*>(renderGraph->GetInstance(presentHandle));
-    presentNode->SetParameter("waitForIdle", true);
-
-    mainLogger->Info("Render graph built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
-}
-
 void VulkanGraphApplication::CompileRenderGraph() {
     if (!renderGraph) {
         mainLogger->Error("Cannot compile render graph: RenderGraph not initialized");
         return;
+    }
+
+    // PHASE 1: Minimal wiring for Window + Present only
+    auto* presentNode = static_cast<PresentNode*>(renderGraph->GetInstanceByName("present"));
+    if (presentNode) {
+        presentNode->SetQueue(deviceObj->queue);
+        // PresentNode will get fpQueuePresentKHR from device extension
+        mainLogger->Info("Wired PresentNode with queue");
     }
 
     // Validate graph
@@ -333,7 +238,8 @@ void VulkanGraphApplication::RegisterNodeTypes() {
 
     mainLogger->Info("Registering all built-in node types");
 
-    // Register all 11 node types
+    // Register all 12 node types (including WindowNode)
+    nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DepthBufferNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<SwapChainNodeType>());
@@ -346,5 +252,26 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
 
-    mainLogger->Info("Successfully registered 11 node types");
+    mainLogger->Info("Successfully registered 12 node types");
+}
+
+void VulkanGraphApplication::BuildRenderGraph() {
+    if (!renderGraph) {
+        mainLogger->Error("Cannot build render graph: RenderGraph not initialized");
+        return;
+    }
+
+    mainLogger->Info("Building Phase 1 MVP render graph (Window only)");
+
+    // ==== Phase 1: Bare Minimum ====
+    // Just window creation for now
+
+    // 1. Window Node (creates window + surface)
+    NodeHandle windowHandle = renderGraph->AddNode("Window", "main_window");
+    auto* windowNode = static_cast<WindowNode*>(renderGraph->GetInstance(windowHandle));
+    // Use typed parameter names from config (compile-time validation)
+    windowNode->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
+    windowNode->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+
+    mainLogger->Info("Phase 1 MVP render graph built with " + std::to_string(renderGraph->GetNodeCount()) + " node(s)");
 }

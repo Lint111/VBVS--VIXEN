@@ -125,8 +125,9 @@ struct ResourceDescriptor {
         const std::string& n,
         ResourceType t,
         ResourceLifetime l,
-        const std::variant<ImageDescription, BufferDescription>& desc
-    ) : name(n), type(t), lifetime(l), description(desc) {}
+        const std::variant<ImageDescription, BufferDescription>& desc,
+        bool opt = false
+    ) : name(n), type(t), lifetime(l), description(desc), optional(opt) {}
 };
 
 /**

@@ -89,10 +89,6 @@ private:
     std::unique_ptr<NodeTypeRegistry> nodeRegistry;  // Node type registry
     std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
 
-    // ====== Window & SwapChain (Temporary - TODO: Extract to WindowManager) ======
-    std::unique_ptr<VulkanRenderer> rendererObj;     // For window creation only
-    std::unique_ptr<VulkanSwapChain> swapChainObj;   // SwapChain wrapper
-
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index
     Vixen::Core::EngineTime time;                    // Time management

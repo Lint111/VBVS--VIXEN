@@ -189,33 +189,93 @@ endif(WIN32)
 # Define include path
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/logger)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/time)
 
-# Gather list of header and source files for compilation
-# Includes all source files:
-#  - Main application (source/*.cpp)
-#  - Vulkan wrappers (source/VulkanResources/*.cpp, source/TextureHandling/*.cpp, etc.)
-#  - Render Graph system (source/RenderGraph/*.cpp) - Graph-based rendering pipeline
-file(GLOB_RECURSE CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
-file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
+# ============================================================================
+# LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION
+# ============================================================================
+# Each node is a separate OBJECT library - changing one node won't recompile others
+# Core systems are static libraries with proper dependencies
 
-# Add logger files
+# Logger library (used by everything)
 file(GLOB LOGGER_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.cpp)
 file(GLOB LOGGER_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.h)
-list(APPEND CPP_FILES ${LOGGER_CPP_FILES})
-list(APPEND HPP_FILES ${LOGGER_HPP_FILES})
+add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
+target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
+set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
 
-# Add time files
-file(GLOB TIME_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/time/*.cpp)
-file(GLOB TIME_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/time/*.h)
-list(APPEND CPP_FILES ${TIME_CPP_FILES})
-list(APPEND HPP_FILES ${TIME_HPP_FILES})
+# Vulkan Resources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
+file(GLOB_RECURSE VULKAN_RESOURCES_CPP
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanResources/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/TextureHandling/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/Time/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/error/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDescriptor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanPipeline.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanShader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanSwapChain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/wrapper.cpp
+)
+add_library(VulkanResources STATIC ${VULKAN_RESOURCES_CPP})
+target_link_libraries(VulkanResources PUBLIC ${VULKAN_LIB_LIST} glm::glm Logger)
+set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
 
-# Build project, give it a name and includes list of file to be compiled
-add_executable(${Recipe_Name} ${CPP_FILES} ${HPP_FILES})
+# RenderGraph Core library (graph, topology, resource management)
+file(GLOB RENDERGRAPH_CORE_CPP
+    ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/Core/*.cpp
+)
+add_library(RenderGraphCore STATIC ${RENDERGRAPH_CORE_CPP})
+target_link_libraries(RenderGraphCore PUBLIC VulkanResources Logger)
+set_property(TARGET RenderGraphCore PROPERTY CXX_STANDARD 23)
 
-# Link the debug and release libraries to the project
-target_link_libraries( ${Recipe_Name} ${VULKAN_LIB_LIST} glm::glm )
+# ============================================================================
+# NODE LIBRARIES - Each node is a separate OBJECT library
+# ============================================================================
+# NODES LIBRARY - All nodes automatically included
+# ============================================================================
+# Automatically includes all .cpp files in Nodes directory
+# Add new nodes by just creating the file - no CMake changes needed!
+
+file(GLOB NODES_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/Nodes/*.cpp)
+add_library(RenderGraphNodes STATIC ${NODES_CPP_FILES})
+target_link_libraries(RenderGraphNodes PUBLIC RenderGraphCore)
+set_property(TARGET RenderGraphNodes PROPERTY CXX_STANDARD 23)
+
+# Enable Unity Build for faster full builds
+# CMake still tracks individual files for incremental compilation
+set_property(TARGET RenderGraphNodes PROPERTY UNITY_BUILD ON)
+set_property(TARGET RenderGraphNodes PROPERTY UNITY_BUILD_BATCH_SIZE 4)
+
+# ============================================================================
+# MAIN EXECUTABLE
+# ============================================================================
+# Main application files
+file(GLOB MAIN_CPP_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanRenderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDrawable.cpp
+)
+
+# All headers (for IDE project generation)
+file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
+
+# Build main executable
+add_executable(${Recipe_Name}
+    ${MAIN_CPP_FILES}
+    ${HPP_FILES}
+)
+
+# Link libraries to main executable
+target_link_libraries(${Recipe_Name}
+    RenderGraphNodes
+    RenderGraphCore
+    VulkanResources
+    Logger
+    ${VULKAN_LIB_LIST}
+    glm::glm
+)
 
 # Define project properties
 set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/binaries)

@@ -1,4 +1,6 @@
 #include "RenderGraph/RenderGraph.h"
+#include "RenderGraph/Nodes/SwapChainNode.h"
+#include "RenderGraph/Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
@@ -244,6 +246,21 @@ VkResult RenderGraph::RenderFrame() {
     // Each node owns and manages its own Vulkan resources.
     // The graph just calls Execute() on each node in dependency order.
 
+    // TODO Phase 1: For minimal MVP, manually wire SwapChainNode -> PresentNode
+    // In future phases, this will be done automatically via the dependency graph
+    Vixen::RenderGraph::SwapChainNode* swapChainNode = nullptr;
+    Vixen::RenderGraph::PresentNode* presentNode = nullptr;
+
+    // Find SwapChain and Present nodes
+    for (NodeInstance* node : executionOrder) {
+        if (node->GetNodeType()->GetTypeName() == "SwapChain") {
+            swapChainNode = static_cast<Vixen::RenderGraph::SwapChainNode*>(node);
+        }
+        if (node->GetNodeType()->GetTypeName() == "Present") {
+            presentNode = static_cast<Vixen::RenderGraph::PresentNode*>(node);
+        }
+    }
+
     // Execute all nodes in topological order
     // Nodes handle their own synchronization, command recording, and presentation
     for (NodeInstance* node : executionOrder) {
@@ -252,6 +269,13 @@ VkResult RenderGraph::RenderFrame() {
 
             node->SetState(NodeState::Executing);
 
+            // PHASE 1 HACK: After SwapChainNode executes, wire its outputs to PresentNode
+            if (node->GetNodeType()->GetTypeName() == "SwapChain" && swapChainNode && presentNode) {
+                presentNode->SetSwapchain(swapChainNode->GetSwapchain());
+                presentNode->SetImageIndex(swapChainNode->GetCurrentImageIndex());
+                presentNode->SetRenderCompleteSemaphore(VK_NULL_HANDLE); // No rendering yet
+            }
+
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
             node->Execute(VK_NULL_HANDLE);
 
@@ -259,8 +283,11 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
-    // PresentNode returns the presentation result
-    // For now, return success (nodes handle errors internally)
+    // Get result from PresentNode
+    if (presentNode) {
+        return presentNode->GetLastResult();
+    }
+
     return VK_SUCCESS;
 }
 
@@ -411,8 +438,9 @@ void RenderGraph::AllocateResources() {
 void RenderGraph::GeneratePipelines() {
     // TODO: Implement pipeline generation
     // This will create/reuse pipelines for each node
-    
+
     for (auto& instance : instances) {
+        instance->Setup();    // Call Setup() before Compile()
         instance->Compile();
         instance->SetState(NodeState::Compiled);
     }
