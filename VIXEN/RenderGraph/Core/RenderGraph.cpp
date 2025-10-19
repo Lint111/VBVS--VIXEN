@@ -135,14 +135,15 @@ void RenderGraph::ConnectNodes(
     }
 
     // Create or get resource for the output
-    Resource* resource = fromNode->GetOutput(outputIdx);
+    // For now, assume scalar connections (array index 0)
+    Resource* resource = fromNode->GetOutput(outputIdx, 0);
     if (!resource) {
         resource = CreateResourceForOutput(fromNode, outputIdx);
-        fromNode->SetOutput(outputIdx, resource);
+        fromNode->SetOutput(outputIdx, 0, resource);
     }
 
-    // Connect to input
-    toNode->SetInput(inputIdx, resource);
+    // Connect to input (scalar connection at array index 0)
+    toNode->SetInput(inputIdx, 0, resource);
 
     // Add dependency
     toNode->AddDependency(fromNode);
@@ -350,10 +351,11 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
     for (const auto& instance : instances) {
         NodeType* type = instance->GetNodeType();
         const auto& inputSchema = type->GetInputSchema();
-        
+
         for (size_t i = 0; i < inputSchema.size(); ++i) {
-            if (!inputSchema[i].optional && !instance->GetInput(static_cast<uint32_t>(i))) {
-                errorMessage = "Node " + instance->GetInstanceName() + 
+            // Check if slot has at least one resource (array index 0)
+            if (!inputSchema[i].optional && !instance->GetInput(static_cast<uint32_t>(i), 0)) {
+                errorMessage = "Node " + instance->GetInstanceName() +
                              " missing required input at index " + std::to_string(i);
                 return false;
             }
@@ -387,12 +389,12 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
     }
 
     const ResourceDescriptor& desc = outputSchema[outputIndex];
-    
-    // Create resource
-    auto resource = std::make_unique<Resource>(
+
+    // Create resource by cloning the polymorphic description (no reinterpret_casts)
+    std::unique_ptr<Resource> resource = std::make_unique<Resource>(
         desc.type,
         desc.lifetime,
-        desc.description
+        desc.description->Clone()
     );
 
     Resource* resourcePtr = resource.get();

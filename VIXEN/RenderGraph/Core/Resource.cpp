@@ -4,12 +4,7 @@
 
 namespace Vixen::RenderGraph {
 
-Resource::Resource(
-    ResourceType type,
-    ResourceLifetime lifetime,
-    const std::variant<ImageDescription, BufferDescription>& description
-) : type(type), lifetime(lifetime), description(description) {
-}
+// Constructor moved to header (template)
 
 Resource::~Resource() {
     // Resources should be explicitly destroyed via Destroy()
@@ -24,17 +19,23 @@ Resource::Resource(Resource&& other) noexcept
     , buffer(other.buffer)
     , memory(other.memory)
     , imageView(other.imageView)
+    , commandPool(other.commandPool)
+    , device(other.device)
     , memorySize(other.memorySize)
     , currentLayout(other.currentLayout)
     , owningNode(other.owningNode)
+    , deviceDependency(other.deviceDependency)
 {
     // Invalidate the moved-from object
     other.image = VK_NULL_HANDLE;
     other.buffer = VK_NULL_HANDLE;
     other.memory = VK_NULL_HANDLE;
     other.imageView = VK_NULL_HANDLE;
+    other.commandPool = VK_NULL_HANDLE;
+    other.device = VK_NULL_HANDLE;
     other.memorySize = 0;
     other.owningNode = nullptr;
+    other.deviceDependency = nullptr;
 }
 
 Resource& Resource::operator=(Resource&& other) noexcept {
@@ -46,37 +47,28 @@ Resource& Resource::operator=(Resource&& other) noexcept {
         buffer = other.buffer;
         memory = other.memory;
         imageView = other.imageView;
+        commandPool = other.commandPool;
+        device = other.device;
         memorySize = other.memorySize;
         currentLayout = other.currentLayout;
         owningNode = other.owningNode;
+        deviceDependency = other.deviceDependency;
 
         // Invalidate the moved-from object
         other.image = VK_NULL_HANDLE;
         other.buffer = VK_NULL_HANDLE;
         other.memory = VK_NULL_HANDLE;
         other.imageView = VK_NULL_HANDLE;
+        other.commandPool = VK_NULL_HANDLE;
+        other.device = VK_NULL_HANDLE;
         other.memorySize = 0;
         other.owningNode = nullptr;
+        other.deviceDependency = nullptr;
     }
     return *this;
 }
 
-const ImageDescription* Resource::GetImageDescription() const {
-    if (type == ResourceType::Image || 
-        type == ResourceType::CubeMap || 
-        type == ResourceType::Image3D ||
-        type == ResourceType::StorageImage) {
-        return std::get_if<ImageDescription>(&description);
-    }
-    return nullptr;
-}
-
-const BufferDescription* Resource::GetBufferDescription() const {
-    if (type == ResourceType::Buffer) {
-        return std::get_if<BufferDescription>(&description);
-    }
-    return nullptr;
-}
+// Get* methods moved to header (template)
 
 void Resource::AllocateImage(VkDevice device, const ImageDescription& desc) {
     VkImageCreateInfo imageInfo{};
@@ -242,22 +234,27 @@ void Resource::Destroy(VkDevice device) {
         vkDestroyImageView(device, imageView, nullptr);
         imageView = VK_NULL_HANDLE;
     }
-    
+
     if (image != VK_NULL_HANDLE) {
         vkDestroyImage(device, image, nullptr);
         image = VK_NULL_HANDLE;
     }
-    
+
     if (buffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(device, buffer, nullptr);
         buffer = VK_NULL_HANDLE;
     }
-    
+
+    if (commandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, commandPool, nullptr);
+        commandPool = VK_NULL_HANDLE;
+    }
+
     if (memory != VK_NULL_HANDLE) {
         vkFreeMemory(device, memory, nullptr);
         memory = VK_NULL_HANDLE;
     }
-    
+
     memorySize = 0;
     currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }

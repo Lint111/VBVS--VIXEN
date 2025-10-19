@@ -15,7 +15,7 @@ namespace Vixen::RenderGraph {
  * Outputs: 1 (DEVICE: VulkanDevice*, required)
  * Parameters: gpu_index (which GPU to select)
  */
-CONSTEXPR_NODE_CONFIG(DeviceNodeConfig, 0, 1) {
+CONSTEXPR_NODE_CONFIG(DeviceNodeConfig, 0, 1, false) {
     // Compile-time output slot definition
     // Using VkDevice as type placeholder (actual output is VulkanDevice*)
     CONSTEXPR_OUTPUT(DEVICE, VkDevice, 0, false);

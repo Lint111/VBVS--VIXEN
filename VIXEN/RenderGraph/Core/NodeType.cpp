@@ -31,20 +31,20 @@ bool NodeType::ValidateInputs(const std::vector<Resource*>& inputs) const {
         }
 
         // Validate type-specific properties
-        if (schema.type == ResourceType::Image || 
-            schema.type == ResourceType::CubeMap || 
+        if (schema.type == ResourceType::Image ||
+            schema.type == ResourceType::CubeMap ||
             schema.type == ResourceType::Image3D ||
             schema.type == ResourceType::StorageImage) {
-            
-            const auto* schemaDesc = std::get_if<ImageDescription>(&schema.description);
+
+            const auto* schemaDesc = dynamic_cast<const ImageDescription*>(schema.description.get());
             const auto* resourceDesc = resource->GetImageDescription();
-            
+
             if (!schemaDesc || !resourceDesc) {
                 return false;
             }
 
             // Check format compatibility (could be relaxed with format conversion)
-            if (schemaDesc->format != VK_FORMAT_UNDEFINED && 
+            if (schemaDesc->format != VK_FORMAT_UNDEFINED &&
                 resourceDesc->format != schemaDesc->format) {
                 return false;
             }

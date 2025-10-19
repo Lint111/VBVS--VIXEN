@@ -92,10 +92,11 @@ struct ResourceSlot {
  * Pure constexpr - all information known at compile time.
  * The compiler can optimize away all the template machinery.
  */
-template<size_t NumInputs, size_t NumOutputs>
+template<size_t NumInputs, size_t NumOutputs, bool ArrayAbleFlag = false>
 struct ResourceConfigBase {
     static constexpr size_t INPUT_COUNT = NumInputs;
     static constexpr size_t OUTPUT_COUNT = NumOutputs;
+    static constexpr bool ALLOW_INPUT_ARRAYS = ArrayAbleFlag;
 
     // Helper to get input/output vectors for NodeType
     std::vector<ResourceDescriptor> GetInputVector() const {
@@ -213,11 +214,11 @@ private:
  * This is the only place where compile-time info becomes runtime data.
  * Called during node initialization to populate descriptor arrays.
  */
-template<typename SlotType>
-constexpr ResourceDescriptor MakeDescriptor(
+template<typename SlotType, typename DescType = ImageDescription>
+ResourceDescriptor MakeDescriptor(
     std::string_view name,
     ResourceLifetime lifetime,
-    const std::variant<ImageDescription, BufferDescription>& desc = ImageDescription{}
+    const DescType& desc = DescType{}
 ) {
     return ResourceDescriptor{
         std::string(name),
@@ -244,8 +245,8 @@ constexpr ResourceDescriptor MakeDescriptor(
  * };
  * ```
  */
-#define CONSTEXPR_NODE_CONFIG(ConfigName, NumInputs, NumOutputs) \
-    struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs>
+#define CONSTEXPR_NODE_CONFIG(ConfigName, NumInputs, NumOutputs, ArrayAbleFlag) \
+    struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs, ArrayAbleFlag>
 
 /**
  * @brief Define a compile-time input slot

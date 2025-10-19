@@ -111,8 +111,8 @@ void TextureLoaderNode::Compile() {
         isLoaded = true;
 
         // Update output resource description with actual texture dimensions
-        if (outputs.size() > 0 && outputs[0]) {
-            Resource* resource = outputs[0];
+        if (outputs.size() > 0 && outputs[0].size() > 0 && outputs[0][0]) {
+            Resource* resource = outputs[0][0];
             if (auto* imgDesc = const_cast<ImageDescription*>(resource->GetImageDescription())) {
                 imgDesc->width = textureData.textureWidth;
                 imgDesc->height = textureData.textureHeight;

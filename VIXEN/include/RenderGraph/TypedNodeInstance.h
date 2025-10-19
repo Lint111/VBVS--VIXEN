@@ -207,6 +207,86 @@ public:
         return reinterpret_cast<const typename SlotType::Type&>(outputs[SlotType::index]);
     }
 
+    // ===== ARRAY-AWARE ACCESS =====
+
+    /**
+     * @brief Get count of resources in a slot (1 for scalar, N for array)
+     *
+     * Usage: size_t count = GetInputCount(DeviceConfig::DEVICE);
+     */
+    template<typename SlotType>
+    size_t GetInputCount(SlotType /*slot*/) const {
+        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+        return NodeInstance::GetInputCount(SlotType::index);
+    }
+
+    template<typename SlotType>
+    size_t GetOutputCount(SlotType /*slot*/) const {
+        static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
+        return NodeInstance::GetOutputCount(SlotType::index);
+    }
+
+    /**
+     * @brief Get input resource at specific array index
+     *
+     * Usage:
+     * for (size_t i = 0; i < GetInputCount(Config::DEVICE); i++) {
+     *     VulkanDevice* dev = GetInput<VulkanDevice*>(Config::DEVICE, i);
+     * }
+     */
+    template<typename T, typename SlotType>
+    T GetInput(SlotType /*slot*/, size_t arrayIndex = 0) const {
+        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        if (!res) return static_cast<T>(VK_NULL_HANDLE);
+        // Extract typed handle from resource
+        return GetResourceHandle<T>(res);
+    }
+
+    /**
+     * @brief Set output resource at specific array index
+     *
+     * Usage: SetOutput(Config::POOL, i, pool);
+     */
+    template<typename SlotType>
+    void SetOutput(SlotType /*slot*/, size_t arrayIndex, typename SlotType::Type value) {
+        static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
+        // Create resource if needed
+        EnsureOutputSlot(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        SetResourceHandle(res, value);
+    }
+
+private:
+    /**
+     * @brief Extract typed handle from Resource
+     */
+    template<typename T>
+    T GetResourceHandle(Resource* res) const {
+        // Type-punning: Resource stores handles as void*/VkHandle
+        // For now, simple cast (in full implementation, check resource type)
+        return reinterpret_cast<T>(const_cast<void*>(reinterpret_cast<const void*>(res)));
+    }
+
+    /**
+     * @brief Store typed handle in Resource
+     */
+    template<typename T>
+    void SetResourceHandle(Resource* res, T value) {
+        // Store the handle in the resource
+        // For now, type-punning (in full implementation, allocate proper Resource)
+    }
+
+    /**
+     * @brief Ensure output slot has space for arrayIndex
+     */
+    void EnsureOutputSlot(uint32_t slotIndex, size_t arrayIndex) {
+        auto& slot = NodeInstance::outputs[slotIndex];
+        if (slot.size() <= arrayIndex) {
+            slot.resize(arrayIndex + 1, nullptr);
+        }
+    }
+
 protected:
     // Storage arrays - types are void* / VkHandle-based for now
     // In a full implementation, use std::tuple<Slot0::Type, Slot1::Type, ...>

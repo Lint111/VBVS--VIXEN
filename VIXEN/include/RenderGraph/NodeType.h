@@ -108,6 +108,7 @@ public:
 
     // Workload metrics
     const WorkloadMetrics& GetWorkloadMetrics() const { return workloadMetrics; }
+    bool GetAllowInputArrays() const { return allowInputArrays; }
 
     // Factory method
     virtual std::unique_ptr<NodeInstance> CreateInstance(
@@ -130,6 +131,8 @@ protected:
     bool supportsInstancing = true;
     uint32_t maxInstances = 0; // 0 = unlimited
     WorkloadMetrics workloadMetrics;
+    // Node-level flag: allow array-shaped inputs (IA<I>) for nodes that can process arrays
+    bool allowInputArrays = false;
 };
 
 /**
@@ -182,6 +185,11 @@ public:
         return *this;
     }
 
+    NodeTypeBuilder& SetAllowInputArrays(bool allow) {
+        allowInputArrays = allow;
+        return *this;
+    }
+
     // Getters for derived classes to use
     NodeTypeId GetTypeId() const { return typeId; }
     const std::string& GetTypeName() const { return typeName; }
@@ -203,6 +211,7 @@ private:
     bool supportsInstancing = true;
     uint32_t maxInstances = 0;
     WorkloadMetrics workloadMetrics;
+    bool allowInputArrays = false;
 };
 
 } // namespace Vixen::RenderGraph

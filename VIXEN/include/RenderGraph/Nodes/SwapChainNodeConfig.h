@@ -14,7 +14,7 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 1, 3) {
+CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 1, 3, false) {
     // ===== INPUTS (1) =====
     // Required surface from WindowNode
     CONSTEXPR_INPUT(SURFACE, VkSurfaceKHR, 0, false);

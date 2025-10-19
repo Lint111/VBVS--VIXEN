@@ -99,13 +99,23 @@ public:
     uint32_t GetDeviceIndex() const { return deviceIndex; }
     void SetDeviceIndex(uint32_t index) { deviceIndex = index; }
 
-    // Resources
-    const std::vector<Resource*>& GetInputs() const { return inputs; }
-    const std::vector<Resource*>& GetOutputs() const { return outputs; }
-    Resource* GetInput(uint32_t index) const;
-    Resource* GetOutput(uint32_t index) const;
-    void SetInput(uint32_t index, Resource* resource);
-    void SetOutput(uint32_t index, Resource* resource);
+    // Node arrayable flag
+    bool AllowsInputArrays() const { return allowInputArrays; }
+    void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
+
+    // Resources (slot-based access)
+    const std::vector<std::vector<Resource*>>& GetInputs() const { return inputs; }
+    const std::vector<std::vector<Resource*>>& GetOutputs() const { return outputs; }
+
+    // Legacy flat accessors (for backward compatibility)
+    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
+    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
+
+    // Get array size for a slot
+    size_t GetInputCount(uint32_t slotIndex) const;
+    size_t GetOutputCount(uint32_t slotIndex) const;
 
     // Parameters
     void SetParameter(const std::string& name, const ParameterValue& value);
@@ -126,21 +136,6 @@ public:
     // Execution order (set during compilation)
     uint32_t GetExecutionOrder() const { return executionOrder; }
     void SetExecutionOrder(uint32_t order) { executionOrder = order; }
-
-    // Pipeline resources
-    VkPipeline GetPipeline() const { return pipeline; }
-    VkPipelineLayout GetPipelineLayout() const { return pipelineLayout; }
-    void SetPipeline(VkPipeline pipe) { pipeline = pipe; }
-    void SetPipelineLayout(VkPipelineLayout layout) { pipelineLayout = layout; }
-
-    // Descriptor sets (instance-specific)
-    VkDescriptorSet GetDescriptorSet(uint32_t index = 0) const;
-    void SetDescriptorSet(VkDescriptorSet set, uint32_t index = 0);
-    const std::vector<VkDescriptorSet>& GetDescriptorSets() const { return descriptorSets; }
-
-    // Command buffers
-    const std::vector<VkCommandBuffer>& GetCommandBuffers() const { return commandBuffers; }
-    void SetCommandBuffers(const std::vector<VkCommandBuffer>& buffers) { commandBuffers = buffers; }
 
     // Workload metrics
     size_t GetInputMemoryFootprint() const { return inputMemoryFootprint; }
@@ -175,9 +170,15 @@ protected:
     Vixen::Vulkan::Resources::VulkanDevice* device;
     uint32_t deviceIndex = 0;
 
-    // Resources
-    std::vector<Resource*> inputs;
-    std::vector<Resource*> outputs;
+    // Node-level behavior flags
+    // When true the node will accept either single inputs or array-shaped inputs
+    // (IA<I>) and should handle producing scalar or array outputs accordingly.
+    // Default false to preserve existing behavior.
+    bool allowInputArrays = false;
+
+    // Resources (each slot is a vector: scalar = size 1, array = size N)
+    std::vector<std::vector<Resource*>> inputs;
+    std::vector<std::vector<Resource*>> outputs;
 
     // Instance-specific parameters
     std::map<std::string, ParameterValue> parameters;
@@ -186,14 +187,6 @@ protected:
     NodeState state = NodeState::Created;
     std::vector<NodeInstance*> dependencies;
     uint32_t executionOrder = 0;
-
-    // Pipeline resources (may be shared)
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-
-    // Instance-specific Vulkan resources
-    std::vector<VkDescriptorSet> descriptorSets;
-    std::vector<VkCommandBuffer> commandBuffers;
 
     // Metrics
     size_t inputMemoryFootprint = 0;

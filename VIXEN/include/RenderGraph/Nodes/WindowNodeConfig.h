@@ -14,7 +14,7 @@ namespace Vixen::RenderGraph {
  * Outputs: 1 (SURFACE: VkSurfaceKHR, required)
  * Parameters: width, height
  */
-CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1) {
+CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1, false) {
     // Compile-time output slot definition
     // This creates:
     // - Type alias: SURFACE_Slot = ResourceSlot<VkSurfaceKHR, 0, false>
