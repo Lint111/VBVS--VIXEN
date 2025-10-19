@@ -45,6 +45,7 @@ bld/
 [Ll]ogs/
 
 # build folder
+build/
 build/*
 
 # Binaries and generated logs
