@@ -90,3 +90,8 @@ build/**/CMakeFiles/
 .claude_code/
 *.claude
 .claudesync/
+
+# Transient / generated files that should not be committed
+build_output.txt
+nul
+memory-bank/
