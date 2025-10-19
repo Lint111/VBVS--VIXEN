@@ -43,10 +43,12 @@ public:
      * @brief Construct a new Render Graph
      * @param primaryDevice The primary Vulkan device
      * @param registry The node type registry
+     * @param mainLogger Optional logger for debug output (in debug builds)
      */
     explicit RenderGraph(
         Vixen::Vulkan::Resources::VulkanDevice* primaryDevice,
-        NodeTypeRegistry* registry
+        NodeTypeRegistry* registry,
+        Logger* mainLogger = nullptr
     );
 
     ~RenderGraph();
@@ -215,6 +217,11 @@ private:
     NodeTypeRegistry* typeRegistry;
     Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;
     std::vector<Vixen::Vulkan::Resources::VulkanDevice*> usedDevices;
+
+    #ifdef _DEBUG
+    // Debug logger (non-owning pointer — application owns the logger)
+    Logger* mainLogger = nullptr;
+    #endif
 
     // Graph data
     std::vector<std::unique_ptr<NodeInstance>> instances;

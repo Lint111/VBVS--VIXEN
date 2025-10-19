@@ -9,10 +9,22 @@ Logger::~Logger()
 {
 }
 
-void Logger::AddChild(std::shared_ptr<Logger> child)
+void Logger::AddChild(Logger* child)
 {
-    if (child) {
-        children.push_back(child);
+    if (!child) {
+        return;
+    }
+    children.push_back(child);
+}
+
+void Logger::RemoveChild(Logger *child)
+{
+    if(!child) {
+        return;
+    }
+    auto it = std::find(children.begin(), children.end(), child);
+    if (it != children.end()) {
+        children.erase(it);
     }
 }
 

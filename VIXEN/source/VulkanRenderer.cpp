@@ -12,19 +12,23 @@
 // GLI Texture Loader
 #include "TextureHandling/Loading/GLITextureLoader.h"
 
-VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject) {
+VulkanRenderer::VulkanRenderer(VulkanApplicationBase* app, VulkanDevice* deviceObject, bool createSwapChain) {
+    std::cout << "[VulkanRenderer] Constructor START (createSwapChain=" << createSwapChain << ")" << std::endl;
+
     // Note: app can be nullptr when used only for window creation (e.g., VulkanGraphApplication)
     if (!deviceObject) {
         std::cerr << "Fatal error: VulkanRenderer requires non-null device object" << std::endl;
         exit(1);
     }
 
+    std::cout << "[VulkanRenderer] Device OK, initializing members" << std::endl;
+
     memset(&Depth, 0, sizeof(Depth));
     memset(&texture, 0, sizeof(texture));
     connection = GetModuleHandle(nullptr);
     wcscpy_s(name, APP_NAME_STR_LEN, L"Vulkan Window");
 
-    appObj = app;  // Can be nullptr
+    appObj = app;
     deviceObj = deviceObject;
 
     // Initialize window dimensions (will be set properly in CreatePresentationWindow)
@@ -32,7 +36,15 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     height = 0;
     window = nullptr;
 
-    swapChainObj = std::make_unique<VulkanSwapChain>(this);
+    // Only create swapchain if requested (graph-based apps manage their own)
+    if (createSwapChain) {
+        std::cout << "[VulkanRenderer] Creating SwapChain..." << std::endl;
+        swapChainObj = std::make_unique<VulkanSwapChain>(this);
+    } else {
+        std::cout << "[VulkanRenderer] Skipping SwapChain creation (managed externally)" << std::endl;
+    }
+
+    std::cout << "[VulkanRenderer] Constructor COMPLETE" << std::endl;
 
     // Initialize Vulkan handles
     renderPass = VK_NULL_HANDLE;
@@ -43,10 +55,16 @@ VulkanRenderer::VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObjec
     frameBufferResized = false;
     isResizing = false;
 
-    // Create FPS logger and add to main logger hierarchy
-    fpsLogger = std::make_shared<FrameRateLogger>("Renderer", true);
-    if (appObj && appObj->mainLogger) {
-        appObj->mainLogger->AddChild(fpsLogger);
+    // Create FPS logger only if this renderer will actually manage a swapchain
+    // (i.e., it's being used for on-screen rendering). Graph-based applications
+    // may create VulkanRenderer instances only for helper tasks and don't need
+    // an FPS logger attached to the main logger.
+    if (createSwapChain && appObj && appObj->mainLogger) {
+        fpsLogger = std::make_shared<FrameRateLogger>("Renderer", true);
+        // To attach the fps logger to the main logger use:
+        // appObj->mainLogger->AddChild(fpsLogger.get());
+        // The call is intentionally commented out - registration should be
+        // explicit and intentional elsewhere in application code.
     }
 
     // Create a drawable object for rendering
@@ -1028,7 +1046,9 @@ void VulkanRenderer::DestroyPipeline()
 
 void VulkanRenderer::DestroyShaders()
 {
-    shaderObj->DestroyShader();
+    if (shaderObj) {
+        shaderObj->DestroyShader();
+    }
 }
 
 void VulkanRenderer::CreateDescriptors()

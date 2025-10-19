@@ -14,16 +14,13 @@ VulkanApplicationBase::VulkanApplicationBase()
 }
 
 VulkanApplicationBase::~VulkanApplicationBase() {
-    // Write logs to file before cleanup
-    if (mainLogger) {
-        std::string logs = mainLogger->ExtractLogs();
-        std::ofstream logFile("vulkan_app_log.txt");
-        if (logFile.is_open()) {
-            logFile << logs;
-            logFile.close();
-            std::cout << "Logs written to vulkan_app_log.txt" << std::endl;
-        }
-    }
+    // Base destructor should not write logs because derived classes
+    // may have already cleaned up objects that registered with the
+    // main logger (child loggers owned by nodes). Log extraction
+    // must happen while those child loggers are still alive. The
+    // application-level class (VulkanGraphApplication) will perform
+    // log extraction at the correct time before destroying the
+    // render graph.
 
     DeInitialize();
 }
@@ -119,7 +116,7 @@ void VulkanApplicationBase::InitializeVulkanCore() {
     }
 
     if (debugFlag)
-        instanceObj.layerExtension.CreateDebugReportCallBack();
+        instanceObj.layerExtension.CreateDebugReportCallBack(instanceObj.instance);
 
     // Enumerate physical devices
     if (auto result = EnumeratePhysicalDevices(gpuList); !result) {

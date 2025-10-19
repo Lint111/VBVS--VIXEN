@@ -26,8 +26,9 @@ public:
     bool IsEnabled() const { return enabled; }
 
     // Hierarchical logging
-    void AddChild(std::shared_ptr<Logger> child);
-    const std::vector<std::shared_ptr<Logger>>& GetChildren() const { return children; }
+    void AddChild(Logger* child);
+    void RemoveChild(Logger* child);
+    const std::vector<Logger*>& GetChildren() const { return children; }
 
     // Logging methods
     void Log(LogLevel level, const std::string& message);
@@ -50,7 +51,7 @@ public:
 protected:
     std::string name;
     bool enabled;
-    std::vector<std::shared_ptr<Logger>> children;
+    std::vector<Logger*> children; // Non-owning pointers to child loggers
     std::vector<std::string> logEntries;
 
     std::string GetTimestamp() const;

@@ -2,6 +2,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanApplicationBase.h"
 #include <iostream>
+#include "RenderGraph/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 
@@ -53,7 +54,7 @@ WindowNode::~WindowNode() {
 }
 
 void WindowNode::Setup() {
-    std::cout << "[WindowNode] Setup START - Testing incremental compilation" << std::endl;
+    NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 
 #ifdef _WIN32
     // Get module handle
@@ -77,11 +78,12 @@ void WindowNode::Setup() {
     if (!RegisterClassExW(&winInfo)) {
         DWORD error = GetLastError();
         if (error != ERROR_CLASS_ALREADY_EXISTS) {
+                NODE_LOG_ERROR("[WindowNode] ERROR: Failed to register window class. GetLastError = " + std::to_string(error));
             throw std::runtime_error("WindowNode: Failed to register window class");
         }
     }
 
-    std::cout << "[WindowNode] Window class registered" << std::endl;
+    NODE_LOG_INFO("[WindowNode] Window class registered");
 #endif
 }
 
@@ -90,7 +92,7 @@ void WindowNode::Compile() {
     width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
     height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
 
-    std::cout << "[WindowNode] Creating window " << width << "x" << height << std::endl;
+    NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
 
 #ifdef _WIN32
     // Create window
@@ -114,7 +116,7 @@ void WindowNode::Compile() {
     if (!window) {
         DWORD error = GetLastError();
         std::string errorMsg = "WindowNode: Failed to create window. GetLastError = " + std::to_string(error);
-        std::cout << errorMsg << std::endl;
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
@@ -124,7 +126,7 @@ void WindowNode::Compile() {
     ShowWindow(window, SW_SHOW);
     UpdateWindow(window);
 
-    std::cout << "[WindowNode] Window created and shown" << std::endl;
+    NODE_LOG_INFO("[WindowNode] Window created and shown");
 
     // Create VkSurfaceKHR and store in typed output
     VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -146,6 +148,7 @@ void WindowNode::Compile() {
 
     VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
     if (result != VK_SUCCESS) {
+        NODE_LOG_ERROR("[WindowNode] ERROR: Failed to create Win32 surface: " + std::to_string(result));
         throw std::runtime_error("WindowNode: Failed to create surface");
     }
 
@@ -155,7 +158,7 @@ void WindowNode::Compile() {
     // Store in type-safe output using named slot from config
     Out(WindowNodeConfig::SURFACE) = surface;
 
-    std::cout << "[WindowNode] Surface created and stored in output" << std::endl;
+    NODE_LOG_INFO("[WindowNode] Surface created and stored in output");
 #endif
 }
 
@@ -180,7 +183,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
     switch (msg) {
         case WM_CLOSE:
-            std::cout << "[WindowNode] WM_CLOSE received" << std::endl;
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received");
             if (windowNode) {
                 windowNode->shouldClose = true;
             }
@@ -188,13 +191,13 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             return 0;
 
         case WM_DESTROY:
-            std::cout << "[WindowNode] WM_DESTROY received" << std::endl;
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_DESTROY received");
             PostQuitMessage(0);
             return 0;
 
         case WM_ENTERSIZEMOVE:
             // User started resizing
-            std::cout << "[WindowNode] WM_ENTERSIZEMOVE - resize started" << std::endl;
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_ENTERSIZEMOVE - resize started");
             if (windowNode) {
                 windowNode->isResizing = true;
             }
@@ -202,7 +205,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
         case WM_EXITSIZEMOVE:
             // User finished resizing
-            std::cout << "[WindowNode] WM_EXITSIZEMOVE - resize finished" << std::endl;
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_EXITSIZEMOVE - resize finished");
             if (windowNode) {
                 windowNode->isResizing = false;
                 windowNode->wasResized = true;
@@ -216,7 +219,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
                 // If not actively resizing (e.g., maximize/restore), trigger immediate resize
                 if (!windowNode->isResizing && (newWidth != windowNode->width || newHeight != windowNode->height)) {
-                    std::cout << "[WindowNode] WM_SIZE - window resized to " << newWidth << "x" << newHeight << std::endl;
+                    NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - window resized to " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
                     windowNode->width = newWidth;
                     windowNode->height = newHeight;
                     windowNode->wasResized = true;
@@ -237,7 +240,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 #endif
 
 void WindowNode::Cleanup() {
-    std::cout << "[WindowNode] Cleanup" << std::endl;
+    NODE_LOG_INFO("[WindowNode] Cleanup");
 
 #ifdef _WIN32
     // Destroy surface using named slot from config

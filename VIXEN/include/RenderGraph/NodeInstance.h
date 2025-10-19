@@ -7,6 +7,10 @@
 #include <map>
 #include <variant>
 #include <memory>
+#include "Logger.h"
+
+// Forward declare Logger to avoid circular dependency
+class Logger;
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -149,6 +153,12 @@ public:
     void SetCacheKey(uint64_t key) { cacheKey = key; }
     uint64_t ComputeCacheKey() const;
 
+    // Logger Registration
+    #ifdef _DEBUG
+    void RegisterToParentLogger(Logger* parentLogger);
+    void DeregisterFromParentLogger(Logger* parentLogger);
+    #endif
+
     // Virtual methods for derived classes to implement
     virtual void Setup() {}
     virtual void Compile() {}
@@ -159,6 +169,7 @@ protected:
     // Instance identification
     std::string instanceName;
     NodeType* nodeType;
+    
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* device;
@@ -190,6 +201,11 @@ protected:
 
     // Caching
     uint64_t cacheKey = 0;
+
+#ifdef _DEBUG
+    // Debug-only hierarchical logger (zero overhead in release builds)
+    std::unique_ptr<Logger> nodeLogger;
+#endif
 
     // Helper methods
     void AllocateResources();

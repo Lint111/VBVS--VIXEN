@@ -1,12 +1,14 @@
 #include "VulkanGraphApplication.h"
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
+#include "Logger.h"
 
 // Global VkInstance for nodes to access (temporary Phase 1 hack)
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 
 // Include all node types
 #include "RenderGraph/Nodes/WindowNode.h"
+#include "RenderGraph/Nodes/DeviceNode.h"
 #include "RenderGraph/Nodes/TextureLoaderNode.h"
 #include "RenderGraph/Nodes/DepthBufferNode.h"
 #include "RenderGraph/Nodes/SwapChainNode.h"
@@ -48,17 +50,17 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
 }
 
 void VulkanGraphApplication::Initialize() {
-    std::cout << "[VulkanGraphApplication] Initialize START" << std::endl;
+    mainLogger->Info("VulkanGraphApplication Initialize START");
 
     // Initialize base Vulkan core (instance, device)
     VulkanApplicationBase::Initialize();
 
-    std::cout << "[VulkanGraphApplication] Base initialized" << std::endl;
+    mainLogger->Info("VulkanGraphApplication Base initialized");
 
     // PHASE 1: Export instance globally for nodes to access
     g_VulkanInstance = instanceObj.instance;
 
-    std::cout << "[VulkanGraphApplication] Instance exported globally" << std::endl;
+    mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
     // Create node type registry
     nodeRegistry = std::make_unique<NodeTypeRegistry>();
@@ -68,7 +70,7 @@ void VulkanGraphApplication::Initialize() {
 
     // Create render graph
     if (deviceObj) {
-        renderGraph = std::make_unique<RenderGraph>(deviceObj.get(), nodeRegistry.get());
+        renderGraph = std::make_unique<RenderGraph>(deviceObj.get(), nodeRegistry.get(), mainLogger.get());
 
         if (mainLogger) {
             mainLogger->Info("RenderGraph created successfully");
@@ -183,6 +185,25 @@ void VulkanGraphApplication::DeInitialize() {
         vkDeviceWaitIdle(deviceObj->device);
     }
 
+    // Before destroying the render graph, extract logs from the main logger.
+    // Node instances register child loggers with the main logger; if we
+    // destroy the graph first those child loggers are destroyed and their
+    // entries won't appear in the aggregated log output.
+    if (mainLogger) {
+        try {
+            std::string logs = mainLogger->ExtractLogs();
+            // Write logs into the binaries folder so logs are colocated with the build artifacts.
+            std::ofstream logFile("binaries\\vulkan_app_log.txt");
+            if (logFile.is_open()) {
+                logFile << logs;
+                logFile.close();
+                std::cout << "Logs written to binaries\\vulkan_app_log.txt" << std::endl;
+            }
+        } catch (...) {
+            // Best-effort: don't throw during cleanup
+        }
+    }
+
     // Destroy render graph (nodes clean up their own resources)
     renderGraph.reset();
 
@@ -238,8 +259,9 @@ void VulkanGraphApplication::RegisterNodeTypes() {
 
     mainLogger->Info("Registering all built-in node types");
 
-    // Register all 12 node types (including WindowNode)
+    // Register all 13 node types
     nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
+    nodeRegistry->RegisterNodeType(std::make_unique<DeviceNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DepthBufferNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<SwapChainNodeType>());
@@ -252,7 +274,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
 
-    mainLogger->Info("Successfully registered 12 node types");
+    mainLogger->Info("Successfully registered 13 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {

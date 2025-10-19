@@ -184,15 +184,11 @@ VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& l
 	return true;
 }
 
-VkResult VulkanLayerAndExtension::CreateDebugReportCallBack() {
+VkResult VulkanLayerAndExtension::CreateDebugReportCallBack(VkInstance instance) {
 	VkResult result;
 
-	VulkanApplication* appObj = VulkanApplication::GetInstance();
-	VkInstance* instance = &appObj->instanceObj.instance;
-
-
 	dbgCreateDebugReportCallback = (PFN_vkCreateDebugReportCallbackEXT)
-	vkGetInstanceProcAddr(*instance, "vkCreateDebugReportCallbackEXT");
+	vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
 
 	if(!dbgCreateDebugReportCallback) {
 		std::cerr << "GetProcAddr: Unable to find vkCreateDebugReportCallbackEXT function." << std::endl;
@@ -204,7 +200,7 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack() {
 
 
 	dbgDestroyDebugReportCallback = (PFN_vkDestroyDebugReportCallbackEXT)
-	vkGetInstanceProcAddr(*instance, "vkDestroyDebugReportCallbackEXT");
+	vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
 
 	if(!dbgDestroyDebugReportCallback) {
 		std::cerr << "GetProcAddr: Unable to find vkDestroyDebugReportCallbackEXT function." << std::endl;
@@ -225,7 +221,7 @@ VkResult VulkanLayerAndExtension::CreateDebugReportCallBack() {
 								VK_DEBUG_REPORT_ERROR_BIT_EXT |
 								VK_DEBUG_REPORT_DEBUG_BIT_EXT; 
 	
-	result = dbgCreateDebugReportCallback(*instance,
+	result = dbgCreateDebugReportCallback(instance,
 										 &dbgReportCreateInfo,
 										 nullptr,
 										 &DebugReportCallback);

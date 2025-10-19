@@ -1,5 +1,6 @@
 #include "Headers.h"
 #include "VulkanApplicationBase.h"
+#include "VulkanApplication.h"
 #include "VulkanGraphApplication.h"
 
 std::vector<const char*> deviceExtensionNames = {
@@ -25,18 +26,25 @@ std::vector<const char*> layerNames = {
 };
 
 int main(int argc, char** argv) {
+    std::cout << "[main] Starting VulkanGraphApplication..." << std::endl;
+
     try {
         VulkanApplicationBase* appObj = VulkanGraphApplication::GetInstance();
 
+        std::cout << "[main] Calling Initialize..." << std::endl;
         appObj -> Initialize();
+
+        std::cout << "[main] Calling Prepare..." << std::endl;
         appObj -> Prepare();
 
+        std::cout << "[main] Entering render loop..." << std::endl;
         bool isWindowOpen = true;
         while(isWindowOpen) {
             appObj -> Update();
             isWindowOpen = appObj->Render();
         }
 
+        std::cout << "[main] Cleaning up..." << std::endl;
         appObj -> DeInitialize();
     }
     catch(const std::exception& e) {
@@ -48,5 +56,6 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    std::cout << "[main] Exiting normally" << std::endl;
     return 0;
 }

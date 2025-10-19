@@ -19,6 +19,10 @@ NodeInstance::NodeInstance(
         inputs.resize(nodeType->GetInputCount(), nullptr);
         outputs.resize(nodeType->GetOutputCount(), nullptr);
     }
+
+#ifdef _DEBUG
+    nodeLogger = std::make_unique<Logger>(instanceName);
+#endif
 }
 
 NodeInstance::~NodeInstance() {
@@ -155,6 +159,21 @@ uint64_t NodeInstance::ComputeCacheKey() const {
     
     return hash;
 }
+
+#ifdef _DEBUG
+void NodeInstance::RegisterToParentLogger(Logger* parentLogger)
+{
+    if (parentLogger) {
+        parentLogger->AddChild(nodeLogger.get());
+    }
+}
+void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
+{
+    if (parentLogger) {
+        parentLogger->RemoveChild(nodeLogger.get());
+    }
+}
+#endif
 
 void NodeInstance::AllocateResources() {
     // Calculate input memory footprint

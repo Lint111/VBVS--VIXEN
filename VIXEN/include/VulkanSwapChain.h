@@ -3,6 +3,7 @@
 #include "Headers.h"
 
 class VulkanApplication;
+class VulkanApplicationBase;
 class VulkanRenderer;
 
 struct SwapChainBuffer {
@@ -105,7 +106,7 @@ class VulkanSwapChain {
     private:
     SwapChainPrivateVariables scPrivateVars;
     VulkanRenderer* rendererObj;
-    VulkanApplication* appObj;
+    VulkanApplicationBase* appObj;
 
     bool supportsScalingExtension = false;
 };

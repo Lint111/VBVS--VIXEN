@@ -19,7 +19,7 @@
 
 VulkanSwapChain::VulkanSwapChain(VulkanRenderer* renderer) {
     rendererObj = renderer;
-    appObj = VulkanApplication::GetInstance();
+    appObj = renderer ? renderer->GetApp() : nullptr;
 
     // Initialize all Vulkan handles to VK_NULL_HANDLE
     scPublicVars.surface = VK_NULL_HANDLE;

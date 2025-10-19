@@ -14,6 +14,7 @@ using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::TextureHandling;
 
 class VulkanApplication;
+class VulkanApplicationBase;
 class VulkanSwapChain;
 class VulkanRenderer;
 class VulkanDrawable;
@@ -23,7 +24,7 @@ class VulkanDrawable;
 class VulkanRenderer {
 
     public:
-    VulkanRenderer(VulkanApplication* app, VulkanDevice* deviceObject);
+    VulkanRenderer(VulkanApplicationBase* app, VulkanDevice* deviceObject, bool createSwapChain = true);
     ~VulkanRenderer();
 
     public:
@@ -61,7 +62,7 @@ class VulkanRenderer {
 	void DestroyShaders();
     void DestroyTexture();
 
-    inline VulkanApplication* GetApp() const { return appObj; }
+    inline VulkanApplicationBase* GetApp() const { return appObj; }
     inline VulkanDevice* GetDevice() const { return deviceObj; }
     inline VulkanSwapChain* GetSwapChain() const { return swapChainObj.get(); }
     inline const std::vector<std::unique_ptr<VulkanDrawable>>& GetDrawingItems() const { return vecDrawables; }
@@ -119,7 +120,7 @@ class VulkanRenderer {
 
     private:
     // --- Core ---
-    VulkanApplication* appObj;
+    VulkanApplicationBase* appObj;
     VulkanDevice* deviceObj;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
 

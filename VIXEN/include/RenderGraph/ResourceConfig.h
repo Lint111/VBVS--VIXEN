@@ -55,6 +55,16 @@ template<> struct VulkanTypeTraits<VkRenderPass> {
     static constexpr bool isValid = true;
 };
 
+template<> struct VulkanTypeTraits<VkPhysicalDevice> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkDevice> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
 /**
  * @brief Compile-time resource slot descriptor
  *

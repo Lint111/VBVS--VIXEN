@@ -9,7 +9,8 @@ namespace Vixen::RenderGraph {
 
 RenderGraph::RenderGraph(
     Vixen::Vulkan::Resources::VulkanDevice* primaryDevice,
-    NodeTypeRegistry* registry
+    NodeTypeRegistry* registry,
+    Logger* mainLogger
 )
     : primaryDevice(primaryDevice)
     , typeRegistry(registry)
@@ -22,6 +23,14 @@ RenderGraph::RenderGraph(
     }
 
     usedDevices.push_back(primaryDevice);
+
+#ifdef _DEBUG
+    if (mainLogger) {
+        this->mainLogger = mainLogger;
+    }
+#else
+    (void)mainLogger;
+#endif
 }
 
 RenderGraph::~RenderGraph() {
@@ -69,6 +78,11 @@ NodeHandle RenderGraph::AddNode(
     instances.push_back(std::move(instance));
     nameToHandle[instanceName] = handle;
     instancesByType[typeId].push_back(instances[index].get());
+
+    // Add logger if in debug mode (attach node to parent logger)
+    #ifdef _DEBUG
+    instances[index]->RegisterToParentLogger(mainLogger);
+    #endif
 
     // Add to topology
     topology.AddNode(instances[index].get());

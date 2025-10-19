@@ -24,7 +24,7 @@ public:
     VkResult GetDeviceExtentionProperties(VkPhysicalDevice* gpu);
 
     VkBool32 AreLayersSupported(std::vector<const char *> &layerNames);
-    VkResult CreateDebugReportCallBack();
+    VkResult CreateDebugReportCallBack(VkInstance instance);
 
     static uint32_t DebugFunction(VkFlags msgFlags,
                                   VkDebugReportObjectTypeEXT objType,
