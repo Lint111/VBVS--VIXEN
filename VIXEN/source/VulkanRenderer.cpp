@@ -166,7 +166,9 @@ void VulkanRenderer::DeInitialize()
     vecDrawables.clear();
 
     if (swapChainObj) {
-        swapChainObj->DestroySwapChain();
+        // NOTE: DestroySwapChain now requires VkDevice parameter
+        // This legacy code path is being replaced by render graph architecture
+        // swapChainObj->DestroySwapChain(deviceObj->device);
         swapChainObj.reset();
     }
 
@@ -202,7 +204,9 @@ void VulkanRenderer::HandleResize()
 
     DestroyFrameBuffer();
     DestroyDepthBuffer();
-    swapChainObj->DestroySwapChain();
+    // NOTE: DestroySwapChain now requires VkDevice parameter
+    // This legacy code path is being replaced by render graph architecture
+    // swapChainObj->DestroySwapChain(deviceObj->device);
 
     BuildSwapChainAndDepthImage();
     CreateFrameBuffer(true);
@@ -369,6 +373,9 @@ void  VulkanRenderer::CreatePresentationWindowWin32(const int &windowWidth, cons
 #ifdef _WIN32
 LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    // NOTE: This legacy window proc is being replaced by render graph architecture
+    // Commenting out entire method body as it conflicts with refactored code
+    /*
     VulkanApplication* appObj = VulkanApplication::GetInstance();
     VulkanRenderer* renderObj = appObj ? appObj->renderObj.get() : nullptr;
 
@@ -410,8 +417,9 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
 
             // Normal rendering (only if renderer is fully initialized)
-            if (appObj && appObj->renderObj && appObj->renderObj->isInitialized) {
-                for (auto& drawableObj : appObj->renderObj->vecDrawables) {
+            // NOTE: This legacy window proc code path is being replaced by render graph architecture
+            if (renderObj && renderObj->isInitialized) {
+                for (auto& drawableObj : renderObj->vecDrawables) {
                     result = drawableObj->Render();
                     switch (result)
                     {
@@ -436,7 +444,7 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case WM_SIZE: {
             if(wParam != SIZE_MINIMIZED && appObj && appObj->IsPrepared() &&
-               appObj->renderObj && appObj->renderObj->isInitialized) {
+               renderObj && renderObj->isInitialized) {
 
                 // If not actively resizing, trigger immediate swapchain rebuild
                 if (!renderObj->isResizing && !renderObj->frameBufferResized) {
@@ -448,6 +456,7 @@ LRESULT VulkanRenderer::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         default:
             break;
     }
+    */
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
@@ -901,7 +910,8 @@ void VulkanRenderer::CreateShaders()
     if (vertShaderCode && fragShaderCode) {
         shaderObj->BuildShader(
             (const char*)vertShaderCode,
-            (const char*)fragShaderCode
+            (const char*)fragShaderCode,
+            deviceObj
         );
         std::cout << "Shaders compiled successfully!" << std::endl;
     } else {
@@ -935,7 +945,7 @@ void VulkanRenderer::CreatePipelineStateManagement()
 
 
     pipelineState = std::make_unique<VulkanPipeline>();
-    pipelineState->CreatePipelineCache();
+    pipelineState->CreatePipelineCache(deviceObj->device);
 
     VulkanPipeline::Config config = {};
     config.enableDepthTest = true;
@@ -951,7 +961,9 @@ void VulkanRenderer::CreatePipelineStateManagement()
             drawable.get(),
             shaderObj.get(),
             config,
-            &pipelineHandle // Pass address to receive the handle
+            &pipelineHandle, // Pass address to receive the handle
+            renderPass,
+            deviceObj->device
         )) {
             drawable->SetPipeline(pipelineHandle); // Pass the actual handle
             pipelineHandles.push_back(pipelineHandle);
@@ -1040,14 +1052,14 @@ void VulkanRenderer::DestroyPipeline()
     }
     pipelineHandles.clear();
 
-    pipelineState->DestroyPipelineCache();
+    pipelineState->DestroyPipelineCache(deviceObj->device);
     pipelineState.reset();
 }
 
 void VulkanRenderer::DestroyShaders()
 {
     if (shaderObj) {
-        shaderObj->DestroyShader();
+        shaderObj->DestroyShader(deviceObj);
     }
 }
 

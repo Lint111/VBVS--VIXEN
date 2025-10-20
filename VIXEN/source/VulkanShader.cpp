@@ -1,8 +1,8 @@
 #include "VulkanShader.h"
+#include "VulkanResources/VulkanDevice.h"
 
-void VulkanShader::BuildShaderModuleWithSPV(uint32_t *vertShaderText, size_t vertexSPVSize, uint32_t *fragShaderText, size_t fragSPVSize)
+void VulkanShader::BuildShaderModuleWithSPV(uint32_t *vertShaderText, size_t vertexSPVSize, uint32_t *fragShaderText, size_t fragSPVSize, Vixen::Vulkan::Resources::VulkanDevice* deviceObj)
 {
-    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
 
     VkResult result;
     stagesCount = 0;
@@ -51,11 +51,8 @@ void VulkanShader::BuildShaderModuleWithSPV(uint32_t *vertShaderText, size_t ver
     assert(result == VK_SUCCESS);
 }
 
-void VulkanShader::DestroyShader()
+void VulkanShader::DestroyShader(Vixen::Vulkan::Resources::VulkanDevice* deviceObj)
 {
-    VulkanApplication* appObj = VulkanApplication::GetInstance();
-    VulkanDevice* deviceObj = appObj->deviceObj.get();    
-
     if(shaderStages[0].module != VK_NULL_HANDLE) {
         vkDestroyShaderModule(
             deviceObj->device,
@@ -78,10 +75,8 @@ void VulkanShader::DestroyShader()
 
 #ifdef AUTO_COMPILE_GLSL_TO_SPV
 
-void VulkanShader::BuildShader(const char *vertShaderText, const char *fragShaderText)
+void VulkanShader::BuildShader(const char *vertShaderText, const char *fragShaderText, Vixen::Vulkan::Resources::VulkanDevice* deviceObj)
 {
-    VulkanDevice* deviceObj = VulkanApplication::GetInstance()->deviceObj.get();
-
     VkResult result;
     bool retVal;
     stagesCount = 0;

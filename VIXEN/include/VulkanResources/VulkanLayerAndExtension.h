@@ -4,6 +4,8 @@
 
 namespace Vixen::Vulkan::Resources {
 
+class VulkanInstance;
+
 struct LayerProperties {
     VkLayerProperties properties;
     std::vector<VkExtensionProperties> extensions;
@@ -20,8 +22,8 @@ public:
     std::vector<LayerProperties> layerPropertyList;
 
     VkResult GetInstanceLayerProperties();
-    VkResult GetExtentionProperties(LayerProperties& layerProps, VkPhysicalDevice* gpu = nullptr);
-    VkResult GetDeviceExtentionProperties(VkPhysicalDevice* gpu);
+    VkResult GetExtentionProperties(LayerProperties& layerProps, const VkPhysicalDevice* const gpu = nullptr);
+    VkResult GetDeviceExtentionProperties(const VkPhysicalDevice* const gpu, VulkanInstance& instance);
 
     VkBool32 AreLayersSupported(std::vector<const char *> &layerNames);
     VkResult CreateDebugReportCallBack(VkInstance instance);
@@ -35,7 +37,7 @@ public:
                                   const char *pMsg,
                                   void *pUserData);
 
-    static void DestroyDebugReportCallback();
+    static void DestroyDebugReportCallback(VkInstance instance);
 
     static PFN_vkCreateDebugReportCallbackEXT dbgCreateDebugReportCallback;
     static PFN_vkDestroyDebugReportCallbackEXT dbgDestroyDebugReportCallback;

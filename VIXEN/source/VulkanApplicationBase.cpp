@@ -52,7 +52,7 @@ VulkanStatus VulkanApplicationBase::HandShakeWithDevice(VkPhysicalDevice* gpu,
     deviceObj = std::make_unique<VulkanDevice>(gpu);
 
     // Print the devices available layer and their extensions
-    deviceObj->layerExtension.GetDeviceExtentionProperties(gpu);
+    deviceObj->layerExtension.GetDeviceExtentionProperties(gpu, instanceObj);
 
     // Get the physical device GPU properties
     vkGetPhysicalDeviceProperties(*gpu, &deviceObj->gpuProperties);

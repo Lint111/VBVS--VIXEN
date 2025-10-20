@@ -1,29 +1,25 @@
 #pragma once
 
 #include "../NodeType.h"
-#include "../NodeInstance.h"
+#include "../TypedNodeInstance.h"
+#include "DepthBufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 
 /**
  * @brief Depth buffer creation node
- * 
+ *
  * Responsibilities:
  * - Create depth/stencil image
  * - Allocate device memory
  * - Create image view
  * - Transition to depth-stencil attachment optimal layout
- * 
- * Inputs: None
- * Outputs:
- *   [0] Depth image (VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
- * 
- * Parameters:
- *   - width: uint32_t - Depth buffer width
- *   - height: uint32_t - Depth buffer height
- *   - format: std::string - "D32" (default), "D24S8", "D16"
+ *
+ * Uses TypedNode with DepthBufferNodeConfig for compile-time type safety.
+ *
+ * Type ID: 101
  */
-class DepthBufferNode : public NodeInstance {
+class DepthBufferNode : public TypedNode<DepthBufferNodeConfig> {
 public:
     DepthBufferNode(
         const std::string& instanceName,
@@ -53,9 +49,9 @@ private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
     bool isCreated = false;
 
-    VkFormat GetFormatFromString(const std::string& formatStr);
+    VkFormat ConvertDepthFormat(DepthFormat format);
     void CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format);
-    void TransitionImageLayout(VkCommandBuffer cmdBuffer, VkImage image, 
+    void TransitionImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
                                VkImageLayout oldLayout, VkImageLayout newLayout);
 };
 

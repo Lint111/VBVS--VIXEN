@@ -22,6 +22,44 @@ namespace Vixen::RenderGraph {
 class NodeType;
 
 /**
+ * @brief Depth format options for depth buffers
+ */
+enum class DepthFormat {
+    D16,      // VK_FORMAT_D16_UNORM - 16-bit depth
+    D24S8,    // VK_FORMAT_D24_UNORM_S8_UINT - 24-bit depth + 8-bit stencil
+    D32       // VK_FORMAT_D32_SFLOAT - 32-bit float depth (default)
+};
+
+/**
+ * @brief Attachment load operations for render passes
+ */
+enum class AttachmentLoadOp {
+    Load,      // VK_ATTACHMENT_LOAD_OP_LOAD - Preserve existing contents
+    Clear,     // VK_ATTACHMENT_LOAD_OP_CLEAR - Clear to constant value
+    DontCare   // VK_ATTACHMENT_LOAD_OP_DONT_CARE - Undefined (fastest)
+};
+
+/**
+ * @brief Attachment store operations for render passes
+ */
+enum class AttachmentStoreOp {
+    Store,     // VK_ATTACHMENT_STORE_OP_STORE - Store contents for later use
+    DontCare   // VK_ATTACHMENT_STORE_OP_DONT_CARE - Don't care about contents after rendering
+};
+
+/**
+ * @brief Image layout options for render passes
+ */
+enum class ImageLayout {
+    Undefined,                    // VK_IMAGE_LAYOUT_UNDEFINED
+    ColorAttachment,             // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    DepthStencilAttachment,      // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    PresentSrc,                  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+    TransferSrc,                 // VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+    TransferDst                  // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+};
+
+/**
  * @brief Variant type for node parameters
  */
 using ParameterValue = std::variant<
@@ -34,7 +72,11 @@ using ParameterValue = std::variant<
     glm::vec2,
     glm::vec3,
     glm::vec4,
-    glm::mat4
+    glm::mat4,
+    DepthFormat,          // Depth format enum
+    AttachmentLoadOp,     // Load operation enum
+    AttachmentStoreOp,    // Store operation enum
+    ImageLayout           // Image layout enum
 >;
 
 /**

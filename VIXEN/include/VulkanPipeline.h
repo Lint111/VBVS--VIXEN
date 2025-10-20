@@ -28,7 +28,7 @@ public:
     ~VulkanPipeline();
 
     // Creates the pipeline cache object and stores pipeline object
-    void CreatePipelineCache();
+    void CreatePipelineCache(VkDevice device);
 
     // Returns the created pipeline object, it takes the drawable object which contains
     // the vertex input rate and data interpretation information, shader files,
@@ -38,11 +38,13 @@ public:
         VulkanDrawable* drawableObj,
         VulkanShader* shaderObj,
         Config config,
-        VkPipeline* pipeline
+        VkPipeline* pipeline,
+        VkRenderPass renderPass,
+        VkDevice device
     );
 
     // Destruct the pipeline cache object.
-    void DestroyPipelineCache();
+    void DestroyPipelineCache(VkDevice device);
 
     public:
     // The pipeline cache object
@@ -50,6 +52,6 @@ public:
     VkPipelineLayout pipelineLayout;
 
     // References to other user defined classes
-    VulkanApplication* appObj;
-    VulkanDevice* deviceObj;
+    //VulkanApplication* appObj;
+    //VulkanDevice* deviceObj;
 };

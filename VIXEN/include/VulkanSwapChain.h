@@ -61,26 +61,28 @@ struct SwapChainPublicVariables {
 
 class VulkanSwapChain {
     public:
-    VulkanSwapChain(VulkanRenderer* renderer);
+    VulkanSwapChain();
     ~VulkanSwapChain();
 
 
     public:
     void Initialize();
     void CreateSwapChain(const VkCommandBuffer& cmd);
-    void DestroySwapChain();
+    void DestroySwapChain(VkDevice device);
     void SetSwapChainExtent(uint32_t width, uint32_t height);
 
-    private:
-    VkResult CreateSwapChainExtensions();
-    void GetSupportedFormats();
-    VkResult CreateSurface();
-    void DestroySurface();
-    uint32_t GetGraphicsQueueWithPresentationSupport();
-    void GetSurfaceCapabilitiesAndPresentMode();
+    // Swapchain creation methods (exposed for SwapChainNode)
+    VkResult CreateSwapChainExtensions(VkInstance instance, VkDevice device);
+    void GetSupportedFormats(VkPhysicalDevice gpu);
+    VkResult CreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance);
+    void DestroySurface(VkInstance instance);
+    uint32_t GetGraphicsQueueWithPresentationSupport(VkPhysicalDevice gpu, uint32_t queueFamilyCount, const std::vector<VkQueueFamilyProperties>& queueProps);
+    void GetSurfaceCapabilitiesAndPresentMode(VkPhysicalDevice gpu, uint32_t width, uint32_t height);
     void ManagePresentMode();
-    void CreateSwapChainColorImages();
-    void CreateColorImageView(const VkCommandBuffer& cmd);
+    void CreateSwapChainColorImages(VkDevice device);
+    void CreateColorImageView(VkDevice device, const VkCommandBuffer& cmd);
+
+    private:
 
     public:
     // user defined structure containing public variables used by the swapchain
@@ -105,8 +107,6 @@ class VulkanSwapChain {
 
     private:
     SwapChainPrivateVariables scPrivateVars;
-    VulkanRenderer* rendererObj;
-    VulkanApplicationBase* appObj;
 
     bool supportsScalingExtension = false;
 };

@@ -8,18 +8,18 @@
 
 VulkanPipeline::VulkanPipeline()
 {
-    appObj = VulkanApplication::GetInstance();
-    deviceObj = appObj->deviceObj.get();
+    //appObj = VulkanApplication::GetInstance();
+    //deviceObj = appObj->deviceObj.get();
     pipelineCache = VK_NULL_HANDLE;
     pipelineLayout = VK_NULL_HANDLE;
 }
 
 VulkanPipeline::~VulkanPipeline()
 {
-    DestroyPipelineCache();
+    //DestroyPipelineCache( );
 }   
 
-void VulkanPipeline::CreatePipelineCache()
+void VulkanPipeline::CreatePipelineCache(VkDevice device)
 {
     if(pipelineCache != VK_NULL_HANDLE) {
         return;
@@ -34,7 +34,7 @@ void VulkanPipeline::CreatePipelineCache()
     pipelineCacheInfo.flags = 0;
 
     result = vkCreatePipelineCache(
-        deviceObj->device,
+        device,
         &pipelineCacheInfo,
         nullptr,
         &pipelineCache
@@ -43,30 +43,25 @@ void VulkanPipeline::CreatePipelineCache()
     assert(result == VK_SUCCESS);
 }
 
-bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *shaderObj, Config config, VkPipeline* pipelineHandle)
-{
-    if(!drawableObj || !shaderObj || !shaderObj->initialized) {
-        std::string nullArgs = "";
-        if(!drawableObj) nullArgs += " drawableObj ";
-        if(!shaderObj) nullArgs += " shaderObj ";
-        if(shaderObj && !shaderObj->initialized) nullArgs += " shaderObj not initialized ";
-        std::cerr << "CreatePipeline: invalid arguments (null): " << nullArgs << std::endl;
-        return false;
-    }
+bool VulkanPipeline::CreatePipeline(
+    VulkanDrawable *drawableObj, 
+    VulkanShader *shaderObj, 
+    Config config, 
+    VkPipeline* pipelineHandle,
+    VkRenderPass renderPass,
+    VkDevice device
 
+)
+{
     if(shaderObj->shaderStages == nullptr || shaderObj->stagesCount == 0) {
         std::cerr << "CreatePipeline: shader stages not initialized" << std::endl;
         return false;
     }
 
-    if(appObj->renderObj->renderPass == VK_NULL_HANDLE) {
-        std::cerr << "CreatePipeline: renderPass is VK_NULL_HANDLE" << std::endl;
-        return false;
-    }
-
+    
     if(pipelineCache == VK_NULL_HANDLE) {
         std::cerr << "CreatePipeline: pipelineCache is VK_NULL_HANDLE, creating one now." << std::endl;
-        CreatePipelineCache();
+        CreatePipelineCache(device);
         if(pipelineCache == VK_NULL_HANDLE) {
             std::cerr << "CreatePipeline: failed to create pipeline cache" << std::endl;
             return false;
@@ -221,14 +216,14 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
     pipelineInfo.pDepthStencilState = &depthStencilStateInfo;
     pipelineInfo.pStages = shaderObj->shaderStages;
     pipelineInfo.stageCount = 2;
-    pipelineInfo.renderPass = drawableObj->GetRenderer()->renderPass;
+    pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.layout = drawablePipelineLayout;
 
     // Create the pipilne using the meta-data store in the
     // VkGraphicsPipelineCreateInfo object
     result = vkCreateGraphicsPipelines(
-        deviceObj->device,
+        device,
         pipelineCache,
         1,
         &pipelineInfo,
@@ -244,10 +239,10 @@ bool VulkanPipeline::CreatePipeline(VulkanDrawable *drawableObj, VulkanShader *s
     return (result == VK_SUCCESS);
 }
 
-void VulkanPipeline::DestroyPipelineCache()
+void VulkanPipeline::DestroyPipelineCache(VkDevice device)
 {
     if(pipelineCache != VK_NULL_HANDLE) {
-        vkDestroyPipelineCache(deviceObj->device, pipelineCache, nullptr);
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
     // Note: pipelineLayout is owned by VulkanDrawable, not destroyed here

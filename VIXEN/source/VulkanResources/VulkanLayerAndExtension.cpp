@@ -1,7 +1,7 @@
 #include "VulkanResources/VulkanLayerAndExtension.h"
-#include "VulkanApplication.h"
+#include "VulkanResources/VulkanInstance.h"
 
-using namespace Vixen::Vulkan::Resources;
+namespace Vixen::Vulkan::Resources {
 
 // Define static members
 PFN_vkCreateDebugReportCallbackEXT VulkanLayerAndExtension::dbgCreateDebugReportCallback = nullptr;
@@ -25,7 +25,7 @@ VulkanLayerAndExtension::~VulkanLayerAndExtension() {
 }
 
 VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
-	// stores nuimber of instance layers
+	// stores number of instance layers
 	uint32_t instanceLayerCount;
 	//vector to store layer properties
 	std::vector<VkLayerProperties> layerProperties;
@@ -85,13 +85,13 @@ VkResult VulkanLayerAndExtension::GetInstanceLayerProperties() {
 // Pass a valid physical device pointer (gpu) to retrieve
 // device level extensions. otherwise use nullptr to retrieve 
 // extension specific to instance level.
-VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerProps, VkPhysicalDevice* gpu) {
+VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerProps, const VkPhysicalDevice* const gpu) {
 	// stores number of extensions per layer
 	uint32_t extensionCount;
 	VkResult result;
 
 	//Name of the layer
-	char* layerName = layerProps.properties.layerName;
+	const char* layerName = layerProps.properties.layerName;
 
 	do {
 		// Get the total number of extensions in this layer
@@ -132,14 +132,13 @@ VkResult VulkanLayerAndExtension::GetExtentionProperties(LayerProperties& layerP
 	return result;
 }
 
-VkResult VulkanLayerAndExtension::GetDeviceExtentionProperties(VkPhysicalDevice* gpu) {
+VkResult VulkanLayerAndExtension::GetDeviceExtentionProperties(const VkPhysicalDevice* const gpu, VulkanInstance& instance) {
 	VkResult result; // result status
 
 	std::cout << "\nDevice Extensions" << std::endl;
 	std::cout << "=================" << std::endl;
-	VulkanApplication* appObj = VulkanApplication::GetInstance();
-	std::vector<LayerProperties>* instanceLayerProp = &appObj->GetInstance()->instanceObj.layerExtension.layerPropertyList;
-
+	std::vector<LayerProperties>* instanceLayerProp = &instance.layerExtension.layerPropertyList;
+	
 	for (auto& globalLayerProp : *instanceLayerProp) {
 		LayerProperties layerProps;
 		layerProps.properties = globalLayerProp.properties;
@@ -270,15 +269,11 @@ uint32_t VulkanLayerAndExtension::DebugFunction(
 	return VK_SUCCESS;
 }
 
-void VulkanLayerAndExtension::DestroyDebugReportCallback() {
-	VulkanApplication* appObj = VulkanApplication::GetInstance();
-	VkInstance& instance = appObj->instanceObj.instance;
-
+void VulkanLayerAndExtension::DestroyDebugReportCallback(VkInstance instance) {
 	if (dbgDestroyDebugReportCallback && DebugReportCallback != VK_NULL_HANDLE) {
 		dbgDestroyDebugReportCallback(instance, DebugReportCallback, nullptr);
 		DebugReportCallback = VK_NULL_HANDLE;
 	}
 }
 
-
-
+} // namespace Vixen::Vulkan::Resources

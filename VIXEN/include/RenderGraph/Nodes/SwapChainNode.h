@@ -1,7 +1,9 @@
 #pragma once
 #include "RenderGraph/NodeInstance.h"
 #include "RenderGraph/NodeType.h"
+#include "RenderGraph/TypedNodeInstance.h"
 #include "VulkanSwapChain.h"
+#include "RenderGraph/Nodes/SwapChainNodeConfig.h"
 #include <memory>
 #include <vector>
 
@@ -40,7 +42,7 @@ public:
  * - colorImageViews: Array of swapchain image views
  * - currentImageIndex: Currently acquired image index
  */
-class SwapChainNode : public NodeInstance {
+class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:
     SwapChainNode(
         const std::string& instanceName,
@@ -57,6 +59,7 @@ public:
     // Accessors
     VkSwapchainKHR GetSwapchain() const;
     const std::vector<VkImageView>& GetColorImageViews() const;
+    SwapChainPublicVariables* GetSwapchainPublic() const;
     uint32_t GetImageCount() const;
     uint32_t GetCurrentImageIndex() const { return currentImageIndex; }
     VkSemaphore GetImageAvailableSemaphore() const {

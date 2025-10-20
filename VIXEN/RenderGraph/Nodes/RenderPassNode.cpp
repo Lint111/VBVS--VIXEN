@@ -1,5 +1,7 @@
 #include "RenderGraph/Nodes/RenderPassNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "RenderGraph/NodeLogging.h"
+#include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
 
@@ -42,7 +44,7 @@ RenderPassNode::RenderPassNode(
     NodeType* nodeType,
     Vixen::Vulkan::Resources::VulkanDevice* device
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : TypedNode<RenderPassNodeConfig>(instanceName, nodeType, device)
 {
 }
 
@@ -51,29 +53,34 @@ RenderPassNode::~RenderPassNode() {
 }
 
 void RenderPassNode::Setup() {
-    // No setup needed
+    NODE_LOG_INFO("Setup: Render pass node ready");
 }
 
 void RenderPassNode::Compile() {
-    // Get parameters with defaults matching VulkanRenderer behavior
-    VkFormat colorFormat = static_cast<VkFormat>(
-        GetParameterValue<uint32_t>("colorFormat", VK_FORMAT_B8G8R8A8_UNORM)
-    );
-    VkFormat depthFormat = static_cast<VkFormat>(
-        GetParameterValue<uint32_t>("depthFormat", VK_FORMAT_D32_SFLOAT)
-    );
-    
-    std::string colorLoadOpStr = GetParameterValue<std::string>("colorLoadOp", "Clear");
-    std::string colorStoreOpStr = GetParameterValue<std::string>("colorStoreOp", "Store");
-    std::string depthLoadOpStr = GetParameterValue<std::string>("depthLoadOp", "Clear");
-    std::string depthStoreOpStr = GetParameterValue<std::string>("depthStoreOp", "Store");
-    
-    uint32_t sampleCount = GetParameterValue<uint32_t>("samples", 1);
-    
-    std::string initialLayoutStr = GetParameterValue<std::string>("initialLayout", "Undefined");
-    std::string finalLayoutStr = GetParameterValue<std::string>("finalLayout", "PresentSrc");
+    NODE_LOG_INFO("Compile: Creating render pass");
+
+    // Get typed inputs
+    VkFormat colorFormat = In(RenderPassNodeConfig::COLOR_FORMAT);
+    VkFormat depthFormat = In(RenderPassNodeConfig::DEPTH_FORMAT);
+
+    // Get typed enum parameters
+    AttachmentLoadOp colorLoadOp = GetParameterValue<AttachmentLoadOp>(
+        RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Clear);
+    AttachmentStoreOp colorStoreOp = GetParameterValue<AttachmentStoreOp>(
+        RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+    AttachmentLoadOp depthLoadOp = GetParameterValue<AttachmentLoadOp>(
+        RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, AttachmentLoadOp::Clear);
+    AttachmentStoreOp depthStoreOp = GetParameterValue<AttachmentStoreOp>(
+        RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, AttachmentStoreOp::Store);
+    ImageLayout initialLayout = GetParameterValue<ImageLayout>(
+        RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
+    ImageLayout finalLayout = GetParameterValue<ImageLayout>(
+        RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
+    uint32_t sampleCount = GetParameterValue<uint32_t>(
+        RenderPassNodeConfig::PARAM_SAMPLES, 1);
 
     hasDepth = (depthFormat != VK_FORMAT_UNDEFINED);
+    NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
 
     // Setup attachments
     VkAttachmentDescription attachments[2];
@@ -82,12 +89,12 @@ void RenderPassNode::Compile() {
     attachments[0] = {};
     attachments[0].format = colorFormat;
     attachments[0].samples = GetSampleCount(sampleCount);
-    attachments[0].loadOp = ParseLoadOp(colorLoadOpStr);
-    attachments[0].storeOp = ParseStoreOp(colorStoreOpStr);
+    attachments[0].loadOp = ConvertLoadOp(colorLoadOp);
+    attachments[0].storeOp = ConvertStoreOp(colorStoreOp);
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = ParseImageLayout(initialLayoutStr);
-    attachments[0].finalLayout = ParseImageLayout(finalLayoutStr);
+    attachments[0].initialLayout = ConvertImageLayout(initialLayout);
+    attachments[0].finalLayout = ConvertImageLayout(finalLayout);
     attachments[0].flags = 0;
 
     // Depth attachment (if enabled)
@@ -95,8 +102,8 @@ void RenderPassNode::Compile() {
         attachments[1] = {};
         attachments[1].format = depthFormat;
         attachments[1].samples = GetSampleCount(sampleCount);
-        attachments[1].loadOp = ParseLoadOp(depthLoadOpStr);
-        attachments[1].storeOp = ParseStoreOp(depthStoreOpStr);
+        attachments[1].loadOp = ConvertLoadOp(depthLoadOp);
+        attachments[1].storeOp = ConvertStoreOp(depthStoreOp);
         attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
         attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -149,8 +156,15 @@ void RenderPassNode::Compile() {
 
     VkResult result = vkCreateRenderPass(device->device, &renderPassInfo, nullptr, &renderPass);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create render pass");
+        VulkanError error{result, "Failed to create render pass"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
+
+    // Set typed output
+    Out(RenderPassNodeConfig::RENDER_PASS) = renderPass;
+
+    NODE_LOG_INFO("Compile complete: Render pass created successfully");
 }
 
 void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {

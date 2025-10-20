@@ -1,6 +1,6 @@
 #include "VulkanResources/VulkanInstance.h"
 
-using namespace Vixen::Vulkan::Resources;
+namespace Vixen::Vulkan::Resources {
 
 VulkanInstance::VulkanInstance() {
 	// constructor
@@ -34,10 +34,10 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	instInfo.flags = 0;
 	instInfo.pApplicationInfo = &appInfo;
 	// specify the list of layers to be enabled
-	instInfo.enabledLayerCount = layerNames.size();
+	instInfo.enabledLayerCount = static_cast<uint32_t>(layerNames.size());
 	instInfo.ppEnabledLayerNames = layerNames.data();
 	// specify the list of extensions to be enabled
-	instInfo.enabledExtensionCount = extensionNames.size();
+	instInfo.enabledExtensionCount = static_cast<uint32_t>(extensionNames.size());
 	instInfo.ppEnabledExtensionNames = extensionNames.data();
 
 	VkResult res = vkCreateInstance(&instInfo, nullptr, &instance);
@@ -47,11 +47,13 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 void VulkanInstance::DestroyInstance() {
 
 	if(layerExtension.DebugReportCallback != VK_NULL_HANDLE) {
-		layerExtension.DestroyDebugReportCallback();
+		layerExtension.DestroyDebugReportCallback(instance);
 	}
 
 	if(instance != VK_NULL_HANDLE) {
 		vkDestroyInstance(instance, nullptr); // Destroy the Vulkan instance
 		instance = VK_NULL_HANDLE;  // Set to null to prevent double-destruction
 	}
+}
+
 }

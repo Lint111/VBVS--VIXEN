@@ -1,5 +1,8 @@
 #include "RenderGraph/Nodes/DepthBufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "RenderGraph/NodeLogging.h"
+#include "error/VulkanError.h"
+#include <sstream>
 
 namespace Vixen::RenderGraph {
 
@@ -59,7 +62,7 @@ DepthBufferNode::DepthBufferNode(
     NodeType* nodeType,
     Vixen::Vulkan::Resources::VulkanDevice* device
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : TypedNode<DepthBufferNodeConfig>(instanceName, nodeType, device)
 {
 }
 
@@ -68,6 +71,8 @@ DepthBufferNode::~DepthBufferNode() {
 }
 
 void DepthBufferNode::Setup() {
+    NODE_LOG_DEBUG("Setup: Creating command pool for depth buffer layout transition");
+
     // Create command pool for image layout transition
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -76,17 +81,44 @@ void DepthBufferNode::Setup() {
 
     VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create command pool for depth buffer");
+        VulkanError error{result, "Failed to create command pool for depth buffer"};
+        NODE_LOG_CRITICAL(error.toString());
+        throw std::runtime_error(error.toString());
     }
+
+    NODE_LOG_INFO("Setup complete");
 }
 
 void DepthBufferNode::Compile() {
-    // Get parameters
-    uint32_t width = GetParameterValue<uint32_t>("width", 1920);
-    uint32_t height = GetParameterValue<uint32_t>("height", 1080);
-    std::string formatStr = GetParameterValue<std::string>("format", "D32");
+    NODE_LOG_INFO("Compile: Creating depth buffer");
 
-    VkFormat format = GetFormatFromString(formatStr);
+    // Get typed inputs
+    uint32_t width = In(DepthBufferNodeConfig::WIDTH);
+    uint32_t height = In(DepthBufferNodeConfig::HEIGHT);
+    VkCommandPool cmdPool = In(DepthBufferNodeConfig::COMMAND_POOL);
+
+    NODE_LOG_DEBUG("Input dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+
+    // Validate inputs
+    if (width == 0 || height == 0) {
+        std::string errorMsg = "Invalid dimensions: width and height must be greater than 0";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    if (cmdPool == VK_NULL_HANDLE) {
+        std::string errorMsg = "Command pool is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
+    // Get format from typed parameter (defaults to D32)
+    DepthFormat depthFmt = GetParameterValue<DepthFormat>(
+        DepthBufferNodeConfig::PARAM_FORMAT,
+        DepthFormat::D32
+    );
+    VkFormat format = ConvertDepthFormat(depthFmt);
+
+    NODE_LOG_DEBUG("Using depth format: " + std::to_string(static_cast<int>(depthFmt)));
 
     // Create depth image and view
     CreateDepthImageAndView(width, height, format);
@@ -94,7 +126,7 @@ void DepthBufferNode::Compile() {
     // Transition to depth-stencil attachment optimal layout
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = cmdPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
 
@@ -120,9 +152,15 @@ void DepthBufferNode::Compile() {
     vkQueueSubmit(device->queue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(device->queue);
 
-    vkFreeCommandBuffers(device->device, commandPool, 1, &cmdBuffer);
+    vkFreeCommandBuffers(device->device, cmdPool, 1, &cmdBuffer);
+
+    // Set typed outputs
+    Out(DepthBufferNodeConfig::DEPTH_IMAGE) = depthImage.image;
+    Out(DepthBufferNodeConfig::DEPTH_IMAGE_VIEW) = depthImage.view;
+    Out(DepthBufferNodeConfig::DEPTH_FORMAT) = depthImage.format;
 
     isCreated = true;
+    NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
 void DepthBufferNode::Execute(VkCommandBuffer commandBuffer) {
@@ -157,15 +195,17 @@ void DepthBufferNode::Cleanup() {
     }
 }
 
-VkFormat DepthBufferNode::GetFormatFromString(const std::string& formatStr) {
-    if (formatStr == "D32") {
-        return VK_FORMAT_D32_SFLOAT;
-    } else if (formatStr == "D24S8") {
-        return VK_FORMAT_D24_UNORM_S8_UINT;
-    } else if (formatStr == "D16") {
-        return VK_FORMAT_D16_UNORM;
+VkFormat DepthBufferNode::ConvertDepthFormat(DepthFormat format) {
+    switch (format) {
+        case DepthFormat::D16:
+            return VK_FORMAT_D16_UNORM;
+        case DepthFormat::D24S8:
+            return VK_FORMAT_D24_UNORM_S8_UINT;
+        case DepthFormat::D32:
+            return VK_FORMAT_D32_SFLOAT;
+        default:
+            return VK_FORMAT_D32_SFLOAT;
     }
-    return VK_FORMAT_D32_SFLOAT; // Default
 }
 
 void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format) {
@@ -189,8 +229,11 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
 
     VkResult result = vkCreateImage(device->device, &imageInfo, nullptr, &depthImage.image);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create depth image");
+        VulkanError error{result, "Failed to create depth image"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
+    NODE_LOG_DEBUG("Depth image created");
 
     // Allocate memory
     VkMemoryRequirements memRequirements;
@@ -203,7 +246,9 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
 
     if (!memoryTypeResult) {
         vkDestroyImage(device->device, depthImage.image, nullptr);
-        throw std::runtime_error("Failed to find suitable memory type for depth image");
+        std::string errorMsg = "Failed to find suitable memory type: " + memoryTypeResult.error().toString();
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     VkMemoryAllocateInfo allocInfo{};
@@ -214,8 +259,11 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
     result = vkAllocateMemory(device->device, &allocInfo, nullptr, &depthImage.mem);
     if (result != VK_SUCCESS) {
         vkDestroyImage(device->device, depthImage.image, nullptr);
-        throw std::runtime_error("Failed to allocate depth image memory");
+        VulkanError error{result, "Failed to allocate depth image memory"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
+    NODE_LOG_DEBUG("Depth image memory allocated");
 
     vkBindImageMemory(device->device, depthImage.image, depthImage.mem, 0);
 
@@ -233,8 +281,11 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
 
     result = vkCreateImageView(device->device, &viewInfo, nullptr, &depthImage.view);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create depth image view");
+        VulkanError error{result, "Failed to create depth image view"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
+    NODE_LOG_DEBUG("Depth image view created");
 }
 
 void DepthBufferNode::TransitionImageLayout(
@@ -267,7 +318,9 @@ void DepthBufferNode::TransitionImageLayout(
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
-        throw std::runtime_error("Unsupported layout transition");
+        std::string errorMsg = "Unsupported layout transition";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     vkCmdPipelineBarrier(

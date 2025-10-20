@@ -1,35 +1,25 @@
 #pragma once
 
 #include "../NodeType.h"
-#include "../NodeInstance.h"
+#include "../TypedNodeInstance.h"
+#include "RenderPassNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 
 /**
  * @brief Render pass definition node
- * 
+ *
  * Responsibilities:
  * - Define render pass with attachments (color, depth/stencil)
- * - Configure load/store operations
+ * - Configure load/store operations using typed enums
  * - Define subpass dependencies
  * - Handle layout transitions
- * 
- * Inputs: None
- * Outputs:
- *   [0] RenderPass handle (opaque, accessed via GetRenderPass())
- * 
- * Parameters:
- *   - colorFormat: VkFormat - Color attachment format
- *   - depthFormat: VkFormat - Depth attachment format (VK_FORMAT_UNDEFINED = no depth)
- *   - colorLoadOp: std::string - "Clear", "Load", "DontCare"
- *   - colorStoreOp: std::string - "Store", "DontCare"
- *   - depthLoadOp: std::string - "Clear", "Load", "DontCare"
- *   - depthStoreOp: std::string - "Store", "DontCare"
- *   - samples: uint32_t - MSAA sample count (1 = no MSAA)
- *   - initialLayout: std::string - "Undefined", "ColorAttachment", etc.
- *   - finalLayout: std::string - "PresentSrc", "ColorAttachment", etc.
+ *
+ * Uses TypedNode with RenderPassNodeConfig for compile-time type safety.
+ *
+ * Type ID: 104
  */
-class RenderPassNode : public NodeInstance {
+class RenderPassNode : public TypedNode<RenderPassNodeConfig> {
 public:
     RenderPassNode(
         const std::string& instanceName,
@@ -53,9 +43,9 @@ private:
     VkRenderPass renderPass = VK_NULL_HANDLE;
     bool hasDepth = false;
 
-    VkAttachmentLoadOp ParseLoadOp(const std::string& op);
-    VkAttachmentStoreOp ParseStoreOp(const std::string& op);
-    VkImageLayout ParseImageLayout(const std::string& layout);
+    VkAttachmentLoadOp ConvertLoadOp(AttachmentLoadOp op);
+    VkAttachmentStoreOp ConvertStoreOp(AttachmentStoreOp op);
+    VkImageLayout ConvertImageLayout(ImageLayout layout);
     VkSampleCountFlagBits GetSampleCount(uint32_t samples);
 };
 

@@ -1,9 +1,15 @@
 #pragma once
 
+#include "Headers.h"
+
 #include "Resource.h"
 #include <array>
+#include <string>
 #include <string_view>
 #include <type_traits>
+
+// Forward declare global type
+struct SwapChainPublicVariables;
 
 namespace Vixen::RenderGraph {
 
@@ -50,7 +56,17 @@ template<> struct VulkanTypeTraits<VkSemaphore> {
     static constexpr bool isValid = true;
 };
 
+template<> struct VulkanTypeTraits<VkSwapchainKHR> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer; // Opaque handle
+    static constexpr bool isValid = true;
+};
+
 template<> struct VulkanTypeTraits<VkRenderPass> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkInstance> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
     static constexpr bool isValid = true;
 };
@@ -62,6 +78,38 @@ template<> struct VulkanTypeTraits<VkPhysicalDevice> {
 
 template<> struct VulkanTypeTraits<VkDevice> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<uint32_t> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Scalar parameter
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkCommandPool> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkFormat> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Enum value
+    static constexpr bool isValid = true;
+};
+
+// SwapChainPublicVariables* (defined in VulkanSwapChain.h in global namespace)
+template<> struct VulkanTypeTraits<::SwapChainPublicVariables*> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
+    static constexpr bool isValid = true;
+};
+
+// Windows platform handles
+template<> struct VulkanTypeTraits<HWND> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Platform handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<HINSTANCE> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Platform handle
     static constexpr bool isValid = true;
 };
 
