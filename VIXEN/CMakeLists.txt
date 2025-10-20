@@ -203,6 +203,12 @@ add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
 target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
 set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
 
+# EventBus library (message passing, worker thread integration)
+add_subdirectory(EventBus)
+
+# ResourceManagement library (RM<T> wrapper with state tracking)
+add_subdirectory(ResourceManagement)
+
 # ShaderManagement library (device-agnostic shader compilation and hot reload)
 add_subdirectory(ShaderManagement)
 
@@ -227,7 +233,7 @@ file(GLOB RENDERGRAPH_CORE_CPP
     ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/Core/*.cpp
 )
 add_library(RenderGraphCore STATIC ${RENDERGRAPH_CORE_CPP})
-target_link_libraries(RenderGraphCore PUBLIC VulkanResources Logger)
+target_link_libraries(RenderGraphCore PUBLIC VulkanResources Logger EventBus ResourceManagement)
 set_property(TARGET RenderGraphCore PROPERTY CXX_STANDARD 23)
 
 # ============================================================================

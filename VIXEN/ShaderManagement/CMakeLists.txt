@@ -3,9 +3,27 @@
 
 project(ShaderManagement)
 
+# Fetch SPIRV-Reflect for shader reflection
+include(FetchContent)
+FetchContent_Declare(
+    spirv_reflect
+    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git
+    GIT_TAG        vulkan-sdk-1.3.290.0  # Stable release tag
+    GIT_SHALLOW    TRUE
+)
+# Don't build executables, we just need the header/source
+set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "" FORCE)
+set(SPIRV_REFLECT_STATIC_LIB OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(spirv_reflect)
+
 # Collect source files
 file(GLOB SHADER_MGMT_HEADERS "include/ShaderManagement/*.h")
 file(GLOB SHADER_MGMT_SOURCES "src/*.cpp")
+
+# Add SPIRV-Reflect source directly (header-only library pattern)
+list(APPEND SHADER_MGMT_SOURCES 
+    ${spirv_reflect_SOURCE_DIR}/spirv_reflect.c
+)
 
 # Create static library
 add_library(ShaderManagement STATIC
@@ -19,9 +37,10 @@ target_include_directories(ShaderManagement
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${spirv_reflect_SOURCE_DIR}  # For spirv_reflect.h/c
 )
 
-# Link Vulkan headers only (for VkShaderStageFlagBits enum)
+# Link Vulkan headers
 target_link_libraries(ShaderManagement
     PUBLIC
         Vulkan::Headers

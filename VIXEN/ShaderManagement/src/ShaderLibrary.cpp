@@ -1,4 +1,5 @@
 #include "ShaderManagement/ShaderLibrary.h"
+#include "ShaderManagement/SPIRVReflection.h"
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
@@ -493,6 +494,10 @@ CompilationResult ShaderLibrary::CompileProgramInternal(const ShaderProgramDefin
         }
 
         program.compiledAt = std::chrono::steady_clock::now();
+
+        // Reflect descriptor layout from SPIRV bytecode
+        program.descriptorLayout = ReflectDescriptorLayout(program).release();
+        // Note: Raw pointer ownership - caller must delete when program is destroyed
 
         auto endTime = std::chrono::steady_clock::now();
 

@@ -10,6 +10,10 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+namespace ShaderManagement {
+    struct CompiledProgram;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
@@ -250,6 +254,10 @@ public:
     VkCommandPool GetCommandPool() const { return commandPool; }
     VkDevice GetDevice() const { return device; }
     size_t GetMemorySize() const { return memorySize; }
+    
+    // Shader program pointer (for opaque data types)
+    const ShaderManagement::CompiledProgram* GetCompiledProgram() const { return compiledProgram; }
+    void SetCompiledProgram(const ShaderManagement::CompiledProgram* program) { compiledProgram = program; }
 
     template<typename T>
     const T* GetDescription() const {
@@ -300,6 +308,9 @@ private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;  // For DeviceObject resources
     size_t memorySize = 0;
+
+    // Opaque data pointers (for non-Vulkan types)
+    const ShaderManagement::CompiledProgram* compiledProgram = nullptr;
 
     // State tracking
     VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;

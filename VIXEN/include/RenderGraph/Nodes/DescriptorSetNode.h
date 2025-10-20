@@ -1,15 +1,18 @@
 #pragma once
-#include "RenderGraph/NodeInstance.h"
+#include "RenderGraph/TypedNodeInstance.h"
 #include "RenderGraph/NodeType.h"
+#include "DescriptorSetNodeConfig.h"
+#include "ShaderManagement/DescriptorLayoutSpec.h"
 #include <memory>
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for creating descriptor set layouts, pools, and descriptor sets
  * 
- * Manages the creation and updating of Vulkan descriptor sets for shader resource binding.
- * Supports uniform buffers and combined image samplers.
+ * DATA-DRIVEN descriptor set management using DescriptorLayoutSpec.
+ * Supports manual layout specification or automatic extraction from SPIRV.
  * 
  * Type ID: 107
  */
@@ -25,25 +28,29 @@ public:
 };
 
 /**
- * @brief Node instance for descriptor set management
+ * @brief Descriptor resource update specification
  * 
- * Parameters:
- * - uniformBufferSize (uint32_t): Size of the uniform buffer in bytes
- * - useTexture (bool): Whether to include a combined image sampler binding
- * - maxSets (uint32_t): Maximum number of descriptor sets to allocate (default: 1)
- * - uniformBufferBinding (uint32_t): Binding point for uniform buffer (default: 0)
- * - samplerBinding (uint32_t): Binding point for sampler (default: 1)
+ * Used to update descriptor sets with actual Vulkan resources.
+ */
+struct DescriptorUpdate {
+    uint32_t binding;
+    VkDescriptorType type;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    std::vector<VkDescriptorImageInfo> imageInfos;
+};
+
+/**
+ * @brief Typed node instance for data-driven descriptor set management
  * 
- * Inputs:
- * - textureImage (optional): Texture to bind to the sampler (if useTexture=true)
+ * Accepts DescriptorLayoutSpec defining all bindings (from shader reflection or manual).
+ * Creates layout/pool/sets, then user updates with actual resources via UpdateDescriptorSet().
  * 
  * Outputs:
- * - descriptorSetLayout: Layout defining descriptor bindings
- * - descriptorPool: Pool for allocating descriptor sets
- * - descriptorSets: Allocated and updated descriptor sets
- * - uniformBuffer: Uniform buffer resource
+ * - DESCRIPTOR_SET_LAYOUT - For pipeline creation
+ * - DESCRIPTOR_POOL - For management
+ * - DESCRIPTOR_SETS - Allocated sets (updated via UpdateDescriptorSet())
  */
-class DescriptorSetNode : public NodeInstance {
+class DescriptorSetNode : public TypedNode<DescriptorSetNodeConfig> {
 public:
     DescriptorSetNode(
         const std::string& instanceName,
@@ -57,44 +64,46 @@ public:
     void Execute(VkCommandBuffer commandBuffer) override;
     void Cleanup() override;
 
-    // Accessors for other nodes
+    /**
+     * @brief Update descriptor set with actual resources
+     * @param setIndex Which set to update (0 to maxSets-1)
+     * @param updates Bindings to update
+     */
+    void UpdateDescriptorSet(uint32_t setIndex, const std::vector<DescriptorUpdate>& updates);
+
+    /**
+     * @brief Update single buffer binding
+     */
+    void UpdateBinding(uint32_t setIndex, uint32_t binding, const VkDescriptorBufferInfo& bufferInfo);
+
+    /**
+     * @brief Update single image binding
+     */
+    void UpdateBinding(uint32_t setIndex, uint32_t binding, const VkDescriptorImageInfo& imageInfo);
+
+    // Accessors
     VkDescriptorSetLayout GetDescriptorSetLayout() const { return descriptorSetLayout; }
     VkDescriptorPool GetDescriptorPool() const { return descriptorPool; }
     const std::vector<VkDescriptorSet>& GetDescriptorSets() const { return descriptorSets; }
-    VkBuffer GetUniformBuffer() const { return uniformBuffer; }
-    VkDeviceMemory GetUniformMemory() const { return uniformMemory; }
-    
-    // Update uniform buffer data
-    void UpdateUniformBuffer(const void* data, VkDeviceSize size);
+    VkDescriptorSet GetDescriptorSet(uint32_t index) const {
+        return (index < descriptorSets.size()) ? descriptorSets[index] : VK_NULL_HANDLE;
+    }
+    const ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
 
 private:
-    // Descriptor resources
+    // Configuration
+    const ShaderManagement::DescriptorLayoutSpec* layoutSpec = nullptr;
+
+    // Vulkan resources
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
 
-    // Uniform buffer
-    VkBuffer uniformBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory uniformMemory = VK_NULL_HANDLE;
-    VkDeviceSize uniformBufferSize = 0;
-
-    // Configuration
-    bool useTexture = false;
-    uint32_t maxSets = 1;
-    uint32_t uniformBufferBinding = 0;
-    uint32_t samplerBinding = 1;
-
-    // Texture reference (if used)
-    VkImageView textureView = VK_NULL_HANDLE;
-    VkSampler textureSampler = VK_NULL_HANDLE;
-    VkDescriptorImageInfo textureImageInfo{};
-
-    // Helper functions
+    // Helpers
+    void ValidateLayoutSpec();
     void CreateDescriptorSetLayout();
     void CreateDescriptorPool();
-    void CreateUniformBuffer();
     void AllocateDescriptorSets();
-    void UpdateDescriptorSets();
 };
 
 } // namespace Vixen::RenderGraph

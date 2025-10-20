@@ -11,6 +11,11 @@
 // Forward declare global type
 struct SwapChainPublicVariables;
 
+// Forward declare ShaderManagement types
+namespace ShaderManagement {
+    struct CompiledProgram;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
@@ -47,6 +52,31 @@ template<> struct VulkanTypeTraits<VkSurfaceKHR> {
 
 template<> struct VulkanTypeTraits<VkImageView> {
     static constexpr ResourceType resourceType = ResourceType::Image;
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkSampler> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkDescriptorSetLayout> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkDescriptorPool> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkDescriptorSet> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<const ::ShaderManagement::CompiledProgram*> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer to shader program
     static constexpr bool isValid = true;
 };
 

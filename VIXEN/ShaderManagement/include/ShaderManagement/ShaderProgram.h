@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ShaderStage.h"
+#include "DescriptorLayoutSpec.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -100,6 +101,10 @@ struct CompiledProgram {
 
     // Compilation timestamp
     std::chrono::steady_clock::time_point compiledAt;
+
+    // Reflected descriptor layout (extracted from SPIRV via SPIRV-Reflect)
+    // Populated automatically during compilation - merges all shader stages
+    DescriptorLayoutSpec* descriptorLayout = nullptr;
 
     /**
      * @brief Get compiled stage by type

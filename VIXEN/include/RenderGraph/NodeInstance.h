@@ -16,6 +16,11 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+// Forward declaration from ShaderManagement
+namespace ShaderManagement {
+    struct DescriptorLayoutSpec;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
@@ -76,7 +81,8 @@ using ParameterValue = std::variant<
     DepthFormat,          // Depth format enum
     AttachmentLoadOp,     // Load operation enum
     AttachmentStoreOp,    // Store operation enum
-    ImageLayout           // Image layout enum
+    ImageLayout,          // Image layout enum
+    const ::ShaderManagement::DescriptorLayoutSpec*  // Descriptor layout specification pointer
 >;
 
 /**
