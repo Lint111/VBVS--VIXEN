@@ -1,5 +1,7 @@
 #include "RenderGraph/Nodes/VertexBufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "RenderGraph/NodeLogging.h"
+#include "error/VulkanError.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -14,35 +16,10 @@ VertexBufferNodeType::VertexBufferNodeType() {
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
 
-    // No inputs - vertex data provided via parameters
-
-    // Outputs: Vertex buffer (opaque, accessed via GetVertexBuffer())
-    BufferDescription vertexBufferOutput{};
-    vertexBufferOutput.size = 1024 * 1024; // Default 1MB, will be updated
-    vertexBufferOutput.usage = ResourceUsage::VertexBuffer;
-    vertexBufferOutput.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    outputSchema.push_back(ResourceDescriptor(
-        "vertexBuffer",
-        ResourceType::Buffer,
-        ResourceLifetime::Persistent,
-        vertexBufferOutput
-    ));
-
-    // Optional index buffer output
-    BufferDescription indexBufferOutput{};
-    indexBufferOutput.size = 256 * 1024; // Default 256KB
-    indexBufferOutput.usage = ResourceUsage::IndexBuffer;
-    indexBufferOutput.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    outputSchema.push_back(ResourceDescriptor(
-        "indexBuffer",
-        ResourceType::Buffer,
-        ResourceLifetime::Persistent,
-        indexBufferOutput
-    ));
+    // Initialize config and extract schema
+    VertexBufferNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024 * 1024; // ~1MB
@@ -69,7 +46,7 @@ VertexBufferNode::VertexBufferNode(
     NodeType* nodeType,
     Vixen::Vulkan::Resources::VulkanDevice* device
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : TypedNode<VertexBufferNodeConfig>(instanceName, nodeType, device)
 {
 }
 
@@ -78,21 +55,30 @@ VertexBufferNode::~VertexBufferNode() {
 }
 
 void VertexBufferNode::Setup() {
-    // No setup needed
+    NODE_LOG_INFO("Setup: Vertex buffer node ready");
 }
 
 void VertexBufferNode::Compile() {
-    // Get parameters
-    vertexCount = GetParameterValue<uint32_t>("vertexCount", 0);
+    NODE_LOG_INFO("Compile: Creating vertex and index buffers");
+
+    // Get typed parameters
+    vertexCount = GetParameterValue<uint32_t>(
+        VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 0);
     if (vertexCount == 0) {
-        throw std::runtime_error("VertexBufferNode: vertexCount parameter is required");
+        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "vertexCount parameter is required"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
-    vertexStride = GetParameterValue<uint32_t>("vertexStride", sizeof(VertexWithUV));
-    useTexture = GetParameterValue<bool>("useTexture", true);
+    vertexStride = GetParameterValue<uint32_t>(
+        VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV));
+    useTexture = GetParameterValue<bool>(
+        VertexBufferNodeConfig::PARAM_USE_TEXTURE, true);
 
-    // For now, we'll use the built-in geometryData from MeshData.h
-    // In the future, this could load from a file or accept custom data
+    NODE_LOG_DEBUG("Vertex count: " + std::to_string(vertexCount) +
+                   ", stride: " + std::to_string(vertexStride) +
+                   ", texture: " + std::string(useTexture ? "enabled" : "disabled"));
+
     VkDeviceSize vertexBufferSize = vertexCount * vertexStride;
 
     // Create and upload vertex buffer
@@ -103,11 +89,12 @@ void VertexBufferNode::Compile() {
         vertexMemory
     );
 
-    // Upload the geometry data
     UploadData(vertexMemory, geometryData, vertexBufferSize);
+    NODE_LOG_DEBUG("Uploaded " + std::to_string(vertexBufferSize) + " bytes of vertex data");
 
     // Check if we have index data
-    indexCount = GetParameterValue<uint32_t>("indexCount", 0);
+    indexCount = GetParameterValue<uint32_t>(
+        VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0);
     if (indexCount > 0) {
         hasIndices = true;
         VkDeviceSize indexBufferSize = indexCount * sizeof(uint32_t);
@@ -119,12 +106,15 @@ void VertexBufferNode::Compile() {
             indexMemory
         );
 
-        // Note: Index data upload would happen here if we had index data
-        // For now, we're primarily supporting non-indexed rendering
+        NODE_LOG_DEBUG("Created index buffer for " + std::to_string(indexCount) + " indices");
+    } else {
+        NODE_LOG_DEBUG("No index buffer (non-indexed rendering)");
     }
 
     // Setup vertex input description
     SetupVertexInputDescription();
+
+    NODE_LOG_INFO("Compile complete: Vertex buffer ready");
 }
 
 void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
@@ -133,6 +123,10 @@ void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void VertexBufferNode::Cleanup() {
+    if (vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE) {
+        NODE_LOG_DEBUG("Cleanup: Destroying vertex and index buffers");
+    }
+
     VkDevice vkDevice = device->device;
 
     if (vertexBuffer != VK_NULL_HANDLE) {
@@ -177,7 +171,9 @@ void VertexBufferNode::CreateBuffer(
 
     VkResult result = vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create buffer");
+        VulkanError error{result, "Failed to create buffer"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
     // Get memory requirements
@@ -197,7 +193,9 @@ void VertexBufferNode::CreateBuffer(
 
     if (!memTypeResult.has_value()) {
         vkDestroyBuffer(vkDevice, buffer, nullptr);
-        throw std::runtime_error("Failed to find suitable memory type for buffer");
+        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "Failed to find suitable memory type for buffer"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
     allocInfo.memoryTypeIndex = memTypeResult.value();
@@ -205,7 +203,9 @@ void VertexBufferNode::CreateBuffer(
     result = vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory);
     if (result != VK_SUCCESS) {
         vkDestroyBuffer(vkDevice, buffer, nullptr);
-        throw std::runtime_error("Failed to allocate buffer memory");
+        VulkanError error{result, "Failed to allocate buffer memory"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
     // Bind buffer to memory
@@ -213,7 +213,9 @@ void VertexBufferNode::CreateBuffer(
     if (result != VK_SUCCESS) {
         vkFreeMemory(vkDevice, memory, nullptr);
         vkDestroyBuffer(vkDevice, buffer, nullptr);
-        throw std::runtime_error("Failed to bind buffer memory");
+        VulkanError error{result, "Failed to bind buffer memory"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 }
 
@@ -228,7 +230,9 @@ void VertexBufferNode::UploadData(
     void* mappedData = nullptr;
     VkResult result = vkMapMemory(vkDevice, memory, 0, size, 0, &mappedData);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("Failed to map buffer memory");
+        VulkanError error{result, "Failed to map buffer memory"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
     // Copy data

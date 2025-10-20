@@ -203,6 +203,9 @@ add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
 target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
 set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
 
+# ShaderManagement library (device-agnostic shader compilation and hot reload)
+add_subdirectory(ShaderManagement)
+
 # Vulkan Resources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
 file(GLOB_RECURSE VULKAN_RESOURCES_CPP
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanResources/*.cpp
@@ -237,7 +240,7 @@ set_property(TARGET RenderGraphCore PROPERTY CXX_STANDARD 23)
 
 file(GLOB NODES_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/Nodes/*.cpp)
 add_library(RenderGraphNodes STATIC ${NODES_CPP_FILES})
-target_link_libraries(RenderGraphNodes PUBLIC RenderGraphCore)
+target_link_libraries(RenderGraphNodes PUBLIC RenderGraphCore ShaderManagement)
 set_property(TARGET RenderGraphNodes PROPERTY CXX_STANDARD 23)
 
 # Enable Unity Build for faster full builds

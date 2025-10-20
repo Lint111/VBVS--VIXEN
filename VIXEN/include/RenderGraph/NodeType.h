@@ -24,6 +24,7 @@ using NodeTypeId = uint32_t;
  * @brief Pipeline type enumeration
  */
 enum class PipelineType {
+    None,       // Not a pipeline node (e.g., resource management)
     Graphics,
     Compute,
     RayTracing,

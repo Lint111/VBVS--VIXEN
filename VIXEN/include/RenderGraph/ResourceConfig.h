@@ -2,7 +2,7 @@
 
 #include "Headers.h"
 
-#include "Resource.h"
+#include "ResourceTypes.h"
 #include <array>
 #include <string>
 #include <string_view>
@@ -13,8 +13,12 @@ struct SwapChainPublicVariables;
 
 namespace Vixen::RenderGraph {
 
-// Forward declaration
+// Forward declarations
 class NodeInstance;
+struct ResourceDescriptor;
+struct ImageDescription;
+struct BufferDescription;
+struct ShaderProgramDescriptor;
 
 /**
  * @brief Compile-time type trait to map Vulkan types to ResourceType
@@ -96,6 +100,11 @@ template<> struct VulkanTypeTraits<VkFormat> {
     static constexpr bool isValid = true;
 };
 
+template<> struct VulkanTypeTraits<VkFramebuffer> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
 // SwapChainPublicVariables* (defined in VulkanSwapChain.h in global namespace)
 template<> struct VulkanTypeTraits<::SwapChainPublicVariables*> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
@@ -110,6 +119,12 @@ template<> struct VulkanTypeTraits<HWND> {
 
 template<> struct VulkanTypeTraits<HINSTANCE> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Platform handle
+    static constexpr bool isValid = true;
+};
+
+// ShaderProgramDescriptor* (defined in ShaderLibraryNodeConfig.h)
+template<> struct VulkanTypeTraits<ShaderProgramDescriptor*> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
     static constexpr bool isValid = true;
 };
 

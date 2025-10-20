@@ -1,5 +1,6 @@
 #include "RenderGraph/Nodes/CommandPoolNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "RenderGraph/NodeLogging.h"
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {
@@ -92,24 +93,24 @@ void CommandPoolNode::Compile() {
     VkResult result = vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "Failed to create command pool for node: " + instanceName;
-        NODE_LOG_ERROR(this, errorMsg);
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
     isCreated = true;
 
     // Create output resource and set the command pool handle
-    Resource* outputResource = GetOutput(CommandPoolNodeConfig::COMMAND_POOL);
+    Resource* outputResource = GetOutput(CommandPoolNodeConfig::COMMAND_POOL_Slot::index);
     if (!outputResource) {
         std::string errorMsg = "CommandPoolNode output resource not allocated for node: " + instanceName;
-        NODE_LOG_ERROR(this, errorMsg);
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
     outputResource->SetCommandPool(commandPool);
     outputResource->SetDeviceDependency(device);
 
-    NODE_LOG(this, "Created command pool for queue family " + std::to_string(queueFamilyIndex));
+    NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }
 
 void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
@@ -123,7 +124,7 @@ void CommandPoolNode::Cleanup() {
         commandPool = VK_NULL_HANDLE;
         isCreated = false;
 
-        NODE_LOG(this, "Destroyed command pool");
+        NODE_LOG_INFO("Destroyed command pool");
     }
 }
 

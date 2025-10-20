@@ -37,7 +37,7 @@ public:
  * - frontFace (string): Front face - "Clockwise", "CounterClockwise" (default: "CounterClockwise")
  * 
  * Inputs (opaque references):
- * - shaderStages: Shader modules from ShaderNode
+ * - shaderStages: Shader modules from ShaderLibraryNode
  * - renderPass: Render pass from RenderPassNode
  * - vertexInputDescription: From VertexBufferNode
  * - descriptorSetLayout: From DescriptorSetNode

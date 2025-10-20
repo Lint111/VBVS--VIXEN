@@ -1,6 +1,7 @@
 #pragma once
-#include "RenderGraph/NodeInstance.h"
+#include "RenderGraph/TypedNodeInstance.h"
 #include "RenderGraph/NodeType.h"
+#include "VertexBufferNodeConfig.h"
 #include "MeshData.h"
 #include <memory>
 
@@ -8,10 +9,10 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for creating and uploading vertex buffers to GPU
- * 
+ *
  * Creates vertex buffers with vertex input descriptions for use in graphics pipelines.
  * Supports both vertex-only and indexed rendering configurations.
- * 
+ *
  * Type ID: 103
  */
 class VertexBufferNodeType : public NodeType {
@@ -26,22 +27,23 @@ public:
 };
 
 /**
- * @brief Node instance for vertex buffer creation and management
- * 
- * Parameters:
- * - vertexData (string): Path to vertex data or inline data specification
- * - vertexCount (uint32_t): Number of vertices
- * - vertexStride (uint32_t): Size of each vertex in bytes
- * - useTexture (bool): Whether vertices use texture coordinates (affects attribute layout)
- * - indexData (string, optional): Path to index data for indexed rendering
- * - indexCount (uint32_t, optional): Number of indices
- * 
+ * @brief Typed node instance for vertex buffer creation and management
+ *
+ * Uses VertexBufferNodeConfig for compile-time type safety.
+ *
+ * Inputs: None (vertex data provided via parameters)
+ *
  * Outputs:
- * - vertexBuffer: GPU buffer containing vertex data
- * - indexBuffer (optional): GPU buffer containing index data
- * - vertexInputDescription: Vertex input binding and attribute descriptions
+ * - VERTEX_BUFFER (VkBuffer) - GPU buffer containing vertex data
+ * - INDEX_BUFFER (VkBuffer, nullable) - GPU buffer containing index data
+ *
+ * Parameters:
+ * - VERTEX_COUNT (uint32_t): Number of vertices
+ * - VERTEX_STRIDE (uint32_t): Size of each vertex in bytes
+ * - USE_TEXTURE (bool): Whether vertices use texture coordinates
+ * - INDEX_COUNT (uint32_t): Number of indices (0 = no indices)
  */
-class VertexBufferNode : public NodeInstance {
+class VertexBufferNode : public TypedNode<VertexBufferNodeConfig> {
 public:
     VertexBufferNode(
         const std::string& instanceName,

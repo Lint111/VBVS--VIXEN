@@ -1,5 +1,7 @@
 #include "RenderGraph/Nodes/FramebufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "RenderGraph/NodeLogging.h"
+#include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
 
@@ -12,10 +14,6 @@ FramebufferNodeType::FramebufferNodeType() {
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
-
-    // Inputs are opaque references (set via Set methods)
-
-    // Outputs are opaque (accessed via Get methods)
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 2048; // Minimal metadata
@@ -42,7 +40,7 @@ FramebufferNode::FramebufferNode(
     NodeType* nodeType,
     Vixen::Vulkan::Resources::VulkanDevice* device
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : TypedNode<FramebufferNodeConfig>(instanceName, nodeType, device)
 {
 }
 
@@ -51,84 +49,62 @@ FramebufferNode::~FramebufferNode() {
 }
 
 void FramebufferNode::Setup() {
-    // No setup needed
+    NODE_LOG_INFO("Setup: Framebuffer node ready");
 }
 
 void FramebufferNode::Compile() {
-    // Get parameters
-    width = GetParameterValue<uint32_t>("width", 0);
-    height = GetParameterValue<uint32_t>("height", 0);
-    
-    if (width == 0 || height == 0) {
-        throw std::runtime_error("FramebufferNode: width and height parameters are required");
+    NODE_LOG_INFO("Compile: Creating framebuffers");
+
+    // Get typed inputs
+    VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);
+    uint32_t width = In(FramebufferNodeConfig::WIDTH);
+    uint32_t height = In(FramebufferNodeConfig::HEIGHT);
+
+    // Check for depth attachment
+    VkImageView depthView = In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
+    hasDepth = (depthView != VK_NULL_HANDLE);
+
+    NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
+    NODE_LOG_DEBUG("Framebuffer dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+
+    // Get typed parameter
+    uint32_t layers = GetParameterValue<uint32_t>(
+        FramebufferNodeConfig::PARAM_LAYERS, 1);
+
+    // Get number of color attachments (array size) using base class method
+    size_t colorAttachmentCount = NodeInstance::GetInputCount(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index);
+
+    if (colorAttachmentCount == 0) {
+        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "No color attachments provided"};
+        NODE_LOG_ERROR(error.toString());
+        throw std::runtime_error(error.toString());
     }
 
-    layers = GetParameterValue<uint32_t>("layers", 1);
-    includeDepth = GetParameterValue<bool>("includeDepth", true);
-    framebufferCount = GetParameterValue<uint32_t>("framebufferCount", 1);
-
-    // Validate inputs
-    if (renderPass == VK_NULL_HANDLE) {
-        throw std::runtime_error("FramebufferNode: render pass not set");
-    }
-
-    if (colorAttachments.empty()) {
-        throw std::runtime_error("FramebufferNode: no color attachments set");
-    }
-
-    if (includeDepth && depthAttachment == VK_NULL_HANDLE) {
-        throw std::runtime_error("FramebufferNode: depth attachment required but not set");
-    }
-
-    // Ensure we have the right number of color attachments
-    if (colorAttachments.size() < framebufferCount) {
-        throw std::runtime_error("FramebufferNode: not enough color attachments for framebuffer count");
-    }
-
-    // Create framebuffers
-    CreateFramebuffers();
-}
-
-void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
-    // Framebuffer creation happens in Compile phase
-    // Execute is a no-op for this node
-}
-
-void FramebufferNode::Cleanup() {
-    VkDevice vkDevice = device->device;
-
-    for (VkFramebuffer framebuffer : framebuffers) {
-        if (framebuffer != VK_NULL_HANDLE) {
-            vkDestroyFramebuffer(vkDevice, framebuffer, nullptr);
-        }
-    }
-    framebuffers.clear();
-}
-
-void FramebufferNode::CreateFramebuffers() {
-    VkDevice vkDevice = device->device;
+    NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
 
     // Clear any existing framebuffers
     Cleanup();
 
-    // Resize to hold all framebuffers
-    framebuffers.resize(framebufferCount);
+    // Resize framebuffer array
+    framebuffers.resize(colorAttachmentCount);
 
-    // Create framebuffers
-    for (uint32_t i = 0; i < framebufferCount; i++) {
+    // Create one framebuffer per color attachment (swapchain image)
+    for (size_t i = 0; i < colorAttachmentCount; i++) {
+        // Get color attachment for this framebuffer using base class accessor
+        Resource* colorRes = NodeInstance::GetInput(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index, static_cast<uint32_t>(i));
+        VkImageView colorView = colorRes->GetImageView();
+
         // Setup attachments array
         std::vector<VkImageView> attachments;
-        
-        // Add color attachment for this framebuffer
-        attachments.push_back(colorAttachments[i]);
-        
-        // Add depth attachment if enabled
-        if (includeDepth) {
-            attachments.push_back(depthAttachment);
+        attachments.push_back(colorView);
+
+        // Add depth attachment if present
+        if (hasDepth) {
+            attachments.push_back(depthView);
         }
 
         // Create framebuffer info
-        VkFramebufferCreateInfo framebufferInfo{};
+        VkFramebufferCreateInfo framebufferInfo = {};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.pNext = nullptr;
         framebufferInfo.renderPass = renderPass;
@@ -137,9 +113,10 @@ void FramebufferNode::CreateFramebuffers() {
         framebufferInfo.width = width;
         framebufferInfo.height = height;
         framebufferInfo.layers = layers;
+        framebufferInfo.flags = 0;
 
         VkResult result = vkCreateFramebuffer(
-            vkDevice,
+            device->device,
             &framebufferInfo,
             nullptr,
             &framebuffers[i]
@@ -147,28 +124,41 @@ void FramebufferNode::CreateFramebuffers() {
 
         if (result != VK_SUCCESS) {
             // Clean up any framebuffers created so far
-            for (uint32_t j = 0; j < i; j++) {
+            for (size_t j = 0; j < i; j++) {
                 if (framebuffers[j] != VK_NULL_HANDLE) {
-                    vkDestroyFramebuffer(vkDevice, framebuffers[j], nullptr);
+                    vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
                 }
             }
             framebuffers.clear();
-            throw std::runtime_error("Failed to create framebuffer " + std::to_string(i));
+
+            VulkanError error{result, "Failed to create framebuffer " + std::to_string(i)};
+            NODE_LOG_ERROR(error.toString());
+            throw std::runtime_error(error.toString());
         }
+
+        // Set output - for now, store framebuffer directly
+        // TODO: Implement proper typed SetOutput in TypedNode
+        // For now, framebuffers are stored in the local vector and accessed via GetFramebuffer()
     }
+
+    NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }
 
-// Setter methods for input references
-void FramebufferNode::SetRenderPass(VkRenderPass pass) {
-    renderPass = pass;
+void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
+    // No-op - framebuffers are created in Compile phase
 }
 
-void FramebufferNode::SetColorAttachments(const std::vector<VkImageView>& colorViews) {
-    colorAttachments = colorViews;
-}
+void FramebufferNode::Cleanup() {
+    if (!framebuffers.empty()) {
+        NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 
-void FramebufferNode::SetDepthAttachment(VkImageView depthView) {
-    depthAttachment = depthView;
+        for (VkFramebuffer framebuffer : framebuffers) {
+            if (framebuffer != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device->device, framebuffer, nullptr);
+            }
+        }
+        framebuffers.clear();
+    }
 }
 
 } // namespace Vixen::RenderGraph

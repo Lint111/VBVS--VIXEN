@@ -15,7 +15,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "RenderGraph/Nodes/VertexBufferNode.h"
 #include "RenderGraph/Nodes/RenderPassNode.h"
 #include "RenderGraph/Nodes/FramebufferNode.h"
-#include "RenderGraph/Nodes/ShaderNode.h"
+#include "RenderGraph/Nodes/ShaderLibraryNode.h"
 #include "RenderGraph/Nodes/DescriptorSetNode.h"
 #include "RenderGraph/Nodes/GraphicsPipelineNode.h"
 #include "RenderGraph/Nodes/GeometryRenderNode.h"
@@ -268,7 +268,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<VertexBufferNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<RenderPassNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<FramebufferNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<ShaderNodeType>());
+    nodeRegistry->RegisterNodeType(std::make_unique<ShaderLibraryNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DescriptorSetNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<GraphicsPipelineNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());

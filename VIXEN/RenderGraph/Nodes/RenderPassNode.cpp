@@ -178,31 +178,33 @@ void RenderPassNode::Cleanup() {
     }
 }
 
-VkAttachmentLoadOp RenderPassNode::ParseLoadOp(const std::string& op) {
-    if (op == "Clear") return VK_ATTACHMENT_LOAD_OP_CLEAR;
-    if (op == "Load") return VK_ATTACHMENT_LOAD_OP_LOAD;
-    if (op == "DontCare") return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    return VK_ATTACHMENT_LOAD_OP_CLEAR; // Default
+VkAttachmentLoadOp RenderPassNode::ConvertLoadOp(AttachmentLoadOp op) {
+    switch (op) {
+        case AttachmentLoadOp::Load: return VK_ATTACHMENT_LOAD_OP_LOAD;
+        case AttachmentLoadOp::Clear: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case AttachmentLoadOp::DontCare: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        default: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+    }
 }
 
-VkAttachmentStoreOp RenderPassNode::ParseStoreOp(const std::string& op) {
-    if (op == "Store") return VK_ATTACHMENT_STORE_OP_STORE;
-    if (op == "DontCare") return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    return VK_ATTACHMENT_STORE_OP_STORE; // Default
+VkAttachmentStoreOp RenderPassNode::ConvertStoreOp(AttachmentStoreOp op) {
+    switch (op) {
+        case AttachmentStoreOp::Store: return VK_ATTACHMENT_STORE_OP_STORE;
+        case AttachmentStoreOp::DontCare: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        default: return VK_ATTACHMENT_STORE_OP_STORE;
+    }
 }
 
-VkImageLayout RenderPassNode::ParseImageLayout(const std::string& layout) {
-    if (layout == "Undefined") return VK_IMAGE_LAYOUT_UNDEFINED;
-    if (layout == "General") return VK_IMAGE_LAYOUT_GENERAL;
-    if (layout == "ColorAttachment") return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    if (layout == "DepthStencilAttachment") return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    if (layout == "DepthStencilReadOnly") return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    if (layout == "ShaderReadOnly") return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (layout == "TransferSrc") return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    if (layout == "TransferDst") return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    if (layout == "Preinitialized") return VK_IMAGE_LAYOUT_PREINITIALIZED;
-    if (layout == "PresentSrc") return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    return VK_IMAGE_LAYOUT_UNDEFINED; // Default
+VkImageLayout RenderPassNode::ConvertImageLayout(ImageLayout layout) {
+    switch (layout) {
+        case ImageLayout::Undefined: return VK_IMAGE_LAYOUT_UNDEFINED;
+        case ImageLayout::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case ImageLayout::DepthStencilAttachment: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        case ImageLayout::PresentSrc: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        case ImageLayout::TransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        case ImageLayout::TransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        default: return VK_IMAGE_LAYOUT_UNDEFINED;
+    }
 }
 
 VkSampleCountFlagBits RenderPassNode::GetSampleCount(uint32_t samples) {
