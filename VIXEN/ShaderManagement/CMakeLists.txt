@@ -49,6 +49,11 @@ target_link_libraries(ShaderManagement
 # C++23 standard
 target_compile_features(ShaderManagement PUBLIC cxx_std_23)
 
+# MSVC: Add /FS flag for parallel PDB writes
+if(MSVC)
+    target_compile_options(ShaderManagement PRIVATE /FS)
+endif()
+
 # Platform definitions
 if(WIN32)
     target_compile_definitions(ShaderManagement PRIVATE VK_USE_PLATFORM_WIN32_KHR)

@@ -1,6 +1,6 @@
-#include "RenderGraph/RenderGraph.h"
-#include "RenderGraph/Nodes/SwapChainNode.h"
-#include "RenderGraph/Nodes/PresentNode.h"
+#include "Core/RenderGraph.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
@@ -404,11 +404,12 @@ IResource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t out
                 resource = std::make_unique<Resource<VkBuffer>>(resourceDesc.lifetime, *bufferDesc);
             }
             break;
-        case ResourceType::CommandPool:
-            if (auto* poolDesc = dynamic_cast<CommandPoolDescriptor*>(resourceDesc.descriptor.get())) {
-                resource = std::make_unique<Resource<VkCommandPool>>(resourceDesc.lifetime, *poolDesc);
-            }
-            break;
+        // TODO: CommandPool is not in ResourceType enum, only in ResourceUsage
+        // case ResourceType::CommandPool:
+        //     if (auto* poolDesc = dynamic_cast<CommandPoolDescriptor*>(resourceDesc.descriptor.get())) {
+        //         resource = std::make_unique<Resource<VkCommandPool>>(resourceDesc.lifetime, *poolDesc);
+        //     }
+        //     break;
         default:
             return nullptr;
     }

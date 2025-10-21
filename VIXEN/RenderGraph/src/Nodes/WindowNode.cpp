@@ -1,0 +1,262 @@
+#include "Nodes/WindowNode.h"
+#include "VulkanResources/VulkanDevice.h"
+#include "VulkanApplicationBase.h"
+#include <iostream>
+#include "Core/NodeLogging.h"
+
+namespace Vixen::RenderGraph {
+
+// ====== WindowNodeType ======
+
+WindowNodeType::WindowNodeType() {
+    typeId = 111;
+    typeName = "Window";
+    pipelineType = PipelineType::Graphics;
+    requiredCapabilities = DeviceCapability::Graphics;
+    supportsInstancing = false;
+    maxInstances = 1;
+
+    workloadMetrics.estimatedMemoryFootprint = 1024;
+    workloadMetrics.estimatedComputeCost = 0.0f;
+    workloadMetrics.estimatedBandwidthCost = 0.0f;
+    workloadMetrics.canRunInParallel = false;
+
+    // Populate schema from config
+    WindowNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
+}
+
+std::unique_ptr<NodeInstance> WindowNodeType::CreateInstance(
+    const std::string& instanceName,
+    Vixen::Vulkan::Resources::VulkanDevice* device
+) const {
+    return std::make_unique<WindowNode>(
+        instanceName,
+        const_cast<WindowNodeType*>(this),
+        device
+    );
+}
+
+// ====== WindowNode ======
+
+WindowNode::WindowNode(
+    const std::string& instanceName,
+    NodeType* nodeType,
+    Vixen::Vulkan::Resources::VulkanDevice* device
+)
+    : TypedNode<WindowNodeConfig>(instanceName, nodeType, device)
+{
+}
+
+WindowNode::~WindowNode() {
+    Cleanup();
+}
+
+void WindowNode::Setup() {
+    NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
+
+#ifdef _WIN32
+    // Get module handle
+    hInstance = GetModuleHandle(nullptr);
+
+    // Register window class
+    WNDCLASSEXW winInfo = {};
+    winInfo.cbSize = sizeof(WNDCLASSEXW);
+    winInfo.style = CS_HREDRAW | CS_VREDRAW;
+    winInfo.lpfnWndProc = WindowNode::WndProc;  // Use custom window procedure
+    winInfo.cbClsExtra = 0;
+    winInfo.cbWndExtra = 0;
+    winInfo.hInstance = hInstance;
+    winInfo.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    winInfo.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    winInfo.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    winInfo.lpszMenuName = nullptr;
+    winInfo.lpszClassName = L"VixenGraphWindow";
+    winInfo.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+
+    if (!RegisterClassExW(&winInfo)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_CLASS_ALREADY_EXISTS) {
+                NODE_LOG_ERROR("[WindowNode] ERROR: Failed to register window class. GetLastError = " + std::to_string(error));
+            throw std::runtime_error("WindowNode: Failed to register window class");
+        }
+    }
+
+    NODE_LOG_INFO("[WindowNode] Window class registered");
+#endif
+}
+
+void WindowNode::Compile() {
+    // Get parameters using typed names from config
+    width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
+    height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
+
+    NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
+
+#ifdef _WIN32
+    // Create window
+    RECT wr = {0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+    AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
+
+    window = CreateWindowExW(
+        0,
+        L"VixenGraphWindow",
+        L"Vixen Render Graph",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        wr.right - wr.left,
+        wr.bottom - wr.top,
+        nullptr,
+        nullptr,
+        hInstance,
+        nullptr
+    );
+
+    if (!window) {
+        DWORD error = GetLastError();
+        std::string errorMsg = "WindowNode: Failed to create window. GetLastError = " + std::to_string(error);
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
+    // Store 'this' pointer in window user data for WndProc access
+    SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+
+    ShowWindow(window, SW_SHOW);
+    UpdateWindow(window);
+
+    NODE_LOG_INFO("[WindowNode] Window created and shown");
+
+    // Create VkSurfaceKHR and store in typed output
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkWin32SurfaceCreateInfoKHR surfaceCreateInfo = {};
+    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    surfaceCreateInfo.pNext = nullptr;
+    surfaceCreateInfo.hinstance = hInstance;
+    surfaceCreateInfo.hwnd = window;
+
+    // Get instance from device (hack: we need VkInstance but only have device)
+    // We'll get it from global app
+    VulkanApplicationBase* app = static_cast<VulkanApplicationBase*>(
+        reinterpret_cast<void*>(GetWindowLongPtrW(window, GWLP_USERDATA))
+    );
+
+    // HACK: Use external variables - instance should be passed properly
+    extern VkInstance g_VulkanInstance;
+    VkInstance instance = g_VulkanInstance;
+
+    VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        NODE_LOG_ERROR("[WindowNode] ERROR: Failed to create Win32 surface: " + std::to_string(result));
+        throw std::runtime_error("WindowNode: Failed to create surface");
+    }
+
+    // Get destroy function
+    fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
+
+    // Store in type-safe output using named slot from config
+    Out(WindowNodeConfig::SURFACE) = surface;
+
+    NODE_LOG_INFO("[WindowNode] Surface created and stored in output");
+#endif
+}
+
+void WindowNode::Execute(VkCommandBuffer commandBuffer) {
+    // Process Windows messages
+#ifdef _WIN32
+    MSG msg;
+    while (PeekMessageW(&msg, window, 0, 0, PM_REMOVE)) {
+        if (msg.message == WM_QUIT) {
+            shouldClose = true;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+#endif
+}
+
+#ifdef _WIN32
+LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    // Get WindowNode instance from window user data
+    WindowNode* windowNode = reinterpret_cast<WindowNode*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+
+    switch (msg) {
+        case WM_CLOSE:
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received");
+            if (windowNode) {
+                windowNode->shouldClose = true;
+            }
+            PostQuitMessage(0);
+            return 0;
+
+        case WM_DESTROY:
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_DESTROY received");
+            PostQuitMessage(0);
+            return 0;
+
+        case WM_ENTERSIZEMOVE:
+            // User started resizing
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_ENTERSIZEMOVE - resize started");
+            if (windowNode) {
+                windowNode->isResizing = true;
+            }
+            return 0;
+
+        case WM_EXITSIZEMOVE:
+            // User finished resizing
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_EXITSIZEMOVE - resize finished");
+            if (windowNode) {
+                windowNode->isResizing = false;
+                windowNode->wasResized = true;
+            }
+            return 0;
+
+        case WM_SIZE:
+            if (wParam != SIZE_MINIMIZED && windowNode) {
+                UINT newWidth = LOWORD(lParam);
+                UINT newHeight = HIWORD(lParam);
+
+                // If not actively resizing (e.g., maximize/restore), trigger immediate resize
+                if (!windowNode->isResizing && (newWidth != windowNode->width || newHeight != windowNode->height)) {
+                    NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - window resized to " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
+                    windowNode->width = newWidth;
+                    windowNode->height = newHeight;
+                    windowNode->wasResized = true;
+                }
+            }
+            return 0;
+
+        case WM_PAINT:
+            ValidateRect(hWnd, nullptr);
+            return 0;
+
+        default:
+            break;
+    }
+
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+#endif
+
+void WindowNode::Cleanup() {
+    NODE_LOG_INFO("[WindowNode] Cleanup");
+
+#ifdef _WIN32
+    // Destroy surface using named slot from config
+    VkSurfaceKHR& surfaceRef = Out(WindowNodeConfig::SURFACE);
+    if (surfaceRef != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
+        extern VkInstance g_VulkanInstance;
+        fpDestroySurfaceKHR(g_VulkanInstance, surfaceRef, nullptr);
+        surfaceRef = VK_NULL_HANDLE;  // Clear typed storage
+    }
+
+    // Destroy window
+    if (window) {
+        DestroyWindow(window);
+        window = nullptr;
+    }
+#endif
+}
+
+} // namespace Vixen::RenderGraph

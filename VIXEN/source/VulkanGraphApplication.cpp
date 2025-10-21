@@ -7,19 +7,19 @@
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 
 // Include all node types
-#include "RenderGraph/Nodes/WindowNode.h"
-#include "RenderGraph/Nodes/DeviceNode.h"
-#include "RenderGraph/Nodes/TextureLoaderNode.h"
-#include "RenderGraph/Nodes/DepthBufferNode.h"
-#include "RenderGraph/Nodes/SwapChainNode.h"
-#include "RenderGraph/Nodes/VertexBufferNode.h"
-#include "RenderGraph/Nodes/RenderPassNode.h"
-#include "RenderGraph/Nodes/FramebufferNode.h"
-#include "RenderGraph/Nodes/ShaderLibraryNode.h"
-#include "RenderGraph/Nodes/DescriptorSetNode.h"
-#include "RenderGraph/Nodes/GraphicsPipelineNode.h"
-#include "RenderGraph/Nodes/GeometryRenderNode.h"
-#include "RenderGraph/Nodes/PresentNode.h"
+#include "Nodes/WindowNode.h"
+#include "Nodes/DeviceNode.h"
+#include "Nodes/TextureLoaderNode.h"
+#include "Nodes/DepthBufferNode.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/VertexBufferNode.h"
+#include "Nodes/RenderPassNode.h"
+#include "Nodes/FramebufferNode.h"
+#include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/DescriptorSetNode.h"
+#include "Nodes/GraphicsPipelineNode.h"
+#include "Nodes/GeometryRenderNode.h"
+#include "Nodes/PresentNode.h"
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;

@@ -1,0 +1,271 @@
+#pragma once
+
+#include "Resource.h"
+#include "NodeType.h"
+#include <string>
+#include <vector>
+#include <map>
+#include <variant>
+#include <memory>
+#include "Logger.h"
+
+// Forward declare Logger to avoid circular dependency
+class Logger;
+
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;
+}
+
+// Forward declaration from ShaderManagement
+namespace ShaderManagement {
+    struct DescriptorLayoutSpec;
+}
+
+namespace Vixen::RenderGraph {
+
+// Forward declarations
+class NodeType;
+
+/**
+ * @brief Depth format options for depth buffers
+ */
+enum class DepthFormat {
+    D16,      // VK_FORMAT_D16_UNORM - 16-bit depth
+    D24S8,    // VK_FORMAT_D24_UNORM_S8_UINT - 24-bit depth + 8-bit stencil
+    D32       // VK_FORMAT_D32_SFLOAT - 32-bit float depth (default)
+};
+
+/**
+ * @brief Attachment load operations for render passes
+ */
+enum class AttachmentLoadOp {
+    Load,      // VK_ATTACHMENT_LOAD_OP_LOAD - Preserve existing contents
+    Clear,     // VK_ATTACHMENT_LOAD_OP_CLEAR - Clear to constant value
+    DontCare   // VK_ATTACHMENT_LOAD_OP_DONT_CARE - Undefined (fastest)
+};
+
+/**
+ * @brief Attachment store operations for render passes
+ */
+enum class AttachmentStoreOp {
+    Store,     // VK_ATTACHMENT_STORE_OP_STORE - Store contents for later use
+    DontCare   // VK_ATTACHMENT_STORE_OP_DONT_CARE - Don't care about contents after rendering
+};
+
+/**
+ * @brief Image layout options for render passes
+ */
+enum class ImageLayout {
+    Undefined,                    // VK_IMAGE_LAYOUT_UNDEFINED
+    ColorAttachment,             // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    DepthStencilAttachment,      // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    PresentSrc,                  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+    TransferSrc,                 // VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+    TransferDst                  // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+};
+
+/**
+ * @brief Variant type for node parameters
+ */
+using ParameterValue = std::variant<
+    int32_t,
+    uint32_t,
+    float,
+    double,
+    bool,
+    std::string,
+    glm::vec2,
+    glm::vec3,
+    glm::vec4,
+    glm::mat4,
+    DepthFormat,          // Depth format enum
+    AttachmentLoadOp,     // Load operation enum
+    AttachmentStoreOp,    // Store operation enum
+    ImageLayout,          // Image layout enum
+    const ::ShaderManagement::DescriptorLayoutSpec*  // Descriptor layout specification pointer
+>;
+
+/**
+ * @brief Node execution state
+ */
+enum class NodeState {
+    Created,      // Just created, not configured
+    Ready,        // Configured and ready to compile
+    Compiled,     // Pipelines and resources allocated
+    Executing,    // Currently executing
+    Complete,     // Execution finished
+    Error         // Error state
+};
+
+/**
+ * @brief Performance statistics for node execution
+ */
+struct PerformanceStats {
+    uint64_t executionTimeNs = 0;         // GPU execution time
+    uint64_t cpuTimeNs = 0;               // CPU time for setup
+    uint32_t executionCount = 0;          // Number of times executed
+    float averageExecutionTimeMs = 0.0f;
+};
+
+/**
+ * @brief Connection point for graph edges
+ */
+struct NodeConnection {
+    NodeInstance* sourceNode = nullptr;
+    uint32_t sourceOutputIndex = 0;
+    NodeInstance* targetNode = nullptr;
+    uint32_t targetInputIndex = 0;
+};
+
+/**
+ * @brief Node Instance - Concrete instantiation of a NodeType
+ * 
+ * Represents a specific usage of a rendering operation in the graph.
+ * Multiple instances can be created from the same NodeType.
+ */
+class NodeInstance {
+public:
+    NodeInstance(
+        const std::string& instanceName,
+        NodeType* nodeType,
+        Vixen::Vulkan::Resources::VulkanDevice* device
+    );
+
+    virtual ~NodeInstance();
+
+    // Prevent copying
+    NodeInstance(const NodeInstance&) = delete;
+    NodeInstance& operator=(const NodeInstance&) = delete;
+
+    // Identity
+    const std::string& GetInstanceName() const { return instanceName; }
+    NodeType* GetNodeType() const { return nodeType; }
+    NodeTypeId GetTypeId() const;
+
+    // Device affinity
+    Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const { return device; }
+    uint32_t GetDeviceIndex() const { return deviceIndex; }
+    void SetDeviceIndex(uint32_t index) { deviceIndex = index; }
+
+    // Node arrayable flag
+    bool AllowsInputArrays() const { return allowInputArrays; }
+    void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
+
+    // Resources (slot-based access)
+    const std::vector<std::vector<IResource*>>& GetInputs() const { return inputs; }
+    const std::vector<std::vector<IResource*>>& GetOutputs() const { return outputs; }
+
+    // Legacy flat accessors (for backward compatibility)
+    IResource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    IResource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource);
+    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource);
+
+    // Get array size for a slot
+    size_t GetInputCount(uint32_t slotIndex) const;
+    size_t GetOutputCount(uint32_t slotIndex) const;
+
+    // Parameters
+    void SetParameter(const std::string& name, const ParameterValue& value);
+    const ParameterValue* GetParameter(const std::string& name) const;
+    template<typename T>
+    T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const;
+
+    // Dependencies
+    const std::vector<NodeInstance*>& GetDependencies() const { return dependencies; }
+    void AddDependency(NodeInstance* node);
+    void RemoveDependency(NodeInstance* node);
+    bool DependsOn(NodeInstance* node) const;
+
+    // State
+    NodeState GetState() const { return state; }
+    void SetState(NodeState newState) { state = newState; }
+
+    // Execution order (set during compilation)
+    uint32_t GetExecutionOrder() const { return executionOrder; }
+    void SetExecutionOrder(uint32_t order) { executionOrder = order; }
+
+    // Workload metrics
+    size_t GetInputMemoryFootprint() const { return inputMemoryFootprint; }
+    void SetInputMemoryFootprint(size_t size) { inputMemoryFootprint = size; }
+    const PerformanceStats& GetPerformanceStats() const { return performanceStats; }
+    void UpdatePerformanceStats(uint64_t executionTimeNs, uint64_t cpuTimeNs);
+
+    // Caching
+    uint64_t GetCacheKey() const { return cacheKey; }
+    void SetCacheKey(uint64_t key) { cacheKey = key; }
+    uint64_t ComputeCacheKey() const;
+
+    // Logger Registration
+    #ifdef _DEBUG
+    void RegisterToParentLogger(Logger* parentLogger);
+    void DeregisterFromParentLogger(Logger* parentLogger);
+    #endif
+
+    // Virtual methods for derived classes to implement
+    virtual void Setup() {}
+    virtual void Compile() {}
+    virtual void Execute(VkCommandBuffer commandBuffer) = 0;
+    virtual void Cleanup() {}
+
+protected:
+    // Instance identification
+    std::string instanceName;
+    NodeType* nodeType;
+    
+
+    // Device affinity
+    Vixen::Vulkan::Resources::VulkanDevice* device;
+    uint32_t deviceIndex = 0;
+
+    // Node-level behavior flags
+    // When true the node will accept either single inputs or array-shaped inputs
+    // (IA<I>) and should handle producing scalar or array outputs accordingly.
+    // Default false to preserve existing behavior.
+    bool allowInputArrays = false;
+
+    // Resources (each slot is a vector: scalar = size 1, array = size N)
+    std::vector<std::vector<IResource*>> inputs;
+    std::vector<std::vector<IResource*>> outputs;
+
+    // Instance-specific parameters
+    std::map<std::string, ParameterValue> parameters;
+
+    // Execution state
+    NodeState state = NodeState::Created;
+    std::vector<NodeInstance*> dependencies;
+    uint32_t executionOrder = 0;
+
+    // Metrics
+    size_t inputMemoryFootprint = 0;
+    PerformanceStats performanceStats;
+
+    // Caching
+    uint64_t cacheKey = 0;
+
+#ifdef _DEBUG
+    // Debug-only hierarchical logger (zero overhead in release builds)
+    std::unique_ptr<Logger> nodeLogger;
+#endif
+
+    // Helper methods
+    void AllocateResources();
+    void DeallocateResources();
+};
+
+// Template implementation
+template<typename T>
+T NodeInstance::GetParameterValue(const std::string& name, const T& defaultValue) const {
+    auto it = parameters.find(name);
+    if (it == parameters.end()) {
+        return defaultValue;
+    }
+    
+    if (auto* value = std::get_if<T>(&it->second)) {
+        return *value;
+    }
+    
+    return defaultValue;
+}
+
+} // namespace Vixen::RenderGraph
