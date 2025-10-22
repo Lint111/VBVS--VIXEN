@@ -1,59 +1,10 @@
 #pragma once
 
-/**
- * @file Resource.h
- * @brief Clean, type-safe resource system for RenderGraph
- * 
- * ARCHITECTURE:
- * 
- * 1. ResourceTraits<T> - Maps resource type to descriptor
- *    Example: ResourceTraits<VkImage>::DescriptorType = ImageDescriptor
- * 
- * 2. Descriptor<Derived, T> - CRTP base for typed descriptors
- *    - Stores metadata/config for resource type T
- *    - Automatically provides Clone() and type association
- *    Example: ImageDescriptor : Descriptor<ImageDescriptor, VkImage>
- * 
- * 3. Resource<T> - Typed resource container
- *    - Stores actual resource value of type T
- *    - Automatically uses correct descriptor via ResourceTraits
- *    - No bloated null fields - only what's needed for T
- *    Example: Resource<VkImage> only has VkImage + ImageDescriptor
- * 
- * 4. IResource - Base interface for polymorphic storage
- *    - Allows storing different Resource<T> types in containers
- *    - Provides As<T>() for type-safe downcasting
- * 
- * USAGE:
- * 
- *   // Create typed resource
- *   auto imgRes = std::make_unique<Resource<VkImage>>(
- *       ResourceLifetime::Persistent,
- *       ImageDescriptor{.width=1024, .height=768}
- *   );
- * 
- *   // Access resource and descriptor
- *   VkImage img = imgRes->Get();                    // Get the actual VkImage
- *   ImageDescriptor* desc = imgRes->GetDescriptor(); // Get metadata
- * 
- *   // Polymorphic storage
- *   IResource* base = imgRes.get();
- *   if (auto* typed = base->As<VkImage>()) {
- *       VkImage img = typed->Get();
- *   }
- * 
- * BENEFITS:
- * - Type-safe: Compile-time type checking
- * - No bloat: No null VkBuffer when you have VkImage
- * - Clean API: Just Get() and GetDescriptor()
- * - Extensible: Add new types by specializing ResourceTraits
- */
-
-#include "Headers.h"
+#include "../Headers.h"
 #include <string>
 #include <optional>
 #include <memory>
-#include "Core/ResourceTypes.h"
+#include "RenderGraph/ResourceTypes.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -81,99 +32,23 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(check)) != 0;
 }
 
-// ============================================================================
-// TYPE TRAITS - Maps resource types to their descriptors
-// ============================================================================
-
-// Forward declarations of descriptors
-struct ImageDescriptor;
-struct BufferDescriptor;
-struct CommandPoolDescriptor;
-struct DeviceDescriptor;
-struct ShaderProgramDescriptor;
-
 /**
- * @brief Trait to map resource type T to its descriptor type
- * 
- * Usage:
- *   using DescType = ResourceTraits<VkImage>::DescriptorType;  // ImageDescriptor
- *   using ResType = ResourceTraits<VkImage>::ResourceType;      // VkImage
+ * @brief Base resource description
  */
-template<typename T>
-struct ResourceTraits;
+struct ResourceDescription {
+    ResourceType type = ResourceType::Image;
 
-// Specializations
-template<>
-struct ResourceTraits<VkImage> {
-    using ResourceType_t = VkImage;
-    using DescriptorType = ImageDescriptor;
-};
-
-template<>
-struct ResourceTraits<VkBuffer> {
-    using ResourceType_t = VkBuffer;
-    using DescriptorType = BufferDescriptor;
-};
-
-template<>
-struct ResourceTraits<VkCommandPool> {
-    using ResourceType_t = VkCommandPool;
-    using DescriptorType = CommandPoolDescriptor;
-};
-
-template<>
-struct ResourceTraits<VkDevice> {
-    using ResourceType_t = VkDevice;
-    using DescriptorType = DeviceDescriptor;
-};
-
-template<>
-struct ResourceTraits<ShaderManagement::CompiledProgram> {
-    using ResourceType_t = ShaderManagement::CompiledProgram;
-    using DescriptorType = ShaderProgramDescriptor;
-};
-
-// Helper alias
-template<typename T>
-using DescriptorFor = typename ResourceTraits<T>::DescriptorType;
-
-// ============================================================================
-// BASE DESCRIPTOR INTERFACE
-// ============================================================================
-
-/**
- * @brief Base descriptor interface for resource metadata
- */
-class IDescriptor {
-public:
-    virtual ~IDescriptor() = default;
-    virtual std::unique_ptr<IDescriptor> Clone() const = 0;
-    virtual ResourceType GetResourceType() const = 0;
+    ResourceDescription(ResourceType t) : type(t) {}
+    virtual ~ResourceDescription() = default;
+    virtual bool operator==(const ResourceDescription& other) const = 0;
+    // Polymorphic clone to allow copying via base pointer
+    virtual std::unique_ptr<ResourceDescription> Clone() const = 0;
 };
 
 /**
- * @brief CRTP base for typed descriptors
- * 
- * Automatically provides Clone() and type association.
+ * @brief Image resource description
  */
-template<typename Derived, typename ResourceT>
-class Descriptor : public IDescriptor {
-public:
-    using ResourceType_t = ResourceT;
-    
-    std::unique_ptr<IDescriptor> Clone() const override {
-        return std::make_unique<Derived>(static_cast<const Derived&>(*this));
-    }
-};
-
-// ============================================================================
-// TYPED DESCRIPTORS (metadata for each resource type)
-// ============================================================================
-
-/**
- * @brief Image resource descriptor - stores VkImage metadata
- */
-struct ImageDescriptor : public Descriptor<ImageDescriptor, VkImage> {
+struct ImageDescription : public ResourceDescription {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t depth = 1;
@@ -183,424 +58,98 @@ struct ImageDescriptor : public Descriptor<ImageDescriptor, VkImage> {
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
     ResourceUsage usage = ResourceUsage::None;
     VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
-    VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    
-    ResourceType GetResourceType() const override { 
-        return ResourceType::Image; 
+
+    ImageDescription() : ResourceDescription(ResourceType::Image) {}
+    ImageDescription(const ImageDescription&) = default;
+    ImageDescription& operator=(const ImageDescription&) = default;
+
+    bool operator==(const ResourceDescription& other) const override {
+        auto* otherImg = dynamic_cast<const ImageDescription*>(&other);
+        if (!otherImg) return false;
+        return width == otherImg->width &&
+               height == otherImg->height &&
+               depth == otherImg->depth &&
+               mipLevels == otherImg->mipLevels &&
+               arrayLayers == otherImg->arrayLayers &&
+               format == otherImg->format &&
+               samples == otherImg->samples &&
+               usage == otherImg->usage &&
+               tiling == otherImg->tiling;
+    }
+    std::unique_ptr<ResourceDescription> Clone() const override {
+        return std::make_unique<ImageDescription>(*this);
     }
 };
 
 /**
- * @brief Buffer resource descriptor - stores VkBuffer metadata
+ * @brief Buffer resource description
  */
-struct BufferDescriptor : public Descriptor<BufferDescriptor, VkBuffer> {
+struct BufferDescription : public ResourceDescription {
     VkDeviceSize size = 0;
     ResourceUsage usage = ResourceUsage::None;
     VkMemoryPropertyFlags memoryProperties = 0;
-    
-    ResourceType GetResourceType() const override { 
-        return ResourceType::Buffer; 
+
+    BufferDescription() : ResourceDescription(ResourceType::Buffer) {}
+    BufferDescription(const BufferDescription&) = default;
+    BufferDescription& operator=(const BufferDescription&) = default;
+
+    bool operator==(const ResourceDescription& other) const override {
+        auto* otherBuf = dynamic_cast<const BufferDescription*>(&other);
+        if (!otherBuf) return false;
+        return size == otherBuf->size &&
+               usage == otherBuf->usage &&
+               memoryProperties == otherBuf->memoryProperties;
+    }
+    std::unique_ptr<ResourceDescription> Clone() const override {
+        return std::make_unique<BufferDescription>(*this);
     }
 };
 
 /**
- * @brief Command pool descriptor - stores VkCommandPool metadata
+ * @brief Command pool resource description
+ * Used for command buffer allocations
  */
-struct CommandPoolDescriptor : public Descriptor<CommandPoolDescriptor, VkCommandPool> {
+struct CommandPoolDescription : public ResourceDescription {
     VkCommandPoolCreateFlags flags = 0;
     uint32_t queueFamilyIndex = 0;
-    
-    ResourceType GetResourceType() const override { 
-        return ResourceType::Buffer; // TODO: Add CommandPool to ResourceType enum
+
+    CommandPoolDescription() : ResourceDescription(ResourceType::Buffer) {} // CommandPool not in enum, using Buffer
+    CommandPoolDescription(const CommandPoolDescription&) = default;
+    CommandPoolDescription& operator=(const CommandPoolDescription&) = default;
+
+    bool operator==(const ResourceDescription& other) const override {
+        auto* otherPool = dynamic_cast<const CommandPoolDescription*>(&other);
+        if (!otherPool) return false;
+        return flags == otherPool->flags &&
+               queueFamilyIndex == otherPool->queueFamilyIndex;
+    }
+    std::unique_ptr<ResourceDescription> Clone() const override {
+        return std::make_unique<CommandPoolDescription>(*this);
     }
 };
 
 /**
- * @brief Device descriptor - stores VkDevice metadata
+ * @brief Device object resource description
+ * Wraps a VulkanDevice pointer
  */
-struct DeviceDescriptor : public Descriptor<DeviceDescriptor, VkDevice> {
+struct DeviceObjectDescription : public ResourceDescription {
     VkDevice device = VK_NULL_HANDLE;
-    
-    ResourceType GetResourceType() const override { 
-        return ResourceType::Buffer; // TODO: Add Device to ResourceType enum
+
+    DeviceObjectDescription() : ResourceDescription(ResourceType::Buffer) {} // DeviceObject not in enum, using Buffer
+    DeviceObjectDescription(const DeviceObjectDescription&) = default;
+    DeviceObjectDescription& operator=(const DeviceObjectDescription&) = default;
+
+    bool operator==(const ResourceDescription& other) const override {
+        auto* otherDev = dynamic_cast<const DeviceObjectDescription*>(&other);
+        if (!otherDev) return false;
+        return device == otherDev->device;
+    }
+    std::unique_ptr<ResourceDescription> Clone() const override {
+        return std::make_unique<DeviceObjectDescription>(*this);
     }
 };
 
-/**
- * @brief Shader program descriptor - defined in ShaderLibraryNodeConfig.h
- * Forward declaration only - actual definition has VkShaderModule and stages
- */
-struct ShaderProgramDescriptor;
-// NOTE: Full definition in Nodes/ShaderLibraryNodeConfig.h to avoid circular dependency
 
-// Backward compatibility aliases
-using ResourceDescription = IDescriptor;
-using ImageDescription = ImageDescriptor;
-using BufferDescription = BufferDescriptor;
-using CommandPoolDescription = CommandPoolDescriptor;
-using DeviceObjectDescription = DeviceDescriptor;
-
-// Forward declare Resource template (needed for IResource::As<T>())
-template<typename T>
-class Resource;
-
-// ============================================================================
-// BASE RESOURCE INTERFACE
-// ============================================================================
-
-/**
- * @brief Base resource interface for type-erased storage
- */
-class IResource {
-public:
-    virtual ~IResource() = default;
-    
-    // Resource metadata
-    virtual ResourceType GetType() const = 0;
-    virtual ResourceLifetime GetLifetime() const = 0;
-    virtual const IDescriptor* GetDescriptor() const = 0;
-    
-    // Type-safe descriptor access with template
-    template<typename DescriptorType>
-    const DescriptorType* GetDescription() const {
-        const IDescriptor* desc = GetDescriptor();
-        return dynamic_cast<const DescriptorType*>(desc);
-    }
-    
-    template<typename DescriptorType>
-    DescriptorType* GetDescription() {
-        IDescriptor* desc = const_cast<IDescriptor*>(GetDescriptor());
-        return dynamic_cast<DescriptorType*>(desc);
-    }
-    
-    // Resource-specific accessors (return null/default if wrong type)
-    virtual VkImageView GetImageView() const { return VK_NULL_HANDLE; }
-    virtual VkBuffer GetBuffer() const { return VK_NULL_HANDLE; }
-    virtual VkCommandPool GetCommandPool() const { return VK_NULL_HANDLE; }
-    
-    // Mutators for specific resource types (no-op if wrong type)
-    virtual void SetImageView(VkImageView view) {}
-    virtual void SetBuffer(VkBuffer buffer) {}
-    virtual void SetCommandPool(VkCommandPool pool) {}
-    
-    // Memory footprint
-    virtual size_t GetMemorySize() const = 0;
-    
-    // State management
-    virtual void SetOwningNode(NodeInstance* node) = 0;
-    virtual NodeInstance* GetOwningNode() const = 0;
-    
-    virtual void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) = 0;
-    virtual Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const = 0;
-    
-    virtual bool IsAllocated() const = 0;
-    virtual bool IsValid() const = 0;
-    
-    // Type-safe downcasting
-    template<typename T>
-    Resource<T>* As() {
-        return dynamic_cast<Resource<T>*>(this);
-    }
-    
-    template<typename T>
-    const Resource<T>* As() const {
-        return dynamic_cast<const Resource<T>*>(this);
-    }
-};
-
-// ============================================================================
-// TYPED RESOURCE (stores actual resource handle/data)
-// ============================================================================
-
-/**
- * @brief Typed resource container
- * 
- * Stores the actual resource data for type T.
- * No bloated null fields - only what's needed for T.
- * Automatically uses the correct descriptor type via ResourceTraits.
- */
-template<typename T>
-class Resource : public IResource {
-public:
-    using DescriptorType = DescriptorFor<T>;
-
-    Resource() = default;
-    
-    Resource(ResourceLifetime lifetime, const DescriptorType& desc)
-        : lifetime(lifetime), descriptor(std::make_unique<DescriptorType>(desc)) {}
-    
-    ~Resource() = default;
-
-    // Prevent copying (resources are unique)
-    Resource(const Resource&) = delete;
-    Resource& operator=(const Resource&) = delete;
-
-    // Allow moving
-    Resource(Resource&&) noexcept = default;
-    Resource& operator=(Resource&&) noexcept = default;
-
-    // Access the resource value
-    T& Get() { return value; }
-    const T& Get() const { return value; }
-    void Set(const T& val) { value = val; }
-    
-    // Access descriptor (metadata)
-    DescriptorType* GetDescriptor() { 
-        return descriptor.get(); 
-    }
-    
-    const DescriptorType* GetDescriptor() const { 
-        return descriptor.get(); 
-    }
-
-    // IResource interface
-    ResourceType GetType() const override { 
-        return descriptor ? descriptor->GetResourceType() : ResourceType::Image; 
-    }
-    
-    ResourceLifetime GetLifetime() const override { 
-        return lifetime; 
-    }
-    
-    const IDescriptor* GetDescriptor() const override { 
-        return descriptor.get(); 
-    }
-    
-    void SetOwningNode(NodeInstance* node) override { 
-        owningNode = node; 
-    }
-    
-    NodeInstance* GetOwningNode() const override { 
-        return owningNode; 
-    }
-    
-    void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) override { 
-        deviceDependency = dev; 
-    }
-    
-    Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const override { 
-        return deviceDependency; 
-    }
-    
-    bool IsAllocated() const override {
-        if constexpr (std::is_pointer_v<T>) {
-            return value != nullptr;
-        } else {
-            return value != VK_NULL_HANDLE;
-        }
-    }
-    
-    bool IsValid() const override { 
-        return IsAllocated(); 
-    }
-
-private:
-    T value = {}; // The actual resource (VkImage, VkBuffer, etc.)
-    std::unique_ptr<DescriptorType> descriptor; // Metadata for this resource
-    ResourceLifetime lifetime = ResourceLifetime::Transient;
-    NodeInstance* owningNode = nullptr;
-    Vixen::Vulkan::Resources::VulkanDevice* deviceDependency = nullptr;
-};
-
-// ============================================================================
-// SPECIALIZED RESOURCES (for complex types needing extra state)
-// ============================================================================
-
-/**
- * @brief Specialized Image resource with image-specific state
- */
-template<>
-class Resource<VkImage> : public IResource {
-public:
-    Resource() = default;
-    
-    Resource(ResourceLifetime lifetime, const ImageDescriptor& desc)
-        : lifetime(lifetime), descriptor(std::make_unique<ImageDescriptor>(desc)) {}
-    
-    ~Resource() = default;
-
-    Resource(const Resource&) = delete;
-    Resource& operator=(const Resource&) = delete;
-    Resource(Resource&&) noexcept = default;
-    Resource& operator=(Resource&&) noexcept = default;
-
-    // Access
-    VkImage& Get() { return image; }
-    const VkImage& Get() const { return image; }
-    void Set(VkImage img) { image = img; }
-    
-    ImageDescriptor* GetDescriptor() { return descriptor.get(); }
-    const ImageDescriptor* GetDescriptor() const { return descriptor.get(); }
-
-    // Image-specific state
-    VkImageView GetImageView() const { return imageView; }
-    void SetImageView(VkImageView view) { imageView = view; }
-    
-    VkImageLayout GetCurrentLayout() const { return currentLayout; }
-    void SetCurrentLayout(VkImageLayout layout) { currentLayout = layout; }
-    
-    VkDeviceMemory GetMemory() const { return memory; }
-    void SetMemory(VkDeviceMemory mem) { memory = mem; }
-    
-    size_t GetMemorySize() const { return memorySize; }
-    void SetMemorySize(size_t size) { memorySize = size; }
-    
-    // Allocation helpers
-    void AllocateImage(VkDevice device, const ImageDescriptor& desc);
-    void CreateImageView(VkDevice device, VkImageAspectFlags aspectMask);
-    void Destroy(VkDevice device);
-
-    // IResource interface
-    ResourceType GetType() const override { return ResourceType::Image; }
-    ResourceLifetime GetLifetime() const override { return lifetime; }
-    const IDescriptor* GetDescriptor() const override { return descriptor.get(); }
-    
-    // Image-specific overrides
-    VkImageView GetImageView() const override { return imageView; }
-    void SetImageView(VkImageView view) override { imageView = view; }
-    size_t GetMemorySize() const override { return memorySize; }
-    
-    void SetOwningNode(NodeInstance* node) override { owningNode = node; }
-    NodeInstance* GetOwningNode() const override { return owningNode; }
-    void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) override { deviceDependency = dev; }
-    Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const override { return deviceDependency; }
-    bool IsAllocated() const override { return image != VK_NULL_HANDLE; }
-    bool IsValid() const override { return IsAllocated(); }
-
-private:
-    VkImage image = VK_NULL_HANDLE;
-    VkImageView imageView = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    size_t memorySize = 0;
-    std::unique_ptr<ImageDescriptor> descriptor;
-    ResourceLifetime lifetime = ResourceLifetime::Transient;
-    NodeInstance* owningNode = nullptr;
-    Vixen::Vulkan::Resources::VulkanDevice* deviceDependency = nullptr;
-    
-    uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-};
-
-/**
- * @brief Specialized Buffer resource with buffer-specific state
- */
-template<>
-class Resource<VkBuffer> : public IResource {
-public:
-    Resource() = default;
-    
-    Resource(ResourceLifetime lifetime, const BufferDescriptor& desc)
-        : lifetime(lifetime), descriptor(std::make_unique<BufferDescriptor>(desc)) {}
-    
-    ~Resource() = default;
-
-    Resource(const Resource&) = delete;
-    Resource& operator=(const Resource&) = delete;
-    Resource(Resource&&) noexcept = default;
-    Resource& operator=(Resource&&) noexcept = default;
-
-    // Access
-    VkBuffer& Get() { return buffer; }
-    const VkBuffer& Get() const { return buffer; }
-    void Set(VkBuffer buf) { buffer = buf; }
-    
-    BufferDescriptor* GetDescriptor() { return descriptor.get(); }
-    const BufferDescriptor* GetDescriptor() const { return descriptor.get(); }
-
-    // Buffer-specific state
-    VkDeviceMemory GetMemory() const { return memory; }
-    void SetMemory(VkDeviceMemory mem) { memory = mem; }
-    
-    size_t GetMemorySize() const { return memorySize; }
-    void SetMemorySize(size_t size) { memorySize = size; }
-    
-    // Allocation helpers
-    void AllocateBuffer(VkDevice device, const BufferDescriptor& desc);
-    void Destroy(VkDevice device);
-
-    // IResource interface
-    ResourceType GetType() const override { return ResourceType::Buffer; }
-    ResourceLifetime GetLifetime() const override { return lifetime; }
-    const IDescriptor* GetDescriptor() const override { return descriptor.get(); }
-    
-    // Buffer-specific overrides
-    VkBuffer GetBuffer() const override { return buffer; }
-    void SetBuffer(VkBuffer buf) override { buffer = buf; }
-    size_t GetMemorySize() const override { return memorySize; }
-    
-    void SetOwningNode(NodeInstance* node) override { owningNode = node; }
-    NodeInstance* GetOwningNode() const override { return owningNode; }
-    void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) override { deviceDependency = dev; }
-    Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const override { return deviceDependency; }
-    bool IsAllocated() const override { return buffer != VK_NULL_HANDLE; }
-    bool IsValid() const override { return IsAllocated(); }
-
-private:
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    size_t memorySize = 0;
-    std::unique_ptr<BufferDescriptor> descriptor;
-    ResourceLifetime lifetime = ResourceLifetime::Transient;
-    NodeInstance* owningNode = nullptr;
-    Vixen::Vulkan::Resources::VulkanDevice* deviceDependency = nullptr;
-    
-    uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-};
-
-/**
- * @brief Specialized CommandPool resource
- */
-template<>
-class Resource<VkCommandPool> : public IResource {
-public:
-    Resource() = default;
-    
-    Resource(ResourceLifetime lifetime, const CommandPoolDescriptor& desc)
-        : lifetime(lifetime), descriptor(std::make_unique<CommandPoolDescriptor>(desc)) {}
-    
-    ~Resource() = default;
-
-    Resource(const Resource&) = delete;
-    Resource& operator=(const Resource&) = delete;
-    Resource(Resource&&) noexcept = default;
-    Resource& operator=(Resource&&) noexcept = default;
-
-    // Access
-    VkCommandPool& Get() { return commandPool; }
-    const VkCommandPool& Get() const { return commandPool; }
-    void Set(VkCommandPool pool) { commandPool = pool; }
-    
-    CommandPoolDescriptor* GetDescriptor() { return descriptor.get(); }
-    const CommandPoolDescriptor* GetDescriptor() const { return descriptor.get(); }
-
-    // IResource interface
-    ResourceType GetType() const override { return ResourceType::Buffer; } // TODO: Add CommandPool to ResourceType enum
-    ResourceLifetime GetLifetime() const override { return lifetime; }
-    const IDescriptor* GetDescriptor() const override { return descriptor.get(); }
-    
-    // CommandPool-specific overrides
-    VkCommandPool GetCommandPool() const override { return commandPool; }
-    void SetCommandPool(VkCommandPool pool) override { commandPool = pool; }
-    size_t GetMemorySize() const override { return 0; } // Command pools don't have direct memory size
-    
-    void SetOwningNode(NodeInstance* node) override { owningNode = node; }
-    NodeInstance* GetOwningNode() const override { return owningNode; }
-    void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) override { deviceDependency = dev; }
-    Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const override { return deviceDependency; }
-    bool IsAllocated() const override { return commandPool != VK_NULL_HANDLE; }
-    bool IsValid() const override { return IsAllocated(); }
-
-private:
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-    std::unique_ptr<CommandPoolDescriptor> descriptor;
-    ResourceLifetime lifetime = ResourceLifetime::Transient;
-    NodeInstance* owningNode = nullptr;
-    Vixen::Vulkan::Resources::VulkanDevice* deviceDependency = nullptr;
-};
-
-// ============================================================================
-// RESOURCE SCHEMA & HANDLES
-// ============================================================================
 
 /**
  * @brief Resource descriptor (schema definition)
@@ -610,14 +159,23 @@ struct ResourceDescriptor {
     std::string name;
     ResourceType type;
     ResourceLifetime lifetime;
-    std::unique_ptr<IDescriptor> descriptor;
+
+    // Type-specific description (polymorphic, unique ownership per descriptor)
+    // We provide deep-copy semantics via a copy-constructor that clones the
+    // underlying ResourceDescription so ResourceDescriptor remains copyable
+    // for use in containers while storing the description as unique_ptr.
+    std::unique_ptr<ResourceDescription> description;
+
+    // Optional - for validation
     bool optional = false;
 
+    // Deep-copy copy-constructor/assignment to clone the description so that
+    // ResourceDescriptor remains copyable when stored in containers.
     ResourceDescriptor() = default;
 
     ResourceDescriptor(const ResourceDescriptor& other)
         : name(other.name), type(other.type), lifetime(other.lifetime), optional(other.optional) {
-        if (other.descriptor) descriptor = other.descriptor->Clone();
+        if (other.description) description = other.description->Clone();
     }
 
     ResourceDescriptor& operator=(const ResourceDescriptor& other) {
@@ -626,14 +184,16 @@ struct ResourceDescriptor {
         type = other.type;
         lifetime = other.lifetime;
         optional = other.optional;
-        if (other.descriptor) descriptor = other.descriptor->Clone();
-        else descriptor.reset();
+        if (other.description) description = other.description->Clone();
+        else description.reset();
         return *this;
     }
 
+    // Move operations
     ResourceDescriptor(ResourceDescriptor&&) noexcept = default;
     ResourceDescriptor& operator=(ResourceDescriptor&&) noexcept = default;
 
+    // Construct from a concrete DescType (makes unique copy)
     template<typename DescType>
     ResourceDescriptor(
         const std::string& n,
@@ -641,15 +201,126 @@ struct ResourceDescriptor {
         ResourceLifetime l,
         const DescType& desc,
         bool opt = false
-    ) : name(n), type(t), lifetime(l), descriptor(std::make_unique<DescType>(desc)), optional(opt) {}
+    ) : name(n), type(t), lifetime(l), description(std::make_unique<DescType>(desc)), optional(opt) {}
 
+    // Construct from an already-created unique_ptr (takes ownership)
     ResourceDescriptor(
         const std::string& n,
         ResourceType t,
         ResourceLifetime l,
-        std::unique_ptr<IDescriptor> descPtr,
+        std::unique_ptr<ResourceDescription> descPtr,
         bool opt = false
-    ) : name(n), type(t), lifetime(l), descriptor(std::move(descPtr)), optional(opt) {}
+    ) : name(n), type(t), lifetime(l), description(std::move(descPtr)), optional(opt) {}
+};
+
+/**
+ * @brief Actual resource instance
+ */
+class Resource {
+public:
+    Resource() = default;
+
+    template<typename DescType>
+    Resource(
+        ResourceType type,
+        ResourceLifetime lifetime,
+        const DescType& desc
+    ) : type(type), lifetime(lifetime), description(std::make_unique<DescType>(desc)) {}
+
+    // Construct from an already-created description (takes ownership)
+    Resource(
+        ResourceType type,
+        ResourceLifetime lifetime,
+        std::unique_ptr<ResourceDescription> descPtr
+    ) : type(type), lifetime(lifetime), description(std::move(descPtr)) {}
+
+    ~Resource();
+
+    // Prevent copying (resources are unique)
+    Resource(const Resource&) = delete;
+    Resource& operator=(const Resource&) = delete;
+
+    // Allow moving
+    Resource(Resource&& other) noexcept;
+    Resource& operator=(Resource&& other) noexcept;
+
+    // Getters
+    ResourceType GetType() const { return type; }
+    ResourceLifetime GetLifetime() const { return lifetime; }
+    VkImage GetImage() const { return image; }
+    VkBuffer GetBuffer() const { return buffer; }
+    VkDeviceMemory GetMemory() const { return memory; }
+    VkImageView GetImageView() const { return imageView; }
+    VkCommandPool GetCommandPool() const { return commandPool; }
+    VkDevice GetDevice() const { return device; }
+    size_t GetMemorySize() const { return memorySize; }
+    
+    // Shader program pointer (for opaque data types)
+    const ShaderManagement::CompiledProgram* GetCompiledProgram() const { return compiledProgram; }
+    void SetCompiledProgram(const ShaderManagement::CompiledProgram* program) { compiledProgram = program; }
+
+    template<typename T>
+    const T* GetDescription() const {
+        return dynamic_cast<const T*>(description.get());
+    }
+
+    const ImageDescription* GetImageDescription() const { return GetDescription<ImageDescription>(); }
+    const BufferDescription* GetBufferDescription() const { return GetDescription<BufferDescription>(); }
+    const CommandPoolDescription* GetCommandPoolDescription() const { return GetDescription<CommandPoolDescription>(); }
+    const DeviceObjectDescription* GetDeviceObjectDescription() const { return GetDescription<DeviceObjectDescription>(); }
+
+    // Setters for Vulkan handles
+    void SetImage(VkImage img) { image = img; }
+    void SetBuffer(VkBuffer buf) { buffer = buf; }
+    void SetCommandPool(VkCommandPool pool) { commandPool = pool; }
+    void SetDevice(VkDevice dev) { device = dev; }
+
+    // State tracking
+    void SetCurrentLayout(VkImageLayout layout) { currentLayout = layout; }
+    VkImageLayout GetCurrentLayout() const { return currentLayout; }
+
+    void SetOwningNode(NodeInstance* node) { owningNode = node; }
+    NodeInstance* GetOwningNode() const { return owningNode; }
+
+    // Device dependency tracking
+    void SetDeviceDependency(Vixen::Vulkan::Resources::VulkanDevice* dev) { deviceDependency = dev; }
+    Vixen::Vulkan::Resources::VulkanDevice* GetDeviceDependency() const { return deviceDependency; }
+
+    // Allocation (managed by ResourceAllocator)
+    void AllocateImage(VkDevice device, const ImageDescription& desc);
+    void AllocateBuffer(VkDevice device, const BufferDescription& desc);
+    void CreateImageView(VkDevice device, VkImageAspectFlags aspectMask);
+    void Destroy(VkDevice device);
+
+    bool IsAllocated() const { return (image != VK_NULL_HANDLE || buffer != VK_NULL_HANDLE || commandPool != VK_NULL_HANDLE || device != VK_NULL_HANDLE); }
+    bool IsValid() const { return IsAllocated(); }
+
+private:
+    ResourceType type = ResourceType::Image;
+    ResourceLifetime lifetime = ResourceLifetime::Transient;
+    std::unique_ptr<ResourceDescription> description;
+
+    // Vulkan resources
+    VkImage image = VK_NULL_HANDLE;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView imageView = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;  // For DeviceObject resources
+    size_t memorySize = 0;
+
+    // Opaque data pointers (for non-Vulkan types)
+    const ShaderManagement::CompiledProgram* compiledProgram = nullptr;
+
+    // State tracking
+    VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    NodeInstance* owningNode = nullptr;
+
+    // Device dependency (which VulkanDevice this resource belongs to)
+    Vixen::Vulkan::Resources::VulkanDevice* deviceDependency = nullptr;
+
+    // Helper for memory allocation
+    uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 };
 
 /**

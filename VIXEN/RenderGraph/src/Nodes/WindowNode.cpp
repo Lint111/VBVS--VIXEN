@@ -1,8 +1,8 @@
-#include "Nodes/WindowNode.h"
+#include "RenderGraph/Nodes/WindowNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanApplicationBase.h"
 #include <iostream>
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 

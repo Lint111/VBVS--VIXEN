@@ -1,4 +1,4 @@
-#include "Core/NodeTypeRegistry.h"
+#include "RenderGraph/NodeTypeRegistry.h"
 #include <algorithm>
 
 namespace Vixen::RenderGraph {

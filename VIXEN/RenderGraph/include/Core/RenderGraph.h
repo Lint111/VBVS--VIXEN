@@ -228,8 +228,8 @@ private:
     std::map<std::string, NodeHandle> nameToHandle;
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
     
-    // Resources (stored as base interface for polymorphism)
-    std::vector<std::unique_ptr<IResource>> resources;
+    // Resources
+    std::vector<std::unique_ptr<Resource>> resources;
 
     // Topology
     GraphTopology topology;
@@ -248,7 +248,7 @@ private:
     // Helpers
     NodeHandle CreateHandle(uint32_t index);
     NodeInstance* GetInstanceInternal(NodeHandle handle);
-    IResource* CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex);
+    Resource* CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex);
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,6 +1,6 @@
-#include "Nodes/DeviceNode.h"
+#include "RenderGraph/Nodes/DeviceNode.h"
 #include <iostream>
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 
 extern VkInstance g_VulkanInstance;
 extern std::vector<const char*> deviceExtensionNames;

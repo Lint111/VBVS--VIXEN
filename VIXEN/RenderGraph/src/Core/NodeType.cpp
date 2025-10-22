@@ -1,9 +1,9 @@
-#include "Core/NodeType.h"
-#include "Core/NodeInstance.h"
+#include "RenderGraph/NodeType.h"
+#include "RenderGraph/NodeInstance.h"
 
 namespace Vixen::RenderGraph {
 
-bool NodeType::ValidateInputs(const std::vector<IResource*>& inputs) const {
+bool NodeType::ValidateInputs(const std::vector<Resource*>& inputs) const {
     if (inputs.size() != inputSchema.size()) {
         // Check if any missing inputs are optional
         size_t requiredCount = 0;
@@ -36,15 +36,15 @@ bool NodeType::ValidateInputs(const std::vector<IResource*>& inputs) const {
             schema.type == ResourceType::Image3D ||
             schema.type == ResourceType::StorageImage) {
 
-            const auto* schemaDesc = dynamic_cast<const ImageDescription*>(schema.descriptor.get());
-            const auto* resourceDesc = resource->GetDescription<ImageDescription>();
+            const auto* schemaDesc = dynamic_cast<const ImageDescription*>(schema.description.get());
+            const auto* resourceDesc = resource->GetImageDescription();
 
-            if (!schemaDesc) {
+            if (!schemaDesc || !resourceDesc) {
                 return false;
             }
 
             // Check format compatibility (could be relaxed with format conversion)
-            if (schemaDesc->format != VK_FORMAT_UNDEFINED && resourceDesc &&
+            if (schemaDesc->format != VK_FORMAT_UNDEFINED &&
                 resourceDesc->format != schemaDesc->format) {
                 return false;
             }
@@ -54,7 +54,7 @@ bool NodeType::ValidateInputs(const std::vector<IResource*>& inputs) const {
     return true;
 }
 
-bool NodeType::ValidateOutputs(const std::vector<IResource*>& outputs) const {
+bool NodeType::ValidateOutputs(const std::vector<Resource*>& outputs) const {
     if (outputs.size() != outputSchema.size()) {
         return false;
     }

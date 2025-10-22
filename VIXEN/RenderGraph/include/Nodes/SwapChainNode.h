@@ -1,9 +1,9 @@
 #pragma once
-#include "Core/NodeInstance.h"
-#include "Core/NodeType.h"
-#include "Core/TypedNodeInstance.h"
+#include "RenderGraph/NodeInstance.h"
+#include "RenderGraph/NodeType.h"
+#include "RenderGraph/TypedNodeInstance.h"
 #include "VulkanSwapChain.h"
-#include "Nodes/SwapChainNodeConfig.h"
+#include "RenderGraph/Nodes/SwapChainNodeConfig.h"
 #include <memory>
 #include <vector>
 

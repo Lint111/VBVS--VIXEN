@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Core/NodeType.h"
-#include "Core/NodeInstance.h"
+#include "../NodeType.h"
+#include "../NodeInstance.h"
 
 namespace Vixen::RenderGraph {
 

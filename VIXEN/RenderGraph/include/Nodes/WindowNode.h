@@ -1,7 +1,7 @@
 #pragma once
-#include "Core/TypedNodeInstance.h"
-#include "Core/NodeType.h"
-#include "Nodes/WindowNodeConfig.h"
+#include "RenderGraph/TypedNodeInstance.h"
+#include "RenderGraph/NodeType.h"
+#include "RenderGraph/Nodes/WindowNodeConfig.h"
 #include <memory>
 
 #ifdef _WIN32

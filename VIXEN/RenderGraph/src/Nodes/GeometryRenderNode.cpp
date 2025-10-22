@@ -1,4 +1,4 @@
-#include "Nodes/GeometryRenderNode.h"
+#include "RenderGraph/Nodes/GeometryRenderNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <cstring>
 

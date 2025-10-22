@@ -152,14 +152,14 @@ public:
     void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
 
     // Resources (slot-based access)
-    const std::vector<std::vector<IResource*>>& GetInputs() const { return inputs; }
-    const std::vector<std::vector<IResource*>>& GetOutputs() const { return outputs; }
+    const std::vector<std::vector<Resource*>>& GetInputs() const { return inputs; }
+    const std::vector<std::vector<Resource*>>& GetOutputs() const { return outputs; }
 
     // Legacy flat accessors (for backward compatibility)
-    IResource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    IResource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource);
-    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource);
+    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
+    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
 
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
@@ -225,8 +225,8 @@ protected:
     bool allowInputArrays = false;
 
     // Resources (each slot is a vector: scalar = size 1, array = size N)
-    std::vector<std::vector<IResource*>> inputs;
-    std::vector<std::vector<IResource*>> outputs;
+    std::vector<std::vector<Resource*>> inputs;
+    std::vector<std::vector<Resource*>> outputs;
 
     // Instance-specific parameters
     std::map<std::string, ParameterValue> parameters;

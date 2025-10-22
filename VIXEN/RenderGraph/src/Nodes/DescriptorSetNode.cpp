@@ -1,6 +1,6 @@
-#include "Nodes/DescriptorSetNode.h"
+﻿#include "RenderGraph/Nodes/DescriptorSetNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "ShaderManagement/ShaderProgram.h"
 #include <unordered_set>
@@ -55,12 +55,13 @@ void DescriptorSetNode::Setup() {
 
 void DescriptorSetNode::Compile() {
     // PRIORITY 1: Check for shader program input (auto-reflection)
-    // Get shader program resource, then extract CompiledProgram from description
-    IResource* shaderResource = NodeInstance::GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
-    ShaderManagement::CompiledProgram* shaderProgram = nullptr;
-    if (shaderProgram)
-        shaderProgram = shaderResource->
-
+    // Use GetInput() since In() doesn't work with pointer types stored in Resource
+    Resource* shaderProgramResource = GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
+    const ShaderManagement::CompiledProgram* shaderProgram = nullptr;
+    
+    if (shaderProgramResource) {
+        shaderProgram = shaderProgramResource->GetCompiledProgram();
+    }
 
     if (shaderProgram && shaderProgram->descriptorLayout) {
         layoutSpec = shaderProgram->descriptorLayout;

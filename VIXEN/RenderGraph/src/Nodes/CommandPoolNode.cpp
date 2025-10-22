@@ -1,6 +1,6 @@
-#include "Nodes/CommandPoolNode.h"
+#include "RenderGraph/Nodes/CommandPoolNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {
@@ -100,14 +100,12 @@ void CommandPoolNode::Compile() {
     isCreated = true;
 
     // Create output resource and set the command pool handle
-    IResource* outputResource = GetOutput(CommandPoolNodeConfig::COMMAND_POOL_Slot::index);
+    Resource* outputResource = GetOutput(CommandPoolNodeConfig::COMMAND_POOL_Slot::index);
     if (!outputResource) {
         std::string errorMsg = "CommandPoolNode output resource not allocated for node: " + instanceName;
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-
-    auto out = Out(CommandPoolNodeConfig::COMMAND_POOL);
 
     outputResource->SetCommandPool(commandPool);
     outputResource->SetDeviceDependency(device);

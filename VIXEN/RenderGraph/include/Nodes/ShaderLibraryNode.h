@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Core/TypedNodeInstance.h"
-#include "Core/NodeType.h"
+#include "RenderGraph/TypedNodeInstance.h"
+#include "RenderGraph/NodeType.h"
 #include "ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderLibrary.h>
 #include <memory>

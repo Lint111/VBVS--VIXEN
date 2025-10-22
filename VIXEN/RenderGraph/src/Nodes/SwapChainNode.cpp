@@ -1,4 +1,4 @@
-#include "Nodes/SwapChainNode.h"
+#include "RenderGraph/Nodes/SwapChainNode.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {

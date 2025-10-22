@@ -1,4 +1,4 @@
-#include "Core/NodeInstance.h"
+#include "RenderGraph/NodeInstance.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
@@ -45,21 +45,21 @@ NodeTypeId NodeInstance::GetTypeId() const {
     return nodeType ? nodeType->GetTypeId() : 0;
 }
 
-IResource* NodeInstance::GetInput(uint32_t slotIndex, uint32_t arrayIndex) const {
+Resource* NodeInstance::GetInput(uint32_t slotIndex, uint32_t arrayIndex) const {
     if (slotIndex < inputs.size() && arrayIndex < inputs[slotIndex].size()) {
         return inputs[slotIndex][arrayIndex];
     }
     return nullptr;
 }
 
-IResource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const {
+Resource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const {
     if (slotIndex < outputs.size() && arrayIndex < outputs[slotIndex].size()) {
         return outputs[slotIndex][arrayIndex];
     }
     return nullptr;
 }
 
-void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource) {
+void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
     if (slotIndex < inputs.size()) {
         if (arrayIndex >= inputs[slotIndex].size()) {
             inputs[slotIndex].resize(arrayIndex + 1, nullptr);
@@ -68,7 +68,7 @@ void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, IResource* 
     }
 }
 
-void NodeInstance::SetOutput(uint32_t slotIndex, uint32_t arrayIndex, IResource* resource) {
+void NodeInstance::SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
     if (slotIndex < outputs.size()) {
         if (arrayIndex >= outputs[slotIndex].size()) {
             outputs[slotIndex].resize(arrayIndex + 1, nullptr);
@@ -168,7 +168,7 @@ uint64_t NodeInstance::ComputeCacheKey() const {
     for (const auto& inputSlot : inputs) {
         for (const auto* input : inputSlot) {
             if (input) {
-                if (const auto* imgDesc = input->GetDescription<ImageDescription>()) {
+                if (const auto* imgDesc = input->GetImageDescription()) {
                     hash ^= static_cast<uint64_t>(imgDesc->format) << 3;
                     hash ^= (static_cast<uint64_t>(imgDesc->width) << 4) |
                             (static_cast<uint64_t>(imgDesc->height) << 5);

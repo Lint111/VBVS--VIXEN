@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/ResourceConfig.h"
+#include "RenderGraph/ResourceConfig.h"
 #include "ShaderManagement/DescriptorLayoutSpec.h"
 
 // Forward declaration for shader program type

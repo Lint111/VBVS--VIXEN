@@ -1,6 +1,6 @@
-#include "Nodes/VertexBufferNode.h"
+#include "RenderGraph/Nodes/VertexBufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 #include "error/VulkanError.h"
 #include <cstring>
 

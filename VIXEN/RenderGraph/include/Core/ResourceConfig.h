@@ -21,7 +21,8 @@ namespace Vixen::RenderGraph {
 // Forward declarations
 class NodeInstance;
 struct ResourceDescriptor;
-// NOTE: ImageDescription and BufferDescription are type aliases in Resource.h, not forward-declarable
+struct ImageDescription;
+struct BufferDescription;
 struct ShaderProgramDescriptor;
 
 /**
@@ -406,13 +407,6 @@ constexpr bool ValidateSlotIndex() {
  */
 template<typename T>
 constexpr const char* GetTypeName() {
-    if constexpr (std::is_same_v<T, VkImage>) return "VkImage";
-    else if constexpr (std::is_same_v<T, VkBuffer>) return "VkBuffer";
-    else if constexpr (std::is_same_v<T, VkSurfaceKHR>) return "VkSurfaceKHR";
-    else if constexpr (std::is_same_v<T, VkImageView>) return "VkImageView";
-    else if constexpr (std::is_same_v<T, VkSemaphore>) return "VkSemaphore";
-    else if constexpr (std::is_same_v<T, VkRenderPass>) return "VkRenderPass";
-    else return "Unknown";
+    return T.name;
 }
-
 } // namespace Vixen::RenderGraph

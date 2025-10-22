@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Core/TypedNodeInstance.h"
-#include "Core/NodeType.h"
-#include "Nodes/DeviceNodeConfig.h"
+#include "RenderGraph/TypedNodeInstance.h"
+#include "RenderGraph/NodeType.h"
+#include "RenderGraph/Nodes/DeviceNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <memory>
 #include <vector>

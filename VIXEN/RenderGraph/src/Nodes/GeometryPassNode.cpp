@@ -1,4 +1,4 @@
-#include "Nodes/GeometryPassNode.h"
+#include "RenderGraph/Nodes/GeometryPassNode.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {

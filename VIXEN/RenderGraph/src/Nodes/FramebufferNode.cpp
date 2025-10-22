@@ -1,6 +1,6 @@
-#include "Nodes/FramebufferNode.h"
+#include "RenderGraph/Nodes/FramebufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 #include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
@@ -91,7 +91,7 @@ void FramebufferNode::Compile() {
     // Create one framebuffer per color attachment (swapchain image)
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         // Get color attachment for this framebuffer using base class accessor
-        IResource* colorRes = NodeInstance::GetInput(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index, static_cast<uint32_t>(i));
+        Resource* colorRes = NodeInstance::GetInput(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index, static_cast<uint32_t>(i));
         VkImageView colorView = colorRes->GetImageView();
 
         // Setup attachments array

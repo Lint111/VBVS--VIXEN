@@ -1,4 +1,4 @@
-#include "Nodes/GraphicsPipelineNode.h"
+#include "RenderGraph/Nodes/GraphicsPipelineNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <cstring>
 

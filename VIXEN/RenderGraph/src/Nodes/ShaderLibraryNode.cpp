@@ -1,6 +1,6 @@
-#include "Nodes/ShaderLibraryNode.h"
+#include "RenderGraph/Nodes/ShaderLibraryNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/NodeLogging.h"
+#include "RenderGraph/NodeLogging.h"
 #include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {

@@ -237,7 +237,7 @@ public:
     template<typename T, typename SlotType>
     T GetInput(SlotType /*slot*/, size_t arrayIndex = 0) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        IResource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
         if (!res) return static_cast<T>(VK_NULL_HANDLE);
         // Extract typed handle from resource
         return GetResourceHandle<T>(res);
@@ -253,26 +253,26 @@ public:
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
         // Create resource if needed
         EnsureOutputSlot(SlotType::index, arrayIndex);
-        IResource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
         SetResourceHandle(res, value);
     }
 
 private:
     /**
-     * @brief Extract typed handle from IResource
+     * @brief Extract typed handle from Resource
      */
     template<typename T>
-    T GetResourceHandle(IResource* res) const {
+    T GetResourceHandle(Resource* res) const {
         // Type-punning: Resource stores handles as void*/VkHandle
         // For now, simple cast (in full implementation, check resource type)
         return reinterpret_cast<T>(const_cast<void*>(reinterpret_cast<const void*>(res)));
     }
 
     /**
-     * @brief Store typed handle in IResource
+     * @brief Store typed handle in Resource
      */
     template<typename T>
-    void SetResourceHandle(IResource* res, T value) {
+    void SetResourceHandle(Resource* res, T value) {
         // Store the handle in the resource
         // For now, type-punning (in full implementation, allocate proper Resource)
     }
