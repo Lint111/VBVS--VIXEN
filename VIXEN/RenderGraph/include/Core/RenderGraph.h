@@ -5,7 +5,7 @@
 #include "NodeInstance.h"
 #include "NodeTypeRegistry.h"
 #include "GraphTopology.h"
-#include "Resource.h"
+#include "ResourceVariant.h"
 #include <memory>
 #include <string>
 #include <vector>

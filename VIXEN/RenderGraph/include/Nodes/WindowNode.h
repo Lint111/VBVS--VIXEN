@@ -52,8 +52,8 @@ public:
     HWND GetWindow() const { return window; }
 #endif
     VkSurfaceKHR GetSurface() const {
-        // Type-safe access using named slot from config
-        return Out(WindowNodeConfig::SURFACE);
+        // Type-safe access using named slot from config (NEW VARIANT API)
+        return GetOut(WindowNodeConfig::SURFACE);
     }
 
     // State queries

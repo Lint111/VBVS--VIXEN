@@ -145,8 +145,8 @@ void WindowNode::Compile() {
     // Get destroy function
     fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
 
-    // Store in type-safe output using named slot from config
-    Out(WindowNodeConfig::SURFACE) = surface;
+    // Store in type-safe output using named slot from config (NEW VARIANT API)
+    Out(WindowNodeConfig::SURFACE, surface);
 
     NODE_LOG_INFO("[WindowNode] Surface created and stored in output");
 #endif
@@ -233,12 +233,12 @@ void WindowNode::Cleanup() {
     NODE_LOG_INFO("[WindowNode] Cleanup");
 
 #ifdef _WIN32
-    // Destroy surface using named slot from config
-    VkSurfaceKHR& surfaceRef = Out(WindowNodeConfig::SURFACE);
-    if (surfaceRef != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
+    // Destroy surface using named slot from config (NEW VARIANT API)
+    VkSurfaceKHR surface = GetOut(WindowNodeConfig::SURFACE);
+    if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
         extern VkInstance g_VulkanInstance;
-        fpDestroySurfaceKHR(g_VulkanInstance, surfaceRef, nullptr);
-        surfaceRef = VK_NULL_HANDLE;  // Clear typed storage
+        fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
+        Out(WindowNodeConfig::SURFACE, VK_NULL_HANDLE);  // Clear typed storage
     }
 
     // Destroy window

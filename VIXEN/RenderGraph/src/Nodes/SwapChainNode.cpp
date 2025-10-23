@@ -178,11 +178,11 @@ void SwapChainNode::Compile() {
         SetOutput(SwapChainNodeConfig::SWAPCHAIN_IMAGES, i, swapChainWrapper->scPublicVars.colorBuffers[i].image);
     }
 
-    // Output 1: Swapchain handle
-    Out(SwapChainNodeConfig::SWAPCHAIN_HANDLE) = swapChainWrapper->scPublicVars.swapChain;
+    // Output 1: Swapchain handle (NEW VARIANT API)
+    Out(SwapChainNodeConfig::SWAPCHAIN_HANDLE, swapChainWrapper->scPublicVars.swapChain);
 
-    // Output 2: Pointer to public swapchain variables (for accessing format, image count, etc.)
-    Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC) = &swapChainWrapper->scPublicVars;
+    // Output 2: Pointer to public swapchain variables (NEW VARIANT API)
+    Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {

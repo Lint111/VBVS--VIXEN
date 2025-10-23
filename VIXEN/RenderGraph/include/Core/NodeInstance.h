@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Resource.h"
+#include "ResourceVariant.h"
 #include "NodeType.h"
 #include "Data/ParameterDataTypes.h"
 #include <string>

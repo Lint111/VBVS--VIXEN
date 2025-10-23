@@ -156,8 +156,8 @@ void RenderPassNode::Compile() {
         throw std::runtime_error(error.toString());
     }
 
-    // Set typed output
-    Out(RenderPassNodeConfig::RENDER_PASS) = renderPass;
+    // Set typed output (NEW VARIANT API)
+    Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
 
     NODE_LOG_INFO("Compile complete: Render pass created successfully");
 }

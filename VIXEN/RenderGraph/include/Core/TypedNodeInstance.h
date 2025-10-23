@@ -2,6 +2,7 @@
 
 #include "NodeInstance.h"
 #include "ResourceConfig.h"
+#include "ResourceVariant.h"
 
 namespace Vixen::RenderGraph {
 
@@ -172,38 +173,69 @@ public:
 
     // ===== SLOT-BASED ACCESS =====
 
-    /**
-     * @brief Access input by compile-time slot
-     *
-     * Usage: VkImage img = In(MyConfig::ALBEDO);
-     */
-    template<typename SlotType>
-    typename SlotType::Type& In(SlotType /*slot*/) {
-        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        return reinterpret_cast<typename SlotType::Type&>(inputs[SlotType::index]);
-    }
-
-    template<typename SlotType>
-    const typename SlotType::Type& In(SlotType /*slot*/) const {
-        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        return reinterpret_cast<const typename SlotType::Type&>(inputs[SlotType::index]);
-    }
+    // ===== ZERO-BOILERPLATE SLOT ACCESS =====
 
     /**
-     * @brief Access output by compile-time slot
-     *
-     * Usage: Out(WindowConfig::SURFACE) = mySurface;
+     * @brief Get input value by slot (automatic type deduction from slot!)
+     * 
+     * The slot definition tells us the exact type, so no template parameters needed!
+     * Automatically extracts the correct type from the resource variant.
+     * 
+     * Usage:
+     *   VkImage img = In(MyConfig::ALBEDO_INPUT);  // Type auto-deduced!
+     *   VkBuffer buf = In(MyConfig::VERTEX_BUFFER);
+     * 
+     * For array slots:
+     *   VkImage img = In(MyConfig::TEXTURES, 2);  // Get index 2
      */
     template<typename SlotType>
-    typename SlotType::Type& Out(SlotType /*slot*/) {
-        static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        return reinterpret_cast<typename SlotType::Type&>(outputs[SlotType::index]);
+    typename SlotType::Type In(SlotType slot, size_t arrayIndex = 0) const {
+        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        if (!res) return typename SlotType::Type{};  // Return null handle
+        
+        // Automatic type extraction from variant using slot's type info!
+        return res->GetHandle<typename SlotType::Type>();
     }
 
+    /**
+     * @brief Set output value by slot (automatic type validation from slot!)
+     * 
+     * The slot definition enforces the type at compile-time!
+     * Automatically stores the value in the resource variant.
+     * 
+     * Usage:
+     *   Out(MyConfig::COLOR_IMAGE, myImage);  // Type checked against slot!
+     *   Out(MyConfig::DEPTH_IMAGE, 0, myDepthImage);  // Array index 0
+     * 
+     * Compiler error if type mismatch:
+     *   Out(MyConfig::COLOR_IMAGE, myBuffer);  // ERROR: VkBuffer != VkImage
+     */
     template<typename SlotType>
-    const typename SlotType::Type& Out(SlotType /*slot*/) const {
+    void Out(SlotType slot, typename SlotType::Type value, size_t arrayIndex = 0) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        return reinterpret_cast<const typename SlotType::Type&>(outputs[SlotType::index]);
+        
+        // Ensure resource exists at this array index
+        EnsureOutputSlot(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        
+        // Automatic type storage in variant using slot's type info!
+        res->SetHandle<typename SlotType::Type>(value);
+    }
+
+    /**
+     * @brief Get output value by slot (for reading back outputs)
+     * 
+     * Usage:
+     *   VkImage img = GetOut(MyConfig::COLOR_IMAGE);  // Read output value
+     */
+    template<typename SlotType>
+    typename SlotType::Type GetOut(SlotType slot, size_t arrayIndex = 0) const {
+        static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        if (!res) return typename SlotType::Type{};
+        
+        return res->GetHandle<typename SlotType::Type>();
     }
 
     // ===== ARRAY-AWARE ACCESS =====
@@ -227,25 +259,33 @@ public:
 
     /**
      * @brief Get input resource at specific array index
-     *
+     * 
+     * AUTOMATIC TYPE DEDUCTION from slot definition!
+     * The slot's SlotType::Type tells us exactly what to extract from the variant.
+     * 
      * Usage:
      * for (size_t i = 0; i < GetInputCount(Config::DEVICE); i++) {
-     *     VulkanDevice* dev = GetInput<VulkanDevice*>(Config::DEVICE, i);
+     *     auto dev = GetInput(Config::DEVICE, i);  // Type auto-deduced from slot!
      * }
      */
-    template<typename T, typename SlotType>
-    T GetInput(SlotType /*slot*/, size_t arrayIndex = 0) const {
+    template<typename SlotType>
+    typename SlotType::Type GetInput(SlotType /*slot*/, size_t arrayIndex = 0) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
-        if (!res) return static_cast<T>(VK_NULL_HANDLE);
-        // Extract typed handle from resource
-        return GetResourceHandle<T>(res);
+        if (!res) return typename SlotType::Type{};  // Return null handle
+        
+        // Extract typed handle from resource variant
+        // SlotType::Type automatically provides the correct type!
+        return res->GetHandle<typename SlotType::Type>();
     }
 
     /**
      * @brief Set output resource at specific array index
-     *
-     * Usage: SetOutput(Config::POOL, i, pool);
+     * 
+     * AUTOMATIC TYPE VALIDATION from slot definition!
+     * Compiler enforces that value matches SlotType::Type.
+     * 
+     * Usage: SetOutput(Config::COLOR_IMAGE, 0, myImage);
      */
     template<typename SlotType>
     void SetOutput(SlotType /*slot*/, size_t arrayIndex, typename SlotType::Type value) {
@@ -253,29 +293,88 @@ public:
         // Create resource if needed
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
-        SetResourceHandle(res, value);
+        
+        // Store typed handle in resource variant
+        // SlotType::Type automatically provides the correct type!
+        res->SetHandle<typename SlotType::Type>(value);
+    }
+
+    /**
+     * @brief LEGACY: Get input with explicit type (for backward compatibility)
+     * 
+     * Prefer using GetInput(slot) without template parameter - it auto-deduces!
+     * This version exists for cases where you need to override the slot type.
+     */
+    template<typename T, typename SlotType>
+    T GetInputExplicit(SlotType /*slot*/, size_t arrayIndex = 0) const {
+        static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        if (!res) return T{};
+        return res->GetHandle<T>();
+    }
+
+    // ===== DESCRIPTOR ACCESS (Zero Boilerplate) =====
+
+    /**
+     * @brief Get input descriptor by slot (automatic type deduction!)
+     * 
+     * The descriptor type is automatically deduced from the slot's handle type
+     * using ResourceTypeTraits<SlotType::Type>::DescriptorT
+     * 
+     * Usage:
+     *   auto* desc = InDesc(MyConfig::IMAGE_INPUT);
+     *   // desc is automatically ImageDescriptor* (deduced from VkImage)
+     *   if (desc) { use desc->width, desc->height, etc. }
+     */
+    template<typename SlotType>
+    const auto* InDesc(SlotType slot, size_t arrayIndex = 0) const {
+        using HandleType = typename SlotType::Type;
+        using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+        
+        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        if (!res) return static_cast<const DescriptorType*>(nullptr);
+        
+        return res->GetDescriptor<DescriptorType>();
+    }
+
+    /**
+     * @brief Get output descriptor by slot (automatic type deduction!)
+     * 
+     * Usage:
+     *   auto* desc = OutDesc(MyConfig::COLOR_IMAGE);
+     *   // desc is automatically ImageDescriptor* (deduced from VkImage)
+     */
+    template<typename SlotType>
+    const auto* OutDesc(SlotType slot, size_t arrayIndex = 0) const {
+        using HandleType = typename SlotType::Type;
+        using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+        
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        if (!res) return static_cast<const DescriptorType*>(nullptr);
+        
+        return res->GetDescriptor<DescriptorType>();
+    }
+
+    /**
+     * @brief Get output descriptor mutable (for modifying descriptor data)
+     * 
+     * Usage:
+     *   auto* desc = OutDescMut(MyConfig::COLOR_IMAGE);
+     *   desc->width = 1920;
+     *   desc->height = 1080;
+     */
+    template<typename SlotType>
+    auto* OutDescMut(SlotType slot, size_t arrayIndex = 0) {
+        using HandleType = typename SlotType::Type;
+        using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+        
+        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        if (!res) return static_cast<DescriptorType*>(nullptr);
+        
+        return res->GetDescriptorMutable<DescriptorType>();
     }
 
 private:
-    /**
-     * @brief Extract typed handle from Resource
-     */
-    template<typename T>
-    T GetResourceHandle(Resource* res) const {
-        // Type-punning: Resource stores handles as void*/VkHandle
-        // For now, simple cast (in full implementation, check resource type)
-        return reinterpret_cast<T>(const_cast<void*>(reinterpret_cast<const void*>(res)));
-    }
-
-    /**
-     * @brief Store typed handle in Resource
-     */
-    template<typename T>
-    void SetResourceHandle(Resource* res, T value) {
-        // Store the handle in the resource
-        // For now, type-punning (in full implementation, allocate proper Resource)
-    }
-
     /**
      * @brief Ensure output slot has space for arrayIndex
      */

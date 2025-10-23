@@ -1,5 +1,20 @@
 #pragma once
 
+// ============================================================================
+// LEGACY FILE - DEPRECATED
+// ============================================================================
+// This file contains the OLD resource system that is being replaced by
+// ResourceVariant.h. Do not include this file directly - use ResourceVariant.h
+// 
+// To temporarily disable this legacy system during migration, define:
+// #define USE_RESOURCE_VARIANT_SYSTEM
+//
+// Once migration is complete, this file will be deleted.
+// ============================================================================
+
+#ifndef USE_RESOURCE_VARIANT_SYSTEM
+// Legacy system still active - allow old code to compile
+
 #include "Headers.h"
 #include <string>
 #include <optional>
@@ -338,3 +353,5 @@ struct ResourceHandle {
 };
 
 } // namespace Vixen::RenderGraph
+
+#endif // USE_RESOURCE_VARIANT_SYSTEM

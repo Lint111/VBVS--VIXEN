@@ -18,11 +18,10 @@ namespace ShaderManagement {
 
 namespace Vixen::RenderGraph {
 
-// Forward declarations
+// Forward declarations - using variant-based descriptors from ResourceVariant.h
 class NodeInstance;
-struct ResourceDescriptor;
-struct ImageDescription;
-struct BufferDescription;
+struct ImageDescriptor;
+struct BufferDescriptor;
 struct ShaderProgramDescriptor;
 
 /**
