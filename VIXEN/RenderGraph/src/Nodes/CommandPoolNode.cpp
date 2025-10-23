@@ -95,16 +95,8 @@ void CommandPoolNode::Compile() {
 
     isCreated = true;
 
-    // Create output resource and set the command pool handle
-    Resource* outputResource = GetOutput(CommandPoolNodeConfig::COMMAND_POOL_Slot::index);
-    if (!outputResource) {
-        std::string errorMsg = "CommandPoolNode output resource not allocated for node: " + instanceName;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Store command pool handle in resource (NEW VARIANT API)
-    outputResource->SetHandle<VkCommandPool>(commandPool);
+    // Store command pool handle in output resource (NEW VARIANT API)
+    Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
     // TODO: Track device dependency through graph connections instead of storing in resource
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));

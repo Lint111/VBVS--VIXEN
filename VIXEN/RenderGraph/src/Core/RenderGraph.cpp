@@ -9,21 +9,14 @@
 namespace Vixen::RenderGraph {
 
 RenderGraph::RenderGraph(
-    Vixen::Vulkan::Resources::VulkanDevice* primaryDevice,
     NodeTypeRegistry* registry,
     Logger* mainLogger
 )
-    : primaryDevice(primaryDevice)
-    , typeRegistry(registry)
+    : typeRegistry(registry)
 {
-    if (!primaryDevice) {
-        throw std::runtime_error("Primary device cannot be null");
-    }
     if (!registry) {
         throw std::runtime_error("Node type registry cannot be null");
     }
-
-    usedDevices.push_back(primaryDevice);
 
 #ifdef _DEBUG
     if (mainLogger) {
@@ -38,14 +31,9 @@ RenderGraph::~RenderGraph() {
     Clear();
 }
 
-NodeHandle RenderGraph::AddNode(const std::string& typeName, const std::string& instanceName) {
-    return AddNode(typeName, instanceName, primaryDevice);
-}
-
 NodeHandle RenderGraph::AddNode(
     const std::string& typeName,
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) {
     // Check if instance name already exists
     if (nameToHandle.find(instanceName) != nameToHandle.end()) {
@@ -87,14 +75,6 @@ NodeHandle RenderGraph::AddNode(
 
     // Add to topology
     topology.AddNode(instances[index].get());
-
-    // Track device usage
-    if (device != primaryDevice) {
-        auto it = std::find(usedDevices.begin(), usedDevices.end(), device);
-        if (it == usedDevices.end()) {
-            usedDevices.push_back(device);
-        }
-    }
 
     // Mark as needing compilation
     isCompiled = false;
@@ -196,13 +176,13 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 
 void RenderGraph::Clear() {
     instances.clear();
-    resources.clear();
+    resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
     nameToHandle.clear();
     instancesByType.clear();
     executionOrder.clear();
     topology.Clear();
-    usedDevices.clear();
-    usedDevices.push_back(primaryDevice);
+    // usedDevices.clear();
+    // usedDevices.push_back(primaryDevice);
     isCompiled = false;
 }
 
@@ -214,7 +194,7 @@ void RenderGraph::Compile() {
     }
 
     // Phase 1: Propagate device affinity
-    PropagateDeviceAffinity();
+    // PropagateDeviceAffinity();  // Removed - single device system
 
     // Phase 2: Analyze dependencies and build execution order
     AnalyzeDependencies();
@@ -391,52 +371,17 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
 
     const ResourceDescriptor& resourceDesc = outputSchema[outputIndex];
 
-    // Create typed resource based on ResourceType
-    std::unique_ptr<Resource> resource;
+    // Create empty resource - nodes will populate it during Compile()
+    // The variant system allows nodes to set any registered type via SetHandle<T>()
+    std::unique_ptr<Resource> resource = std::make_unique<Resource>();
+    resource->SetLifetime(resourceDesc.lifetime);
     
-    // TODO: Restore resource creation from descriptor - needs variant API update
-    /*
-    switch (resourceDesc.type) {
-        case ResourceType::Image:
-            if (auto* imageDesc = dynamic_cast<ImageDescription*>(resourceDesc.description.get())) {
-                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *imageDesc);
-            }
-            break;
-        case ResourceType::Buffer:
-            if (auto* bufferDesc = dynamic_cast<BufferDescription*>(resourceDesc.description.get())) {
-                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *bufferDesc);
-            } else if (auto* poolDesc = dynamic_cast<CommandPoolDescription*>(resourceDesc.description.get())) {
-                // CommandPool uses Buffer type as placeholder
-                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *poolDesc);
-            }
-            break;
-        default:
-            return nullptr;
-    }
-    */
-    
-    // Placeholder: Create basic resource from slot descriptor
-    // Nodes handle actual resource creation and initialization in their Compile() methods
-    resource = std::make_unique<Resource>();
-    resource->type = resourceDesc.type;
-    resource->lifetime = resourceDesc.lifetime;
-    // Descriptor will be set by node during compilation
-
-    if (!resource) return nullptr;
-    
+    // Store in graph's resource vector for lifetime management
+    // The graph owns all resources; nodes access them via raw pointers
     Resource* resourcePtr = resource.get();
     resources.push_back(std::move(resource));
     
     return resourcePtr;
-}
-
-void RenderGraph::PropagateDeviceAffinity() {
-    // TODO: Implement device affinity propagation
-    // For now, all nodes use their initially assigned device
-    
-    for (size_t i = 0; i < instances.size(); ++i) {
-        instances[i]->SetDeviceIndex(0); // Simple: all use device 0
-    }
 }
 
 void RenderGraph::AnalyzeDependencies() {
@@ -450,12 +395,15 @@ void RenderGraph::AnalyzeDependencies() {
 }
 
 void RenderGraph::AllocateResources() {
-    // TODO: Implement full resource allocation with aliasing
-    // For now, just allocate each resource
+    // NOTE: Resource allocation is handled by individual nodes during Compile()
+    // This function is reserved for future centralized resource allocation features:
+    // - Memory aliasing (reusing GPU memory for non-overlapping resources)
+    // - Resource pooling (reducing allocation churn)
+    // - Batch allocation (single large allocation for multiple resources)
     
-    VkDevice device = primaryDevice->device;
+    // VkDevice device = primaryDevice->device;  // Removed - nodes access device directly
     
-    // TODO: Restore resource allocation - needs variant descriptor accessor API
+    // TODO: Implement centralized resource allocation with aliasing
     /*
     for (auto& resource : resources) {
         if (!resource->IsAllocated()) {

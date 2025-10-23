@@ -19,6 +19,9 @@ file(GLOB_RECURSE RENDERGRAPH_SRC
     "src/**/*.cpp"
 )
 
+# Exclude legacy Resource.cpp (replaced by variant system)
+list(FILTER RENDERGRAPH_SRC EXCLUDE REGEX "src/Core/Resource\\.cpp$")
+
 add_library(RenderGraph STATIC ${RENDERGRAPH_SRC})
 
 # MSVC: Enable /FS for parallel compilation PDB access

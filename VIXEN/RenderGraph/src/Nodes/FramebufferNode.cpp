@@ -82,14 +82,8 @@ void FramebufferNode::Compile() {
 
     // Create one framebuffer per color attachment (swapchain image)
     for (size_t i = 0; i < colorAttachmentCount; i++) {
-        // Get color attachment for this framebuffer using base class accessor
-        Resource* colorRes = NodeInstance::GetInput(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index, static_cast<uint32_t>(i));
-        
-        // TODO: Use variant API to get VkImageView
-        VkImageView colorView = VK_NULL_HANDLE;
-        if (colorRes) {
-            colorView = colorRes->GetHandle<VkImageView>();
-        }
+        // Get color attachment for this framebuffer using typed In() API
+        VkImageView colorView = In(FramebufferNodeConfig::COLOR_ATTACHMENTS, i);
 
         // Setup attachments array
         std::vector<VkImageView> attachments;

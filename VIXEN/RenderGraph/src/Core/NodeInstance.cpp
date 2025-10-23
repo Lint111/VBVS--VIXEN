@@ -162,21 +162,20 @@ uint64_t NodeInstance::ComputeCacheKey() const {
         }, value);
     }
     
-    // Hash input resource formats (iterate through 2D vector)
-    // TODO: Restore after variant descriptor accessor API implemented
-    /*
+    // Hash input resource descriptors (iterate through 2D vector)
     for (const auto& inputSlot : inputs) {
         for (const auto* input : inputSlot) {
             if (input) {
-                if (const auto* imgDesc = input->GetImageDescription()) {
+                // Try to get image descriptor for hashing
+                if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
                     hash ^= static_cast<uint64_t>(imgDesc->format) << 3;
                     hash ^= (static_cast<uint64_t>(imgDesc->width) << 4) |
                             (static_cast<uint64_t>(imgDesc->height) << 5);
                 }
+                // Could add more descriptor types if needed for better hash distribution
             }
         }
     }
-    */
 
     return hash;
 }
@@ -197,18 +196,25 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
 #endif
 
 void NodeInstance::AllocateResources() {
-    // TODO: Calculate input memory footprint - needs variant descriptor accessor API
-    /*
+    // Calculate input memory footprint from descriptors
     inputMemoryFootprint = 0;
     for (const auto& inputSlot : inputs) {
         for (const auto* input : inputSlot) {
             if (input) {
-                inputMemoryFootprint += input->GetMemorySize();
+                // Calculate memory from image descriptor
+                if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
+                    // Estimate: width * height * bytesPerPixel
+                    uint32_t bytesPerPixel = 4; // Default RGBA8
+                    // TODO: Calculate actual bytes based on imgDesc->format
+                    inputMemoryFootprint += imgDesc->width * imgDesc->height * bytesPerPixel;
+                }
+                // Calculate memory from buffer descriptor
+                else if (const auto* bufDesc = input->GetDescriptor<BufferDescriptor>()) {
+                    inputMemoryFootprint += bufDesc->size;
+                }
             }
         }
     }
-    */
-    inputMemoryFootprint = 0; // Placeholder until variant API ready
 }
 
 void NodeInstance::DeallocateResources() {

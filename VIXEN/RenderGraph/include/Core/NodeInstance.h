@@ -15,6 +15,9 @@ class Logger;
 
 namespace Vixen::RenderGraph {
 
+// Forward declarations
+class RenderGraph;
+
 /**
  * @brief Connection point for graph edges
  */
@@ -32,6 +35,9 @@ struct NodeConnection {
  * Multiple instances can be created from the same NodeType.
  */
 class NodeInstance {
+    // Allow RenderGraph to access protected resource methods for graph wiring
+    friend class RenderGraph;
+
 public:
     NodeInstance(
         const std::string& instanceName,
@@ -61,12 +67,6 @@ public:
     // Resources (slot-based access)
     const std::vector<std::vector<Resource*>>& GetInputs() const { return inputs; }
     const std::vector<std::vector<Resource*>>& GetOutputs() const { return outputs; }
-
-    // Legacy flat accessors (for backward compatibility)
-    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
-    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
 
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
@@ -116,6 +116,13 @@ public:
     virtual void Cleanup() {}
 
 protected:
+    // Low-level resource accessors (internal use by RenderGraph and TypedNodeInstance)
+    // Node implementations should use In() and Out() from TypedNodeInstance instead
+    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
+    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
+    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
+
     // Instance identification
     std::string instanceName;
     NodeType* nodeType;

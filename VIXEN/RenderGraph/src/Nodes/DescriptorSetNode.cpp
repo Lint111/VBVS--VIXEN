@@ -52,22 +52,12 @@ void DescriptorSetNode::Setup() {
 
 void DescriptorSetNode::Compile() {
     // PRIORITY 1: Check for shader program input (auto-reflection)
-    // Use GetInput() since In() doesn't work with pointer types stored in Resource
-    Resource* shaderProgramResource = NodeInstance::GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
-    const ShaderManagement::CompiledProgram* shaderProgram = nullptr;
-    
-    // TODO: Restore shader program retrieval with variant API
-    /*
-    if (shaderProgramResource) {
-        shaderProgram = shaderProgramResource->GetCompiledProgram();
-    }
+    const ShaderManagement::CompiledProgram* shaderProgram = In(DescriptorSetNodeConfig::SHADER_PROGRAM);
 
     if (shaderProgram && shaderProgram->descriptorLayout) {
         layoutSpec = shaderProgram->descriptorLayout;
         NODE_LOG_INFO("DescriptorSetNode: Using descriptor layout from shader program reflection");
     } else {
-    */
-    {
         // PRIORITY 2: Manual parameter specification (fallback)
         layoutSpec = GetParameterValue<const ShaderManagement::DescriptorLayoutSpec*>(
             DescriptorSetNodeConfig::PARAM_LAYOUT_SPEC, nullptr);

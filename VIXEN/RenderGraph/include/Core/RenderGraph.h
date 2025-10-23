@@ -41,12 +41,10 @@ class RenderGraph {
 public:
     /**
      * @brief Construct a new Render Graph
-     * @param primaryDevice The primary Vulkan device
      * @param registry The node type registry
      * @param mainLogger Optional logger for debug output (in debug builds)
      */
     explicit RenderGraph(
-        Vixen::Vulkan::Resources::VulkanDevice* primaryDevice,
         NodeTypeRegistry* registry,
         Logger* mainLogger = nullptr
     );
@@ -66,19 +64,6 @@ public:
      * @return Handle to the created node
      */
     NodeHandle AddNode(const std::string& typeName, const std::string& instanceName);
-
-    /**
-     * @brief Add a node to the graph with specific device
-     * @param typeName The name of the node type
-     * @param instanceName Unique name for this instance
-     * @param device The device this node should execute on
-     * @return Handle to the created node
-     */
-    NodeHandle AddNode(
-        const std::string& typeName,
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    );
 
     /**
      * @brief Add a node using type ID
@@ -198,25 +183,11 @@ public:
      */
     bool Validate(std::string& errorMessage) const;
 
-    // ====== Device Management ======
-
-    /**
-     * @brief Get the primary device
-     */
-    Vixen::Vulkan::Resources::VulkanDevice* GetPrimaryDevice() const { return primaryDevice; }
-
-    /**
-     * @brief Get all devices used by the graph
-     */
-    const std::vector<Vixen::Vulkan::Resources::VulkanDevice*>& GetUsedDevices() const { 
-        return usedDevices; 
-    }
-
+    
 private:
     // Core components
     NodeTypeRegistry* typeRegistry;
-    Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;
-    std::vector<Vixen::Vulkan::Resources::VulkanDevice*> usedDevices;
+    // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     #ifdef _DEBUG
     // Debug logger (non-owning pointer — application owns the logger)
@@ -228,7 +199,10 @@ private:
     std::map<std::string, NodeHandle> nameToHandle;
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
     
-    // Resources
+    // Resources (lifetime management only - nodes are the logical containers)
+    // This vector owns all Resource objects created by the graph. Nodes hold raw
+    // pointers to these resources via their inputs/outputs vectors. This centralized
+    // ownership enables future optimizations like memory aliasing and resource pooling.
     std::vector<std::unique_ptr<Resource>> resources;
 
     // Topology
@@ -239,7 +213,6 @@ private:
     bool isCompiled = false;
 
     // Compilation phases
-    void PropagateDeviceAffinity();
     void AnalyzeDependencies();
     void AllocateResources();
     void GeneratePipelines();
