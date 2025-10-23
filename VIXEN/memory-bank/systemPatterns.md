@@ -2,7 +2,41 @@
 
 ## Architecture Overview
 
-The project follows a **layered architecture** with clear separation of concerns. Each Vulkan subsystem is encapsulated in its own class, following object-oriented principles.
+The project uses **two parallel architectures**:
+1. **Legacy Monolithic** - VulkanApplication orchestrates direct Vulkan calls (original learning code)
+2. **RenderGraph System** - Graph-based rendering with compile-time type safety (production architecture)
+
+### RenderGraph Architecture (Primary)
+
+```
+┌─────────────────────────────────────────┐
+│          RenderGraph                    │  ← Graph orchestrator
+│  - Compilation phases                   │
+│  - Resource ownership                   │
+│  - Execution ordering                   │
+└──────────────┬──────────────────────────┘
+               │
+    ┌──────────┼──────────┬────────────────────┐
+    │          │          │                    │
+    ▼          ▼          ▼                    ▼
+┌────────────────┐  ┌──────────┐  ┌──────────────────┐  ┌──────────┐
+│  NodeInstance  │  │ Resource │  │  EventBus        │  │ Topology │
+│  (Base class)  │  │ (Variant)│  │  (Invalidation)  │  │  (DAG)   │
+└───────┬────────┘  └──────────┘  └──────────────────┘  └──────────┘
+        │
+        ▼
+┌───────────────────────┐
+│ TypedNode<ConfigType> │  ← Template with compile-time type safety
+└───────┬───────────────┘
+        │
+        ▼
+┌───────────────────────┐
+│  Concrete Nodes       │  ← SwapChainNode, FramebufferNode, etc.
+│  (15+ implementations)│
+└───────────────────────┘
+```
+
+### Legacy Architecture (Reference)
 
 ```
 ┌─────────────────────────────────────┐
@@ -15,17 +49,150 @@ The project follows a **layered architecture** with clear separation of concerns
     ▼                     ▼                ▼             ▼
 ┌──────────┐      ┌──────────────┐  ┌─────────────┐  ┌──────────────┐
 │ Instance │      │    Device    │  │  Renderer   │  │ SwapChain    │
-│  Object  │      │    Object    │  │   Object    │  │   Object     │
-└──────────┘      └──────────────┘  └─────────────┘  └──────────────┘
-     │                   │                │                 │
-     ▼                   ▼                ▼                 ▼
-┌──────────┐      ┌──────────────┐  ┌─────────────┐  ┌──────────────┐
-│ Layers & │      │ Physical Dev │  │  Drawable   │  │   Shader     │
-│Extensions│      │ Logical Dev  │  │   Objects   │  │   Objects    │
 └──────────┘      └──────────────┘  └─────────────┘  └──────────────┘
 ```
 
-## Core Design Patterns
+## RenderGraph Design Patterns
+
+### 1. Resource Variant Pattern
+**Classes**: `Resource`, `ResourceHandleVariant`, `ResourceDescriptorVariant`
+
+**Implementation**:
+```cpp
+// Single macro registration
+REGISTER_RESOURCE_TYPE(VkImage, ImageDescriptor)
+
+// Auto-generates:
+// - ResourceHandleVariant member
+// - ResourceTypeTraits specialization
+// - InitializeResourceFromType() switch case
+
+// Compile-time type-safe access
+template<typename T>
+T Resource::GetHandle() { return std::get<T>(handleVariant); }
+```
+
+**Purpose**: Zero-overhead type safety, eliminates manual type-punning
+
+**Location**: `RenderGraph/include/Core/ResourceVariant.h`
+
+### 2. Typed Node Pattern
+**Classes**: `NodeInstance`, `TypedNode<ConfigType>`, Concrete nodes
+
+**Implementation**:
+```cpp
+// Config defines slots with compile-time types
+struct MyNodeConfig {
+    INPUT_SLOT(ALBEDO, VkImage, SlotMode::SINGLE);
+    OUTPUT_SLOT(FRAMEBUFFER, VkFramebuffer, SlotMode::SINGLE);
+};
+
+// Node uses typed API
+class MyNode : public TypedNode<MyNodeConfig> {
+    void Compile() override {
+        VkImage albedo = In(MyNodeConfig::ALBEDO);  // Compile-time type check
+        Out(MyNodeConfig::FRAMEBUFFER, myFB);       // Compile-time type check
+    }
+};
+```
+
+**Purpose**: Compile-time slot validation, eliminates magic indices
+
+**Location**: `RenderGraph/include/Core/TypedNodeInstance.h`
+
+### 3. Graph-Owns-Resources Pattern
+**Class**: `RenderGraph`
+
+**Implementation**:
+```cpp
+class RenderGraph {
+    std::vector<std::unique_ptr<Resource>> resources;  // Graph owns lifetime
+};
+
+class NodeInstance {
+    std::vector<std::vector<Resource*>> inputs;   // Raw pointers (logical access)
+    std::vector<std::vector<Resource*>> outputs;
+};
+```
+
+**Purpose**: Clear lifetime management, no circular dependencies
+
+**Principle**: Graph owns resources (allocation/destruction), nodes access resources (logical containers)
+
+### 4. EventBus Invalidation Pattern
+**Classes**: `EventBus`, `IEventListener`, Concrete nodes
+
+**Implementation**:
+```cpp
+// Node subscribes to events
+void SwapChainNode::Setup() override {
+    eventBus->Subscribe(EventType::WindowResize, this);
+}
+
+// Node handles event, marks dirty
+void SwapChainNode::OnEvent(const Event& event) override {
+    if (event.type == EventType::WindowResize) {
+        SetDirty(true);
+        eventBus->Emit(SwapChainInvalidatedEvent{});  // Cascade
+    }
+}
+
+// Graph recompiles dirty nodes at safe points
+graph.ProcessEvents();       // Drain event queue
+graph.RecompileDirtyNodes(); // Recompile affected nodes
+```
+
+**Purpose**: Decoupled node communication, cascade invalidation
+
+**Location**: `EventBus/include/EventBus.h`
+
+### 5. Node Lifecycle Pattern
+**Class**: `NodeInstance`
+
+**Lifecycle Hooks**:
+```cpp
+void Setup()    // One-time initialization (subscribe to events)
+void Compile()  // Create Vulkan resources (pipelines, descriptors)
+void Execute()  // Record commands or no-op
+void Cleanup()  // Destroy Vulkan resources
+```
+
+**State Machine**:
+```
+Created → Setup() → Ready
+Ready → Compile() → Compiled
+Compiled → Execute() → Complete
+Complete → SetDirty() → Ready  // Invalidation
+```
+
+**Purpose**: Clear state transitions, supports lazy compilation
+
+### 6. Protected API Enforcement Pattern
+**Classes**: `NodeInstance`, `TypedNode`, `RenderGraph`
+
+**Implementation**:
+```cpp
+class NodeInstance {
+    friend class RenderGraph;  // Graph can wire nodes
+protected:
+    // Low-level accessors (internal use only)
+    Resource* GetInput(uint32_t slot, uint32_t idx);
+    void SetInput(uint32_t slot, uint32_t idx, Resource* res);
+};
+
+class TypedNode : public NodeInstance {
+public:
+    // High-level typed API (nodes use this)
+    template<typename SlotType>
+    typename SlotType::Type In(SlotType slot, size_t idx = 0);
+};
+```
+
+**Purpose**: Single API pattern - nodes use `In()`/`Out()`, graph uses low-level wiring
+
+**Note**: Friend access is broad (architectural review recommends `INodeWiring` interface)
+
+## Legacy Design Patterns (Reference)
 
 ### 1. Singleton Pattern
 **Class**: `VulkanApplication`
@@ -33,55 +200,29 @@ The project follows a **layered architecture** with clear separation of concerns
 **Implementation**:
 ```cpp
 static std::unique_ptr<VulkanApplication> instance;
-static std::once_flag onlyOnce;
 static VulkanApplication* GetInstance();
 ```
 
-**Purpose**: Ensures single application instance throughout lifetime
-
-**Location**: `VulkanApplication.h:16-21`
+**Purpose**: Single application instance
 
 ### 2. Layered Initialization
-The initialization follows a strict sequence:
-
+**Sequence**:
 ```
 main()
   → VulkanApplication::Initialize()
-      → CreateVulkanInstance()
-          → VulkanInstance.CreateInstance()
-              → VulkanLayerAndExtension (layer/extension setup)
+      → VulkanInstance::CreateInstance()
       → EnumeratePhysicalDevices()
       → HandShakeWithDevice()
-          → VulkanDevice creation and logical device setup
   → VulkanApplication::Prepare()
-      → Renderer preparation
-      → SwapChain setup
-      → Pipeline creation
   → VulkanApplication::render() (loop)
   → VulkanApplication::DeInitialize()
 ```
 
-### 3. Resource Ownership
-**Pattern**: Each manager class owns its Vulkan resources
-
+### 3. Manager-Owns-Resources Pattern
+**Legacy classes own their Vulkan resources**:
 - `VulkanInstance` owns `VkInstance`
-- `VulkanDevice` owns physical/logical device handles
+- `VulkanDevice` owns logical device
 - `VulkanRenderer` owns rendering resources
-- `VulkanSwapChain` owns swapchain resources
-
-**Lifecycle**: RAII principles - construction acquires, destruction releases
-
-### 4. Extension and Layer Management
-**Class**: `VulkanLayerAndExtension`
-
-**Responsibility**:
-- Enumerate available layers/extensions
-- Validate requested layers/extensions exist
-- Provide layer/extension information
-
-**Separation**:
-- Instance extensions/layers (defined in main.cpp)
-- Device extensions (defined in main.cpp)
 
 ## Key Component Responsibilities
 

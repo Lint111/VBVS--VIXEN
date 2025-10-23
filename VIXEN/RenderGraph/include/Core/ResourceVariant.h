@@ -86,7 +86,7 @@ using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
     RESOURCE_TYPE(HINSTANCE, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(SwapChainPublicVariablesPtr, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramPtr, HandleDescriptor, ResourceType::Buffer) \
-        RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
+    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS
@@ -109,20 +109,7 @@ using ResourceHandleVariant = std::variant<
 #undef RESOURCE_TYPE_LAST
 >;
 
-/**
- * @brief Variant holding all possible resource descriptor types
- * Auto-generated from unique descriptors in RESOURCE_TYPE_REGISTRY
- * 
- * Note: We list each descriptor type once, even if multiple handle types use it
- */
-using ResourceDescriptorVariant = std::variant<
-    std::monostate,
-    ImageDescriptor,
-    BufferDescriptor,
-    HandleDescriptor,
-    CommandPoolDescriptor,
-    ShaderProgramHandleDescriptor
->;
+// Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS
