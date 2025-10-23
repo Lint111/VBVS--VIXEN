@@ -21,7 +21,17 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig, 0, 2, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace VertexBufferNodeCounts {
+    static constexpr size_t INPUTS = 0;
+    static constexpr size_t OUTPUTS = 2;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig, 
+                      VertexBufferNodeCounts::INPUTS, 
+                      VertexBufferNodeCounts::OUTPUTS, 
+                      VertexBufferNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_VERTEX_COUNT = "vertexCount";
     static constexpr const char* PARAM_VERTEX_STRIDE = "vertexStride";
@@ -64,6 +74,10 @@ CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig, 0, 2, false) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == VertexBufferNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == VertexBufferNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == VertexBufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(VERTEX_BUFFER_Slot::index == 0, "VERTEX_BUFFER must be at index 0");
     static_assert(!VERTEX_BUFFER_Slot::nullable, "VERTEX_BUFFER is required");
 

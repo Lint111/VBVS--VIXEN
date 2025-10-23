@@ -26,7 +26,17 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig, 2, 1, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace RenderPassNodeCounts {
+    static constexpr size_t INPUTS = 2;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig, 
+                      RenderPassNodeCounts::INPUTS, 
+                      RenderPassNodeCounts::OUTPUTS, 
+                      RenderPassNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_COLOR_LOAD_OP = "color_load_op";
     static constexpr const char* PARAM_COLOR_STORE_OP = "color_store_op";
@@ -67,6 +77,10 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig, 2, 1, false) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == RenderPassNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == RenderPassNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(COLOR_FORMAT_Slot::index == 0, "COLOR_FORMAT must be at index 0");
     static_assert(!COLOR_FORMAT_Slot::nullable, "COLOR_FORMAT is required");
 

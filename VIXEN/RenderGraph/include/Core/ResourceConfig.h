@@ -25,6 +25,42 @@ struct BufferDescriptor;
 struct ShaderProgramDescriptor;
 
 /**
+ * @brief Slot array capability enum (replaces magic bool)
+ * 
+ * Clearly indicates whether a slot can have multiple elements (array).
+ */
+enum class SlotArrayMode : uint8_t {
+    Single = 0,  // Single slot only (e.g., one framebuffer)
+    Array = 1    // Array of slots (e.g., multiple color attachments)
+};
+
+/**
+ * @brief Helper constexpr values for slot count aliasing
+ * 
+ * Usage: InputCount<3> instead of magic number 3
+ */
+template<size_t N>
+struct InputCount {
+    static constexpr size_t value = N;
+};
+
+template<size_t N>
+struct OutputCount {
+    static constexpr size_t value = N;
+};
+
+// Convenience aliases for common cases
+using NoInputs = InputCount<0>;
+using OneInput = InputCount<1>;
+using TwoInputs = InputCount<2>;
+using ThreeInputs = InputCount<3>;
+
+using NoOutputs = OutputCount<0>;
+using OneOutput = OutputCount<1>;
+using TwoOutputs = OutputCount<2>;
+using ThreeOutputs = OutputCount<3>;
+
+/**
  * @brief Compile-time type trait to map Vulkan types to ResourceType
  */
 template<typename T>
@@ -184,11 +220,14 @@ struct ResourceSlot {
  * Pure constexpr - all information known at compile time.
  * The compiler can optimize away all the template machinery.
  */
-template<size_t NumInputs, size_t NumOutputs, bool ArrayAbleFlag = false>
+template<size_t NumInputs, size_t NumOutputs, SlotArrayMode ArrayMode = SlotArrayMode::Single>
 struct ResourceConfigBase {
     static constexpr size_t INPUT_COUNT = NumInputs;
     static constexpr size_t OUTPUT_COUNT = NumOutputs;
-    static constexpr bool ALLOW_INPUT_ARRAYS = ArrayAbleFlag;
+    static constexpr SlotArrayMode ARRAY_MODE = ArrayMode;
+    
+    // Legacy compatibility (deprecated - use ARRAY_MODE instead)
+    static constexpr bool ALLOW_INPUT_ARRAYS = (ArrayMode == SlotArrayMode::Array);
 
     // Helper to get input/output vectors for NodeType
     std::vector<ResourceDescriptor> GetInputVector() const {
@@ -330,15 +369,24 @@ ResourceDescriptor MakeDescriptor(
  *
  * All type information is constexpr - compiler optimizes everything away.
  *
- * Usage:
+ * Usage (Modern - Named enum):
  * ```cpp
- * CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1) {
+ * CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1, SlotArrayMode::Single) {
  *     CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);
  * };
  * ```
+ * 
+ * For better readability, use named constants in struct body:
+ * ```cpp
+ * struct MyNodeConfig : public ResourceConfigBase<1, 2, SlotArrayMode::Array> {
+ *     static constexpr auto INPUTS = OneInput::value;   // Documentation
+ *     static constexpr auto OUTPUTS = TwoOutputs::value; // Documentation
+ *     // ... slot definitions ...
+ * };
+ * ```
  */
-#define CONSTEXPR_NODE_CONFIG(ConfigName, NumInputs, NumOutputs, ArrayAbleFlag) \
-    struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs, ArrayAbleFlag>
+#define CONSTEXPR_NODE_CONFIG(ConfigName, NumInputs, NumOutputs, ArrayMode) \
+    struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs, ArrayMode>
 
 /**
  * @brief Define a compile-time input slot

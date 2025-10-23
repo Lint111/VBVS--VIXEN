@@ -22,7 +22,17 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig, 5, 1, true) {
+// Compile-time slot counts (declared early for reuse)
+namespace FramebufferNodeCounts {
+    static constexpr size_t INPUTS = 5;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
+}
+
+CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig, 
+                      FramebufferNodeCounts::INPUTS, 
+                      FramebufferNodeCounts::OUTPUTS, 
+                      FramebufferNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_LAYERS = "layers";
 
@@ -79,6 +89,10 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig, 5, 1, true) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == FramebufferNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == FramebufferNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == FramebufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(RENDER_PASS_Slot::index == 0, "RENDER_PASS must be at index 0");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
 

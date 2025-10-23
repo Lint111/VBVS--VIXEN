@@ -25,7 +25,17 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 7, 3, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace SwapChainNodeCounts {
+    static constexpr size_t INPUTS = 7;
+    static constexpr size_t OUTPUTS = 3;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 
+                      SwapChainNodeCounts::INPUTS, 
+                      SwapChainNodeCounts::OUTPUTS, 
+                      SwapChainNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (7) =====
     // Required window handles from WindowNode
     CONSTEXPR_INPUT(HWND, ::HWND, 0, false);
@@ -119,7 +129,11 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 7, 3, false) {
         );
     }
 
-    // Compile-time validations (optional but recommended)
+    // Compile-time validations
+    static_assert(INPUT_COUNT == SwapChainNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == SwapChainNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == SwapChainNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(HWND_Slot::index == 0, "HWND input must be at index 0");
     static_assert(!HWND_Slot::nullable, "HWND input is required");
 

@@ -15,7 +15,17 @@ namespace Vixen::RenderGraph {
  * Outputs: 1 (DEVICE: VulkanDevice*, required)
  * Parameters: gpu_index (which GPU to select)
  */
-CONSTEXPR_NODE_CONFIG(DeviceNodeConfig, 0, 1, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace DeviceNodeCounts {
+    static constexpr size_t INPUTS = 0;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(DeviceNodeConfig, 
+                      DeviceNodeCounts::INPUTS, 
+                      DeviceNodeCounts::OUTPUTS, 
+                      DeviceNodeCounts::ARRAY_MODE) {
     // Compile-time output slot definition
     // Using VkDevice as type placeholder (actual output is VulkanDevice*)
     CONSTEXPR_OUTPUT(DEVICE, VkDevice, 0, false);
@@ -36,6 +46,10 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig, 0, 1, false) {
     }
 
     // Compile-time validation
+    static_assert(INPUT_COUNT == DeviceNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == DeviceNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == DeviceNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(DEVICE_Slot::index == 0, "DEVICE must be at index 0");
     static_assert(!DEVICE_Slot::nullable, "DEVICE must not be nullable");
 };

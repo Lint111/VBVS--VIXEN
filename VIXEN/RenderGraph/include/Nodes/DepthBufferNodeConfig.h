@@ -23,7 +23,17 @@ namespace Vixen::RenderGraph {
  *
  * ALL type checking happens at compile time!
  */
-CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig, 3, 3, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace DepthBufferNodeCounts {
+    static constexpr size_t INPUTS = 3;
+    static constexpr size_t OUTPUTS = 3;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig, 
+                      DepthBufferNodeCounts::INPUTS, 
+                      DepthBufferNodeCounts::OUTPUTS, 
+                      DepthBufferNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
     // ===== INPUTS (3) =====
@@ -86,6 +96,10 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig, 3, 3, false) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == DepthBufferNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == DepthBufferNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == DepthBufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(WIDTH_Slot::index == 0, "WIDTH input must be at index 0");
     static_assert(!WIDTH_Slot::nullable, "WIDTH input is required");
 

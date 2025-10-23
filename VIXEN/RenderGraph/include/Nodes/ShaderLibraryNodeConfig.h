@@ -78,7 +78,17 @@ struct ShaderProgramDescriptor {
  *
  * No parameters - programs registered via RegisterProgram() API
  */
-CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig, 0, 1, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace ShaderLibraryNodeCounts {
+    static constexpr size_t INPUTS = 0;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig, 
+                      ShaderLibraryNodeCounts::INPUTS, 
+                      ShaderLibraryNodeCounts::OUTPUTS, 
+                      ShaderLibraryNodeCounts::ARRAY_MODE) {
     // ===== OUTPUTS (1) =====
     // Array of shader program descriptors
     CONSTEXPR_OUTPUT(SHADER_PROGRAMS, ShaderProgramDescriptor*, 0, false);
@@ -92,6 +102,10 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig, 0, 1, false) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == ShaderLibraryNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == ShaderLibraryNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == ShaderLibraryNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(SHADER_PROGRAMS_Slot::index == 0, "SHADER_PROGRAMS must be at index 0");
     static_assert(!SHADER_PROGRAMS_Slot::nullable, "SHADER_PROGRAMS is required");
 

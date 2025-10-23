@@ -45,7 +45,17 @@ namespace Vixen::RenderGraph {
  * node->Compile();
  * @endcode
  */
-CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig, 1, 3, false) {
+// Compile-time slot counts (declared early for reuse)
+namespace DescriptorSetNodeCounts {
+    static constexpr size_t INPUTS = 1;
+    static constexpr size_t OUTPUTS = 3;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig, 
+                      DescriptorSetNodeCounts::INPUTS, 
+                      DescriptorSetNodeCounts::OUTPUTS, 
+                      DescriptorSetNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
     // Shader program for automatic descriptor reflection (future feature)
     CONSTEXPR_INPUT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0, true);
@@ -85,6 +95,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig, 1, 3, false) {
     }
 
     // Compile-time validations
+    static_assert(INPUT_COUNT == DescriptorSetNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == DescriptorSetNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
     static_assert(SHADER_PROGRAM_Slot::index == 0, "SHADER_PROGRAM must be at index 0");
     static_assert(SHADER_PROGRAM_Slot::nullable, "SHADER_PROGRAM is optional (future use)");
 

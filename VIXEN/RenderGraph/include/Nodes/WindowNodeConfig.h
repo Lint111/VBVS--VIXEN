@@ -4,6 +4,13 @@
 
 namespace Vixen::RenderGraph {
 
+// Compile-time slot counts (declared early for reuse)
+namespace WindowNodeCounts {
+    static constexpr size_t INPUTS = 0;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
 /**
  * @brief Pure constexpr resource configuration for WindowNode
  *
@@ -14,7 +21,10 @@ namespace Vixen::RenderGraph {
  * Outputs: 1 (SURFACE: VkSurfaceKHR, required)
  * Parameters: width, height
  */
-CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1, false) {
+CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 
+                      WindowNodeCounts::INPUTS, 
+                      WindowNodeCounts::OUTPUTS, 
+                      WindowNodeCounts::ARRAY_MODE) {
     // Compile-time output slot definition
     // This creates:
     // - Type alias: SURFACE_Slot = ResourceSlot<VkSurfaceKHR, 0, false>
@@ -43,10 +53,17 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 0, 1, false) {
     static_assert(SURFACE_Slot::index == 0, "SURFACE must be at index 0");
     static_assert(!SURFACE_Slot::nullable, "SURFACE must not be nullable");
     static_assert(std::is_same_v<SURFACE_Slot::Type, VkSurfaceKHR>, "SURFACE must be VkSurfaceKHR");
+    
+    // Validate counts match expectations
+    static_assert(INPUT_COUNT == WindowNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == WindowNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == WindowNodeCounts::ARRAY_MODE, "Array mode mismatch");
 };
 
-// Compile-time verification (optional - for extra safety)
-static_assert(WindowNodeConfig::INPUT_COUNT == 0, "WindowNode should have no inputs");
-static_assert(WindowNodeConfig::OUTPUT_COUNT == 1, "WindowNode should have 1 output");
+// Compile-time verification (reusing same constants)
+static_assert(WindowNodeConfig::INPUT_COUNT == WindowNodeCounts::INPUTS, 
+              "WindowNode input count validation");
+static_assert(WindowNodeConfig::OUTPUT_COUNT == WindowNodeCounts::OUTPUTS, 
+              "WindowNode output count validation");
 
 } // namespace Vixen::RenderGraph
