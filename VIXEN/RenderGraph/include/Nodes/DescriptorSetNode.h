@@ -1,6 +1,6 @@
 #pragma once
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/NodeType.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
 #include "DescriptorSetNodeConfig.h"
 #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include <memory>
@@ -18,12 +18,11 @@ namespace Vixen::RenderGraph {
  */
 class DescriptorSetNodeType : public NodeType {
 public:
-    DescriptorSetNodeType();
+    DescriptorSetNodeType(const std::string& typeName = "DescriptorSet");
     virtual ~DescriptorSetNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 
@@ -54,8 +53,7 @@ class DescriptorSetNode : public TypedNode<DescriptorSetNodeConfig> {
 public:
     DescriptorSetNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~DescriptorSetNode();
 

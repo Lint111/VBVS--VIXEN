@@ -28,7 +28,8 @@ std::unique_ptr<NodeInstance> RenderPassNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
     return std::make_unique<RenderPassNode>(
-        instanceName
+        instanceName,
+        const_cast<RenderPassNodeType*>(this)
     );
 }
 

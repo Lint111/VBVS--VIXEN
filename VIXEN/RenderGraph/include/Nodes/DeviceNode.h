@@ -1,8 +1,8 @@
 #pragma once
 
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/NodeType.h"
-#include "RenderGraph/Nodes/DeviceNodeConfig.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
+#include "Nodes/DeviceNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <memory>
 #include <vector>
@@ -19,8 +19,7 @@ public:
     virtual ~DeviceNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 

@@ -7,9 +7,9 @@
 
 namespace Vixen::RenderGraph {
 
-DescriptorSetNodeType::DescriptorSetNodeType() {
-    typeId = 107;
-    typeName = "DescriptorSet";
+DescriptorSetNodeType::DescriptorSetNodeType(const std::string& typeName)
+    : NodeType(typeName)
+{
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -26,22 +26,19 @@ DescriptorSetNodeType::DescriptorSetNodeType() {
 }
 
 std::unique_ptr<NodeInstance> DescriptorSetNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<DescriptorSetNode>(
         instanceName,
-        const_cast<DescriptorSetNodeType*>(this),
-        device
+        const_cast<DescriptorSetNodeType*>(this)
     );
 }
 
 DescriptorSetNode::DescriptorSetNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<DescriptorSetNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<DescriptorSetNodeConfig>(instanceName, nodeType)
 {
 }
 
@@ -56,7 +53,7 @@ void DescriptorSetNode::Setup() {
 void DescriptorSetNode::Compile() {
     // PRIORITY 1: Check for shader program input (auto-reflection)
     // Use GetInput() since In() doesn't work with pointer types stored in Resource
-    Resource* shaderProgramResource = GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
+    Resource* shaderProgramResource = NodeInstance::GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
     const ShaderManagement::CompiledProgram* shaderProgram = nullptr;
     
     if (shaderProgramResource) {

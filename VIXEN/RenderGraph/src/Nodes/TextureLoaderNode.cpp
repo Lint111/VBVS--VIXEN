@@ -44,7 +44,8 @@ std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
     return std::make_unique<TextureLoaderNode>(
-        instanceName
+        instanceName,
+        const_cast<TextureLoaderNodeType*>(this)
     );
 }
 
@@ -52,8 +53,7 @@ std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
 
 TextureLoaderNode::TextureLoaderNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
     : NodeInstance(instanceName, nodeType)
 {

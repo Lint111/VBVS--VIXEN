@@ -137,7 +137,7 @@ void RenderGraph::ConnectNodes(
 
     // Create or get resource for the output
     // For now, assume scalar connections (array index 0)
-    IResource* resource = fromNode->GetOutput(outputIdx, 0);
+    Resource* resource = fromNode->GetOutput(outputIdx, 0);
     if (!resource) {
         resource = CreateResourceForOutput(fromNode, outputIdx);
         fromNode->SetOutput(outputIdx, 0, resource);
@@ -381,7 +381,7 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
     return nullptr;
 }
 
-IResource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {
+Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {
     NodeType* type = node->GetNodeType();
     const auto& outputSchema = type->GetOutputSchema();
     
@@ -392,22 +392,20 @@ IResource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t out
     const ResourceDescriptor& resourceDesc = outputSchema[outputIndex];
 
     // Create typed resource based on ResourceType
-    std::unique_ptr<IResource> resource;
+    std::unique_ptr<Resource> resource;
     
     switch (resourceDesc.type) {
         case ResourceType::Image:
-            if (auto* imageDesc = dynamic_cast<ImageDescriptor*>(resourceDesc.descriptor.get())) {
-                resource = std::make_unique<Resource<VkImage>>(resourceDesc.lifetime, *imageDesc);
+            if (auto* imageDesc = dynamic_cast<ImageDescription*>(resourceDesc.description.get())) {
+                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *imageDesc);
             }
             break;
         case ResourceType::Buffer:
-            if (auto* bufferDesc = dynamic_cast<BufferDescriptor*>(resourceDesc.descriptor.get())) {
-                resource = std::make_unique<Resource<VkBuffer>>(resourceDesc.lifetime, *bufferDesc);
-            }
-            break;
-        case ResourceType::CommandPool:
-            if (auto* poolDesc = dynamic_cast<CommandPoolDescriptor*>(resourceDesc.descriptor.get())) {
-                resource = std::make_unique<Resource<VkCommandPool>>(resourceDesc.lifetime, *poolDesc);
+            if (auto* bufferDesc = dynamic_cast<BufferDescription*>(resourceDesc.description.get())) {
+                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *bufferDesc);
+            } else if (auto* poolDesc = dynamic_cast<CommandPoolDescription*>(resourceDesc.description.get())) {
+                // CommandPool uses Buffer type as placeholder
+                resource = std::make_unique<Resource>(resourceDesc.type, resourceDesc.lifetime, *poolDesc);
             }
             break;
         default:
@@ -416,7 +414,7 @@ IResource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t out
 
     if (!resource) return nullptr;
     
-    IResource* resourcePtr = resource.get();
+    Resource* resourcePtr = resource.get();
     resources.push_back(std::move(resource));
     
     return resourcePtr;

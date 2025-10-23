@@ -13,8 +13,7 @@ public:
     CommandPoolNodeType();
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 
@@ -34,8 +33,7 @@ class CommandPoolNode : public TypedNode<CommandPoolNodeConfig> {
 public:
     CommandPoolNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     ~CommandPoolNode() override;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RenderGraph/ResourceConfig.h"
+#include "Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {

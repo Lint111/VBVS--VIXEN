@@ -8,9 +8,9 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-DepthBufferNodeType::DepthBufferNodeType() {
-    typeId = 101; // Unique ID
-    typeName = "DepthBuffer";
+DepthBufferNodeType::DepthBufferNodeType()
+    : NodeType("DepthBuffer")
+{
     pipelineType = PipelineType::Transfer;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -45,13 +45,11 @@ DepthBufferNodeType::DepthBufferNodeType() {
 }
 
 std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<DepthBufferNode>(
         instanceName,
-        const_cast<DepthBufferNodeType*>(this),
-        device
+        const_cast<NodeType*>(static_cast<const NodeType*>(this))
     );
 }
 
@@ -59,10 +57,9 @@ std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
 
 DepthBufferNode::DepthBufferNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<DepthBufferNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<DepthBufferNodeConfig>(instanceName, nodeType)
 {
 }
 

@@ -26,7 +26,8 @@ std::unique_ptr<NodeInstance> SwapChainNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
     return std::make_unique<SwapChainNode>(
-        instanceName
+        instanceName,
+        const_cast<NodeType*>(static_cast<const NodeType*>(this))
     );
 }
 

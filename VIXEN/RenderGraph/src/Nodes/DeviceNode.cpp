@@ -1,6 +1,6 @@
-#include "RenderGraph/Nodes/DeviceNode.h"
+#include "Nodes/DeviceNode.h"
 #include <iostream>
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 
 extern VkInstance g_VulkanInstance;
 extern std::vector<const char*> deviceExtensionNames;
@@ -14,9 +14,9 @@ using namespace Vixen::Vulkan::Resources;
 // DeviceNodeType
 // ============================================================================
 
-DeviceNodeType::DeviceNodeType() {
-    typeId = 112;
-    typeName = "Device";
+DeviceNodeType::DeviceNodeType()
+    : NodeType("Device")
+{
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = false;
@@ -34,10 +34,9 @@ DeviceNodeType::DeviceNodeType() {
 }
 
 std::unique_ptr<NodeInstance> DeviceNodeType::CreateInstance(
-    const std::string& instanceName,
-    VulkanDevice* device
+    const std::string& instanceName
 ) const {
-    return std::make_unique<DeviceNode>(instanceName, const_cast<DeviceNodeType*>(this), device);
+    return std::make_unique<DeviceNode>(instanceName, const_cast<DeviceNodeType*>(this), nullptr);
 }
 
 // ============================================================================
@@ -49,7 +48,8 @@ DeviceNode::DeviceNode(
     NodeType* nodeType,
     VulkanDevice* device
 )
-    : TypedNode<DeviceNodeConfig>(instanceName, nodeType, device) {
+    : TypedNode<DeviceNodeConfig>(instanceName, nodeType)
+{
 }
 
 DeviceNode::~DeviceNode() {

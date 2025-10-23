@@ -1,5 +1,6 @@
 #include "Core/NodeType.h"
 #include "Core/NodeInstance.h"
+#include <unordered_set>
 
 namespace Vixen::RenderGraph {
 
@@ -15,36 +16,15 @@ Vixen::RenderGraph::NodeType::NodeType(const std::string &typeName) :
         throw std::invalid_argument("NodeType name cannot be empty");
     }
 
-
     typeId = GenerateTypeId();
 }
 
-void NodeType::AddInputDescriptor(const ResourceDescriptor& descriptor) {
-    inputSchema.push_back(descriptor.clone());
-}
-void NodeType::AddOutputDescriptor(const ResourceDescriptor& descriptor) {
-    outputSchema.push_back(descriptor.clone());
-}
-
-void NodeType::AddParameterDefinition(const ParameterDefinition& parameter) {
-    for (const auto& existingParam : parameterBundle) {
-        if (existingParam.name == parameter.name) {
-            throw std::invalid_argument("Parameter with name '" + parameter.name + "' already exists in NodeType '" + typeName + "'");
-        }
-    }
-    parameterBundle.push_back(parameter.clone());
-}
-
 void NodeType::SetInputSchema(const Schema& schema) {
-    inputSchema = schema.clone();
+    inputSchema = schema;
 }
 
 void NodeType::SetOutputSchema(const Schema& schema) {
-    outputSchema = schema.clone();
-}
-
-void NodeType::SetParameterBundle(const ParameterBundle& params) {
-    parameterBundle = params.clone();
+    outputSchema = schema;
 }
 
 void NodeType::SetParameterBundle(const ParameterBundle& params) {

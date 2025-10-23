@@ -7,10 +7,9 @@ namespace Vixen::RenderGraph {
 
 // ====== CommandPoolNodeType ======
 
-CommandPoolNodeType::CommandPoolNodeType() {
-    typeId = 101; // Unique ID (DeviceNode is 100, TextureLoader is 100, need to reorganize)
-    typeName = "CommandPool";
-    pipelineType = PipelineType::None; // No graphics/compute pipeline
+CommandPoolNodeType::CommandPoolNodeType()
+    : NodeType("CommandPool")
+{
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited command pools
@@ -43,13 +42,11 @@ CommandPoolNodeType::CommandPoolNodeType() {
 }
 
 std::unique_ptr<NodeInstance> CommandPoolNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<CommandPoolNode>(
         instanceName,
-        const_cast<CommandPoolNodeType*>(this),
-        device
+        const_cast<NodeType*>(static_cast<const NodeType*>(this))
     );
 }
 
@@ -57,10 +54,9 @@ std::unique_ptr<NodeInstance> CommandPoolNodeType::CreateInstance(
 
 CommandPoolNode::CommandPoolNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<CommandPoolNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<CommandPoolNodeConfig>(instanceName, nodeType)
 {
 }
 

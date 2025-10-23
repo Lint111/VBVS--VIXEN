@@ -27,8 +27,7 @@ class TextureLoaderNode : public NodeInstance {
 public:
     TextureLoaderNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     virtual ~TextureLoaderNode();

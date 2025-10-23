@@ -45,8 +45,7 @@ class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:
     SwapChainNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~SwapChainNode();
 

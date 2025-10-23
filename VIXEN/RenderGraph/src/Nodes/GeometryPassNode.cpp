@@ -62,7 +62,7 @@ GeometryPassNodeType::GeometryPassNodeType(const std::string& typeName) : NodeTy
 std::unique_ptr<NodeInstance> GeometryPassNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
-    return std::make_unique<GeometryPassNode>(instanceName, this);
+    return std::make_unique<GeometryPassNode>(instanceName, const_cast<GeometryPassNodeType*>(this));
 }
 
 // ====== GeometryPassNode ======

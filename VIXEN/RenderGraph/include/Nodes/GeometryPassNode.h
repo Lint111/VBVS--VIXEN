@@ -18,8 +18,7 @@ class GeometryPassNode : public NodeInstance {
 public:
     GeometryPassNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     virtual ~GeometryPassNode() = default;
