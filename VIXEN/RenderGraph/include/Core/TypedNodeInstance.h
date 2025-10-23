@@ -191,7 +191,7 @@ public:
     template<typename SlotType>
     typename SlotType::Type In(SlotType slot, size_t arrayIndex = 0) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetInput(SlotType::index, static_cast<size_t>(arrayIndex));
         if (!res) return typename SlotType::Type{};  // Return null handle
         
         // Automatic type extraction from variant using slot's type info!
@@ -217,7 +217,7 @@ public:
         
         // Ensure resource exists at this array index
         EnsureOutputSlot(SlotType::index, arrayIndex);
-        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<size_t>(arrayIndex));
         
         // Automatic type storage in variant using slot's type info!
         res->SetHandle<typename SlotType::Type>(value);
@@ -232,7 +232,7 @@ public:
     template<typename SlotType>
     typename SlotType::Type GetOut(SlotType slot, size_t arrayIndex = 0) const {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<size_t>(arrayIndex));
         if (!res) return typename SlotType::Type{};
         
         return res->GetHandle<typename SlotType::Type>();
@@ -292,7 +292,7 @@ public:
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
         // Create resource if needed
         EnsureOutputSlot(SlotType::index, arrayIndex);
-        Resource* res = NodeInstance::GetOutput(SlotType::index, arrayIndex);
+        Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<size_t>(arrayIndex));
         
         // Store typed handle in resource variant
         // SlotType::Type automatically provides the correct type!

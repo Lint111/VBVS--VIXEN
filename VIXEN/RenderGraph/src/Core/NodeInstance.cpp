@@ -163,6 +163,8 @@ uint64_t NodeInstance::ComputeCacheKey() const {
     }
     
     // Hash input resource formats (iterate through 2D vector)
+    // TODO: Restore after variant descriptor accessor API implemented
+    /*
     for (const auto& inputSlot : inputs) {
         for (const auto* input : inputSlot) {
             if (input) {
@@ -174,6 +176,7 @@ uint64_t NodeInstance::ComputeCacheKey() const {
             }
         }
     }
+    */
 
     return hash;
 }
@@ -194,7 +197,8 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
 #endif
 
 void NodeInstance::AllocateResources() {
-    // Calculate input memory footprint (iterate through 2D vector)
+    // TODO: Calculate input memory footprint - needs variant descriptor accessor API
+    /*
     inputMemoryFootprint = 0;
     for (const auto& inputSlot : inputs) {
         for (const auto* input : inputSlot) {
@@ -203,6 +207,8 @@ void NodeInstance::AllocateResources() {
             }
         }
     }
+    */
+    inputMemoryFootprint = 0; // Placeholder until variant API ready
 }
 
 void NodeInstance::DeallocateResources() {

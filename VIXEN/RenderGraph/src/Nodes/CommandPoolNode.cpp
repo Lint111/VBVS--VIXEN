@@ -7,15 +7,15 @@ namespace Vixen::RenderGraph {
 
 // ====== CommandPoolNodeType ======
 
-CommandPoolNodeType::CommandPoolNodeType()
-    : NodeType("CommandPool")
+CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
+    : NodeType(typeName)
 {
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited command pools
 
-    // Input: Device object
-    DeviceObjectDescription deviceInput{};
+    // Input: Device object (uses HandleDescriptor for VkDevice)
+    HandleDescriptor deviceInput{"VkDevice"};
     inputSchema.push_back(ResourceDescriptor(
         "device_obj",
         ResourceType::Buffer, // Using Buffer as placeholder for device objects
@@ -24,9 +24,9 @@ CommandPoolNodeType::CommandPoolNodeType()
     ));
 
     // Output: Command pool
-    BufferDescription poolOutput{};
-    poolOutput.size = 0;
-    poolOutput.usage = ResourceUsage::CommandPool;
+    CommandPoolDescriptor poolOutput{};
+    poolOutput.flags = 0;
+    poolOutput.queueFamilyIndex = 0;
     outputSchema.push_back(ResourceDescriptor(
         "command_pool",
         ResourceType::Buffer, // Using Buffer as placeholder for command pool
@@ -103,8 +103,9 @@ void CommandPoolNode::Compile() {
         throw std::runtime_error(errorMsg);
     }
 
-    outputResource->SetCommandPool(commandPool);
-    outputResource->SetDeviceDependency(device);
+    // Store command pool handle in resource (NEW VARIANT API)
+    outputResource->SetHandle<VkCommandPool>(commandPool);
+    // TODO: Track device dependency through graph connections instead of storing in resource
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }

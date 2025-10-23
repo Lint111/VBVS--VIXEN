@@ -95,9 +95,9 @@ void DeviceNode::Compile() {
     // Create logical device using VulkanDevice wrapper
     CreateLogicalDevice();
 
-    // Store VulkanDevice* in output slot (type-punned as VkDevice)
+    // Store VulkanDevice* in output slot (type-punned as VkDevice) (NEW VARIANT API)
     // Downstream nodes will cast this back to VulkanDevice*
-    Out(DeviceNodeConfig::DEVICE) = reinterpret_cast<VkDevice>(vulkanDevice.get());
+    Out(DeviceNodeConfig::DEVICE, reinterpret_cast<VkDevice>(vulkanDevice.get()));
 
     NODE_LOG_INFO("[DeviceNode] Compile complete");
 }

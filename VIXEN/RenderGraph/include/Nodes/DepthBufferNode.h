@@ -59,7 +59,7 @@ private:
  */
 class DepthBufferNodeType : public NodeType {
 public:
-    DepthBufferNodeType();
+    DepthBufferNodeType( const std::string& typeName = "DepthBuffer");
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

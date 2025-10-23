@@ -8,8 +8,8 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-DepthBufferNodeType::DepthBufferNodeType()
-    : NodeType("DepthBuffer")
+DepthBufferNodeType::DepthBufferNodeType(const std::string& typeName)
+    : NodeType(typeName)
 {
     pipelineType = PipelineType::Transfer;
     requiredCapabilities = DeviceCapability::Graphics;
@@ -151,10 +151,10 @@ void DepthBufferNode::Compile() {
 
     vkFreeCommandBuffers(device->device, cmdPool, 1, &cmdBuffer);
 
-    // Set typed outputs
-    Out(DepthBufferNodeConfig::DEPTH_IMAGE) = depthImage.image;
-    Out(DepthBufferNodeConfig::DEPTH_IMAGE_VIEW) = depthImage.view;
-    Out(DepthBufferNodeConfig::DEPTH_FORMAT) = depthImage.format;
+    // Set typed outputs (NEW VARIANT API)
+    Out(DepthBufferNodeConfig::DEPTH_IMAGE, depthImage.image);
+    Out(DepthBufferNodeConfig::DEPTH_IMAGE_VIEW, depthImage.view);
+    Out(DepthBufferNodeConfig::DEPTH_FORMAT, depthImage.format);
 
     isCreated = true;
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");

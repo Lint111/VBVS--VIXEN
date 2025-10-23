@@ -84,7 +84,12 @@ void FramebufferNode::Compile() {
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         // Get color attachment for this framebuffer using base class accessor
         Resource* colorRes = NodeInstance::GetInput(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index, static_cast<uint32_t>(i));
-        VkImageView colorView = colorRes->GetImageView();
+        
+        // TODO: Use variant API to get VkImageView
+        VkImageView colorView = VK_NULL_HANDLE;
+        if (colorRes) {
+            colorView = colorRes->GetHandle<VkImageView>();
+        }
 
         // Setup attachments array
         std::vector<VkImageView> attachments;

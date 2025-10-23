@@ -105,16 +105,19 @@ void TextureLoaderNode::Compile() {
         textureData = textureLoader->Load(filePath.c_str(), config);
         isLoaded = true;
 
-        // Update output resource description with actual texture dimensions
+        // TODO: Update output resource description with actual texture dimensions (needs descriptor accessor API)
+        // Temporarily disabled pending variant descriptor modification API
+        /*
         if (outputs.size() > 0 && outputs[0].size() > 0 && outputs[0][0]) {
             Resource* resource = outputs[0][0];
-            if (auto* imgDesc = const_cast<ImageDescription*>(resource->GetImageDescription())) {
+            if (ImageDescription* imgDesc = ...) {  // Need descriptor accessor
                 imgDesc->width = textureData.textureWidth;
                 imgDesc->height = textureData.textureHeight;
                 imgDesc->mipLevels = textureData.minMapLevels;
                 // Format is specified in config, not in TextureData
             }
         }
+        */
 
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to load texture: " + std::string(e.what()));

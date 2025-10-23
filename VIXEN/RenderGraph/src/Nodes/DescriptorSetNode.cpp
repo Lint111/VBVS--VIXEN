@@ -56,6 +56,8 @@ void DescriptorSetNode::Compile() {
     Resource* shaderProgramResource = NodeInstance::GetInput(DescriptorSetNodeConfig::SHADER_PROGRAM_Slot::index);
     const ShaderManagement::CompiledProgram* shaderProgram = nullptr;
     
+    // TODO: Restore shader program retrieval with variant API
+    /*
     if (shaderProgramResource) {
         shaderProgram = shaderProgramResource->GetCompiledProgram();
     }
@@ -64,6 +66,8 @@ void DescriptorSetNode::Compile() {
         layoutSpec = shaderProgram->descriptorLayout;
         NODE_LOG_INFO("DescriptorSetNode: Using descriptor layout from shader program reflection");
     } else {
+    */
+    {
         // PRIORITY 2: Manual parameter specification (fallback)
         layoutSpec = GetParameterValue<const ShaderManagement::DescriptorLayoutSpec*>(
             DescriptorSetNodeConfig::PARAM_LAYOUT_SPEC, nullptr);
@@ -81,9 +85,9 @@ void DescriptorSetNode::Compile() {
     CreateDescriptorPool();
     AllocateDescriptorSets();
 
-    // Publish outputs
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT) = descriptorSetLayout;
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL) = descriptorPool;
+    // Publish outputs (NEW VARIANT API)
+    Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
+    Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL, descriptorPool);
     for (uint32_t i = 0; i < layoutSpec->maxSets; ++i) {
         SetOutput(DescriptorSetNodeConfig::DESCRIPTOR_SETS, i, descriptorSets[i]);
     }

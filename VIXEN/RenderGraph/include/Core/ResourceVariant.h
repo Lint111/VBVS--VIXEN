@@ -9,110 +9,42 @@
 #include <optional>
 #include <memory>
 #include <string>
+#include "Data/VariantDescriptors.h"
+#include "ShaderManagement/ShaderProgram.h"
+
+// Global namespace forward declarations
+struct SwapChainPublicVariables;
+
+// Type aliases for pointer types (needed for variant registry)
+using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
+using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
 
 namespace Vixen::RenderGraph {
 
-// ============================================================================
-// BASE DESCRIPTOR CLASS
-// ============================================================================
-
-/**
- * @brief Base descriptor for resources
- * Provides validation interface for all resource descriptors
- */
-struct ResourceDescriptorBase {
-    virtual ~ResourceDescriptorBase() = default;
-    virtual bool Validate() const { return true; }
-    virtual std::unique_ptr<ResourceDescriptorBase> Clone() const = 0;
-};
 
 // ============================================================================
-// SPECIFIC DESCRIPTOR TYPES
+// RESOURCE USAGE OPERATORS (bitwise for flags)
 // ============================================================================
 
-/**
- * @brief Image resource descriptor
- */
-struct ImageDescriptor : ResourceDescriptorBase {
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t depth = 1;
-    uint32_t mipLevels = 1;
-    uint32_t arrayLayers = 1;
-    VkFormat format = VK_FORMAT_UNDEFINED;
-    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-    ResourceUsage usage = ResourceUsage::None;
-    VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+inline ResourceUsage operator|(ResourceUsage a, ResourceUsage b) {
+    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
 
-    bool Validate() const override {
-        return width > 0 && height > 0 && format != VK_FORMAT_UNDEFINED;
-    }
+inline ResourceUsage operator&(ResourceUsage a, ResourceUsage b) {
+    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
 
-    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
-        return std::make_unique<ImageDescriptor>(*this);
-    }
-};
-
-/**
- * @brief Buffer resource descriptor
- */
-struct BufferDescriptor : ResourceDescriptorBase {
-    VkDeviceSize size = 0;
-    ResourceUsage usage = ResourceUsage::None;
-    VkMemoryPropertyFlags memoryProperties = 0;
-
-    bool Validate() const override {
-        return size > 0;
-    }
-
-    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
-        return std::make_unique<BufferDescriptor>(*this);
-    }
-};
-
-/**
- * @brief Simple handle descriptor (for VkSurface, VkSwapchain, etc.)
- */
-struct HandleDescriptor : ResourceDescriptorBase {
-    std::string handleTypeName; // For debugging
-
-    HandleDescriptor(const std::string& typeName = "GenericHandle")
-        : handleTypeName(typeName) {}
-
-    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
-        return std::make_unique<HandleDescriptor>(*this);
-    }
-};
-
-/**
- * @brief Command pool descriptor
- */
-struct CommandPoolDescriptor : ResourceDescriptorBase {
-    VkCommandPoolCreateFlags flags = 0;
-    uint32_t queueFamilyIndex = 0;
-
-    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
-        return std::make_unique<CommandPoolDescriptor>(*this);
-    }
-};
-
-/**
- * @brief Shader program descriptor (pointer to external data)
- */
-struct ShaderProgramDescriptor : ResourceDescriptorBase {
-    std::string shaderName; // For debugging/identification
-
-    ShaderProgramDescriptor(const std::string& name = "")
-        : shaderName(name) {}
-
-    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
-        return std::make_unique<ShaderProgramDescriptor>(*this);
-    }
-};
+inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
+    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(check)) != 0;
+}
 
 // ============================================================================
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
+
+// Type aliases for pointer types (can't use T* directly in macro expansion)
+using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
+using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
 
 /**
  * @brief Master list of all resource types
@@ -144,6 +76,16 @@ struct ShaderProgramDescriptor : ResourceDescriptorBase {
     RESOURCE_TYPE(VkCommandPool, CommandPoolDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(VkSemaphore, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(VkFence, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(VkDevice, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPhysicalDevice, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(VkInstance, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFormat, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(uint32_t, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(uint64_t, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(HWND, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(HINSTANCE, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(SwapChainPublicVariablesPtr, HandleDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(ShaderProgramPtr, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
 
 // ============================================================================
@@ -157,11 +99,10 @@ struct ShaderProgramDescriptor : ResourceDescriptorBase {
 using ResourceHandleVariant = std::variant<
     std::monostate,  // Empty/uninitialized
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) HandleType,
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) HandleType,
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) HandleType
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
-    const ShaderManagement::CompiledProgram*  // Special case: shader program pointer
 >;
 
 /**
@@ -176,7 +117,7 @@ using ResourceDescriptorVariant = std::variant<
     BufferDescriptor,
     HandleDescriptor,
     CommandPoolDescriptor,
-    ShaderProgramDescriptor
+    ShaderProgramHandleDescriptor
 >;
 
 // ============================================================================
@@ -212,14 +153,6 @@ struct ResourceTypeTraits {
 RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
-
-// Special case for shader program pointers (forward declaration for CompiledProgram)
-namespace ShaderManagement { struct CompiledProgram; }
-template<> struct ResourceTypeTraits<const ShaderManagement::CompiledProgram*> {
-    using DescriptorT = ShaderProgramDescriptor;
-    static constexpr ResourceType resourceType = ResourceType::Buffer;
-    static constexpr bool isValid = true;
-};
 
 // ============================================================================
 // HELPER: MACRO-GENERATED RESOURCE INITIALIZATION

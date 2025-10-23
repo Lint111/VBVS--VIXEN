@@ -32,13 +32,13 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig, 1, 1, false) {
     CommandPoolNodeConfig() {
         // Runtime descriptor initialization
         // Uses compile-time constants from COMMAND_POOL slot
-        BufferDescription commandPoolDesc{};
-        commandPoolDesc.size = 0;
-        commandPoolDesc.usage = ResourceUsage::CommandPool;
+        CommandPoolDescriptor commandPoolDesc{};
+        commandPoolDesc.flags = 0;
+        commandPoolDesc.queueFamilyIndex = 0;
         INIT_OUTPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
 
-        // Input descriptor for DeviceObj
-        DeviceObjectDescription deviceObjDesc{};
+        // Input descriptor for DeviceObj (uses HandleDescriptor for VkDevice)
+        HandleDescriptor deviceObjDesc{"VkDevice"};
         INIT_INPUT_DESC(DeviceObj, "device_obj", ResourceLifetime::Persistent, deviceObjDesc);
     }
 

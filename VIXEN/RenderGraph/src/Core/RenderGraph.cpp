@@ -394,6 +394,8 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
     // Create typed resource based on ResourceType
     std::unique_ptr<Resource> resource;
     
+    // TODO: Restore resource creation from descriptor - needs variant API update
+    /*
     switch (resourceDesc.type) {
         case ResourceType::Image:
             if (auto* imageDesc = dynamic_cast<ImageDescription*>(resourceDesc.description.get())) {
@@ -411,6 +413,14 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
         default:
             return nullptr;
     }
+    */
+    
+    // Placeholder: Create basic resource from slot descriptor
+    // Nodes handle actual resource creation and initialization in their Compile() methods
+    resource = std::make_unique<Resource>();
+    resource->type = resourceDesc.type;
+    resource->lifetime = resourceDesc.lifetime;
+    // Descriptor will be set by node during compilation
 
     if (!resource) return nullptr;
     
@@ -445,6 +455,8 @@ void RenderGraph::AllocateResources() {
     
     VkDevice device = primaryDevice->device;
     
+    // TODO: Restore resource allocation - needs variant descriptor accessor API
+    /*
     for (auto& resource : resources) {
         if (!resource->IsAllocated()) {
             if (resource->GetType() == ResourceType::Image ||
@@ -466,6 +478,9 @@ void RenderGraph::AllocateResources() {
             }
         }
     }
+    */
+    
+    // Placeholder: Nodes handle their own resource allocation in Compile()
 }
 
 void RenderGraph::GeneratePipelines() {
