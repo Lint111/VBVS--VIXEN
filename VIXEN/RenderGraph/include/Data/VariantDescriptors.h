@@ -121,4 +121,24 @@ struct ShaderProgramHandleDescriptor : ResourceDescriptorBase {
 };
 
 
+// ============================================================================
+// DESCRIPTOR VARIANT TYPE
+// ============================================================================
+
+/**
+ * @brief Variant type holding all possible resource descriptors
+ * Auto-generated from unique descriptors in RESOURCE_TYPE_REGISTRY
+ * 
+ * Note: We list each descriptor type once, even if multiple handle types use it
+ */
+using ResourceDescriptorVariant = std::variant<
+    std::monostate,
+    ImageDescriptor,
+    BufferDescriptor,
+    HandleDescriptor,
+    CommandPoolDescriptor,
+    ShaderProgramHandleDescriptor
+>;
+
+
 } // namespace Vixen::RenderGraph

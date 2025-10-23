@@ -86,7 +86,11 @@ using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
     RESOURCE_TYPE(HINSTANCE, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(SwapChainPublicVariablesPtr, HandleDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramPtr, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
+        RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
+
+// ============================================================================
+// AUTO-GENERATED TYPE TRAITS
+// ============================================================================
 
 // ============================================================================
 // AUTO-GENERATED VARIANTS
