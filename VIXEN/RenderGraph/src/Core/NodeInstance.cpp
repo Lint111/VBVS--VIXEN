@@ -1,4 +1,4 @@
-#include "RenderGraph/NodeInstance.h"
+#include "Core/NodeInstance.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
@@ -7,12 +7,10 @@ namespace Vixen::RenderGraph {
 
 NodeInstance::NodeInstance(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
     : instanceName(instanceName)
     , nodeType(nodeType)
-    , device(device)
 {
     // Allocate space for inputs and outputs based on schema
     // Each slot is a vector (size 1 for scalar, size N for array)
@@ -91,14 +89,14 @@ size_t NodeInstance::GetOutputCount(uint32_t slotIndex) const {
     return 0;
 }
 
-void NodeInstance::SetParameter(const std::string& name, const ParameterValue& value) {
+void NodeInstance::SetParameter(const std::string& name, const ParamTypeValue& value) {
     parameters[name] = value;
     
     // Invalidate cache when parameters change
     cacheKey = 0;
 }
 
-const ParameterValue* NodeInstance::GetParameter(const std::string& name) const {
+const ParamTypeValue* NodeInstance::GetParameter(const std::string& name) const {
     auto it = parameters.find(name);
     if (it != parameters.end()) {
         return &it->second;

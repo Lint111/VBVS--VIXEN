@@ -1,6 +1,6 @@
 #pragma once
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/NodeType.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
 #include "VertexBufferNodeConfig.h"
 #include "MeshData.h"
 #include <memory>
@@ -17,13 +17,10 @@ namespace Vixen::RenderGraph {
  */
 class VertexBufferNodeType : public NodeType {
 public:
-    VertexBufferNodeType();
+    VertexBufferNodeType(const std::string& typeName = "VertexBuffer");
     virtual ~VertexBufferNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) const override;
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**
@@ -47,8 +44,7 @@ class VertexBufferNode : public TypedNode<VertexBufferNodeConfig> {
 public:
     VertexBufferNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~VertexBufferNode();
 

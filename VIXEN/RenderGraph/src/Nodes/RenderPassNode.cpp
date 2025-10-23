@@ -1,15 +1,13 @@
-#include "RenderGraph/Nodes/RenderPassNode.h"
+#include "Nodes/RenderPassNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== RenderPassNodeType ======
 
-RenderPassNodeType::RenderPassNodeType() {
-    typeId = 104; // Unique ID
-    typeName = "RenderPass";
+RenderPassNodeType::RenderPassNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -27,13 +25,10 @@ RenderPassNodeType::RenderPassNodeType() {
 }
 
 std::unique_ptr<NodeInstance> RenderPassNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<RenderPassNode>(
-        instanceName,
-        const_cast<RenderPassNodeType*>(this),
-        device
+        instanceName
     );
 }
 
@@ -41,10 +36,9 @@ std::unique_ptr<NodeInstance> RenderPassNodeType::CreateInstance(
 
 RenderPassNode::RenderPassNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<RenderPassNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<RenderPassNodeConfig>(instanceName, nodeType)
 {
 }
 

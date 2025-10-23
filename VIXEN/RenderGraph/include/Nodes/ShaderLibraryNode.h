@@ -1,7 +1,7 @@
 #pragma once
 
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/NodeType.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
 #include "ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderLibrary.h>
 #include <memory>
@@ -18,12 +18,11 @@ namespace Vixen::RenderGraph {
  */
 class ShaderLibraryNodeType : public NodeType {
 public:
-    ShaderLibraryNodeType();
+    ShaderLibraryNodeType(const std::string& typeName = "ShaderLibrary");
     virtual ~ShaderLibraryNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 
@@ -45,8 +44,7 @@ class ShaderLibraryNode : public TypedNode<ShaderLibraryNodeConfig> {
 public:
     ShaderLibraryNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~ShaderLibraryNode();
 

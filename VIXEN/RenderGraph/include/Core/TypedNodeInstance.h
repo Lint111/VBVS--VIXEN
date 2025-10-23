@@ -125,9 +125,8 @@ class TypedNode : public NodeInstance {
 public:
     TypedNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) : NodeInstance(instanceName, nodeType, device) {
+        NodeType* nodeType
+    ) : NodeInstance(instanceName, nodeType) {
         // Initialize arrays
         inputs.fill(VK_NULL_HANDLE);
         outputs.fill(VK_NULL_HANDLE);

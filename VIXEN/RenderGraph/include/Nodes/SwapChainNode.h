@@ -1,9 +1,9 @@
 #pragma once
-#include "RenderGraph/NodeInstance.h"
-#include "RenderGraph/NodeType.h"
-#include "RenderGraph/TypedNodeInstance.h"
+#include "Core/NodeInstance.h"
+#include "Core/NodeType.h"
+#include "Core/TypedNodeInstance.h"
 #include "VulkanSwapChain.h"
-#include "RenderGraph/Nodes/SwapChainNodeConfig.h"
+#include "Nodes/SwapChainNodeConfig.h"
 #include <memory>
 #include <vector>
 
@@ -19,12 +19,11 @@ namespace Vixen::RenderGraph {
  */
 class SwapChainNodeType : public NodeType {
 public:
-    SwapChainNodeType();
+    SwapChainNodeType(const std::string& typeName = "SwapChain");
     virtual ~SwapChainNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 

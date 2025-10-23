@@ -153,8 +153,8 @@ VkResult VulkanLayerAndExtension::GetDeviceExtentionProperties(const VkPhysicalD
 }
 
 VkBool32 VulkanLayerAndExtension::AreLayersSupported(std::vector<const char*>& layerNames) {
-	uint32_t checkCount = layerNames.size();
-	uint32_t layerCount = layerPropertyList.size();
+	uint32_t checkCount = static_cast<uint32_t>(layerNames.size());
+	uint32_t layerCount = static_cast<uint32_t>(layerPropertyList.size());
 	std::vector<const char*> unsupportedLayerNames;
 
 	for (uint32_t i = 0; i < checkCount; i++) {

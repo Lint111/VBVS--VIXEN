@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../Headers.h"
+#include "Headers.h"
 #include <string>
 #include <optional>
 #include <memory>
-#include "RenderGraph/ResourceTypes.h"
+#include "Core/ResourceTypes.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;

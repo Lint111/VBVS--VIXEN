@@ -1,13 +1,11 @@
-#include "RenderGraph/Nodes/SwapChainNode.h"
+#include "Nodes/SwapChainNode.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== SwapChainNodeType ======
 
-SwapChainNodeType::SwapChainNodeType() {
-    typeId = 102; // Unique ID
-    typeName = "SwapChain";
+SwapChainNodeType::SwapChainNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
     supportsInstancing = false; // Only one swapchain per render graph
@@ -25,13 +23,10 @@ SwapChainNodeType::SwapChainNodeType() {
 }
 
 std::unique_ptr<NodeInstance> SwapChainNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<SwapChainNode>(
-        instanceName,
-        const_cast<SwapChainNodeType*>(this),
-        device
+        instanceName
     );
 }
 
@@ -39,10 +34,9 @@ std::unique_ptr<NodeInstance> SwapChainNodeType::CreateInstance(
 
 SwapChainNode::SwapChainNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<SwapChainNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<SwapChainNodeConfig>(instanceName, nodeType)
 {
 }
 

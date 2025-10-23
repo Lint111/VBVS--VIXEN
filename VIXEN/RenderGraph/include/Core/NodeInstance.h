@@ -2,6 +2,7 @@
 
 #include "Resource.h"
 #include "NodeType.h"
+#include "Data/ParameterDataTypes.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -12,100 +13,7 @@
 // Forward declare Logger to avoid circular dependency
 class Logger;
 
-namespace Vixen::Vulkan::Resources {
-    class VulkanDevice;
-}
-
-// Forward declaration from ShaderManagement
-namespace ShaderManagement {
-    struct DescriptorLayoutSpec;
-}
-
 namespace Vixen::RenderGraph {
-
-// Forward declarations
-class NodeType;
-
-/**
- * @brief Depth format options for depth buffers
- */
-enum class DepthFormat {
-    D16,      // VK_FORMAT_D16_UNORM - 16-bit depth
-    D24S8,    // VK_FORMAT_D24_UNORM_S8_UINT - 24-bit depth + 8-bit stencil
-    D32       // VK_FORMAT_D32_SFLOAT - 32-bit float depth (default)
-};
-
-/**
- * @brief Attachment load operations for render passes
- */
-enum class AttachmentLoadOp {
-    Load,      // VK_ATTACHMENT_LOAD_OP_LOAD - Preserve existing contents
-    Clear,     // VK_ATTACHMENT_LOAD_OP_CLEAR - Clear to constant value
-    DontCare   // VK_ATTACHMENT_LOAD_OP_DONT_CARE - Undefined (fastest)
-};
-
-/**
- * @brief Attachment store operations for render passes
- */
-enum class AttachmentStoreOp {
-    Store,     // VK_ATTACHMENT_STORE_OP_STORE - Store contents for later use
-    DontCare   // VK_ATTACHMENT_STORE_OP_DONT_CARE - Don't care about contents after rendering
-};
-
-/**
- * @brief Image layout options for render passes
- */
-enum class ImageLayout {
-    Undefined,                    // VK_IMAGE_LAYOUT_UNDEFINED
-    ColorAttachment,             // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    DepthStencilAttachment,      // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    PresentSrc,                  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-    TransferSrc,                 // VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-    TransferDst                  // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-};
-
-/**
- * @brief Variant type for node parameters
- */
-using ParameterValue = std::variant<
-    int32_t,
-    uint32_t,
-    float,
-    double,
-    bool,
-    std::string,
-    glm::vec2,
-    glm::vec3,
-    glm::vec4,
-    glm::mat4,
-    DepthFormat,          // Depth format enum
-    AttachmentLoadOp,     // Load operation enum
-    AttachmentStoreOp,    // Store operation enum
-    ImageLayout,          // Image layout enum
-    const ::ShaderManagement::DescriptorLayoutSpec*  // Descriptor layout specification pointer
->;
-
-/**
- * @brief Node execution state
- */
-enum class NodeState {
-    Created,      // Just created, not configured
-    Ready,        // Configured and ready to compile
-    Compiled,     // Pipelines and resources allocated
-    Executing,    // Currently executing
-    Complete,     // Execution finished
-    Error         // Error state
-};
-
-/**
- * @brief Performance statistics for node execution
- */
-struct PerformanceStats {
-    uint64_t executionTimeNs = 0;         // GPU execution time
-    uint64_t cpuTimeNs = 0;               // CPU time for setup
-    uint32_t executionCount = 0;          // Number of times executed
-    float averageExecutionTimeMs = 0.0f;
-};
 
 /**
  * @brief Connection point for graph edges
@@ -127,8 +35,7 @@ class NodeInstance {
 public:
     NodeInstance(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     virtual ~NodeInstance();
@@ -166,8 +73,8 @@ public:
     size_t GetOutputCount(uint32_t slotIndex) const;
 
     // Parameters
-    void SetParameter(const std::string& name, const ParameterValue& value);
-    const ParameterValue* GetParameter(const std::string& name) const;
+    void SetParameter(const std::string& name, const ParamTypeValue& value);
+    const ParamTypeValue* GetParameter(const std::string& name) const;
     template<typename T>
     T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const;
 
@@ -229,7 +136,7 @@ protected:
     std::vector<std::vector<Resource*>> outputs;
 
     // Instance-specific parameters
-    std::map<std::string, ParameterValue> parameters;
+    std::map<std::string, ParamTypeValue> parameters;
 
     // Execution state
     NodeState state = NodeState::Created;

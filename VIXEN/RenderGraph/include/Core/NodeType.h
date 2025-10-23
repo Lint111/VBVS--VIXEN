@@ -6,16 +6,18 @@
 #include <functional>
 #include <memory>
 #include "Data/BasicDataTypes.h"
-
-namespace Vixen::Vulkan::Resources {
-    class VulkanDevice;
-}
+#include "Data/ParameterDataTypes.h"
+#include "Data/LayerAndExtensionRequirementData.h"
 
 namespace Vixen::RenderGraph {
 
 // Forward declaration
 class NodeInstance;
 
+using ParameterBundle = std::vector<ParameterDefinition>;
+using Schema = std::vector<ResourceDescriptor>;
+
+using FeatureSet = std::vector<Feature>;
 
 
 /**
@@ -26,133 +28,101 @@ class NodeInstance;
  */
 class NodeType {
 public:
-    NodeType() = default;
+    NodeType(const std::string& typeName);
     virtual ~NodeType() = default;
 
-    // Type identification
-    NodeTypeId GetTypeId() const { return typeId; }
+    // Identity and metadata
     const std::string& GetTypeName() const { return typeName; }
+    const NodeTypeId GetTypeId() const { return typeId; }
+    const std::string& GetDescription() const { return description; }
+    void SetDescription(const std::string& desc) { description = desc; }
 
-    // Schema
-    const std::vector<ResourceDescriptor>& GetInputSchema() const { return inputSchema; }
-    const std::vector<ResourceDescriptor>& GetOutputSchema() const { return outputSchema; }
+    //Category and organization
+    const std::string& GetCategory() const { return category; }
+    void SetCategory(const std::string& cat) { category = cat; }
+
+    uint32_t GetVersion() const { return version; }
+    void SetVersion(uint32_t ver) { version = ver; }
+
+    // Type definition access
+    const Schema& GetInputSchema() const { return inputSchema; }
+    const Schema& GetOutputSchema() const { return outputSchema; }
+    const ParameterBundle& GetParameterBundle() const { return parameterBundle; }
+
+    void SetInputSchema(const Schema& schema);
+    void SetOutputSchema(const Schema& schema);
+    void SetParameterBundle(const ParameterBundle& params);
+
+    // Slot information
     size_t GetInputCount() const { return inputSchema.size(); }
     size_t GetOutputCount() const { return outputSchema.size(); }
+    size_t GetParameterCount() const { return parameterBundle.size(); }
+
+    const ResourceDescriptor* GetInputDescriptor(uint32_t slotIndex) const;
+    const ResourceDescriptor* GetOutputDescriptor(uint32_t slotIndex) const;
+    
+    const ParameterDefinition* GetParameterDefinition(const std::string& name) const;
+    const ParameterDefinition* GetParameterDefinition(uint32_t index) const;
+    const ParameterDefinition* GetParameterDefinition(ParamType type) const;
+
+    // Type-level validation
+    bool CanConnectOutputToInput(uint32_t outputSlot, const NodeType& targetNodeType, uint32_t inputSlot) const;
+    bool ValidateParameterTypes(const std::unordered_map<std::string, ParamTypeValue>& params) const;
+    bool ValidateRequiredParameters(const std::unordered_map<std::string, ParamTypeValue>& params) const;
+    
+
+    // Resource type compatibility check
+    bool ConsumeResourceType(ResourceType resourceType) const;
+    bool ProduceResourceType(ResourceType resourceType) const;
 
     // Requirements
     DeviceCapabilityFlags GetRequiredCapabilities() const { return requiredCapabilities; }
     PipelineType GetPipelineType() const { return pipelineType; }
+    NodeFeatureProfile GetFeatureProfile() const { return featureProfile; }
 
     // Instancing
     bool SupportsInstancing() const { return supportsInstancing; }
     uint32_t GetMaxInstances() const { return maxInstances; }
+    virtual std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const = 0;
 
-    // Workload metrics
+    // performance hints (for graph compilation/scheduling)
     const WorkloadMetrics& GetWorkloadMetrics() const { return workloadMetrics; }
     bool GetAllowInputArrays() const { return allowInputArrays; }
 
-    // Factory method
-    virtual std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) const = 0;
 
     // Validation
     virtual bool ValidateInputs(const std::vector<Resource*>& inputs) const;
     virtual bool ValidateOutputs(const std::vector<Resource*>& outputs) const;
 
 protected:
-    // To be set by derived classes
+    // Identity
     NodeTypeId typeId = 0;
-    std::string typeName;
-    std::vector<ResourceDescriptor> inputSchema;
-    std::vector<ResourceDescriptor> outputSchema;
-    DeviceCapabilityFlags requiredCapabilities = DeviceCapability::None;
-    PipelineType pipelineType = PipelineType::Graphics;
-    bool supportsInstancing = true;
+    std::string typeName = "UnnamedNodeType";
+    std::string description = "No description provided.";
+    std::string category = "Uncategorized";
+    uint32_t version = 1;
     uint32_t maxInstances = 0; // 0 = unlimited
+
+    // Execution requirements
+    DeviceCapabilityFlags requiredCapabilities = DeviceCapability::None;
+    PipelineType pipelineType = PipelineType::None;
+    NodeFeatureProfile featureProfile;
+
+
+    // Type definitions
+    Schema inputSchema;
+    Schema outputSchema;
+    ParameterBundle parameterBundle;
+
+#ifdef _DEBUG
+    // Performance hints
     WorkloadMetrics workloadMetrics;
+#endif
+
     // Node-level flag: allow array-shaped inputs (IA<I>) for nodes that can process arrays
     bool allowInputArrays = false;
-};
-
-/**
- * @brief Helper class for building node types
- */
-class NodeTypeBuilder {
-public:
-    NodeTypeBuilder& SetTypeId(NodeTypeId id) {
-        typeId = id;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetTypeName(const std::string& name) {
-        typeName = name;
-        return *this;
-    }
-
-    NodeTypeBuilder& AddInput(const ResourceDescriptor& input) {
-        inputSchema.push_back(input);
-        return *this;
-    }
-
-    NodeTypeBuilder& AddOutput(const ResourceDescriptor& output) {
-        outputSchema.push_back(output);
-        return *this;
-    }
-
-    NodeTypeBuilder& SetPipelineType(PipelineType type) {
-        pipelineType = type;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetRequiredCapabilities(DeviceCapabilityFlags caps) {
-        requiredCapabilities = caps;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetSupportsInstancing(bool supports) {
-        supportsInstancing = supports;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetMaxInstances(uint32_t max) {
-        maxInstances = max;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetWorkloadMetrics(const WorkloadMetrics& metrics) {
-        workloadMetrics = metrics;
-        return *this;
-    }
-
-    NodeTypeBuilder& SetAllowInputArrays(bool allow) {
-        allowInputArrays = allow;
-        return *this;
-    }
-
-    // Getters for derived classes to use
-    NodeTypeId GetTypeId() const { return typeId; }
-    const std::string& GetTypeName() const { return typeName; }
-    const std::vector<ResourceDescriptor>& GetInputSchema() const { return inputSchema; }
-    const std::vector<ResourceDescriptor>& GetOutputSchema() const { return outputSchema; }
-    PipelineType GetPipelineType() const { return pipelineType; }
-    DeviceCapabilityFlags GetRequiredCapabilities() const { return requiredCapabilities; }
-    bool GetSupportsInstancing() const { return supportsInstancing; }
-    uint32_t GetMaxInstances() const { return maxInstances; }
-    const WorkloadMetrics& GetWorkloadMetrics() const { return workloadMetrics; }
-
-private:
-    NodeTypeId typeId = 0;
-    std::string typeName;
-    std::vector<ResourceDescriptor> inputSchema;
-    std::vector<ResourceDescriptor> outputSchema;
-    PipelineType pipelineType = PipelineType::Graphics;
-    DeviceCapabilityFlags requiredCapabilities = DeviceCapability::None;
     bool supportsInstancing = true;
-    uint32_t maxInstances = 0;
-    WorkloadMetrics workloadMetrics;
-    bool allowInputArrays = false;
+
 };
 
 } // namespace Vixen::RenderGraph

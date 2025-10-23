@@ -220,45 +220,8 @@ add_library(VulkanResources STATIC ${VULKAN_RESOURCES_CPP})
 target_link_libraries(VulkanResources PUBLIC ${VULKAN_LIB_LIST} glm::glm Logger)
 set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
 
-# RenderGraph Core library (graph, topology, resource management)
-file(GLOB RENDERGRAPH_CORE_CPP
-	${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Core/*.cpp
-)
-
-# Add placeholder source if no files found (prevents CMake error)
-if(NOT RENDERGRAPH_CORE_CPP)
-	set(RENDERGRAPH_CORE_CPP ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Core/placeholder.cpp)
-	file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Core/placeholder.cpp "// Placeholder file for empty library\n")
-endif()
-
-add_library(RenderGraphCore STATIC ${RENDERGRAPH_CORE_CPP})
-target_link_libraries(RenderGraphCore PUBLIC VulkanResources Logger EventBus ResourceManagement)
-set_property(TARGET RenderGraphCore PROPERTY CXX_STANDARD 23)
-
-# ============================================================================
-# NODE LIBRARIES - Each node is a separate OBJECT library
-# ============================================================================
-# NODES LIBRARY - All nodes automatically included
-# ============================================================================
-# Automatically includes all .cpp files in Nodes directory
-# Add new nodes by just creating the file - no CMake changes needed!
-
-file(GLOB NODES_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Nodes/*.cpp)
-
-# Add placeholder source if no files found (prevents CMake error)
-if(NOT NODES_CPP_FILES)
-	set(NODES_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Nodes/placeholder.cpp)
-	file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/RenderGraph/src/Nodes/placeholder.cpp "// Placeholder file for empty node library\n")
-endif()
-
-add_library(RenderGraphNodes STATIC ${NODES_CPP_FILES})
-target_link_libraries(RenderGraphNodes PUBLIC RenderGraphCore ShaderManagement)
-set_property(TARGET RenderGraphNodes PROPERTY CXX_STANDARD 23)
-
-# Enable Unity Build for faster full builds
-# CMake still tracks individual files for incremental compilation
-set_property(TARGET RenderGraphNodes PROPERTY UNITY_BUILD ON)
-set_property(TARGET RenderGraphNodes PROPERTY UNITY_BUILD_BATCH_SIZE 4)
+# RenderGraph static library (replaces old inline definitions)
+add_subdirectory(RenderGraph)
 
 # ============================================================================
 # MAIN EXECUTABLE
@@ -284,8 +247,7 @@ add_executable(${Recipe_Name}
 
 # Link libraries to main executable
 target_link_libraries(${Recipe_Name}
-    RenderGraphNodes
-    RenderGraphCore
+    RenderGraph
     VulkanResources
     Logger
     ${VULKAN_LIB_LIST}

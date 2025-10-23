@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../NodeType.h"
-#include "../TypedNodeInstance.h"
+#include "Core/NodeType.h"
+#include "Core/TypedNodeInstance.h"
 #include "FramebufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -23,8 +23,7 @@ class FramebufferNode : public TypedNode<FramebufferNodeConfig> {
 public:
     FramebufferNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     virtual ~FramebufferNode();
@@ -52,12 +51,9 @@ private:
  */
 class FramebufferNodeType : public NodeType {
 public:
-    FramebufferNodeType();
+    FramebufferNodeType(const std::string& typeName = "Framebuffer");
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) const override;
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../NodeType.h"
-#include "../NodeInstance.h"
+#include "Core/NodeType.h"
+#include "Core/NodeInstance.h"
 #include "TextureHandling/Loading/TextureLoader.h"
 
 namespace Vixen::RenderGraph {
@@ -51,12 +51,9 @@ private:
  */
 class TextureLoaderNodeType : public NodeType {
 public:
-    TextureLoaderNodeType();
+    TextureLoaderNodeType( const std::string& typeName = "TextureLoader");
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) const override;
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 } // namespace Vixen::RenderGraph

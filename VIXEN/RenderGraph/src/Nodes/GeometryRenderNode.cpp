@@ -1,4 +1,4 @@
-#include "RenderGraph/Nodes/GeometryRenderNode.h"
+#include "Nodes/GeometryRenderNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <cstring>
 
@@ -6,9 +6,7 @@ namespace Vixen::RenderGraph {
 
 // ====== GeometryRenderNodeType ======
 
-GeometryRenderNodeType::GeometryRenderNodeType() {
-    typeId = 109; // Unique ID
-    typeName = "GeometryRender";
+GeometryRenderNodeType::GeometryRenderNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -26,13 +24,11 @@ GeometryRenderNodeType::GeometryRenderNodeType() {
 }
 
 std::unique_ptr<NodeInstance> GeometryRenderNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<GeometryRenderNode>(
         instanceName,
-        const_cast<GeometryRenderNodeType*>(this),
-        device
+        const_cast<GeometryRenderNodeType*>(this)
     );
 }
 
@@ -40,10 +36,9 @@ std::unique_ptr<NodeInstance> GeometryRenderNodeType::CreateInstance(
 
 GeometryRenderNode::GeometryRenderNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : NodeInstance(instanceName, nodeType)
 {
     // Initialize clear values
     clearColor.color.float32[0] = 0.0f;

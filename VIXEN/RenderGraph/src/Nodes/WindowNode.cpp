@@ -1,16 +1,14 @@
-#include "RenderGraph/Nodes/WindowNode.h"
+#include "Nodes/WindowNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanApplicationBase.h"
 #include <iostream>
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== WindowNodeType ======
 
-WindowNodeType::WindowNodeType() {
-    typeId = 111;
-    typeName = "Window";
+WindowNodeType::WindowNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = false;
@@ -27,25 +25,17 @@ WindowNodeType::WindowNodeType() {
     outputSchema = config.GetOutputVector();
 }
 
-std::unique_ptr<NodeInstance> WindowNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
-) const {
-    return std::make_unique<WindowNode>(
-        instanceName,
-        const_cast<WindowNodeType*>(this),
-        device
-    );
+std::unique_ptr<NodeInstance> WindowNodeType::CreateInstance(const std::string& instanceName) const {
+    return std::make_unique<WindowNode>(instanceName, const_cast<WindowNodeType*>(this));
 }
 
 // ====== WindowNode ======
 
 WindowNode::WindowNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<WindowNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<WindowNodeConfig>(instanceName, nodeType)
 {
 }
 

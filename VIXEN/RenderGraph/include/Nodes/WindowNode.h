@@ -1,7 +1,7 @@
 #pragma once
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/NodeType.h"
-#include "RenderGraph/Nodes/WindowNodeConfig.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
+#include "Nodes/WindowNodeConfig.h"
 #include <memory>
 
 #ifdef _WIN32
@@ -16,13 +16,10 @@ namespace Vixen::RenderGraph {
  */
 class WindowNodeType : public NodeType {
 public:
-    WindowNodeType();
+    WindowNodeType(const std::string& typeName = "Window");
     virtual ~WindowNodeType() = default;
 
-    std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
-    ) const override;
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };
 
 /**
@@ -41,8 +38,7 @@ class WindowNode : public TypedNode<WindowNodeConfig> {
 public:
     WindowNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~WindowNode();
 

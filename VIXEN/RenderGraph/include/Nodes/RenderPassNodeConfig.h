@@ -1,7 +1,7 @@
 #pragma once
 
-#include "RenderGraph/ResourceConfig.h"
-#include "RenderGraph/NodeInstance.h"  // For enums
+#include "Core/ResourceConfig.h"
+#include "Core/NodeInstance.h" 
 
 namespace Vixen::RenderGraph {
 

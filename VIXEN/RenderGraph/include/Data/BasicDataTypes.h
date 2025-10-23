@@ -64,4 +64,5 @@ struct WorkloadMetrics {
     bool canRunInParallel = true;
     uint32_t preferredBatchSize = 1;      // For instanced operations
 };
+
 }

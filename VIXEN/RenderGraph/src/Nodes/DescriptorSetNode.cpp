@@ -1,6 +1,6 @@
-﻿#include "RenderGraph/Nodes/DescriptorSetNode.h"
+﻿#include "Nodes/DescriptorSetNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "ShaderManagement/ShaderProgram.h"
 #include <unordered_set>

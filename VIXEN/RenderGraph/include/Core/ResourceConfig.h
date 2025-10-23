@@ -402,11 +402,4 @@ constexpr bool ValidateSlotIndex() {
     return SlotType::index == ExpectedIndex;
 }
 
-/**
- * @brief Get slot type as compile-time string (for error messages)
- */
-template<typename T>
-constexpr const char* GetTypeName() {
-    return T.name;
-}
 } // namespace Vixen::RenderGraph

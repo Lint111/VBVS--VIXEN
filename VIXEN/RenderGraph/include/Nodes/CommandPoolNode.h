@@ -1,7 +1,7 @@
 #pragma once
 
-#include "RenderGraph/TypedNodeInstance.h"
-#include "RenderGraph/Nodes/CommandPoolNodeConfig.h"
+#include "Core/TypedNodeInstance.h"
+#include "Nodes/CommandPoolNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

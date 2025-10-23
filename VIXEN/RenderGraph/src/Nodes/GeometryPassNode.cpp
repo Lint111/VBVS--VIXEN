@@ -1,13 +1,11 @@
-#include "RenderGraph/Nodes/GeometryPassNode.h"
+#include "Nodes/GeometryPassNode.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== GeometryPassNodeType ======
 
-GeometryPassNodeType::GeometryPassNodeType() {
-    typeId = 1; // Unique ID for this type
-    typeName = "GeometryPass";
+GeometryPassNodeType::GeometryPassNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -62,20 +60,18 @@ GeometryPassNodeType::GeometryPassNodeType() {
 }
 
 std::unique_ptr<NodeInstance> GeometryPassNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
-    return std::make_unique<GeometryPassNode>(instanceName, const_cast<GeometryPassNodeType*>(this), device);
+    return std::make_unique<GeometryPassNode>(instanceName, this);
 }
 
 // ====== GeometryPassNode ======
 
 GeometryPassNode::GeometryPassNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : NodeInstance(instanceName, nodeType)
 {
 }
 

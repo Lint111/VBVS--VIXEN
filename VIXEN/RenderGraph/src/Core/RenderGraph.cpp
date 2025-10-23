@@ -1,6 +1,7 @@
-#include "RenderGraph/RenderGraph.h"
-#include "RenderGraph/Nodes/SwapChainNode.h"
-#include "RenderGraph/Nodes/PresentNode.h"
+#include "Core/RenderGraph.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/PresentNode.h"
+#include "core/Resource.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
@@ -66,7 +67,7 @@ NodeHandle RenderGraph::AddNode(
     }
 
     // Create instance
-    auto instance = type->CreateInstance(instanceName, device);
+    auto instance = type->CreateInstance(instanceName);
     if (!instance) {
         throw std::runtime_error("Failed to create instance for type: " + typeName);
     }

@@ -1,4 +1,4 @@
-#include "RenderGraph/Nodes/GraphicsPipelineNode.h"
+#include "Nodes/GraphicsPipelineNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <cstring>
 
@@ -6,17 +6,11 @@ namespace Vixen::RenderGraph {
 
 // ====== GraphicsPipelineNodeType ======
 
-GraphicsPipelineNodeType::GraphicsPipelineNodeType() {
-    typeId = 108; // Unique ID
-    typeName = "GraphicsPipeline";
+GraphicsPipelineNodeType::GraphicsPipelineNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
-
-    // Inputs are opaque references (set via Set methods)
-
-    // Outputs are opaque (accessed via Get methods)
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 8192; // Pipeline state
@@ -26,13 +20,11 @@ GraphicsPipelineNodeType::GraphicsPipelineNodeType() {
 }
 
 std::unique_ptr<NodeInstance> GraphicsPipelineNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<GraphicsPipelineNode>(
         instanceName,
-        const_cast<GraphicsPipelineNodeType*>(this),
-        device
+        const_cast<GraphicsPipelineNodeType*>(this)
     );
 }
 
@@ -40,10 +32,9 @@ std::unique_ptr<NodeInstance> GraphicsPipelineNodeType::CreateInstance(
 
 GraphicsPipelineNode::GraphicsPipelineNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : NodeInstance(instanceName, nodeType)
 {
 }
 

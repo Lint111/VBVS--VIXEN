@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../NodeType.h"
-#include "../TypedNodeInstance.h"
+#include "Core/NodeType.h"
+#include "Core/TypedNodeInstance.h"
 #include "RenderPassNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -23,8 +23,7 @@ class RenderPassNode : public TypedNode<RenderPassNodeConfig> {
 public:
     RenderPassNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
 
     virtual ~RenderPassNode();
@@ -54,11 +53,10 @@ private:
  */
 class RenderPassNodeType : public NodeType {
 public:
-    RenderPassNodeType();
+    RenderPassNodeType(const std::string& typeName = "RenderPass");
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 

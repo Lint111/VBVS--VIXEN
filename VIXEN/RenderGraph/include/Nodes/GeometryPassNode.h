@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../NodeType.h"
-#include "../NodeInstance.h"
+#include "Core/NodeType.h"
+#include "Core/NodeInstance.h"
 
 namespace Vixen::RenderGraph {
 
@@ -40,11 +40,10 @@ private:
  */
 class GeometryPassNodeType : public NodeType {
 public:
-    GeometryPassNodeType();
+    GeometryPassNodeType(const std::string& typeName = "GeometryPass");
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 

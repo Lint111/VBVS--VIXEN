@@ -1,15 +1,13 @@
-#include "RenderGraph/Nodes/FramebufferNode.h"
+#include "Nodes/FramebufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== FramebufferNodeType ======
 
-FramebufferNodeType::FramebufferNodeType() {
-    typeId = 105; // Unique ID
-    typeName = "Framebuffer";
+FramebufferNodeType::FramebufferNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
@@ -23,24 +21,18 @@ FramebufferNodeType::FramebufferNodeType() {
 }
 
 std::unique_ptr<NodeInstance> FramebufferNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
-    return std::make_unique<FramebufferNode>(
-        instanceName,
-        const_cast<FramebufferNodeType*>(this),
-        device
-    );
+    return std::make_unique<FramebufferNode>(instanceName, const_cast<FramebufferNodeType*>(this));
 }
 
 // ====== FramebufferNode ======
 
 FramebufferNode::FramebufferNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<FramebufferNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<FramebufferNodeConfig>(instanceName, nodeType)
 {
 }
 

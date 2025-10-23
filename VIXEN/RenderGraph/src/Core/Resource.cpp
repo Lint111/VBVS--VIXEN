@@ -1,4 +1,4 @@
-#include "RenderGraph/Resource.h"
+#include "Core/Resource.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <stdexcept>
 

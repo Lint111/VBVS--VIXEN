@@ -1,15 +1,13 @@
-#include "RenderGraph/Nodes/ShaderLibraryNode.h"
+#include "Nodes/ShaderLibraryNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== ShaderLibraryNodeType ======
 
-ShaderLibraryNodeType::ShaderLibraryNodeType() {
-    typeId = 110; // Unique ID
-    typeName = "ShaderLibrary";
+ShaderLibraryNodeType::ShaderLibraryNodeType( const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::None;  // Not a pipeline node
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = false;
@@ -28,13 +26,11 @@ ShaderLibraryNodeType::ShaderLibraryNodeType() {
 }
 
 std::unique_ptr<NodeInstance> ShaderLibraryNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<ShaderLibraryNode>(
         instanceName,
-        const_cast<ShaderLibraryNodeType*>(this),
-        device
+        const_cast<ShaderLibraryNodeType*>(this)
     );
 }
 
@@ -42,10 +38,9 @@ std::unique_ptr<NodeInstance> ShaderLibraryNodeType::CreateInstance(
 
 ShaderLibraryNode::ShaderLibraryNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<ShaderLibraryNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<ShaderLibraryNodeConfig>(instanceName, nodeType)
     , shaderLib(std::make_unique<ShaderManagement::ShaderLibrary>())
 {
 }

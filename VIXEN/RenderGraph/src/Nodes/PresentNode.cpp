@@ -1,13 +1,11 @@
-#include "RenderGraph/Nodes/PresentNode.h"
+#include "Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
 
 // ====== PresentNodeType ======
 
-PresentNodeType::PresentNodeType() {
-    typeId = 110; // Unique ID
-    typeName = "Present";
+PresentNodeType::PresentNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
     supportsInstancing = false; // Only one present operation at a time
@@ -25,13 +23,10 @@ PresentNodeType::PresentNodeType() {
 }
 
 std::unique_ptr<NodeInstance> PresentNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<PresentNode>(
-        instanceName,
-        const_cast<PresentNodeType*>(this),
-        device
+        instanceName
     );
 }
 
@@ -39,10 +34,9 @@ std::unique_ptr<NodeInstance> PresentNodeType::CreateInstance(
 
 PresentNode::PresentNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
-)
-    : NodeInstance(instanceName, nodeType, device)
+    NodeType* nodeType
+) 
+    : NodeInstance(instanceName, nodeType)
 {
 }
 

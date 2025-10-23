@@ -1,6 +1,6 @@
-#include "RenderGraph/Nodes/CommandPoolNode.h"
+#include "Nodes/CommandPoolNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {

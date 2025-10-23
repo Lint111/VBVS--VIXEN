@@ -1,6 +1,6 @@
-#include "RenderGraph/Nodes/DepthBufferNode.h"
+#include "Nodes/DepthBufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include <sstream>
 

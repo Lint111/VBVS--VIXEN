@@ -1,6 +1,6 @@
-#include "RenderGraph/Nodes/VertexBufferNode.h"
+#include "Nodes/VertexBufferNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "RenderGraph/NodeLogging.h"
+#include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include <cstring>
 
@@ -8,9 +8,8 @@ namespace Vixen::RenderGraph {
 
 // ====== VertexBufferNodeType ======
 
-VertexBufferNodeType::VertexBufferNodeType() {
+VertexBufferNodeType::VertexBufferNodeType(const std::string& typeName) : NodeType(typeName) {
     typeId = 103; // Unique ID
-    typeName = "VertexBuffer";
     pipelineType = PipelineType::Transfer;
     requiredCapabilities = DeviceCapability::Transfer;
     supportsInstancing = true;
@@ -28,25 +27,17 @@ VertexBufferNodeType::VertexBufferNodeType() {
     workloadMetrics.canRunInParallel = true;
 }
 
-std::unique_ptr<NodeInstance> VertexBufferNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
-) const {
-    return std::make_unique<VertexBufferNode>(
-        instanceName,
-        const_cast<VertexBufferNodeType*>(this),
-        device
-    );
+std::unique_ptr<NodeInstance> VertexBufferNodeType::CreateInstance(const std::string& instanceName) const {
+    return std::make_unique<VertexBufferNode>(instanceName, const_cast<VertexBufferNodeType*>(this));
 }
 
 // ====== VertexBufferNode ======
 
 VertexBufferNode::VertexBufferNode(
     const std::string& instanceName,
-    NodeType* nodeType,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    NodeType* nodeType
 )
-    : TypedNode<VertexBufferNodeConfig>(instanceName, nodeType, device)
+    : TypedNode<VertexBufferNodeConfig>(instanceName, nodeType)
 {
 }
 

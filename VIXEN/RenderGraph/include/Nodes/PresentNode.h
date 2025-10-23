@@ -1,6 +1,6 @@
 #pragma once
-#include "RenderGraph/NodeInstance.h"
-#include "RenderGraph/NodeType.h"
+#include "Core/NodeInstance.h"
+#include "Core/NodeType.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -15,12 +15,11 @@ namespace Vixen::RenderGraph {
  */
 class PresentNodeType : public NodeType {
 public:
-    PresentNodeType();
+    PresentNodeType(const std::string& typeName = "Present");
     virtual ~PresentNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
-        const std::string& instanceName,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        const std::string& instanceName
     ) const override;
 };
 
@@ -44,8 +43,7 @@ class PresentNode : public NodeInstance {
 public:
     PresentNode(
         const std::string& instanceName,
-        NodeType* nodeType,
-        Vixen::Vulkan::Resources::VulkanDevice* device
+        NodeType* nodeType
     );
     virtual ~PresentNode();
 

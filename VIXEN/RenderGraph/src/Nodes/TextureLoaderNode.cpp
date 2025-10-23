@@ -1,4 +1,4 @@
-#include "RenderGraph/Nodes/TextureLoaderNode.h"
+#include "Nodes/TextureLoaderNode.h"
 #include "TextureHandling/Loading/STBTextureLoader.h"
 #include "VulkanResources/VulkanDevice.h"
 
@@ -6,9 +6,7 @@ namespace Vixen::RenderGraph {
 
 // ====== TextureLoaderNodeType ======
 
-TextureLoaderNodeType::TextureLoaderNodeType() {
-    typeId = 100; // Unique ID
-    typeName = "TextureLoader";
+TextureLoaderNodeType::TextureLoaderNodeType(const std::string& typeName) : NodeType(typeName) {
     pipelineType = PipelineType::Transfer;
     requiredCapabilities = DeviceCapability::Transfer;
     supportsInstancing = true;
@@ -43,13 +41,10 @@ TextureLoaderNodeType::TextureLoaderNodeType() {
 }
 
 std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
-    const std::string& instanceName,
-    Vixen::Vulkan::Resources::VulkanDevice* device
+    const std::string& instanceName
 ) const {
     return std::make_unique<TextureLoaderNode>(
-        instanceName,
-        const_cast<TextureLoaderNodeType*>(this),
-        device
+        instanceName
     );
 }
 
@@ -60,7 +55,7 @@ TextureLoaderNode::TextureLoaderNode(
     NodeType* nodeType,
     Vixen::Vulkan::Resources::VulkanDevice* device
 )
-    : NodeInstance(instanceName, nodeType, device)
+    : NodeInstance(instanceName, nodeType)
 {
     memset(&textureData, 0, sizeof(textureData));
 }
