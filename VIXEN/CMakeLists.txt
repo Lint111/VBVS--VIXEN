@@ -273,3 +273,36 @@ set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD_REQUIRED ON)
 if(MSVC)
     target_compile_options(${Recipe_Name} PRIVATE /FS)
 endif()
+
+# ============================================================================
+# TESTING INFRASTRUCTURE
+# ============================================================================
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+    # Enable testing with CTest
+    enable_testing()
+
+    # Fetch Google Test framework
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+        GIT_SHALLOW    TRUE
+    )
+
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+    # Don't install GTest when installing our project
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(googletest)
+
+    # Add tests subdirectory
+    add_subdirectory(tests)
+
+    message(STATUS "Unit tests enabled - use 'ctest' or 'make test' to run")
+else()
+    message(STATUS "Unit tests disabled - use -DBUILD_TESTS=ON to enable")
+endif()
