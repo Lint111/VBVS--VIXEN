@@ -145,10 +145,14 @@ void WindowNode::Compile() {
     // Get destroy function
     fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
 
-    // Store in type-safe output using named slot from config (NEW VARIANT API)
+    // Store all outputs in type-safe slots (NEW VARIANT API)
     Out(WindowNodeConfig::SURFACE, surface);
+    Out(WindowNodeConfig::HWND_OUT, window);
+    Out(WindowNodeConfig::HINSTANCE_OUT, hInstance);
+    Out(WindowNodeConfig::WIDTH_OUT, width);
+    Out(WindowNodeConfig::HEIGHT_OUT, height);
 
-    NODE_LOG_INFO("[WindowNode] Surface created and stored in output");
+    NODE_LOG_INFO("[WindowNode] Surface created and all window data stored in outputs");
 #endif
 }
 

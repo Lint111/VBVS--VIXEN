@@ -1,5 +1,6 @@
 #include "Nodes/SwapChainNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 
@@ -11,9 +12,10 @@ SwapChainNodeType::SwapChainNodeType(const std::string& typeName) : NodeType(typ
     supportsInstancing = false; // Only one swapchain per render graph
     maxInstances = 1;
 
-    // No inputs
-
-    // Outputs are opaque (accessed via Get methods)
+    // Populate schema from config
+    SwapChainNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 32 * 1024 * 1024; // ~32MB for swapchain images
@@ -51,11 +53,15 @@ void SwapChainNode::Setup() {
     // This method creates synchronization primitives
 
     if (!swapChainWrapper) {
-        throw std::runtime_error("SwapChainNode::Setup - swapchain wrapper is null");
+        std::string errorMsg = "SwapChainNode::Setup - swapchain wrapper is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     if (swapChainWrapper->scPublicVars.swapChainImageCount == 0) {
-        throw std::runtime_error("SwapChainNode::Setup - swapchain has no images");
+        std::string errorMsg = "SwapChainNode::Setup - swapchain has no images";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Create semaphores for image acquisition
@@ -69,7 +75,9 @@ void SwapChainNode::Setup() {
     for (uint32_t i = 0; i < imageCount; i++) {
         VkResult result = vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
         if (result != VK_SUCCESS) {
-            throw std::runtime_error("SwapChainNode: Failed to create image available semaphore");
+            std::string errorMsg = "SwapChainNode::Setup - Failed to create image available semaphore";
+            NODE_LOG_ERROR(errorMsg);
+            throw std::runtime_error(errorMsg);
         }
     }
 
@@ -88,27 +96,41 @@ void SwapChainNode::Compile() {
 
     // Validate inputs
     if (width == 0 || height == 0) {
-        throw std::runtime_error("SwapChainNode: width and height must be greater than 0");
+        std::string errorMsg = "SwapChainNode: width and height must be greater than 0";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (hwnd == nullptr) {
-        throw std::runtime_error("SwapChainNode: HWND is null");
+        std::string errorMsg = "SwapChainNode: HWND is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (hinstance == nullptr) {
-        throw std::runtime_error("SwapChainNode: HINSTANCE is null");
+        std::string errorMsg = "SwapChainNode: HINSTANCE is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (instance == VK_NULL_HANDLE) {
-        throw std::runtime_error("SwapChainNode: VkInstance is null");
+        std::string errorMsg = "SwapChainNode: VkInstance is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (physicalDevice == VK_NULL_HANDLE) {
-        throw std::runtime_error("SwapChainNode: VkPhysicalDevice is null");
+        std::string errorMsg = "SwapChainNode: VkPhysicalDevice is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (logicalDevice == VK_NULL_HANDLE) {
-        throw std::runtime_error("SwapChainNode: VkDevice is null");
+        std::string errorMsg = "SwapChainNode: VkDevice is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Create swapchain wrapper if not set
     if (swapChainWrapper == nullptr) {
-        throw std::runtime_error("SwapChainNode: swapchain wrapper not set - call SetSwapChainWrapper() before Compile()");
+        std::string errorMsg = "SwapChainNode: swapchain wrapper not set - call SetSwapChainWrapper() before Compile()";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // === SWAPCHAIN CREATION PROCESS ===
@@ -116,13 +138,17 @@ void SwapChainNode::Compile() {
     // Step 1: Load swapchain extension function pointers
     VkResult result = swapChainWrapper->CreateSwapChainExtensions(instance, logicalDevice);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("SwapChainNode: Failed to load swapchain extensions");
+        std::string errorMsg = "SwapChainNode: Failed to load swapchain extensions";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Step 2: Create the platform-specific surface
     result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("SwapChainNode: Failed to create VkSurfaceKHR");
+        std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Step 3: Get supported surface formats
@@ -142,7 +168,9 @@ void SwapChainNode::Compile() {
     );
 
     if (graphicsQueueIndex == UINT32_MAX) {
-        throw std::runtime_error("SwapChainNode: No queue family supports both graphics and presentation");
+        std::string errorMsg = "SwapChainNode: No queue family supports both graphics and presentation";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Step 5: Query surface capabilities and present modes
@@ -161,10 +189,14 @@ void SwapChainNode::Compile() {
 
     // Verify swapchain was created successfully
     if (swapChainWrapper->scPublicVars.swapChain == VK_NULL_HANDLE) {
-        throw std::runtime_error("SwapChainNode: Swapchain handle is null after creation");
+        std::string errorMsg = "SwapChainNode: Swapchain handle is null after creation";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (swapChainWrapper->scPublicVars.swapChainImageCount == 0) {
-        throw std::runtime_error("SwapChainNode: No swapchain images were created");
+        std::string errorMsg = "SwapChainNode: No swapchain images were created";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Set swapchain extent for external reference
@@ -183,6 +215,10 @@ void SwapChainNode::Compile() {
 
     // Output 2: Pointer to public swapchain variables (NEW VARIANT API)
     Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
+
+    // Output 3-4: Width and height as typed primitives
+    Out(SwapChainNodeConfig::WIDTH_OUT, width);
+    Out(SwapChainNodeConfig::HEIGHT_OUT, height);
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
@@ -260,7 +296,9 @@ void SwapChainNode::SetSwapChainWrapper(VulkanSwapChain* swapchain) {
 
 uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     if (!swapChainWrapper) {
-        throw std::runtime_error("SwapChainNode: swapchain wrapper not set");
+        std::string errorMsg = "SwapChainNode: swapchain wrapper not set";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     VkResult result = swapChainWrapper->fpAcquireNextImageKHR(
@@ -273,7 +311,9 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     );
 
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        throw std::runtime_error("SwapChainNode: failed to acquire swapchain image");
+        std::string errorMsg = "SwapChainNode: failed to acquire swapchain image";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     return currentImageIndex;
@@ -281,7 +321,9 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
 
 void SwapChainNode::Recreate(uint32_t newWidth, uint32_t newHeight) {
     if (!swapChainWrapper) {
-        throw std::runtime_error("SwapChainNode: swapchain wrapper not set");
+        std::string errorMsg = "SwapChainNode: swapchain wrapper not set";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     width = newWidth;

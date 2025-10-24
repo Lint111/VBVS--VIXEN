@@ -95,11 +95,13 @@ void DeviceNode::Compile() {
     // Create logical device using VulkanDevice wrapper
     CreateLogicalDevice();
 
-    // Store VulkanDevice* in output slot (type-punned as VkDevice) (NEW VARIANT API)
-    // Downstream nodes will cast this back to VulkanDevice*
+    // Store all outputs in slots (NEW VARIANT API)
+    // Downstream nodes will cast VulkanDevice* back from VkDevice
     Out(DeviceNodeConfig::DEVICE, reinterpret_cast<VkDevice>(vulkanDevice.get()));
+    Out(DeviceNodeConfig::INSTANCE, instance);
+    Out(DeviceNodeConfig::PHYSICAL_DEVICE, *vulkanDevice->gpu);  // Dereference pointer
 
-    NODE_LOG_INFO("[DeviceNode] Compile complete");
+    NODE_LOG_INFO("[DeviceNode] Compile complete - device, instance, and physical device stored in outputs");
 }
 
 void DeviceNode::Execute(VkCommandBuffer commandBuffer) {

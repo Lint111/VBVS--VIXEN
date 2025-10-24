@@ -28,7 +28,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
     static constexpr size_t INPUTS = 7;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t OUTPUTS = 5;  // Added WIDTH_OUT, HEIGHT_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -54,13 +54,17 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // Required logical device from DeviceNode
     CONSTEXPR_INPUT(DEVICE, VkDevice, 6, false);
 
-    // ===== OUTPUTS (3) =====
+    // ===== OUTPUTS (5) =====
     // Swapchain images (required)
     CONSTEXPR_OUTPUT(SWAPCHAIN_IMAGES, VkImage, 0, false);
 
     // Additional outputs: swapchain handle and public variables
     CONSTEXPR_OUTPUT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 1, false);
     CONSTEXPR_OUTPUT(SWAPCHAIN_PUBLIC, ::SwapChainPublicVariables*, 2, true);
+    
+    // Width and height outputs (for downstream nodes)
+    CONSTEXPR_OUTPUT(WIDTH_OUT, uint32_t, 3, false);
+    CONSTEXPR_OUTPUT(HEIGHT_OUT, uint32_t, 4, false);
 
 
     SwapChainNodeConfig() {
@@ -127,6 +131,16 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque pointer to public variables
         );
+
+        INIT_OUTPUT_DESC(WIDTH_OUT, "width_out",
+            ResourceLifetime::Persistent,
+            BufferDescription{}  // uint32_t width
+        );
+
+        INIT_OUTPUT_DESC(HEIGHT_OUT, "height_out",
+            ResourceLifetime::Persistent,
+            BufferDescription{}  // uint32_t height
+        );
     }
 
     // Compile-time validations
@@ -176,10 +190,19 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_IMAGES_Slot::Type, VkImage>);
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
+
+    static_assert(WIDTH_OUT_Slot::index == 3, "WIDTH_OUT must be at index 3");
+    static_assert(!WIDTH_OUT_Slot::nullable, "WIDTH_OUT is required");
+
+    static_assert(HEIGHT_OUT_Slot::index == 4, "HEIGHT_OUT must be at index 4");
+    static_assert(!HEIGHT_OUT_Slot::nullable, "HEIGHT_OUT is required");
+
+    static_assert(std::is_same_v<WIDTH_OUT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<HEIGHT_OUT_Slot::Type, uint32_t>);
 };
 
 // Global compile-time validations
 static_assert(SwapChainNodeConfig::INPUT_COUNT == 7);
-static_assert(SwapChainNodeConfig::OUTPUT_COUNT == 3);
+static_assert(SwapChainNodeConfig::OUTPUT_COUNT == 5);
 
 } // namespace Vixen::RenderGraph

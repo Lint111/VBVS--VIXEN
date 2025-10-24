@@ -136,4 +136,22 @@ bool NodeType::ProduceResourceType(ResourceType resourceType) const {
     return false;
 }
 
+bool NodeType::ValidateInputs(const std::vector<Resource*>& inputs) const {
+    // Default implementation: validate input count matches schema
+    if (inputs.size() != inputSchema.size()) {
+        return false;
+    }
+    // TODO: Add type checking when Resource types are fully implemented
+    return true;
+}
+
+bool NodeType::ValidateOutputs(const std::vector<Resource*>& outputs) const {
+    // Default implementation: validate output count matches schema
+    if (outputs.size() != outputSchema.size()) {
+        return false;
+    }
+    // TODO: Add type checking when Resource types are fully implemented
+    return true;
+}
+
 } // namespace Vixen::RenderGraph

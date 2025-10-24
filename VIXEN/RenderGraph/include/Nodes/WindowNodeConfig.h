@@ -7,7 +7,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts (declared early for reuse)
 namespace WindowNodeCounts {
     static constexpr size_t INPUTS = 0;
-    static constexpr size_t OUTPUTS = 1;
+    static constexpr size_t OUTPUTS = 5;  // SURFACE, HWND, HINSTANCE, WIDTH, HEIGHT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -18,18 +18,24 @@ namespace WindowNodeCounts {
  * Runtime code is just array[0] access - zero overhead.
  *
  * Inputs: 0
- * Outputs: 1 (SURFACE: VkSurfaceKHR, required)
+ * Outputs: 5
+ *   - SURFACE (VkSurfaceKHR) - Vulkan surface
+ *   - HWND (::HWND) - Windows window handle
+ *   - HINSTANCE (::HINSTANCE) - Windows instance handle
+ *   - WIDTH (uint32_t) - Window width
+ *   - HEIGHT (uint32_t) - Window height
  * Parameters: width, height
  */
 CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 
                       WindowNodeCounts::INPUTS, 
                       WindowNodeCounts::OUTPUTS, 
                       WindowNodeCounts::ARRAY_MODE) {
-    // Compile-time output slot definition
-    // This creates:
-    // - Type alias: SURFACE_Slot = ResourceSlot<VkSurfaceKHR, 0, false>
-    // - Constexpr constant: static constexpr SURFACE_Slot SURFACE{};
+    // Compile-time output slot definitions
     CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);
+    CONSTEXPR_OUTPUT(HWND_OUT, ::HWND, 1, false);
+    CONSTEXPR_OUTPUT(HINSTANCE_OUT, ::HINSTANCE, 2, false);
+    CONSTEXPR_OUTPUT(WIDTH_OUT, uint32_t, 3, false);
+    CONSTEXPR_OUTPUT(HEIGHT_OUT, uint32_t, 4, false);
 
     // Compile-time parameter names (constexpr strings for type safety)
     static constexpr const char* PARAM_WIDTH = "width";
@@ -39,20 +45,39 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
     // (descriptors contain strings which can't be fully constexpr)
     WindowNodeConfig() {
         // Runtime descriptor initialization
-        // Uses compile-time constants from SURFACE slot
         ImageDescription surfaceDesc{};
         surfaceDesc.width = 0;
         surfaceDesc.height = 0;
         surfaceDesc.format = VK_FORMAT_UNDEFINED;
         surfaceDesc.usage = ResourceUsage::ColorAttachment;
-
         INIT_OUTPUT_DESC(SURFACE, "surface", ResourceLifetime::Persistent, surfaceDesc);
+
+        // HWND handle
+        HandleDescriptor hwndDesc{"HWND"};
+        INIT_OUTPUT_DESC(HWND_OUT, "hwnd", ResourceLifetime::Persistent, hwndDesc);
+
+        // HINSTANCE handle
+        HandleDescriptor hinstanceDesc{"HINSTANCE"};
+        INIT_OUTPUT_DESC(HINSTANCE_OUT, "hinstance", ResourceLifetime::Persistent, hinstanceDesc);
+
+        // Width parameter as output
+        BufferDescription widthDesc{};
+        INIT_OUTPUT_DESC(WIDTH_OUT, "width", ResourceLifetime::Persistent, widthDesc);
+
+        // Height parameter as output
+        BufferDescription heightDesc{};
+        INIT_OUTPUT_DESC(HEIGHT_OUT, "height", ResourceLifetime::Persistent, heightDesc);
     }
 
     // Optional: Compile-time validation
     static_assert(SURFACE_Slot::index == 0, "SURFACE must be at index 0");
     static_assert(!SURFACE_Slot::nullable, "SURFACE must not be nullable");
     static_assert(std::is_same_v<SURFACE_Slot::Type, VkSurfaceKHR>, "SURFACE must be VkSurfaceKHR");
+    
+    static_assert(HWND_OUT_Slot::index == 1, "HWND_OUT must be at index 1");
+    static_assert(HINSTANCE_OUT_Slot::index == 2, "HINSTANCE_OUT must be at index 2");
+    static_assert(WIDTH_OUT_Slot::index == 3, "WIDTH_OUT must be at index 3");
+    static_assert(HEIGHT_OUT_Slot::index == 4, "HEIGHT_OUT must be at index 4");
     
     // Validate counts match expectations
     static_assert(INPUT_COUNT == WindowNodeCounts::INPUTS, "Input count mismatch");

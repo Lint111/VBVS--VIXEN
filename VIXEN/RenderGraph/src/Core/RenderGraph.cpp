@@ -108,11 +108,17 @@ void RenderGraph::ConnectNodes(
     NodeType* toType = toNode->GetNodeType();
 
     if (outputIdx >= fromType->GetOutputCount()) {
-        throw std::runtime_error("Invalid output index for node: " + fromNode->GetInstanceName());
+        std::string error = "Invalid output index " + std::to_string(outputIdx) + 
+                          " (max: " + std::to_string(fromType->GetOutputCount()) + 
+                          ") for node: " + fromNode->GetInstanceName();
+        throw std::runtime_error(error);
     }
 
     if (inputIdx >= toType->GetInputCount()) {
-        throw std::runtime_error("Invalid input index for node: " + toNode->GetInstanceName());
+        std::string error = "Invalid input index " + std::to_string(inputIdx) + 
+                          " (max: " + std::to_string(toType->GetInputCount()) + 
+                          ") for node: " + toNode->GetInstanceName();
+        throw std::runtime_error(error);
     }
 
     // Create or get resource for the output

@@ -229,11 +229,12 @@ add_subdirectory(RenderGraph)
 # Main application files
 file(GLOB MAIN_CPP_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplication.cpp
+    # Legacy files - commented out for graph-based architecture migration
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplication.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanRenderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDrawable.cpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanRenderer.cpp
+    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDrawable.cpp
 )
 
 # All headers (for IDE project generation)

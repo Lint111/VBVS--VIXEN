@@ -2,6 +2,7 @@
 #include "VulkanSwapChain.h"
 #include "MeshData.h"
 #include "Logger.h"
+#include "Core/TypedConnection.h"  // Typed slot connection helpers
 
 // Global VkInstance for nodes to access (temporary Phase 1 hack)
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
@@ -9,6 +10,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 // Include all node types
 #include "Nodes/WindowNode.h"
 #include "Nodes/DeviceNode.h"
+#include "Nodes/CommandPoolNode.h"
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/SwapChainNode.h"
@@ -252,9 +254,10 @@ void VulkanGraphApplication::RegisterNodeTypes() {
 
     mainLogger->Info("Registering all built-in node types");
 
-    // Register all 13 node types
+    // Register all 14 node types
     nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DeviceNodeType>());
+    nodeRegistry->RegisterNodeType(std::make_unique<CommandPoolNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DepthBufferNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<SwapChainNodeType>());
@@ -267,7 +270,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
 
-    mainLogger->Info("Successfully registered 13 node types");
+    mainLogger->Info("Successfully registered 14 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -276,17 +279,217 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return;
     }
 
-    mainLogger->Info("Building Phase 1 MVP render graph (Window only)");
+    mainLogger->Info("Building complete render pipeline with typed connections");
 
-    // ==== Phase 1: Bare Minimum ====
-    // Just window creation for now
+    // ===================================================================
+    // PHASE 1: Create all nodes
+    // ===================================================================
 
-    // 1. Window Node (creates window + surface)
-    NodeHandle windowHandle = renderGraph->AddNode("Window", "main_window");
-    auto* windowNode = static_cast<WindowNode*>(renderGraph->GetInstance(windowHandle));
-    // Use typed parameter names from config (compile-time validation)
-    windowNode->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
-    windowNode->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+    // --- Infrastructure Nodes ---
+    NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
+    NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
+    NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
+    NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
-    mainLogger->Info("Phase 1 MVP render graph built with " + std::to_string(renderGraph->GetNodeCount()) + " node(s)");
+    // --- Resource Nodes ---
+    NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
+    NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
+
+    // --- Rendering Configuration Nodes ---
+    NodeHandle renderPassNode = renderGraph->AddNode("RenderPass", "main_pass");
+    NodeHandle framebufferNode = renderGraph->AddNode("Framebuffer", "main_fb");
+    NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
+    NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
+    NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
+
+    // --- Execution Nodes ---
+    NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
+    NodeHandle presentNode = renderGraph->AddNode("Present", "present");
+
+    mainLogger->Info("Created 13 node instances");
+
+    // ===================================================================
+    // PHASE 2: Configure node parameters
+    // ===================================================================
+
+    // Window parameters
+    auto* window = static_cast<WindowNode*>(renderGraph->GetInstance(windowNode));
+    window->SetParameter(WindowNodeConfig::PARAM_WIDTH, width);
+    window->SetParameter(WindowNodeConfig::PARAM_HEIGHT, height);
+
+    // Device parameters (default GPU = 0)
+    auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
+    device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
+
+    // Vertex buffer parameters (simple triangle)
+    auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 3u);
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(float) * 6); // pos(3) + color(3)
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, false);
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u); // No index buffer
+
+    // Render pass parameters
+    auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, static_cast<uint32_t>(VK_ATTACHMENT_LOAD_OP_CLEAR));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, static_cast<uint32_t>(VK_ATTACHMENT_STORE_OP_STORE));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, static_cast<uint32_t>(VK_ATTACHMENT_LOAD_OP_CLEAR));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, static_cast<uint32_t>(VK_ATTACHMENT_STORE_OP_DONT_CARE));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, static_cast<uint32_t>(VK_IMAGE_LAYOUT_UNDEFINED));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, static_cast<uint32_t>(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
+
+    // Framebuffer parameters
+    auto* framebuffer = static_cast<FramebufferNode*>(renderGraph->GetInstance(framebufferNode));
+    framebuffer->SetParameter(FramebufferNodeConfig::PARAM_LAYERS, 1u);
+
+    // Depth buffer parameters
+    auto* depthBuffer = static_cast<DepthBufferNode*>(renderGraph->GetInstance(depthBufferNode));
+    depthBuffer->SetParameter(DepthBufferNodeConfig::PARAM_FORMAT, static_cast<uint32_t>(VK_FORMAT_D32_SFLOAT));
+
+    // Graphics pipeline parameters
+    auto* pipeline = static_cast<GraphicsPipelineNode*>(renderGraph->GetInstance(pipelineNode));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("Back"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
+    pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE, std::string("CounterClockwise"));
+
+    // Geometry render parameters
+    auto* geometryRender = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryRenderNode));
+    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 3u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::INSTANCE_COUNT, 1u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_VERTEX, 0u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_INSTANCE, 0u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.2f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
+
+    // Present parameters
+    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
+    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+
+    mainLogger->Info("Configured all node parameters");
+
+    // ===================================================================
+    // PHASE 3: Wire connections using TypedConnection API
+    // ===================================================================
+
+    using namespace Vixen::RenderGraph;
+
+    mainLogger->Info("Wiring node connections using TypedConnection API");
+
+    // Use ConnectionBatch for atomic registration
+    ConnectionBatch batch(renderGraph.get());
+
+    // --- Window → SwapChain connections ---
+    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
+                  swapChainNode, SwapChainNodeConfig::HWND)
+         .Connect(windowNode, WindowNodeConfig::HINSTANCE_OUT,
+                  swapChainNode, SwapChainNodeConfig::HINSTANCE)
+         .Connect(windowNode, WindowNodeConfig::WIDTH_OUT,
+                  swapChainNode, SwapChainNodeConfig::WIDTH)
+         .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
+                  swapChainNode, SwapChainNodeConfig::HEIGHT);
+
+    // --- Device → SwapChain connections ---
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE,
+                  swapChainNode, SwapChainNodeConfig::INSTANCE)
+         .Connect(deviceNode, DeviceNodeConfig::PHYSICAL_DEVICE,
+                  swapChainNode, SwapChainNodeConfig::PHYSICAL_DEVICE)
+         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
+                  swapChainNode, SwapChainNodeConfig::DEVICE);
+
+    // --- Device → CommandPool connection ---
+    batch.Connect(deviceNode, DeviceNodeConfig::DEVICE,
+                  commandPoolNode, CommandPoolNodeConfig::DeviceObj);
+
+    // --- SwapChain → DepthBuffer connections ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  depthBufferNode, DepthBufferNodeConfig::WIDTH)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  depthBufferNode, DepthBufferNodeConfig::HEIGHT);
+
+    // --- CommandPool → DepthBuffer connection ---
+    batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  depthBufferNode, DepthBufferNodeConfig::COMMAND_POOL);
+
+    // --- SwapChain → RenderPass connection (color format) ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  renderPassNode, RenderPassNodeConfig::COLOR_FORMAT);
+
+    // --- DepthBuffer → RenderPass connection (depth format) ---
+    batch.Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT,
+                  renderPassNode, RenderPassNodeConfig::DEPTH_FORMAT);
+
+    // --- RenderPass + SwapChain + DepthBuffer → Framebuffer connections ---
+    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
+                  framebufferNode, FramebufferNodeConfig::RENDER_PASS)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_IMAGES,
+                  framebufferNode, FramebufferNodeConfig::COLOR_ATTACHMENTS)
+         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
+                  framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  framebufferNode, FramebufferNodeConfig::WIDTH)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  framebufferNode, FramebufferNodeConfig::HEIGHT);
+
+    // --- ShaderLibrary + RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
+    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_PROGRAMS,
+                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_PROGRAM)
+         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
+                  pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
+         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  pipelineNode, GraphicsPipelineNodeConfig::VIEWPORT)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  pipelineNode, GraphicsPipelineNodeConfig::SCISSOR);
+
+    // --- All resources → GeometryRender connections ---
+    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_PASS)
+         .Connect(framebufferNode, FramebufferNodeConfig::FRAMEBUFFERS,
+                  geometryRenderNode, GeometryRenderNodeConfig::FRAMEBUFFERS)
+         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE,
+                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE)
+         .Connect(pipelineNode, GraphicsPipelineNodeConfig::PIPELINE_LAYOUT,
+                  geometryRenderNode, GeometryRenderNodeConfig::PIPELINE_LAYOUT)
+         .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  geometryRenderNode, GeometryRenderNodeConfig::DESCRIPTOR_SETS)
+         .Connect(vertexBufferNode, VertexBufferNodeConfig::VERTEX_BUFFER,
+                  geometryRenderNode, GeometryRenderNodeConfig::VERTEX_BUFFER)
+         .Connect(vertexBufferNode, VertexBufferNodeConfig::INDEX_BUFFER,
+                  geometryRenderNode, GeometryRenderNodeConfig::INDEX_BUFFER)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  geometryRenderNode, GeometryRenderNodeConfig::VIEWPORT)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  geometryRenderNode, GeometryRenderNodeConfig::SCISSOR)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_WIDTH)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_HEIGHT);
+
+    // --- SwapChain + GeometryRender → Present connections ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
+                  presentNode, PresentNodeConfig::SWAPCHAIN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  presentNode, PresentNodeConfig::IMAGE_INDEX)
+         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
+                  presentNode, PresentNodeConfig::QUEUE)
+         .Connect(geometryRenderNode, GeometryRenderNodeConfig::COMMAND_BUFFERS,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
+         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
+                  presentNode, PresentNodeConfig::PRESENT_FUNCTION);
+
+    // Atomically register all connections
+    batch.RegisterAll();
+
+    mainLogger->Info("Successfully wired " + std::to_string(batch.GetConnectionCount()) + " connections");
+    mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }
