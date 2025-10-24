@@ -1,8 +1,8 @@
 #pragma once
 
 #include "VulkanApplicationBase.h"
-#include "RenderGraph/RenderGraph.h"
-#include "RenderGraph/NodeTypeRegistry.h"
+#include "Core/RenderGraph.h"
+#include "Core/NodeTypeRegistry.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include <memory>

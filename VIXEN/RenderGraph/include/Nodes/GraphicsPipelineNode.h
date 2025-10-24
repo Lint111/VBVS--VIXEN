@@ -1,6 +1,7 @@
 #pragma once
-#include "Core/NodeInstance.h"
+#include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Nodes/GraphicsPipelineNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -26,28 +27,12 @@ public:
 /**
  * @brief Node instance for graphics pipeline creation
  * 
- * Parameters:
- * - enableDepthTest (bool): Enable depth testing (default: true)
- * - enableDepthWrite (bool): Enable depth writes (default: true)
- * - enableVertexInput (bool): Enable vertex input (default: true)
- * - cullMode (string): Cull mode - "None", "Front", "Back", "FrontAndBack" (default: "Back")
- * - polygonMode (string): Polygon mode - "Fill", "Line", "Point" (default: "Fill")
- * - topology (string): Primitive topology - "TriangleList", "TriangleStrip", etc. (default: "TriangleList")
- * - frontFace (string): Front face - "Clockwise", "CounterClockwise" (default: "CounterClockwise")
+ * Now uses TypedNode<GraphicsPipelineNodeConfig> for compile-time type safety.
+ * All inputs/outputs are accessed via the typed config slot API.
  * 
- * Inputs (opaque references):
- * - shaderStages: Shader modules from ShaderLibraryNode
- * - renderPass: Render pass from RenderPassNode
- * - vertexInputDescription: From VertexBufferNode
- * - descriptorSetLayout: From DescriptorSetNode
- * - viewport: Viewport configuration
- * - scissor: Scissor rectangle
- * 
- * Outputs:
- * - pipeline: Created graphics pipeline handle
- * - pipelineLayout: Pipeline layout with descriptor set layouts
+ * See GraphicsPipelineNodeConfig.h for slot definitions and parameters.
  */
-class GraphicsPipelineNode : public NodeInstance {
+class GraphicsPipelineNode : public TypedNode<GraphicsPipelineNodeConfig> {
 public:
     GraphicsPipelineNode(
         const std::string& instanceName,
@@ -60,39 +45,13 @@ public:
     void Execute(VkCommandBuffer commandBuffer) override;
     void Cleanup() override;
 
-    // Accessors for other nodes
-    VkPipeline GetPipeline() const { return pipeline; }
-    VkPipelineLayout GetPipelineLayout() const { return pipelineLayout; }
-    VkPipelineCache GetPipelineCache() const { return pipelineCache; }
-
-    // Set input references from other nodes
-    void SetShaderStages(const VkPipelineShaderStageCreateInfo* stages, uint32_t count);
-    void SetRenderPass(VkRenderPass renderPass);
-    void SetVertexInput(const VkVertexInputBindingDescription* binding,
-                        const VkVertexInputAttributeDescription* attributes,
-                        uint32_t attributeCount);
-    void SetDescriptorSetLayout(VkDescriptorSetLayout layout);
-    void SetViewport(const VkViewport& viewport);
-    void SetScissor(const VkRect2D& scissor);
-
 private:
-    // Pipeline resources
+    // Pipeline resources (outputs)
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
 
-    // Input references
-    const VkPipelineShaderStageCreateInfo* shaderStages = nullptr;
-    uint32_t shaderStageCount = 0;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    const VkVertexInputBindingDescription* vertexBinding = nullptr;
-    const VkVertexInputAttributeDescription* vertexAttributes = nullptr;
-    uint32_t vertexAttributeCount = 0;
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-    VkViewport viewport{};
-    VkRect2D scissor{};
-
-    // Configuration
+    // Configuration from parameters
     bool enableDepthTest = true;
     bool enableDepthWrite = true;
     bool enableVertexInput = true;

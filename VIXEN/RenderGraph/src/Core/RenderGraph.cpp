@@ -265,12 +265,11 @@ VkResult RenderGraph::RenderFrame() {
 
             node->SetState(NodeState::Executing);
 
-            // PHASE 1 HACK: After SwapChainNode executes, wire its outputs to PresentNode
-            if (node->GetNodeType()->GetTypeName() == "SwapChain" && swapChainNode && presentNode) {
-                presentNode->SetSwapchain(swapChainNode->GetSwapchain());
-                presentNode->SetImageIndex(swapChainNode->GetCurrentImageIndex());
-                presentNode->SetRenderCompleteSemaphore(VK_NULL_HANDLE); // No rendering yet
-            }
+            // NOTE: Legacy PHASE 1 HACK removed - PresentNode now uses typed slots.
+            // SwapChain → PresentNode connections should be established via:
+            // Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN, presentNode, PresentNodeConfig::SWAPCHAIN)
+            // Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
+            // etc.
 
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
             node->Execute(VK_NULL_HANDLE);
@@ -279,10 +278,8 @@ VkResult RenderGraph::RenderFrame() {
         }
     }
 
-    // Get result from PresentNode
-    if (presentNode) {
-        return presentNode->GetLastResult();
-    }
+    // NOTE: Legacy GetLastResult() removed - use Out(PresentNodeConfig::PRESENT_RESULT) instead
+    // Get result via typed slot if needed, or check presentNode directly
 
     return VK_SUCCESS;
 }

@@ -17,6 +17,16 @@ namespace ShaderManagement {
 }
 
 namespace Vixen::RenderGraph {
+    struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
+}
+
+// Type aliases for pointer types (must match ResourceVariant.h)
+using VkViewportPtr = VkViewport*;
+using VkRect2DPtr = VkRect2D*;
+using VkResultPtr = VkResult*;
+using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
+
+namespace Vixen::RenderGraph {
 
 // Forward declarations - using variant-based descriptors from ResourceVariant.h
 class NodeInstance;
@@ -188,8 +198,56 @@ template<> struct VulkanTypeTraits<HINSTANCE> {
 };
 
 // ShaderProgramDescriptor* (defined in ShaderLibraryNodeConfig.h)
-template<> struct VulkanTypeTraits<ShaderProgramDescriptor*> {
+// Use aliased pointer type for variant
+template<> struct VulkanTypeTraits<ShaderProgramDescriptorPtr> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
+    static constexpr bool isValid = true;
+};
+
+// VkPipeline and related types
+template<> struct VulkanTypeTraits<VkPipeline> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkPipelineLayout> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkPipelineCache> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkCommandBuffer> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkQueue> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
+    static constexpr bool isValid = true;
+};
+
+// Use aliased types for pointers (VkViewportPtr, VkRect2DPtr, VkResultPtr defined in ResourceVariant.h)
+template<> struct VulkanTypeTraits<VkViewportPtr> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to struct
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkRect2DPtr> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to struct
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<PFN_vkQueuePresentKHR> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Function pointer
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VkResultPtr> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to result
     static constexpr bool isValid = true;
 };
 

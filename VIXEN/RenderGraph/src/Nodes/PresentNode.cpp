@@ -37,7 +37,7 @@ PresentNode::PresentNode(
     const std::string& instanceName,
     NodeType* nodeType
 ) 
-    : NodeInstance(instanceName, nodeType)
+    : TypedNode<PresentNodeConfig>(instanceName, nodeType)
 {
 }
 
@@ -50,16 +50,23 @@ void PresentNode::Setup() {
 }
 
 void PresentNode::Compile() {
-    // Get parameters
-    waitForIdle = GetParameterValue<bool>("waitForIdle", true);
+    // Get parameters using config constants
+    waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    // Validate inputs (swapchain/imageIndex are set dynamically, so only check queue and function pointer)
-    if (queue == VK_NULL_HANDLE) {
-        throw std::runtime_error("PresentNode: queue not set");
+    // Validate inputs using typed slot access
+    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
+    if (swapchain == VK_NULL_HANDLE) {
+        throw std::runtime_error("PresentNode: swapchain input not connected or invalid");
     }
 
+    VkQueue queue = In(PresentNodeConfig::QUEUE);
+    if (queue == VK_NULL_HANDLE) {
+        throw std::runtime_error("PresentNode: queue input not connected or invalid");
+    }
+
+    PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
     if (fpQueuePresent == nullptr) {
-        throw std::runtime_error("PresentNode: present function pointer not set");
+        throw std::runtime_error("PresentNode: present function pointer input not connected or invalid");
     }
 }
 
@@ -74,6 +81,13 @@ void PresentNode::Cleanup() {
 }
 
 VkResult PresentNode::Present() {
+    // Get inputs on-demand via typed slots
+    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
+    uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX);
+    VkQueue queue = In(PresentNodeConfig::QUEUE);
+    VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
+
     // Setup present info
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -101,28 +115,10 @@ VkResult PresentNode::Present() {
         vkDeviceWaitIdle(device->device);
     }
 
+    // Set output
+    Out(PresentNodeConfig::PRESENT_RESULT, &lastResult);
+
     return lastResult;
-}
-
-// Setter methods
-void PresentNode::SetSwapchain(VkSwapchainKHR sc) {
-    swapchain = sc;
-}
-
-void PresentNode::SetImageIndex(uint32_t index) {
-    imageIndex = index;
-}
-
-void PresentNode::SetQueue(VkQueue q) {
-    queue = q;
-}
-
-void PresentNode::SetRenderCompleteSemaphore(VkSemaphore semaphore) {
-    renderCompleteSemaphore = semaphore;
-}
-
-void PresentNode::SetPresentFunction(PFN_vkQueuePresentKHR func) {
-    fpQueuePresent = func;
 }
 
 } // namespace Vixen::RenderGraph

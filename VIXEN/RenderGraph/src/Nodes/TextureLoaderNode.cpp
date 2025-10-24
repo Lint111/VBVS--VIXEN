@@ -55,9 +55,8 @@ TextureLoaderNode::TextureLoaderNode(
     const std::string& instanceName,
     NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType)
+    : TypedNode<TextureLoaderNodeConfig>(instanceName, nodeType)
 {
-    memset(&textureData, 0, sizeof(textureData));
 }
 
 TextureLoaderNode::~TextureLoaderNode() {
@@ -84,13 +83,14 @@ void TextureLoaderNode::Setup() {
 }
 
 void TextureLoaderNode::Compile() {
-    // Get parameters
-    std::string filePath = GetParameterValue<std::string>("filePath", "");
+    // Get parameters using config constants
+    std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
         throw std::runtime_error("TextureLoaderNode: filePath parameter is required");
     }
 
-    std::string uploadModeStr = GetParameterValue<std::string>("uploadMode", "Optimal");
+    std::string uploadModeStr = GetParameterValue<std::string>(TextureLoaderNodeConfig::UPLOAD_MODE, "Optimal");
+    bool generateMipmaps = GetParameterValue<bool>(TextureLoaderNodeConfig::GENERATE_MIPMAPS, false);
 
     // Configure load settings
     Vixen::TextureHandling::TextureLoadConfig config;
@@ -102,22 +102,19 @@ void TextureLoaderNode::Compile() {
 
     // Load the texture
     try {
-        textureData = textureLoader->Load(filePath.c_str(), config);
+        Vixen::TextureHandling::TextureData textureData = textureLoader->Load(filePath.c_str(), config);
+        
+        // Store resources for output
+        textureImage = textureData.image;
+        textureView = textureData.view;
+        textureSampler = textureData.sampler;
+        textureMemory = textureData.mem;
         isLoaded = true;
 
-        // TODO: Update output resource description with actual texture dimensions (needs descriptor accessor API)
-        // Temporarily disabled pending variant descriptor modification API
-        /*
-        if (outputs.size() > 0 && outputs[0].size() > 0 && outputs[0][0]) {
-            Resource* resource = outputs[0][0];
-            if (ImageDescription* imgDesc = ...) {  // Need descriptor accessor
-                imgDesc->width = textureData.textureWidth;
-                imgDesc->height = textureData.textureHeight;
-                imgDesc->mipLevels = textureData.minMapLevels;
-                // Format is specified in config, not in TextureData
-            }
-        }
-        */
+        // Set typed outputs
+        Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
+        Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
+        Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
 
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
@@ -134,27 +131,27 @@ void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
 
 void TextureLoaderNode::Cleanup() {
     // Destroy texture resources
-    if (isLoaded && textureData.image != VK_NULL_HANDLE) {
+    if (isLoaded) {
         VkDevice vkDevice = device->device;
         
-        if (textureData.view != VK_NULL_HANDLE) {
-            vkDestroyImageView(vkDevice, textureData.view, nullptr);
-            textureData.view = VK_NULL_HANDLE;
+        if (textureView != VK_NULL_HANDLE) {
+            vkDestroyImageView(vkDevice, textureView, nullptr);
+            textureView = VK_NULL_HANDLE;
         }
         
-        if (textureData.sampler != VK_NULL_HANDLE) {
-            vkDestroySampler(vkDevice, textureData.sampler, nullptr);
-            textureData.sampler = VK_NULL_HANDLE;
+        if (textureSampler != VK_NULL_HANDLE) {
+            vkDestroySampler(vkDevice, textureSampler, nullptr);
+            textureSampler = VK_NULL_HANDLE;
         }
         
-        if (textureData.image != VK_NULL_HANDLE) {
-            vkDestroyImage(vkDevice, textureData.image, nullptr);
-            textureData.image = VK_NULL_HANDLE;
+        if (textureImage != VK_NULL_HANDLE) {
+            vkDestroyImage(vkDevice, textureImage, nullptr);
+            textureImage = VK_NULL_HANDLE;
         }
         
-        if (textureData.mem != VK_NULL_HANDLE) {
-            vkFreeMemory(vkDevice, textureData.mem, nullptr);
-            textureData.mem = VK_NULL_HANDLE;
+        if (textureMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(vkDevice, textureMemory, nullptr);
+            textureMemory = VK_NULL_HANDLE;
         }
         
         isLoaded = false;

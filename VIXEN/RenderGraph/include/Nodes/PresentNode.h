@@ -1,6 +1,7 @@
 #pragma once
-#include "Core/NodeInstance.h"
+#include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Nodes/PresentNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -26,20 +27,12 @@ public:
 /**
  * @brief Node instance for presentation operations
  * 
- * Parameters:
- * - waitForIdle (bool): Whether to wait for device idle after present (default: true for compatibility)
+ * Now uses TypedNode<PresentNodeConfig> for compile-time type safety.
+ * All inputs/outputs are accessed via the typed config slot API.
  * 
- * Inputs (via Set methods):
- * - swapchain: VkSwapchainKHR to present to
- * - imageIndex: Index of the swapchain image to present
- * - queue: VkQueue to submit present operation to
- * - renderCompleteSemaphore: Semaphore to wait on before presenting
- * - presentFunction: Function pointer to vkQueuePresentKHR
- * 
- * Outputs:
- * - result: VkResult of the present operation
+ * See PresentNodeConfig.h for slot definitions and parameters.
  */
-class PresentNode : public NodeInstance {
+class PresentNode : public TypedNode<PresentNodeConfig> {
 public:
     PresentNode(
         const std::string& instanceName,
@@ -52,28 +45,11 @@ public:
     void Execute(VkCommandBuffer commandBuffer) override;
     void Cleanup() override;
 
-    // Set input references
-    void SetSwapchain(VkSwapchainKHR swapchain);
-    void SetImageIndex(uint32_t index);
-    void SetQueue(VkQueue queue);
-    void SetRenderCompleteSemaphore(VkSemaphore semaphore);
-    void SetPresentFunction(PFN_vkQueuePresentKHR func);
-
     // Execute presentation
     VkResult Present();
 
-    // Get last present result
-    VkResult GetLastResult() const { return lastResult; }
-
 private:
-    // Input references
-    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    uint32_t imageIndex = 0;
-    VkQueue queue = VK_NULL_HANDLE;
-    VkSemaphore renderCompleteSemaphore = VK_NULL_HANDLE;
-    PFN_vkQueuePresentKHR fpQueuePresent = nullptr;
-
-    // Configuration
+    // Configuration from parameters
     bool waitForIdle = true;
 
     // State

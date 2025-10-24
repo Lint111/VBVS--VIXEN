@@ -38,7 +38,7 @@ GeometryRenderNode::GeometryRenderNode(
     const std::string& instanceName,
     NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType)
+    : TypedNode<GeometryRenderNodeConfig>(instanceName, nodeType)
 {
     // Initialize clear values
     clearColor.color.float32[0] = 0.0f;
@@ -60,22 +60,22 @@ void GeometryRenderNode::Setup() {
 
 void GeometryRenderNode::Compile() {
     // Get parameters
-    vertexCount = GetParameterValue<uint32_t>("vertexCount", 0);
-    instanceCount = GetParameterValue<uint32_t>("instanceCount", 1);
-    firstVertex = GetParameterValue<uint32_t>("firstVertex", 0);
-    firstInstance = GetParameterValue<uint32_t>("firstInstance", 0);
-    useIndexBuffer = GetParameterValue<bool>("useIndexBuffer", false);
-    indexCount = GetParameterValue<uint32_t>("indexCount", 0);
+    vertexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::VERTEX_COUNT, 0);
+    instanceCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INSTANCE_COUNT, 1);
+    firstVertex = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::FIRST_VERTEX, 0);
+    firstInstance = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::FIRST_INSTANCE, 0);
+    useIndexBuffer = GetParameterValue<bool>(GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
+    indexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INDEX_COUNT, 0);
 
     // Get clear color
-    clearColor.color.float32[0] = GetParameterValue<float>("clearColorR", 0.0f);
-    clearColor.color.float32[1] = GetParameterValue<float>("clearColorG", 0.0f);
-    clearColor.color.float32[2] = GetParameterValue<float>("clearColorB", 0.0f);
-    clearColor.color.float32[3] = GetParameterValue<float>("clearColorA", 1.0f);
+    clearColor.color.float32[0] = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.0f);
+    clearColor.color.float32[1] = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.0f);
+    clearColor.color.float32[2] = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.0f);
+    clearColor.color.float32[3] = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
 
     // Get clear depth/stencil
-    clearDepthStencil.depthStencil.depth = GetParameterValue<float>("clearDepth", 1.0f);
-    clearDepthStencil.depthStencil.stencil = GetParameterValue<uint32_t>("clearStencil", 0);
+    clearDepthStencil.depthStencil.depth = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
+    clearDepthStencil.depthStencil.stencil = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::CLEAR_STENCIL, 0);
 
     // TODO Phase 1: Validation disabled - nodes are stubs
     // Validate inputs
@@ -96,9 +96,16 @@ void GeometryRenderNode::Cleanup() {
 }
 
 void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
-    if (framebufferIndex >= framebuffers.size()) {
-        throw std::runtime_error("GeometryRenderNode: invalid framebuffer index");
-    }
+    // Get inputs via typed config API
+    VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
+    VkFramebuffer framebuffer = In(GeometryRenderNodeConfig::FRAMEBUFFERS, framebufferIndex);
+    VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE);
+    VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
+    VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    const VkViewport* viewport = In(GeometryRenderNodeConfig::VIEWPORT);
+    const VkRect2D* scissor = In(GeometryRenderNodeConfig::SCISSOR);
+    uint32_t renderWidth = In(GeometryRenderNodeConfig::RENDER_WIDTH);
+    uint32_t renderHeight = In(GeometryRenderNodeConfig::RENDER_HEIGHT);
 
     // Setup clear values
     VkClearValue clearValues[2];
@@ -110,7 +117,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.pNext = nullptr;
     renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = framebuffers[framebufferIndex];
+    renderPassInfo.framebuffer = framebuffer;
     renderPassInfo.renderArea.offset.x = 0;
     renderPassInfo.renderArea.offset.y = 0;
     renderPassInfo.renderArea.extent.width = renderWidth;
@@ -131,18 +138,25 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
         pipeline
     );
 
-    // Bind descriptor sets (if any)
-    if (!descriptorSets.empty() && pipelineLayout != VK_NULL_HANDLE) {
-        vkCmdBindDescriptorSets(
-            cmdBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            pipelineLayout,
-            0,
-            static_cast<uint32_t>(descriptorSets.size()),
-            descriptorSets.data(),
-            0,
-            nullptr
-        );
+    // Bind descriptor sets (get count from input array)
+    // TODO: Query actual descriptor set count from inputs
+    // For now, assume we have descriptor sets
+    {
+        // Get first descriptor set to check if available
+        VkDescriptorSet firstDescSet = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, 0);
+        if (firstDescSet != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
+            // TODO: Support multiple descriptor sets properly
+            vkCmdBindDescriptorSets(
+                cmdBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                0,
+                1, // For now, bind just the first one
+                &firstDescSet,
+                0,
+                nullptr
+            );
+        }
     }
 
     // Bind vertex buffer
@@ -157,19 +171,22 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
 
     // Bind index buffer (if using indexed rendering)
     if (useIndexBuffer) {
-        vkCmdBindIndexBuffer(
-            cmdBuffer,
-            indexBuffer,
-            0,
-            VK_INDEX_TYPE_UINT32
-        );
+        VkBuffer indexBuffer = In(GeometryRenderNodeConfig::INDEX_BUFFER);
+        if (indexBuffer != VK_NULL_HANDLE) {
+            vkCmdBindIndexBuffer(
+                cmdBuffer,
+                indexBuffer,
+                0,
+                VK_INDEX_TYPE_UINT32
+            );
+        }
     }
 
     // Set viewport
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+    vkCmdSetViewport(cmdBuffer, 0, 1, viewport);
 
     // Set scissor
-    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+    vkCmdSetScissor(cmdBuffer, 0, 1, scissor);
 
     // Draw
     if (useIndexBuffer) {
@@ -193,45 +210,9 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
 
     // End render pass
     vkCmdEndRenderPass(cmdBuffer);
-}
-
-// Setter methods for input references
-void GeometryRenderNode::SetRenderPass(VkRenderPass pass) {
-    renderPass = pass;
-}
-
-void GeometryRenderNode::SetFramebuffers(const std::vector<VkFramebuffer>& fbs) {
-    framebuffers = fbs;
-}
-
-void GeometryRenderNode::SetPipeline(VkPipeline pipe, VkPipelineLayout layout) {
-    pipeline = pipe;
-    pipelineLayout = layout;
-}
-
-void GeometryRenderNode::SetDescriptorSets(const std::vector<VkDescriptorSet>& sets) {
-    descriptorSets = sets;
-}
-
-void GeometryRenderNode::SetVertexBuffer(VkBuffer buffer) {
-    vertexBuffer = buffer;
-}
-
-void GeometryRenderNode::SetIndexBuffer(VkBuffer buffer) {
-    indexBuffer = buffer;
-}
-
-void GeometryRenderNode::SetViewport(const VkViewport& vp) {
-    viewport = vp;
-}
-
-void GeometryRenderNode::SetScissor(const VkRect2D& sc) {
-    scissor = sc;
-}
-
-void GeometryRenderNode::SetRenderArea(uint32_t width, uint32_t height) {
-    renderWidth = width;
-    renderHeight = height;
+    
+    // Store command buffer in output (if needed for graph connections)
+    // Out(GeometryRenderNodeConfig::COMMAND_BUFFERS, cmdBuffer, framebufferIndex);
 }
 
 } // namespace Vixen::RenderGraph

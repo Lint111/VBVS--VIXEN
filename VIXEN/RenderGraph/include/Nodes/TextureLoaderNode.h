@@ -1,7 +1,8 @@
 #pragma once
 
 #include "Core/NodeType.h"
-#include "Core/NodeInstance.h"
+#include "Core/TypedNodeInstance.h"
+#include "Nodes/TextureLoaderNodeConfig.h"
 #include "TextureHandling/Loading/TextureLoader.h"
 
 namespace Vixen::RenderGraph {
@@ -9,21 +10,12 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Texture loading node
  * 
- * Responsibilities:
- * - Load texture from file (PNG, JPG, DDS, KTX, etc.)
- * - Create VkImage and VkImageView
- * - Upload data to GPU
- * - Transition to shader-readable layout
+ * Now uses TypedNode<TextureLoaderNodeConfig> for compile-time type safety.
+ * All inputs/outputs are accessed via the typed config slot API.
  * 
- * Inputs: None (file path is a parameter)
- * Outputs: 
- *   [0] Texture image (VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
- * 
- * Parameters:
- *   - filePath: std::string - Path to texture file
- *   - uploadMode: std::string - "Optimal" or "Linear"
+ * See TextureLoaderNodeConfig.h for slot definitions and parameters.
  */
-class TextureLoaderNode : public NodeInstance {
+class TextureLoaderNode : public TypedNode<TextureLoaderNodeConfig> {
 public:
     TextureLoaderNode(
         const std::string& instanceName,
@@ -40,8 +32,14 @@ public:
 
 private:
     std::unique_ptr<Vixen::TextureHandling::TextureLoader> textureLoader;
-    Vixen::TextureHandling::TextureData textureData;
-    VkCommandPool commandPool = VK_NULL_HANDLE; // Temporary pool for loading
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    
+    // Loaded texture resources (output via typed slots)
+    VkImage textureImage = VK_NULL_HANDLE;
+    VkImageView textureView = VK_NULL_HANDLE;
+    VkSampler textureSampler = VK_NULL_HANDLE;
+    VkDeviceMemory textureMemory = VK_NULL_HANDLE;
+    
     bool isLoaded = false;
 };
 

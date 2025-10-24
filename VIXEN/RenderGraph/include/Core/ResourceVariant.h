@@ -15,9 +15,17 @@
 // Global namespace forward declarations
 struct SwapChainPublicVariables;
 
-// Type aliases for pointer types (needed for variant registry)
+namespace Vixen::RenderGraph {
+    struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
+}
+
+// Type aliases for pointer types (needed for variant registry - macros can't handle namespaces)
 using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
 using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
+using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
+using VkViewportPtr = VkViewport*;
+using VkRect2DPtr = VkRect2D*;
+using VkResultPtr = VkResult*;
 
 namespace Vixen::RenderGraph {
 
@@ -42,10 +50,6 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
 
-// Type aliases for pointer types (can't use T* directly in macro expansion)
-using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
-using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
-
 /**
  * @brief Master list of all resource types
  * 
@@ -62,31 +66,41 @@ using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
  * RESOURCE_TYPE(VkSurface, HandleDescriptor, ResourceType::Image)  // Simple handle
  */
 #define RESOURCE_TYPE_REGISTRY \
-    RESOURCE_TYPE(VkImage, ImageDescriptor, ResourceType::Image) \
-    RESOURCE_TYPE(VkBuffer, BufferDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkImageView, HandleDescriptor, ResourceType::Image) \
-    RESOURCE_TYPE(VkSampler, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkSurfaceKHR, HandleDescriptor, ResourceType::Image) \
-    RESOURCE_TYPE(VkSwapchainKHR, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkRenderPass, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFramebuffer, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkDescriptorSetLayout, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkDescriptorPool, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkDescriptorSet, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkCommandPool, CommandPoolDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkSemaphore, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFence, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkDevice, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkPhysicalDevice, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkInstance, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFormat, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(uint32_t, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(uint64_t, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(HWND, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(HINSTANCE, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(SwapChainPublicVariablesPtr, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE(ShaderProgramPtr, HandleDescriptor, ResourceType::Buffer) \
-    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor, ResourceType::AccelerationStructure)
+    RESOURCE_TYPE(VkImage,                         ImageDescriptor,       ResourceType::Image) \
+    RESOURCE_TYPE(VkBuffer,                        BufferDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkImageView,                     HandleDescriptor,      ResourceType::Image) \
+    RESOURCE_TYPE(VkSampler,                       HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkSurfaceKHR,                    HandleDescriptor,      ResourceType::Image) \
+    RESOURCE_TYPE(VkSwapchainKHR,                  HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkRenderPass,                    HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFramebuffer,                   HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkDescriptorSetLayout,           HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkDescriptorPool,                HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkDescriptorSet,                 HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkCommandPool,                   CommandPoolDescriptor, ResourceType::Buffer) \
+    RESOURCE_TYPE(VkSemaphore,                     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFence,                         HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkInstance,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFormat,                        HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(uint32_t,                        HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(uint64_t,                        HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(HWND,                            HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(HINSTANCE,                       HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(SwapChainPublicVariablesPtr,     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(ShaderProgramPtr,                HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(ShaderProgramDescriptorPtr,      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPipeline,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPipelineLayout,                HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPipelineCache,                 HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkCommandBuffer,                 HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkQueue,                         HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkViewportPtr,                   HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkRect2DPtr,                     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(PFN_vkQueuePresentKHR,           HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS

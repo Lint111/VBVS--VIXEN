@@ -34,7 +34,7 @@ GraphicsPipelineNode::GraphicsPipelineNode(
     const std::string& instanceName,
     NodeType* nodeType
 )
-    : NodeInstance(instanceName, nodeType)
+    : TypedNode<GraphicsPipelineNodeConfig>(instanceName, nodeType)
 {
 }
 
@@ -48,24 +48,31 @@ void GraphicsPipelineNode::Setup() {
 }
 
 void GraphicsPipelineNode::Compile() {
-    // Get parameters
-    enableDepthTest = GetParameterValue<bool>("enableDepthTest", true);
-    enableDepthWrite = GetParameterValue<bool>("enableDepthWrite", true);
-    enableVertexInput = GetParameterValue<bool>("enableVertexInput", true);
+    // Get parameters using typed config constants
+    enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
+    enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
+    enableVertexInput = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
 
-    std::string cullModeStr = GetParameterValue<std::string>("cullMode", "Back");
-    std::string polygonModeStr = GetParameterValue<std::string>("polygonMode", "Fill");
-    std::string topologyStr = GetParameterValue<std::string>("topology", "TriangleList");
-    std::string frontFaceStr = GetParameterValue<std::string>("frontFace", "CounterClockwise");
+    std::string cullModeStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::CULL_MODE, "Back");
+    std::string polygonModeStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::POLYGON_MODE, "Fill");
+    std::string topologyStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::TOPOLOGY, "TriangleList");
+    std::string frontFaceStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::FRONT_FACE, "CounterClockwise");
 
     cullMode = ParseCullMode(cullModeStr);
     polygonMode = ParsePolygonMode(polygonModeStr);
     topology = ParseTopology(topologyStr);
     frontFace = ParseFrontFace(frontFaceStr);
 
+    // Get inputs via typed config API
+    ShaderProgramDescriptor* shaderProgram = In(GraphicsPipelineNodeConfig::SHADER_PROGRAM);
+    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    VkViewportPtr viewport = In(GraphicsPipelineNodeConfig::VIEWPORT);
+    VkRect2DPtr scissor = In(GraphicsPipelineNodeConfig::SCISSOR);
+
     // Validate inputs
-    if (shaderStages == nullptr || shaderStageCount == 0) {
-        throw std::runtime_error("GraphicsPipelineNode: shader stages not set");
+    if (shaderProgram == nullptr) {
+        throw std::runtime_error("GraphicsPipelineNode: shader program not set");
     }
     if (renderPass == VK_NULL_HANDLE) {
         throw std::runtime_error("GraphicsPipelineNode: render pass not set");
@@ -79,6 +86,11 @@ void GraphicsPipelineNode::Compile() {
 
     // Create graphics pipeline
     CreatePipeline();
+    
+    // Set outputs
+    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
 }
 
 void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
@@ -126,6 +138,9 @@ void GraphicsPipelineNode::CreatePipelineCache() {
 }
 
 void GraphicsPipelineNode::CreatePipelineLayout() {
+    // Get descriptor set layout from input
+    VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.pNext = nullptr;
@@ -147,6 +162,15 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
 }
 
 void GraphicsPipelineNode::CreatePipeline() {
+    // Get inputs via typed config API
+    ShaderProgramDescriptor* shaderProgram = In(GraphicsPipelineNodeConfig::SHADER_PROGRAM);
+    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    
+    // TODO: Extract shader stages from ShaderProgramDescriptor
+    // For now, assume shader program has stage info
+    const VkPipelineShaderStageCreateInfo* shaderStages = nullptr; // shaderProgram->stages;
+    uint32_t shaderStageCount = 0; // shaderProgram->stageCount;
+    
     // Dynamic state
     VkDynamicState dynamicStates[] = {
         VK_DYNAMIC_STATE_VIEWPORT,
@@ -165,11 +189,12 @@ void GraphicsPipelineNode::CreatePipeline() {
     vertexInputState.pNext = nullptr;
     vertexInputState.flags = 0;
 
-    if (enableVertexInput && vertexBinding != nullptr) {
-        vertexInputState.vertexBindingDescriptionCount = 1;
-        vertexInputState.pVertexBindingDescriptions = vertexBinding;
-        vertexInputState.vertexAttributeDescriptionCount = vertexAttributeCount;
-        vertexInputState.pVertexAttributeDescriptions = vertexAttributes;
+    if (enableVertexInput) {
+        // TODO: Get vertex input description from config or shader reflection
+        vertexInputState.vertexBindingDescriptionCount = 0;
+        vertexInputState.pVertexBindingDescriptions = nullptr;
+        vertexInputState.vertexAttributeDescriptionCount = 0;
+        vertexInputState.pVertexAttributeDescriptions = nullptr;
     } else {
         vertexInputState.vertexBindingDescriptionCount = 0;
         vertexInputState.pVertexBindingDescriptions = nullptr;
@@ -299,38 +324,6 @@ void GraphicsPipelineNode::CreatePipeline() {
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
-}
-
-// Setter methods for input references
-void GraphicsPipelineNode::SetShaderStages(const VkPipelineShaderStageCreateInfo* stages, uint32_t count) {
-    shaderStages = stages;
-    shaderStageCount = count;
-}
-
-void GraphicsPipelineNode::SetRenderPass(VkRenderPass pass) {
-    renderPass = pass;
-}
-
-void GraphicsPipelineNode::SetVertexInput(
-    const VkVertexInputBindingDescription* binding,
-    const VkVertexInputAttributeDescription* attributes,
-    uint32_t attributeCount
-) {
-    vertexBinding = binding;
-    vertexAttributes = attributes;
-    vertexAttributeCount = attributeCount;
-}
-
-void GraphicsPipelineNode::SetDescriptorSetLayout(VkDescriptorSetLayout layout) {
-    descriptorSetLayout = layout;
-}
-
-void GraphicsPipelineNode::SetViewport(const VkViewport& vp) {
-    viewport = vp;
-}
-
-void GraphicsPipelineNode::SetScissor(const VkRect2D& sc) {
-    scissor = sc;
 }
 
 // Parse helper methods

@@ -53,9 +53,9 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
     }
 
     // Compile-time validation using declared constants
-    static_assert(INPUT_COUNT == NUM_INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == NUM_OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == SlotArrayMode::Single, "Array mode mismatch");
+    static_assert(INPUT_COUNT == CommandPoolNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == CommandPoolNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == CommandPoolNodeCounts::ARRAY_MODE, "Array mode mismatch");
     
     static_assert(COMMAND_POOL_Slot::index == 0, "COMMAND_POOL must be at index 0");
     static_assert(!COMMAND_POOL_Slot::nullable, "COMMAND_POOL must not be nullable");
