@@ -7,19 +7,19 @@
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 
 // Include all node types
-#include "RenderGraph/Nodes/WindowNode.h"
-#include "RenderGraph/Nodes/DeviceNode.h"
-#include "RenderGraph/Nodes/TextureLoaderNode.h"
-#include "RenderGraph/Nodes/DepthBufferNode.h"
-#include "RenderGraph/Nodes/SwapChainNode.h"
-#include "RenderGraph/Nodes/VertexBufferNode.h"
-#include "RenderGraph/Nodes/RenderPassNode.h"
-#include "RenderGraph/Nodes/FramebufferNode.h"
-#include "RenderGraph/Nodes/ShaderLibraryNode.h"
-#include "RenderGraph/Nodes/DescriptorSetNode.h"
-#include "RenderGraph/Nodes/GraphicsPipelineNode.h"
-#include "RenderGraph/Nodes/GeometryRenderNode.h"
-#include "RenderGraph/Nodes/PresentNode.h"
+#include "Nodes/WindowNode.h"
+#include "Nodes/DeviceNode.h"
+#include "Nodes/TextureLoaderNode.h"
+#include "Nodes/DepthBufferNode.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/VertexBufferNode.h"
+#include "Nodes/RenderPassNode.h"
+#include "Nodes/FramebufferNode.h"
+#include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/DescriptorSetNode.h"
+#include "Nodes/GraphicsPipelineNode.h"
+#include "Nodes/GeometryRenderNode.h"
+#include "Nodes/PresentNode.h"
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -69,16 +69,11 @@ void VulkanGraphApplication::Initialize() {
     RegisterNodeTypes();
 
     // Create render graph
-    if (deviceObj) {
-        renderGraph = std::make_unique<RenderGraph>(deviceObj.get(), nodeRegistry.get(), mainLogger.get());
+    // NOTE: Device is passed to individual nodes, not to RenderGraph constructor
+    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), mainLogger.get());
 
-        if (mainLogger) {
-            mainLogger->Info("RenderGraph created successfully");
-        }
-    } else {
-        if (mainLogger) {
-            mainLogger->Error("Failed to create RenderGraph: Device not initialized");
-        }
+    if (mainLogger) {
+        mainLogger->Info("RenderGraph created successfully");
     }
 
     if (mainLogger) {
@@ -226,13 +221,11 @@ void VulkanGraphApplication::CompileRenderGraph() {
         return;
     }
 
-    // PHASE 1: Minimal wiring for Window + Present only
-    auto* presentNode = static_cast<PresentNode*>(renderGraph->GetInstanceByName("present"));
-    if (presentNode) {
-        presentNode->SetQueue(deviceObj->queue);
-        // PresentNode will get fpQueuePresentKHR from device extension
-        mainLogger->Info("Wired PresentNode with queue");
-    }
+    // NOTE: Legacy Phase 1 wiring removed - nodes now use typed slots.
+    // All connections should be established via Connect() API during BuildRenderGraph().
+    // Example:
+    // Connect(deviceNode, DeviceNodeConfig::QUEUE, presentNode, PresentNodeConfig::QUEUE);
+    // Connect(deviceNode, DeviceNodeConfig::PRESENT_FUNCTION, presentNode, PresentNodeConfig::PRESENT_FUNCTION);
 
     // Validate graph
     std::string errorMessage;
