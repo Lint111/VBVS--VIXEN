@@ -1,5 +1,6 @@
 #include "ShaderManagement/ShaderBundleBuilder.h"
 #include "ShaderManagement/SPIRVReflection.h"
+#include "ShaderManagement/SdiRegistryManager.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -150,6 +151,15 @@ ShaderBundleBuilder& ShaderBundleBuilder::SetSdiConfig(const SdiGeneratorConfig&
 
 ShaderBundleBuilder& ShaderBundleBuilder::EnableSdiGeneration(bool enable) {
     generateSdi_ = enable;
+    return *this;
+}
+
+ShaderBundleBuilder& ShaderBundleBuilder::EnableRegistryIntegration(
+    SdiRegistryManager* registry,
+    const std::string& aliasName
+) {
+    registryManager_ = registry;
+    registryAlias_ = aliasName;
     return *this;
 }
 
@@ -426,6 +436,20 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     bundle.sdiHeaderPath = sdiPath;
     bundle.sdiNamespace = sdiNamespace;
     bundle.createdAt = std::chrono::system_clock::now();
+
+    // 5. Register with central SDI registry if enabled
+    if (registryManager_ && !sdiPath.empty()) {
+        SdiRegistryEntry entry;
+        entry.uuid = uuid_;
+        entry.programName = programName_;
+        entry.sdiHeaderPath = sdiPath;
+        entry.sdiNamespace = sdiNamespace;
+        entry.aliasName = registryAlias_.empty() ? programName_ : registryAlias_;
+
+        if (!registryManager_->RegisterShader(entry)) {
+            result.warnings.push_back("Failed to register shader in central SDI registry");
+        }
+    }
 
     result.success = true;
     result.bundle = bundle;

@@ -881,6 +881,289 @@ for (const auto& [uuid, reflection] : shaderData) {
 }
 ```
 
+---
+
+## Central SDI Registry - Single Include for All Shaders
+
+### Overview
+
+The **SdiRegistryManager** generates a central `SDI_Registry.h` header that includes **only registered/active shaders**. This provides:
+
+- ✅ **Single include** for all shader interfaces
+- ✅ **Convenient namespace aliases** for easy access
+- ✅ **Reduced compilation time** - only includes active shaders
+- ✅ **Runtime metadata** for shader enumeration
+
+**Key Optimization**: The registry dynamically updates to include only currently registered shaders, avoiding compilation overhead from hundreds of unused shader interfaces.
+
+### Generated Registry Structure
+
+```cpp
+// SDI_Registry.h (auto-generated)
+#pragma once
+
+// Include only active/registered shader SDI headers
+#include "abc123-SDI.h"      // PBRShader
+#include "def456-SDI.h"      // TerrainShader
+#include "ghi789-SDI.h"      // WaterShader
+
+// Convenient namespace aliases
+namespace Shaders {
+    namespace PBRShader = ShaderInterface::abc123;
+    namespace TerrainShader = ShaderInterface::def456;
+    namespace WaterShader = ShaderInterface::ghi789;
+}
+
+// Runtime metadata
+namespace Shaders {
+namespace Registry {
+    struct ShaderInfo {
+        const char* uuid;
+        const char* name;
+        const char* alias;
+    };
+
+    constexpr ShaderInfo SHADERS[] = {
+        {"abc123", "PBRMaterial", "PBRShader"},
+        {"def456", "TerrainRenderer", "TerrainShader"},
+        {"ghi789", "WaterSurface", "WaterShader"}
+    };
+
+    constexpr size_t SHADER_COUNT = 3;
+}
+}
+```
+
+### Basic Usage
+
+**1. Setup registry manager (once at startup):**
+
+```cpp
+SdiRegistryManager::Config config{
+    .sdiDirectory = "./generated/sdi",
+    .registryHeaderPath = "./generated/sdi/SDI_Registry.h",
+    .registryNamespace = "Shaders",
+    .generateAliases = true,
+    .autoRegenerate = true  // Auto-update registry on changes
+};
+
+SdiRegistryManager registry(config);
+```
+
+**2. Build shaders with registry integration:**
+
+```cpp
+auto result = ShaderBundleBuilder()
+    .SetProgramName("PBRMaterial")
+    .AddStageFromFile(ShaderStage::Vertex, "pbr.vert")
+    .AddStageFromFile(ShaderStage::Fragment, "pbr.frag")
+    .EnableRegistryIntegration(&registry, "PBRShader")  // Auto-register!
+    .Build();
+
+// Shader is now in SDI_Registry.h
+```
+
+**3. Use in your C++ code:**
+
+```cpp
+// Single include for ALL registered shaders!
+#include "generated/sdi/SDI_Registry.h"
+
+using namespace Shaders;
+
+// Access shader interfaces via convenient aliases
+VkDescriptorSetLayoutBinding binding{};
+binding.binding = PBRShader::Set0::MaterialBuffer::BINDING;
+binding.descriptorType = PBRShader::Set0::MaterialBuffer::TYPE;
+
+// Access another shader
+binding.binding = TerrainShader::Set0::HeightMap::BINDING;
+```
+
+### Why This Matters: Compilation Time
+
+**Without central registry:**
+```cpp
+// Must include each shader individually
+#include "abc123-SDI.h"
+#include "def456-SDI.h"
+#include "ghi789-SDI.h"
+#include "jkl012-SDI.h"
+// ... 100 more shaders
+
+// Compiles ALL headers even if you only use 3 shaders
+// Compilation time: SLOW
+```
+
+**With central registry (smart filtering):**
+```cpp
+// Single include - only contains ACTIVE shaders
+#include "generated/sdi/SDI_Registry.h"
+
+// If you only registered 3 shaders out of 100 available,
+// registry only includes those 3
+// Compilation time: FAST
+```
+
+### Dynamic Registry Updates
+
+The registry automatically updates when shaders are registered/unregistered:
+
+```cpp
+SdiRegistryManager registry;
+
+// Register first shader
+auto pbr = BuildShader("PBR");
+registry.RegisterShader(...);
+// SDI_Registry.h now includes: PBRShader
+
+// Register second shader
+auto terrain = BuildShader("Terrain");
+registry.RegisterShader(...);
+// SDI_Registry.h now includes: PBRShader, TerrainShader
+
+// Unregister first shader
+registry.UnregisterShader(pbr.uuid);
+// SDI_Registry.h now includes: TerrainShader (only!)
+```
+
+### Advanced Features
+
+**Runtime shader enumeration:**
+
+```cpp
+#include "SDI_Registry.h"
+
+// Iterate all registered shaders at runtime
+for (size_t i = 0; i < Shaders::Registry::SHADER_COUNT; ++i) {
+    const auto& info = Shaders::Registry::SHADERS[i];
+    std::cout << "Shader: " << info.name
+              << " (alias: " << info.alias << ")\n";
+}
+```
+
+**Manual registry operations:**
+
+```cpp
+SdiRegistryManager registry;
+
+// Register manually
+SdiRegistryEntry entry{
+    .uuid = "abc123",
+    .programName = "MyShader",
+    .sdiHeaderPath = "./generated/sdi/abc123-SDI.h",
+    .sdiNamespace = "ShaderInterface::abc123",
+    .aliasName = "MyShader"
+};
+registry.RegisterShader(entry);
+
+// Query
+bool isRegistered = registry.IsRegistered("abc123");
+auto entry = registry.GetEntry("abc123");
+
+// Find by alias
+std::string uuid = registry.FindByAlias("MyShader");
+
+// Update alias
+registry.UpdateAlias("abc123", "MyBetterShaderName");
+
+// Get statistics
+auto stats = registry.GetStats();
+std::cout << "Active shaders: " << stats.activeShaders << "\n";
+std::cout << "Inactive shaders: " << stats.inactiveShaders << "\n";
+```
+
+**Cleanup inactive shaders:**
+
+```cpp
+// Remove shaders inactive for > 24 hours
+uint32_t removed = registry.CleanupInactive(std::chrono::hours(24));
+
+// Validate registry (mark missing files as inactive)
+uint32_t invalid = registry.ValidateRegistry();
+
+// Clear all
+registry.ClearAll(true);  // Also delete SDI files
+```
+
+**Manual regeneration control:**
+
+```cpp
+SdiRegistryManager::Config config{
+    .autoRegenerate = false,  // Disable auto-regen
+    .regenerationThreshold = 5  // Only regen after 5 changes
+};
+
+SdiRegistryManager registry(config);
+
+// Register multiple shaders...
+registry.RegisterShader(entry1);
+registry.RegisterShader(entry2);
+registry.RegisterShader(entry3);
+
+// Manually trigger regeneration
+registry.RegenerateRegistry();
+```
+
+### Integration with ShaderBundleBuilder
+
+**Automatic registration:**
+
+```cpp
+SdiRegistryManager registry;
+
+// All shaders built with this configuration auto-register
+auto result = ShaderBundleBuilder()
+    .SetProgramName("PBRShader")
+    .AddStage(...)
+    .EnableRegistryIntegration(&registry)  // Enable!
+    .Build();
+
+// No manual registration needed!
+```
+
+**With custom alias:**
+
+```cpp
+auto result = ShaderBundleBuilder()
+    .SetProgramName("PhysicallyBasedRenderingMaterial")  // Long name
+    .EnableRegistryIntegration(&registry, "PBR")  // Short alias
+    .Build();
+
+// In C++ code:
+using namespace Shaders;
+binding.binding = PBR::Set0::MaterialBuffer::BINDING;  // Clean!
+```
+
+### Benefits Summary
+
+| Feature | Without Registry | With Registry |
+|---------|-----------------|---------------|
+| **Includes** | Many individual headers | Single SDI_Registry.h |
+| **Compilation** | All SDI headers compiled | Only active shaders |
+| **Access** | Long namespace paths | Short aliases |
+| **Updates** | Manual tracking | Auto-regeneration |
+| **Runtime Info** | Not available | Shader enumeration |
+
+### Thread Safety
+
+SdiRegistryManager is fully thread-safe - multiple threads can register/unregister simultaneously:
+
+```cpp
+SdiRegistryManager registry;
+
+// Safe to register from multiple threads
+std::vector<std::future<void>> futures;
+for (const auto& shader : shaders) {
+    futures.push_back(std::async([&]() {
+        auto result = BuildShader(shader);
+        registry.RegisterShader(...);  // Thread-safe!
+    }));
+}
+```
+
+---
+
 ## Future Enhancements
 
 Possible future additions (as separate classes):

@@ -159,6 +159,21 @@ public:
     ShaderBundleBuilder& EnableSdiGeneration(bool enable);
 
     /**
+     * @brief Enable central SDI registry integration
+     *
+     * When enabled, built shader bundles are automatically registered
+     * in the central SDI_Registry.h for convenient single-include access.
+     *
+     * @param registry Pointer to registry manager
+     * @param aliasName Optional friendly alias (defaults to program name)
+     * @return Reference to this builder
+     */
+    ShaderBundleBuilder& EnableRegistryIntegration(
+        class SdiRegistryManager* registry,
+        const std::string& aliasName = ""
+    );
+
+    /**
      * @brief Set whether to validate pipeline type constraints
      */
     ShaderBundleBuilder& SetValidatePipeline(bool validate);
@@ -200,6 +215,8 @@ private:
     ShaderCompiler* compiler_ = nullptr;
     bool ownsCompiler_ = false;
     SdiGeneratorConfig sdiConfig_;
+    class SdiRegistryManager* registryManager_ = nullptr;
+    std::string registryAlias_;
 
     // Helper methods
     std::string GenerateUuid();
