@@ -123,9 +123,321 @@ if (result) {
 
 ---
 
+## ShaderDataBundle - Unified Shader Package
+
+### Overview
+
+**ShaderDataBundle** is a complete, self-contained package that includes everything needed to work with a shader:
+
+- ✅ Compiled SPIRV bytecode
+- ✅ Full reflection metadata (descriptors, push constants, vertex inputs)
+- ✅ Descriptor layout specifications
+- ✅ Generated SDI header reference
+- ✅ Unique identifier (UUID)
+- ✅ Validation and debugging utilities
+
+**Purpose**: Instead of juggling multiple separate pieces (SPIRV, reflection data, SDI path, etc.), you get one cohesive bundle with convenient accessors.
+
+### Creating Bundles with ShaderBundleBuilder
+
+**ShaderBundleBuilder** orchestrates the entire pipeline:
+
+```cpp
+// Simple example: vertex + fragment shader
+auto result = ShaderBundleBuilder()
+    .SetProgramName("MyMaterial")
+    .SetPipelineType(PipelineTypeConstraint::Graphics)
+    .AddStage(ShaderStage::Vertex, vertexSource)
+    .AddStage(ShaderStage::Fragment, fragmentSource)
+    .Build();
+
+if (result) {
+    ShaderDataBundle bundle = *result;
+    // Now have everything in one place!
+}
+```
+
+**With all features enabled:**
+
+```cpp
+ShaderPreprocessor preprocessor;
+preprocessor.AddIncludePath("./shaders/common");
+
+ShaderCacheManager cache;
+cache.Initialize({"./shader_cache"});
+
+SdiGeneratorConfig sdiConfig{
+    .outputDirectory = "./generated/sdi",
+    .namespacePrefix = "ShaderInterface",
+    .generateComments = true
+};
+
+auto result = ShaderBundleBuilder()
+    .SetProgramName("PBRMaterial")
+    .SetPipelineType(PipelineTypeConstraint::Graphics)
+
+    // Add stages
+    .AddStage(ShaderStage::Vertex, vertexSource)
+    .AddStage(ShaderStage::Fragment, fragmentSource)
+
+    // Enable preprocessing for includes/defines
+    .EnablePreprocessing(&preprocessor)
+
+    // Enable caching for faster rebuilds
+    .EnableCaching(&cache)
+
+    // Configure SDI generation
+    .SetSdiConfig(sdiConfig)
+
+    .Build();
+
+if (!result) {
+    std::cerr << "Build failed: " << result.errorMessage << "\n";
+    return;
+}
+
+// Success! Get the bundle
+ShaderDataBundle bundle = *result;
+
+// Build statistics
+std::cout << "Compile time: " << result.compileTime.count() << "ms\n";
+std::cout << "Reflect time: " << result.reflectTime.count() << "ms\n";
+std::cout << "SDI gen time: " << result.sdiGenTime.count() << "ms\n";
+std::cout << "Used cache: " << (result.usedCache ? "Yes" : "No") << "\n";
+```
+
+### Using ShaderDataBundle
+
+**1. Access SPIRV for Vulkan:**
+
+```cpp
+// Get SPIRV bytecode for creating VkShaderModule
+const auto& vertSpirv = bundle.GetSpirv(ShaderStage::Vertex);
+const auto& fragSpirv = bundle.GetSpirv(ShaderStage::Fragment);
+
+// Create Vulkan shader modules (RenderGraph side)
+VkShaderModuleCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+createInfo.codeSize = vertSpirv.size() * sizeof(uint32_t);
+createInfo.pCode = vertSpirv.data();
+vkCreateShaderModule(device, &createInfo, nullptr, &vertModule);
+```
+
+**2. Include SDI header in C++ code:**
+
+```cpp
+// In your C++ source file:
+#include "generated/sdi/abc123-SDI.h"  // bundle.GetSdiIncludePath()
+
+// Use type-safe constants
+using namespace ShaderInterface::abc123;  // bundle.GetSdiNamespace()
+
+VkDescriptorSetLayoutBinding binding{};
+binding.binding = Set0::MaterialBuffer::BINDING;        // No magic numbers!
+binding.descriptorType = Set0::MaterialBuffer::TYPE;    // Type-safe!
+binding.stageFlags = Set0::MaterialBuffer::STAGES;      // Matches shader!
+binding.descriptorCount = Set0::MaterialBuffer::COUNT;
+```
+
+**3. Access descriptor metadata:**
+
+```cpp
+// Get all bindings for descriptor set 0
+auto set0Bindings = bundle.GetDescriptorSet(0);
+
+for (const auto& binding : set0Bindings) {
+    std::cout << "Binding " << binding.binding
+              << ": " << binding.name
+              << " (type: " << binding.descriptorType << ")\n";
+}
+
+// Get push constants
+const auto& pushConstants = bundle.GetPushConstants();
+for (const auto& pc : pushConstants) {
+    std::cout << "Push constant: " << pc.name
+              << " (size: " << pc.size << " bytes)\n";
+}
+
+// Get vertex inputs (for vertex shaders)
+const auto& vertexInputs = bundle.GetVertexInputs();
+for (const auto& input : vertexInputs) {
+    std::cout << "Vertex input " << input.location
+              << ": " << input.name << "\n";
+}
+```
+
+**4. Validate interface during hot-reload:**
+
+```cpp
+// Shader file changed, recompile
+auto newResult = ShaderBundleBuilder()
+    .SetProgramName("PBRMaterial")
+    .AddStageFromFile(ShaderStage::Fragment, "material.frag")
+    .Build();
+
+if (newResult) {
+    ShaderDataBundle newBundle = *newResult;
+
+    // Check if interface is compatible
+    if (newBundle.ValidateInterface(oldBundle.GetInterfaceHash())) {
+        // Interface unchanged - safe to hot-swap
+        SwapShaderModule(newBundle.GetSpirv(ShaderStage::Fragment));
+    } else {
+        // Interface changed - need full reload
+        std::cerr << "WARNING: Shader interface changed!\n";
+        std::cerr << "Regenerate SDI and rebuild C++ code.\n";
+    }
+}
+```
+
+**5. Debug information:**
+
+```cpp
+// Print comprehensive debug info
+std::cout << bundle.GetDebugInfo();
+
+// Output:
+// ShaderDataBundle 'PBRMaterial'
+//   UUID: abc123def456
+//   Pipeline Type: Graphics
+//   Stages: 2
+//     - Vertex (1024 words)
+//     - Fragment (2048 words)
+//   Descriptor Sets: 1
+//     Set 0: 3 bindings
+//   SDI: Generated
+//   SDI Path: ./generated/sdi/abc123def456-SDI.h
+//   Interface Hash: a3f5d8e2b1c4f6a...
+//   Age: 5234ms
+```
+
+### ShaderBundleBuilder Options
+
+**Loading from files:**
+
+```cpp
+auto result = ShaderBundleBuilder()
+    .SetProgramName("TerrainShader")
+    .AddStageFromFile(ShaderStage::Vertex, "terrain.vert")
+    .AddStageFromFile(ShaderStage::Fragment, "terrain.frag")
+    .Build();
+```
+
+**Per-stage defines:**
+
+```cpp
+auto result = ShaderBundleBuilder()
+    .AddStage(ShaderStage::Fragment, fragmentSource)
+    .SetStageDefines(ShaderStage::Fragment, {
+        {"MAX_LIGHTS", "16"},
+        {"USE_SHADOWS", "1"},
+        {"ENABLE_PBR", ""}
+    })
+    .Build();
+```
+
+**Custom compilation options:**
+
+```cpp
+CompilationOptions debugOptions{
+    .optimizePerformance = false,
+    .optimizeSize = false,
+    .generateDebugInfo = true
+};
+
+auto result = ShaderBundleBuilder()
+    .AddStage(ShaderStage::Fragment, source, "main", debugOptions)
+    .Build();
+```
+
+**Building from pre-compiled SPIRV:**
+
+```cpp
+// You already have compiled SPIRV, just need reflection + SDI
+std::vector<uint32_t> preCompiledSpirv = LoadSpirv("shader.spv");
+
+CompiledProgram program;
+program.name = "PrecompiledShader";
+program.pipelineType = PipelineTypeConstraint::Graphics;
+// ... populate program.stages with SPIRV ...
+
+auto result = ShaderBundleBuilder()
+    .BuildFromCompiled(program);
+```
+
+### Bundle Lifecycle
+
+```cpp
+// Create bundle
+auto result = ShaderBundleBuilder()...Build();
+ShaderDataBundle bundle = *result;
+
+// Use bundle for entire shader lifetime
+CreateVulkanPipeline(bundle);
+UpdateUniforms(bundle);
+RenderWithShader(bundle);
+
+// Hot-reload: create new bundle
+auto newResult = ShaderBundleBuilder()...Build();
+if (newResult && IsCompatible(bundle, *newResult)) {
+    bundle = *newResult;  // Swap to new version
+}
+
+// Bundle automatically cleans up when destroyed
+// (SDI files remain on disk for C++ inclusion)
+```
+
+### Benefits Summary
+
+| Feature | Without Bundle | With Bundle |
+|---------|----------------|-------------|
+| **SPIRV Access** | Separate CompiledProgram | `bundle.GetSpirv()` |
+| **Descriptor Info** | Manual reflection calls | `bundle.GetDescriptorSet()` |
+| **SDI Path** | Track separately | `bundle.GetSdiIncludePath()` |
+| **Validation** | Manual hash comparison | `bundle.ValidateInterface()` |
+| **Debug Info** | Assemble manually | `bundle.GetDebugInfo()` |
+| **Type Safety** | Manual constants | Include SDI header |
+
+**Result**: One unified interface for all shader-related operations!
+
+---
+
 ## Typical Workflow
 
-### 1. Without ShaderLibrary (Manual Control)
+### 1. Modern Approach: ShaderDataBundle (Recommended)
+
+```cpp
+// Setup (once)
+ShaderPreprocessor preprocessor;
+preprocessor.AddIncludePath("./shaders/include");
+
+ShaderCacheManager cache;
+SdiGeneratorConfig sdiConfig{.outputDirectory = "./generated/sdi"};
+
+// Build shader bundle
+auto result = ShaderBundleBuilder()
+    .SetProgramName("PBRShader")
+    .AddStageFromFile(ShaderStage::Vertex, "pbr.vert")
+    .AddStageFromFile(ShaderStage::Fragment, "pbr.frag")
+    .EnablePreprocessing(&preprocessor)
+    .EnableCaching(&cache)
+    .SetSdiConfig(sdiConfig)
+    .Build();
+
+if (!result) {
+    std::cerr << "Build failed: " << result.errorMessage << "\n";
+    return;
+}
+
+// Use bundle
+ShaderDataBundle bundle = *result;
+
+// In C++ code, include the generated SDI header:
+// #include "bundle.GetSdiIncludePath()"
+// Now have type-safe access to all shader resources!
+```
+
+### 2. Manual Approach: Individual Components
 
 ```cpp
 // Preprocess
@@ -151,7 +463,7 @@ if (!spirv) {
 // Use spirv in RenderGraph to create VkShaderModule
 ```
 
-### 2. With ShaderLibrary (Managed)
+### 3. Legacy Approach: With ShaderLibrary (Managed)
 
 ```cpp
 ShaderLibrary library;
