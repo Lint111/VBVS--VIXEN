@@ -200,6 +200,23 @@ public:
      */
     BuildResult BuildFromCompiled(const CompiledProgram& program);
 
+    // ===== Query Methods (for async builder) =====
+
+    /**
+     * @brief Get current UUID (may be empty if not set)
+     */
+    std::string GetUuid() const { return uuid_; }
+
+    /**
+     * @brief Get program name
+     */
+    std::string GetProgramName() const { return programName_; }
+
+    /**
+     * @brief Get number of stages
+     */
+    size_t GetStageCount() const { return stages_.size(); }
+
 private:
     // Configuration
     std::string programName_ = "Unnamed";
@@ -218,10 +235,12 @@ private:
     class SdiRegistryManager* registryManager_ = nullptr;
     std::string registryAlias_;
 
-    // Helper methods
+    // Helper methods (public for async builder)
+public:
     std::string GenerateUuid();
+
+private:
     bool ValidatePipelineConstraints(std::string& outError);
-    BuildResult CompileStage(const StageSource& stageSource);
     BuildResult PerformBuild(CompiledProgram& program);
 };
 
