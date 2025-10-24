@@ -40,10 +40,15 @@ target_include_directories(ShaderManagement
         ${spirv_reflect_SOURCE_DIR}  # For spirv_reflect.h/c
 )
 
-# Link Vulkan headers
+# Find OpenSSL for SHA-256 hashing in SpirvReflector
+find_package(OpenSSL REQUIRED)
+
+# Link Vulkan headers and OpenSSL
 target_link_libraries(ShaderManagement
     PUBLIC
         Vulkan::Headers
+    PRIVATE
+        OpenSSL::Crypto
 )
 
 # C++23 standard

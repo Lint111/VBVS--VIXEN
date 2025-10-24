@@ -283,6 +283,292 @@ for (const auto& shader : shaders) {
 }
 ```
 
+## SPIRV Descriptor Interface (SDI) Code Generation
+
+### Overview
+
+The SDI system generates C++ header files from SPIRV reflection data, providing **compile-time type safety** when accessing shader resources.
+
+### Components
+
+#### SpirvReflector
+
+**Responsibility**: Comprehensive SPIRV metadata extraction
+
+```cpp
+// Example usage
+auto reflectionData = SpirvReflector::Reflect(compiledProgram);
+
+// Access descriptor bindings with full type information
+for (const auto& [setIndex, bindings] : reflectionData->descriptorSets) {
+    for (const auto& binding : bindings) {
+        std::cout << "Set " << setIndex
+                  << ", Binding " << binding.binding
+                  << ": " << binding.name << "\n";
+    }
+}
+
+// Compute interface hash for validation
+std::string hash = SpirvReflector::ComputeInterfaceHash(compiledProgram);
+```
+
+**Features**:
+- Descriptor binding extraction (sets, bindings, types, names)
+- Push constant reflection with struct layouts
+- Vertex input/output analysis
+- Struct definition extraction
+- Specialization constant detection
+- SHA-256 interface hashing
+- Stage I/O analysis
+
+---
+
+#### SpirvInterfaceGenerator
+
+**Responsibility**: Generate strongly-typed C++ header files from reflection data
+
+```cpp
+// Example usage
+SdiGeneratorConfig config{
+    .outputDirectory = "./generated/sdi",
+    .namespacePrefix = "ShaderInterface",
+    .generateComments = true,
+    .generateLayoutInfo = true
+};
+
+SpirvInterfaceGenerator generator(config);
+
+// Generate UUID-SDI.h header file
+std::string uuid = "my_shader_uuid_123";
+std::string filePath = generator.Generate(uuid, *reflectionData);
+
+// Generated file: ./generated/sdi/my_shader_uuid_123-SDI.h
+```
+
+**Generated header structure**:
+
+```cpp
+namespace ShaderInterface {
+namespace my_shader_uuid_123 {
+
+// Struct definitions matching UBO/SSBO layouts
+struct MaterialData {
+    float roughness;      // Offset: 0 bytes
+    float metallic;       // Offset: 4 bytes
+    vec4 albedo;          // Offset: 16 bytes
+};
+
+// Descriptor bindings with compile-time constants
+namespace Set0 {
+    struct MaterialBuffer {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 0;
+        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
+        using DataType = MaterialData;
+    };
+
+    struct AlbedoTexture {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 1;
+        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_FRAGMENT_BIT;
+    };
+}
+
+// Push constants
+struct PushConstants {
+    static constexpr uint32_t OFFSET = 0;
+    static constexpr uint32_t SIZE = 64;
+    static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
+    using DataType = TransformData;
+};
+
+// Metadata and validation
+struct Metadata {
+    static constexpr const char* PROGRAM_NAME = "PBRShader";
+    static constexpr const char* INTERFACE_HASH = "a3f5d...";
+    static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
+};
+
+inline bool ValidateInterfaceHash(const char* runtimeHash) {
+    return std::string(runtimeHash) == Metadata::INTERFACE_HASH;
+}
+
+} // namespace
+} // namespace ShaderInterface
+```
+
+---
+
+#### SdiFileManager
+
+**Responsibility**: Lifecycle management of generated SDI files
+
+```cpp
+// Example usage
+SdiFileManager manager("./generated/sdi");
+
+// Register generated files
+manager.RegisterSdi("shader_uuid_123", generatedPath);
+
+// Cleanup orphaned files (removed shaders)
+uint32_t orphansDeleted = manager.CleanupOrphans();
+
+// Get all registered UUIDs
+auto uuids = manager.GetRegisteredUuids();
+
+// Unregister and delete
+manager.UnregisterSdi("shader_uuid_123", true);
+```
+
+### Benefits of SDI
+
+#### 1. IDE Autocompletion
+
+```cpp
+#include "my_shader_uuid_123-SDI.h"
+using namespace ShaderInterface::my_shader_uuid_123;
+
+// IDE knows Set0::MaterialBuffer exists and provides autocompletion
+VkDescriptorSetLayoutBinding binding{};
+binding.binding = Set0::MaterialBuffer::BINDING;  // Autocomplete!
+binding.descriptorType = Set0::MaterialBuffer::TYPE;
+binding.stageFlags = Set0::MaterialBuffer::STAGES;
+```
+
+#### 2. Compile-Time Type Safety
+
+```cpp
+// COMPILE ERROR if you use wrong binding number
+binding.binding = 999;  // Works
+binding.binding = Set0::MaterialBuffer::BINDING;  // Type-safe!
+
+// Can't misspell or use wrong constant
+binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;  // Wrong! (no compile error)
+binding.descriptorType = Set0::MaterialBuffer::TYPE;  // Correct! (matches shader)
+```
+
+#### 3. Interface Validation
+
+```cpp
+// Validate at runtime that shader hasn't changed
+auto runtimeReflection = SpirvReflector::Reflect(program);
+if (!ShaderInterface::my_shader_uuid_123::ValidateInterfaceHash(
+        runtimeReflection->interfaceHash.c_str())) {
+    // ERROR: Shader interface has changed, regenerate SDI!
+}
+```
+
+#### 4. Struct Layout Matching
+
+```cpp
+// C++ struct matches shader UBO layout EXACTLY
+struct MaterialData {
+    float roughness;
+    float metallic;
+    vec4 albedo;
+};
+
+// Fill data type-safely
+MaterialData data{
+    .roughness = 0.5f,
+    .metallic = 0.8f,
+    .albedo = {1.0f, 0.0f, 0.0f, 1.0f}
+};
+
+// Update uniform buffer (guaranteed to match shader)
+UpdateUniformBuffer(buffer, &data, sizeof(data));
+```
+
+### Workflow Integration
+
+#### Full Pipeline with SDI
+
+```cpp
+// 1. Compile shader
+ShaderCompiler compiler;
+auto compiled = compiler.Compile(ShaderStage::Fragment, source);
+
+// 2. Reflect SPIRV
+auto reflectionData = SpirvReflector::Reflect(*compiled);
+
+// 3. Generate SDI header
+SpirvInterfaceGenerator generator;
+std::string uuid = GenerateUUID();
+std::string sdiPath = generator.Generate(uuid, *reflectionData);
+
+// 4. Include generated header in C++ code
+// #include "generated/sdi/{uuid}-SDI.h"
+
+// 5. Use type-safe constants
+// binding.binding = Set0::MaterialBuffer::BINDING;
+```
+
+#### Hot Reload with Validation
+
+```cpp
+// Detect shader file change
+if (ShaderFileChanged("material.frag")) {
+    // Recompile
+    auto newProgram = compiler.Compile(...);
+
+    // Reflect new interface
+    auto newReflection = SpirvReflector::Reflect(*newProgram);
+
+    // Check if interface changed
+    if (!AreInterfacesCompatible(*oldReflection, *newReflection)) {
+        // Interface changed - regenerate SDI
+        generator.Generate(uuid, *newReflection);
+
+        // WARN: C++ code needs recompilation to use new interface
+        std::cerr << "WARNING: Shader interface changed, rebuild C++ code!\n";
+    } else {
+        // Interface unchanged - hot reload is safe
+        SwapShaderModule(newProgram);
+    }
+}
+```
+
+### Configuration Options
+
+```cpp
+SdiGeneratorConfig config{
+    .outputDirectory = "./generated/sdi",        // Where to write files
+    .namespacePrefix = "ShaderInterface",        // Namespace prefix
+    .generateComments = true,                     // Include documentation
+    .generateLayoutInfo = true,                   // Include memory layout
+    .generateAccessorHelpers = false,             // Generate helper functions
+    .prettyPrint = true                           // Format with indentation
+};
+```
+
+### File Naming Convention
+
+Generated files follow the pattern: `{UUID}-SDI.h`
+
+- **UUID**: Unique identifier for the shader program (typically a hash or GUID)
+- **SDI**: Suffix indicating "SPIRV Descriptor Interface"
+- Example: `a3f5d8e2_b1c4_4f6a_9d2e_8c3b5a1f7e9d-SDI.h`
+
+### Thread Safety
+
+All SDI classes are thread-safe:
+
+```cpp
+// Safe to generate multiple SDI files in parallel
+SpirvInterfaceGenerator generator(config);
+
+std::vector<std::thread> threads;
+for (const auto& [uuid, reflection] : shaderData) {
+    threads.emplace_back([&]() {
+        generator.Generate(uuid, *reflection);  // Thread-safe
+    });
+}
+```
+
 ## Future Enhancements
 
 Possible future additions (as separate classes):
@@ -291,5 +577,6 @@ Possible future additions (as separate classes):
 - **ShaderVariantGenerator**: Automatic variant generation
 - **ShaderDependencyTracker**: Track shader file dependencies
 - **ShaderMetricsCollector**: Compilation time, cache hit rates, etc.
+- **SdiAccessorGenerator**: Generate high-level accessor APIs for descriptors
 
 All would follow the same pattern: focused, single-responsibility classes that compose well together.
