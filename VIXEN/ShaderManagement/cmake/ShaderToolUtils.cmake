@@ -1,6 +1,9 @@
 # ShaderToolUtils.cmake
 # CMake utilities for build-time shader compilation using shader_tool
 
+# Include shader dependency parser
+include(${CMAKE_CURRENT_LIST_DIR}/ParseShaderIncludes.cmake)
+
 # Find shader_tool executable
 find_program(SHADER_TOOL_EXECUTABLE
     NAMES shader_tool
@@ -73,6 +76,7 @@ function(add_shader_bundle TARGET_NAME)
     # Collect all input files
     set(INPUT_FILES "")
     set(INPUT_PATHS "")
+    set(ALL_DEPENDENCIES "")
 
     foreach(STAGE VERTEX FRAGMENT COMPUTE GEOMETRY TESS_CONTROL TESS_EVAL MESH TASK)
         if(SHADER_${STAGE})
@@ -81,12 +85,34 @@ function(add_shader_bundle TARGET_NAME)
                 get_filename_component(ABS_PATH "${FILE}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
                 list(APPEND INPUT_FILES "${ABS_PATH}")
                 list(APPEND INPUT_PATHS "${ABS_PATH}")
+
+                # Parse shader includes for dependency tracking
+                # This enables incremental builds when included files change
+                get_shader_dependencies("${ABS_PATH}" SHADER_DEPS
+                    ${CMAKE_CURRENT_SOURCE_DIR}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../shaders
+                )
+
+                if(SHADER_DEPS)
+                    list(APPEND ALL_DEPENDENCIES ${SHADER_DEPS})
+                endif()
             endforeach()
         endif()
     endforeach()
 
     if(NOT INPUT_FILES)
         message(FATAL_ERROR "add_shader_bundle: No shader stages specified")
+    endif()
+
+    # Remove duplicate dependencies
+    if(ALL_DEPENDENCIES)
+        list(REMOVE_DUPLICATES ALL_DEPENDENCIES)
+    endif()
+
+    # Add user-specified dependencies
+    if(SHADER_DEPENDS)
+        list(APPEND ALL_DEPENDENCIES ${SHADER_DEPENDS})
     endif()
 
     # Determine output directory
@@ -131,10 +157,11 @@ function(add_shader_bundle TARGET_NAME)
 
     # Create custom command with proper error handling
     # Using || (echo ... && exit 1) ensures build fails on error
+    # Includes automatic dependency tracking for #include directives
     add_custom_command(
         OUTPUT ${OUTPUT_BUNDLE}
         COMMAND ${COMMAND_ARGS} || (${CMAKE_COMMAND} -E echo "ERROR: Shader compilation failed for ${SHADER_PROGRAM_NAME}" && ${CMAKE_COMMAND} -E false)
-        DEPENDS ${INPUT_PATHS} ${SHADER_DEPENDS}
+        DEPENDS ${INPUT_PATHS} ${ALL_DEPENDENCIES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Compiling shader bundle: ${SHADER_PROGRAM_NAME}"
         VERBATIM

@@ -1,6 +1,7 @@
 #include "ShaderManagement/ShaderBundleBuilder.h"
 #include "ShaderManagement/SPIRVReflection.h"
 #include "ShaderManagement/SdiRegistryManager.h"
+#include "ShaderManagement/ShaderLogger.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -298,6 +299,12 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     auto startTime = std::chrono::steady_clock::now();
     BuildResult result;
 
+    // Update telemetry
+    auto& telemetry = ShaderLogger::GetTelemetry();
+    telemetry.totalCompilations.fetch_add(1);
+
+    ShaderLogger::LogDebug("Starting shader bundle build: " + programName_, "Builder");
+
     // Create compiler if not provided
     if (!compiler_) {
         compiler_ = new ShaderCompiler();
@@ -309,14 +316,19 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         uuid_ = GenerateUuid();
     }
 
+    ShaderLogger::LogDebug("Generated UUID: " + uuid_, "Builder");
+
     // Validate pipeline constraints
     if (validatePipeline_) {
         std::string error;
         if (!ValidatePipelineConstraints(error)) {
             result.success = false;
             result.errorMessage = "Pipeline validation failed: " + error;
+            ShaderLogger::LogError("Pipeline validation failed: " + error, "Builder");
+            telemetry.failedCompilations.fetch_add(1);
             return result;
         }
+        ShaderLogger::LogDebug("Pipeline validation passed", "Builder");
     }
 
     // Build CompiledProgram
@@ -369,18 +381,32 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
             auto cached = cacheManager_->Lookup(cacheKey);
             if (cached) {
                 // Cache hit!
+                telemetry.cacheHits.fetch_add(1);
+                ShaderLogger::LogDebug("Cache hit for stage " +
+                    std::string(ShaderStageName(stageSource.stage)), "Builder");
+
                 CompiledShaderStage stage;
                 stage.stage = stageSource.stage;
                 stage.spirvCode = *cached;
                 stage.entryPoint = stageSource.entryPoint;
                 program.stages.push_back(stage);
                 result.usedCache = true;
+
+                // Update telemetry
+                telemetry.totalSpirvSizeBytes.fetch_add(cached->size() * sizeof(uint32_t));
                 continue;
+            } else {
+                telemetry.cacheMisses.fetch_add(1);
             }
         }
 
         // Compile
+        ShaderLogger::LogInfo("Compiling stage: " +
+            std::string(ShaderStageName(stageSource.stage)), "Compiler");
+
         auto compileStart = std::chrono::steady_clock::now();
+        ScopedTelemetryTimer compileTimer(telemetry.totalCompileTimeUs);
+
         auto compiled = compiler_->Compile(
             stageSource.stage,
             sourceToCompile,
@@ -391,12 +417,20 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         result.compileTime += std::chrono::duration_cast<std::chrono::milliseconds>(
             compileEnd - compileStart);
 
+        // Update telemetry
+        telemetry.totalSourceSizeBytes.fetch_add(sourceToCompile.size());
+
         if (!compiled.success) {
             result.success = false;
             result.errorMessage = "Compilation failed for stage " +
                 std::string(ShaderStageName(stageSource.stage)) + ": " + compiled.errorLog;
+            ShaderLogger::LogError("Compilation failed: " + compiled.errorLog, "Compiler");
+            telemetry.failedCompilations.fetch_add(1);
             return result;
         }
+
+        // Update SPIRV size telemetry
+        telemetry.totalSpirvSizeBytes.fetch_add(compiled.spirv.size() * sizeof(uint32_t));
 
         // Store in cache if enabled
         if (cacheManager_ && !cacheKey.empty()) {
@@ -423,6 +457,16 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
     auto endTime = std::chrono::steady_clock::now();
     result.totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(
         endTime - startTime);
+
+    // Update telemetry on success
+    if (result.success) {
+        telemetry.successfulCompilations.fetch_add(1);
+        ShaderLogger::LogInfo("Shader bundle build completed successfully: " + programName_ +
+            " (" + std::to_string(result.totalTime.count()) + "ms)", "Builder");
+    } else {
+        telemetry.failedCompilations.fetch_add(1);
+        ShaderLogger::LogError("Shader bundle build failed: " + result.errorMessage, "Builder");
+    }
 
     return result;
 }
