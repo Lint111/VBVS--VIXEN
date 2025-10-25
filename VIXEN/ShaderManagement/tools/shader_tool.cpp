@@ -111,8 +111,125 @@ struct ToolOptions {
     PipelineTypeConstraint pipelineType = PipelineTypeConstraint::Graphics;
     bool generateSdi = true;
     bool verbose = false;
+    bool embedSpirv = false;  // Embed SPIRV in JSON (base64) instead of separate files
 
     SdiGeneratorConfig sdiConfig;
+};
+
+// ===== File Tracking for Cleanup =====
+
+/**
+ * @brief Manifest tracking generated SPIRV files
+ *
+ * Prevents orphaned files by recording all generated outputs.
+ * Format: .shader_tool_manifest.json in output directory
+ */
+class FileManifest {
+public:
+    explicit FileManifest(const fs::path& outputDir)
+        : manifestPath_(outputDir / ".shader_tool_manifest.json")
+        , outputDir_(outputDir) {
+        Load();
+    }
+
+    ~FileManifest() {
+        Save();
+    }
+
+    void TrackFile(const fs::path& file) {
+        fs::path relPath = fs::relative(file, outputDir_);
+        trackedFiles_.insert(relPath.string());
+    }
+
+    void UntrackFile(const fs::path& file) {
+        fs::path relPath = fs::relative(file, outputDir_);
+        trackedFiles_.erase(relPath.string());
+    }
+
+    uint32_t CleanupOrphaned() {
+        std::unordered_set<std::string> existingFiles;
+
+        // Find all .spv and .json files in output directory
+        if (fs::exists(outputDir_)) {
+            for (const auto& entry : fs::recursive_directory_iterator(outputDir_)) {
+                if (entry.is_regular_file()) {
+                    auto ext = entry.path().extension();
+                    if (ext == ".spv" || ext == ".json") {
+                        fs::path relPath = fs::relative(entry.path(), outputDir_);
+                        existingFiles.insert(relPath.string());
+                    }
+                }
+            }
+        }
+
+        // Find orphaned files (exist on disk but not in manifest)
+        uint32_t removed = 0;
+        for (const auto& file : existingFiles) {
+            if (file == ".shader_tool_manifest.json") continue;  // Skip manifest itself
+
+            if (trackedFiles_.find(file) == trackedFiles_.end()) {
+                // Orphaned file - remove it
+                fs::path fullPath = outputDir_ / file;
+                std::error_code ec;
+                if (fs::remove(fullPath, ec)) {
+                    ++removed;
+                }
+            }
+        }
+
+        // Remove dead entries from manifest (tracked but don't exist)
+        auto it = trackedFiles_.begin();
+        while (it != trackedFiles_.end()) {
+            if (existingFiles.find(*it) == existingFiles.end()) {
+                it = trackedFiles_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        return removed;
+    }
+
+    size_t GetTrackedCount() const { return trackedFiles_.size(); }
+
+private:
+    void Load() {
+        if (!fs::exists(manifestPath_)) return;
+
+        std::ifstream file(manifestPath_);
+        if (!file.is_open()) return;
+
+        try {
+            nlohmann::json j;
+            file >> j;
+            if (j.contains("files") && j["files"].is_array()) {
+                for (const auto& item : j["files"]) {
+                    trackedFiles_.insert(item.get<std::string>());
+                }
+            }
+        } catch (...) {
+            // Corrupted manifest - start fresh
+            trackedFiles_.clear();
+        }
+    }
+
+    void Save() {
+        nlohmann::json j;
+        j["version"] = 1;
+        j["files"] = nlohmann::json::array();
+        for (const auto& file : trackedFiles_) {
+            j["files"].push_back(file);
+        }
+
+        std::ofstream file(manifestPath_);
+        if (file.is_open()) {
+            file << j.dump(2);
+        }
+    }
+
+    fs::path manifestPath_;
+    fs::path outputDir_;
+    std::unordered_set<std::string> trackedFiles_;
 };
 
 void PrintUsage() {
@@ -125,6 +242,7 @@ Usage:
   shader_tool generate-sdi <bundle.json> [options]
   shader_tool build-registry <bundle1.json> <bundle2.json> ... [options]
   shader_tool batch <config.json> [options]
+  shader_tool cleanup <output-dir> [options]
 
 Commands:
   compile           Compile shader stages into bundle
@@ -132,6 +250,7 @@ Commands:
   generate-sdi      Generate SDI header from bundle
   build-registry    Build central SDI registry from bundles
   batch             Process multiple shaders from config file
+  cleanup           Remove orphaned SPIRV files from output directory
 
 Options:
   --output <path>          Output file path
@@ -140,6 +259,7 @@ Options:
   --sdi-namespace <ns>     SDI namespace prefix (default: "SDI")
   --sdi-dir <dir>          SDI output directory (default: "./generated/sdi")
   --no-sdi                 Disable SDI generation
+  --embed-spirv            Embed SPIRV in JSON (prevents orphaned .spv files)
   --verbose                Print detailed output
   --help                   Show this help
 
@@ -155,6 +275,9 @@ Examples:
 
   # Batch process from config
   shader_tool batch shaders.json --output-dir ./generated
+
+  # Clean up orphaned SPIRV files
+  shader_tool cleanup ./generated --verbose
 )" << std::endl;
 }
 
@@ -182,6 +305,8 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
             if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
         } else if (arg == "--no-sdi") {
             options.generateSdi = false;
+        } else if (arg == "--embed-spirv") {
+            options.embedSpirv = true;
         } else if (arg == "--verbose" || arg == "-v") {
             options.verbose = true;
         } else if (arg[0] != '-') {
@@ -231,7 +356,12 @@ ShaderStage DetectStageFromExtension(const fs::path& path) {
 /**
  * @brief Save bundle to JSON file
  */
-bool SaveBundleToJson(const ShaderDataBundle& bundle, const fs::path& outputPath) {
+bool SaveBundleToJson(
+    const ShaderDataBundle& bundle,
+    const fs::path& outputPath,
+    bool embedSpirv = false,
+    FileManifest* manifest = nullptr
+) {
     nlohmann::json j;
 
     j["uuid"] = bundle.uuid;
@@ -249,14 +379,31 @@ bool SaveBundleToJson(const ShaderDataBundle& bundle, const fs::path& outputPath
         stageJson["entryPoint"] = stage.entryPoint;
         stageJson["spirvSize"] = stage.spirvCode.size();
 
-        // Save SPIRV to separate file
-        fs::path spirvPath = outputPath.parent_path() / (bundle.uuid + "_stage" + std::to_string(static_cast<int>(stage.stage)) + ".spv");
-        std::ofstream spirvFile(spirvPath, std::ios::binary);
-        spirvFile.write(reinterpret_cast<const char*>(stage.spirvCode.data()),
-                       stage.spirvCode.size() * sizeof(uint32_t));
-        spirvFile.close();
+        if (embedSpirv) {
+            // Embed SPIRV directly in JSON (prevents orphaned .spv files)
+            std::vector<uint32_t> spirvCopy = stage.spirvCode;  // nlohmann::json needs lvalue
+            stageJson["spirvData"] = spirvCopy;
+        } else {
+            // Save SPIRV to separate file
+            fs::path spirvPath = outputPath.parent_path() / (bundle.uuid + "_stage" + std::to_string(static_cast<int>(stage.stage)) + ".spv");
+            std::ofstream spirvFile(spirvPath, std::ios::binary);
+            if (!spirvFile.is_open()) {
+                std::cerr << "Error: Failed to create SPIRV file: " << spirvPath << "\n";
+                return false;
+            }
 
-        stageJson["spirvFile"] = spirvPath.string();
+            spirvFile.write(reinterpret_cast<const char*>(stage.spirvCode.data()),
+                           stage.spirvCode.size() * sizeof(uint32_t));
+            spirvFile.close();
+
+            stageJson["spirvFile"] = spirvPath.string();
+
+            // Track SPIRV file in manifest
+            if (manifest) {
+                manifest->TrackFile(spirvPath);
+            }
+        }
+
         j["stages"].push_back(stageJson);
     }
 
@@ -269,6 +416,11 @@ bool SaveBundleToJson(const ShaderDataBundle& bundle, const fs::path& outputPath
 
     outFile << j.dump(2);
     outFile.close();
+
+    // Track bundle JSON in manifest
+    if (manifest) {
+        manifest->TrackFile(outputPath);
+    }
 
     return true;
 }
@@ -304,20 +456,29 @@ bool LoadBundleFromJson(const fs::path& jsonPath, ShaderDataBundle& bundle) {
         stage.stage = static_cast<ShaderStage>(stageJson["stage"]);
         stage.entryPoint = stageJson["entryPoint"];
 
-        // Load SPIRV from file
-        fs::path spirvPath = stageJson["spirvFile"].get<std::string>();
-        std::ifstream spirvFile(spirvPath, std::ios::binary | std::ios::ate);
-        if (!spirvFile.is_open()) {
-            std::cerr << "Error: Failed to open SPIRV file: " << spirvPath << "\n";
+        // Load SPIRV - check for embedded vs external file
+        if (stageJson.contains("spirvData")) {
+            // Embedded SPIRV (stored directly in JSON)
+            stage.spirvCode = stageJson["spirvData"].get<std::vector<uint32_t>>();
+        } else if (stageJson.contains("spirvFile")) {
+            // External SPIRV file
+            fs::path spirvPath = stageJson["spirvFile"].get<std::string>();
+            std::ifstream spirvFile(spirvPath, std::ios::binary | std::ios::ate);
+            if (!spirvFile.is_open()) {
+                std::cerr << "Error: Failed to open SPIRV file: " << spirvPath << "\n";
+                return false;
+            }
+
+            size_t fileSize = spirvFile.tellg();
+            spirvFile.seekg(0);
+
+            stage.spirvCode.resize(fileSize / sizeof(uint32_t));
+            spirvFile.read(reinterpret_cast<char*>(stage.spirvCode.data()), fileSize);
+            spirvFile.close();
+        } else {
+            std::cerr << "Error: Stage missing both spirvData and spirvFile\n";
             return false;
         }
-
-        size_t fileSize = spirvFile.tellg();
-        spirvFile.seekg(0);
-
-        stage.spirvCode.resize(fileSize / sizeof(uint32_t));
-        spirvFile.read(reinterpret_cast<char*>(stage.spirvCode.data()), fileSize);
-        spirvFile.close();
 
         bundle.program.stages.push_back(stage);
     }
@@ -416,12 +577,16 @@ int CommandCompile(const ToolOptions& options) {
 
     // Determine output path
     fs::path outputPath;
+    fs::path outputDir;
     if (!options.outputPath.empty()) {
         outputPath = options.outputPath;
+        outputDir = outputPath.parent_path();
     } else if (!options.outputDir.empty()) {
         fs::create_directories(options.outputDir);
+        outputDir = options.outputDir;
         outputPath = fs::path(options.outputDir) / (options.programName + ".json");
     } else {
+        outputDir = ".";
         outputPath = options.programName + ".json";
     }
 
@@ -432,11 +597,17 @@ int CommandCompile(const ToolOptions& options) {
         return 1;
     }
 
+    // Create file manifest for tracking
+    FileManifest manifest(outputDir);
+
     // Save bundle
-    if (!SaveBundleToJson(*result.bundle, validatedOutputPath)) {
+    if (!SaveBundleToJson(*result.bundle, validatedOutputPath, options.embedSpirv, &manifest)) {
         std::cerr << "Error: Failed to save bundle\n";
         return 1;
     }
+
+    // Save manifest
+    manifest.Save();
 
     if (options.verbose) {
         std::cout << "Bundle saved to: " << outputPath << "\n";
@@ -545,6 +716,9 @@ int CommandBatch(const ToolOptions& options) {
     std::string outputDir = options.outputDir.empty() ? "./generated" : options.outputDir;
     fs::create_directories(outputDir);
 
+    // Create file manifest for tracking all generated files
+    FileManifest manifest(outputDir);
+
     std::vector<std::string> generatedBundles;
 
     // Process each shader
@@ -599,9 +773,47 @@ int CommandBatch(const ToolOptions& options) {
         }
     }
 
+    // Cleanup orphaned files
+    uint32_t removed = manifest.CleanupOrphaned();
+    if (removed > 0 && options.verbose) {
+        std::cout << "Cleaned up " << removed << " orphaned files\n";
+    }
+
+    // Save final manifest
+    manifest.Save();
+
     std::cout << "\nBatch processing complete!\n";
     std::cout << "Processed " << generatedBundles.size() << " shaders\n";
     std::cout << "Output directory: " << outputDir << "\n";
+
+    return 0;
+}
+
+/**
+ * @brief Command: Clean up orphaned SPIRV files
+ */
+int CommandCleanup(const ToolOptions& options) {
+    std::string outputDir = options.outputDir.empty() ? "./generated" : options.outputDir;
+
+    if (!fs::exists(outputDir)) {
+        std::cerr << "Error: Output directory does not exist: " << outputDir << "\n";
+        return 1;
+    }
+
+    if (options.verbose) {
+        std::cout << "Cleaning up orphaned files in: " << outputDir << "\n";
+    }
+
+    // Load manifest and cleanup
+    FileManifest manifest(outputDir);
+    uint32_t removed = manifest.CleanupOrphaned();
+
+    if (removed > 0) {
+        std::cout << "Removed " << removed << " orphaned file(s)\n";
+        manifest.Save();
+    } else {
+        std::cout << "No orphaned files found\n";
+    }
 
     return 0;
 }
@@ -626,6 +838,8 @@ int main(int argc, char** argv) {
             return CommandBuildRegistry(options);
         } else if (options.command == "batch") {
             return CommandBatch(options);
+        } else if (options.command == "cleanup") {
+            return CommandCleanup(options);
         } else {
             std::cerr << "Error: Unknown command: " << options.command << "\n";
             PrintUsage();

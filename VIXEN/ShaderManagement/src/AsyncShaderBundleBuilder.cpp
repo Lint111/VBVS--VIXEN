@@ -13,9 +13,14 @@ AsyncShaderBundleBuilder::AsyncShaderBundleBuilder(
     , workerThreadCount_(workerThreadCount == 0 ? std::thread::hardware_concurrency() : workerThreadCount)
     , running_(true)
 {
-    // Create worker threads
+    // Create per-thread work queues
     for (uint32_t i = 0; i < workerThreadCount_; ++i) {
-        workerThreads_.emplace_back(&AsyncShaderBundleBuilder::WorkerThreadLoop, this);
+        perThreadQueues_.push_back(std::make_unique<ThreadLocalQueue>());
+    }
+
+    // Create worker threads with thread indices
+    for (uint32_t i = 0; i < workerThreadCount_; ++i) {
+        workerThreads_.emplace_back(&AsyncShaderBundleBuilder::WorkerThreadLoop, this, i);
     }
 }
 
@@ -167,37 +172,61 @@ void AsyncShaderBundleBuilder::SubmitBuildInternal(
         activeBuilds_[handle->uuid] = handle;
     }
 
-    // Submit work to thread pool
+    // Use round-robin to distribute work across threads (reduces contention)
+    uint32_t targetQueue = nextQueueIndex_.fetch_add(1, std::memory_order_relaxed) % workerThreadCount_;
+
+    // Submit work to selected thread's queue
     {
-        std::lock_guard<std::mutex> lock(workMutex_);
-        workQueue_.push([this, builder = std::move(builder), sender, handle]() mutable {
+        std::lock_guard<std::mutex> lock(perThreadQueues_[targetQueue]->mutex);
+        perThreadQueues_[targetQueue]->tasks.push([this, builder = std::move(builder), sender, handle]() mutable {
             ExecuteBuild(std::move(builder), sender);
             handle->completed = true;
         });
     }
 
+    // Wake one worker (they'll check their queue first, then steal if needed)
     workCV_.notify_one();
 }
 
-void AsyncShaderBundleBuilder::WorkerThreadLoop() {
+void AsyncShaderBundleBuilder::WorkerThreadLoop(uint32_t threadIndex) {
     while (running_) {
         std::function<void()> work;
+        bool gotWork = false;
 
-        // Wait for work
+        // 1. Try to get work from own queue first (best cache locality)
         {
-            std::unique_lock<std::mutex> lock(workMutex_);
-            workCV_.wait(lock, [this] { return !workQueue_.empty() || !running_; });
+            std::unique_lock<std::mutex> lock(perThreadQueues_[threadIndex]->mutex);
+            if (!perThreadQueues_[threadIndex]->tasks.empty()) {
+                work = std::move(perThreadQueues_[threadIndex]->tasks.front());
+                perThreadQueues_[threadIndex]->tasks.pop();
+                gotWork = true;
+            }
+        }
 
-            if (!running_ && workQueue_.empty()) {
+        // 2. If own queue empty, try to steal work from other threads
+        if (!gotWork) {
+            gotWork = TryStealWork(threadIndex, work);
+        }
+
+        // 3. If still no work, wait for notification
+        if (!gotWork) {
+            std::unique_lock<std::mutex> lock(cvMutex_);
+            workCV_.wait_for(lock, std::chrono::milliseconds(100), [this, threadIndex] {
+                if (!running_) return true;
+
+                // Check if any queue has work
+                for (const auto& queue : perThreadQueues_) {
+                    std::lock_guard<std::mutex> qLock(queue->mutex);
+                    if (!queue->tasks.empty()) return true;
+                }
+                return false;
+            });
+
+            if (!running_) {
                 break;
             }
 
-            if (workQueue_.empty()) {
-                continue;
-            }
-
-            work = std::move(workQueue_.front());
-            workQueue_.pop();
+            continue; // Loop back to try getting work again
         }
 
         // Execute work
@@ -205,6 +234,24 @@ void AsyncShaderBundleBuilder::WorkerThreadLoop() {
             work();
         }
     }
+}
+
+bool AsyncShaderBundleBuilder::TryStealWork(uint32_t myIndex, std::function<void()>& outWork) {
+    // Try to steal from other threads (work stealing for load balancing)
+    // Start from next thread (circular) to distribute stealing attempts
+    for (uint32_t offset = 1; offset < workerThreadCount_; ++offset) {
+        uint32_t targetIndex = (myIndex + offset) % workerThreadCount_;
+
+        std::unique_lock<std::mutex> lock(perThreadQueues_[targetIndex]->mutex, std::try_to_lock);
+        if (lock.owns_lock() && !perThreadQueues_[targetIndex]->tasks.empty()) {
+            // Successfully stole work!
+            outWork = std::move(perThreadQueues_[targetIndex]->tasks.front());
+            perThreadQueues_[targetIndex]->tasks.pop();
+            return true;
+        }
+    }
+
+    return false; // No work available to steal
 }
 
 void AsyncShaderBundleBuilder::ExecuteBuild(

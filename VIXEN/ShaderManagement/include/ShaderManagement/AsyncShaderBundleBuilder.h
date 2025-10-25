@@ -284,19 +284,31 @@ private:
     EventBus::MessageBus* messageBus_;
     uint32_t workerThreadCount_;
 
-    // Thread pool for compilation
+    // Thread pool for compilation with per-thread work queues (reduces contention)
     std::vector<std::thread> workerThreads_;
-    std::queue<std::function<void()>> workQueue_;
-    std::mutex workMutex_;
+
+    // Per-thread work queues for better cache locality and reduced contention
+    struct ThreadLocalQueue {
+        std::queue<std::function<void()>> tasks;
+        std::mutex mutex;
+    };
+    std::vector<std::unique_ptr<ThreadLocalQueue>> perThreadQueues_;
+
+    // Round-robin counter for work distribution
+    std::atomic<uint32_t> nextQueueIndex_{0};
+
+    // Shared condition variable for waking idle workers
     std::condition_variable workCV_;
+    std::mutex cvMutex_;
     std::atomic<bool> running_;
 
     // Active build tracking
     std::unordered_map<std::string, std::shared_ptr<AsyncBuildHandle>> activeBuilds_;
     mutable std::mutex buildsMutex_;
 
-    void WorkerThreadLoop();
+    void WorkerThreadLoop(uint32_t threadIndex);
     void ExecuteBuild(ShaderBundleBuilder builder, EventBus::SenderID sender);
+    bool TryStealWork(uint32_t myIndex, std::function<void()>& outWork);
 };
 
 } // namespace ShaderManagement
