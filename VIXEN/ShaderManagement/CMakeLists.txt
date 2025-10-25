@@ -1,6 +1,8 @@
 # ShaderManagement static library
 # Pure shader compilation and management logic - no RenderGraph dependencies
 
+cmake_minimum_required(VERSION 3.15)
+
 project(ShaderManagement)
 
 # Fetch SPIRV-Reflect for shader reflection
@@ -40,7 +42,8 @@ target_include_directories(ShaderManagement
         ${spirv_reflect_SOURCE_DIR}  # For spirv_reflect.h/c
 )
 
-# Find OpenSSL for SHA-256 hashing in SpirvReflector
+# Find dependencies
+find_package(Vulkan REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 # Link Vulkan headers and OpenSSL
