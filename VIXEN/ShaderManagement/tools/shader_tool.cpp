@@ -489,9 +489,11 @@ int CommandBatch(const ToolOptions& options) {
             std::cout << "\n=== Processing: " << shaderOptions.programName << " ===\n";
         }
 
-        if (CommandCompile(shaderOptions) != 0) {
+        int result = CommandCompile(shaderOptions);
+        if (result != 0) {
             std::cerr << "Error: Failed to compile shader: " << shaderOptions.programName << "\n";
-            continue;
+            std::cerr << "Batch processing aborted due to compilation failure.\n";
+            return result;  // Fail fast - exit immediately with error code
         }
 
         generatedBundles.push_back((fs::path(outputDir) / (shaderOptions.programName + ".json")).string());
@@ -508,9 +510,10 @@ int CommandBatch(const ToolOptions& options) {
         registryOptions.inputFiles = generatedBundles;
         registryOptions.outputDir = outputDir;
 
-        if (CommandBuildRegistry(registryOptions) != 0) {
+        int result = CommandBuildRegistry(registryOptions);
+        if (result != 0) {
             std::cerr << "Error: Failed to build registry\n";
-            return 1;
+            return result;  // Return error code for CI/CD
         }
     }
 

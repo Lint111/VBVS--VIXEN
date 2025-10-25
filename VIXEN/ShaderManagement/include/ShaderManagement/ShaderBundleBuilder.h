@@ -59,7 +59,7 @@ public:
      */
     struct BuildResult {
         bool success = false;
-        std::optional<ShaderDataBundle> bundle;
+        std::unique_ptr<ShaderDataBundle> bundle;
         std::string errorMessage;
         std::vector<std::string> warnings;
 
@@ -73,8 +73,22 @@ public:
 
         operator bool() const { return success; }
 
-        const ShaderDataBundle& operator*() const { return *bundle; }
-        const ShaderDataBundle* operator->() const { return &(*bundle); }
+        const ShaderDataBundle& operator*() const {
+            if (!bundle) {
+                throw std::runtime_error("BuildResult: Attempted to dereference null bundle");
+            }
+            return *bundle;
+        }
+
+        const ShaderDataBundle* operator->() const {
+            if (!bundle) {
+                throw std::runtime_error("BuildResult: Attempted to access null bundle");
+            }
+            return bundle.get();
+        }
+
+        ShaderDataBundle* get() { return bundle.get(); }
+        const ShaderDataBundle* get() const { return bundle.get(); }
     };
 
     ShaderBundleBuilder();

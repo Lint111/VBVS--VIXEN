@@ -129,10 +129,11 @@ function(add_shader_bundle TARGET_NAME)
     file(MAKE_DIRECTORY "${OUTPUT_DIR}")
     file(MAKE_DIRECTORY "${SDI_OUTPUT_DIR}")
 
-    # Create custom command
+    # Create custom command with proper error handling
+    # Using || (echo ... && exit 1) ensures build fails on error
     add_custom_command(
         OUTPUT ${OUTPUT_BUNDLE}
-        COMMAND ${COMMAND_ARGS}
+        COMMAND ${COMMAND_ARGS} || (${CMAKE_COMMAND} -E echo "ERROR: Shader compilation failed for ${SHADER_PROGRAM_NAME}" && ${CMAKE_COMMAND} -E false)
         DEPENDS ${INPUT_PATHS} ${SHADER_DEPENDS}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Compiling shader bundle: ${SHADER_PROGRAM_NAME}"
@@ -226,10 +227,10 @@ function(add_shader_registry TARGET_NAME)
         list(APPEND COMMAND_ARGS --verbose)
     endif()
 
-    # Create custom command
+    # Create custom command with error handling
     add_custom_command(
         OUTPUT ${OUTPUT_FILE}
-        COMMAND ${COMMAND_ARGS}
+        COMMAND ${COMMAND_ARGS} || (${CMAKE_COMMAND} -E echo "ERROR: Shader registry generation failed" && ${CMAKE_COMMAND} -E false)
         DEPENDS ${BUNDLE_PATHS} ${BUNDLE_DEPENDS}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Building shader registry: ${OUTPUT_FILE}"

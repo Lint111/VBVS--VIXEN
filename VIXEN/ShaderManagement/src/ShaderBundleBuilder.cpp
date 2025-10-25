@@ -4,25 +4,81 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#include <random>
+#include <openssl/sha.h>
 
 namespace ShaderManagement {
 
 namespace {
 
 /**
- * @brief Generate a UUID-like string
+ * @brief Generate a deterministic content-based UUID
+ *
+ * Creates a UUID based on shader sources, options, and configuration.
+ * Same shader content always produces the same UUID, enabling:
+ * - Caching: Can reuse cached builds across sessions
+ * - Hot-reload: UUID remains stable, registry knows it's the same shader
+ * - Debugging: Consistent identifiers across runs
+ *
+ * @param stages Shader stages with source code
+ * @param programName Program name
+ * @param pipelineType Pipeline type constraint
+ * @return Deterministic 32-character hex UUID
  */
-std::string GenerateRandomUuid() {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint64_t> dist;
+std::string GenerateContentBasedUuid(
+    const std::vector<ShaderBundleBuilder::StageSource>& stages,
+    const std::string& programName,
+    PipelineTypeConstraint pipelineType
+) {
+    std::ostringstream contentStream;
 
-    std::ostringstream oss;
-    oss << std::hex << std::setfill('0');
-    oss << std::setw(16) << dist(gen);
-    oss << std::setw(16) << dist(gen);
-    return oss.str();
+    // Hash inputs: sources, entry points, options, pipeline type
+    // Sorted by stage to ensure consistent ordering
+
+    std::vector<std::pair<ShaderStage, const ShaderBundleBuilder::StageSource*>> sortedStages;
+    for (const auto& stage : stages) {
+        sortedStages.emplace_back(stage.stage, &stage);
+    }
+    std::sort(sortedStages.begin(), sortedStages.end(),
+        [](const auto& a, const auto& b) { return static_cast<int>(a.first) < static_cast<int>(b.first); });
+
+    // Append all content that affects compilation
+    contentStream << "program:" << programName << "|";
+    contentStream << "pipeline:" << static_cast<int>(pipelineType) << "|";
+
+    for (const auto& [stageEnum, stage] : sortedStages) {
+        contentStream << "stage:" << static_cast<int>(stageEnum) << "|";
+        contentStream << "source:" << stage->source << "|";
+        contentStream << "entry:" << stage->entryPoint << "|";
+        contentStream << "optperf:" << stage->options.optimizePerformance << "|";
+        contentStream << "optsize:" << stage->options.optimizeSize << "|";
+        contentStream << "debug:" << stage->options.generateDebugInfo << "|";
+        contentStream << "vulkan:" << stage->options.targetVulkanVersion << "|";
+        contentStream << "spirv:" << stage->options.targetSpirvVersion << "|";
+
+        // Include defines (sorted for consistency)
+        std::vector<std::pair<std::string, std::string>> sortedDefines(
+            stage->defines.begin(), stage->defines.end());
+        std::sort(sortedDefines.begin(), sortedDefines.end());
+
+        for (const auto& [key, value] : sortedDefines) {
+            contentStream << "define:" << key << "=" << value << "|";
+        }
+    }
+
+    // Compute SHA-256 hash
+    std::string content = contentStream.str();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(content.c_str()),
+           content.size(), hash);
+
+    // Convert to 32-character hex string
+    std::ostringstream hexStream;
+    hexStream << std::hex << std::setfill('0');
+    for (int i = 0; i < 16; ++i) {  // Use first 16 bytes for 32 hex chars
+        hexStream << std::setw(2) << static_cast<int>(hash[i]);
+    }
+
+    return hexStream.str();
 }
 
 /**
@@ -328,7 +384,9 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::BuildFromCompiled(
 // ===== Private Helpers =====
 
 std::string ShaderBundleBuilder::GenerateUuid() {
-    return GenerateRandomUuid();
+    // Generate deterministic content-based UUID
+    // Same shader content always produces same UUID (enables caching and stable hot-reload)
+    return GenerateContentBasedUuid(stages_, programName_, pipelineType_);
 }
 
 bool ShaderBundleBuilder::ValidatePipelineConstraints(std::string& outError) {
@@ -455,7 +513,7 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     }
 
     result.success = true;
-    result.bundle = bundle;
+    result.bundle = std::make_unique<ShaderDataBundle>(std::move(bundle));
 
     return result;
 }

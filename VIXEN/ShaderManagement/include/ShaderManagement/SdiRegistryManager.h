@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <vector>
 #include <mutex>
+#include <optional>
 
 namespace ShaderManagement {
 
@@ -116,10 +117,13 @@ public:
     /**
      * @brief Get registration entry for a shader
      *
+     * Returns a copy of the entry to avoid race conditions with concurrent
+     * modifications. Use std::optional to indicate presence/absence.
+     *
      * @param uuid Shader UUID
-     * @return Entry if found, nullptr otherwise
+     * @return Entry if found, std::nullopt otherwise
      */
-    const SdiRegistryEntry* GetEntry(const std::string& uuid) const;
+    std::optional<SdiRegistryEntry> GetEntry(const std::string& uuid) const;
 
     /**
      * @brief Update shader alias name

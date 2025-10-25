@@ -172,15 +172,17 @@ bool SdiRegistryManager::IsRegistered(const std::string& uuid) const {
     return it != entries_.end() && it->second.isActive;
 }
 
-const SdiRegistryEntry* SdiRegistryManager::GetEntry(const std::string& uuid) const {
+std::optional<SdiRegistryEntry> SdiRegistryManager::GetEntry(const std::string& uuid) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = entries_.find(uuid);
     if (it != entries_.end() && it->second.isActive) {
-        return &it->second;
+        // Return a copy to avoid race conditions
+        // Lock protects during copy, caller can safely use returned value
+        return it->second;
     }
 
-    return nullptr;
+    return std::nullopt;
 }
 
 bool SdiRegistryManager::UpdateAlias(const std::string& uuid, const std::string& aliasName) {
