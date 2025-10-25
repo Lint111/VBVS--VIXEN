@@ -76,8 +76,15 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Add tools subdirectory (shader_tool executable)
 add_subdirectory(tools)
 
-# Install CMake utility module for downstream projects
-install(FILES cmake/ShaderToolUtils.cmake
+# Add tests subdirectory (if testing is enabled)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+# Install CMake utility modules for downstream projects
+install(FILES
+    cmake/ShaderToolUtils.cmake
+    cmake/ParseShaderIncludes.cmake
     DESTINATION lib/cmake/ShaderManagement
     COMPONENT ShaderTools
 )
