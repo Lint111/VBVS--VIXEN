@@ -85,19 +85,32 @@ void VulkanGraphApplication::Initialize() {
 }
 
 void VulkanGraphApplication::Prepare() {
+    std::cout << "[VulkanGraphApplication::Prepare] START" << std::endl;
     isPrepared = false;
 
-    // PHASE 1: Nodes manage their own resources
-    // Build the render graph - nodes allocate their own resources
-    BuildRenderGraph();
+    try {
+        // PHASE 1: Nodes manage their own resources
+        // Build the render graph - nodes allocate their own resources
+        std::cout << "[VulkanGraphApplication::Prepare] Calling BuildRenderGraph..." << std::endl;
+        BuildRenderGraph();
+        std::cout << "[VulkanGraphApplication::Prepare] BuildRenderGraph complete" << std::endl;
 
-    // Compile the render graph - nodes set up their pipelines
-    CompileRenderGraph();
+        // Compile the render graph - nodes set up their pipelines
+        std::cout << "[VulkanGraphApplication::Prepare] Calling CompileRenderGraph..." << std::endl;
+        CompileRenderGraph();
+        std::cout << "[VulkanGraphApplication::Prepare] CompileRenderGraph complete" << std::endl;
 
-    isPrepared = true;
+        isPrepared = true;
 
-    if (mainLogger) {
-        mainLogger->Info("VulkanGraphApplication prepared and ready to render");
+        if (mainLogger) {
+            mainLogger->Info("VulkanGraphApplication prepared and ready to render");
+        }
+        std::cout << "[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true" << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[VulkanGraphApplication::Prepare] EXCEPTION: " << e.what() << std::endl;
+        isPrepared = false;
+        throw;  // Re-throw to let main() handle it
     }
 }
 
@@ -223,8 +236,10 @@ void VulkanGraphApplication::DeInitialize() {
 }
 
 void VulkanGraphApplication::CompileRenderGraph() {
+    std::cout << "[CompileRenderGraph] START" << std::endl;
     if (!renderGraph) {
         mainLogger->Error("Cannot compile render graph: RenderGraph not initialized");
+        std::cerr << "[CompileRenderGraph] ERROR: renderGraph is null" << std::endl;
         return;
     }
 
@@ -235,20 +250,26 @@ void VulkanGraphApplication::CompileRenderGraph() {
     // Connect(deviceNode, DeviceNodeConfig::PRESENT_FUNCTION, presentNode, PresentNodeConfig::PRESENT_FUNCTION);
 
     // Validate graph
+    std::cout << "[CompileRenderGraph] Calling Validate..." << std::endl;
     std::string errorMessage;
     if (!renderGraph->Validate(errorMessage)) {
         mainLogger->Error("Render graph validation failed: " + errorMessage);
+        std::cerr << "[CompileRenderGraph] VALIDATION FAILED: " << errorMessage << std::endl;
         return;
     }
+    std::cout << "[CompileRenderGraph] Validation passed" << std::endl;
 
     // Compile the graph
     // This calls Setup() and Compile() on all nodes
     // Each node allocates its Vulkan resources here
+    std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
     renderGraph->Compile();
     graphCompiled = true;
+    std::cout << "[CompileRenderGraph] graphCompiled = true" << std::endl;
 
     mainLogger->Info("Render graph compiled successfully");
     mainLogger->Info("Node count: " + std::to_string(renderGraph->GetNodeCount()));
+    std::cout << "[CompileRenderGraph] SUCCESS" << std::endl;
 }
 
 void VulkanGraphApplication::RegisterNodeTypes() {
@@ -430,9 +451,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   renderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain → RenderPass connection (color format) ---
+    // --- SwapChain → RenderPass connection (swapchain info bundle) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  renderPassNode, RenderPassNodeConfig::COLOR_FORMAT);
+                  renderPassNode, RenderPassNodeConfig::SWAPCHAIN_INFO);
 
     // --- DepthBuffer → RenderPass connection (depth format) ---
     batch.Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT,
@@ -449,9 +470,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   framebufferNode, FramebufferNodeConfig::COLOR_ATTACHMENTS)
          .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
                   framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+         .Connect(swapChainNode, SwapChainNodeConfig::WIDTH_OUT,
                   framebufferNode, FramebufferNodeConfig::WIDTH)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+         .Connect(swapChainNode, SwapChainNodeConfig::HEIGHT_OUT,
                   framebufferNode, FramebufferNodeConfig::HEIGHT);
 
     // --- Device → ShaderLibrary device chain ---

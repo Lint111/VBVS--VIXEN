@@ -34,6 +34,10 @@ public:
     void GetPhysicalDeviceQueuesAndProperties();
     VulkanResult<uint32_t> GetGraphicsQueueHandle();
     void GetDeviceQueue();
+    
+    // Present queue support
+    bool HasPresentSupport() const;
+    PFN_vkQueuePresentKHR GetPresentFunction() const;
 
     struct DeviceFeatureMapping {
         const char* extensionName;

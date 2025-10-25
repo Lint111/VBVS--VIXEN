@@ -80,6 +80,8 @@ void SwapChainNode::Setup() {
 void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
     
+    VkResult result = VK_SUCCESS;  // Declare result variable for error checking
+    
     // Get input resources from connected nodes
     std::cout << "[SwapChainNode::Compile] Reading HWND..." << std::endl;
     HWND hwnd = In(SwapChainNodeConfig::HWND);
@@ -139,9 +141,16 @@ void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] Loading swapchain extensions..." << std::endl;
     std::cout << "[SwapChainNode::Compile] Instance handle: " << std::hex << instance << std::dec << std::endl;
     
+    result = swapChainWrapper->CreateSwapChainExtensions(instance, vulkanDevice->device);
+    if (result != VK_SUCCESS) {
+        std::string errorMsg = "SwapChainNode: Failed to load swapchain extension function pointers";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    std::cout << "[SwapChainNode::Compile] Extension function pointers loaded successfully" << std::endl;
 
     // Step 2: Create the platform-specific surface
-    auto result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
+    result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
         NODE_LOG_ERROR(errorMsg);
@@ -191,10 +200,10 @@ void SwapChainNode::Compile() {
 
     // === SET ALL OUTPUTS ===
 
-    // Output 0: ALL swapchain images as an array
+    // Output 0: ALL swapchain image VIEWS as an array (for framebuffer attachments)
     const uint32_t imageCount = swapChainWrapper->scPublicVars.swapChainImageCount;
     for (uint32_t i = 0; i < imageCount; i++) {
-        SetOutput(SwapChainNodeConfig::SWAPCHAIN_IMAGES, i, swapChainWrapper->scPublicVars.colorBuffers[i].image);
+        SetOutput(SwapChainNodeConfig::SWAPCHAIN_IMAGES, i, swapChainWrapper->scPublicVars.colorBuffers[i].view);
     }
 
     // Output 1: Swapchain handle (NEW VARIANT API)

@@ -56,8 +56,8 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
-    // Color format from swapchain
-    CONSTEXPR_INPUT(COLOR_FORMAT, VkFormat, 1, false);
+    // Swapchain public variables (contains format, extent, etc.)
+    CONSTEXPR_INPUT(SWAPCHAIN_INFO, ::SwapChainPublicVariables*, 1, false);
 
     // Depth format from depth buffer (nullable - may not have depth)
     CONSTEXPR_INPUT(DEPTH_FORMAT, VkFormat, 2, true);
@@ -74,9 +74,10 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        INIT_INPUT_DESC(COLOR_FORMAT, "color_format",
+        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
             ResourceLifetime::Persistent,
-            BufferDescription{}
+            swapchainInfoDesc
         );
 
         INIT_INPUT_DESC(DEPTH_FORMAT, "depth_format",
@@ -99,11 +100,11 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     static_assert(OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == RenderPassNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
-    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE is required");
 
-    static_assert(COLOR_FORMAT_Slot::index == 1, "COLOR_FORMAT must be at index 1");
-    static_assert(!COLOR_FORMAT_Slot::nullable, "COLOR_FORMAT is required");
+    static_assert(SWAPCHAIN_INFO_Slot::index == 1, "SWAPCHAIN_INFO must be at index 1");
+    static_assert(!SWAPCHAIN_INFO_Slot::nullable, "SWAPCHAIN_INFO is required");
 
     static_assert(DEPTH_FORMAT_Slot::index == 2, "DEPTH_FORMAT must be at index 2");
     static_assert(DEPTH_FORMAT_Slot::nullable, "DEPTH_FORMAT is optional");
@@ -116,7 +117,7 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<COLOR_FORMAT_Slot::Type, VkFormat>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, ::SwapChainPublicVariables*>);
     static_assert(std::is_same_v<DEPTH_FORMAT_Slot::Type, VkFormat>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);

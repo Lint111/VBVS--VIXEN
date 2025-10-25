@@ -147,6 +147,18 @@ void VulkanDevice::GetDeviceQueue() {
     vkGetDeviceQueue(device, graphicsQueueIndex, 0, &queue);
 }
 
+bool VulkanDevice::HasPresentSupport() const {
+    // Present support is determined during queue family selection
+    // graphicsQueueWithPresentIndex == graphicsQueueIndex means present is supported
+    return (graphicsQueueWithPresentIndex == graphicsQueueIndex);
+}
+
+PFN_vkQueuePresentKHR VulkanDevice::GetPresentFunction() const {
+    // vkQueuePresentKHR is always available when VK_KHR_swapchain extension is enabled
+    // Return the standard function pointer
+    return vkQueuePresentKHR;
+}
+
 // Helper to append a feature struct to the pNext chain
 inline void* VulkanDevice::AppendToPNext(void** chainEnd, void* featureStruct) {
     *chainEnd = featureStruct;

@@ -54,8 +54,8 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     // Semaphore to wait on before presenting (from rendering completion)
     CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 3, false);
 
-    // Function pointer to vkQueuePresentKHR (from device extension)
-    CONSTEXPR_INPUT(PRESENT_FUNCTION, PFN_vkQueuePresentKHR, 4, false);
+    // Function pointer to vkQueuePresentKHR (from device extension) - OPTIONAL (fallback to direct call)
+    CONSTEXPR_INPUT(PRESENT_FUNCTION, PFN_vkQueuePresentKHR, 4, true);
 
     // ===== OUTPUTS (2) =====
     // Result of the present operation (pointer to VkResult)
@@ -122,7 +122,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static_assert(!RENDER_COMPLETE_SEMAPHORE_Slot::nullable, "RENDER_COMPLETE_SEMAPHORE is required");
 
     static_assert(PRESENT_FUNCTION_Slot::index == 4, "PRESENT_FUNCTION must be at index 4");
-    static_assert(!PRESENT_FUNCTION_Slot::nullable, "PRESENT_FUNCTION is required");
+    static_assert(PRESENT_FUNCTION_Slot::nullable, "PRESENT_FUNCTION is optional (uses VulkanDevice::GetPresentFunction())");
 
     static_assert(PRESENT_RESULT_Slot::index == 0, "PRESENT_RESULT must be at index 0");
     static_assert(!PRESENT_RESULT_Slot::nullable, "PRESENT_RESULT is required");

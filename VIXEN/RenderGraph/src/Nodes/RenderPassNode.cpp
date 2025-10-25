@@ -1,6 +1,7 @@
 #include "Nodes/RenderPassNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 
@@ -64,8 +65,14 @@ void RenderPassNode::Setup() {
 void RenderPassNode::Compile() {
     NODE_LOG_INFO("Compile: Creating render pass");
 
-    // Get typed inputs
-    VkFormat colorFormat = In(RenderPassNodeConfig::COLOR_FORMAT);
+    // Get swapchain info bundle and extract format
+    SwapChainPublicVariables* swapchainInfo = In(RenderPassNodeConfig::SWAPCHAIN_INFO);
+    if (!swapchainInfo) {
+        throw std::runtime_error("RenderPassNode: swapchain info bundle is null");
+    }
+    VkFormat colorFormat = swapchainInfo->Format;
+    
+    // Get depth format directly
     VkFormat depthFormat = In(RenderPassNodeConfig::DEPTH_FORMAT);
 
     // Get typed enum parameters

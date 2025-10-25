@@ -31,7 +31,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
     static constexpr size_t INPUTS = 6;
-    static constexpr size_t OUTPUTS = 5;  // Added WIDTH_OUT, HEIGHT_OUT
+    static constexpr size_t OUTPUTS = 5;  // SWAPCHAIN_IMAGES, HANDLE, PUBLIC, WIDTH_OUT, HEIGHT_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -55,8 +55,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5, false);
 
     // ===== OUTPUTS (5) =====
-    // Swapchain images (required)
-    CONSTEXPR_OUTPUT(SWAPCHAIN_IMAGES, VkImage, 0, false);
+    // Swapchain image views (required for framebuffer attachments)
+    CONSTEXPR_OUTPUT(SWAPCHAIN_IMAGES, VkImageView, 0, false);
 
     // Additional outputs: swapchain handle and public variables
     CONSTEXPR_OUTPUT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 1, false);
@@ -181,7 +181,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
 
-    static_assert(std::is_same_v<SWAPCHAIN_IMAGES_Slot::Type, VkImage>);
+    static_assert(std::is_same_v<SWAPCHAIN_IMAGES_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
     static_assert(std::is_same_v<WIDTH_OUT_Slot::Type, uint32_t>);

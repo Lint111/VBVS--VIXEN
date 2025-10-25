@@ -64,10 +64,7 @@ void PresentNode::Compile() {
         throw std::runtime_error("PresentNode: swapchain input not connected or invalid");
     }
 
-    PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
-    if (fpQueuePresent == nullptr) {
-        throw std::runtime_error("PresentNode: present function pointer input not connected or invalid");
-    }
+    // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
 void PresentNode::Execute(VkCommandBuffer commandBuffer) {
@@ -85,7 +82,19 @@ VkResult PresentNode::Present() {
     VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
     uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX);
     VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
-    PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
+    
+    // Get present function pointer - prefer device-provided function, fallback to input connection
+    PFN_vkQueuePresentKHR fpQueuePresent = nullptr;
+    if (vulkanDevice != VK_NULL_HANDLE && vulkanDevice->HasPresentSupport()) {
+        fpQueuePresent = vulkanDevice->GetPresentFunction();
+    } else {
+        // Fallback: try to get from input connection
+        fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
+    }
+    
+    if (fpQueuePresent == nullptr) {
+        throw std::runtime_error("PresentNode: No present function available");
+    }
 
     // Setup present info
     VkPresentInfoKHR presentInfo{};
