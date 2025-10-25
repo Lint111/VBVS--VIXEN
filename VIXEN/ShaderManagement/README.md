@@ -20,6 +20,11 @@ Advanced Vulkan shader compilation and management system with build-time tooling
 - **Preprocessing Support** - Macro expansion, include resolution, and conditional compilation
 - **Dirty Flags** - Track what changed (SPIRV, descriptors, vertex inputs) for intelligent updates
 - **Hot-Reload Compatibility Detection** - Automatic detection of safe vs. breaking shader changes
+- **Structured Logging & Telemetry** - Callback-based logging with comprehensive compilation metrics
+- **Automatic Dependency Tracking** - CMake detects #include changes for incremental builds
+- **Vulkan Device Validation** - Pre-runtime validation of shader compatibility with device capabilities
+- **Content-Based UUIDs** - Deterministic shader IDs for stable caching and hot-reload
+- **File Manifest Tracking** - Automatic cleanup of orphaned SPIRV files
 
 ## Architecture
 
@@ -383,6 +388,174 @@ enum class ShaderDirtyFlags : uint32_t {
 };
 ```
 
+## New Features Guide
+
+### Logging and Telemetry
+
+The library includes a comprehensive logging and telemetry system for tracking compilation performance and debugging issues.
+
+**Basic Usage:**
+```cpp
+#include "ShaderManagement/ShaderLogger.h"
+
+// Set custom logger (optional)
+ShaderLogger::GetInstance().SetCallback([](const LogMessage& msg) {
+    MyLogger::Log(msg.level, msg.category, msg.message);
+});
+
+// Set minimum log level
+ShaderLogger::GetInstance().SetMinimumLevel(LogLevel::Warning);
+
+// Logs are automatically generated during compilation
+// Or log manually:
+ShaderLogger::LogInfo("Custom message", "MyCategory");
+```
+
+**Telemetry Metrics:**
+```cpp
+auto& telemetry = ShaderLogger::GetTelemetry();
+
+std::cout << "Total compilations: " << telemetry.totalCompilations << "\n";
+std::cout << "Success rate: " << telemetry.GetSuccessRate() * 100 << "%\n";
+std::cout << "Cache hit rate: " << telemetry.GetCacheHitRate() * 100 << "%\n";
+std::cout << "Avg compile time: " << telemetry.GetAverageCompileTimeMs() << "ms\n";
+
+// Reset metrics
+telemetry.Reset();
+```
+
+### Vulkan Device Validation
+
+Validate shader bundles against device capabilities before runtime:
+
+```cpp
+#include "ShaderManagement/VulkanDeviceValidator.h"
+
+VulkanDeviceValidator validator(physicalDevice);
+
+// Validate shader bundle
+auto result = validator.ValidateBundle(bundle);
+if (!result.IsValid()) {
+    std::cerr << "Shader incompatible:\n" << result.GetErrorMessage();
+
+    for (const auto& feature : result.missingFeatures) {
+        std::cerr << "  Missing: " << feature << "\n";
+    }
+}
+
+// Query specific capabilities
+if (!validator.SupportsMeshShaders()) {
+    std::cerr << "Device doesn't support mesh shaders\n";
+}
+
+std::cout << "Max descriptor sets: " << validator.GetMaxDescriptorSets() << "\n";
+std::cout << "Max push constants: " << validator.GetMaxPushConstantsSize() << " bytes\n";
+```
+
+**Validation Checks:**
+- Shader stage support (geometry, tessellation, mesh, ray tracing)
+- Descriptor set limits (per-set and per-type)
+- Push constant size limits
+- Vertex input attribute limits
+- Pipeline type compatibility
+
+### Automatic Dependency Tracking (CMake)
+
+The CMake integration now automatically tracks `#include` dependencies for incremental builds:
+
+```glsl
+// main.vert
+#include "common/lighting.glsl"
+#include "common/transforms.glsl"
+
+void main() {
+    // When lighting.glsl or transforms.glsl changes,
+    // main.vert will automatically recompile!
+}
+```
+
+**CMake automatically detects includes:**
+```cmake
+add_shader_bundle(MyShader_Bundle
+    PROGRAM_NAME "MyShader"
+    VERTEX main.vert
+    FRAGMENT main.frag
+    # Dependencies are auto-detected from #include directives
+)
+```
+
+**Manual search paths (if needed):**
+```cmake
+# The parser searches these directories by default:
+# - Same directory as shader file
+# - ${CMAKE_CURRENT_SOURCE_DIR}
+# - ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+# - ${CMAKE_CURRENT_SOURCE_DIR}/../shaders
+```
+
+### Content-Based UUIDs
+
+Shaders now generate deterministic UUIDs based on their content, enabling stable caching and hot-reload:
+
+```cpp
+// Same source → Same UUID across builds
+auto builder1 = ShaderBundleBuilder()
+    .SetProgramName("MyShader")
+    .AddStage(ShaderStage::Vertex, vertexSource);
+
+auto result1 = builder1.Build();
+auto uuid1 = result1.bundle->uuid;  // e.g., "a1b2c3d4e5f6..."
+
+// Later build with same source
+auto builder2 = ShaderBundleBuilder()
+    .SetProgramName("MyShader")
+    .AddStage(ShaderStage::Vertex, vertexSource);
+
+auto result2 = builder2.Build();
+auto uuid2 = result2.bundle->uuid;  // Same UUID!
+
+// Benefits:
+// - Cache can persist across sessions
+// - Hot-reload knows it's the same shader
+// - Registry remains stable
+```
+
+**UUID is based on:**
+- Shader source code
+- Compilation options
+- Entry point names
+- Macro defines
+- Pipeline type
+
+### File Manifest Tracking
+
+The build tool now tracks generated files and cleans up orphaned SPIRV files:
+
+```bash
+# Compile with tracking
+shader_tool compile shader.vert shader.frag --name MyShader --output-dir ./out
+
+# Files tracked in ./out/.shader_tool_manifest.json:
+# - MyShader.json
+# - MyShader_stage0.spv
+# - MyShader_stage1.spv
+
+# If you remove a shader from the build, orphaned .spv files are automatically cleaned:
+shader_tool cleanup ./out
+# Removed 5 orphaned file(s)
+
+# Or embed SPIRV in JSON to avoid external files:
+shader_tool compile shader.vert --name MyShader --embed-spirv
+```
+
+**Batch mode auto-cleanup:**
+```bash
+# Automatically cleans orphaned files after batch processing
+shader_tool batch shaders.json --output-dir ./generated --verbose
+# ...
+# Cleaned up 3 orphaned files
+```
+
 ## Build Tool Integration
 
 See [tools/README.md](tools/README.md) for comprehensive documentation.
@@ -447,6 +620,38 @@ See the `examples/` directory for complete working examples:
 - `batch_build/` - CMake batch processing
 - `async_compilation/` - Async builds with EventBus
 
+## Testing
+
+The library includes a comprehensive test suite using Google Test.
+
+**Run all tests:**
+```bash
+cd build
+cmake .. -DBUILD_TESTING=ON
+make
+ctest --output-on-failure
+```
+
+**Test Coverage:**
+- ✅ Content-based UUID generation (determinism, collision avoidance)
+- ✅ Logging system (filtering, callbacks, thread safety)
+- ✅ Telemetry metrics (counters, timers, rates)
+- ✅ ShaderBundleBuilder (move semantics, validation, errors)
+- ✅ Input validation (size limits, stage limits)
+- ✅ Compilation pipeline (success/failure cases)
+- ✅ SPIRV reflection (descriptor extraction)
+- ✅ SDI registry (registration, lookup, thread safety)
+- ✅ File tracking and cleanup
+
+**Test files:**
+- `test_uuid_generation.cpp` - UUID determinism and uniqueness
+- `test_logging.cpp` - Logging and telemetry system
+- `test_shader_bundle_builder.cpp` - Builder pattern and validation
+- `test_shader_compiler.cpp` - Compilation success/failure
+- `test_spirv_reflection.cpp` - Metadata extraction
+- `test_sdi_generator.cpp` - Registry management
+- `test_file_tracking.cpp` - Manifest and cleanup
+
 ## Dependencies
 
 - **Vulkan SDK** - Headers for Vulkan types
@@ -454,19 +659,21 @@ See the `examples/` directory for complete working examples:
 - **OpenSSL** - SHA-256 hashing (libcrypto)
 - **nlohmann/json** - JSON serialization for bundles (auto-fetched, tool only)
 - **EventBus** - Event system for async compilation (VIXEN library)
+- **Google Test** - Testing framework (optional, for tests only)
 
 ## Building
 
 ```bash
 cd VIXEN/ShaderManagement
 mkdir build && cd build
-cmake ..
+cmake .. -DBUILD_TESTING=ON  # Enable tests (optional)
 make
 ```
 
 This builds:
 - `libShaderManagement.a` - Core library
 - `shader_tool` - Build-time compiler tool
+- `ShaderManagementTests` - Test suite (if BUILD_TESTING=ON)
 
 ## License
 
