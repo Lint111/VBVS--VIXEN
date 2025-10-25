@@ -61,3 +61,23 @@ endif()
 
 # Organize in IDE
 set_target_properties(ShaderManagement PROPERTIES FOLDER "Libraries")
+
+# ===== Build Tools =====
+
+# Fetch nlohmann_json for shader_tool
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# Add tools subdirectory (shader_tool executable)
+add_subdirectory(tools)
+
+# Install CMake utility module for downstream projects
+install(FILES cmake/ShaderToolUtils.cmake
+    DESTINATION lib/cmake/ShaderManagement
+    COMPONENT ShaderTools
+)
