@@ -8,7 +8,14 @@
  * In RELEASE builds: All logging code optimized away (zero overhead)
  */
 
-#ifdef _DEBUG
+// Check for debug build: MSVC uses _DEBUG, GCC/Clang use DEBUG or absence of NDEBUG
+#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
+    #define VIXEN_DEBUG_BUILD 1
+#else
+    #define VIXEN_DEBUG_BUILD 0
+#endif
+
+#if VIXEN_DEBUG_BUILD
     /**
      * @brief Log debug message (verbose, only in debug builds)
      * Usage: NODE_LOG_DEBUG("Enumerating devices...");
@@ -54,7 +61,7 @@
 #endif
 
 // Object-aware variants for static contexts; usage: NODE_LOG_INFO_OBJ(objPtr, "message")
-#ifdef _DEBUG
+#if VIXEN_DEBUG_BUILD
     #define NODE_LOG_DEBUG_OBJ(obj, msg) \
         do { if ((obj) && (obj)->nodeLogger) (obj)->nodeLogger->Debug(msg); } while(0)
     #define NODE_LOG_INFO_OBJ(obj, msg) \

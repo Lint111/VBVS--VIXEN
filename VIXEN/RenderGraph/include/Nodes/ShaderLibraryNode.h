@@ -87,6 +87,8 @@ public:
     size_t GetProgramCount() const;
 
 private:
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    
     // Vulkan helpers
     VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirvCode);
     void DestroyShaderModule(VkShaderModule module);

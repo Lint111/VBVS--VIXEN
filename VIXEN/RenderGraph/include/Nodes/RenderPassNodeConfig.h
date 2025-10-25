@@ -1,19 +1,25 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
-#include "Core/NodeInstance.h" 
+#include "Core/NodeInstance.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for RenderPassNode
  *
  * Inputs:
+ * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer
  * - COLOR_FORMAT (VkFormat) - Color attachment format (from SwapChainNode)
  * - DEPTH_FORMAT (VkFormat) - Depth attachment format (from DepthBufferNode, nullable)
  *
  * Outputs:
  * - RENDER_PASS (VkRenderPass) - Render pass handle
+ * - DEVICE_OUT (VkDevice) - Device handle for passthrough
  *
  * Parameters:
  * - COLOR_LOAD_OP (AttachmentLoadOp enum) - Color load operation
@@ -28,8 +34,8 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace RenderPassNodeCounts {
-    static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 1;
+    static constexpr size_t INPUTS = 3;
+    static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -46,19 +52,28 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     static constexpr const char* PARAM_FINAL_LAYOUT = "final_layout";
     static constexpr const char* PARAM_SAMPLES = "samples";
 
-    // ===== INPUTS (2) =====
+    // ===== INPUTS (3) =====
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+
     // Color format from swapchain
-    CONSTEXPR_INPUT(COLOR_FORMAT, VkFormat, 0, false);
+    CONSTEXPR_INPUT(COLOR_FORMAT, VkFormat, 1, false);
 
     // Depth format from depth buffer (nullable - may not have depth)
-    CONSTEXPR_INPUT(DEPTH_FORMAT, VkFormat, 1, true);
+    CONSTEXPR_INPUT(DEPTH_FORMAT, VkFormat, 2, true);
 
-    // ===== OUTPUTS (1) =====
+    // ===== OUTPUTS (2) =====
     // Render pass handle
     CONSTEXPR_OUTPUT(RENDER_PASS, VkRenderPass, 0, false);
+    
+    // Device output
+    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
 
     RenderPassNodeConfig() {
         // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
         INIT_INPUT_DESC(COLOR_FORMAT, "color_format",
             ResourceLifetime::Persistent,
             BufferDescription{}
@@ -74,6 +89,9 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle
         );
+
+        HandleDescriptor deviceOutDesc{"VkDevice"};
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device", ResourceLifetime::Persistent, deviceOutDesc);
     }
 
     // Compile-time validations
@@ -81,23 +99,31 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     static_assert(OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == RenderPassNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(COLOR_FORMAT_Slot::index == 0, "COLOR_FORMAT must be at index 0");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+
+    static_assert(COLOR_FORMAT_Slot::index == 1, "COLOR_FORMAT must be at index 1");
     static_assert(!COLOR_FORMAT_Slot::nullable, "COLOR_FORMAT is required");
 
-    static_assert(DEPTH_FORMAT_Slot::index == 1, "DEPTH_FORMAT must be at index 1");
+    static_assert(DEPTH_FORMAT_Slot::index == 2, "DEPTH_FORMAT must be at index 2");
     static_assert(DEPTH_FORMAT_Slot::nullable, "DEPTH_FORMAT is optional");
 
     static_assert(RENDER_PASS_Slot::index == 0, "RENDER_PASS must be at index 0");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
 
+    static_assert(VULKAN_DEVICE_OUT_Slot::index == 1, "DEVICE_OUT must be at index 1");
+    static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
+
     // Type validations
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<COLOR_FORMAT_Slot::Type, VkFormat>);
     static_assert(std::is_same_v<DEPTH_FORMAT_Slot::Type, VkFormat>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };
 
 // Global compile-time validations
-static_assert(RenderPassNodeConfig::INPUT_COUNT == 2);
-static_assert(RenderPassNodeConfig::OUTPUT_COUNT == 1);
+static_assert(RenderPassNodeConfig::INPUT_COUNT == RenderPassNodeCounts::INPUTS);
+static_assert(RenderPassNodeConfig::OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

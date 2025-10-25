@@ -45,6 +45,7 @@ private:
         VkImageView view = VK_NULL_HANDLE;
     } depthImage;
 
+    VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     bool isCreated = false;
 
@@ -59,7 +60,7 @@ private:
  */
 class DepthBufferNodeType : public NodeType {
 public:
-    DepthBufferNodeType( const std::string& typeName = "DepthBuffer");
+    DepthBufferNodeType(const std::string& typeName = "DepthBuffer");
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

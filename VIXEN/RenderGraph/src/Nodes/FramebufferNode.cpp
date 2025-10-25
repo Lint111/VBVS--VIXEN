@@ -1,4 +1,5 @@
 #include "Nodes/FramebufferNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -12,6 +13,11 @@ FramebufferNodeType::FramebufferNodeType(const std::string& typeName) : NodeType
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
+
+    // Populate schemas from Config
+    FramebufferNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 2048; // Minimal metadata
@@ -41,6 +47,16 @@ FramebufferNode::~FramebufferNode() {
 }
 
 void FramebufferNode::Setup() {
+    NODE_LOG_DEBUG("Setup: Reading device input");
+    
+    vulkanDevice = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
+    
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        std::string errorMsg = "FramebufferNode: VkDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
     NODE_LOG_INFO("Setup: Framebuffer node ready");
 }
 
@@ -107,17 +123,17 @@ void FramebufferNode::Compile() {
         framebufferInfo.flags = 0;
 
         VkResult result = vkCreateFramebuffer(
-            device->device,
+            vulkanDevice->device,
             &framebufferInfo,
             nullptr,
             &framebuffers[i]
         );
 
         if (result != VK_SUCCESS) {
-            // Clean up any framebuffers created so far
+            // Clean up already created framebuffers
             for (size_t j = 0; j < i; j++) {
                 if (framebuffers[j] != VK_NULL_HANDLE) {
-                    vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
+                    vkDestroyFramebuffer(vulkanDevice->device, framebuffers[j], nullptr);
                 }
             }
             framebuffers.clear();
@@ -131,8 +147,19 @@ void FramebufferNode::Compile() {
         // TODO: Implement proper typed SetOutput in TypedNode
         // For now, framebuffers are stored in the local vector and accessed via GetFramebuffer()
     }
+    
+    Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
+
+    // === REGISTER CLEANUP ===
+    if (GetOwningGraph()) {
+        GetOwningGraph()->GetCleanupStack().Register(
+            GetInstanceName() + "_Cleanup",
+            [this]() { this->Cleanup(); },
+            { "DeviceNode_Cleanup" }
+        );
+    }
 }
 
 void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
@@ -140,12 +167,12 @@ void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void FramebufferNode::Cleanup() {
-    if (!framebuffers.empty()) {
+    if (!framebuffers.empty() && vulkanDevice != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 
         for (VkFramebuffer framebuffer : framebuffers) {
             if (framebuffer != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device->device, framebuffer, nullptr);
+                vkDestroyFramebuffer(vulkanDevice->device, framebuffer, nullptr);
             }
         }
         framebuffers.clear();

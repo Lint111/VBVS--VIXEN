@@ -15,6 +15,10 @@
 // Global namespace forward declarations
 struct SwapChainPublicVariables;
 
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;  // Forward declare
+}
+
 namespace Vixen::RenderGraph {
     struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
 }
@@ -26,6 +30,20 @@ using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
 using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+
+// Platform-specific type aliases to avoid duplicate registrations
+// On Windows MSVC: HWND is HWND__*, uint32_t might be unsigned int
+// We register only the typedef names (HWND, uint32_t) to match slot declarations
+#ifdef _WIN32
+// Check if types are actually different before creating aliases
+namespace detail {
+    // These types are used in the variant and must match what's in slot definitions
+    using CanonicalU32 = uint32_t;  // Always use uint32_t (matches slot definitions)
+    using CanonicalU64 = uint64_t;  // Always use uint64_t
+    using CanonicalHWND = HWND;     // Always use HWND (matches slot definitions)
+}
+#endif
 
 namespace Vixen::RenderGraph {
 
@@ -83,6 +101,7 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkInstance,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VulkanDevicePtr,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFormat,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(uint32_t,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(uint64_t,                        HandleDescriptor,      ResourceType::Buffer) \
@@ -142,6 +161,9 @@ struct ResourceTypeTraits {
 /**
  * @brief Specialized type traits for each registered type
  * Auto-generated from RESOURCE_TYPE_REGISTRY
+ * 
+ * Note: Uses inline to allow multiple definitions in case of typedef duplicates
+ * (e.g., uint32_t == unsigned int on MSVC, HWND == HWND__*)
  */
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
     template<> struct ResourceTypeTraits<HandleType> { \

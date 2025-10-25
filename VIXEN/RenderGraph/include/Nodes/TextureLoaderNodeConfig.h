@@ -1,8 +1,12 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for TextureLoaderNode
@@ -26,8 +30,8 @@ namespace Vixen::RenderGraph {
  * Type ID: 112
  */
 namespace TextureLoaderNodeCounts {
-    static constexpr size_t INPUTS = 0;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t INPUTS = 1;  // Changed from 0
+    static constexpr size_t OUTPUTS = 4; // Changed from 3
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -35,6 +39,10 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
                       TextureLoaderNodeCounts::INPUTS,
                       TextureLoaderNodeCounts::OUTPUTS,
                       TextureLoaderNodeCounts::ARRAY_MODE) {
+    // ===== INPUTS (1) =====
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+
     // ===== PARAMETER NAMES =====
     static constexpr const char* FILE_PATH = "filePath";
     static constexpr const char* UPLOAD_MODE = "uploadMode";
@@ -42,12 +50,17 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
     static constexpr const char* SAMPLER_FILTER = "samplerFilter";
     static constexpr const char* SAMPLER_ADDRESS_MODE = "samplerAddressMode";
 
-    // ===== OUTPUTS (3) =====
+    // ===== OUTPUTS (4) =====
     CONSTEXPR_OUTPUT(TEXTURE_IMAGE, VkImage, 0, false);
     CONSTEXPR_OUTPUT(TEXTURE_VIEW, VkImageView, 1, false);
     CONSTEXPR_OUTPUT(TEXTURE_SAMPLER, VkSampler, 2, false);
+    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
 
     TextureLoaderNodeConfig() {
+        // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
         // Initialize output descriptors
         INIT_OUTPUT_DESC(TEXTURE_IMAGE, "texture_image",
             ResourceLifetime::Persistent,
@@ -63,12 +76,21 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}
         );
+
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "VulkanDevice*",
+            ResourceLifetime::Persistent,
+            vulkanDeviceDesc
+        );
     }
 
     // Compile-time validations
     static_assert(INPUT_COUNT == TextureLoaderNodeCounts::INPUTS, "Input count mismatch");
     static_assert(OUTPUT_COUNT == TextureLoaderNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == TextureLoaderNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
 
     static_assert(TEXTURE_IMAGE_Slot::index == 0, "TEXTURE_IMAGE must be at index 0");
     static_assert(!TEXTURE_IMAGE_Slot::nullable, "TEXTURE_IMAGE is required");
@@ -78,6 +100,14 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
 
     static_assert(TEXTURE_SAMPLER_Slot::index == 2, "TEXTURE_SAMPLER must be at index 2");
     static_assert(!TEXTURE_SAMPLER_Slot::nullable, "TEXTURE_SAMPLER is required");
+
+    static_assert(VULKAN_DEVICE_OUT_Slot::index == 3, "DEVICE_OUT must be at index 3");
+    static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>, "DEVICE_OUT must be VkDevice");
 };
+
+// Global compile-time validations
+static_assert(TextureLoaderNodeConfig::INPUT_COUNT == TextureLoaderNodeCounts::INPUTS);
+static_assert(TextureLoaderNodeConfig::OUTPUT_COUNT == TextureLoaderNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

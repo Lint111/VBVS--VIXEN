@@ -48,6 +48,9 @@ DescriptorSetNode::~DescriptorSetNode() {
 
 void DescriptorSetNode::Setup() {
     NODE_LOG_INFO("Setup: Descriptor set node ready");
+
+    vulkanDevice = In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+
 }
 
 void DescriptorSetNode::Compile() {
@@ -87,16 +90,15 @@ void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void DescriptorSetNode::Cleanup() {
-    VkDevice vkDevice = device->device;
     descriptorSets.clear();
 
     if (descriptorPool != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(vkDevice, descriptorPool, nullptr);
+        vkDestroyDescriptorPool(vulkanDevice->device, descriptorPool, nullptr);
         descriptorPool = VK_NULL_HANDLE;
     }
 
     if (descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(vkDevice, descriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(vulkanDevice->device, descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
     }
 

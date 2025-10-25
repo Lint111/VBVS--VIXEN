@@ -1,4 +1,5 @@
 #include "Nodes/DeviceNode.h"
+#include "Core/RenderGraph.h"
 #include <iostream>
 #include "Core/NodeLogging.h"
 
@@ -95,13 +96,15 @@ void DeviceNode::Compile() {
     // Create logical device using VulkanDevice wrapper
     CreateLogicalDevice();
 
-    // Store all outputs in slots (NEW VARIANT API)
-    // Downstream nodes will cast VulkanDevice* back from VkDevice
-    Out(DeviceNodeConfig::DEVICE, reinterpret_cast<VkDevice>(vulkanDevice.get()));
+    // Store outputs - output VulkanDevice pointer (contains device, gpu, memory properties, queues, etc.)
+    Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());
     Out(DeviceNodeConfig::INSTANCE, instance);
-    Out(DeviceNodeConfig::PHYSICAL_DEVICE, *vulkanDevice->gpu);  // Dereference pointer
 
-    NODE_LOG_INFO("[DeviceNode] Compile complete - device, instance, and physical device stored in outputs");
+    NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
+
+    // === REGISTER CLEANUP ===
+    // Device is a root node (no input dependencies) - cleanup runs last
+    RegisterCleanup();
 }
 
 void DeviceNode::Execute(VkCommandBuffer commandBuffer) {
@@ -182,9 +185,10 @@ void DeviceNode::SelectPhysicalDevice() {
 
 void DeviceNode::CreateLogicalDevice() {
     VkPhysicalDevice selectedGPU = availableGPUs[selectedGPUIndex];
+    selectedPhysicalDevice = selectedGPU;  // Store for later use
 
-    // Create VulkanDevice wrapper
-    vulkanDevice = std::make_unique<VulkanDevice>(&selectedGPU);
+    // Create VulkanDevice wrapper - pass pointer to our member variable
+    vulkanDevice = std::make_unique<VulkanDevice>(&selectedPhysicalDevice);
 
     // Query queue families and properties
     vulkanDevice->GetPhysicalDeviceQueuesAndProperties();

@@ -2,7 +2,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "VertexBufferNodeConfig.h"
-#include "MeshData.h"
+#include "../../include/MeshData.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -81,6 +81,8 @@ private:
     uint32_t vertexStride = 0;
     bool hasIndices = false;
     bool useTexture = false;
+
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
 
     // Helper functions
     void CreateBuffer(

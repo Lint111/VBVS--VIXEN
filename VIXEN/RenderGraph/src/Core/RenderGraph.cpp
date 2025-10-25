@@ -10,9 +10,11 @@ namespace Vixen::RenderGraph {
 
 RenderGraph::RenderGraph(
     NodeTypeRegistry* registry,
+    EventBus::MessageBus* messageBus,
     Logger* mainLogger
 )
     : typeRegistry(registry)
+    , messageBus(messageBus)
 {
     if (!registry) {
         throw std::runtime_error("Node type registry cannot be null");
@@ -25,9 +27,26 @@ RenderGraph::RenderGraph(
 #else
     (void)mainLogger;
 #endif
+
+    // Subscribe to cleanup events if bus provided
+    if (messageBus) {
+        cleanupEventSubscription = messageBus->Subscribe(
+            CleanupRequestedMessage::TYPE,
+            [this](const EventBus::Message& msg) {
+                auto& cleanupMsg = static_cast<const CleanupRequestedMessage&>(msg);
+                this->HandleCleanupRequest(cleanupMsg);
+                return true;
+            }
+        );
+    }
 }
 
 RenderGraph::~RenderGraph() {
+    // Unsubscribe from events
+    if (messageBus && cleanupEventSubscription != 0) {
+        messageBus->Unsubscribe(cleanupEventSubscription);
+    }
+    
     Clear();
 }
 
@@ -67,6 +86,9 @@ NodeHandle RenderGraph::AddNode(
     instances.push_back(std::move(instance));
     nameToHandle[instanceName] = handle;
     instancesByType[typeId].push_back(instances[index].get());
+
+    // Set owning graph pointer for cleanup registration
+    instances[index]->SetOwningGraph(this);
 
     // Add logger if in debug mode (attach node to parent logger)
     #ifdef _DEBUG
@@ -129,6 +151,9 @@ void RenderGraph::ConnectNodes(
         fromNode->SetOutput(outputIdx, 0, resource);
     }
 
+    // Register resource producer for dependency tracking
+    dependencyTracker.RegisterResourceProducer(resource, fromNode, outputIdx);
+
     // Connect to input (scalar connection at array index 0)
     toNode->SetInput(inputIdx, 0, resource);
 
@@ -181,19 +206,32 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 }
 
 void RenderGraph::Clear() {
+    // Execute cleanup callbacks in dependency order BEFORE clearing instances
+    ExecuteCleanup();
+    
     instances.clear();
     resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
     nameToHandle.clear();
     instancesByType.clear();
     executionOrder.clear();
     topology.Clear();
+    dependencyTracker.Clear();
     // usedDevices.clear();
     // usedDevices.push_back(primaryDevice);
     isCompiled = false;
 }
 
+void RenderGraph::ExecuteCleanup() {
+    std::cout << "[RenderGraph::ExecuteCleanup] Executing cleanup callbacks..." << std::endl;
+    cleanupStack.ExecuteAll();
+    std::cout << "[RenderGraph::ExecuteCleanup] Cleanup complete" << std::endl;
+}
+
 void RenderGraph::Compile() {
+    std::cout << "[RenderGraph::Compile] Starting compilation..." << std::endl;
+    
     // Validation
+    std::cout << "[RenderGraph::Compile] Phase: Validation..." << std::endl;
     std::string errorMessage;
     if (!Validate(errorMessage)) {
         throw std::runtime_error("Graph validation failed: " + errorMessage);
@@ -203,17 +241,22 @@ void RenderGraph::Compile() {
     // PropagateDeviceAffinity();  // Removed - single device system
 
     // Phase 2: Analyze dependencies and build execution order
+    std::cout << "[RenderGraph::Compile] Phase: AnalyzeDependencies..." << std::endl;
     AnalyzeDependencies();
 
     // Phase 3: Allocate resources
+    std::cout << "[RenderGraph::Compile] Phase: AllocateResources..." << std::endl;
     AllocateResources();
 
     // Phase 4: Generate pipelines
+    std::cout << "[RenderGraph::Compile] Phase: GeneratePipelines..." << std::endl;
     GeneratePipelines();
 
     // Phase 5: Build final execution order
+    std::cout << "[RenderGraph::Compile] Phase: BuildExecutionOrder..." << std::endl;
     BuildExecutionOrder();
 
+    std::cout << "[RenderGraph::Compile] Compilation complete!" << std::endl;
     isCompiled = true;
 }
 
@@ -305,6 +348,16 @@ NodeInstance* RenderGraph::GetInstanceByName(const std::string& name) {
     auto it = nameToHandle.find(name);
     if (it != nameToHandle.end()) {
         return GetInstanceInternal(it->second);
+    }
+    return nullptr;
+}
+
+const NodeInstance* RenderGraph::GetInstanceByName(const std::string& name) const {
+    auto it = nameToHandle.find(name);
+    if (it != nameToHandle.end()) {
+        if (it->second.index < instances.size()) {
+            return instances[it->second.index].get();
+        }
     }
     return nullptr;
 }
@@ -439,8 +492,13 @@ void RenderGraph::GeneratePipelines() {
     // This will create/reuse pipelines for each node
 
     for (auto& instance : instances) {
+        std::cout << "[GeneratePipelines] Calling Setup() on node: " << instance->GetInstanceName() << std::endl;
         instance->Setup();    // Call Setup() before Compile()
+        
+        std::cout << "[GeneratePipelines] Calling Compile() on node: " << instance->GetInstanceName() << std::endl;
         instance->Compile();
+        
+        std::cout << "[GeneratePipelines] Node compiled successfully: " << instance->GetInstanceName() << std::endl;
         instance->SetState(NodeState::Compiled);
     }
 }
@@ -451,6 +509,232 @@ void RenderGraph::BuildExecutionOrder() {
     // - Batching compatible nodes
     // - Parallel execution groups
     // - GPU timeline optimization
+}
+
+void RenderGraph::ComputeDependentCounts() {
+    dependentCounts.clear();
+    
+    // Initialize all nodes with zero count
+    for (const auto& instance : instances) {
+        dependentCounts[instance.get()] = 0;
+    }
+    
+    // Count how many nodes depend on each node
+    for (const auto& instance : instances) {
+        for (NodeInstance* dependency : instance->GetDependencies()) {
+            dependentCounts[dependency]++;
+        }
+    }
+}
+
+void RenderGraph::RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& cleaned) {
+    if (!node || cleaned.count(node) > 0) {
+        return; // Already cleaned or invalid
+    }
+    
+    std::cout << "[RecursiveCleanup] Checking node: " << node->GetInstanceName() << std::endl;
+    
+    // First, recursively clean dependencies that would become orphaned
+    for (NodeInstance* dependency : node->GetDependencies()) {
+        auto it = dependentCounts.find(dependency);
+        if (it != dependentCounts.end()) {
+            std::cout << "[RecursiveCleanup]   Dependency " << dependency->GetInstanceName() 
+                      << " has refCount=" << it->second << std::endl;
+            
+            // Check if this dependency has refCount == 1 (only current node uses it)
+            if (it->second == 1) {
+                std::cout << "[RecursiveCleanup]   -> Will be orphaned, cleaning recursively" << std::endl;
+                RecursiveCleanup(dependency, cleaned);
+            } else {
+                std::cout << "[RecursiveCleanup]   -> Still has other users, keeping" << std::endl;
+            }
+            
+            // Decrement count after checking (simulate removing this edge)
+            it->second--;
+        }
+    }
+    
+    // Now clean this node
+    std::cout << "[RecursiveCleanup] Cleaning node: " << node->GetInstanceName() << std::endl;
+    
+    // Execute cleanup callback via CleanupStack
+    cleanupStack.ExecuteFrom(node->GetInstanceName() + "_Cleanup");
+    
+    // Mark as cleaned
+    cleaned.insert(node);
+}
+
+size_t RenderGraph::CleanupSubgraph(const std::string& rootNodeName) {
+    NodeInstance* rootNode = GetInstanceByName(rootNodeName);
+    if (!rootNode) {
+        std::cerr << "[CleanupSubgraph] Node not found: " << rootNodeName << std::endl;
+        return 0;
+    }
+    
+    std::cout << "[CleanupSubgraph] Starting partial cleanup from: " << rootNodeName << std::endl;
+    
+    // Compute reference counts
+    ComputeDependentCounts();
+    
+    // Track cleaned nodes
+    std::set<NodeInstance*> cleaned;
+    
+    // Recursively clean
+    RecursiveCleanup(rootNode, cleaned);
+    
+    std::cout << "[CleanupSubgraph] Cleaned " << cleaned.size() << " nodes" << std::endl;
+    
+    return cleaned.size();
+}
+
+std::vector<std::string> RenderGraph::GetCleanupScope(const std::string& rootNodeName) const {
+    const NodeInstance* rootNode = GetInstanceByName(rootNodeName);
+    if (!rootNode) {
+        return {};
+    }
+    
+    // Create temporary copy of dependent counts for dry-run
+    std::unordered_map<const NodeInstance*, size_t> tempCounts;
+    for (const auto& instance : instances) {
+        tempCounts[instance.get()] = 0;
+    }
+    for (const auto& instance : instances) {
+        for (NodeInstance* dependency : instance->GetDependencies()) {
+            tempCounts[dependency]++;
+        }
+    }
+    
+    // Simulate cleanup recursively
+    std::vector<std::string> scope;
+    std::set<const NodeInstance*> visited;
+    
+    std::function<void(const NodeInstance*)> simulate = [&](const NodeInstance* node) {
+        if (!node || visited.count(node) > 0) {
+            return;
+        }
+        
+        visited.insert(node);
+        
+        // Check dependencies
+        for (NodeInstance* dep : node->GetDependencies()) {
+            auto it = tempCounts.find(dep);
+            if (it != tempCounts.end() && it->second == 1) {
+                simulate(dep);
+            }
+            if (it != tempCounts.end()) {
+                it->second--;
+            }
+        }
+        
+        // Add to scope
+        scope.push_back(node->GetInstanceName());
+    };
+    
+    simulate(rootNode);
+    
+    return scope;
+}
+
+size_t RenderGraph::CleanupByTag(const std::string& tag) {
+    std::cout << "[CleanupByTag] Cleaning nodes with tag: " << tag << std::endl;
+    
+    // Find all nodes with this tag
+    std::vector<NodeInstance*> matchingNodes;
+    for (const auto& instance : instances) {
+        if (instance->HasTag(tag)) {
+            matchingNodes.push_back(instance.get());
+        }
+    }
+    
+    if (matchingNodes.empty()) {
+        std::cout << "[CleanupByTag] No nodes found with tag: " << tag << std::endl;
+        return 0;
+    }
+    
+    // Compute reference counts
+    ComputeDependentCounts();
+    
+    // Cleanup each matching node
+    std::set<NodeInstance*> cleaned;
+    for (NodeInstance* node : matchingNodes) {
+        RecursiveCleanup(node, cleaned);
+    }
+    
+    std::cout << "[CleanupByTag] Cleaned " << cleaned.size() << " nodes" << std::endl;
+    return cleaned.size();
+}
+
+size_t RenderGraph::CleanupByType(const std::string& typeName) {
+    std::cout << "[CleanupByType] Cleaning nodes of type: " << typeName << std::endl;
+    
+    // Find all nodes of this type
+    std::vector<NodeInstance*> matchingNodes;
+    for (const auto& instance : instances) {
+        if (instance->GetNodeType()->GetTypeName() == typeName) {
+            matchingNodes.push_back(instance.get());
+        }
+    }
+    
+    if (matchingNodes.empty()) {
+        std::cout << "[CleanupByType] No nodes found of type: " << typeName << std::endl;
+        return 0;
+    }
+    
+    // Compute reference counts
+    ComputeDependentCounts();
+    
+    // Cleanup each matching node
+    std::set<NodeInstance*> cleaned;
+    for (NodeInstance* node : matchingNodes) {
+        RecursiveCleanup(node, cleaned);
+    }
+    
+    std::cout << "[CleanupByType] Cleaned " << cleaned.size() << " nodes" << std::endl;
+    return cleaned.size();
+}
+
+void RenderGraph::HandleCleanupRequest(const CleanupRequestedMessage& msg) {
+    std::cout << "[RenderGraph] Received cleanup request";
+    if (!msg.reason.empty()) {
+        std::cout << " - Reason: " << msg.reason;
+    }
+    std::cout << std::endl;
+    
+    std::vector<std::string> cleanedNodes;
+    size_t cleanedCount = 0;
+    
+    switch (msg.scope) {
+        case CleanupScope::Specific:
+            if (msg.targetNodeName.has_value()) {
+                cleanedCount = CleanupSubgraph(msg.targetNodeName.value());
+            }
+            break;
+            
+        case CleanupScope::ByTag:
+            if (msg.tag.has_value()) {
+                cleanedCount = CleanupByTag(msg.tag.value());
+            }
+            break;
+            
+        case CleanupScope::ByType:
+            if (msg.typeName.has_value()) {
+                cleanedCount = CleanupByType(msg.typeName.value());
+            }
+            break;
+            
+        case CleanupScope::Full:
+            std::cout << "[RenderGraph] Executing full cleanup" << std::endl;
+            ExecuteCleanup();
+            cleanedCount = instances.size();
+            break;
+    }
+    
+    // Publish completion event
+    if (messageBus) {
+        auto completionMsg = std::make_unique<CleanupCompletedMessage>(0);
+        completionMsg->cleanedCount = cleanedCount;
+        messageBus->Publish(std::move(completionMsg));
+    }
 }
 
 } // namespace Vixen::RenderGraph

@@ -1,4 +1,5 @@
 #include "Nodes/RenderPassNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -13,9 +14,10 @@ RenderPassNodeType::RenderPassNodeType(const std::string& typeName) : NodeType(t
     supportsInstancing = true;
     maxInstances = 0;
 
-    // No inputs
-
-    // Output is opaque (render pass accessed via GetRenderPass())
+    // Populate schemas from Config
+    RenderPassNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024; // Minimal
@@ -48,6 +50,14 @@ RenderPassNode::~RenderPassNode() {
 }
 
 void RenderPassNode::Setup() {
+    vulkanDevice = In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
+
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        std::string errorMsg = "RenderPassNode: VkDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
     NODE_LOG_INFO("Setup: Render pass node ready");
 }
 
@@ -149,17 +159,27 @@ void RenderPassNode::Compile() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    VkResult result = vkCreateRenderPass(device->device, &renderPassInfo, nullptr, &renderPass);
+    VkResult result = vkCreateRenderPass(vulkanDevice->device, &renderPassInfo, nullptr, &renderPass);
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to create render pass"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
 
-    // Set typed output (NEW VARIANT API)
+    // Set typed outputs
     Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
+    Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     NODE_LOG_INFO("Compile complete: Render pass created successfully");
+
+    // === REGISTER CLEANUP ===
+    if (GetOwningGraph()) {
+        GetOwningGraph()->GetCleanupStack().Register(
+            GetInstanceName() + "_Cleanup",
+            [this]() { this->Cleanup(); },
+            { "DeviceNode_Cleanup" }
+        );
+    }
 }
 
 void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {
@@ -167,8 +187,8 @@ void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void RenderPassNode::Cleanup() {
-    if (renderPass != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(device->device, renderPass, nullptr);
+    if (renderPass != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(vulkanDevice->device, renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
 }

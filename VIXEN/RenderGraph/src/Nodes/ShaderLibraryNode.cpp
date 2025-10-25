@@ -1,4 +1,5 @@
 #include "Nodes/ShaderLibraryNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -50,6 +51,16 @@ ShaderLibraryNode::~ShaderLibraryNode() {
 }
 
 void ShaderLibraryNode::Setup() {
+    NODE_LOG_DEBUG("Setup: Reading device input");
+    
+    vulkanDevice = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+    
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        std::string errorMsg = "ShaderLibraryNode: VkDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
     NODE_LOG_INFO("Setup: Shader library node ready");
 }
 
@@ -119,6 +130,17 @@ void ShaderLibraryNode::Compile() {
 
     NODE_LOG_INFO("Compile complete: " + std::to_string(programs.size()) +
                   " programs available");
+    
+    Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+
+    // === REGISTER CLEANUP ===
+    if (GetOwningGraph()) {
+        GetOwningGraph()->GetCleanupStack().Register(
+            GetInstanceName() + "_Cleanup",
+            [this]() { this->Cleanup(); },
+            { "DeviceNode_Cleanup" }
+        );
+    }
 }
 
 void ShaderLibraryNode::Execute(VkCommandBuffer commandBuffer) {
@@ -181,7 +203,7 @@ VkShaderModule ShaderLibraryNode::CreateShaderModule(const std::vector<uint32_t>
     createInfo.flags = 0;
 
     VkShaderModule shaderModule;
-    VkResult result = vkCreateShaderModule(device->device, &createInfo, nullptr, &shaderModule);
+    VkResult result = vkCreateShaderModule(vulkanDevice->device, &createInfo, nullptr, &shaderModule);
 
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to create shader module"};
@@ -193,8 +215,8 @@ VkShaderModule ShaderLibraryNode::CreateShaderModule(const std::vector<uint32_t>
 }
 
 void ShaderLibraryNode::DestroyShaderModule(VkShaderModule module) {
-    if (module != VK_NULL_HANDLE) {
-        vkDestroyShaderModule(device->device, module, nullptr);
+    if (module != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(vulkanDevice->device, module, nullptr);
     }
 }
 

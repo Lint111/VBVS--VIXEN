@@ -46,6 +46,8 @@ public:
     void Cleanup() override;
 
 private:
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    
     // Pipeline resources (outputs)
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

@@ -1,4 +1,5 @@
 #include "Nodes/CommandPoolNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
@@ -14,25 +15,10 @@ CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
     supportsInstancing = true;
     maxInstances = 0; // Unlimited command pools
 
-    // Input: Device object (uses HandleDescriptor for VkDevice)
-    HandleDescriptor deviceInput{"VkDevice"};
-    inputSchema.push_back(ResourceDescriptor(
-        "device_obj",
-        ResourceType::Buffer, // Using Buffer as placeholder for device objects
-        ResourceLifetime::Persistent,
-        deviceInput
-    ));
-
-    // Output: Command pool
-    CommandPoolDescriptor poolOutput{};
-    poolOutput.flags = 0;
-    poolOutput.queueFamilyIndex = 0;
-    outputSchema.push_back(ResourceDescriptor(
-        "command_pool",
-        ResourceType::Buffer, // Using Buffer as placeholder for command pool
-        ResourceLifetime::Persistent,
-        poolOutput
-    ));
+    // Populate schemas from Config
+    CommandPoolNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024; // Minimal - just pool structure
@@ -65,20 +51,23 @@ CommandPoolNode::~CommandPoolNode() {
 }
 
 void CommandPoolNode::Setup() {
-    // No setup needed for command pool
+    vulkanDevice = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        std::string errorMsg = "CommandPoolNode: VkDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
 }
 
 void CommandPoolNode::Compile() {
+
     // Get queue family index parameter
+    // TODO: Should get queue family index from DeviceNode output instead of parameter
     uint32_t queueFamilyIndex = GetParameterValue<uint32_t>(
         CommandPoolNodeConfig::PARAM_QUEUE_FAMILY_INDEX,
-        device->graphicsQueueIndex // Default to graphics queue
+        0  // Default to index 0 (graphics queue)
     );
-
-    // Get device from input
-    // Note: Input is VulkanDevice pointer type-punned as VkDevice in the resource
-    // We use the device pointer from NodeInstance instead
-    VkDevice vkDevice = device->device;
 
     // Create command pool
     VkCommandPoolCreateInfo poolInfo{};
@@ -86,7 +75,7 @@ void CommandPoolNode::Compile() {
     poolInfo.queueFamilyIndex = queueFamilyIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VkResult result = vkCreateCommandPool(vkDevice, &poolInfo, nullptr, &commandPool);
+    VkResult result = vkCreateCommandPool(vulkanDevice->device, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "Failed to create command pool for node: " + instanceName;
         NODE_LOG_ERROR(errorMsg);
@@ -97,9 +86,13 @@ void CommandPoolNode::Compile() {
 
     // Store command pool handle in output resource (NEW VARIANT API)
     Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
-    // TODO: Track device dependency through graph connections instead of storing in resource
+    Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
+
+    // === REGISTER CLEANUP ===
+    // Automatically resolves dependency on DeviceNode via input slot 0
+    RegisterCleanup();
 }
 
 void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
@@ -108,8 +101,8 @@ void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void CommandPoolNode::Cleanup() {
-    if (isCreated && commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device->device, commandPool, nullptr);
+    if (isCreated && commandPool != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
         isCreated = false;
 

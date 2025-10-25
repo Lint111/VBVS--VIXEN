@@ -12,9 +12,10 @@ GeometryRenderNodeType::GeometryRenderNodeType(const std::string& typeName) : No
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
 
-    // Inputs are opaque references (set via Set methods)
-
-    // No outputs - this node records commands
+    // Populate schemas from Config
+    GeometryRenderNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024; // Command recording

@@ -33,6 +33,7 @@ public:
 private:
     std::unique_ptr<Vixen::TextureHandling::TextureLoader> textureLoader;
     VkCommandPool commandPool = VK_NULL_HANDLE;
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     
     // Loaded texture resources (output via typed slots)
     VkImage textureImage = VK_NULL_HANDLE;

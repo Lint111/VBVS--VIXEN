@@ -42,6 +42,7 @@ public:
     uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
 
 private:
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> framebuffers;
     bool hasDepth = false;
 };

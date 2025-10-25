@@ -4,6 +4,7 @@
 #include <variant>
 
 #include "Core/ResourceConfig.h"
+#include "Data/DeviceHandles.h"
 
 // Forward declarations (outside Vixen::RenderGraph to avoid nesting)
 namespace ShaderManagement {

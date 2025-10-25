@@ -1,4 +1,5 @@
 #include "Nodes/VertexBufferNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -46,6 +47,12 @@ VertexBufferNode::~VertexBufferNode() {
 }
 
 void VertexBufferNode::Setup() {
+    // Read and validate device input
+    vulkanDevice = In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        throw std::runtime_error("VertexBufferNode: Invalid device handle");
+    }
+
     NODE_LOG_INFO("Setup: Vertex buffer node ready");
 }
 
@@ -105,7 +112,23 @@ void VertexBufferNode::Compile() {
     // Setup vertex input description
     SetupVertexInputDescription();
 
+    // Set outputs
+    Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
+    if (hasIndices) {
+        Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
+    }
+    Out(VertexBufferNodeConfig::VULKAN_DEVICE_IN, vulkanDevice);
+
     NODE_LOG_INFO("Compile complete: Vertex buffer ready");
+
+    // === REGISTER CLEANUP ===
+    if (GetOwningGraph()) {
+        GetOwningGraph()->GetCleanupStack().Register(
+            GetInstanceName() + "_Cleanup",
+            [this]() { this->Cleanup(); },
+            { "DeviceNode_Cleanup" }
+        );
+    }
 }
 
 void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
@@ -114,30 +137,28 @@ void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void VertexBufferNode::Cleanup() {
-    if (vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE) {
+    if ((vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE) && vulkanDevice != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("Cleanup: Destroying vertex and index buffers");
-    }
 
-    VkDevice vkDevice = device->device;
+        if (vertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(vulkanDevice->device, vertexBuffer, nullptr);
+            vertexBuffer = VK_NULL_HANDLE;
+        }
 
-    if (vertexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vkDevice, vertexBuffer, nullptr);
-        vertexBuffer = VK_NULL_HANDLE;
-    }
+        if (vertexMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(vulkanDevice->device, vertexMemory, nullptr);
+            vertexMemory = VK_NULL_HANDLE;
+        }
 
-    if (vertexMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vkDevice, vertexMemory, nullptr);
-        vertexMemory = VK_NULL_HANDLE;
-    }
+        if (indexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(vulkanDevice->device, indexBuffer, nullptr);
+            indexBuffer = VK_NULL_HANDLE;
+        }
 
-    if (indexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vkDevice, indexBuffer, nullptr);
-        indexBuffer = VK_NULL_HANDLE;
-    }
-
-    if (indexMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vkDevice, indexMemory, nullptr);
-        indexMemory = VK_NULL_HANDLE;
+        if (indexMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(vulkanDevice->device, indexMemory, nullptr);
+            indexMemory = VK_NULL_HANDLE;
+        }
     }
 }
 
@@ -147,8 +168,6 @@ void VertexBufferNode::CreateBuffer(
     VkBuffer& buffer,
     VkDeviceMemory& memory
 ) {
-    VkDevice vkDevice = device->device;
-
     // Create buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -160,7 +179,7 @@ void VertexBufferNode::CreateBuffer(
     bufferInfo.pQueueFamilyIndices = nullptr;
     bufferInfo.flags = 0;
 
-    VkResult result = vkCreateBuffer(vkDevice, &bufferInfo, nullptr, &buffer);
+    VkResult result = vkCreateBuffer(vulkanDevice->device, &bufferInfo, nullptr, &buffer);
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to create buffer"};
         NODE_LOG_ERROR(error.toString());
@@ -169,41 +188,47 @@ void VertexBufferNode::CreateBuffer(
 
     // Get memory requirements
     VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(vkDevice, buffer, &memRequirements);
-
+    vkGetBufferMemoryRequirements(vulkanDevice->device, buffer, &memRequirements);
+    
     // Allocate memory
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.pNext = nullptr;
     allocInfo.allocationSize = memRequirements.size;
 
-    auto memTypeResult = device->MemoryTypeFromProperties(
-        memRequirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    );
+    // Find suitable memory type
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(*vulkanDevice->gpu, &memProperties);
 
-    if (!memTypeResult.has_value()) {
-        vkDestroyBuffer(vkDevice, buffer, nullptr);
+    VkMemoryPropertyFlags requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    auto memoryTypeIndex = vulkanDevice->MemoryTypeFromProperties(
+        memRequirements.memoryTypeBits,
+        requiredFlags
+	);
+
+    if (!memoryTypeIndex.has_value())
+    {
+        vkDestroyBuffer(vulkanDevice->device, buffer, nullptr);
         VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "Failed to find suitable memory type for buffer"};
         NODE_LOG_ERROR(error.toString());
-        throw std::runtime_error(error.toString());
+		throw std::runtime_error(error.toString());
     }
 
-    allocInfo.memoryTypeIndex = memTypeResult.value();
+    allocInfo.memoryTypeIndex = memoryTypeIndex.value();
 
-    result = vkAllocateMemory(vkDevice, &allocInfo, nullptr, &memory);
+    result = vkAllocateMemory(vulkanDevice->device, &allocInfo, nullptr, &memory);
     if (result != VK_SUCCESS) {
-        vkDestroyBuffer(vkDevice, buffer, nullptr);
+        vkDestroyBuffer(vulkanDevice->device, buffer, nullptr);
         VulkanError error{result, "Failed to allocate buffer memory"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
 
     // Bind buffer to memory
-    result = vkBindBufferMemory(vkDevice, buffer, memory, 0);
+    result = vkBindBufferMemory(vulkanDevice->device, buffer, memory, 0);
     if (result != VK_SUCCESS) {
-        vkFreeMemory(vkDevice, memory, nullptr);
-        vkDestroyBuffer(vkDevice, buffer, nullptr);
+        vkFreeMemory(vulkanDevice->device, memory, nullptr);
+        vkDestroyBuffer(vulkanDevice->device, buffer, nullptr);
         VulkanError error{result, "Failed to bind buffer memory"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
@@ -215,11 +240,9 @@ void VertexBufferNode::UploadData(
     const void* data,
     VkDeviceSize size
 ) {
-    VkDevice vkDevice = device->device;
-
     // Map memory
-    void* mappedData = nullptr;
-    VkResult result = vkMapMemory(vkDevice, memory, 0, size, 0, &mappedData);
+    void* mappedData;
+    VkResult result = vkMapMemory(vulkanDevice->device, memory, 0, size, 0, &mappedData);
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to map buffer memory"};
         NODE_LOG_ERROR(error.toString());
@@ -230,7 +253,7 @@ void VertexBufferNode::UploadData(
     std::memcpy(mappedData, data, static_cast<size_t>(size));
 
     // Unmap memory
-    vkUnmapMemory(vkDevice, memory);
+    vkUnmapMemory(vulkanDevice->device, memory);
 }
 
 void VertexBufferNode::SetupVertexInputDescription() {

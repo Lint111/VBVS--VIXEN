@@ -39,6 +39,7 @@ public:
     bool HasDepthAttachment() const { return hasDepth; }
 
 private:
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     VkRenderPass renderPass = VK_NULL_HANDLE;
     bool hasDepth = false;
 

@@ -89,6 +89,12 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.ppEnabledExtensionNames = extensions.size() ? extensions.data() : nullptr;
     deviceInfo.pEnabledFeatures = nullptr;  // Must be NULL when using VkPhysicalDeviceFeatures2
 
+    // Debug: Log enabled extensions
+    std::cout << "[VulkanDevice::CreateDevice] Enabling " << extensions.size() << " extensions:" << std::endl;
+    for (size_t i = 0; i < extensions.size(); ++i) {
+        std::cout << "[VulkanDevice::CreateDevice]   " << i << ": " << extensions[i] << std::endl;
+    }
+
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
     return {};
 }

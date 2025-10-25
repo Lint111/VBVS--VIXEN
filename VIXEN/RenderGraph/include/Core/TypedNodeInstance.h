@@ -383,6 +383,15 @@ private:
         if (slot.size() <= arrayIndex) {
             slot.resize(arrayIndex + 1, nullptr);
         }
+        
+        // If the resource pointer is null, create a temporary Resource for this output
+        // This happens when a node wants to write to an output that wasn't connected
+        // TODO: Ideally the graph should manage all Resources, but for now we create locally
+        if (slot[arrayIndex] == nullptr) {
+            // HACK: Create Resource inline - this should be managed by RenderGraph
+            // For now, just allocate it here. This is a memory leak if not cleaned up!
+            slot[arrayIndex] = new Resource();
+        }
     }
 
 protected:

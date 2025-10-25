@@ -1,5 +1,7 @@
 #include "Nodes/GraphicsPipelineNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/NodeLogging.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -11,6 +13,11 @@ GraphicsPipelineNodeType::GraphicsPipelineNodeType(const std::string& typeName) 
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
+
+    // Populate schemas from Config
+    GraphicsPipelineNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 8192; // Pipeline state
@@ -43,6 +50,16 @@ GraphicsPipelineNode::~GraphicsPipelineNode() {
 }
 
 void GraphicsPipelineNode::Setup() {
+    NODE_LOG_DEBUG("Setup: Reading device input");
+    
+    vulkanDevice = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+    
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        std::string errorMsg = "GraphicsPipelineNode: VkDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
     // Create pipeline cache
     CreatePipelineCache();
 }
@@ -91,6 +108,16 @@ void GraphicsPipelineNode::Compile() {
     Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
     Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
     Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+
+    // === REGISTER CLEANUP ===
+    if (GetOwningGraph()) {
+        GetOwningGraph()->GetCleanupStack().Register(
+            GetInstanceName() + "_Cleanup",
+            [this]() { this->Cleanup(); },
+            { "DeviceNode_Cleanup" }
+        );
+    }
 }
 
 void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
@@ -99,20 +126,18 @@ void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void GraphicsPipelineNode::Cleanup() {
-    VkDevice vkDevice = device->device;
-
-    if (pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(vkDevice, pipeline, nullptr);
+    if (pipeline != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyPipeline(vulkanDevice->device, pipeline, nullptr);
         pipeline = VK_NULL_HANDLE;
     }
 
-    if (pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(vkDevice, pipelineLayout, nullptr);
+    if (pipelineLayout != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(vulkanDevice->device, pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
 
-    if (pipelineCache != VK_NULL_HANDLE) {
-        vkDestroyPipelineCache(vkDevice, pipelineCache, nullptr);
+    if (pipelineCache != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(vulkanDevice->device, pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
 }
@@ -126,7 +151,7 @@ void GraphicsPipelineNode::CreatePipelineCache() {
     cacheInfo.flags = 0;
 
     VkResult result = vkCreatePipelineCache(
-        device->device,
+        vulkanDevice->device,
         &cacheInfo,
         nullptr,
         &pipelineCache
@@ -150,7 +175,7 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
     layoutInfo.pPushConstantRanges = nullptr;
 
     VkResult result = vkCreatePipelineLayout(
-        device->device,
+        vulkanDevice->device,
         &layoutInfo,
         nullptr,
         &pipelineLayout
@@ -313,7 +338,7 @@ void GraphicsPipelineNode::CreatePipeline() {
     pipelineInfo.basePipelineIndex = -1;
 
     VkResult result = vkCreateGraphicsPipelines(
-        device->device,
+        vulkanDevice->device,
         pipelineCache,
         1,
         &pipelineInfo,
@@ -324,6 +349,12 @@ void GraphicsPipelineNode::CreatePipeline() {
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
+    
+    // Output pipeline resources and device
+    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 }
 
 // Parse helper methods

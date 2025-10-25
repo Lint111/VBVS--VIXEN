@@ -16,6 +16,10 @@ namespace ShaderManagement {
     struct CompiledProgram;
 }
 
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;  // Forward declare VulkanDevice
+}
+
 namespace Vixen::RenderGraph {
     struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
 }
@@ -25,6 +29,7 @@ using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
 using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 namespace Vixen::RenderGraph {
 
@@ -248,6 +253,11 @@ template<> struct VulkanTypeTraits<PFN_vkQueuePresentKHR> {
 
 template<> struct VulkanTypeTraits<VkResultPtr> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to result
+    static constexpr bool isValid = true;
+};
+
+template<> struct VulkanTypeTraits<VulkanDevicePtr> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to VulkanDevice wrapper
     static constexpr bool isValid = true;
 };
 

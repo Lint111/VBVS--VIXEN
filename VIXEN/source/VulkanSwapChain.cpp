@@ -5,14 +5,16 @@
 #define INSTANCE_FUNC_PTR(instance, entrypoint){                \
     fp##entrypoint = (PFN_vk##entrypoint) vkGetInstanceProcAddr \
     (instance, "vk"#entrypoint);                                \
-    if (fp##entrypoint == nullptr) { exit(-1);                     \
+    if (fp##entrypoint == nullptr) {                            \
+        throw std::runtime_error("Failed to load instance function: vk"#entrypoint); \
     }                                                           \
 }
 
 #define DEVICE_FUNC_PTR(dev, entrypoint){                       \
     fp##entrypoint = (PFN_vk##entrypoint)vkGetDeviceProcAddr    \
     (dev, "vk"#entrypoint);                                     \
-    if (fp##entrypoint == nullptr) { exit(-1);                     \
+    if (fp##entrypoint == nullptr) {                            \
+        throw std::runtime_error("Failed to load device function: vk"#entrypoint); \
     }                                                           \
 }
 

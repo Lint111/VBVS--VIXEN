@@ -1,4 +1,6 @@
 #include "Core/NodeInstance.h"
+#include "Core/RenderGraph.h"
+#include "Core/ResourceDependencyTracker.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
@@ -30,7 +32,8 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-#ifdef _DEBUG
+// Initialize logger in debug builds (MSVC: _DEBUG, GCC/Clang: DEBUG or !NDEBUG)
+#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
     nodeLogger = std::make_unique<Logger>(instanceName);
 #endif
 }
@@ -41,6 +44,20 @@ NodeInstance::~NodeInstance() {
 
 NodeTypeId NodeInstance::GetTypeId() const {
     return nodeType ? nodeType->GetTypeId() : 0;
+}
+
+void NodeInstance::AddTag(const std::string& tag) {
+    if (std::find(tags.begin(), tags.end(), tag) == tags.end()) {
+        tags.push_back(tag);
+    }
+}
+
+void NodeInstance::RemoveTag(const std::string& tag) {
+    tags.erase(std::remove(tags.begin(), tags.end(), tag), tags.end());
+}
+
+bool NodeInstance::HasTag(const std::string& tag) const {
+    return std::find(tags.begin(), tags.end(), tag) != tags.end();
 }
 
 Resource* NodeInstance::GetInput(uint32_t slotIndex, uint32_t arrayIndex) const {
@@ -194,6 +211,23 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
     }
 }
 #endif
+
+void NodeInstance::RegisterCleanup() {
+    if (!owningGraph) {
+        return; // Can't register without graph reference
+    }
+
+    // Build dependency list automatically from input resources
+    auto& tracker = owningGraph->GetDependencyTracker();
+    std::vector<std::string> cleanupDeps = tracker.BuildCleanupDependencies(this);
+
+    // Register with cleanup stack
+    owningGraph->GetCleanupStack().Register(
+        GetInstanceName() + "_Cleanup",
+        [this]() { this->Cleanup(); },
+        cleanupDeps
+    );
+}
 
 void NodeInstance::AllocateResources() {
     // Calculate input memory footprint from descriptors

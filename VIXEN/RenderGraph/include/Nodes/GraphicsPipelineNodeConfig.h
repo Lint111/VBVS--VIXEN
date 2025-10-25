@@ -2,13 +2,18 @@
 
 #include "Core/ResourceConfig.h"
 #include "ShaderManagement/ShaderProgram.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for GraphicsPipelineNode
  *
  * Inputs:
+ * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
  * - SHADER_PROGRAM (ShaderProgramDescriptor*) - Compiled shader program from ShaderLibraryNode
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
@@ -33,8 +38,8 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace GraphicsPipelineNodeCounts {
-    static constexpr size_t INPUTS = 5;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t INPUTS = 6;
+    static constexpr size_t OUTPUTS = 4;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -51,21 +56,24 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* TOPOLOGY = "topology";
     static constexpr const char* FRONT_FACE = "frontFace";
 
-    // ===== INPUTS (5) =====
+    // ===== INPUTS (6) =====
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+
     // Shader program from ShaderLibraryNode
-    CONSTEXPR_INPUT(SHADER_PROGRAM, ShaderProgramDescriptorPtr, 0, false);
+    CONSTEXPR_INPUT(SHADER_PROGRAM, ShaderProgramDescriptorPtr, 1, false);
 
     // Render pass from RenderPassNode
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 1, false);
+    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 2, false);
 
     // Descriptor set layout from DescriptorSetNode
-    CONSTEXPR_INPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 2, false);
+    CONSTEXPR_INPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3, false);
 
     // Viewport configuration (pointer to VkViewport struct)
-    CONSTEXPR_INPUT(VIEWPORT, VkViewportPtr, 3, false);
+    CONSTEXPR_INPUT(VIEWPORT, VkViewportPtr, 4, false);
 
     // Scissor rectangle (pointer to VkRect2D struct)
-    CONSTEXPR_INPUT(SCISSOR, VkRect2DPtr, 4, false);
+    CONSTEXPR_INPUT(SCISSOR, VkRect2DPtr, 5, false);
 
     // ===== OUTPUTS (3) =====
     // Graphics pipeline handle
@@ -77,8 +85,13 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     // Pipeline cache for optimization
     CONSTEXPR_OUTPUT(PIPELINE_CACHE, VkPipelineCache, 2, false);
 
+	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+
     GraphicsPipelineNodeConfig() {
         // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
         INIT_INPUT_DESC(SHADER_PROGRAM, "shader_program",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque pointer
@@ -119,6 +132,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle
         );
+
+		INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out", ResourceLifetime::Persistent, vulkanDeviceDesc);
     }
 
     // Compile-time validations
@@ -126,19 +141,22 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(OUTPUT_COUNT == GraphicsPipelineNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == GraphicsPipelineNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(SHADER_PROGRAM_Slot::index == 0, "SHADER_PROGRAM must be at index 0");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+
+    static_assert(SHADER_PROGRAM_Slot::index == 1, "SHADER_PROGRAM must be at index 1");
     static_assert(!SHADER_PROGRAM_Slot::nullable, "SHADER_PROGRAM is required");
 
-    static_assert(RENDER_PASS_Slot::index == 1, "RENDER_PASS must be at index 1");
+    static_assert(RENDER_PASS_Slot::index == 2, "RENDER_PASS must be at index 2");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
 
-    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 2, "DESCRIPTOR_SET_LAYOUT must be at index 2");
+    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 3, "DESCRIPTOR_SET_LAYOUT must be at index 3");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");
 
-    static_assert(VIEWPORT_Slot::index == 3, "VIEWPORT must be at index 3");
+    static_assert(VIEWPORT_Slot::index == 4, "VIEWPORT must be at index 4");
     static_assert(!VIEWPORT_Slot::nullable, "VIEWPORT is required");
 
-    static_assert(SCISSOR_Slot::index == 4, "SCISSOR must be at index 4");
+    static_assert(SCISSOR_Slot::index == 5, "SCISSOR must be at index 5");
     static_assert(!SCISSOR_Slot::nullable, "SCISSOR is required");
 
     static_assert(PIPELINE_Slot::index == 0, "PIPELINE must be at index 0");
@@ -150,7 +168,11 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(PIPELINE_CACHE_Slot::index == 2, "PIPELINE_CACHE must be at index 2");
     static_assert(!PIPELINE_CACHE_Slot::nullable, "PIPELINE_CACHE is required");
 
+	static_assert(VULKAN_DEVICE_OUT_Slot::index == 3, "VULKAN_DEVICE_OUT must be at index 3");
+	static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT is required");
+
     // Type validations
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, ShaderProgramDescriptorPtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
@@ -159,10 +181,11 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);
+	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };
 
 // Global compile-time validations
-static_assert(GraphicsPipelineNodeConfig::INPUT_COUNT == 5);
-static_assert(GraphicsPipelineNodeConfig::OUTPUT_COUNT == 3);
+static_assert(GraphicsPipelineNodeConfig::INPUT_COUNT == GraphicsPipelineNodeCounts::INPUTS);
+static_assert(GraphicsPipelineNodeConfig::OUTPUT_COUNT == GraphicsPipelineNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

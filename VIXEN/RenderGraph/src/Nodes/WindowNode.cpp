@@ -78,10 +78,13 @@ void WindowNode::Setup() {
 }
 
 void WindowNode::Compile() {
+    std::cout << "[WindowNode::Compile] START" << std::endl;
+    
     // Get parameters using typed names from config
     width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
     height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
 
+    std::cout << "[WindowNode::Compile] Creating window " << width << "x" << height << std::endl;
     NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
 
 #ifdef _WIN32
@@ -135,6 +138,13 @@ void WindowNode::Compile() {
     // HACK: Use external variables - instance should be passed properly
     extern VkInstance g_VulkanInstance;
     VkInstance instance = g_VulkanInstance;
+
+    if (instance == VK_NULL_HANDLE) {
+        NODE_LOG_ERROR("[WindowNode] ERROR: g_VulkanInstance is VK_NULL_HANDLE!");
+        throw std::runtime_error("WindowNode: VkInstance not initialized");
+    }
+
+    NODE_LOG_INFO("[WindowNode] Creating Win32 surface...");
 
     VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
     if (result != VK_SUCCESS) {

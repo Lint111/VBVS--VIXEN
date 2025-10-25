@@ -44,6 +44,7 @@ public:
     // Clear logs
     void Clear();
     void ClearAll(); // Clear this logger and all children
+    void ClearChildren(); // Clear child logger pointers without deleting entries
 
     // Getters
     const std::string& GetName() const { return name; }

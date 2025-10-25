@@ -103,6 +103,11 @@ void Logger::ClearAll()
     }
 }
 
+void Logger::ClearChildren()
+{
+    children.clear();
+}
+
 std::string Logger::GetTimestamp() const
 {
     auto now = std::chrono::system_clock::now();

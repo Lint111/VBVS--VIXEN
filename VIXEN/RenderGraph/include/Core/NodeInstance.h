@@ -55,10 +55,20 @@ public:
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
 
+    // Tags (for bulk operations via events)
+    void AddTag(const std::string& tag);
+    void RemoveTag(const std::string& tag);
+    bool HasTag(const std::string& tag) const;
+    const std::vector<std::string>& GetTags() const { return tags; }
+
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const { return device; }
     uint32_t GetDeviceIndex() const { return deviceIndex; }
     void SetDeviceIndex(uint32_t index) { deviceIndex = index; }
+
+    // Owning graph access (for cleanup registration)
+    RenderGraph* GetOwningGraph() const { return owningGraph; }
+    void SetOwningGraph(RenderGraph* graph) { owningGraph = graph; }
 
     // Node arrayable flag
     bool AllowsInputArrays() const { return allowInputArrays; }
@@ -103,6 +113,15 @@ public:
     void SetCacheKey(uint64_t key) { cacheKey = key; }
     uint64_t ComputeCacheKey() const;
 
+    // Cleanup registration helper
+    /**
+     * @brief Register cleanup with automatic dependency resolution
+     * 
+     * Automatically builds dependency list from input slots using ResourceDependencyTracker.
+     * Call this at the end of Compile() after all outputs are set.
+     */
+    void RegisterCleanup();
+
     // Logger Registration
     #ifdef _DEBUG
     void RegisterToParentLogger(Logger* parentLogger);
@@ -126,11 +145,15 @@ protected:
     // Instance identification
     std::string instanceName;
     NodeType* nodeType;
+    std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
     
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* device;
     uint32_t deviceIndex = 0;
+
+    // Owning graph pointer (for cleanup registration)
+    RenderGraph* owningGraph = nullptr;
 
     // Node-level behavior flags
     // When true the node will accept either single inputs or array-shaped inputs

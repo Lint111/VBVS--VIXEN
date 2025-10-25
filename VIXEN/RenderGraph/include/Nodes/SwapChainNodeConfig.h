@@ -1,8 +1,12 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for SwapChainNode
@@ -13,8 +17,7 @@ namespace Vixen::RenderGraph {
  * - WIDTH (uint32_t) - Window width from WindowNode
  * - HEIGHT (uint32_t) - Window height from WindowNode
  * - INSTANCE (VkInstance) - Vulkan instance from InstanceNode
- * - PHYSICAL_DEVICE (VkPhysicalDevice) - GPU from DeviceNode
- * - DEVICE (VkDevice) - Logical device from DeviceNode
+ * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
  *
  * Outputs:
  * - SWAPCHAIN_IMAGES (VkImage[]) - Color images for rendering
@@ -27,16 +30,16 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 7;
+    static constexpr size_t INPUTS = 6;
     static constexpr size_t OUTPUTS = 5;  // Added WIDTH_OUT, HEIGHT_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
-CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig, 
-                      SwapChainNodeCounts::INPUTS, 
-                      SwapChainNodeCounts::OUTPUTS, 
+CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
+                      SwapChainNodeCounts::INPUTS,
+                      SwapChainNodeCounts::OUTPUTS,
                       SwapChainNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (7) =====
+    // ===== INPUTS (6) =====
     // Required window handles from WindowNode
     CONSTEXPR_INPUT(HWND, ::HWND, 0, false);
     CONSTEXPR_INPUT(HINSTANCE, ::HINSTANCE, 1, false);
@@ -48,11 +51,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // Required Vulkan instance from InstanceNode
     CONSTEXPR_INPUT(INSTANCE, VkInstance, 4, false);
 
-    // Required physical device from DeviceNode
-    CONSTEXPR_INPUT(PHYSICAL_DEVICE, VkPhysicalDevice, 5, false);
-
-    // Required logical device from DeviceNode
-    CONSTEXPR_INPUT(DEVICE, VkDevice, 6, false);
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5, false);
 
     // ===== OUTPUTS (5) =====
     // Swapchain images (required)
@@ -61,7 +61,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // Additional outputs: swapchain handle and public variables
     CONSTEXPR_OUTPUT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 1, false);
     CONSTEXPR_OUTPUT(SWAPCHAIN_PUBLIC, ::SwapChainPublicVariables*, 2, true);
-    
+
     // Width and height outputs (for downstream nodes)
     CONSTEXPR_OUTPUT(WIDTH_OUT, uint32_t, 3, false);
     CONSTEXPR_OUTPUT(HEIGHT_OUT, uint32_t, 4, false);
@@ -98,17 +98,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
             BufferDescription{}
         );
 
-        // Physical device (GPU)
-        INIT_INPUT_DESC(PHYSICAL_DEVICE, "physical_device",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        // Logical device
-        INIT_INPUT_DESC(DEVICE, "device",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
+        // VulkanDevice pointer
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
         // Initialize output descriptors
         ImageDescription swapchainImgDesc{};
@@ -163,11 +155,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(INSTANCE_Slot::index == 4, "INSTANCE input must be at index 4");
     static_assert(!INSTANCE_Slot::nullable, "INSTANCE input is required");
 
-    static_assert(PHYSICAL_DEVICE_Slot::index == 5, "PHYSICAL_DEVICE input must be at index 5");
-    static_assert(!PHYSICAL_DEVICE_Slot::nullable, "PHYSICAL_DEVICE input is required");
-
-    static_assert(DEVICE_Slot::index == 6, "DEVICE input must be at index 6");
-    static_assert(!DEVICE_Slot::nullable, "DEVICE input is required");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 5, "VULKAN_DEVICE input must be at index 5");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
     static_assert(SWAPCHAIN_IMAGES_Slot::index == 0, "SWAPCHAIN_IMAGES must be at index 0");
     static_assert(!SWAPCHAIN_IMAGES_Slot::nullable, "SWAPCHAIN_IMAGES is required");
@@ -178,31 +167,29 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(SWAPCHAIN_PUBLIC_Slot::index == 2, "SWAPCHAIN_PUBLIC must be at index 2");
     static_assert(SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC may be nullable");
 
-    // Type validations
-    static_assert(std::is_same_v<HWND_Slot::Type, ::HWND>);
-    static_assert(std::is_same_v<HINSTANCE_Slot::Type, ::HINSTANCE>);
-    static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
-    static_assert(std::is_same_v<PHYSICAL_DEVICE_Slot::Type, VkPhysicalDevice>);
-    static_assert(std::is_same_v<DEVICE_Slot::Type, VkDevice>);
-
-    static_assert(std::is_same_v<SWAPCHAIN_IMAGES_Slot::Type, VkImage>);
-    static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
-
     static_assert(WIDTH_OUT_Slot::index == 3, "WIDTH_OUT must be at index 3");
     static_assert(!WIDTH_OUT_Slot::nullable, "WIDTH_OUT is required");
 
     static_assert(HEIGHT_OUT_Slot::index == 4, "HEIGHT_OUT must be at index 4");
     static_assert(!HEIGHT_OUT_Slot::nullable, "HEIGHT_OUT is required");
 
+    // Type validations
+    static_assert(std::is_same_v<HWND_Slot::Type, ::HWND>);
+    static_assert(std::is_same_v<HINSTANCE_Slot::Type, ::HINSTANCE>);
+    static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+
+    static_assert(std::is_same_v<SWAPCHAIN_IMAGES_Slot::Type, VkImage>);
+    static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
     static_assert(std::is_same_v<WIDTH_OUT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<HEIGHT_OUT_Slot::Type, uint32_t>);
 };
 
 // Global compile-time validations
-static_assert(SwapChainNodeConfig::INPUT_COUNT == 7);
+static_assert(SwapChainNodeConfig::INPUT_COUNT == 6);
 static_assert(SwapChainNodeConfig::OUTPUT_COUNT == 5);
 
 } // namespace Vixen::RenderGraph

@@ -11,9 +11,10 @@ PresentNodeType::PresentNodeType(const std::string& typeName) : NodeType(typeNam
     supportsInstancing = false; // Only one present operation at a time
     maxInstances = 1;
 
-    // Inputs are opaque references (set via Set methods)
-
-    // No outputs (result accessed via GetLastResult)
+    // Populate schemas from Config
+    PresentNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 512; // Minimal
@@ -46,7 +47,11 @@ PresentNode::~PresentNode() {
 }
 
 void PresentNode::Setup() {
-    // No setup needed
+    // Read and validate device input
+    vulkanDevice = In(PresentNodeConfig::VULKAN_DEVICE_IN);
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        throw std::runtime_error("PresentNode: Invalid device handle");
+    }
 }
 
 void PresentNode::Compile() {
@@ -57,11 +62,6 @@ void PresentNode::Compile() {
     VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
     if (swapchain == VK_NULL_HANDLE) {
         throw std::runtime_error("PresentNode: swapchain input not connected or invalid");
-    }
-
-    VkQueue queue = In(PresentNodeConfig::QUEUE);
-    if (queue == VK_NULL_HANDLE) {
-        throw std::runtime_error("PresentNode: queue input not connected or invalid");
     }
 
     PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
@@ -84,7 +84,6 @@ VkResult PresentNode::Present() {
     // Get inputs on-demand via typed slots
     VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
     uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX);
-    VkQueue queue = In(PresentNodeConfig::QUEUE);
     VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
     PFN_vkQueuePresentKHR fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
 
@@ -107,16 +106,17 @@ VkResult PresentNode::Present() {
     
     presentInfo.pResults = nullptr;
 
-    // Queue present
-    lastResult = fpQueuePresent(queue, &presentInfo);
+    // Queue present    
+    lastResult = fpQueuePresent(vulkanDevice->queue, &presentInfo);
 
     // Wait for device idle if requested (for compatibility with current behavior)
-    if (waitForIdle && lastResult == VK_SUCCESS) {
-        vkDeviceWaitIdle(device->device);
+    if (waitForIdle && lastResult == VK_SUCCESS && vulkanDevice != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(vulkanDevice->device);
     }
 
-    // Set output
+    // Set outputs
     Out(PresentNodeConfig::PRESENT_RESULT, &lastResult);
+    Out(PresentNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     return lastResult;
 }

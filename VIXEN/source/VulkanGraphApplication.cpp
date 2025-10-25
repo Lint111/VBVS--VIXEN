@@ -72,7 +72,8 @@ void VulkanGraphApplication::Initialize() {
 
     // Create render graph
     // NOTE: Device is passed to individual nodes, not to RenderGraph constructor
-    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), mainLogger.get());
+    // Pass nullptr for messageBus (event-driven cleanup optional)
+    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), nullptr, mainLogger.get());
 
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
@@ -199,6 +200,10 @@ void VulkanGraphApplication::DeInitialize() {
         } catch (...) {
             // Best-effort: don't throw during cleanup
         }
+        
+        // Clear all child logger pointers before destroying nodes
+        // This prevents dangling pointer access during final cleanup
+        mainLogger->ClearChildren();
     }
 
     // Destroy render graph (nodes clean up their own resources)
@@ -400,24 +405,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Device → SwapChain connections ---
     batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE,
                   swapChainNode, SwapChainNodeConfig::INSTANCE)
-         .Connect(deviceNode, DeviceNodeConfig::PHYSICAL_DEVICE,
-                  swapChainNode, SwapChainNodeConfig::PHYSICAL_DEVICE)
-         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
-                  swapChainNode, SwapChainNodeConfig::DEVICE);
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
 
     // --- Device → CommandPool connection ---
-    batch.Connect(deviceNode, DeviceNodeConfig::DEVICE,
-                  commandPoolNode, CommandPoolNodeConfig::DeviceObj);
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     // --- SwapChain → DepthBuffer connections ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+    batch.Connect(swapChainNode, SwapChainNodeConfig::WIDTH_OUT,
                   depthBufferNode, DepthBufferNodeConfig::WIDTH)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+         .Connect(swapChainNode, SwapChainNodeConfig::HEIGHT_OUT,
                   depthBufferNode, DepthBufferNodeConfig::HEIGHT);
+
+    // --- Device → DepthBuffer device connection (for Vulkan operations) ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
 
     // --- CommandPool → DepthBuffer connection ---
     batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   depthBufferNode, DepthBufferNodeConfig::COMMAND_POOL);
+
+    // --- Device → RenderPass device connection ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  renderPassNode, RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     // --- SwapChain → RenderPass connection (color format) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
@@ -426,6 +437,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- DepthBuffer → RenderPass connection (depth format) ---
     batch.Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_FORMAT,
                   renderPassNode, RenderPassNodeConfig::DEPTH_FORMAT);
+
+    // --- Device → Framebuffer device connection ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  framebufferNode, FramebufferNodeConfig::VULKAN_DEVICE_IN);
 
     // --- RenderPass + SwapChain + DepthBuffer → Framebuffer connections ---
     batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
@@ -439,17 +454,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   framebufferNode, FramebufferNodeConfig::HEIGHT);
 
+    // --- Device → ShaderLibrary device chain ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  shaderLibNode, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- Device → GraphicsPipeline device connection ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+
     // --- ShaderLibrary + RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
     batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_PROGRAMS,
                   pipelineNode, GraphicsPipelineNodeConfig::SHADER_PROGRAM)
          .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
                   pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   pipelineNode, GraphicsPipelineNodeConfig::VIEWPORT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   pipelineNode, GraphicsPipelineNodeConfig::SCISSOR);
+
+    // --- Device → VertexBuffer device chain ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  vertexBufferNode, VertexBufferNodeConfig::VULKAN_DEVICE_IN);
 
     // --- All resources → GeometryRender connections ---
     batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
@@ -475,21 +504,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   geometryRenderNode, GeometryRenderNodeConfig::RENDER_HEIGHT);
 
+    // --- Device → Present device connection ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
+
     // --- SwapChain + GeometryRender → Present connections ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
-                  presentNode, PresentNodeConfig::QUEUE)
          .Connect(geometryRenderNode, GeometryRenderNodeConfig::COMMAND_BUFFERS,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE)
-         .Connect(deviceNode, DeviceNodeConfig::DEVICE,
-                  presentNode, PresentNodeConfig::PRESENT_FUNCTION);
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // Atomically register all connections
+    size_t connectionCount = batch.GetConnectionCount();
+    mainLogger->Info("Registering " + std::to_string(connectionCount) + " connections...");
     batch.RegisterAll();
 
-    mainLogger->Info("Successfully wired " + std::to_string(batch.GetConnectionCount()) + " connections");
+    mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }

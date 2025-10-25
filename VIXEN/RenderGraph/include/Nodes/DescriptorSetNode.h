@@ -97,6 +97,8 @@ private:
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
 
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+
     // Helpers
     void ValidateLayoutSpec();
     void CreateDescriptorSetLayout();

@@ -2,8 +2,12 @@
 
 #include "Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"  // For DepthFormat enum
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for DepthBufferNode
@@ -25,24 +29,27 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DepthBufferNodeCounts {
-    static constexpr size_t INPUTS = 3;
+    static constexpr size_t INPUTS = 4;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
-CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig, 
-                      DepthBufferNodeCounts::INPUTS, 
-                      DepthBufferNodeCounts::OUTPUTS, 
+CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
+                      DepthBufferNodeCounts::INPUTS,
+                      DepthBufferNodeCounts::OUTPUTS,
                       DepthBufferNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
-    // ===== INPUTS (3) =====
+    // ===== INPUTS (4) =====
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+
     // Width and height from SwapChainNode
-    CONSTEXPR_INPUT(WIDTH, uint32_t, 0, false);
-    CONSTEXPR_INPUT(HEIGHT, uint32_t, 1, false);
+    CONSTEXPR_INPUT(WIDTH, uint32_t, 1, false);
+    CONSTEXPR_INPUT(HEIGHT, uint32_t, 2, false);
 
     // Command pool for layout transition
-    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 2, false);
+    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 3, false);
 
     // ===== OUTPUTS (3) =====
     // Depth image
@@ -56,6 +63,9 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
 
     DepthBufferNodeConfig() {
         // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
         INIT_INPUT_DESC(WIDTH, "width",
             ResourceLifetime::Persistent,
             BufferDescription{}
@@ -100,13 +110,16 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(OUTPUT_COUNT == DepthBufferNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == DepthBufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(WIDTH_Slot::index == 0, "WIDTH input must be at index 0");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+
+    static_assert(WIDTH_Slot::index == 1, "WIDTH input must be at index 1");
     static_assert(!WIDTH_Slot::nullable, "WIDTH input is required");
 
-    static_assert(HEIGHT_Slot::index == 1, "HEIGHT input must be at index 1");
+    static_assert(HEIGHT_Slot::index == 2, "HEIGHT input must be at index 2");
     static_assert(!HEIGHT_Slot::nullable, "HEIGHT input is required");
 
-    static_assert(COMMAND_POOL_Slot::index == 2, "COMMAND_POOL input must be at index 2");
+    static_assert(COMMAND_POOL_Slot::index == 3, "COMMAND_POOL input must be at index 3");
     static_assert(!COMMAND_POOL_Slot::nullable, "COMMAND_POOL input is required");
 
     static_assert(DEPTH_IMAGE_Slot::index == 0, "DEPTH_IMAGE must be at index 0");
@@ -119,6 +132,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(!DEPTH_FORMAT_Slot::nullable, "DEPTH_FORMAT is required");
 
     // Type validations
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
@@ -129,7 +143,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(DepthBufferNodeConfig::INPUT_COUNT == 3);
+static_assert(DepthBufferNodeConfig::INPUT_COUNT == 4);
 static_assert(DepthBufferNodeConfig::OUTPUT_COUNT == 3);
 
 } // namespace Vixen::RenderGraph

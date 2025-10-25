@@ -12,26 +12,10 @@ TextureLoaderNodeType::TextureLoaderNodeType(const std::string& typeName) : Node
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
 
-    // No inputs - texture is loaded from file
-
-    // Output: Texture image
-    ImageDescription textureOutput{};
-    textureOutput.width = 1024; // Default, will be overridden by actual texture
-    textureOutput.height = 1024;
-    textureOutput.depth = 1;
-    textureOutput.mipLevels = 1; // Will be set based on loaded texture
-    textureOutput.arrayLayers = 1;
-    textureOutput.format = VK_FORMAT_R8G8B8A8_UNORM; // Common format
-    textureOutput.samples = VK_SAMPLE_COUNT_1_BIT;
-    textureOutput.usage = ResourceUsage::TransferDst | ResourceUsage::Sampled;
-    textureOutput.tiling = VK_IMAGE_TILING_OPTIMAL;
-
-    outputSchema.push_back(ResourceDescriptor(
-        "textureImage",
-        ResourceType::Image,
-        ResourceLifetime::Persistent, // Textures persist across frames
-        textureOutput
-    ));
+    // Populate schemas from Config
+    TextureLoaderNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024 * 1024 * 4; // ~4MB for 1K texture
@@ -64,13 +48,19 @@ TextureLoaderNode::~TextureLoaderNode() {
 }
 
 void TextureLoaderNode::Setup() {
+    // Read and validate device input
+    vulkanDevice = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        throw std::runtime_error("TextureLoaderNode: Invalid device handle");
+    }
+
     // Create temporary command pool for texture loading
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = device->graphicsQueueIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, &commandPool);
+    VkResult result = vkCreateCommandPool(vulkanDevice->device, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create command pool for texture loading");
     }
@@ -115,6 +105,7 @@ void TextureLoaderNode::Compile() {
         Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
         Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
         Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
+        Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
@@ -131,26 +122,24 @@ void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
 
 void TextureLoaderNode::Cleanup() {
     // Destroy texture resources
-    if (isLoaded) {
-        VkDevice vkDevice = device->device;
-        
+    if (isLoaded && vulkanDevice != VK_NULL_HANDLE) {
         if (textureView != VK_NULL_HANDLE) {
-            vkDestroyImageView(vkDevice, textureView, nullptr);
+            vkDestroyImageView(vulkanDevice->device, textureView, nullptr);
             textureView = VK_NULL_HANDLE;
         }
         
         if (textureSampler != VK_NULL_HANDLE) {
-            vkDestroySampler(vkDevice, textureSampler, nullptr);
+            vkDestroySampler(vulkanDevice->device, textureSampler, nullptr);
             textureSampler = VK_NULL_HANDLE;
         }
         
         if (textureImage != VK_NULL_HANDLE) {
-            vkDestroyImage(vkDevice, textureImage, nullptr);
+            vkDestroyImage(vulkanDevice->device, textureImage, nullptr);
             textureImage = VK_NULL_HANDLE;
         }
         
         if (textureMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(vkDevice, textureMemory, nullptr);
+            vkFreeMemory(vulkanDevice->device, textureMemory, nullptr);
             textureMemory = VK_NULL_HANDLE;
         }
         
@@ -158,8 +147,8 @@ void TextureLoaderNode::Cleanup() {
     }
 
     // Destroy command pool
-    if (commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device->device, commandPool, nullptr);
+    if (commandPool != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
     }
 

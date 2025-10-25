@@ -1,13 +1,18 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for FramebufferNode
  *
  * Inputs:
+ * - VULKAN_DEVICE (VulkanDevice*) - Vulkan device pointer
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - COLOR_ATTACHMENTS (VkImageView[]) - Array of color image views from SwapChainNode
  * - DEPTH_ATTACHMENT (VkImageView) - Depth image view from DepthBufferNode (nullable)
@@ -24,8 +29,8 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace FramebufferNodeCounts {
-    static constexpr size_t INPUTS = 5;
-    static constexpr size_t OUTPUTS = 1;
+    static constexpr size_t INPUTS = 6;
+    static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
 
@@ -36,26 +41,33 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_LAYERS = "layers";
 
-    // ===== INPUTS (5) =====
+    // ===== INPUTS (6) =====
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    
     // Render pass from RenderPassNode
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 0, false);
+    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 1, false);
 
     // Color attachments array from SwapChainNode (one per swapchain image)
-    CONSTEXPR_INPUT(COLOR_ATTACHMENTS, VkImageView, 1, false);
+    CONSTEXPR_INPUT(COLOR_ATTACHMENTS, VkImageView, 2, false);
 
     // Depth attachment from DepthBufferNode (nullable - may not use depth)
-    CONSTEXPR_INPUT(DEPTH_ATTACHMENT, VkImageView, 2, true);
+    CONSTEXPR_INPUT(DEPTH_ATTACHMENT, VkImageView, 3, true);
 
     // Width and height from SwapChainNode
-    CONSTEXPR_INPUT(WIDTH, uint32_t, 3, false);
-    CONSTEXPR_INPUT(HEIGHT, uint32_t, 4, false);
+    CONSTEXPR_INPUT(WIDTH, uint32_t, 4, false);
+    CONSTEXPR_INPUT(HEIGHT, uint32_t, 5, false);
 
     // ===== OUTPUTS (1) =====
     // Framebuffer handles (one per swapchain image)
     CONSTEXPR_OUTPUT(FRAMEBUFFERS, VkFramebuffer, 0, false);
+	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
 
     FramebufferNodeConfig() {
         // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+        
         INIT_INPUT_DESC(RENDER_PASS, "render_pass",
             ResourceLifetime::Persistent,
             BufferDescription{}
@@ -86,6 +98,10 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             ResourceLifetime::Transient,
             BufferDescription{}  // Opaque handles
         );
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "VulkanDevice",
+            ResourceLifetime::Persistent,
+            vulkanDeviceDesc
+		);
     }
 
     // Compile-time validations
@@ -93,36 +109,44 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     static_assert(OUTPUT_COUNT == FramebufferNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == FramebufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(RENDER_PASS_Slot::index == 0, "RENDER_PASS must be at index 0");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+
+    static_assert(RENDER_PASS_Slot::index == 1, "RENDER_PASS must be at index 1");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
 
-    static_assert(COLOR_ATTACHMENTS_Slot::index == 1, "COLOR_ATTACHMENTS must be at index 1");
+    static_assert(COLOR_ATTACHMENTS_Slot::index == 2, "COLOR_ATTACHMENTS must be at index 2");
     static_assert(!COLOR_ATTACHMENTS_Slot::nullable, "COLOR_ATTACHMENTS is required");
 
-    static_assert(DEPTH_ATTACHMENT_Slot::index == 2, "DEPTH_ATTACHMENT must be at index 2");
+    static_assert(DEPTH_ATTACHMENT_Slot::index == 3, "DEPTH_ATTACHMENT must be at index 3");
     static_assert(DEPTH_ATTACHMENT_Slot::nullable, "DEPTH_ATTACHMENT is optional");
 
-    static_assert(WIDTH_Slot::index == 3, "WIDTH must be at index 3");
+    static_assert(WIDTH_Slot::index == 4, "WIDTH must be at index 4");
     static_assert(!WIDTH_Slot::nullable, "WIDTH is required");
 
-    static_assert(HEIGHT_Slot::index == 4, "HEIGHT must be at index 4");
+    static_assert(HEIGHT_Slot::index == 5, "HEIGHT must be at index 5");
     static_assert(!HEIGHT_Slot::nullable, "HEIGHT is required");
 
     static_assert(FRAMEBUFFERS_Slot::index == 0, "FRAMEBUFFERS must be at index 0");
     static_assert(!FRAMEBUFFERS_Slot::nullable, "FRAMEBUFFERS is required");
 
+	static_assert(VULKAN_DEVICE_OUT_Slot::index == 1, "VULKAN_DEVICE_OUT must be at index 1");
+	static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT must not be nullable");
+
     // Type validations
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<COLOR_ATTACHMENTS_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, VkFramebuffer>);
+	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };
 
 // Global compile-time validations
-static_assert(FramebufferNodeConfig::INPUT_COUNT == 5);
-static_assert(FramebufferNodeConfig::OUTPUT_COUNT == 1);
+static_assert(FramebufferNodeConfig::INPUT_COUNT == FramebufferNodeCounts::INPUTS);
+static_assert(FramebufferNodeConfig::OUTPUT_COUNT == FramebufferNodeCounts::OUTPUTS);
 static_assert(FramebufferNodeConfig::ALLOW_INPUT_ARRAYS);
 
 } // namespace Vixen::RenderGraph

@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Nodes/CommandPoolNodeConfig.h"
+#include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
 
@@ -46,6 +47,7 @@ public:
 
 private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     bool isCreated = false;
 };
 

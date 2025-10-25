@@ -2,6 +2,7 @@
 
 #include "Core/ResourceConfig.h"
 #include "ShaderManagement/DescriptorLayoutSpec.h"
+#include "VulkanResources/VulkanDevice.h"
 
 // Forward declaration for shader program type
 namespace ShaderManagement {
@@ -9,6 +10,9 @@ namespace ShaderManagement {
 }
 
 namespace Vixen::RenderGraph {
+
+// Type alias for VulkanDevice pointer
+using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 /**
  * @brief Pure constexpr resource configuration for DescriptorSetNode
@@ -18,6 +22,7 @@ namespace Vixen::RenderGraph {
  *
  * Inputs:
  * - SHADER_PROGRAM (CompiledProgram*, nullable) - Optional shader program for automatic reflection
+ * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer for resource creation
  *
  * Outputs:
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Layout defining descriptor bindings
@@ -47,7 +52,7 @@ namespace Vixen::RenderGraph {
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 1;
+    static constexpr size_t INPUTS = 2;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -56,10 +61,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
                       DescriptorSetNodeCounts::INPUTS, 
                       DescriptorSetNodeCounts::OUTPUTS, 
                       DescriptorSetNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (1) =====
+    // ===== INPUTS (2) =====
     // Shader program for automatic descriptor reflection (future feature)
     CONSTEXPR_INPUT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0, true);
 
+    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1, false);
     // ===== OUTPUTS (3) =====
     // Descriptor set layout
     CONSTEXPR_OUTPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0, false);
@@ -76,6 +83,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque pointer (future use)
         );
+
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
@@ -102,6 +112,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(SHADER_PROGRAM_Slot::index == 0, "SHADER_PROGRAM must be at index 0");
     static_assert(SHADER_PROGRAM_Slot::nullable, "SHADER_PROGRAM is optional (future use)");
 
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 1, "VULKAN_DEVICE input must be at index 1");
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");
 
@@ -113,6 +126,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, const ShaderManagement::CompiledProgram*>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
     static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, VkDescriptorSet>);
@@ -128,7 +143,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(DescriptorSetNodeConfig::INPUT_COUNT == 1);
-static_assert(DescriptorSetNodeConfig::OUTPUT_COUNT == 3);
+static_assert(DescriptorSetNodeConfig::INPUT_COUNT == DescriptorSetNodeCounts::INPUTS);
+static_assert(DescriptorSetNodeConfig::OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

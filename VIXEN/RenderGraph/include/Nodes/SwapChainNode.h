@@ -80,6 +80,9 @@ private:
     // Swapchain wrapper (from existing VulkanSwapChain)
     VulkanSwapChain* swapChainWrapper = nullptr;
 
+    // Device handle for cleanup
+    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+
     // Synchronization
     std::vector<VkSemaphore> imageAvailableSemaphores;  // Signaled when image is acquired
     uint32_t currentFrame = 0;

@@ -70,9 +70,10 @@ private:
     // GPU enumeration
     std::vector<VkPhysicalDevice> availableGPUs;
     uint32_t selectedGPUIndex = 0;
+    VkPhysicalDevice selectedPhysicalDevice = VK_NULL_HANDLE; // Store selected GPU
 
     // VulkanDevice wrapper (owns logical device)
-    std::unique_ptr<Vixen::Vulkan::Resources::VulkanDevice> vulkanDevice;
+    std::shared_ptr<Vixen::Vulkan::Resources::VulkanDevice> vulkanDevice;
 
     // Extensions and layers to request
     std::vector<const char*> deviceExtensions;
