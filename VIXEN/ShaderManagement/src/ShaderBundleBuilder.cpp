@@ -437,6 +437,9 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     bundle.sdiNamespace = sdiNamespace;
     bundle.createdAt = std::chrono::system_clock::now();
 
+    // Compute descriptor-only interface hash (generalized, reusable)
+    bundle.descriptorInterfaceHash = ComputeDescriptorInterfaceHash(*reflectionData);
+
     // 5. Register with central SDI registry if enabled
     if (registryManager_ && !sdiPath.empty()) {
         SdiRegistryEntry entry;

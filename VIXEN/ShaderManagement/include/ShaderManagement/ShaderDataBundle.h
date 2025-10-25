@@ -3,6 +3,7 @@
 #include "ShaderProgram.h"
 #include "SpirvReflectionData.h"
 #include "DescriptorLayoutSpec.h"
+#include "ShaderDirtyFlags.h"
 #include <filesystem>
 #include <string>
 #include <memory>
@@ -100,6 +101,38 @@ struct ShaderDataBundle {
      * Useful for tracking and debugging.
      */
     std::chrono::system_clock::time_point createdAt;
+
+    /**
+     * @brief Descriptor-only interface hash
+     *
+     * Hash based ONLY on descriptor layout, NOT on:
+     * - Program name, UUID, or unique identifiers
+     * - Timestamp or file paths
+     *
+     * Includes:
+     * - Descriptor sets, bindings, types
+     * - Push constant layouts
+     * - Vertex input formats
+     * - Struct member layouts (types, offsets, names)
+     * - Variable names
+     *
+     * Purpose: Two shaders with identical descriptor layout get the same hash,
+     * enabling descriptor set sharing and smart hot-reload detection.
+     */
+    std::string descriptorInterfaceHash;
+
+    /**
+     * @brief Dirty flags for hot-reload tracking
+     *
+     * Indicates what changed compared to a previous version.
+     * Used to determine safe hot-reload operations:
+     * - SPIRV only → Safe hot-swap
+     * - Descriptors changed → May need pipeline rebuild
+     * - Vertex inputs changed → Must rebuild pipeline
+     *
+     * Set by CompareBundles() function.
+     */
+    ShaderDirtyFlags dirtyFlags = ShaderDirtyFlags::None;
 
     // ===== Convenience Accessors =====
 
@@ -331,9 +364,72 @@ struct ShaderDataBundle {
         oss << "  SDI: " << (HasValidSdi() ? "Generated" : "Missing") << "\n";
         oss << "  SDI Path: " << sdiHeaderPath << "\n";
         oss << "  Interface Hash: " << GetInterfaceHash().substr(0, 16) << "...\n";
+        oss << "  Descriptor Hash: " << descriptorInterfaceHash.substr(0, 16) << "...\n";
         oss << "  Age: " << GetAge().count() << "ms\n";
         return oss.str();
     }
+
+    /**
+     * @brief Get hot-reload compatibility with another bundle
+     *
+     * @param other Bundle to compare against
+     * @return Compatibility level
+     */
+    HotReloadCompatibility GetHotReloadCompatibility(const ShaderDataBundle& other) const {
+        return ShaderManagement::GetHotReloadCompatibility(dirtyFlags);
+    }
+
+    /**
+     * @brief Check if interfaces are identical (descriptor-only hash match)
+     *
+     * Two shaders with identical descriptor layouts will match.
+     * Enables descriptor set sharing across different shader programs.
+     *
+     * @param other Bundle to compare
+     * @return True if descriptor interfaces match
+     */
+    bool HasIdenticalInterface(const ShaderDataBundle& other) const {
+        return descriptorInterfaceHash == other.descriptorInterfaceHash;
+    }
 };
+
+/**
+ * @brief Compare two shader bundles and compute dirty flags
+ *
+ * Determines what changed between old and new bundles.
+ * Sets newBundle.dirtyFlags based on differences.
+ *
+ * @param oldBundle Previous version
+ * @param newBundle New version (dirtyFlags will be set)
+ * @return Computed dirty flags
+ */
+ShaderDirtyFlags CompareBundles(
+    const ShaderDataBundle& oldBundle,
+    ShaderDataBundle& newBundle
+);
+
+/**
+ * @brief Compute descriptor-only interface hash
+ *
+ * Hash based ONLY on descriptor layout (generalized, reusable).
+ * Two shaders with identical descriptors will have the same hash.
+ *
+ * Includes:
+ * - Descriptor sets/bindings/types
+ * - Push constants
+ * - Vertex inputs
+ * - Struct layouts
+ * - Variable names
+ *
+ * Excludes:
+ * - Program name
+ * - UUID
+ * - Timestamps
+ * - SPIRV bytecode
+ *
+ * @param reflectionData Reflection data to hash
+ * @return SHA-256 hash (hex-encoded)
+ */
+std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflectionData);
 
 } // namespace ShaderManagement
