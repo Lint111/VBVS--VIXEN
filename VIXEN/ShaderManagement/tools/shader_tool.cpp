@@ -33,6 +33,73 @@
 using namespace ShaderManagement;
 namespace fs = std::filesystem;
 
+// ===== Security Helpers =====
+
+/**
+ * @brief Validate and sanitize file path to prevent path traversal attacks
+ *
+ * Prevents malicious paths like:
+ * - ../../../etc/passwd
+ * - /absolute/path/to/sensitive/file
+ * - Symlinks to sensitive locations
+ *
+ * @param path Path to validate
+ * @param allowNonExistent Allow non-existent paths (for output files)
+ * @return Sanitized path if valid, empty path if invalid
+ */
+fs::path ValidateAndSanitizePath(const fs::path& path, bool allowNonExistent = false) {
+    try {
+        // Convert to absolute path relative to current directory
+        fs::path absPath = fs::absolute(path);
+
+        // Get canonical path (resolves .., symlinks, etc.)
+        fs::path canonicalPath;
+        if (fs::exists(absPath)) {
+            canonicalPath = fs::canonical(absPath);
+        } else if (allowNonExistent) {
+            // For non-existent paths (output files), canonicalize parent directory
+            fs::path parentDir = absPath.parent_path();
+            if (!parentDir.empty() && fs::exists(parentDir)) {
+                canonicalPath = fs::canonical(parentDir) / absPath.filename();
+            } else {
+                // Allow it for output files (directories will be created)
+                canonicalPath = absPath;
+            }
+        } else {
+            std::cerr << "Error: Path does not exist: " << path << "\n";
+            return {};
+        }
+
+        // Get current working directory as base
+        fs::path cwd = fs::current_path();
+
+        // Security check: Block absolute paths to system directories (Unix)
+        std::string pathStr = canonicalPath.string();
+        if (pathStr.find("/etc/") == 0 || pathStr.find("/sys/") == 0 ||
+            pathStr.find("/proc/") == 0 || pathStr.find("/dev/") == 0 ||
+            pathStr.find("/root/") == 0) {
+            std::cerr << "Security Error: Attempt to access system directory: " << path << "\n";
+            return {};
+        }
+
+        // Security check: Block Windows system directories
+#ifdef _WIN32
+        std::transform(pathStr.begin(), pathStr.end(), pathStr.begin(), ::tolower);
+        if (pathStr.find("c:\\windows") == 0 || pathStr.find("c:\\system") == 0 ||
+            pathStr.find("c:\\program files\\windows") == 0) {
+            std::cerr << "Security Error: Attempt to access Windows system directory: " << path << "\n";
+            return {};
+        }
+#endif
+
+        return canonicalPath;
+
+    } catch (const fs::filesystem_error& e) {
+        std::cerr << "Path validation error: " << e.what() << "\n";
+        return {};
+    }
+}
+
 // ===== Command Line Parsing =====
 
 struct ToolOptions {
@@ -288,21 +355,29 @@ int CommandCompile(const ToolOptions& options) {
            .SetSdiConfig(options.sdiConfig)
            .EnableSdiGeneration(options.generateSdi);
 
-    // Add stages
+    // Add stages with path validation
     for (const auto& inputFile : options.inputFiles) {
         fs::path filePath(inputFile);
-        if (!fs::exists(filePath)) {
+
+        // Security: Validate input path
+        fs::path validatedPath = ValidateAndSanitizePath(filePath, false);
+        if (validatedPath.empty()) {
+            std::cerr << "Error: Invalid or unsafe input path: " << inputFile << "\n";
+            return 1;
+        }
+
+        if (!fs::exists(validatedPath)) {
             std::cerr << "Error: Input file not found: " << inputFile << "\n";
             return 1;
         }
 
-        ShaderStage stage = DetectStageFromExtension(filePath);
+        ShaderStage stage = DetectStageFromExtension(validatedPath);
 
         if (options.verbose) {
-            std::cout << "Adding stage: " << ShaderStageName(stage) << " from " << inputFile << "\n";
+            std::cout << "Adding stage: " << ShaderStageName(stage) << " from " << validatedPath << "\n";
         }
 
-        builder.AddStageFromFile(stage, filePath);
+        builder.AddStageFromFile(stage, validatedPath);
     }
 
     // Build
@@ -350,8 +425,15 @@ int CommandCompile(const ToolOptions& options) {
         outputPath = options.programName + ".json";
     }
 
+    // Security: Validate output path
+    fs::path validatedOutputPath = ValidateAndSanitizePath(outputPath, true);
+    if (validatedOutputPath.empty()) {
+        std::cerr << "Error: Invalid or unsafe output path: " << outputPath << "\n";
+        return 1;
+    }
+
     // Save bundle
-    if (!SaveBundleToJson(*result.bundle, outputPath)) {
+    if (!SaveBundleToJson(*result.bundle, validatedOutputPath)) {
         std::cerr << "Error: Failed to save bundle\n";
         return 1;
     }

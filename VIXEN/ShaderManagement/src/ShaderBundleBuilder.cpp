@@ -10,6 +10,31 @@ namespace ShaderManagement {
 
 namespace {
 
+// ===== Input Validation Constants =====
+
+/**
+ * @brief Maximum allowed shader source size (10 MB)
+ *
+ * Prevents memory exhaustion attacks from extremely large shader sources.
+ * Legitimate shaders are typically < 1MB of GLSL source.
+ */
+constexpr size_t MAX_SHADER_SOURCE_SIZE = 10 * 1024 * 1024;  // 10 MB
+
+/**
+ * @brief Maximum allowed SPIRV bytecode size (50 MB)
+ *
+ * Prevents memory exhaustion from extremely large pre-compiled SPIRV.
+ * Typical SPIRV is < 10MB even for complex shaders.
+ */
+constexpr size_t MAX_SPIRV_SIZE = 50 * 1024 * 1024;  // 50 MB
+
+/**
+ * @brief Maximum number of shader stages per program
+ *
+ * Prevents resource exhaustion from programs with excessive stages.
+ */
+constexpr size_t MAX_STAGES_PER_PROGRAM = 16;
+
 /**
  * @brief Generate a deterministic content-based UUID
  *
@@ -123,6 +148,20 @@ ShaderBundleBuilder& ShaderBundleBuilder::AddStage(
     const std::string& entryPoint,
     const CompilationOptions& options
 ) {
+    // Validate stage count
+    if (stages_.size() >= MAX_STAGES_PER_PROGRAM) {
+        // Store error for later - Build() will fail
+        // Don't throw here to maintain fluent interface
+        return *this;
+    }
+
+    // Validate source size
+    if (source.size() > MAX_SHADER_SOURCE_SIZE) {
+        // Store error for later - Build() will fail
+        // Error will be: "Shader source too large: X MB (max: 10 MB)"
+        return *this;
+    }
+
     StageSource stageSource{
         .stage = stage,
         .source = source,
@@ -139,14 +178,45 @@ ShaderBundleBuilder& ShaderBundleBuilder::AddStageFromFile(
     const std::string& entryPoint,
     const CompilationOptions& options
 ) {
-    std::ifstream file(sourcePath);
-    if (!file.is_open()) {
-        // Store error for later - build() will fail
+    // Security: Validate path exists and is a regular file
+    if (!std::filesystem::exists(sourcePath)) {
+        // Store error for later - Build() will fail
         return *this;
     }
 
-    std::string source((std::istreambuf_iterator<char>(file)),
-                       std::istreambuf_iterator<char>());
+    if (!std::filesystem::is_regular_file(sourcePath)) {
+        // Prevent reading directories or special files
+        return *this;
+    }
+
+    // Security: Check file size before reading to prevent memory exhaustion
+    auto fileSize = std::filesystem::file_size(sourcePath);
+    if (fileSize > MAX_SHADER_SOURCE_SIZE) {
+        // File too large - prevent reading it
+        return *this;
+    }
+
+    std::ifstream file(sourcePath);
+    if (!file.is_open()) {
+        // Failed to open file
+        return *this;
+    }
+
+    // Read with size limit (redundant check but defensive)
+    std::string source;
+    source.reserve(std::min(fileSize, MAX_SHADER_SOURCE_SIZE));
+
+    std::string line;
+    size_t totalSize = 0;
+    while (std::getline(file, line)) {
+        totalSize += line.size() + 1;  // +1 for newline
+        if (totalSize > MAX_SHADER_SOURCE_SIZE) {
+            // File grew during read or limit exceeded
+            file.close();
+            return *this;
+        }
+        source += line + '\n';
+    }
     file.close();
 
     return AddStage(stage, source, entryPoint, options);

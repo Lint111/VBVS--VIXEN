@@ -20,32 +20,56 @@ namespace ShaderManagement {
  * - Generated SDI (SPIRV Descriptor Interface) header reference
  * - Unique identifier for tracking
  *
+ * **IMPORTANT**: This struct is MOVE-ONLY to prevent accidental copies of
+ * large SPIRV data (potentially megabytes). Use std::move() when transferring.
+ *
  * This is the primary output from ShaderBundleBuilder and provides
  * a single, cohesive interface for accessing all shader-related data.
  *
  * Usage:
  * @code
- * ShaderDataBundle bundle = ShaderBundleBuilder()
+ * auto result = ShaderBundleBuilder()
  *     .SetSource(source)
  *     .SetStage(ShaderStage::Fragment)
  *     .Build();
  *
- * // Access SPIRV bytecode for Vulkan
- * const auto& spirv = bundle.GetSpirv(ShaderStage::Fragment);
+ * if (result) {
+ *     // Take ownership via unique_ptr (already move-only)
+ *     auto bundle = std::move(result.bundle);
  *
- * // Include generated SDI header in C++ code
- * // #include "bundle.GetSdiIncludePath()"
+ *     // Or move into container
+ *     myShaders.push_back(std::move(*result.bundle));
  *
- * // Use type-safe descriptor constants
- * // using namespace bundle.GetSdiNamespace();
+ *     // Access SPIRV bytecode for Vulkan
+ *     const auto& spirv = bundle->GetSpirv(ShaderStage::Fragment);
+ * }
  * @endcode
  */
 struct ShaderDataBundle {
+    // ===== Move-Only Semantics =====
+
+    // Allow default construction
+    ShaderDataBundle() = default;
+
+    // Delete copy operations (prevents accidental copies of megabytes of SPIRV data)
+    ShaderDataBundle(const ShaderDataBundle&) = delete;
+    ShaderDataBundle& operator=(const ShaderDataBundle&) = delete;
+
+    // Allow move operations (efficient transfer of ownership)
+    ShaderDataBundle(ShaderDataBundle&&) noexcept = default;
+    ShaderDataBundle& operator=(ShaderDataBundle&&) noexcept = default;
+
+    // Default destructor
+    ~ShaderDataBundle() = default;
+
+    // ===== Data Members =====
+
     /**
      * @brief Compiled shader program with SPIRV bytecode
      *
      * Contains all shader stages with compiled SPIRV code.
      * Device-agnostic - no VkShaderModule.
+     * WARNING: May contain megabytes of data - use move semantics!
      */
     CompiledProgram program;
 
