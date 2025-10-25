@@ -1,0 +1,173 @@
+# Example CMakeLists.txt showing ShaderManagement build tool integration
+#
+# This file demonstrates how to use shader_tool in your project to
+# compile shaders at build time.
+
+cmake_minimum_required(VERSION 3.20)
+project(ShaderToolExample)
+
+# ===== 1. Setup =====
+
+# Find ShaderManagement library
+find_package(ShaderManagement REQUIRED)
+
+# Include shader tool utilities (provides add_shader_bundle, etc.)
+include(ShaderToolUtils)
+
+# ===== 2. Method A: Individual Shader Bundles =====
+
+# Graphics shader
+add_shader_bundle(BasicShader_Bundle
+    PROGRAM_NAME "BasicShader"
+    VERTEX shaders/basic.vert
+    FRAGMENT shaders/basic.frag
+    OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/shaders
+    SDI_NAMESPACE "SDI"
+    VERBOSE
+)
+
+# Compute shader
+add_shader_bundle(ParticlesShader_Bundle
+    PROGRAM_NAME "ParticlesShader"
+    COMPUTE shaders/particles.comp
+    OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/shaders
+    VERBOSE
+)
+
+# Mesh shader
+add_shader_bundle(MeshletShader_Bundle
+    PROGRAM_NAME "MeshletShader"
+    MESH shaders/meshlet.mesh
+    TASK shaders/meshlet.task
+    FRAGMENT shaders/meshlet.frag
+    OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/shaders
+    VERBOSE
+)
+
+# Build central registry from individual bundles
+add_shader_registry(ShaderRegistry_Individual
+    BUNDLES
+        BasicShader_Bundle
+        ParticlesShader_Bundle
+        MeshletShader_Bundle
+    OUTPUT ${CMAKE_BINARY_DIR}/generated/SDI_Registry.h
+    SDI_NAMESPACE "SDI"
+    VERBOSE
+)
+
+# ===== 3. Method B: Batch Processing (Recommended) =====
+
+# Process all shaders from config file
+# This is the recommended approach for projects with many shaders
+add_shader_batch(AllShaders
+    CONFIG shaders.json
+    OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated
+    VERBOSE
+)
+
+# ===== 4. Create Application =====
+
+add_executable(MyApp
+    src/main.cpp
+    src/renderer.cpp
+)
+
+# Add shader dependencies
+# Choose ONE of these approaches:
+
+# Method A: Use individual bundles + registry
+# add_dependencies(MyApp ShaderRegistry_Individual)
+
+# Method B: Use batch (recommended)
+add_dependencies(MyApp AllShaders)
+
+# Include generated headers
+target_include_directories(MyApp PRIVATE
+    ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_BINARY_DIR}/generated/sdi
+)
+
+# Link ShaderManagement library
+target_link_libraries(MyApp PRIVATE
+    ShaderManagement
+    Vulkan::Vulkan
+)
+
+# ===== 5. Advanced: Hot-Reload Support =====
+
+# Optional: Create a target that watches for shader changes
+# and triggers recompilation (useful for development)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_custom_target(watch_shaders
+        COMMAND ${CMAKE_COMMAND} -E echo "Watching shaders for changes..."
+        DEPENDS AllShaders
+        VERBATIM
+    )
+
+    # Rebuild shaders on every build in Debug mode
+    add_dependencies(MyApp watch_shaders)
+endif()
+
+# ===== 6. Installation =====
+
+# Install compiled shader bundles
+install(DIRECTORY ${CMAKE_BINARY_DIR}/generated/shaders/
+    DESTINATION share/MyApp/shaders
+    FILES_MATCHING PATTERN "*.json" PATTERN "*.spv"
+)
+
+# Install SDI headers (optional, for SDK distribution)
+install(DIRECTORY ${CMAKE_BINARY_DIR}/generated/sdi/
+    DESTINATION include/MyApp/sdi
+    FILES_MATCHING PATTERN "*.h"
+)
+
+# ===== Example Usage in C++ =====
+
+# In src/main.cpp:
+# ```cpp
+# #include <ShaderManagement/ShaderLibrary.h>
+# #include <SDI_Registry.h>
+#
+# int main() {
+#     // Type-safe descriptor access (compile-time validated)
+#     auto texBinding = SDI::BasicShader::Descriptors::MainTexture;
+#     std::cout << "Texture at set=" << texBinding.set
+#               << " binding=" << texBinding.binding << "\n";
+#
+#     // Load pre-compiled shader bundle
+#     ShaderDataBundle bundle = LoadBundleFromFile(
+#         "generated/shaders/BasicShader.json"
+#     );
+#
+#     // Use in Vulkan pipeline...
+#     return 0;
+# }
+# ```
+
+# ===== Example shaders.json =====
+
+# {
+#   "shaders": [
+#     {
+#       "name": "BasicShader",
+#       "stages": ["shaders/basic.vert", "shaders/basic.frag"],
+#       "pipeline": "graphics"
+#     },
+#     {
+#       "name": "ParticlesShader",
+#       "stages": ["shaders/particles.comp"],
+#       "pipeline": "compute"
+#     },
+#     {
+#       "name": "MeshletShader",
+#       "stages": [
+#         "shaders/meshlet.task",
+#         "shaders/meshlet.mesh",
+#         "shaders/meshlet.frag"
+#       ],
+#       "pipeline": "mesh"
+#     }
+#   ],
+#   "buildRegistry": true
+# }

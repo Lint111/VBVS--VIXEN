@@ -1,6 +1,8 @@
 # ShaderManagement static library
 # Pure shader compilation and management logic - no RenderGraph dependencies
 
+cmake_minimum_required(VERSION 3.15)
+
 project(ShaderManagement)
 
 # Fetch SPIRV-Reflect for shader reflection
@@ -40,10 +42,16 @@ target_include_directories(ShaderManagement
         ${spirv_reflect_SOURCE_DIR}  # For spirv_reflect.h/c
 )
 
-# Link Vulkan headers
+# Find dependencies
+find_package(Vulkan REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+# Link Vulkan headers and OpenSSL
 target_link_libraries(ShaderManagement
     PUBLIC
         Vulkan::Headers
+    PRIVATE
+        OpenSSL::Crypto
 )
 
 # C++23 standard
@@ -56,3 +64,30 @@ endif()
 
 # Organize in IDE
 set_target_properties(ShaderManagement PROPERTIES FOLDER "Libraries")
+
+# ===== Build Tools =====
+
+# Fetch nlohmann_json for shader_tool
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# Add tools subdirectory (shader_tool executable)
+add_subdirectory(tools)
+
+# Add tests subdirectory (if testing is enabled)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+# Install CMake utility modules for downstream projects
+install(FILES
+    cmake/ShaderToolUtils.cmake
+    cmake/ParseShaderIncludes.cmake
+    DESTINATION lib/cmake/ShaderManagement
+    COMPONENT ShaderTools
+)
