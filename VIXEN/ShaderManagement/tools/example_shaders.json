@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Example shader batch configuration for shader_tool",
+
+  "shaders": [
+    {
+      "name": "BasicShader",
+      "stages": [
+        "shaders/basic.vert",
+        "shaders/basic.frag"
+      ],
+      "pipeline": "graphics"
+    },
+    {
+      "name": "LitShader",
+      "stages": [
+        "shaders/lit.vert",
+        "shaders/lit.frag"
+      ],
+      "pipeline": "graphics"
+    },
+    {
+      "name": "PBRShader",
+      "stages": [
+        "shaders/pbr.vert",
+        "shaders/pbr.frag"
+      ],
+      "pipeline": "graphics"
+    },
+    {
+      "name": "ComputeParticles",
+      "stages": [
+        "shaders/particles.comp"
+      ],
+      "pipeline": "compute"
+    },
+    {
+      "name": "ComputeCulling",
+      "stages": [
+        "shaders/culling.comp"
+      ],
+      "pipeline": "compute"
+    },
+    {
+      "name": "MeshletRenderer",
+      "stages": [
+        "shaders/meshlet.task",
+        "shaders/meshlet.mesh",
+        "shaders/meshlet.frag"
+      ],
+      "pipeline": "mesh"
+    },
+    {
+      "name": "Raytracer",
+      "stages": [
+        "shaders/raytracer.rgen",
+        "shaders/raytracer.rmiss",
+        "shaders/raytracer.rchit"
+      ],
+      "pipeline": "raytracing"
+    }
+  ],
+
+  "buildRegistry": true,
+
+  "sdiConfig": {
+    "namespacePrefix": "SDI",
+    "outputDirectory": "./generated/sdi"
+  }
+}
