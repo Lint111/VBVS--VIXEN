@@ -3,7 +3,10 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
+#include "Core/ResourceVariant.h"
 #include <sstream>
+#include "VulkanSwapChain.h"
+
 
 namespace Vixen::RenderGraph {
 
@@ -74,9 +77,11 @@ void DepthBufferNode::Compile() {
     #define VK_DEVICE (vulkanDevice->device)
 
     // Get typed inputs
-    uint32_t width = In(DepthBufferNodeConfig::WIDTH);
-    uint32_t height = In(DepthBufferNodeConfig::HEIGHT);
+    SwapChainPublicVariablesPtr swapChainVars = In(DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
     VkCommandPool cmdPool = In(DepthBufferNodeConfig::COMMAND_POOL);
+
+	uint32_t width = swapChainVars ? swapChainVars->Extent.width : 0;
+	uint32_t height = swapChainVars ? swapChainVars->Extent.height : 0;
 
     NODE_LOG_DEBUG("Input dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 

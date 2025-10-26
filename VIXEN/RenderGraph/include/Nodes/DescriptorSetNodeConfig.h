@@ -82,7 +82,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     CONSTEXPR_OUTPUT(DESCRIPTOR_POOL, VkDescriptorPool, 1, false);
 
     // Descriptor sets (array output - allocated based on layoutSpec.maxSets)
-    CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, VkDescriptorSet, 2, false);
+    CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, DescriptorSetVector, 2, false);
 
     // VulkanDevice pass-through output
     CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
@@ -161,7 +161,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, VkDescriptorSet>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, DescriptorSetVector>);
     
     //-------------------------------------------------------------------------
     // Parameters

@@ -57,7 +57,7 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
     // Swapchain public variables (contains format, extent, etc.)
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, ::SwapChainPublicVariables*, 1, false);
+    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 1, false);
 
     // Depth format from depth buffer (nullable - may not have depth)
     CONSTEXPR_INPUT(DEPTH_FORMAT, VkFormat, 2, true);
@@ -117,7 +117,7 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, ::SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<DEPTH_FORMAT_Slot::Type, VkFormat>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);

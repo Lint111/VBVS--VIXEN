@@ -10,6 +10,7 @@
 #include "ResourceDependencyTracker.h"
 #include "GraphMessages.h"
 #include "EventBus/MessageBus.h"
+#include "Time/EngineTime.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -197,6 +198,20 @@ public:
      */
     ResourceDependencyTracker& GetDependencyTracker() { return dependencyTracker; }
 
+    // ====== Time Management ======
+
+    /**
+     * @brief Get the engine time
+     * Provides delta time and elapsed time for frame-rate independent animations
+     */
+    Vixen::Core::EngineTime& GetTime() { return time; }
+    const Vixen::Core::EngineTime& GetTime() const { return time; }
+
+    /**
+     * @brief Update time - call once per frame before Execute()
+     */
+    void UpdateTime() { time.Update(); }
+
     /**
      * @brief Execute all cleanup callbacks in dependency order
      * Called during graph destruction or manual cleanup
@@ -281,6 +296,9 @@ private:
     CleanupStack cleanupStack;
     ResourceDependencyTracker dependencyTracker;
     std::unordered_map<NodeInstance*, size_t> dependentCounts;  // Reference counting for partial cleanup
+
+    // Time management
+    Vixen::Core::EngineTime time;
 
     // Compilation phases
     void AnalyzeDependencies();

@@ -39,6 +39,8 @@ using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using FramebufferVector = std::vector<VkFramebuffer>;
+using DescriptorSetVector = std::vector<VkDescriptorSet>;
 
 namespace Vixen::RenderGraph {
 
@@ -115,6 +117,8 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkRect2DPtr,                     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(PFN_vkQueuePresentKHR,           HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
 
 // ============================================================================

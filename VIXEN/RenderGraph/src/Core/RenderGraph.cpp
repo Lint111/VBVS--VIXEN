@@ -1,7 +1,6 @@
 #include "Core/RenderGraph.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
-#include "core/Resource.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
@@ -143,21 +142,31 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error(error);
     }
 
-    // Create or get resource for the output
-    // For now, assume scalar connections (array index 0)
-    Resource* resource = fromNode->GetOutput(outputIdx, 0);
-    if (!resource) {
-        resource = CreateResourceForOutput(fromNode, outputIdx);
-        fromNode->SetOutput(outputIdx, 0, resource);
+    // Connect all array elements from output to input
+    // Check if the source output has multiple array elements
+    size_t outputArraySize = fromNode->GetOutputCount(outputIdx);
+
+    // If no outputs set yet, assume scalar (size 1)
+    if (outputArraySize == 0) {
+        outputArraySize = 1;
     }
 
-    // Register resource producer for dependency tracking
-    dependencyTracker.RegisterResourceProducer(resource, fromNode, outputIdx);
+    // Connect each array element
+    for (size_t arrayIdx = 0; arrayIdx < outputArraySize; arrayIdx++) {
+        Resource* resource = fromNode->GetOutput(outputIdx, static_cast<uint32_t>(arrayIdx));
+        if (!resource) {
+            resource = CreateResourceForOutput(fromNode, outputIdx);
+            fromNode->SetOutput(outputIdx, static_cast<uint32_t>(arrayIdx), resource);
+        }
 
-    // Connect to input (scalar connection at array index 0)
-    toNode->SetInput(inputIdx, 0, resource);
+        // Register resource producer for dependency tracking
+        dependencyTracker.RegisterResourceProducer(resource, fromNode, outputIdx);
 
-    // Add dependency
+        // Connect to input at same array index
+        toNode->SetInput(inputIdx, static_cast<uint32_t>(arrayIdx), resource);
+    }
+
+    // Add dependency (once per connection, not per array element)
     toNode->AddDependency(fromNode);
 
     // Add edge to topology
@@ -268,7 +277,8 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
     // Execute nodes in order
     for (NodeInstance* node : executionOrder) {
         if (node->GetState() == NodeState::Ready ||
-            node->GetState() == NodeState::Compiled) {
+            node->GetState() == NodeState::Compiled ||
+            node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
             node->SetState(NodeState::Executing);
             node->Execute(commandBuffer);
@@ -310,7 +320,8 @@ VkResult RenderGraph::RenderFrame() {
     // Nodes handle their own synchronization, command recording, and presentation
     for (NodeInstance* node : executionOrder) {
         if (node->GetState() == NodeState::Ready ||
-            node->GetState() == NodeState::Compiled) {
+            node->GetState() == NodeState::Compiled ||
+            node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
             node->SetState(NodeState::Executing);
 

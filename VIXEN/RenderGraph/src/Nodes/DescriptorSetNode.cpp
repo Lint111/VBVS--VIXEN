@@ -1,10 +1,10 @@
 #include "Nodes/DescriptorSetNode.h"
+#include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstring> // for memcpy
-#include <chrono>
 
 namespace Vixen::RenderGraph {
 
@@ -266,7 +266,7 @@ void DescriptorSetNode::Compile() {
     // Set outputs
     Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
     Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL, descriptorPool);
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets[0], 0); // Output first descriptor set
+    Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets); 
     Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
@@ -275,25 +275,30 @@ void DescriptorSetNode::Compile() {
 void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
     // Update MVP matrix with rotation (Learning Vulkan Chapter 10 feature parity)
     if (!uboMappedData) {
+        std::cout << "[DescriptorSetNode::Execute] WARNING: UBO not mapped!" << std::endl;
         return; // UBO not initialized yet
     }
     
-    // Calculate delta time for frame-rate independent animation
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float deltaTime = 0.0f;
-    
-    if (!isFirstFrame) {
-        std::chrono::duration<float> elapsed = currentTime - lastFrameTime;
-        deltaTime = elapsed.count();
-    } else {
-        isFirstFrame = false;
+    // Get delta time from graph's centralized time system
+    RenderGraph* graph = GetOwningGraph();
+    if (!graph) {
+        std::cout << "[DescriptorSetNode::Execute] WARNING: No graph context!" << std::endl;
+        return; // No graph context
     }
     
-    lastFrameTime = currentTime;
+    float deltaTime = graph->GetTime().GetDeltaTime();
     
     // Increment rotation angle (0.0005 radians per frame at 60fps ≈ 0.03 rad/sec)
     // Using deltaTime: 0.03 rad/sec for frame-rate independence
     rotationAngle += 0.03f * deltaTime;
+    
+    // Debug output every 60 frames
+    static int frameCount = 0;
+    if (++frameCount % 60 == 0) {
+        std::cout << "[DescriptorSetNode::Execute] Frame " << frameCount 
+                  << ": deltaTime=" << deltaTime 
+                  << "s, rotationAngle=" << rotationAngle << " rad" << std::endl;
+    }
     
     // Recalculate MVP with rotation
     glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);

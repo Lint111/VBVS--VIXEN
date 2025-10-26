@@ -29,7 +29,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace FramebufferNodeCounts {
-    static constexpr size_t INPUTS = 6;
+    static constexpr size_t INPUTS = 4;
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array;
 }
@@ -41,26 +41,23 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_LAYERS = "layers";
 
-    // ===== INPUTS (6) =====
+    // ===== INPUTS (4) =====
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
-    
+
     // Render pass from RenderPassNode
     CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 1, false);
 
-    // Color attachments array from SwapChainNode (one per swapchain image)
-    CONSTEXPR_INPUT(COLOR_ATTACHMENTS, VkImageView, 2, false);
+    // Swapchain public variables bundle (contains colorBuffers array)
+    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 2, false);
 
     // Depth attachment from DepthBufferNode (nullable - may not use depth)
     CONSTEXPR_INPUT(DEPTH_ATTACHMENT, VkImageView, 3, true);
 
-    // Width and height from SwapChainNode
-    CONSTEXPR_INPUT(WIDTH, uint32_t, 4, false);
-    CONSTEXPR_INPUT(HEIGHT, uint32_t, 5, false);
 
-    // ===== OUTPUTS (1) =====
-    // Framebuffer handles (one per swapchain image)
-    CONSTEXPR_OUTPUT(FRAMEBUFFERS, VkFramebuffer, 0, false);
+    // ===== OUTPUTS (2) =====
+    // Framebuffer handles (vector containing all swapchain framebuffers)
+    CONSTEXPR_OUTPUT(FRAMEBUFFERS, FramebufferVector, 0, false);
 	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
 
     FramebufferNodeConfig() {
@@ -73,9 +70,10 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             BufferDescription{}
         );
 
-        INIT_INPUT_DESC(COLOR_ATTACHMENTS, "color_attachments",
-            ResourceLifetime::Transient,
-            BufferDescription{}
+        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
+            ResourceLifetime::Persistent,
+            swapchainInfoDesc
         );
 
         INIT_INPUT_DESC(DEPTH_ATTACHMENT, "depth_attachment",
@@ -83,21 +81,6 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             BufferDescription{}
         );
 
-        INIT_INPUT_DESC(WIDTH, "width",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        INIT_INPUT_DESC(HEIGHT, "height",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        // Initialize output descriptors
-        INIT_OUTPUT_DESC(FRAMEBUFFERS, "framebuffers",
-            ResourceLifetime::Transient,
-            BufferDescription{}  // Opaque handles
-        );
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "VulkanDevice",
             ResourceLifetime::Persistent,
             vulkanDeviceDesc
@@ -115,17 +98,11 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     static_assert(RENDER_PASS_Slot::index == 1, "RENDER_PASS must be at index 1");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
 
-    static_assert(COLOR_ATTACHMENTS_Slot::index == 2, "COLOR_ATTACHMENTS must be at index 2");
-    static_assert(!COLOR_ATTACHMENTS_Slot::nullable, "COLOR_ATTACHMENTS is required");
+    static_assert(SWAPCHAIN_INFO_Slot::index == 2, "SWAPCHAIN_INFO must be at index 2");
+    static_assert(!SWAPCHAIN_INFO_Slot::nullable, "SWAPCHAIN_INFO is required");
 
     static_assert(DEPTH_ATTACHMENT_Slot::index == 3, "DEPTH_ATTACHMENT must be at index 3");
-    static_assert(DEPTH_ATTACHMENT_Slot::nullable, "DEPTH_ATTACHMENT is optional");
-
-    static_assert(WIDTH_Slot::index == 4, "WIDTH must be at index 4");
-    static_assert(!WIDTH_Slot::nullable, "WIDTH is required");
-
-    static_assert(HEIGHT_Slot::index == 5, "HEIGHT must be at index 5");
-    static_assert(!HEIGHT_Slot::nullable, "HEIGHT is required");
+    static_assert(DEPTH_ATTACHMENT_Slot::nullable, "DEPTH_ATTACHMENT is optional");    
 
     static_assert(FRAMEBUFFERS_Slot::index == 0, "FRAMEBUFFERS must be at index 0");
     static_assert(!FRAMEBUFFERS_Slot::nullable, "FRAMEBUFFERS is required");
@@ -136,11 +113,9 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
-    static_assert(std::is_same_v<COLOR_ATTACHMENTS_Slot::Type, VkImageView>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
-    static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, VkFramebuffer>);
+    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, FramebufferVector>);
 	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };
 

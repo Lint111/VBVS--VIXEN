@@ -163,36 +163,17 @@ void VulkanGraphApplication::Update() {
         return;
     }
 
-    // Update time
+    // Update time for both application and graph
+    // Application time (legacy - kept for compatibility)
     time.Update();
-    float deltaTime = time.GetDeltaTime();
-
-    // Update MVP matrix (rotate cube)
-    static float rotation = 0.0f;
-    rotation += glm::radians(45.0f) * deltaTime;
-
-    glm::mat4 Projection = glm::perspective(
-        glm::radians(45.0f),
-        (float)width / (float)height,
-        0.1f,
-        256.0f
-    );
-
-    glm::mat4 View = glm::lookAt(
-        glm::vec3(0, 0, 5),  // Camera position
-        glm::vec3(0, 0, 0),  // Look at origin
-        glm::vec3(0, 1, 0)   // Up vector
-    );
-
-    glm::mat4 Model = glm::mat4(1.0f);
-    Model = glm::rotate(Model, rotation, glm::vec3(0.0f, 1.0f, 0.0f)) *
-            glm::rotate(Model, rotation, glm::vec3(1.0f, 1.0f, 1.0f));
-
-    glm::mat4 MVP = Projection * View * Model;
-
-    // TODO: Update MVP in descriptor node
-    // For now, we'll add a SetGlobalParameter method to RenderGraph later
-    // or update the descriptor node directly via GetInstanceByName()
+    
+    // Graph time (used by nodes for frame-rate independent animations)
+    if (renderGraph) {
+        renderGraph->UpdateTime();
+    }
+    
+    // Note: MVP matrix updates now handled by DescriptorSetNode during Execute()
+    // using graph's centralized time system for frame-rate independent rotation
 }
 
 void VulkanGraphApplication::DeInitialize() {
@@ -537,15 +518,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain → DepthBuffer connections ---
-    batch.Connect(swapChainNode, SwapChainNodeConfig::WIDTH_OUT,
-                  depthBufferNode, DepthBufferNodeConfig::WIDTH)
-         .Connect(swapChainNode, SwapChainNodeConfig::HEIGHT_OUT,
-                  depthBufferNode, DepthBufferNodeConfig::HEIGHT);
-
     // --- Device → DepthBuffer device connection (for Vulkan operations) ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- SwapChain → DepthBuffer connection (for dimensions) ---
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  depthBufferNode, DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
 
     // --- CommandPool → DepthBuffer connection ---
     batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
@@ -569,15 +548,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- RenderPass + SwapChain + DepthBuffer → Framebuffer connections ---
     batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
-                  framebufferNode, FramebufferNodeConfig::RENDER_PASS)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_IMAGES,
-                  framebufferNode, FramebufferNodeConfig::COLOR_ATTACHMENTS)
-         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
-                  framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT)
-         .Connect(swapChainNode, SwapChainNodeConfig::WIDTH_OUT,
-                  framebufferNode, FramebufferNodeConfig::WIDTH)
-         .Connect(swapChainNode, SwapChainNodeConfig::HEIGHT_OUT,
-                  framebufferNode, FramebufferNodeConfig::HEIGHT);
+        framebufferNode, FramebufferNodeConfig::RENDER_PASS)
+        .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+            framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
+        .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
+            framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
+         
 
     // --- Device → ShaderLibrary device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include "Core/ResourceVariant.h"
 
 // Forward declare global type
 struct SwapChainPublicVariables;
@@ -23,13 +24,6 @@ namespace Vixen::Vulkan::Resources {
 namespace Vixen::RenderGraph {
     struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
 }
-
-// Type aliases for pointer types (must match ResourceVariant.h)
-using VkViewportPtr = VkViewport*;
-using VkRect2DPtr = VkRect2D*;
-using VkResultPtr = VkResult*;
-using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 namespace Vixen::RenderGraph {
 
@@ -75,197 +69,6 @@ using OneOutput = OutputCount<1>;
 using TwoOutputs = OutputCount<2>;
 using ThreeOutputs = OutputCount<3>;
 
-/**
- * @brief Compile-time type trait to map Vulkan types to ResourceType
- */
-template<typename T>
-struct VulkanTypeTraits {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;
-    static constexpr bool isValid = false;
-};
-
-// Specializations for common Vulkan types
-template<> struct VulkanTypeTraits<VkImage> {
-    static constexpr ResourceType resourceType = ResourceType::Image;
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkBuffer> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkSurfaceKHR> {
-    static constexpr ResourceType resourceType = ResourceType::Image;
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkImageView> {
-    static constexpr ResourceType resourceType = ResourceType::Image;
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkSampler> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkDescriptorSetLayout> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkDescriptorPool> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkDescriptorSet> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<const ::ShaderManagement::CompiledProgram*> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer to shader program
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkAccelerationStructureKHR> {
-    static constexpr ResourceType resourceType = ResourceType::AccelerationStructure;
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkSemaphore> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkSwapchainKHR> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer; // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkRenderPass> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkInstance> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkPhysicalDevice> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkDevice> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<uint32_t> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Scalar parameter
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkCommandPool> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkFormat> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Enum value
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkFramebuffer> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-// SwapChainPublicVariables* (defined in VulkanSwapChain.h in global namespace)
-template<> struct VulkanTypeTraits<::SwapChainPublicVariables*> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
-    static constexpr bool isValid = true;
-};
-
-// Windows platform handles
-template<> struct VulkanTypeTraits<HWND> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Platform handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<HINSTANCE> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Platform handle
-    static constexpr bool isValid = true;
-};
-
-// ShaderProgramDescriptor* (defined in ShaderLibraryNodeConfig.h)
-// Use aliased pointer type for variant
-template<> struct VulkanTypeTraits<ShaderProgramDescriptorPtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
-    static constexpr bool isValid = true;
-};
-
-// VulkanShader* (defined in VulkanShader.h - MVP shader loading)
-template<> struct VulkanTypeTraits<VulkanShaderPtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
-    static constexpr bool isValid = true;
-};
-
-// VkPipeline and related types
-template<> struct VulkanTypeTraits<VkPipeline> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkPipelineLayout> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkPipelineCache> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkCommandBuffer> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkQueue> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle
-    static constexpr bool isValid = true;
-};
-
-// Use aliased types for pointers (VkViewportPtr, VkRect2DPtr, VkResultPtr defined in ResourceVariant.h)
-template<> struct VulkanTypeTraits<VkViewportPtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to struct
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkRect2DPtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to struct
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<PFN_vkQueuePresentKHR> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Function pointer
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VkResultPtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to result
-    static constexpr bool isValid = true;
-};
-
-template<> struct VulkanTypeTraits<VulkanDevicePtr> {
-    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Pointer to VulkanDevice wrapper
-    static constexpr bool isValid = true;
-};
 
 /**
  * @brief Compile-time resource slot descriptor
@@ -278,11 +81,11 @@ struct ResourceSlot {
     using Type = T;
 
     static constexpr uint32_t index = Idx;
-    static constexpr ResourceType resourceType = VulkanTypeTraits<T>::resourceType;
+    static constexpr ResourceType resourceType = ResourceTypeTraits<T>::resourceType;
     static constexpr bool nullable = Nullable;
 
     // Compile-time validation
-    static_assert(VulkanTypeTraits<T>::isValid, "Unsupported Vulkan resource type");
+    static_assert(ResourceTypeTraits<T>::isValid, "Unsupported Vulkan resource type");
 
     // Default constructor for use as constant
     constexpr ResourceSlot() = default;

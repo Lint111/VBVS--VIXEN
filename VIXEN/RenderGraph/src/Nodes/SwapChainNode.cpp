@@ -189,7 +189,10 @@ void SwapChainNode::Compile() {
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    if (swapChainWrapper->scPublicVars.swapChainImageCount == 0) {
+
+	uint32_t imageCount = swapChainWrapper->scPublicVars.swapChainImageCount;
+
+    if (imageCount == 0) {
         std::string errorMsg = "SwapChainNode: No swapchain images were created";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
@@ -200,21 +203,11 @@ void SwapChainNode::Compile() {
 
     // === SET ALL OUTPUTS ===
 
-    // Output 0: ALL swapchain image VIEWS as an array (for framebuffer attachments)
-    const uint32_t imageCount = swapChainWrapper->scPublicVars.swapChainImageCount;
-    for (uint32_t i = 0; i < imageCount; i++) {
-        SetOutput(SwapChainNodeConfig::SWAPCHAIN_IMAGES, i, swapChainWrapper->scPublicVars.colorBuffers[i].view);
-    }
-
     // Output 1: Swapchain handle (NEW VARIANT API)
     Out(SwapChainNodeConfig::SWAPCHAIN_HANDLE, swapChainWrapper->scPublicVars.swapChain);
 
     // Output 2: Pointer to public swapchain variables (NEW VARIANT API)
     Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
-
-    // Output 3-4: Width and height as typed primitives
-    Out(SwapChainNodeConfig::WIDTH_OUT, width);
-    Out(SwapChainNodeConfig::HEIGHT_OUT, height);
 
     // === CREATE SYNCHRONIZATION PRIMITIVES ===
     // Create semaphores for image acquisition (one per swapchain image)

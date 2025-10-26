@@ -107,8 +107,9 @@ private:
     VkDeviceMemory uboMemory = VK_NULL_HANDLE;
     void* uboMappedData = nullptr;
     float rotationAngle = 0.0f;
-    std::chrono::high_resolution_clock::time_point lastFrameTime;
-    bool isFirstFrame = true;
+    
+    // Pipeline layout for binding descriptor sets
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
     // Helpers
     void ValidateLayoutSpec();

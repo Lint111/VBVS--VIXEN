@@ -70,7 +70,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 0, false);
 
     // Framebuffers from FramebufferNode (array - one per swapchain image)
-    CONSTEXPR_INPUT(FRAMEBUFFERS, VkFramebuffer, 1, false);
+    CONSTEXPR_INPUT(FRAMEBUFFERS, FramebufferVector, 1, false);
 
     // Graphics pipeline from GraphicsPipelineNode
     CONSTEXPR_INPUT(PIPELINE, VkPipeline, 2, false);
@@ -79,7 +79,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     CONSTEXPR_INPUT(PIPELINE_LAYOUT, VkPipelineLayout, 3, false);
 
     // Descriptor sets from DescriptorSetNode (array)
-    CONSTEXPR_INPUT(DESCRIPTOR_SETS, VkDescriptorSet, 4, false);
+    CONSTEXPR_INPUT(DESCRIPTOR_SETS, DescriptorSetVector, 4, false);
 
     // Vertex buffer from VertexBufferNode
     CONSTEXPR_INPUT(VERTEX_BUFFER, VkBuffer, 5, false);
@@ -234,10 +234,10 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
-    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, VkFramebuffer>);
+    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, FramebufferVector>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, VkDescriptorSet>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, DescriptorSetVector>);
     static_assert(std::is_same_v<VERTEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INDEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
@@ -250,8 +250,8 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(GeometryRenderNodeConfig::INPUT_COUNT == 12);
-static_assert(GeometryRenderNodeConfig::OUTPUT_COUNT == 2);
+static_assert(GeometryRenderNodeConfig::INPUT_COUNT == GeometryRenderNodeCounts::INPUTS);
+static_assert(GeometryRenderNodeConfig::OUTPUT_COUNT == GeometryRenderNodeCounts::OUTPUTS);
 static_assert(GeometryRenderNodeConfig::ALLOW_INPUT_ARRAYS); // Array mode enabled
 
 } // namespace Vixen::RenderGraph

@@ -2,6 +2,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include <cstring>
+#include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 
@@ -89,10 +90,14 @@ void GeometryRenderNode::Compile() {
     clearDepthStencil.depthStencil.stencil = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::CLEAR_STENCIL, 0);
 
     // Allocate command buffers (one per framebuffer/swapchain image)
-    // Determine count by checking framebuffer array size
-    // For MVP, assume 3 swapchain images (typical double/triple buffering)
-    const uint32_t imageCount = 3; // TODO: Get from swapchain node
-    
+    // Get actual image count from swapchain
+    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    if (!swapchainInfo) {
+        throw std::runtime_error("GeometryRenderNode: SwapChain info is null during Compile");
+    }
+
+    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    std::cout << "[GeometryRenderNode::Compile] Swapchain has " << imageCount << " images, allocating command buffers" << std::endl;
     commandBuffers.resize(imageCount);
     
     VkCommandBufferAllocateInfo allocInfo{};
@@ -187,33 +192,48 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     
     // Get inputs via typed config API
     VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
-    VkFramebuffer framebuffer = In(GeometryRenderNodeConfig::FRAMEBUFFERS, framebufferIndex);
+    std::vector<VkFramebuffer> framebuffers = In(GeometryRenderNodeConfig::FRAMEBUFFERS);
+    if(framebufferIndex >= framebuffers.size()) {
+        std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) + " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
+    VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
+
+
     VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE);
     VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
     VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
     SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
 
-    std::cout << "[GeometryRenderNode::RecordDrawCommands] Retrieved vertex buffer: " 
+    std::cout << "[GeometryRenderNode::RecordDrawCommands] Retrieved vertex buffer: "
               << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
 
-    // Validate critical inputs
-    if (framebuffer == VK_NULL_HANDLE) {
-        throw std::runtime_error("GeometryRenderNode: Framebuffer is VK_NULL_HANDLE for index " + std::to_string(framebufferIndex));
-    }
     if (renderPass == VK_NULL_HANDLE) {
-        throw std::runtime_error("GeometryRenderNode: RenderPass is VK_NULL_HANDLE");
+        std::string errorMsg = "GeometryRenderNode: RenderPass is VK_NULL_HANDLE";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (pipeline == VK_NULL_HANDLE) {
-        throw std::runtime_error("GeometryRenderNode: Pipeline is VK_NULL_HANDLE");
+        std::string errorMsg = "GeometryRenderNode: Pipeline is VK_NULL_HANDLE";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (swapchainInfo == nullptr) {
-        throw std::runtime_error("GeometryRenderNode: SwapChain info is null");
+        std::string errorMsg = "GeometryRenderNode: SwapChain info is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (vertexBuffer == VK_NULL_HANDLE) {
-        throw std::runtime_error("GeometryRenderNode: Vertex buffer is VK_NULL_HANDLE");
+        std::string errorMsg = "GeometryRenderNode: Vertex buffer is VK_NULL_HANDLE";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
     if (pipelineLayout == VK_NULL_HANDLE) {
-        throw std::runtime_error("GeometryRenderNode: Pipeline layout is VK_NULL_HANDLE");
+        std::string errorMsg = "GeometryRenderNode: Pipeline layout is VK_NULL_HANDLE";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Extract viewport and scissor from swapchain info
@@ -242,7 +262,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.pNext = nullptr;
     renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = framebuffer;
+    renderPassInfo.framebuffer = currentFramebuffer;
     renderPassInfo.renderArea.offset.x = 0;
     renderPassInfo.renderArea.offset.y = 0;
     renderPassInfo.renderArea.extent.width = renderWidth;
@@ -264,23 +284,31 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     );
 
     // Bind descriptor sets
-    {
-        VkDescriptorSet firstDescSet = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, 0);
-        if (firstDescSet != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
-            vkCmdBindDescriptorSets(
-                cmdBuffer,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                pipelineLayout,
-                0,
-                1,
-                &firstDescSet,
-                0,
-                nullptr
-            );
-        } else {
-            std::cout << "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!" << std::endl;
-        }
+	std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+
+    if(descriptorSets.size() == 0) {
+        std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
+        NODE_LOG_WARNING(errorMsg);
+        std::cout << errorMsg << std::endl;
+	}
+
+    if (descriptorSets[0] != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayout,
+            0,
+            1,
+            &descriptorSets[0],
+            0,
+            nullptr
+        );
+    } else {
+        std::string errorMsg = "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!";
+        NODE_LOG_WARNING(errorMsg);
+        std::cout << errorMsg << std::endl;
     }
+    
 
     // Bind vertex buffer
     VkDeviceSize offsets[] = {0};

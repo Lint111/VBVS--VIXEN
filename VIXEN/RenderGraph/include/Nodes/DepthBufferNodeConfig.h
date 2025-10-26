@@ -3,6 +3,7 @@
 #include "Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"  // For DepthFormat enum
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/ResourceVariant.h"
 
 namespace Vixen::RenderGraph {
 
@@ -29,7 +30,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DepthBufferNodeCounts {
-    static constexpr size_t INPUTS = 4;
+    static constexpr size_t INPUTS = 3;
     static constexpr size_t OUTPUTS = 3;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -45,11 +46,10 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
     // Width and height from SwapChainNode
-    CONSTEXPR_INPUT(WIDTH, uint32_t, 1, false);
-    CONSTEXPR_INPUT(HEIGHT, uint32_t, 2, false);
+    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariablesPtr, 1, false);
 
     // Command pool for layout transition
-    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 3, false);
+    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 2, false);
 
     // ===== OUTPUTS (3) =====
     // Depth image
@@ -66,12 +66,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        INIT_INPUT_DESC(WIDTH, "width",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        INIT_INPUT_DESC(HEIGHT, "height",
+        INIT_INPUT_DESC(SWAPCHAIN_PUBLIC_VARS, "swapchain_public_vars",
             ResourceLifetime::Persistent,
             BufferDescription{}
         );
@@ -113,13 +108,10 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(WIDTH_Slot::index == 1, "WIDTH input must be at index 1");
-    static_assert(!WIDTH_Slot::nullable, "WIDTH input is required");
+    static_assert(SWAPCHAIN_PUBLIC_VARS_Slot::index == 1, "SWAPCHAIN_PUBLIC_VARS input must be at index 1");
+    static_assert(!SWAPCHAIN_PUBLIC_VARS_Slot::nullable, "SWAPCHAIN_PUBLIC_VARS input is required");
 
-    static_assert(HEIGHT_Slot::index == 2, "HEIGHT input must be at index 2");
-    static_assert(!HEIGHT_Slot::nullable, "HEIGHT input is required");
-
-    static_assert(COMMAND_POOL_Slot::index == 3, "COMMAND_POOL input must be at index 3");
+    static_assert(COMMAND_POOL_Slot::index == 2, "COMMAND_POOL input must be at index 2");
     static_assert(!COMMAND_POOL_Slot::nullable, "COMMAND_POOL input is required");
 
     static_assert(DEPTH_IMAGE_Slot::index == 0, "DEPTH_IMAGE must be at index 0");
@@ -133,8 +125,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
 
     static_assert(std::is_same_v<DEPTH_IMAGE_Slot::Type, VkImage>);
@@ -143,7 +134,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(DepthBufferNodeConfig::INPUT_COUNT == 4);
+static_assert(DepthBufferNodeConfig::INPUT_COUNT == 3);
 static_assert(DepthBufferNodeConfig::OUTPUT_COUNT == 3);
 
 } // namespace Vixen::RenderGraph

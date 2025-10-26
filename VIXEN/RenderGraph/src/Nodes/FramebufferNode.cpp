@@ -3,6 +3,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 
 namespace Vixen::RenderGraph {
 
@@ -64,31 +65,33 @@ void FramebufferNode::Compile() {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Get typed inputs
-    VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);
-    uint32_t width = In(FramebufferNodeConfig::WIDTH);
-    uint32_t height = In(FramebufferNodeConfig::HEIGHT);
+    VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);   
 
     // Check for depth attachment
     VkImageView depthView = In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
     hasDepth = (depthView != VK_NULL_HANDLE);
 
     NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
-    NODE_LOG_DEBUG("Framebuffer dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 
     // Get typed parameter
     uint32_t layers = GetParameterValue<uint32_t>(
         FramebufferNodeConfig::PARAM_LAYERS, 1);
 
-    // Get number of color attachments (array size) using base class method
-    size_t colorAttachmentCount = NodeInstance::GetInputCount(FramebufferNodeConfig::COLOR_ATTACHMENTS_Slot::index);
+    // Get swapchain public variables to access ALL color buffers
+    SwapChainPublicVariables* swapchainInfo = In(FramebufferNodeConfig::SWAPCHAIN_INFO);
+    if (!swapchainInfo) {
+        throw std::runtime_error("FramebufferNode: SwapChain info is null");
+    }
 
+    size_t colorAttachmentCount = swapchainInfo->colorBuffers.size();
     if (colorAttachmentCount == 0) {
-        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "No color attachments provided"};
+        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "No color buffers in swapchain"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
 
     NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
+    std::cout << "[FramebufferNode::Compile] Creating " << colorAttachmentCount << " framebuffers from swapchain" << std::endl;
 
     // Clear any existing framebuffers
     Cleanup();
@@ -98,8 +101,9 @@ void FramebufferNode::Compile() {
 
     // Create one framebuffer per color attachment (swapchain image)
     for (size_t i = 0; i < colorAttachmentCount; i++) {
-        // Get color attachment for this framebuffer using typed In() API
-        VkImageView colorView = In(FramebufferNodeConfig::COLOR_ATTACHMENTS, i);
+        // Get color attachment from swapchain public variables
+        VkImageView colorView = swapchainInfo->colorBuffers[i].view;
+        std::cout << "[FramebufferNode::Compile] Processing attachment " << i << ", view=" << colorView << std::endl;
 
         // Setup attachments array
         std::vector<VkImageView> attachments;
@@ -117,8 +121,8 @@ void FramebufferNode::Compile() {
         framebufferInfo.renderPass = renderPass;
         framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = width;
-        framebufferInfo.height = height;
+        framebufferInfo.width = swapchainInfo->Extent.width;
+        framebufferInfo.height = swapchainInfo->Extent.height;
         framebufferInfo.layers = layers;
         framebufferInfo.flags = 0;
 
@@ -143,13 +147,15 @@ void FramebufferNode::Compile() {
             throw std::runtime_error(error.toString());
         }
 
-        // Output framebuffer to the FRAMEBUFFERS array output
-        Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers[i], i);
-        
-        NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " + 
+        std::cout << "[FramebufferNode::Compile] Created framebuffer[" << i << "]=" << framebuffers[i] << std::endl;
+        NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " +
                       std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
-    
+
+    // Output all framebuffers as a vector in ONE bundle
+    Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
+    std::cout << "[FramebufferNode::Compile] Output " << framebuffers.size() << " framebuffers as vector" << std::endl;
+
     Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
