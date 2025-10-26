@@ -43,7 +43,9 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
+
+protected:
+    void CleanupImpl() override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;

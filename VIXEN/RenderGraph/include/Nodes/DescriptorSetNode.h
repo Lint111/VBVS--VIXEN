@@ -2,7 +2,8 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "DescriptorSetNodeConfig.h"
-#include "ShaderManagement/DescriptorLayoutSpec.h"
+// TEMPORARILY REMOVED - MVP uses hardcoded descriptor layouts
+// #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include <memory>
 #include <unordered_map>
 
@@ -60,7 +61,6 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     /**
      * @brief Update descriptor set with actual resources
@@ -88,6 +88,9 @@ public:
     }
     const ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
 
+protected:
+	void CleanupImpl() override;
+
 private:
     // Configuration
     const ShaderManagement::DescriptorLayoutSpec* layoutSpec = nullptr;
@@ -98,6 +101,14 @@ private:
     std::vector<VkDescriptorSet> descriptorSets;
 
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+
+    // MVP: UBO for rotation animation (Learning Vulkan Chapter 10 feature parity)
+    VkBuffer uboBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory uboMemory = VK_NULL_HANDLE;
+    void* uboMappedData = nullptr;
+    float rotationAngle = 0.0f;
+    std::chrono::high_resolution_clock::time_point lastFrameTime;
+    bool isFirstFrame = true;
 
     // Helpers
     void ValidateLayoutSpec();

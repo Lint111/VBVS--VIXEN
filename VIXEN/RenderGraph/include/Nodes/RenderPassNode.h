@@ -32,11 +32,13 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Access render pass for pipeline/framebuffer creation
     VkRenderPass GetRenderPass() const { return renderPass; }
     bool HasDepthAttachment() const { return hasDepth; }
+
+protected:
+	void CleanupImpl() override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;

@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
-#include "ShaderManagement/DescriptorLayoutSpec.h"
+// TEMPORARILY REMOVED - using simple descriptor layouts for MVP
+// #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include "VulkanResources/VulkanDevice.h"
 
 // Forward declaration for shader program type
 namespace ShaderManagement {
     struct CompiledProgram;
+    struct DescriptorLayoutSpec; // Forward declare
 }
 
 namespace Vixen::RenderGraph {
@@ -52,8 +54,8 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t INPUTS = 5; // Added texture inputs
+    static constexpr size_t OUTPUTS = 4;  // Added VULKAN_DEVICE_OUT for pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -61,12 +63,17 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
                       DescriptorSetNodeCounts::INPUTS, 
                       DescriptorSetNodeCounts::OUTPUTS, 
                       DescriptorSetNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (2) =====
+    // ===== INPUTS (5) =====
     // Shader program for automatic descriptor reflection (future feature)
     CONSTEXPR_INPUT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0, true);
 
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1, false);
+    
+    // Texture resources (MVP: for descriptor binding 1)
+    CONSTEXPR_INPUT(TEXTURE_IMAGE, VkImage, 2, true);
+    CONSTEXPR_INPUT(TEXTURE_VIEW, VkImageView, 3, true);
+    CONSTEXPR_INPUT(TEXTURE_SAMPLER, VkSampler, 4, true);
     // ===== OUTPUTS (3) =====
     // Descriptor set layout
     CONSTEXPR_OUTPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0, false);
@@ -77,6 +84,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // Descriptor sets (array output - allocated based on layoutSpec.maxSets)
     CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, VkDescriptorSet, 2, false);
 
+    // VulkanDevice pass-through output
+    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+
     DescriptorSetNodeConfig() {
         // Initialize input descriptors
         INIT_INPUT_DESC(SHADER_PROGRAM, "shader_program",
@@ -86,6 +96,22 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
+        // Texture inputs (MVP for descriptor set binding 1)
+        INIT_INPUT_DESC(TEXTURE_IMAGE, "texture_image",
+            ResourceLifetime::Persistent,
+            ImageDescription{}
+        );
+        
+        INIT_INPUT_DESC(TEXTURE_VIEW, "texture_view",
+            ResourceLifetime::Persistent,
+            ImageDescription{}
+        );
+        
+        INIT_INPUT_DESC(TEXTURE_SAMPLER, "texture_sampler",
+            ResourceLifetime::Persistent,
+            BufferDescription{}
+        );
 
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
@@ -101,6 +127,11 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         INIT_OUTPUT_DESC(DESCRIPTOR_SETS, "descriptor_sets",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle (array)
+        );
+
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out",
+            ResourceLifetime::Persistent,
+            vulkanDeviceDesc  // Pass-through device pointer
         );
     }
 

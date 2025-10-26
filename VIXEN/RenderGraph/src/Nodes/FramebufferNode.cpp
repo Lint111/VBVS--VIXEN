@@ -143,9 +143,11 @@ void FramebufferNode::Compile() {
             throw std::runtime_error(error.toString());
         }
 
-        // Set output - for now, store framebuffer directly
-        // TODO: Implement proper typed SetOutput in TypedNode
-        // For now, framebuffers are stored in the local vector and accessed via GetFramebuffer()
+        // Output framebuffer to the FRAMEBUFFERS array output
+        Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers[i], i);
+        
+        NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " + 
+                      std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
     
     Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
@@ -166,7 +168,7 @@ void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
     // No-op - framebuffers are created in Compile phase
 }
 
-void FramebufferNode::Cleanup() {
+void FramebufferNode::CleanupImpl() {
     if (!framebuffers.empty() && vulkanDevice != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 

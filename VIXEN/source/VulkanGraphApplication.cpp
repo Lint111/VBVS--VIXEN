@@ -3,6 +3,8 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
+#include "VulkanShader.h"  // MVP: Direct shader loading
+#include "wrapper.h"  // MVP: File reading utility
 
 // Global VkInstance for nodes to access (temporary Phase 1 hack)
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
@@ -22,6 +24,9 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Nodes/GeometryRenderNode.h"
 #include "Nodes/PresentNode.h"
+#include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
+#include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
+#include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -191,10 +196,6 @@ void VulkanGraphApplication::Update() {
 }
 
 void VulkanGraphApplication::DeInitialize() {
-    // Wait for device to finish
-    if (deviceObj && deviceObj->device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(deviceObj->device);
-    }
 
     // Before destroying the render graph, extract logs from the main logger.
     // Node instances register child loggers with the main logger; if we
@@ -219,15 +220,20 @@ void VulkanGraphApplication::DeInitialize() {
         mainLogger->ClearChildren();
     }
 
-    // Destroy render graph (nodes clean up their own resources)
+    // CRITICAL: Destroy render graph (triggers CleanupStack execution) BEFORE base class destroys device
+    // This ensures all node-owned Vulkan resources (buffers, images, views, shaders) are destroyed
+    // while the VkDevice is still valid.
+    // Note: ConstantNode's cleanup callback will destroy the shader via registered callback
+    std::cout << "[DeInitialize] Destroying render graph..." << std::endl;
     renderGraph.reset();
+    std::cout << "[DeInitialize] Render graph destroyed" << std::endl;
 
     // Destroy node registry
     nodeRegistry.reset();
 
     // Graph nodes handle their own cleanup (including window)
 
-    // Call base class cleanup
+    // Call base class cleanup (destroys device and instance)
     VulkanApplicationBase::DeInitialize();
 
     if (mainLogger) {
@@ -249,8 +255,86 @@ void VulkanGraphApplication::CompileRenderGraph() {
     // Connect(deviceNode, DeviceNodeConfig::QUEUE, presentNode, PresentNodeConfig::QUEUE);
     // Connect(deviceNode, DeviceNodeConfig::PRESENT_FUNCTION, presentNode, PresentNodeConfig::PRESENT_FUNCTION);
 
-    // Validate graph
-    std::cout << "[CompileRenderGraph] Calling Validate..." << std::endl;
+
+    // MVP: Load shaders BEFORE compilation
+    // We need to inject the shader into ConstantNode before Compile() is called
+    // Strategy: Compile device first, load shaders, inject into ConstantNode, then compile rest
+    
+    std::cout << "[CompileRenderGraph] Pre-compiling device node..." << std::endl;
+    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNodeHandle));
+    deviceNode->Setup();
+    deviceNode->Compile();
+    deviceNode->SetState(NodeState::Compiled);  // CRITICAL: Mark as compiled to prevent re-compilation
+    std::cout << "[CompileRenderGraph] Device node compiled and marked as Compiled" << std::endl;
+    
+    // Now device is ready, load shaders
+    mainLogger->Info("Loading SPIR-V shaders...");
+    auto* vulkanDevice = deviceNode->GetVulkanDevice();
+    if (!vulkanDevice) {
+        mainLogger->Error("Cannot load shaders: VulkanDevice not available");
+        throw std::runtime_error("VulkanDevice required for shader loading");
+    }
+    
+    // Load SPIR-V bytecode from files (paths relative to binaries/ execution directory)
+    size_t vertSize = 0, fragSize = 0;
+    uint32_t* vertSpv = static_cast<uint32_t*>(::ReadFile("../BuiltAssets/CompiledShaders/Draw.vert.spv", &vertSize));
+    uint32_t* fragSpv = static_cast<uint32_t*>(::ReadFile("../BuiltAssets/CompiledShaders/Draw.frag.spv", &fragSize));
+    
+    if (!vertSpv || !fragSpv) {
+        mainLogger->Error("Failed to load shader files");
+        throw std::runtime_error("Shader files not found");
+    }
+    
+    // Create VulkanShader and build shader modules
+    triangleShader = new VulkanShader();
+    triangleShader->BuildShaderModuleWithSPV(vertSpv, vertSize, fragSpv, fragSize, vulkanDevice);
+    
+    // Clean up file buffers
+    delete[] vertSpv;
+    delete[] fragSpv;
+    mainLogger->Info("Shaders loaded successfully");
+    
+    // Inject shader into ConstantNode BEFORE graph compilation
+    mainLogger->Info("Injecting shader into ConstantNode...");
+    std::cout << "[CompileRenderGraph] Getting shader_constant node instance..." << std::endl;
+    auto* shaderConstNode = static_cast<ConstantNode*>(renderGraph->GetInstance(shaderConstantNodeHandle));
+    if (!shaderConstNode) {
+        std::cout << "[CompileRenderGraph] ERROR: shader_constant node is NULL!" << std::endl;
+        throw std::runtime_error("shader_constant node not found");
+    }
+    std::cout << "[CompileRenderGraph] Calling SetValue() on shader_constant..." << std::endl;
+    shaderConstNode->SetValue(triangleShader);
+    std::cout << "[CompileRenderGraph] SetValue() complete" << std::endl;
+    
+    // CRITICAL: Register cleanup callback for shader destruction
+    // Capture the shader pointer and device to ensure proper cleanup during graph destruction
+    // IMPORTANT: Shader cleanup must happen BEFORE device cleanup (dependency ordering)
+    mainLogger->Info("Registering shader cleanup callback...");
+    std::cout << "[CompileRenderGraph] Calling SetCleanupCallback() on shader_constant..." << std::endl;
+    shaderConstNode->SetCleanupCallback(
+        [this]() {
+            std::cout << "[ShaderCleanupCallback] Destroying shader..." << std::endl;
+            if (triangleShader) {
+                triangleShader->DestroyShader(nullptr);  // Uses creationDevice stored in VulkanShader
+                delete triangleShader;
+                triangleShader = nullptr;
+                std::cout << "[ShaderCleanupCallback] Shader destroyed successfully" << std::endl;
+            }
+        },
+        {deviceNodeHandle}  // Dependency: shader must be destroyed BEFORE device node
+    );
+    std::cout << "[CompileRenderGraph] SetCleanupCallback() complete" << std::endl;
+    
+    mainLogger->Info("Shader value injected and cleanup registered - ready for compilation");
+
+    // Now compile the full graph (all nodes including pipeline with shaders ready)
+    std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
+    renderGraph->Compile();
+    graphCompiled = true;
+    std::cout << "[CompileRenderGraph] Graph compilation complete" << std::endl;
+
+    // Validate final graph (should pass with shaders connected)
+    std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
     std::string errorMessage;
     if (!renderGraph->Validate(errorMessage)) {
         mainLogger->Error("Render graph validation failed: " + errorMessage);
@@ -258,14 +342,6 @@ void VulkanGraphApplication::CompileRenderGraph() {
         return;
     }
     std::cout << "[CompileRenderGraph] Validation passed" << std::endl;
-
-    // Compile the graph
-    // This calls Setup() and Compile() on all nodes
-    // Each node allocates its Vulkan resources here
-    std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
-    renderGraph->Compile();
-    graphCompiled = true;
-    std::cout << "[CompileRenderGraph] graphCompiled = true" << std::endl;
 
     mainLogger->Info("Render graph compiled successfully");
     mainLogger->Info("Node count: " + std::to_string(renderGraph->GetNodeCount()));
@@ -295,8 +371,10 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<GraphicsPipelineNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
+    nodeRegistry->RegisterNodeType(std::make_unique<ShaderConstantNodeType>());  // MVP: VulkanShader* injection
+    nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
 
-    mainLogger->Info("Successfully registered 14 node types");
+    mainLogger->Info("Successfully registered 16 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -314,12 +392,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Infrastructure Nodes ---
     NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
+    deviceNodeHandle = deviceNode; // MVP: Cache for post-compile shader loading
     NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
     // --- Resource Nodes ---
     NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
+    NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
 
     // --- Rendering Configuration Nodes ---
     NodeHandle renderPassNode = renderGraph->AddNode("RenderPass", "main_pass");
@@ -327,12 +407,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
     NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
+    pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
+    
+    // MVP: Shader constant node (value set during compilation after device creation)
+    std::cout << "[BuildRenderGraph] Creating shader_constant node..." << std::endl;
+    NodeHandle shaderConstantNode;
+    try {
+        shaderConstantNode = renderGraph->AddNode("ShaderConstant", "shader_constant");
+        std::cout << "[BuildRenderGraph] shader_constant node created successfully, handle=" 
+                  << shaderConstantNode.index << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "[BuildRenderGraph] ERROR creating shader_constant: " << e.what() << std::endl;
+        throw;
+    }
+    shaderConstantNodeHandle = shaderConstantNode; // Cache for post-compile value injection
 
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
-    mainLogger->Info("Created 13 node instances");
+    mainLogger->Info("Created 14 node instances");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -349,19 +443,25 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Vertex buffer parameters (simple triangle)
     auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 3u);
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(float) * 6); // pos(3) + color(3)
-    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, false);
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV)); // pos(vec4) + UV(vec2)
+    vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true); // Shader uses vec2 UV at location 1
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0u); // No index buffer
+
+    // Texture loader parameters
+    auto* textureLoader = static_cast<TextureLoaderNode*>(renderGraph->GetInstance(textureNode));
+    textureLoader->SetParameter(TextureLoaderNodeConfig::FILE_PATH, std::string("C:\\Users\\liory\\Downloads\\earthmap.jpg"));
+    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_FILTER, std::string("Linear"));
+    textureLoader->SetParameter(TextureLoaderNodeConfig::SAMPLER_ADDRESS_MODE, std::string("Repeat"));
 
     // Render pass parameters
     auto* renderPass = static_cast<RenderPassNode*>(renderGraph->GetInstance(renderPassNode));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, static_cast<uint32_t>(VK_ATTACHMENT_LOAD_OP_CLEAR));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, static_cast<uint32_t>(VK_ATTACHMENT_STORE_OP_STORE));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, static_cast<uint32_t>(VK_ATTACHMENT_LOAD_OP_CLEAR));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, static_cast<uint32_t>(VK_ATTACHMENT_STORE_OP_DONT_CARE));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, static_cast<uint32_t>(VK_IMAGE_LAYOUT_UNDEFINED));
-    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, static_cast<uint32_t>(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR));
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_LOAD_OP, AttachmentLoadOp::Clear);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_COLOR_STORE_OP, AttachmentStoreOp::Store);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_LOAD_OP, AttachmentLoadOp::Clear);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_DEPTH_STORE_OP, AttachmentStoreOp::DontCare);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_INITIAL_LAYOUT, ImageLayout::Undefined);
+    renderPass->SetParameter(RenderPassNodeConfig::PARAM_FINAL_LAYOUT, ImageLayout::PresentSrc);
     renderPass->SetParameter(RenderPassNodeConfig::PARAM_SAMPLES, 1u);
 
     // Framebuffer parameters
@@ -378,13 +478,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
     pipeline->SetParameter(GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, true);
     pipeline->SetParameter(GraphicsPipelineNodeConfig::CULL_MODE, std::string("Back"));
+
+    // MVP: Shader loading deferred to CompileRenderGraph (after device is created)
+    mainLogger->Info("Shader loading will occur during compilation phase");
+    
     pipeline->SetParameter(GraphicsPipelineNodeConfig::POLYGON_MODE, std::string("Fill"));
     pipeline->SetParameter(GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
     pipeline->SetParameter(GraphicsPipelineNodeConfig::FRONT_FACE, std::string("CounterClockwise"));
 
     // Geometry render parameters
     auto* geometryRender = static_cast<GeometryRenderNode*>(renderGraph->GetInstance(geometryRenderNode));
-    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 3u);
+    geometryRender->SetParameter(GeometryRenderNodeConfig::VERTEX_COUNT, 36u);
     geometryRender->SetParameter(GeometryRenderNodeConfig::INSTANCE_COUNT, 1u);
     geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_VERTEX, 0u);
     geometryRender->SetParameter(GeometryRenderNodeConfig::FIRST_INSTANCE, 0u);
@@ -483,19 +587,34 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- ShaderLibrary + RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
-    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_PROGRAMS,
-                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_PROGRAM)
-         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
+    // --- RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
+    // MVP: Shader connection deferred - shaders loaded after compilation
+    // batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_PROGRAMS,
+    //               pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES)
+    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
                   pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  pipelineNode, GraphicsPipelineNodeConfig::VIEWPORT)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  pipelineNode, GraphicsPipelineNodeConfig::SCISSOR);
+                  pipelineNode, GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+    
+    // MVP: Connect shader constant node to pipeline (value injected during compilation)
+    batch.Connect(shaderConstantNode, ConstantNodeConfig::OUTPUT,
+                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES);
+
+    // --- Device → TextureLoader device chain ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  textureNode, TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- TextureLoader → DescriptorSet texture connections ---
+    batch.Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_IMAGE,
+                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_IMAGE)
+         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_VIEW,
+                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_VIEW)
+         .Connect(textureNode, TextureLoaderNodeConfig::TEXTURE_SAMPLER,
+                  descriptorSetNode, DescriptorSetNodeConfig::TEXTURE_SAMPLER);
 
     // --- Device → VertexBuffer device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -517,13 +636,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(vertexBufferNode, VertexBufferNodeConfig::INDEX_BUFFER,
                   geometryRenderNode, GeometryRenderNodeConfig::INDEX_BUFFER)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::VIEWPORT)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::SCISSOR)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_WIDTH)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_HEIGHT);
+                  geometryRenderNode, GeometryRenderNodeConfig::SWAPCHAIN_INFO)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  geometryRenderNode, GeometryRenderNodeConfig::COMMAND_POOL)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE);
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -532,16 +653,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- SwapChain + GeometryRender → Present connections ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(geometryRenderNode, GeometryRenderNodeConfig::COMMAND_BUFFERS,
+         .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+
+    // MVP: Shader connection happens in CompileRenderGraph (after device creation)
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
     mainLogger->Info("Registering " + std::to_string(connectionCount) + " connections...");
     batch.RegisterAll();
-
+    
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }

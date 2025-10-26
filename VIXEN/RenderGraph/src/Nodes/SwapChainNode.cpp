@@ -251,14 +251,18 @@ void SwapChainNode::Compile() {
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
     // Acquire next swapchain image
     const uint32_t frameIndex = currentFrame % imageAvailableSemaphores.size();
-    currentImageIndex = AcquireNextImage(imageAvailableSemaphores[frameIndex]);
+    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[frameIndex];
+    
+    currentImageIndex = AcquireNextImage(imageAvailableSemaphore);
 
-    // Store outputs for downstream nodes
-    // These are accessed via GetCurrentImageIndex() and GetImageAvailableSemaphore()
+    // Output current frame's image index and semaphore for downstream nodes
+    Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
+    Out(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, imageAvailableSemaphore);
+
     currentFrame++;
 }
 
-void SwapChainNode::Cleanup() {
+void SwapChainNode::CleanupImpl() {
     // Destroy semaphores
     if (vulkanDevice != VK_NULL_HANDLE) {
         for (auto& semaphore : imageAvailableSemaphores) {

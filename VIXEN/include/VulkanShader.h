@@ -42,4 +42,7 @@ class VulkanShader {
     bool initialized = false;
     uint32_t stagesCount = 0;
     
+    // Store device used to create shader modules (for correct destruction)
+    Vixen::Vulkan::Resources::VulkanDevice* creationDevice = nullptr;
+    
 };

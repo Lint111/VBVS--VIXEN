@@ -32,7 +32,6 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Access framebuffers for external use (legacy compatibility)
     const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }
@@ -40,6 +39,9 @@ public:
         return (index < framebuffers.size()) ? framebuffers[index] : VK_NULL_HANDLE;
     }
     uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
+
+protected:
+	void CleanupImpl() override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;

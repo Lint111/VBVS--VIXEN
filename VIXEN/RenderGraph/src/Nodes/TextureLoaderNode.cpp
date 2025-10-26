@@ -57,7 +57,7 @@ void TextureLoaderNode::Setup() {
     // Create temporary command pool for texture loading
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = device->graphicsQueueIndex;
+    poolInfo.queueFamilyIndex = vulkanDevice->graphicsQueueIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     VkResult result = vkCreateCommandPool(vulkanDevice->device, &poolInfo, nullptr, &commandPool);
@@ -67,7 +67,7 @@ void TextureLoaderNode::Setup() {
 
     // Create texture loader (using STB for common formats)
     textureLoader = std::make_unique<Vixen::TextureHandling::STBTextureLoader>(
-        device,
+        vulkanDevice,
         commandPool
     );
 }
@@ -120,7 +120,7 @@ void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
     // If we need to transition to a different layout, we would do it here
 }
 
-void TextureLoaderNode::Cleanup() {
+void TextureLoaderNode::CleanupImpl() {
     // Destroy texture resources
     if (isLoaded && vulkanDevice != VK_NULL_HANDLE) {
         if (textureView != VK_NULL_HANDLE) {

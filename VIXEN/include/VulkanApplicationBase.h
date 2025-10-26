@@ -63,12 +63,10 @@ public:
 
     inline bool IsPrepared() const { return isPrepared; }
     inline VulkanInstance* GetInstance() { return &instanceObj; }
-    inline VulkanDevice* GetDevice() const { return deviceObj.get(); }
     inline std::shared_ptr<Logger> GetLogger() const { return mainLogger; }
 
     // Public access for compatibility with existing code
     VulkanInstance instanceObj;                    // Vulkan instance
-    std::unique_ptr<VulkanDevice> deviceObj;       // Logical device
     std::shared_ptr<Logger> mainLogger;            // Application logger
 
 protected:
@@ -81,22 +79,13 @@ protected:
                                        std::vector<const char*>& extensions,
                                        const char* applicationName);
 
-    /**
-     * @brief Establish connection with physical device
-     */
-    VulkanStatus HandShakeWithDevice(VkPhysicalDevice* gpu, 
-                                      std::vector<const char*>& layers, 
-                                      std::vector<const char*>& extensions);
+    
 
     /**
      * @brief Enumerate available physical devices
      */
     VulkanStatus EnumeratePhysicalDevices(std::vector<VkPhysicalDevice>& gpuList);
 
-    /**
-     * @brief Destroy all devices
-     */
-    VulkanStatus DestroyDevices();
 
     /**
      * @brief Initialize core Vulkan (instance and device)
@@ -107,5 +96,4 @@ protected:
     // ====== State ======
     bool debugFlag;                                 // Debug mode enabled
     bool isPrepared;                                // Ready to render
-    std::vector<VkPhysicalDevice> gpuList;         // Available GPUs
 };

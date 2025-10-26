@@ -51,7 +51,6 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Accessors for other nodes
     VkBuffer GetVertexBuffer() const { return vertexBuffer; }
@@ -61,6 +60,9 @@ public:
     uint32_t GetVertexCount() const { return vertexCount; }
     uint32_t GetIndexCount() const { return indexCount; }
     bool HasIndices() const { return hasIndices; }
+
+protected:
+    void CleanupImpl() override;
 
 private:
     // Vertex buffer resources

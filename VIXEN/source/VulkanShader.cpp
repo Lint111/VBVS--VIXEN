@@ -1,11 +1,16 @@
 #include "VulkanShader.h"
 #include "VulkanResources/VulkanDevice.h"
 
+using namespace Vixen::Vulkan::Resources;
+
 void VulkanShader::BuildShaderModuleWithSPV(uint32_t *vertShaderText, size_t vertexSPVSize, uint32_t *fragShaderText, size_t fragSPVSize, Vixen::Vulkan::Resources::VulkanDevice* deviceObj)
 {
 
     VkResult result;
     stagesCount = 0;
+    
+    // Store device for later destruction
+    creationDevice = deviceObj;
 
     shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shaderStages[0].pNext = nullptr;
@@ -49,28 +54,58 @@ void VulkanShader::BuildShaderModuleWithSPV(uint32_t *vertShaderText, size_t ver
     );
     stagesCount++;
     assert(result == VK_SUCCESS);
+    
+    // Mark shader as initialized
+    initialized = true;
 }
 
 void VulkanShader::DestroyShader(Vixen::Vulkan::Resources::VulkanDevice* deviceObj)
 {
+    std::cout << "[VulkanShader::DestroyShader] Called - initialized=" << initialized << std::endl;
+    
+    // Only destroy if initialized
+    if (!initialized) {
+        std::cout << "[VulkanShader::DestroyShader] Not initialized - skipping" << std::endl;
+        return;
+    }
+    
+    // CRITICAL: Use the device that created the shader modules
+    // If no device provided, fall back to creationDevice
+    VulkanDevice* actualDevice = (deviceObj != nullptr) ? deviceObj : creationDevice;
+    
+    if (actualDevice == nullptr) {
+        std::cout << "[VulkanShader::DestroyShader] ERROR: No valid device - shader modules will leak!" << std::endl;
+        // Cannot destroy without valid device - shader modules will leak
+        return;
+    }
+    
+    std::cout << "[VulkanShader::DestroyShader] Destroying shader modules..." << std::endl;
+    
     if(shaderStages[0].module != VK_NULL_HANDLE) {
+        std::cout << "[VulkanShader::DestroyShader] Destroying vertex shader module: " 
+                  << shaderStages[0].module << std::endl;
         vkDestroyShaderModule(
-            deviceObj->device,
+            actualDevice->device,
             shaderStages[0].module,
             nullptr
         );
         shaderStages[0].module = VK_NULL_HANDLE;
     }
     if(shaderStages[1].module != VK_NULL_HANDLE) {
+        std::cout << "[VulkanShader::DestroyShader] Destroying fragment shader module: " 
+                  << shaderStages[1].module << std::endl;
         vkDestroyShaderModule(
-            deviceObj->device,
+            actualDevice->device,
             shaderStages[1].module,
             nullptr
         );
         shaderStages[1].module = VK_NULL_HANDLE;
     }
+    
+    std::cout << "[VulkanShader::DestroyShader] Cleanup complete" << std::endl;
     initialized = false;
     stagesCount = 0;
+    creationDevice = nullptr;
 }
 
 #ifdef AUTO_COMPILE_GLSL_TO_SPV

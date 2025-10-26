@@ -202,7 +202,8 @@ add_subdirectory(EventBus)
 add_subdirectory(ResourceManagement)
 
 # ShaderManagement library (device-agnostic shader compilation and hot reload)
-add_subdirectory(ShaderManagement)
+# TEMPORARILY DISABLED - integration issues with EventBus/mutex/SPIRV-Reflect
+# add_subdirectory(ShaderManagement)
 
 # Vulkan Resources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
 file(GLOB_RECURSE VULKAN_RESOURCES_CPP

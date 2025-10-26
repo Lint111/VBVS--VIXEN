@@ -56,12 +56,14 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {
         return vulkanDevice.get();
     }
+
+protected:
+	void CleanupImpl() override;
 
 private:
     // VkInstance from global (Phase 1 temporary)

@@ -28,7 +28,9 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
+    
+protected:
+    void CleanupImpl() override;
 
 private:
     std::unique_ptr<Vixen::TextureHandling::TextureLoader> textureLoader;

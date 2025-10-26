@@ -35,8 +35,9 @@ struct NodeConnection {
  * Multiple instances can be created from the same NodeType.
  */
 class NodeInstance {
-    // Allow RenderGraph to access protected resource methods for graph wiring
+    // Allow RenderGraph and ConnectionBatch to access protected resource methods for graph wiring
     friend class RenderGraph;
+    friend class ConnectionBatch;
 
 public:
     NodeInstance(
@@ -132,7 +133,35 @@ public:
     virtual void Setup() {}
     virtual void Compile() {}
     virtual void Execute(VkCommandBuffer commandBuffer) = 0;
-    virtual void Cleanup() {}
+
+    /**
+     * @brief Final cleanup method with double-cleanup protection
+     *
+     * This is the public interface for cleanup. It ensures CleanupImpl()
+     * is only called once, even if Cleanup() is called multiple times
+     * (e.g., from CleanupStack and from destructor).
+     *
+     * Derived classes should override CleanupImpl(), NOT this method.
+     */
+    virtual void Cleanup() final {
+        if (cleanedUp) {
+            return;  // Already cleaned up
+        }
+        CleanupImpl();
+        cleanedUp = true;
+    }
+
+protected:
+    /**
+     * @brief Virtual cleanup implementation for derived classes
+     *
+     * Override this in derived classes to implement cleanup logic.
+     * Guaranteed to be called exactly once per node lifetime.
+     *
+     * IMPORTANT: Always null out VulkanDevice pointers and handles
+     * after destroying Vulkan resources to prevent dangling references.
+     */
+    virtual void CleanupImpl() {}
 
 protected:
     // Low-level resource accessors (internal use by RenderGraph and TypedNodeInstance)
@@ -172,6 +201,7 @@ protected:
     NodeState state = NodeState::Created;
     std::vector<NodeInstance*> dependencies;
     uint32_t executionOrder = 0;
+    bool cleanedUp = false;  // Cleanup protection flag
 
     // Metrics
     size_t inputMemoryFootprint = 0;

@@ -32,10 +32,12 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Accessor for depth image view
     VkImageView GetDepthImageView() const { return depthImage.view; }
+
+protected:
+	void CleanupImpl() override;
 
 private:
     struct DepthImage {
@@ -46,8 +48,14 @@ private:
     } depthImage;
 
     VulkanDevicePtr vulkanDevice = nullptr;
+    VulkanDevicePtr deviceHandle = nullptr; // Alias for vulkanDevice (for legacy code)
     VkCommandPool commandPool = VK_NULL_HANDLE;
     bool isCreated = false;
+
+    // Helper to get VkDevice from VulkanDevice pointer
+    VkDevice GetVkDevice() const {
+        return vulkanDevice ? vulkanDevice->device : VK_NULL_HANDLE;
+    }
 
     VkFormat ConvertDepthFormat(DepthFormat format);
     void CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format);

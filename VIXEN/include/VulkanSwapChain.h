@@ -6,6 +6,7 @@ class VulkanApplication;
 class VulkanApplicationBase;
 class VulkanRenderer;
 
+
 struct SwapChainBuffer {
     VkImage image;
     VkImageView view;
@@ -57,6 +58,8 @@ struct SwapChainPublicVariables {
     // Format of the color image
     VkFormat Format;
 
+	// Extends of the swapchain images
+	VkExtent2D Extent;
 };
 
 class VulkanSwapChain {

@@ -4,7 +4,9 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
+#ifdef HAS_OPENSSL
 #include <openssl/sha.h>
+#endif
 
 namespace ShaderManagement {
 
@@ -370,6 +372,7 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::ReflectStage(
 }
 
 std::string SpirvReflector::ComputeInterfaceHash(const CompiledProgram& program) {
+#ifdef HAS_OPENSSL
     // Compute SHA-256 hash of all SPIRV code
     SHA256_CTX sha256;
     SHA256_Init(&sha256);
@@ -392,6 +395,15 @@ std::string SpirvReflector::ComputeInterfaceHash(const CompiledProgram& program)
     }
 
     return oss.str();
+#else
+    // Fallback: simple hash based on code size and stage count
+    std::ostringstream oss;
+    oss << std::hex << program.stages.size() << "_";
+    for (const auto& stage : program.stages) {
+        oss << stage.spirvCode.size() << "_";
+    }
+    return oss.str();
+#endif
 }
 
 bool SpirvReflector::AreInterfacesCompatible(

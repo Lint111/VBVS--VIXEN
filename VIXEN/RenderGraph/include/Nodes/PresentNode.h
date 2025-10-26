@@ -43,10 +43,12 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Execute presentation
     VkResult Present();
+
+protected:
+	void CleanupImpl() override;
 
 private:
     // Configuration from parameters

@@ -113,11 +113,15 @@ void VertexBufferNode::Compile() {
     SetupVertexInputDescription();
 
     // Set outputs
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
     if (hasIndices) {
+        NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
         Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
     }
-    Out(VertexBufferNodeConfig::VULKAN_DEVICE_IN, vulkanDevice);
+    Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice); // Fixed: was VULKAN_DEVICE_IN
 
     NODE_LOG_INFO("Compile complete: Vertex buffer ready");
 
@@ -136,8 +140,20 @@ void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
     // Execute is a no-op for this node
 }
 
-void VertexBufferNode::Cleanup() {
-    if ((vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE) && vulkanDevice != VK_NULL_HANDLE) {
+void VertexBufferNode::CleanupImpl() {
+    // Validate device before cleanup
+    if (vulkanDevice == VK_NULL_HANDLE) {
+        NODE_LOG_WARNING("Cleanup: VulkanDevice is null - skipping buffer destruction");
+        return;
+    }
+    
+    if (vulkanDevice->device == VK_NULL_HANDLE) {
+        NODE_LOG_WARNING("Cleanup: VkDevice is null - skipping buffer destruction");
+        vulkanDevice = VK_NULL_HANDLE;
+        return;
+    }
+    
+    if ((vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE)) {
         NODE_LOG_DEBUG("Cleanup: Destroying vertex and index buffers");
 
         if (vertexBuffer != VK_NULL_HANDLE) {
@@ -160,6 +176,9 @@ void VertexBufferNode::Cleanup() {
             indexMemory = VK_NULL_HANDLE;
         }
     }
+
+    // Null out device pointer to prevent dangling reference
+    vulkanDevice = VK_NULL_HANDLE;
 }
 
 void VertexBufferNode::CreateBuffer(

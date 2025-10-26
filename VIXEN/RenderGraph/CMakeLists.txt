@@ -41,7 +41,7 @@ target_link_libraries(RenderGraph PUBLIC
     Logger 
     EventBus 
     ResourceManagement 
-    ShaderManagement
+    # ShaderManagement  # MVP: Temporarily disabled
     magic_enum::magic_enum
 )
 

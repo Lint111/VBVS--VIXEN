@@ -50,10 +50,12 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Record draw commands for a specific framebuffer
     void RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
+
+protected:
+	void CleanupImpl() override;
 
 private:
     // Draw parameters (from node parameters)
@@ -67,6 +69,14 @@ private:
     // Clear values
     VkClearValue clearColor{};
     VkClearValue clearDepthStencil{};
+    
+    // Command buffer management
+    std::vector<VkCommandBuffer> commandBuffers;
+    VulkanDevicePtr vulkanDevice = nullptr;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    
+    // Synchronization
+    VkSemaphore renderCompleteSemaphore = VK_NULL_HANDLE;
 };
 
 } // namespace Vixen::RenderGraph

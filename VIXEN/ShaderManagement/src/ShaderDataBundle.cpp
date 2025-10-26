@@ -1,5 +1,7 @@
 #include "ShaderManagement/ShaderDataBundle.h"
+#ifdef HAS_OPENSSL
 #include <openssl/sha.h>
+#endif
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -172,8 +174,9 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
         }
     }
 
-    // Compute SHA-256 from binary buffer (much faster!)
     const auto& buffer = builder.GetBuffer();
+#ifdef HAS_OPENSSL
+    // Compute SHA-256 from binary buffer (much faster!)
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256(buffer.data(), buffer.size(), hash);
 
@@ -185,6 +188,12 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
     }
 
     return hexStream.str();
+#else
+    // Fallback: simple hash based on buffer size
+    std::ostringstream hexStream;
+    hexStream << std::hex << buffer.size();
+    return hexStream.str();
+#endif
 }
 
 ShaderDirtyFlags CompareBundles(

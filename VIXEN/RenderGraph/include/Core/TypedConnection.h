@@ -4,6 +4,7 @@
 #include "Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
 #include <vector>
+#include <functional>
 
 namespace Vixen::RenderGraph {
 
@@ -128,12 +129,58 @@ public:
     }
 
     /**
+     * @brief Connect a constant/direct value to a node input (not from another node output)
+     * 
+     * MVP helper: Allows setting input values directly without creating placeholder nodes.
+     * Useful for passing raw pointers, constants, or external resources.
+     * 
+     * @param targetNode Handle to target node
+     * @param targetSlot Input slot constant
+     * @param value Direct value to set as input
+     * @param arrayIndex Array index for arrayable inputs (default: 0)
+     */
+    template<typename TargetSlot, typename ValueType>
+    ConnectionBatch& ConnectConstant(
+        NodeHandle targetNode,
+        TargetSlot targetSlot,
+        ValueType value,
+        uint32_t arrayIndex = 0
+    ) {
+        // Type validation - ensure value type matches slot type
+        using SlotType = typename TargetSlot::Type;
+        static_assert(
+            std::is_same_v<SlotType, ValueType> || std::is_convertible_v<ValueType, SlotType>,
+            "Value type must match or be convertible to slot type"
+        );
+
+        // Store as deferred constant connection
+        constantConnections.push_back([this, targetNode, targetSlot, value, arrayIndex]() {
+            auto* node = graph->GetInstance(targetNode);
+            if (!node) {
+                throw std::runtime_error("ConnectConstant: Invalid target node handle");
+            }
+
+            // Create a Resource with the constant value
+            Resource res = Resource::Create<SlotType>(typename ResourceTypeTraits<SlotType>::DescriptorT{});
+            res.SetHandle(value);
+            
+            // Use the protected SetInput method via friend access
+            // (ConnectionBatch is a friend of NodeInstance)
+            node->SetInput(targetSlot.index, arrayIndex, &res);
+        });
+
+        return *this;
+    }
+
+    /**
      * @brief Register all connections with the RenderGraph
      * 
      * Validates handles, creates GraphEdges, and registers with topology.
+     * Also processes constant connections.
      * Throws if any connection is invalid.
      */
     void RegisterAll() {
+        // First, register node-to-node connections
         for (const auto& conn : connections) {
             ValidateConnection(conn);
             
@@ -147,21 +194,31 @@ public:
             );
         }
         connections.clear();
+
+        // Then, apply constant connections
+        for (auto& constantConn : constantConnections) {
+            constantConn(); // Execute the lambda that sets the input
+        }
+        constantConnections.clear();
     }
 
     /**
-     * @brief Get number of pending connections
+     * @brief Get number of pending connections (node-to-node only)
      */
     size_t GetConnectionCount() const { return connections.size(); }
 
     /**
      * @brief Clear all pending connections without registering
      */
-    void Clear() { connections.clear(); }
+    void Clear() { 
+        connections.clear(); 
+        constantConnections.clear();
+    }
 
 private:
     RenderGraph* graph;
     std::vector<TypedConnectionDescriptor> connections;
+    std::vector<std::function<void()>> constantConnections; // Deferred constant setters
 
     void ValidateConnection(const TypedConnectionDescriptor& conn) {
         if (!conn.sourceNode.IsValid()) {

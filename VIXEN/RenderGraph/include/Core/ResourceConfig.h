@@ -209,6 +209,12 @@ template<> struct VulkanTypeTraits<ShaderProgramDescriptorPtr> {
     static constexpr bool isValid = true;
 };
 
+// VulkanShader* (defined in VulkanShader.h - MVP shader loading)
+template<> struct VulkanTypeTraits<VulkanShaderPtr> {
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque pointer
+    static constexpr bool isValid = true;
+};
+
 // VkPipeline and related types
 template<> struct VulkanTypeTraits<VkPipeline> {
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Opaque handle

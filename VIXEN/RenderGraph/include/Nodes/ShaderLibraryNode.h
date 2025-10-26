@@ -3,7 +3,8 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "ShaderLibraryNodeConfig.h"
-#include <ShaderManagement/ShaderLibrary.h>
+// TEMPORARILY REMOVED - MVP uses VulkanShader directly
+// #include <ShaderManagement/ShaderLibrary.h>
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -51,55 +52,17 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
+    
+protected:
+    void CleanupImpl() override;
 
-    // ===== Program Management API =====
+    // ===== Program Management API (MVP STUBS - NOT IMPLEMENTED) =====
 
-    /**
-     * @brief Register a shader program definition
-     * @param definition Program definition with shader stages
-     * @return Program ID for future reference
-     */
-    uint32_t RegisterProgram(const ShaderManagement::ShaderProgramDefinition& definition);
-
-    /**
-     * @brief Get compiled program descriptor by ID
-     * @return nullptr if not found or not yet compiled
-     */
-    const ShaderProgramDescriptor* GetProgram(uint32_t programId) const;
-
-    /**
-     * @brief Get compiled program descriptor by name
-     * @return nullptr if not found
-     */
-    const ShaderProgramDescriptor* GetProgramByName(const std::string& name) const;
-
-    /**
-     * @brief Get all compiled programs
-     */
-    const std::vector<ShaderProgramDescriptor*>& GetAllPrograms() const {
-        return programPointers;
-    }
-
-    /**
-     * @brief Get number of registered programs
-     */
-    size_t GetProgramCount() const;
+    // MVP: These methods are stubs - shader management not integrated yet
+    // In MVP, load shaders directly via VulkanShader class in application code
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-    
-    // Vulkan helpers
-    VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirvCode);
-    void DestroyShaderModule(VkShaderModule module);
-
-    // Device-agnostic shader library (no VkDevice)
-    std::unique_ptr<ShaderManagement::ShaderLibrary> shaderLib;
-
-    // Vulkan shader program descriptors (has VkShaderModule)
-    std::unordered_map<uint32_t, ShaderProgramDescriptor> programs;
-    std::unordered_map<std::string, uint32_t> nameToId;
-    std::vector<ShaderProgramDescriptor*> programPointers;  // For array output
 };
 
 } // namespace Vixen::RenderGraph

@@ -2,74 +2,30 @@
 
 #include "Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
-#include <ShaderManagement/ShaderProgram.h>
+// TEMPORARILY REMOVED - using VulkanShader directly for MVP
+// #include <ShaderManagement/ShaderProgram.h>
+
+// Forward declare VulkanShader
+class VulkanShader;
 
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanShaderPtr = VulkanShader*;
 
 /**
- * @brief Shader program descriptor with Vulkan objects
+ * @brief Shader program descriptor with Vulkan objects (MVP STUB)
  *
- * This is the RenderGraph-side version that holds VkShaderModule.
- * ShaderManagement library returns SPIRV, this converts it to Vulkan objects.
+/**
+ * @brief Shader program descriptor with Vulkan objects (MVP STUB)
+ *
+ * Simplified version for MVP - will integrate ShaderManagement properly later.
  */
 struct ShaderProgramDescriptor {
-    uint32_t programId;
+    uint32_t programId = 0;
     std::string name;
-    ShaderManagement::PipelineTypeConstraint pipelineType;
-
-    // Vulkan shader modules (created from SPIRV)
-    struct CompiledStage {
-        ShaderManagement::ShaderStage stage;
-        VkShaderModule module = VK_NULL_HANDLE;
-        std::string entryPoint;
-        uint64_t generation = 0;
-    };
-
-    std::vector<CompiledStage> stages;
-
-    // Cached Vulkan stage create infos
-    std::vector<VkPipelineShaderStageCreateInfo> vkStageInfos;
-
-    // Generation tracking
-    uint64_t generation = 0;
-
-    /**
-     * @brief Get shader module for specific stage
-     */
-    VkShaderModule GetModule(ShaderManagement::ShaderStage stage) const {
-        auto it = std::find_if(stages.begin(), stages.end(),
-            [stage](const auto& s) { return s.stage == stage; });
-        return (it != stages.end()) ? it->module : VK_NULL_HANDLE;
-    }
-
-    /**
-     * @brief Get cached Vulkan stage infos (for pipeline creation)
-     */
-    const std::vector<VkPipelineShaderStageCreateInfo>& GetVkStageInfos() const {
-        return vkStageInfos;
-    }
-
-    /**
-     * @brief Rebuild cached Vulkan stage infos
-     */
-    void RebuildVkStageInfos() {
-        vkStageInfos.clear();
-        for (const auto& stage : stages) {
-            VkPipelineShaderStageCreateInfo stageInfo{};
-            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stageInfo.pNext = nullptr;
-            stageInfo.stage = ShaderManagement::ToVulkanStage(stage.stage);
-            stageInfo.module = stage.module;
-            stageInfo.pName = stage.entryPoint.c_str();
-            stageInfo.pSpecializationInfo = nullptr;
-            stageInfo.flags = 0;
-
-            vkStageInfos.push_back(stageInfo);
-        }
-    }
+    // MVP: Minimal implementation - expand when ShaderManagement integrated
 };
 
 /**

@@ -12,6 +12,7 @@
 // Forward declarations
 class VulkanRenderer;
 class VulkanSwapChain;
+class VulkanShader;
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;
@@ -94,6 +95,12 @@ private:
     Vixen::Core::EngineTime time;                    // Time management
     bool graphCompiled;                              // Graph compilation state
     int width, height;                               // Window dimensions
+
+    // ====== MVP Shader Management ======
+    VulkanShader* triangleShader = nullptr;          // MVP: Direct shader (temporary)
+    NodeHandle deviceNodeHandle;                     // MVP: Cached for post-compile shader loading
+    NodeHandle pipelineNodeHandle;                   // MVP: Cached for post-compile connection
+    NodeHandle shaderConstantNodeHandle;             // MVP: ConstantNode holding shader pointer
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application

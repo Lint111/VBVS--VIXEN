@@ -45,7 +45,6 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Accessors
 #ifdef _WIN32
@@ -61,6 +60,9 @@ public:
     bool IsResizing() const { return isResizing; }
     bool WasResized() const { return wasResized; }
     void ClearResizeFlag() { wasResized = false; }
+
+protected:
+	void CleanupImpl() override;
 
 private:
 #ifdef _WIN32

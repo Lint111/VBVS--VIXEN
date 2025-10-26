@@ -243,7 +243,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 #endif
 
-void WindowNode::Cleanup() {
+void WindowNode::CleanupImpl() {
     NODE_LOG_INFO("[WindowNode] Cleanup");
 
 #ifdef _WIN32

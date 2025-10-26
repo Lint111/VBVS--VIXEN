@@ -1,6 +1,8 @@
 #include "Nodes/GraphicsPipelineNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "VulkanShader.h" // For VulkanShader MVP approach
+#include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
 #include <cstring>
 
@@ -80,21 +82,23 @@ void GraphicsPipelineNode::Compile() {
     topology = ParseTopology(topologyStr);
     frontFace = ParseFrontFace(frontFaceStr);
 
-    // Get inputs via typed config API
-    ShaderProgramDescriptor* shaderProgram = In(GraphicsPipelineNodeConfig::SHADER_PROGRAM);
+    // Get inputs via typed config API (MVP: using VulkanShader directly)
+    VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
     VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
     VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-    VkViewportPtr viewport = In(GraphicsPipelineNodeConfig::VIEWPORT);
-    VkRect2DPtr scissor = In(GraphicsPipelineNodeConfig::SCISSOR);
+    SwapChainPublicVariables* swapchainInfo = In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+
+    std::cout << "[GraphicsPipelineNode::Compile] Read descriptor set layout: " << descriptorSetLayout << std::endl;
 
     // Validate inputs
-    if (shaderProgram == nullptr) {
-        throw std::runtime_error("GraphicsPipelineNode: shader program not set");
+    if (shaderStages == nullptr || !shaderStages->initialized) {
+        throw std::runtime_error("GraphicsPipelineNode: shader stages not set or not initialized");
     }
     if (renderPass == VK_NULL_HANDLE) {
         throw std::runtime_error("GraphicsPipelineNode: render pass not set");
     }
     if (descriptorSetLayout == VK_NULL_HANDLE) {
+        std::cout << "[GraphicsPipelineNode::Compile] ERROR: Descriptor set layout is VK_NULL_HANDLE!" << std::endl;
         throw std::runtime_error("GraphicsPipelineNode: descriptor set layout not set");
     }
 
@@ -125,7 +129,7 @@ void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
     // Execute is a no-op for this node
 }
 
-void GraphicsPipelineNode::Cleanup() {
+void GraphicsPipelineNode::CleanupImpl() {
     if (pipeline != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
         vkDestroyPipeline(vulkanDevice->device, pipeline, nullptr);
         pipeline = VK_NULL_HANDLE;
@@ -187,14 +191,13 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
 }
 
 void GraphicsPipelineNode::CreatePipeline() {
-    // Get inputs via typed config API
-    ShaderProgramDescriptor* shaderProgram = In(GraphicsPipelineNodeConfig::SHADER_PROGRAM);
+    // Get inputs via typed config API (MVP: using VulkanShader directly)
+    VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
     VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
-    // TODO: Extract shader stages from ShaderProgramDescriptor
-    // For now, assume shader program has stage info
-    const VkPipelineShaderStageCreateInfo* shaderStages = nullptr; // shaderProgram->stages;
-    uint32_t shaderStageCount = 0; // shaderProgram->stageCount;
+    // Use shader stages from VulkanShader (already compiled)
+    const VkPipelineShaderStageCreateInfo* shaderStageInfos = shaderStages->shaderStages;
+    uint32_t shaderStageCount = shaderStages->stagesCount;
     
     // Dynamic state
     VkDynamicState dynamicStates[] = {
@@ -214,12 +217,33 @@ void GraphicsPipelineNode::CreatePipeline() {
     vertexInputState.pNext = nullptr;
     vertexInputState.flags = 0;
 
+    // Define vertex input binding and attributes matching shader expectations
+    VkVertexInputBindingDescription vertexBinding = {};
+    VkVertexInputAttributeDescription vertexAttributes[2] = {};
+    
     if (enableVertexInput) {
-        // TODO: Get vertex input description from config or shader reflection
-        vertexInputState.vertexBindingDescriptionCount = 0;
-        vertexInputState.pVertexBindingDescriptions = nullptr;
-        vertexInputState.vertexAttributeDescriptionCount = 0;
-        vertexInputState.pVertexAttributeDescriptions = nullptr;
+        // Binding 0: Vertex buffer with interleaved pos (vec4) + UV (vec2)
+        // Stride = 4 floats (pos) + 2 floats (UV) = 24 bytes
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(float) * 6; // vec4 + vec2
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        
+        // Attribute 0: Position (location = 0, vec4, offset = 0)
+        vertexAttributes[0].location = 0;
+        vertexAttributes[0].binding = 0;
+        vertexAttributes[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        vertexAttributes[0].offset = 0;
+        
+        // Attribute 1: UV coords (location = 1, vec2, offset = 16 bytes)
+        vertexAttributes[1].location = 1;
+        vertexAttributes[1].binding = 0;
+        vertexAttributes[1].format = VK_FORMAT_R32G32_SFLOAT;
+        vertexAttributes[1].offset = sizeof(float) * 4;
+        
+        vertexInputState.vertexBindingDescriptionCount = 1;
+        vertexInputState.pVertexBindingDescriptions = &vertexBinding;
+        vertexInputState.vertexAttributeDescriptionCount = 2;
+        vertexInputState.pVertexAttributeDescriptions = vertexAttributes;
     } else {
         vertexInputState.vertexBindingDescriptionCount = 0;
         vertexInputState.pVertexBindingDescriptions = nullptr;
@@ -321,7 +345,7 @@ void GraphicsPipelineNode::CreatePipeline() {
     pipelineInfo.pNext = nullptr;
     pipelineInfo.flags = 0;
     pipelineInfo.stageCount = shaderStageCount;
-    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pStages = shaderStageInfos;  // Changed from shaderStages to shaderStageInfos
     pipelineInfo.pVertexInputState = &vertexInputState;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
     pipelineInfo.pTessellationState = nullptr;

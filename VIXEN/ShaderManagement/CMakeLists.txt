@@ -39,19 +39,27 @@ target_include_directories(ShaderManagement
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${spirv_reflect_SOURCE_DIR}  # For spirv_reflect.h/c
+        ${spirv_reflect_SOURCE_DIR}
 )
 
 # Find dependencies
 find_package(Vulkan REQUIRED)
-find_package(OpenSSL REQUIRED)
 
-# Link Vulkan headers and OpenSSL
+# Optional OpenSSL for SHA256 hashing
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+    message(STATUS "OpenSSL found - enabling SHA256 shader hashing")
+    target_link_libraries(ShaderManagement PRIVATE OpenSSL::Crypto)
+    target_compile_definitions(ShaderManagement PRIVATE HAS_OPENSSL)
+    target_include_directories(ShaderManagement PRIVATE ${OPENSSL_INCLUDE_DIR})
+else()
+    message(WARNING "OpenSSL not found - shader caching will use fallback hash")
+endif()
+
+# Link Vulkan
 target_link_libraries(ShaderManagement
     PUBLIC
         Vulkan::Headers
-    PRIVATE
-        OpenSSL::Crypto
 )
 
 # C++23 standard

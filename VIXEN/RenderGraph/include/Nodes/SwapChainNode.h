@@ -52,7 +52,6 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
 
     // Accessors
     VkSwapchainKHR GetSwapchain() const;
@@ -75,6 +74,10 @@ public:
 
     // Recreate swapchain (for resize handling)
     void Recreate(uint32_t newWidth, uint32_t newHeight);
+
+protected:
+    void CleanupImpl() override;
+
 
 private:
     // Swapchain wrapper (from existing VulkanSwapChain)

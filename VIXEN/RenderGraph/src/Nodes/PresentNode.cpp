@@ -73,7 +73,7 @@ void PresentNode::Execute(VkCommandBuffer commandBuffer) {
     Present();
 }
 
-void PresentNode::Cleanup() {
+void PresentNode::CleanupImpl() {
     // No resources to clean up
 }
 

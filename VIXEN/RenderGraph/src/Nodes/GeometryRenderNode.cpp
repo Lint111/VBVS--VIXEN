@@ -1,5 +1,6 @@
 #include "Nodes/GeometryRenderNode.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "VulkanSwapChain.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -56,7 +57,16 @@ GeometryRenderNode::~GeometryRenderNode() {
 }
 
 void GeometryRenderNode::Setup() {
-    // No setup needed for Phase 1 minimal (stub)
+    // Get device and command pool from inputs
+    vulkanDevice = In(GeometryRenderNodeConfig::VULKAN_DEVICE);
+    if (!vulkanDevice) {
+        throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
+    }
+    
+    commandPool = In(GeometryRenderNodeConfig::COMMAND_POOL);
+    if (commandPool == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: CommandPool input is null");
+    }
 }
 
 void GeometryRenderNode::Compile() {
@@ -78,35 +88,149 @@ void GeometryRenderNode::Compile() {
     clearDepthStencil.depthStencil.depth = GetParameterValue<float>(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
     clearDepthStencil.depthStencil.stencil = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::CLEAR_STENCIL, 0);
 
-    // TODO Phase 1: Validation disabled - nodes are stubs
-    // Validate inputs
-    // if (renderPass == VK_NULL_HANDLE) {
-    //     throw std::runtime_error("GeometryRenderNode: render pass not set");
-    // }
-    // ... rest of validation commented out for Phase 1
+    // Allocate command buffers (one per framebuffer/swapchain image)
+    // Determine count by checking framebuffer array size
+    // For MVP, assume 3 swapchain images (typical double/triple buffering)
+    const uint32_t imageCount = 3; // TODO: Get from swapchain node
+    
+    commandBuffers.resize(imageCount);
+    
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = imageCount;
+    
+    VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, commandBuffers.data());
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to allocate command buffers");
+    }
+    
+    // Create render complete semaphore
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    
+    result = vkCreateSemaphore(vulkanDevice->device, &semaphoreInfo, nullptr, &renderCompleteSemaphore);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to create render complete semaphore");
+    }
+    
+    RegisterCleanup();
 }
 
 void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
-    // Execute is typically used for per-frame command recording
-    // For now, this node records commands via RecordDrawCommands()
-    // which is called externally with the appropriate framebuffer index
+    // Get current image index from SwapChainNode
+    uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
+    VkSemaphore imageAvailableSemaphore = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE);
+    
+    // Record draw commands for current image
+    VkCommandBuffer cmdBuffer = commandBuffers[imageIndex];
+    RecordDrawCommands(cmdBuffer, imageIndex);
+    
+    // Submit command buffer to graphics queue
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    
+    // Wait for image to be available before writing to it
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
+    submitInfo.pWaitDstStageMask = &waitStage;
+    
+    // Submit command buffer
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+    
+    // Signal render complete semaphore when done
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
+    
+    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
+    }
+    
+    // Output render complete semaphore for PresentNode
+    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
-void GeometryRenderNode::Cleanup() {
-    // No resources to clean up - this node only records commands
+void GeometryRenderNode::CleanupImpl() {
+    // Free command buffers
+    if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && vulkanDevice) {
+        vkFreeCommandBuffers(
+            vulkanDevice->device,
+            commandPool,
+            static_cast<uint32_t>(commandBuffers.size()),
+            commandBuffers.data()
+        );
+        commandBuffers.clear();
+    }
+    
+    // Destroy render complete semaphore
+    if (renderCompleteSemaphore != VK_NULL_HANDLE && vulkanDevice) {
+        vkDestroySemaphore(vulkanDevice->device, renderCompleteSemaphore, nullptr);
+        renderCompleteSemaphore = VK_NULL_HANDLE;
+    }
 }
 
 void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
+    // Begin command buffer recording
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+    
+    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to begin command buffer");
+    }
+    
     // Get inputs via typed config API
     VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
     VkFramebuffer framebuffer = In(GeometryRenderNodeConfig::FRAMEBUFFERS, framebufferIndex);
     VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE);
     VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
     VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-    const VkViewport* viewport = In(GeometryRenderNodeConfig::VIEWPORT);
-    const VkRect2D* scissor = In(GeometryRenderNodeConfig::SCISSOR);
-    uint32_t renderWidth = In(GeometryRenderNodeConfig::RENDER_WIDTH);
-    uint32_t renderHeight = In(GeometryRenderNodeConfig::RENDER_HEIGHT);
+    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+
+    std::cout << "[GeometryRenderNode::RecordDrawCommands] Retrieved vertex buffer: " 
+              << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+
+    // Validate critical inputs
+    if (framebuffer == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: Framebuffer is VK_NULL_HANDLE for index " + std::to_string(framebufferIndex));
+    }
+    if (renderPass == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: RenderPass is VK_NULL_HANDLE");
+    }
+    if (pipeline == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: Pipeline is VK_NULL_HANDLE");
+    }
+    if (swapchainInfo == nullptr) {
+        throw std::runtime_error("GeometryRenderNode: SwapChain info is null");
+    }
+    if (vertexBuffer == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: Vertex buffer is VK_NULL_HANDLE");
+    }
+    if (pipelineLayout == VK_NULL_HANDLE) {
+        throw std::runtime_error("GeometryRenderNode: Pipeline layout is VK_NULL_HANDLE");
+    }
+
+    // Extract viewport and scissor from swapchain info
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchainInfo->Extent.width);
+    viewport.height = static_cast<float>(swapchainInfo->Extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchainInfo->Extent;
+
+    uint32_t renderWidth = swapchainInfo->Extent.width;
+    uint32_t renderHeight = swapchainInfo->Extent.height;
 
     // Setup clear values
     VkClearValue clearValues[2];
@@ -139,24 +263,22 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
         pipeline
     );
 
-    // Bind descriptor sets (get count from input array)
-    // TODO: Query actual descriptor set count from inputs
-    // For now, assume we have descriptor sets
+    // Bind descriptor sets
     {
-        // Get first descriptor set to check if available
         VkDescriptorSet firstDescSet = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, 0);
         if (firstDescSet != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
-            // TODO: Support multiple descriptor sets properly
             vkCmdBindDescriptorSets(
                 cmdBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 pipelineLayout,
                 0,
-                1, // For now, bind just the first one
+                1,
                 &firstDescSet,
                 0,
                 nullptr
             );
+        } else {
+            std::cout << "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!" << std::endl;
         }
     }
 
@@ -184,10 +306,10 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     }
 
     // Set viewport
-    vkCmdSetViewport(cmdBuffer, 0, 1, viewport);
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
 
     // Set scissor
-    vkCmdSetScissor(cmdBuffer, 0, 1, scissor);
+    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 
     // Draw
     if (useIndexBuffer) {
@@ -212,8 +334,11 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     // End render pass
     vkCmdEndRenderPass(cmdBuffer);
     
-    // Store command buffer in output (if needed for graph connections)
-    // Out(GeometryRenderNodeConfig::COMMAND_BUFFERS, cmdBuffer, framebufferIndex);
+    // End command buffer recording
+    result = vkEndCommandBuffer(cmdBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to end command buffer");
+    }
 }
 
 } // namespace Vixen::RenderGraph

@@ -111,7 +111,7 @@ void DeviceNode::Execute(VkCommandBuffer commandBuffer) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 
-void DeviceNode::Cleanup() {
+void DeviceNode::CleanupImpl() {
     NODE_LOG_INFO("[DeviceNode] Cleanup");
 
     // VulkanDevice destructor handles device destruction

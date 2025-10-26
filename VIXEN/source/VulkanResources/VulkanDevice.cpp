@@ -137,6 +137,8 @@ VulkanResult<uint32_t> VulkanDevice::GetGraphicsQueueHandle() {
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
         if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             graphicsQueueIndex = i;
+            // Assume graphics queue supports present (verified during swapchain creation)
+            graphicsQueueWithPresentIndex = i;
             return i;
         }
     }

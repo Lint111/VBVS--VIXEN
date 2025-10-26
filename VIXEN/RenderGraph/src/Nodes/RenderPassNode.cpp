@@ -193,7 +193,7 @@ void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {
     // No-op - render pass is created in Compile phase
 }
 
-void RenderPassNode::Cleanup() {
+void RenderPassNode::CleanupImpl() {
     if (renderPass != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
         vkDestroyRenderPass(vulkanDevice->device, renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;

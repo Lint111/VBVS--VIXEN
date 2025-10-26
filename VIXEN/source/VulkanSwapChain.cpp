@@ -115,6 +115,8 @@ void VulkanSwapChain::SetSwapChainExtent(uint32_t width, uint32_t height)
 {
     scPrivateVars.swapChainExtent.width = width;
     scPrivateVars.swapChainExtent.height = height;
+
+	scPublicVars.Extent = { width, height };
 }
 
 VkResult VulkanSwapChain::CreateSwapChainExtensions(VkInstance instance, VkDevice device)

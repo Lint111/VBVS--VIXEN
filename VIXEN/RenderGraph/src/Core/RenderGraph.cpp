@@ -488,16 +488,27 @@ void RenderGraph::AllocateResources() {
 }
 
 void RenderGraph::GeneratePipelines() {
-    // TODO: Implement pipeline generation
-    // This will create/reuse pipelines for each node
+    // Compile nodes in dependency order (executionOrder is topologically sorted)
+    std::cout << "[GeneratePipelines] Total instances to compile: " << executionOrder.size() << std::endl;
+    std::cout.flush();
+    for (size_t i = 0; i < executionOrder.size(); ++i) {
+        std::cout << "[GeneratePipelines]   " << i << ": " << executionOrder[i]->GetInstanceName() << std::endl;
+        std::cout.flush();
+    }
 
-    for (auto& instance : instances) {
+    for (NodeInstance* instance : executionOrder) {
+        // Skip nodes that are already compiled (e.g., pre-compiled device node)
+        if (instance->GetState() == NodeState::Compiled) {
+            std::cout << "[GeneratePipelines] Skipping already-compiled node: " << instance->GetInstanceName() << std::endl;
+            continue;
+        }
+
         std::cout << "[GeneratePipelines] Calling Setup() on node: " << instance->GetInstanceName() << std::endl;
         instance->Setup();    // Call Setup() before Compile()
-        
+
         std::cout << "[GeneratePipelines] Calling Compile() on node: " << instance->GetInstanceName() << std::endl;
         instance->Compile();
-        
+
         std::cout << "[GeneratePipelines] Node compiled successfully: " << instance->GetInstanceName() << std::endl;
         instance->SetState(NodeState::Compiled);
     }

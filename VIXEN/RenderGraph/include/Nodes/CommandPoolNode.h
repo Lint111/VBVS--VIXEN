@@ -43,7 +43,9 @@ public:
     void Setup() override;
     void Compile() override;
     void Execute(VkCommandBuffer commandBuffer) override;
-    void Cleanup() override;
+
+protected:
+    void CleanupImpl() override;
 
 private:
     VkCommandPool commandPool = VK_NULL_HANDLE;

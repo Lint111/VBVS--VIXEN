@@ -1,20 +1,25 @@
 #pragma once
 
 #include "Core/ResourceConfig.h"
-#include "ShaderManagement/ShaderProgram.h"
+// TEMPORARILY REMOVED - using VulkanShader directly for MVP
+// #include "ShaderManagement/ShaderProgram.h"
 #include "VulkanResources/VulkanDevice.h"
+
+// Forward declare for stub
+class VulkanShader;
 
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanShaderPtr = VulkanShader*;
 
 /**
  * @brief Pure constexpr resource configuration for GraphicsPipelineNode
  *
  * Inputs:
  * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
- * - SHADER_PROGRAM (ShaderProgramDescriptor*) - Compiled shader program from ShaderLibraryNode
+ * - SHADER_STAGES (VulkanShaderPtr) - Shader stages from VulkanShader (temporary MVP approach)
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
  * - VIEWPORT (VkViewport*) - Viewport configuration (from SwapChainNode dimensions)
@@ -38,7 +43,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace GraphicsPipelineNodeCounts {
-    static constexpr size_t INPUTS = 6;
+    static constexpr size_t INPUTS = 5;  // DEVICE, SHADER_STAGES, RENDER_PASS, DESCRIPTOR_SET_LAYOUT, SWAPCHAIN_INFO
     static constexpr size_t OUTPUTS = 4;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -60,8 +65,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
-    // Shader program from ShaderLibraryNode
-    CONSTEXPR_INPUT(SHADER_PROGRAM, ShaderProgramDescriptorPtr, 1, false);
+    // Shader stages from VulkanShader (MVP - temporary until ShaderManagement integrated)
+    CONSTEXPR_INPUT(SHADER_STAGES, VulkanShaderPtr, 1, false);
 
     // Render pass from RenderPassNode
     CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 2, false);
@@ -69,11 +74,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     // Descriptor set layout from DescriptorSetNode
     CONSTEXPR_INPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3, false);
 
-    // Viewport configuration (pointer to VkViewport struct)
-    CONSTEXPR_INPUT(VIEWPORT, VkViewportPtr, 4, false);
-
-    // Scissor rectangle (pointer to VkRect2D struct)
-    CONSTEXPR_INPUT(SCISSOR, VkRect2DPtr, 5, false);
+    // Swapchain info for viewport/scissor dimensions
+    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 4, false);
 
     // ===== OUTPUTS (3) =====
     // Graphics pipeline handle
@@ -92,9 +94,10 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        INIT_INPUT_DESC(SHADER_PROGRAM, "shader_program",
+        HandleDescriptor shaderDesc{"VulkanShader*"};
+        INIT_INPUT_DESC(SHADER_STAGES, "shader_stages",
             ResourceLifetime::Persistent,
-            BufferDescription{}  // Opaque pointer
+            shaderDesc  // VulkanShader pointer
         );
 
         INIT_INPUT_DESC(RENDER_PASS, "render_pass",
@@ -107,14 +110,10 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
             BufferDescription{}  // Opaque handle
         );
 
-        INIT_INPUT_DESC(VIEWPORT, "viewport",
-            ResourceLifetime::Transient,
-            BufferDescription{}  // Pointer to viewport struct
-        );
-
-        INIT_INPUT_DESC(SCISSOR, "scissor",
-            ResourceLifetime::Transient,
-            BufferDescription{}  // Pointer to scissor struct
+        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info",
+            ResourceLifetime::Persistent,
+            swapchainInfoDesc
         );
 
         // Initialize output descriptors
@@ -144,8 +143,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(SHADER_PROGRAM_Slot::index == 1, "SHADER_PROGRAM must be at index 1");
-    static_assert(!SHADER_PROGRAM_Slot::nullable, "SHADER_PROGRAM is required");
+    static_assert(SHADER_STAGES_Slot::index == 1, "SHADER_STAGES must be at index 1");
+    static_assert(!SHADER_STAGES_Slot::nullable, "SHADER_STAGES is required");
 
     static_assert(RENDER_PASS_Slot::index == 2, "RENDER_PASS must be at index 2");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
@@ -153,11 +152,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 3, "DESCRIPTOR_SET_LAYOUT must be at index 3");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");
 
-    static_assert(VIEWPORT_Slot::index == 4, "VIEWPORT must be at index 4");
-    static_assert(!VIEWPORT_Slot::nullable, "VIEWPORT is required");
-
-    static_assert(SCISSOR_Slot::index == 5, "SCISSOR must be at index 5");
-    static_assert(!SCISSOR_Slot::nullable, "SCISSOR is required");
+    static_assert(SWAPCHAIN_INFO_Slot::index == 4, "SWAPCHAIN_INFO must be at index 4");
+    static_assert(!SWAPCHAIN_INFO_Slot::nullable, "SWAPCHAIN_INFO is required");
 
     static_assert(PIPELINE_Slot::index == 0, "PIPELINE must be at index 0");
     static_assert(!PIPELINE_Slot::nullable, "PIPELINE is required");
@@ -173,11 +169,10 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, ShaderProgramDescriptorPtr>);
+    static_assert(std::is_same_v<SHADER_STAGES_Slot::Type, VulkanShaderPtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
-    static_assert(std::is_same_v<VIEWPORT_Slot::Type, VkViewportPtr>);
-    static_assert(std::is_same_v<SCISSOR_Slot::Type, VkRect2DPtr>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);

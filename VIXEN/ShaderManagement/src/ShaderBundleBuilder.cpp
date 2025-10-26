@@ -5,7 +5,9 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#ifdef HAS_OPENSSL
 #include <openssl/sha.h>
+#endif
 
 namespace ShaderManagement {
 
@@ -91,8 +93,9 @@ std::string GenerateContentBasedUuid(
         }
     }
 
-    // Compute SHA-256 hash
     std::string content = contentStream.str();
+#ifdef HAS_OPENSSL
+    // Compute SHA-256 hash
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256(reinterpret_cast<const unsigned char*>(content.c_str()),
            content.size(), hash);
@@ -105,6 +108,12 @@ std::string GenerateContentBasedUuid(
     }
 
     return hexStream.str();
+#else
+    // Fallback: use std::hash
+    std::ostringstream hexStream;
+    hexStream << std::hex << std::hash<std::string>{}(content);
+    return hexStream.str();
+#endif
 }
 
 /**

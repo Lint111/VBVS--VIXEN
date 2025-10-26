@@ -100,7 +100,7 @@ void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
     // Execute is a no-op
 }
 
-void CommandPoolNode::Cleanup() {
+void CommandPoolNode::CleanupImpl() {
     if (isCreated && commandPool != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
         vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
