@@ -3,6 +3,7 @@
 #include "ResourceVariant.h"
 #include "NodeType.h"
 #include "Data/ParameterDataTypes.h"
+#include "CleanupStack.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -18,6 +19,7 @@ namespace Vixen::RenderGraph {
 
 // Forward declarations
 class RenderGraph;
+// NodeHandle defined in CleanupStack.h
 
 /**
  * @brief Connection point for graph edges
@@ -57,6 +59,8 @@ public:
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
     uint64_t GetInstanceId() const { return instanceId; }
+    NodeHandle GetHandle() const { return nodeHandle; }
+    void SetHandle(NodeHandle handle) { nodeHandle = handle; }
 
     // Tags (for bulk operations via events)
     void AddTag(const std::string& tag);
@@ -249,6 +253,7 @@ protected:
     // Instance identification
     std::string instanceName;
     uint64_t instanceId;
+    NodeHandle nodeHandle;  // Handle to this node in the graph
     NodeType* nodeType;
     std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
     

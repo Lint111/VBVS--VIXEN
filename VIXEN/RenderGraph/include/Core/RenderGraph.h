@@ -28,17 +28,7 @@ namespace Vixen::Vulkan::Resources {
 
 namespace Vixen::RenderGraph {
 
-/**
- * @brief Handle for referencing nodes in the graph
- */
-struct NodeHandle {
-    uint32_t index = UINT32_MAX;
-    
-    bool IsValid() const { return index != UINT32_MAX; }
-    bool operator==(const NodeHandle& other) const { return index == other.index; }
-    bool operator!=(const NodeHandle& other) const { return index != other.index; }
-    bool operator<(const NodeHandle& other) const { return index < other.index; }
-};
+// NodeHandle defined in CleanupStack.h (included transitively)
 
 /**
  * @brief Main Render Graph class
@@ -331,6 +321,7 @@ private:
     EventBus::EventSubscriptionID windowResizeSubscription = 0;
     EventBus::EventSubscriptionID windowStateSubscription = 0;
     EventBus::EventSubscriptionID deviceSyncSubscription = 0;
+    EventBus::EventSubscriptionID windowCloseSubscription = 0;
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     #ifdef _DEBUG
@@ -381,6 +372,7 @@ private:
     void HandleRenderPause(const EventTypes::RenderPauseEvent& msg);
     void HandleWindowResize(const EventTypes::WindowResizedMessage& msg);
     void HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg);
+    void HandleWindowClose();
     void HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg);
     void HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedMessage& msg);
 

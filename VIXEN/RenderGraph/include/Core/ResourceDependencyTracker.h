@@ -10,6 +10,7 @@ namespace Vixen::RenderGraph {
 // Forward declarations
 class NodeInstance;
 class Resource;
+struct NodeHandle;
 
 /**
  * @brief Tracks which NodeInstance provides which Resource
@@ -48,15 +49,15 @@ public:
     std::vector<NodeInstance*> GetDependenciesForNode(NodeInstance* consumer) const;
 
     /**
-     * @brief Build cleanup dependency names for a NodeInstance
-     * 
-     * Looks at all input slots, finds producer instances, returns their cleanup names.
+     * @brief Build cleanup dependency handles for a NodeInstance
+     *
+     * Looks at all input slots, finds producer instances, returns their handles.
      * Used when registering with CleanupStack.
-     * 
+     *
      * @param consumer The NodeInstance that consumes resources
-     * @return Vector of cleanup names this node depends on (must cleanup after these)
+     * @return Vector of handles this node depends on (must cleanup after these)
      */
-    std::vector<std::string> BuildCleanupDependencies(NodeInstance* consumer) const;
+    std::vector<NodeHandle> BuildCleanupDependencies(NodeInstance* consumer) const;
 
     /**
      * @brief Clear all tracked dependencies

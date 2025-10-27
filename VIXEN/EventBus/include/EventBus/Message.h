@@ -213,8 +213,9 @@ struct WindowStateChangeEvent : public BaseEventMessage {
 
 /**
  * @brief Window close event
- * 
+ *
  * Published when user requests to close the application (X button)
+ * Systems should subscribe to this event to perform graceful shutdown
  */
 struct WindowCloseEvent : public BaseEventMessage {
     static constexpr MessageType TYPE = 102;
@@ -222,6 +223,22 @@ struct WindowCloseEvent : public BaseEventMessage {
 
     WindowCloseEvent(SenderID sender)
         : BaseEventMessage(CATEGORY, TYPE, sender) {}
+};
+
+/**
+ * @brief Shutdown acknowledgment event
+ *
+ * Published by systems when they have completed their shutdown sequence
+ * Application tracks these to know when it's safe to destroy the window
+ */
+struct ShutdownAckEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 104;  // 103 taken by RenderPauseEvent
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    std::string systemName;  // Name of system that acknowledged shutdown
+
+    ShutdownAckEvent(SenderID sender, const std::string& name)
+        : BaseEventMessage(CATEGORY, TYPE, sender), systemName(name) {}
 };
 
 /**

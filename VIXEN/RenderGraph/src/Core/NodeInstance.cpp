@@ -241,10 +241,11 @@ void NodeInstance::RegisterCleanup() {
 
     // Build dependency list automatically from input resources
     auto& tracker = owningGraph->GetDependencyTracker();
-    std::vector<std::string> cleanupDeps = tracker.BuildCleanupDependencies(this);
+    std::vector<NodeHandle> cleanupDeps = tracker.BuildCleanupDependencies(this);
 
-    // Register with cleanup stack
+    // Register with cleanup stack using handle
     owningGraph->GetCleanupStack().Register(
+        nodeHandle,
         GetInstanceName() + "_Cleanup",
         [this]() { this->Cleanup(); },
         cleanupDeps

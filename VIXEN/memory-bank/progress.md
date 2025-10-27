@@ -1,10 +1,10 @@
 # Progress
 
-## Current State: RenderGraph Architecture Operational ✅
+## Current State: Event-Driven Recompilation Operational ✅
 
-**Last Updated**: October 23, 2025
+**Last Updated**: October 27, 2025
 
-The project has transitioned from legacy monolithic rendering to a **production-quality graph-based architecture**. Core infrastructure is complete with zero warnings and clean API separation.
+The project has transitioned from legacy monolithic rendering to a **production-quality graph-based architecture** with full event-driven recompilation. Window resize triggers automatic recompilation cascade through the dependency graph.
 
 ---
 
@@ -30,13 +30,16 @@ The project has transitioned from legacy monolithic rendering to a **production-
 
 **Key Files**: `RenderGraph/include/Core/TypedNodeInstance.h`, `RenderGraph/include/Core/NodeInstance.h`
 
-### 3. EventBus Integration (Design Complete)
-**Status**: ✅ Architecture documented, ready for use
+### 3. EventBus Integration (October 2025)
+**Status**: ✅ Complete with full recompilation cascade
 
 - Type-safe event payloads, queue-based processing
 - Cascade invalidation pattern (WindowResize → SwapChainInvalidated → FramebufferDirty)
+- Nodes subscribe to events and mark themselves dirty
+- CleanupStack provides dependency graph for cascade propagation
+- While-loop recompilation ensures all dirty nodes are processed
 
-**Key Files**: `EventBus/include/EventBus.h`, `documentation/EventBusArchitecture.md`
+**Key Files**: `EventBus/include/EventBus.h`, `RenderGraph/src/Core/RenderGraph.cpp` (RecompileDirtyNodes), `documentation/EventBusArchitecture.md`
 
 ### 4. RenderGraph Core (October 2025)
 **Status**: ✅ Complete, modular library structure
@@ -63,15 +66,27 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. Architectural Refinements (From October 2025 Review)
+### 1. Handle-Based System Refactoring
+**Priority**: HIGH
+
+**Issue**: String-based lookups in CleanupStack create O(n²) complexity during recompilation
+
+**Tasks**:
+1. ⏳ Migrate CleanupStack to use NodeHandle instead of string names
+2. ⏳ Change GetAllDependents() to return `std::unordered_set<NodeHandle>`
+3. ⏳ Eliminate name→handle lookups in recompilation loop
+
+**Impact**: Reduces cascade recompilation from O(n²) to O(n)
+
+### 2. Vulkan Synchronization Fixes
 **Priority**: HIGH
 
 **Tasks**:
-1. ⏳ Add resource type validation (runtime checks in debug builds)
-2. ⏳ Replace `friend class RenderGraph` with `INodeWiring` interface
-3. ⏳ Make event processing explicit (`RenderFrame()` method)
+1. ⏳ Fix semaphore management (one semaphore per swapchain image, not one total)
+2. ⏳ Add command buffer synchronization (fences to track GPU completion)
+3. ⏳ Fix resource leaks at shutdown (framebuffers, buffers, device memory)
 
-**See**: `documentation/ArchitecturalReview-2025-10.md` for complete recommendations
+**See**: Validation layer errors in current run
 
 ### 2. Node Expansion
 **Priority**: MEDIUM

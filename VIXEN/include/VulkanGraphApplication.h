@@ -86,6 +86,21 @@ protected:
      */
     virtual void RegisterNodeTypes();
 
+    /**
+     * @brief Handle shutdown request from user (X button clicked)
+     */
+    void HandleShutdownRequest();
+
+    /**
+     * @brief Handle shutdown acknowledgment from a system
+     */
+    void HandleShutdownAck(const std::string& systemName);
+
+    /**
+     * @brief Complete shutdown after all systems acknowledged
+     */
+    void CompleteShutdown();
+
 private:
     // ====== Graph Components ======
     std::unique_ptr<NodeTypeRegistry> nodeRegistry;  // Node type registry
@@ -98,6 +113,12 @@ private:
     Vixen::Core::EngineTime time;                    // Time management
     bool graphCompiled;                              // Graph compilation state
     int width, height;                               // Window dimensions
+
+    // ====== Shutdown Management ======
+    bool shutdownRequested = false;                  // User requested shutdown
+    std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
+    HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
+    NodeHandle windowNodeHandle;                     // Cached for accessing window HWND
 
     // ====== MVP Shader Management ======
     VulkanShader* triangleShader = nullptr;          // MVP: Direct shader (temporary)

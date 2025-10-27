@@ -39,6 +39,15 @@ RenderGraph::RenderGraph(
             }
         );
 
+        // Subscribe to window close event for graceful shutdown
+        windowCloseSubscription = messageBus->Subscribe(
+            EventBus::WindowCloseEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                this->HandleWindowClose();
+                return true;
+            }
+        );
+
         // Subscribe to render pause events
         renderPauseSubscription = messageBus->Subscribe(
             EventTypes::RenderPauseEvent::TYPE,
@@ -144,7 +153,8 @@ NodeHandle RenderGraph::AddNode(
     nameToHandle[instanceName] = handle;
     instancesByType[typeId].push_back(instances[index].get());
 
-    // Set owning graph pointer for cleanup registration
+    // Set handle and owning graph pointer
+    instances[index]->SetHandle(handle);
     instances[index]->SetOwningGraph(this);
 
     // Inject MessageBus for event publishing/subscription
@@ -278,7 +288,7 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 void RenderGraph::Clear() {
     // Execute cleanup callbacks in dependency order BEFORE clearing instances
     ExecuteCleanup();
-    
+
     instances.clear();
     resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
     nameToHandle.clear();
@@ -289,6 +299,33 @@ void RenderGraph::Clear() {
     // usedDevices.clear();
     // usedDevices.push_back(primaryDevice);
     isCompiled = false;
+}
+
+void RenderGraph::HandleWindowClose() {
+    std::cout << "[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup" << std::endl;
+
+    // Wait for GPU to finish all work before cleanup
+    for (const auto& inst : instances) {
+        if (inst) {
+            auto* device = inst->GetDevice();
+            if (device && device->device != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(device->device);
+                break;  // Only need to wait once per unique device
+            }
+        }
+    }
+
+    // Execute cleanup (destroys all Vulkan resources)
+    ExecuteCleanup();
+
+    std::cout << "[RenderGraph] Cleanup complete" << std::endl;
+
+    // Acknowledge shutdown to application
+    if (messageBus) {
+        messageBus->Publish(
+            std::make_unique<EventBus::ShutdownAckEvent>(0, "RenderGraph")
+        );
+    }
 }
 
 void RenderGraph::ExecuteCleanup() {
@@ -688,9 +725,9 @@ void RenderGraph::RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& 
     
     // Now clean this node
     std::cout << "[RecursiveCleanup] Cleaning node: " << node->GetInstanceName() << std::endl;
-    
-    // Execute cleanup callback via CleanupStack
-    cleanupStack.ExecuteFrom(node->GetInstanceName() + "_Cleanup");
+
+    // Execute cleanup callback via CleanupStack using handle
+    cleanupStack.ExecuteFrom(node->GetHandle());
     
     // Mark as cleaned
     cleaned.insert(node);
@@ -1018,22 +1055,16 @@ void RenderGraph::RecompileDirtyNodes() {
                 // The cleanup stack tracks the dependency graph: provider -> dependents
                 // We need to compile in the opposite direction: when a provider recompiles,
                 // all its dependents need to recompile
-                std::string cleanupName = node->GetInstanceName() + "_Cleanup";
-                std::unordered_set<std::string> dependentNames = cleanupStack.GetAllDependents(cleanupName);
-    
-                for (const std::string& depName : dependentNames) {
-                    // Convert cleanup name back to node name (remove "_Cleanup" suffix)
-                    if (depName.size() > 8 && depName.substr(depName.size() - 8) == "_Cleanup") {
-                        std::string nodeName = depName.substr(0, depName.size() - 8);
-    
-                        // Find the node instance by name
-                        for (uint32_t i = 0; i < instances.size(); ++i) {
-                            if (instances[i]->GetInstanceName() == nodeName) {
-                                std::cout << "[RenderGraph] Marking dependent node '" << nodeName
-                                          << "' for recompilation" << std::endl;
-                                instances[i]->MarkNeedsRecompile();
-                                break;
-                            }
+                NodeHandle nodeHandle = node->GetHandle();
+                std::unordered_set<NodeHandle> dependentHandles = cleanupStack.GetAllDependents(nodeHandle);
+
+                for (NodeHandle depHandle : dependentHandles) {
+                    if (depHandle.IsValid() && depHandle.index < instances.size()) {
+                        NodeInstance* dependent = instances[depHandle.index].get();
+                        if (dependent) {
+                            std::cout << "[RenderGraph] Marking dependent node '" << dependent->GetInstanceName()
+                                      << "' for recompilation" << std::endl;
+                            dependent->MarkNeedsRecompile();
                         }
                     }
                 }

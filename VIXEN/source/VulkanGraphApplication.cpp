@@ -80,6 +80,24 @@ void VulkanGraphApplication::Initialize() {
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
     renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), messageBus.get(), mainLogger.get());
 
+    // Subscribe to shutdown events
+    messageBus->Subscribe(
+        Vixen::EventBus::WindowCloseEvent::TYPE,
+        [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
+            HandleShutdownRequest();
+            return true;
+        }
+    );
+
+    messageBus->Subscribe(
+        Vixen::EventBus::ShutdownAckEvent::TYPE,
+        [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
+            const auto& ackMsg = static_cast<const Vixen::EventBus::ShutdownAckEvent&>(msg);
+            HandleShutdownAck(ackMsg.systemName);
+            return true;
+        }
+    );
+
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
@@ -99,6 +117,17 @@ void VulkanGraphApplication::Prepare() {
         std::cout << "[VulkanGraphApplication::Prepare] Calling BuildRenderGraph..." << std::endl;
         BuildRenderGraph();
         std::cout << "[VulkanGraphApplication::Prepare] BuildRenderGraph complete" << std::endl;
+
+        // Cache window handle for graceful shutdown
+        if (windowNodeHandle.IsValid()) {
+            auto* windowInst = renderGraph->GetInstance(windowNodeHandle);
+            if (windowInst) {
+                auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
+                if (windowNode) {
+                    windowHandle = windowNode->GetWindow();
+                }
+            }
+        }
 
         // Compile the render graph - nodes set up their pipelines
         std::cout << "[VulkanGraphApplication::Prepare] Calling CompileRenderGraph..." << std::endl;
@@ -378,6 +407,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Infrastructure Nodes ---
     NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
+    windowNodeHandle = windowNode; // Cache for shutdown handling
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
     deviceNodeHandle = deviceNode; // MVP: Cache for post-compile shader loading
     NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
@@ -649,4 +679,47 @@ void VulkanGraphApplication::BuildRenderGraph() {
     
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
+}
+
+void VulkanGraphApplication::HandleShutdownRequest() {
+    if (shutdownRequested) {
+        return;  // Already shutting down
+    }
+
+    mainLogger->Info("Shutdown requested - initiating graceful shutdown sequence");
+    shutdownRequested = true;
+
+    // Register systems that need to acknowledge shutdown
+    // In this case, we want the RenderGraph to cleanup first
+    shutdownAcksPending.insert("RenderGraph");
+
+    // Window handle should already be cached from WindowNode during graph build
+    // RenderGraph will cleanup via WindowCloseEvent subscription, then publish ShutdownAckEvent
+    mainLogger->Info("Waiting for RenderGraph cleanup acknowledgment...");
+}
+
+void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
+    mainLogger->Info("Received shutdown acknowledgment from: " + systemName);
+
+    auto it = shutdownAcksPending.find(systemName);
+    if (it != shutdownAcksPending.end()) {
+        shutdownAcksPending.erase(it);
+    }
+
+    // Check if all systems have acknowledged
+    if (shutdownAcksPending.empty()) {
+        mainLogger->Info("All systems acknowledged shutdown - destroying window");
+        CompleteShutdown();
+    } else {
+        mainLogger->Info("Still waiting for " + std::to_string(shutdownAcksPending.size()) + " system(s) to acknowledge");
+    }
+}
+
+void VulkanGraphApplication::CompleteShutdown() {
+    // All systems have cleaned up - now destroy the window
+    if (windowHandle) {
+        mainLogger->Info("Destroying window to complete shutdown");
+        DestroyWindow(windowHandle);
+        windowHandle = nullptr;
+    }
 }
