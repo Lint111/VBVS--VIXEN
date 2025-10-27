@@ -33,6 +33,7 @@ struct NodeHandle {
     bool IsValid() const { return index != UINT32_MAX; }
     bool operator==(const NodeHandle& other) const { return index == other.index; }
     bool operator!=(const NodeHandle& other) const { return index != other.index; }
+    bool operator<(const NodeHandle& other) const { return index < other.index; }
 };
 
 /**
@@ -208,9 +209,39 @@ public:
     const Vixen::Core::EngineTime& GetTime() const { return time; }
 
     /**
-     * @brief Update time - call once per frame before Execute()
+     * @brief Update the engine time
+     * Should be called once per frame to maintain time-based animations
      */
     void UpdateTime() { time.Update(); }
+
+    /**
+     * @brief Process pending events from the message bus
+     * 
+     * Should be called once per frame, typically before RenderFrame().
+     * Processes events that may mark nodes as needing recompilation.
+     */
+    void ProcessEvents();
+
+    /**
+     * @brief Recompile nodes that have been marked as dirty
+     * 
+     * Called after ProcessEvents() to handle cascade recompilation.
+     * Only recompiles nodes that actually need it.
+     */
+    void RecompileDirtyNodes();
+
+    /**
+     * @brief Get the message bus (for nodes to publish events)
+     */
+    EventBus::MessageBus* GetMessageBus() const { return messageBus; }
+
+    /**
+     * @brief Mark a node as needing recompilation
+     * 
+     * Called by NodeInstance when it receives an invalidation event.
+     * The node will be recompiled during the next RecompileDirtyNodes() call.
+     */
+    void MarkNodeNeedsRecompile(NodeHandle nodeHandle);
 
     /**
      * @brief Execute all cleanup callbacks in dependency order
@@ -291,6 +322,9 @@ private:
     // Execution
     std::vector<NodeInstance*> executionOrder;
     bool isCompiled = false;
+
+    // Event-driven recompilation
+    std::set<NodeHandle> dirtyNodes;
 
     // Cleanup management
     CleanupStack cleanupStack;

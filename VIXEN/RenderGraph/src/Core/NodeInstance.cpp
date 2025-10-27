@@ -4,14 +4,19 @@
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
+#include <atomic>
 
 namespace Vixen::RenderGraph {
+
+// Static counter for unique instance IDs
+static std::atomic<uint64_t> nextInstanceId{1};
 
 NodeInstance::NodeInstance(
     const std::string& instanceName,
     NodeType* nodeType
 )
     : instanceName(instanceName)
+    , instanceId(nextInstanceId.fetch_add(1))
     , nodeType(nodeType)
 {
     // Allocate space for inputs and outputs based on schema
@@ -39,6 +44,14 @@ NodeInstance::NodeInstance(
 }
 
 NodeInstance::~NodeInstance() {
+    // Unsubscribe from all EventBus messages
+    if (messageBus) {
+        for (EventBus::SubscriptionID id : eventSubscriptions) {
+            messageBus->Unsubscribe(id);
+        }
+        eventSubscriptions.clear();
+    }
+    
     Cleanup();
 }
 
@@ -255,6 +268,68 @@ void NodeInstance::DeallocateResources() {
     // Resources are now managed via the graph's resource system
     // Nothing to deallocate here
     state = NodeState::Created;
+}
+
+// EventBus Integration Implementation
+
+EventBus::SubscriptionID NodeInstance::SubscribeToMessage(
+    EventBus::MessageType type,
+    EventBus::MessageHandler handler
+) {
+    if (!messageBus) {
+        return 0;  // No bus available
+    }
+
+    EventBus::SubscriptionID id = messageBus->Subscribe(type, std::move(handler));
+    eventSubscriptions.push_back(id);
+    return id;
+}
+
+EventBus::SubscriptionID NodeInstance::SubscribeToCategory(
+    EventBus::EventCategory category,
+    EventBus::MessageHandler handler
+) {
+    if (!messageBus) {
+        return 0;  // No bus available
+    }
+
+    EventBus::SubscriptionID id = messageBus->SubscribeCategory(category, std::move(handler));
+    eventSubscriptions.push_back(id);
+    return id;
+}
+
+void NodeInstance::UnsubscribeFromMessage(EventBus::SubscriptionID subscriptionId) {
+    if (!messageBus) {
+        return;
+    }
+
+    messageBus->Unsubscribe(subscriptionId);
+    
+    // Remove from our tracking list
+    eventSubscriptions.erase(
+        std::remove(eventSubscriptions.begin(), eventSubscriptions.end(), subscriptionId),
+        eventSubscriptions.end()
+    );
+}
+
+void NodeInstance::MarkNeedsRecompile() {
+    needsRecompile = true;
+    
+    // Notify the owning graph that this node is dirty
+    if (owningGraph) {
+        // Find our handle in the graph
+        for (size_t i = 0; i < owningGraph->GetNodeCount(); ++i) {
+            if (owningGraph->GetInstance({static_cast<uint32_t>(i)}) == this) {
+                // If currently executing, defer the dirty marking until execution completes
+                if (state == NodeState::Executing) {
+                    deferredRecompile = true;
+                } else {
+                    owningGraph->MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                }
+                break;
+            }
+        }
+    }
 }
 
 } // namespace Vixen::RenderGraph

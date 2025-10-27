@@ -9,6 +9,7 @@
 #include <variant>
 #include <memory>
 #include "Logger.h"
+#include "EventBus/MessageBus.h"
 
 // Forward declare Logger to avoid circular dependency
 class Logger;
@@ -55,6 +56,7 @@ public:
     const std::string& GetInstanceName() const { return instanceName; }
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
+    uint64_t GetInstanceId() const { return instanceId; }
 
     // Tags (for bulk operations via events)
     void AddTag(const std::string& tag);
@@ -129,6 +131,63 @@ public:
     void DeregisterFromParentLogger(Logger* parentLogger);
     #endif
 
+    // EventBus Integration
+    /**
+     * @brief Set the message bus for event publishing/subscription
+     * 
+     * Called by RenderGraph during AddNode() if EventBus is available.
+     * Nodes can publish events and subscribe to relevant messages.
+     */
+    void SetMessageBus(EventBus::MessageBus* bus) { messageBus = bus; }
+    EventBus::MessageBus* GetMessageBus() const { return messageBus; }
+
+    /**
+     * @brief Subscribe to a specific message type
+     * @param type Message type to subscribe to
+     * @param handler Callback function
+     * @return Subscription ID for unsubscribing
+     */
+    EventBus::SubscriptionID SubscribeToMessage(
+        EventBus::MessageType type,
+        EventBus::MessageHandler handler
+    );
+
+    /**
+     * @brief Subscribe to messages by category
+     * @param category Event category to subscribe to
+     * @param handler Callback function
+     * @return Subscription ID for unsubscribing
+     */
+    EventBus::SubscriptionID SubscribeToCategory(
+        EventBus::EventCategory category,
+        EventBus::MessageHandler handler
+    );
+
+    /**
+     * @brief Unsubscribe from a message
+     * @param subscriptionId ID returned by SubscribeToMessage/Category
+     */
+    void UnsubscribeFromMessage(EventBus::SubscriptionID subscriptionId);
+
+    /**
+     * @brief Mark this node as needing recompilation
+     * 
+     * Called when the node receives an event that invalidates its current state.
+     * The RenderGraph will recompile dirty nodes at the next safe point.
+     */
+    void MarkNeedsRecompile();
+
+    /**
+     * @brief Check if node needs recompilation
+     */
+    bool NeedsRecompile() const { return needsRecompile; }
+
+    /**
+     * @brief Clear the recompilation flag
+     * Called by RenderGraph after recompiling the node
+     */
+    void ClearNeedsRecompile() { needsRecompile = false; }
+
     // Virtual methods for derived classes to implement
     virtual void Setup() {}
     virtual void Compile() {}
@@ -173,6 +232,7 @@ protected:
 
     // Instance identification
     std::string instanceName;
+    uint64_t instanceId;
     NodeType* nodeType;
     std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
     
@@ -183,6 +243,12 @@ protected:
 
     // Owning graph pointer (for cleanup registration)
     RenderGraph* owningGraph = nullptr;
+
+    // EventBus integration
+    EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
+    std::vector<EventBus::SubscriptionID> eventSubscriptions;
+    bool needsRecompile = false;
+    bool deferredRecompile = false;  // Set when marked dirty during execution
 
     // Node-level behavior flags
     // When true the node will accept either single inputs or array-shaped inputs

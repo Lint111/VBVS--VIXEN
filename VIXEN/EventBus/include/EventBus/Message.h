@@ -49,21 +49,30 @@ enum class EventCategory : uint64_t {
     LightingChange      = 1ULL << 18,
     SceneChange         = 1ULL << 19,
     MaterialChange      = 1ULL << 20,
+
+    // Graph Management (24-31)
+    GraphManagement     = 1ULL << 24,
+    CleanupRequest      = 1ULL << 25,
+    GraphRecompile      = 1ULL << 26,
+
+    // Shader Events (32-39)
+    ShaderEvents        = 1ULL << 32,
+    ShaderHotReload     = 1ULL << 33
 };
 
-inline EventCategory operator|(EventCategory a, EventCategory b) {
+constexpr EventCategory operator|(EventCategory a, EventCategory b) {
     return static_cast<EventCategory>(static_cast<uint64_t>(a) | static_cast<uint64_t>(b));
 }
 
-inline EventCategory operator&(EventCategory a, EventCategory b) {
+constexpr EventCategory operator&(EventCategory a, EventCategory b) {
     return static_cast<EventCategory>(static_cast<uint64_t>(a) & static_cast<uint64_t>(b));
 }
 
-inline EventCategory operator~(EventCategory a) {
+constexpr EventCategory operator~(EventCategory a) {
     return static_cast<EventCategory>(~static_cast<uint64_t>(a));
 }
 
-inline bool HasCategory(EventCategory flags, EventCategory category) {
+constexpr bool HasCategory(EventCategory flags, EventCategory category) {
     return (static_cast<uint64_t>(flags) & static_cast<uint64_t>(category)) != 0ULL;
 }
 

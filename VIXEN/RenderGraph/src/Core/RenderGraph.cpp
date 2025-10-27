@@ -31,7 +31,7 @@ RenderGraph::RenderGraph(
     if (messageBus) {
         cleanupEventSubscription = messageBus->Subscribe(
             CleanupRequestedMessage::TYPE,
-            [this](const EventBus::Message& msg) {
+            [this](const EventBus::BaseEventMessage& msg) {
                 auto& cleanupMsg = static_cast<const CleanupRequestedMessage&>(msg);
                 this->HandleCleanupRequest(cleanupMsg);
                 return true;
@@ -88,6 +88,9 @@ NodeHandle RenderGraph::AddNode(
 
     // Set owning graph pointer for cleanup registration
     instances[index]->SetOwningGraph(this);
+
+    // Inject MessageBus for event publishing/subscription
+    instances[index]->SetMessageBus(messageBus);
 
     // Add logger if in debug mode (attach node to parent logger)
     #ifdef _DEBUG
@@ -324,22 +327,25 @@ VkResult RenderGraph::RenderFrame() {
             node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
             node->SetState(NodeState::Executing);
-
-            // NOTE: Legacy PHASE 1 HACK removed - PresentNode now uses typed slots.
-            // SwapChain → PresentNode connections should be established via:
-            // Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN, presentNode, PresentNodeConfig::SWAPCHAIN)
-            // Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
-            // etc.
-
+            
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
             node->Execute(VK_NULL_HANDLE);
 
             node->SetState(NodeState::Complete);
+
+            // Check if this node was marked for recompilation during execution
+            if (node->deferredRecompile) {
+                node->deferredRecompile = false;
+                // Find the handle and mark as dirty
+                for (size_t i = 0; i < instances.size(); ++i) {
+                    if (instances[i].get() == node) {
+                        MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                        break;
+                    }
+                }
+            }
         }
     }
-
-    // NOTE: Legacy GetLastResult() removed - use Out(PresentNodeConfig::PRESENT_RESULT) instead
-    // Get result via typed slot if needed, or check presentNode directly
 
     return VK_SUCCESS;
 }
@@ -713,6 +719,85 @@ size_t RenderGraph::CleanupByType(const std::string& typeName) {
     
     std::cout << "[CleanupByType] Cleaned " << cleaned.size() << " nodes" << std::endl;
     return cleaned.size();
+}
+
+void RenderGraph::ProcessEvents() {
+    if (!messageBus) {
+        return;  // No event bus configured
+    }
+
+    // Process all queued events
+    messageBus->ProcessMessages();
+}
+
+void RenderGraph::RecompileDirtyNodes() {
+    if (dirtyNodes.empty()) {
+        return;  // Nothing to recompile
+    }
+
+    // Check if any dirty nodes are currently executing on GPU
+    // If so, defer recompilation until they're complete
+    std::vector<NodeHandle> deferredNodes;
+    for (NodeHandle handle : dirtyNodes) {
+        if (handle.IsValid() && handle.index < instances.size()) {
+            NodeInstance* node = instances[handle.index].get();
+            if (node && node->GetState() == NodeState::Executing) {
+                deferredNodes.push_back(handle);
+            }
+        }
+    }
+
+    // Remove deferred nodes from dirty set (they'll be re-added when execution completes)
+    for (NodeHandle handle : deferredNodes) {
+        dirtyNodes.erase(handle);
+    }
+
+    if (dirtyNodes.empty()) {
+        if (!deferredNodes.empty()) {
+            std::cout << "[RenderGraph] Deferring recompilation of " << deferredNodes.size() 
+                      << " nodes currently executing on GPU" << std::endl;
+        }
+        return;  // All dirty nodes are still executing
+    }
+
+    std::cout << "[RenderGraph] Recompiling " << dirtyNodes.size() << " dirty nodes" << std::endl;
+
+    // Collect nodes that need recompilation
+    std::vector<NodeInstance*> nodesToRecompile;
+    for (NodeHandle handle : dirtyNodes) {
+        if (handle.IsValid() && handle.index < instances.size()) {
+            NodeInstance* node = instances[handle.index].get();
+            if (node) {
+                nodesToRecompile.push_back(node);
+            }
+        }
+    }
+
+    // Clear dirty set before recompilation
+    dirtyNodes.clear();
+
+    // Recompile each dirty node
+    for (NodeInstance* node : nodesToRecompile) {
+        std::cout << "[RenderGraph] Recompiling node: " << node->GetInstanceName() << std::endl;
+        
+        // Call cleanup first (destroy old resources)
+        node->Cleanup();
+        
+        // Recompile (create new resources)
+        node->Compile();
+        
+        // Register cleanup again
+        node->RegisterCleanup();
+    }
+
+    // Mark graph as needing full recompilation since topology may have changed
+    isCompiled = false;
+}
+
+void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
+    if (nodeHandle.IsValid()) {
+        dirtyNodes.insert(nodeHandle);
+    }
 }
 
 void RenderGraph::HandleCleanupRequest(const CleanupRequestedMessage& msg) {

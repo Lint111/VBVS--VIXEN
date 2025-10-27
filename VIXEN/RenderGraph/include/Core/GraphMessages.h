@@ -58,9 +58,12 @@ enum class CleanupScope {
  * bus.Publish(std::move(msg));
  * ```
  */
-struct CleanupRequestedMessage : public EventBus::Message {
+struct CleanupRequestedMessage : public EventBus::BaseEventMessage {
     static constexpr EventBus::MessageType TYPE = 
         static_cast<EventBus::MessageType>(GraphMessageType::CleanupRequested);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::GraphManagement | 
+        EventBus::EventCategory::CleanupRequest;
     
     CleanupScope scope = CleanupScope::Specific;
     
@@ -77,11 +80,11 @@ struct CleanupRequestedMessage : public EventBus::Message {
     std::string reason;
     
     CleanupRequestedMessage(EventBus::SenderID sender)
-        : Message(sender, TYPE) {}
+        : BaseEventMessage(FLAGS, TYPE, sender) {}
     
     // Convenience constructors
     CleanupRequestedMessage(EventBus::SenderID sender, const std::string& nodeName)
-        : Message(sender, TYPE)
+        : BaseEventMessage(FLAGS, TYPE, sender)
         , scope(CleanupScope::Specific)
         , targetNodeName(nodeName) {}
     
@@ -126,15 +129,17 @@ struct CleanupRequestedMessage : public EventBus::Message {
  * Published after CleanupRequested processing finishes.
  * Contains list of nodes that were cleaned.
  */
-struct CleanupCompletedMessage : public EventBus::Message {
+struct CleanupCompletedMessage : public EventBus::BaseEventMessage {
     static constexpr EventBus::MessageType TYPE = 
         static_cast<EventBus::MessageType>(GraphMessageType::CleanupCompleted);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::GraphManagement;
     
     std::vector<std::string> cleanedNodes;
     size_t cleanedCount = 0;
     
     CleanupCompletedMessage(EventBus::SenderID sender)
-        : Message(sender, TYPE) {}
+        : BaseEventMessage(FLAGS, TYPE, sender) {}
 };
 
 /**
@@ -145,29 +150,35 @@ struct CleanupCompletedMessage : public EventBus::Message {
  * - Window resize (swapchain recreation)
  * - Dynamic parameter changes
  */
-struct RecompileRequestedMessage : public EventBus::Message {
+struct RecompileRequestedMessage : public EventBus::BaseEventMessage {
     static constexpr EventBus::MessageType TYPE = 
         static_cast<EventBus::MessageType>(GraphMessageType::RecompileRequested);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::GraphManagement | 
+        EventBus::EventCategory::GraphRecompile;
     
     std::vector<std::string> nodeNames;
     std::string reason;
     
     RecompileRequestedMessage(EventBus::SenderID sender)
-        : Message(sender, TYPE) {}
+        : BaseEventMessage(FLAGS, TYPE, sender) {}
 };
 
 /**
  * @brief Window resized - triggers swapchain + framebuffer recreation
  */
-struct WindowResizedMessage : public EventBus::Message {
+struct WindowResizedMessage : public EventBus::BaseEventMessage {
     static constexpr EventBus::MessageType TYPE = 
         static_cast<EventBus::MessageType>(GraphMessageType::WindowResized);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::ResourceInvalidation | 
+        EventBus::EventCategory::WindowResize;
     
     uint32_t newWidth;
     uint32_t newHeight;
     
     WindowResizedMessage(EventBus::SenderID sender, uint32_t w, uint32_t h)
-        : Message(sender, TYPE)
+        : BaseEventMessage(FLAGS, TYPE, sender)
         , newWidth(w)
         , newHeight(h) {}
 };
@@ -175,14 +186,19 @@ struct WindowResizedMessage : public EventBus::Message {
 /**
  * @brief Shader file changed - triggers pipeline recreation
  */
-struct ShaderReloadedMessage : public EventBus::Message {
+struct ShaderReloadedMessage : public EventBus::BaseEventMessage {
     static constexpr EventBus::MessageType TYPE = 
         static_cast<EventBus::MessageType>(GraphMessageType::ShaderReloaded);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::ShaderEvents | 
+        EventBus::EventCategory::ShaderHotReload | 
+        EventBus::EventCategory::ResourceInvalidation | 
+        EventBus::EventCategory::PipelineInvalid;
     
     std::string shaderPath;
     
     ShaderReloadedMessage(EventBus::SenderID sender, std::string path)
-        : Message(sender, TYPE)
+        : BaseEventMessage(FLAGS, TYPE, sender)
         , shaderPath(std::move(path)) {}
 };
 
