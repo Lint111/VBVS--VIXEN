@@ -162,4 +162,89 @@ struct WorkerResultMessage : public Message {
         , error(std::move(err)) {}
 };
 
+// ============================================================================
+// Window and SwapChain Event Messages
+// ============================================================================
+
+/**
+ * @brief Window resize event
+ * 
+ * Published when window dimensions change (resize, maximize, restore)
+ */
+struct WindowResizeEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 100;
+    static constexpr EventCategory CATEGORY = EventCategory::WindowResize;
+
+    uint32_t newWidth;
+    uint32_t newHeight;
+    bool isMinimized;
+
+    WindowResizeEvent(SenderID sender, uint32_t width, uint32_t height, bool minimized = false)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , newWidth(width)
+        , newHeight(height)
+        , isMinimized(minimized) {}
+};
+
+/**
+ * @brief Window state change event
+ * 
+ * Published when window state changes (minimize, maximize, restore, focus)
+ */
+struct WindowStateChangeEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 101;
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    enum class State {
+        Minimized,
+        Maximized,
+        Restored,
+        Focused,
+        Unfocused
+    };
+
+    State newState;
+
+    WindowStateChangeEvent(SenderID sender, State state)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , newState(state) {}
+};
+
+/**
+ * @brief Window close event
+ * 
+ * Published when user requests to close the application (X button)
+ */
+struct WindowCloseEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 102;
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    WindowCloseEvent(SenderID sender)
+        : BaseEventMessage(CATEGORY, TYPE, sender) {}
+};
+
+/**
+ * @brief Render pause event
+ * 
+ * Published by SwapChainNode during compilation/recreation to prevent
+ * accessing resources that may be temporarily unavailable
+ */
+struct RenderPauseEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 103;
+    static constexpr EventCategory CATEGORY = EventCategory::GraphManagement;
+
+    enum class Reason {
+        SwapChainRecreation,
+        ResourceReallocation
+    };
+
+    Reason pauseReason;
+    bool isStarting;  // true = pause starting, false = pause ending
+
+    RenderPauseEvent(SenderID sender, Reason reason, bool starting)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , pauseReason(reason)
+        , isStarting(starting) {}
+};
+
 } // namespace EventBus

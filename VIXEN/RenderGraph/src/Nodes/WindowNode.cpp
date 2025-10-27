@@ -3,6 +3,7 @@
 #include "VulkanApplicationBase.h"
 #include <iostream>
 #include "Core/NodeLogging.h"
+#include "EventBus/Message.h"
 
 namespace Vixen::RenderGraph {
 
@@ -190,6 +191,12 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received");
             if (windowNode) {
                 windowNode->shouldClose = true;
+                // Publish window close event
+                if (windowNode->GetMessageBus()) {
+                    windowNode->GetMessageBus()->Publish(
+                        std::make_unique<EventBus::WindowCloseEvent>(windowNode->instanceId)
+                    );
+                }
             }
             PostQuitMessage(0);
             return 0;
@@ -213,6 +220,17 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             if (windowNode) {
                 windowNode->isResizing = false;
                 windowNode->wasResized = true;
+                // Publish resize event
+                if (windowNode->GetMessageBus()) {
+                    windowNode->GetMessageBus()->Publish(
+                        std::make_unique<EventBus::WindowResizeEvent>(
+                            windowNode->instanceId,
+                            windowNode->width,
+                            windowNode->height,
+                            false
+                        )
+                    );
+                }
             }
             return 0;
 
@@ -227,13 +245,59 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     windowNode->width = newWidth;
                     windowNode->height = newHeight;
                     windowNode->wasResized = true;
+                    
+                    // Publish resize event
+                    if (windowNode->GetMessageBus()) {
+                        windowNode->GetMessageBus()->Publish(
+                            std::make_unique<EventBus::WindowResizeEvent>(
+                                windowNode->instanceId,
+                                newWidth,
+                                newHeight,
+                                (wParam == SIZE_MINIMIZED)
+                            )
+                        );
+                    }
                 }
             }
             return 0;
 
-        case WM_PAINT:
-            ValidateRect(hWnd, nullptr);
-            return 0;
+        case WM_SYSCOMMAND:
+            if (wParam == SC_MINIMIZE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Minimized
+                    )
+                );
+            } else if (wParam == SC_MAXIMIZE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Maximized
+                    )
+                );
+            } else if (wParam == SC_RESTORE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Restored
+                    )
+                );
+            }
+            break;
+
+        case WM_ACTIVATE:
+            if (windowNode && windowNode->GetMessageBus()) {
+                bool focused = (LOWORD(wParam) != WA_INACTIVE);
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        focused ? EventBus::WindowStateChangeEvent::State::Focused
+                               : EventBus::WindowStateChangeEvent::State::Unfocused
+                    )
+                );
+            }
+            break;
 
         default:
             break;

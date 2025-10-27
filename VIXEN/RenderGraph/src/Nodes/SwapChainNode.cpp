@@ -2,6 +2,7 @@
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "EventBus/Message.h"
 
 namespace Vixen::RenderGraph {
 
@@ -79,6 +80,17 @@ void SwapChainNode::Setup() {
 
 void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
+    
+    // Publish render pause starting event
+    if (GetMessageBus()) {
+        GetMessageBus()->Publish(
+            std::make_unique<EventBus::RenderPauseEvent>(
+                instanceId,
+                EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
+                true  // pause starting
+            )
+        );
+    }
     
     VkResult result = VK_SUCCESS;  // Declare result variable for error checking
     
@@ -239,6 +251,17 @@ void SwapChainNode::Compile() {
             { "DeviceNode_Cleanup" }  // Depends on device - device cleanup runs AFTER this
         );
     }
+    
+    // Publish render pause ending event
+    if (GetMessageBus()) {
+        GetMessageBus()->Publish(
+            std::make_unique<EventBus::RenderPauseEvent>(
+                instanceId,
+                EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
+                false  // pause ending
+            )
+        );
+    }
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
@@ -339,7 +362,31 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         &currentImageIndex
     );
 
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    // Handle out-of-date swapchain
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain is out of date, marking for recreation");
+        
+        // Publish render pause event for swapchain recreation
+        if (GetMessageBus()) {
+            GetMessageBus()->Publish(
+                std::make_unique<EventBus::RenderPauseEvent>(
+                    instanceId,
+                    EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
+                    true  // pause starting
+                )
+            );
+        }
+        
+        // Mark node as needing recompilation
+        MarkNeedsRecompile();
+        
+        // For now, throw an exception to indicate the swapchain needs recreation
+        // In a full implementation, this would trigger deferred recompilation
+        std::string errorMsg = "SwapChainNode: Swapchain out of date - needs recreation";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         std::string errorMsg = "SwapChainNode: failed to acquire swapchain image";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
