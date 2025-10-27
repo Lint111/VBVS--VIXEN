@@ -23,7 +23,14 @@ enum class GraphMessageType : EventBus::MessageType {
     WindowResized = 300,
     SwapChainInvalidated = 301,
     ShaderReloaded = 302,
-    TextureReloaded = 303
+    TextureReloaded = 303,
+
+    // Device synchronization (400-499)
+    DeviceSyncRequested = 400,
+    DeviceSyncCompleted = 401,
+
+    // Render pause (500-599)
+    RenderPause = 500
 };
 
 /**

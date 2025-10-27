@@ -221,13 +221,40 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             if (windowNode) {
                 windowNode->isResizing = false;
                 windowNode->wasResized = true;
-                // Publish resize event
+
+                // Get ACTUAL client area dimensions (not cached member variables!)
+                RECT clientRect;
+                GetClientRect(hWnd, &clientRect);
+                UINT actualWidth = clientRect.right - clientRect.left;
+                UINT actualHeight = clientRect.bottom - clientRect.top;
+
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] GetClientRect returned: " << actualWidth << "x" << actualHeight << std::endl;
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Old cached dimensions: " << windowNode->width << "x" << windowNode->height << std::endl;
+
+                // Update member variables with actual dimensions
+                windowNode->width = actualWidth;
+                windowNode->height = actualHeight;
+
+                // Update outputs with actual dimensions
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling Out() with: " << actualWidth << "x" << actualHeight << std::endl;
+                windowNode->Out(WindowNodeConfig::WIDTH_OUT, actualWidth);
+                windowNode->Out(WindowNodeConfig::HEIGHT_OUT, actualHeight);
+
+                // Verify outputs were updated
+                uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
+                uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Read back from outputs: width=" << readBackWidth
+                          << ", height=" << readBackHeight << std::endl;
+
+                // Publish resize event with ACTUAL dimensions
                 if (windowNode->GetMessageBus()) {
+                    std::cout << "[WindowNode::WM_EXITSIZEMOVE] Publishing WindowResizedMessage with "
+                              << actualWidth << "x" << actualHeight << std::endl;
                     windowNode->GetMessageBus()->Publish(
                         std::make_unique<EventTypes::WindowResizedMessage>(
                             windowNode->instanceId,
-                            windowNode->width,
-                            windowNode->height
+                            actualWidth,
+                            actualHeight
                         )
                     );
                 }
@@ -245,9 +272,24 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     windowNode->width = newWidth;
                     windowNode->height = newHeight;
                     windowNode->wasResized = true;
-                    
+
+                    // Update outputs with new dimensions so downstream nodes read new values
+                    std::cout << "[WindowNode::WM_SIZE] BEFORE Out() calls - width=" << newWidth
+                              << ", height=" << newHeight << std::endl;
+                    windowNode->Out(WindowNodeConfig::WIDTH_OUT, newWidth);
+                    windowNode->Out(WindowNodeConfig::HEIGHT_OUT, newHeight);
+                    std::cout << "[WindowNode::WM_SIZE] AFTER Out() calls - verifying..." << std::endl;
+
+                    // Verify outputs were updated
+                    uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
+                    uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
+                    std::cout << "[WindowNode::WM_SIZE] Read back: width=" << readBackWidth
+                              << ", height=" << readBackHeight << std::endl;
+
                     // Publish resize event
                     if (windowNode->GetMessageBus()) {
+                        std::cout << "[WindowNode::WM_SIZE] Publishing WindowResizedMessage with "
+                                  << newWidth << "x" << newHeight << std::endl;
                         windowNode->GetMessageBus()->Publish(
                             std::make_unique<EventTypes::WindowResizedMessage>(
                                 windowNode->instanceId,

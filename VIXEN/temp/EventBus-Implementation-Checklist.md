@@ -580,6 +580,95 @@ This checklist provides a step-by-step implementation guide for integrating the 
   - [ ] Verify correct node count
   - **Reference**: Integration doc Section 10.1
 
+### 3.6 Device Synchronization Integration
+
+**Goal**: Ensure safe device synchronization during event-driven recompilation
+**Reference**: Based on existing `RenderGraph::WaitForGraphDevicesIdle()` implementation
+
+- [ ] Update `RecompileDirtyNodes()` with device synchronization
+  - [ ] Call `WaitForGraphDevicesIdle(dirtyNodes)` before cleanup phase
+  - [ ] Pass dirty nodes vector to only wait for affected devices
+  - [ ] Log wait time for performance monitoring
+  - [ ] Add start/end timing around device wait
+  - **Rationale**: Prevents destroying resources while GPU is using them
+
+- [ ] Add device sync messages to `GraphMessages.h` (optional - for debugging)
+  - [ ] `DeviceSyncRequestedMessage` (TYPE = 165)
+    - [ ] FLAGS = `GraphManagement | Debug`
+    - [ ] Nested enum `Scope { AllDevices, SpecificNodes, SpecificDevices }`
+    - [ ] Members: `scope`, `nodeNames`, `devices`, `reason`
+  - [ ] `DeviceSyncCompletedMessage` (TYPE = 166)
+    - [ ] FLAGS = `GraphManagement`
+    - [ ] Members: `deviceCount`, `waitTime`
+
+- [ ] Subscribe to sync messages in RenderGraph (optional)
+  - [ ] Add to `SetupEventSubscriptions()`
+  - [ ] Implement `HandleDeviceSyncRequest(const DeviceSyncRequestedMessage& msg)`
+  - [ ] Switch on `msg.scope` to call appropriate wait method
+  - [ ] Publish `DeviceSyncCompletedMessage` after wait completes
+
+- [ ] Create `DeferredDestructionQueue` for hot-reload (optional - zero-stutter)
+  - [ ] Create `RenderGraph/Core/DeferredDestruction.h`
+  - [ ] Define `struct PendingDestruction` with `destructorFunc`, `submittedFrame`
+  - [ ] Define `class DeferredDestructionQueue`
+  - [ ] Implement `Add<T>(device, handle, currentFrame, destroyer)` template
+  - [ ] Implement `ProcessFrame(currentFrame, maxFramesInFlight = 3)`
+  - [ ] Implement `Flush()` for shutdown
+  - [ ] Add member to RenderGraph: `std::unique_ptr<DeferredDestructionQueue> deferredDestruction`
+
+- [ ] Integrate deferred destruction into PipelineNode (optional)
+  - [ ] Replace `vkDeviceWaitIdle()` in `HandleCompilationResult()`
+  - [ ] Call `deferredDestruction->Add(device, oldPipeline, currentFrame, vkDestroyPipeline)`
+  - [ ] Set new pipeline immediately (no blocking wait)
+  - [ ] Update main loop to call `deferredDestruction->ProcessFrame(frameNumber)` before rendering
+
+- [ ] Update main loop with deferred destruction (optional)
+  - [ ] Create `DeferredDestructionQueue` instance
+  - [ ] Call `ProcessFrame()` after event processing, before GPU work
+  - [ ] Call `Flush()` during shutdown cleanup
+  - [ ] **Ordering**: ProcessMessages → ProcessFrame → Render
+
+### 3.7 Testing - Device Synchronization
+
+- [ ] Unit test: Device wait before recompilation
+  - [ ] Create graph with nodes using different devices
+  - [ ] Mark nodes dirty
+  - [ ] Mock device tracking
+  - [ ] Call `RecompileDirtyNodes()`
+  - [ ] Verify `WaitForGraphDevicesIdle()` called with correct nodes
+  - [ ] Verify cleanup only happens after wait completes
+
+- [ ] Integration test: Hot-reload with deferred destruction
+  - [ ] Create PipelineNode with deferred destruction enabled
+  - [ ] Trigger shader hot-reload
+  - [ ] Verify old pipeline added to deferred queue
+  - [ ] Verify new pipeline set immediately
+  - [ ] Advance frame counter by N frames
+  - [ ] Call `ProcessFrame()`
+  - [ ] Verify old pipeline destroyed after N frames
+
+- [ ] Manual test: Window resize with device sync
+  - [ ] Enable Vulkan validation layers
+  - [ ] Resize window rapidly
+  - [ ] Verify no validation errors
+  - [ ] Verify no crashes
+  - [ ] Check logs for device wait timings
+  - [ ] Verify swapchain/framebuffer recreation completes
+
+- [ ] Manual test: Shader hot-reload zero-stutter validation
+  - [ ] Enable VSync and frame time monitoring
+  - [ ] Edit shader file during rendering
+  - [ ] If using deferred destruction: Verify FPS stable (no stutter)
+  - [ ] If using immediate wait: Expect brief stutter (acceptable for dev workflow)
+  - [ ] Verify no Vulkan validation errors
+  - [ ] Verify pipeline hot-swap completes successfully
+
+- [ ] Performance test: Device sync overhead
+  - [ ] Measure `RecompileDirtyNodes()` time with/without device wait
+  - [ ] Log device wait duration separately
+  - [ ] Compare immediate wait vs deferred destruction impact on frame time
+  - [ ] Document results for optimization decisions
+
 ---
 
 ## Phase 4: Node Implementation (Window Resize)

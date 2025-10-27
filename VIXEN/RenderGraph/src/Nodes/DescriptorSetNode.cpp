@@ -270,6 +270,8 @@ void DescriptorSetNode::Compile() {
     Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
+
+    NodeInstance::RegisterCleanup();
 }
 
 void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
@@ -291,14 +293,6 @@ void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
     // Increment rotation angle (0.0005 radians per frame at 60fps ≈ 0.03 rad/sec)
     // Using deltaTime: 0.03 rad/sec for frame-rate independence
     rotationAngle += 0.03f * deltaTime;
-    
-    // Debug output every 60 frames
-    static int frameCount = 0;
-    if (++frameCount % 60 == 0) {
-        std::cout << "[DescriptorSetNode::Execute] Frame " << frameCount 
-                  << ": deltaTime=" << deltaTime 
-                  << "s, rotationAngle=" << rotationAngle << " rad" << std::endl;
-    }
     
     // Recalculate MVP with rotation
     glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);

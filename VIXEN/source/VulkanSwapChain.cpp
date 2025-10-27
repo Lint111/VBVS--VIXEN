@@ -18,8 +18,45 @@
     }                                                           \
 }
 
+void VulkanSwapChain::Destroy(VkDevice device, VkInstance instance) {
+    std::cout << "[VulkanSwapChain::Destroy] Called with device=" << device
+              << ", instance=" << instance << std::endl;
+    std::cout << "[VulkanSwapChain::Destroy] Current surface=" << scPublicVars.surface
+              << ", swapchain=" << scPublicVars.swapChain << std::endl;
 
-VulkanSwapChain::VulkanSwapChain() {
+    // Ensure extension pointers are loaded before attempting destruction
+    // This is safe to call multiple times - it just reloads the function pointers
+    if (instance != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        // Only load if not already loaded (check one representative pointer)
+        if (fpDestroySwapchainKHR == nullptr || fpDestroySurfaceKHR == nullptr) {
+            std::cout << "[VulkanSwapChain::Destroy] Loading extension pointers" << std::endl;
+            CreateSwapChainExtensions(instance, device);
+        }
+    }
+
+    // Destroy swapchain and image views
+    if (device != VK_NULL_HANDLE) {
+        DestroySwapChain(device);
+    }
+
+    // Destroy surface
+    if (instance != VK_NULL_HANDLE) {
+        DestroySurface(instance);
+    }
+
+    // Clear internal vectors
+    CleanUp();
+
+    std::cout << "[VulkanSwapChain::Destroy] Cleanup complete" << std::endl;
+}
+
+void VulkanSwapChain::CleanUp() {
+    scPrivateVars.swapChainImages.clear();
+    scPrivateVars.surfaceFormats.clear();
+	scPrivateVars.presentModes.clear();
+}
+
+void VulkanSwapChain::Initialize() {
     // Initialize all Vulkan handles to VK_NULL_HANDLE
     scPublicVars.surface = VK_NULL_HANDLE;
     scPublicVars.swapChain = VK_NULL_HANDLE;
@@ -30,7 +67,7 @@ VulkanSwapChain::VulkanSwapChain() {
     // Initialize private variables
     memset(&scPrivateVars.surfCapabilities, 0, sizeof(scPrivateVars.surfCapabilities));
     scPrivateVars.presentModeCount = 0;
-    scPrivateVars.swapChainExtent = {0, 0};
+    scPrivateVars.swapChainExtent = { 0, 0 };
     scPrivateVars.desiredNumberOfSwapChainImages = 0;
     scPrivateVars.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     scPrivateVars.swapChainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -46,28 +83,6 @@ VulkanSwapChain::VulkanSwapChain() {
     fpCreateSwapchainKHR = nullptr;
     fpDestroySwapchainKHR = nullptr;
     fpGetSwapchainImagesKHR = nullptr;
-}
-
-VulkanSwapChain::~VulkanSwapChain() {
-    // Note: Cleanup must be called with proper parameters from the node's Cleanup() method
-    // Cannot call DestroySurface here without VkInstance parameter
-    scPrivateVars.swapChainImages.clear();
-    scPrivateVars.surfaceFormats.clear();
-    scPrivateVars.presentModes.clear();
-}
-
-void VulkanSwapChain::Initialize() {
-    // STUBBED: This orchestrator method is not used in the node-based architecture
-    // Swapchain initialization is now handled by SwapChainNode::Compile()
-    std::cerr << "ERROR: VulkanSwapChain::Initialize() called - this method is deprecated. "
-              << "Use SwapChainNode orchestration instead." << std::endl;
-}
-
-void VulkanSwapChain::CreateSwapChain(const VkCommandBuffer& cmd) {
-    // STUBBED: This orchestrator method is not used in the node-based architecture
-    // Swapchain creation is now handled by SwapChainNode::Compile()
-    std::cerr << "ERROR: VulkanSwapChain::CreateSwapChain() called - this method is deprecated. "
-              << "Use SwapChainNode orchestration instead." << std::endl;
 }
 
 void VulkanSwapChain::DestroySwapChain(VkDevice device)
@@ -342,19 +357,27 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
 
     // Create the swapchain object
     result = fpCreateSwapchainKHR(device, &scInfo, nullptr, &scPublicVars.swapChain);
-    assert(result == VK_SUCCESS);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpCreateSwapchainKHR failed: ") + std::to_string(static_cast<int>(result)));
+    }
 
     // Get the number of swapchain images
     result = fpGetSwapchainImagesKHR(device, scPublicVars.swapChain, &scPublicVars.swapChainImageCount, nullptr);
-    assert(result == VK_SUCCESS);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed (count): ") + std::to_string(static_cast<int>(result)));
+    }
 
     scPrivateVars.swapChainImages.clear();
     scPrivateVars.swapChainImages.resize(scPublicVars.swapChainImageCount);
-    assert(scPrivateVars.swapChainImages.size() >= 1);
+    if (scPrivateVars.swapChainImages.size() < 1) {
+        throw std::runtime_error("VulkanSwapChain::CreateSwapChainColorImages - no swapchain images returned");
+    }
 
     // Retrieve the swapchain image surfaces
     result = fpGetSwapchainImagesKHR(device, scPublicVars.swapChain, &scPublicVars.swapChainImageCount, scPrivateVars.swapChainImages.data());
-    assert(result == VK_SUCCESS);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed: ") + std::to_string(static_cast<int>(result)));
+    }
 }
 
 void VulkanSwapChain::CreateColorImageView(VkDevice device, const VkCommandBuffer &cmd)
@@ -384,8 +407,20 @@ void VulkanSwapChain::CreateColorImageView(VkDevice device, const VkCommandBuffe
 
         result = vkCreateImageView(device, &imgViewInfo, nullptr, &sc_buffer.view);
 
+        if (result != VK_SUCCESS) {
+            // Clean up any image views already created for this swapchain
+            for (auto& buf : scPublicVars.colorBuffers) {
+                if (buf.view != VK_NULL_HANDLE) {
+                    vkDestroyImageView(device, buf.view, nullptr);
+                    buf.view = VK_NULL_HANDLE;
+                }
+            }
+            scPublicVars.colorBuffers.clear();
+
+            throw std::runtime_error(std::string("VulkanSwapChain::CreateColorImageView - vkCreateImageView failed: ") + std::to_string(static_cast<int>(result)));
+        }
+
         scPublicVars.colorBuffers.push_back(sc_buffer);
-        assert(result == VK_SUCCESS);
     }
     scPublicVars.currentColorBuffer = 0;
 }

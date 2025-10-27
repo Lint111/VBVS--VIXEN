@@ -115,13 +115,7 @@ void GraphicsPipelineNode::Compile() {
     Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     // === REGISTER CLEANUP ===
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    NodeInstance::RegisterCleanup();
 }
 
 void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {

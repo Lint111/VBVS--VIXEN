@@ -33,6 +33,7 @@ enum class EventCategory : uint64_t {
 
     // System (0-7)
     System              = 1ULL << 0,
+	Debug               = 1ULL << 1,
 
     // Resource Invalidation (8-15)
     ResourceInvalidation = 1ULL << 8,

@@ -26,6 +26,7 @@ NodeInstance::NodeInstance(
     : instanceName(instanceName)
     , instanceId(nextInstanceId.fetch_add(1))
     , nodeType(nodeType)
+    , device(nullptr)
 {
     // Allocate space for inputs and outputs based on schema
     // Each slot is a vector (size 1 for scalar, size N for array)

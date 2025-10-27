@@ -198,6 +198,12 @@ public:
      */
     void ClearNeedsRecompile() { needsRecompile = false; }
 
+    /**
+     * @brief Reset the cleanup flag
+     * Called by RenderGraph after successful recompilation so node can be cleaned up again
+     */
+    void ResetCleanupFlag() { cleanedUp = false; }
+
     // Virtual methods for derived classes to implement
     virtual void Setup() {}
     virtual void Compile() {}

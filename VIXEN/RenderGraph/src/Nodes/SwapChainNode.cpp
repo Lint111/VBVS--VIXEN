@@ -51,39 +51,40 @@ SwapChainNode::~SwapChainNode() {
 }
 
 void SwapChainNode::Setup() {
-    // Setup is called before Compile()
-    // Create the swapchain wrapper object if it doesn't exist
+    SetDevice(In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
 
-    // Read device input and store on the base NodeInstance device member
-    auto* inDevice = In(SwapChainNodeConfig::VULKAN_DEVICE_IN);
-    SetDevice(inDevice);
-
-    if (GetDevice() == VK_NULL_HANDLE) {
+    if (GetDevice() == nullptr) {
         std::string errorMsg = "SwapChainNode: VulkanDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
+    // Subscribe to window resize events
+    if (GetMessageBus()) {
+        SubscribeToMessage(
+            EventTypes::WindowResizedMessage::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) -> bool {
+                // Mark this node for recompilation
+                std::cout << "[SwapChainNode] Received WindowResizedMessage - marking self for recompilation" << std::endl;
+                MarkNeedsRecompile();
+                return true; // Message handled
+            }
+        );
+    }
 
-    
     if (!swapChainWrapper) {
         // Create a new VulkanSwapChain wrapper
         swapChainWrapper = new VulkanSwapChain();
+		swapChainWrapper->Initialize();
         NODE_LOG_INFO("SwapChainNode::Setup - Created swapchain wrapper");
     }
-
-    // Device will be set from inputs during Compile()
-    // Synchronization primitives will be created after swapchain is ready
-
-        
-    
 
     currentFrame = 0;
 }
 
 void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
-    
+
     // Publish render pause starting event
     if (GetMessageBus()) {
         GetMessageBus()->Publish(
@@ -94,9 +95,7 @@ void SwapChainNode::Compile() {
             )
         );
     }
-    
-    VkResult result = VK_SUCCESS;  // Declare result variable for error checking
-    
+
     // Get input resources from connected nodes
     std::cout << "[SwapChainNode::Compile] Reading HWND..." << std::endl;
     HWND hwnd = In(SwapChainNodeConfig::HWND);
@@ -104,10 +103,14 @@ void SwapChainNode::Compile() {
     HINSTANCE hinstance = In(SwapChainNodeConfig::HINSTANCE);
     std::cout << "[SwapChainNode::Compile] Reading WIDTH..." << std::endl;
     width = In(SwapChainNodeConfig::WIDTH);
+    std::cout << "[SwapChainNode::Compile] WIDTH = " << width << std::endl;
     std::cout << "[SwapChainNode::Compile] Reading HEIGHT..." << std::endl;
     height = In(SwapChainNodeConfig::HEIGHT);
+    std::cout << "[SwapChainNode::Compile] HEIGHT = " << height << std::endl;
     std::cout << "[SwapChainNode::Compile] Reading INSTANCE..." << std::endl;
     VkInstance instance = In(SwapChainNodeConfig::INSTANCE);
+
+    VkResult result = VK_SUCCESS;  // Declare result variable for error checking
 
 
     // Validate inputs
@@ -140,12 +143,11 @@ void SwapChainNode::Compile() {
         throw std::runtime_error(errorMsg);
     }
 
-    // Create swapchain wrapper if not set
     std::cout << "[SwapChainNode::Compile] Checking swapchain wrapper..." << std::endl;
     if (swapChainWrapper == nullptr) {
         std::string errorMsg = "SwapChainNode: swapchain wrapper not set - call SetSwapChainWrapper() before Compile()";
         std::cout << "[SwapChainNode::Compile] ERROR: " << errorMsg << std::endl;
-        // NODE_LOG_ERROR(errorMsg);
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
     std::cout << "[SwapChainNode::Compile] Swapchain wrapper OK" << std::endl;
@@ -155,7 +157,7 @@ void SwapChainNode::Compile() {
     // Step 1: Load swapchain extension function pointers
     std::cout << "[SwapChainNode::Compile] Loading swapchain extensions..." << std::endl;
     std::cout << "[SwapChainNode::Compile] Instance handle: " << std::hex << instance << std::dec << std::endl;
-    
+
     result = swapChainWrapper->CreateSwapChainExtensions(instance, GetDevice()->device);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to load swapchain extension function pointers";
@@ -165,6 +167,7 @@ void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] Extension function pointers loaded successfully" << std::endl;
 
     // Step 2: Create the platform-specific surface
+    // Note: Old resources were already destroyed in CleanupImpl() before Setup() created fresh wrapper
     result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
@@ -197,6 +200,10 @@ void SwapChainNode::Compile() {
     // Note: We pass VK_NULL_HANDLE for command buffer since image views don't need it
     VkCommandBuffer dummyCmd = VK_NULL_HANDLE;
     swapChainWrapper->CreateColorImageView(GetDevice()->device, dummyCmd);
+
+    // Verify colorBuffers were populated
+    std::cout << "[SwapChainNode::Compile] ColorBuffers populated: "
+              << swapChainWrapper->scPublicVars.colorBuffers.size() << " buffers" << std::endl;
 
     // Verify swapchain was created successfully
     if (swapChainWrapper->scPublicVars.swapChain == VK_NULL_HANDLE) {
@@ -242,18 +249,7 @@ void SwapChainNode::Compile() {
 
     NODE_LOG_INFO("SwapChainNode::Compile - Swapchain created with " + std::to_string(imageCount) + " images and semaphores");
 
-    // === REGISTER CLEANUP WITH DEPENDENCY ===
-    // Register this node's cleanup to execute BEFORE DeviceNode cleanup
-    // This ensures semaphores are destroyed before the device
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() {
-                this->Cleanup();
-            },
-            { "DeviceNode_Cleanup" }  // Depends on device - device cleanup runs AFTER this
-        );
-    }
+    NodeInstance::RegisterCleanup();
     
     // Publish render pause ending event
     if (GetMessageBus()) {
@@ -282,9 +278,11 @@ void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void SwapChainNode::CleanupImpl() {
+    std::cout << "[SwapChainNode::CleanupImpl] Called" << std::endl;
+
     // Destroy semaphores
     auto* devicePtr = GetDevice();
-    if (devicePtr != VK_NULL_HANDLE) {
+    if (devicePtr != nullptr) {
         for (auto& semaphore : imageAvailableSemaphores) {
             if (semaphore != VK_NULL_HANDLE) {
                 vkDestroySemaphore(devicePtr->device, semaphore, nullptr);
@@ -295,12 +293,27 @@ void SwapChainNode::CleanupImpl() {
 
     // Cleanup swapchain wrapper if we own it
     if (swapChainWrapper) {
+        // Get VkInstance for surface destruction
+        VkInstance instance = VK_NULL_HANDLE;
+        VkDevice device = VK_NULL_HANDLE;
+
+        try {
+            instance = In(SwapChainNodeConfig::INSTANCE);
+        } catch (...) {
+            // Instance might not be available during shutdown - that's ok
+        }
+
+        if (devicePtr != nullptr) {
+            device = devicePtr->device;
+        }
+
+        // Destroy all Vulkan resources (wrapper loads extension pointers automatically if needed)
+        swapChainWrapper->Destroy(device, instance);
+
+        // Delete wrapper object
         delete swapChainWrapper;
         swapChainWrapper = nullptr;
     }
-
-    // Clear device pointer on this instance
-    SetDevice(nullptr);
 }
 
 VkSwapchainKHR SwapChainNode::GetSwapchain() const {
@@ -412,7 +425,7 @@ void SwapChainNode::Recreate(uint32_t newWidth, uint32_t newHeight) {
     height = newHeight;
 
     // Destroy and recreate swapchain
-    swapChainWrapper->DestroySwapChain(vulkanDevice->device);
+    swapChainWrapper->DestroySwapChain(GetDevice()->device);
     swapChainWrapper->SetSwapChainExtent(newWidth, newHeight);
 
     // Note: Swapchain recreation would need full orchestration

@@ -73,13 +73,7 @@ void ShaderLibraryNode::Compile() {
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
 
     // Register cleanup
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    NodeInstance::RegisterCleanup();
 }
 
 void ShaderLibraryNode::Execute(VkCommandBuffer commandBuffer) {

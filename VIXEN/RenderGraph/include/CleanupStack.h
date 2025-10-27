@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Vixen::RenderGraph {
 
@@ -54,6 +55,28 @@ public:
 
     const std::string& GetName() const { return nodeName; }
 
+    /**
+     * @brief Update the cleanup callback for this node (used when a placeholder was created earlier)
+     */
+    void SetCallback(CleanupCallback cb) {
+        cleanupCallback = std::move(cb);
+    }
+
+    /**
+     * @brief Recursively collect all dependent node names
+     * @param outNames Set to populate with dependent names (prevents duplicates)
+     */
+    void CollectDependentNames(std::unordered_set<std::string>& outNames) const {
+        for (const auto& weakDep : dependents) {
+            if (auto dep = weakDep.lock()) {
+                // Add this dependent
+                outNames.insert(dep->GetName());
+                // Recursively collect its dependents
+                dep->CollectDependentNames(outNames);
+            }
+        }
+    }
+
 private:
     std::string nodeName;
     CleanupCallback cleanupCallback;
@@ -89,17 +112,32 @@ public:
         CleanupNode::CleanupCallback callback,
         const std::vector<std::string>& dependencyNames = {})
     {
-        auto node = std::make_shared<CleanupNode>(name, std::move(callback));
-        nodes[name] = node;
+        // If a node with this name already exists (placeholder), update its callback
+        auto itExisting = nodes.find(name);
+        std::shared_ptr<CleanupNode> node;
+        if (itExisting != nodes.end()) {
+            node = itExisting->second;
+            // Update placeholder callback
+            node->SetCallback(std::move(callback));
+        } else {
+            node = std::make_shared<CleanupNode>(name, std::move(callback));
+            nodes[name] = node;
+        }
 
-        // Link to dependencies
+        // Link to dependencies. If a dependency isn't registered yet, create a placeholder
+        // node so that dependents can be linked regardless of registration order.
         for (const auto& depName : dependencyNames) {
             auto it = nodes.find(depName);
-            if (it != nodes.end()) {
-                // This node depends on depName, so depName must clean up AFTER this node
-                // Therefore, this node is a dependent of depName
-                it->second->AddDependent(node);
+            if (it == nodes.end()) {
+                // Create placeholder with empty callback
+                auto placeholder = std::make_shared<CleanupNode>(depName, []() {});
+                nodes[depName] = placeholder;
+                it = nodes.find(depName);
             }
+
+            // This node depends on depName, so depName must clean up AFTER this node
+            // Therefore, this node is a dependent of depName
+            it->second->AddDependent(node);
         }
 
         return node;
@@ -142,6 +180,25 @@ public:
      */
     size_t GetNodeCount() const {
         return nodes.size();
+    }
+
+    /**
+     * @brief Get all nodes that depend on the specified node (recursively)
+     *
+     * Returns all downstream dependents in the cleanup graph.
+     * Since cleanup goes from dependents -> providers,
+     * this returns nodes that would be cleaned BEFORE the specified node.
+     *
+     * @param name Name of the node to query dependents for
+     * @return Set of dependent node names (empty if node not found)
+     */
+    std::unordered_set<std::string> GetAllDependents(const std::string& name) const {
+        std::unordered_set<std::string> dependents;
+        auto it = nodes.find(name);
+        if (it != nodes.end()) {
+            it->second->CollectDependentNames(dependents);
+        }
+        return dependents;
     }
 
 private:

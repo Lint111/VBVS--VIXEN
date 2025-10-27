@@ -110,6 +110,10 @@ void TextureLoaderNode::Compile() {
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
     }
+
+    // === REGISTER CLEANUP ===
+    // Automatically resolves dependency on DeviceNode via VULKAN_DEVICE_IN input
+    RegisterCleanup();
 }
 
 void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
@@ -121,33 +125,46 @@ void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void TextureLoaderNode::CleanupImpl() {
+    // Validate device is still valid before attempting cleanup
+    if (vulkanDevice == VK_NULL_HANDLE || vulkanDevice->device == VK_NULL_HANDLE) {
+        // Device already destroyed - mark resources as invalid but don't try to destroy them
+        textureView = VK_NULL_HANDLE;
+        textureSampler = VK_NULL_HANDLE;
+        textureImage = VK_NULL_HANDLE;
+        textureMemory = VK_NULL_HANDLE;
+        commandPool = VK_NULL_HANDLE;
+        isLoaded = false;
+        textureLoader.reset();
+        return;
+    }
+
     // Destroy texture resources
-    if (isLoaded && vulkanDevice != VK_NULL_HANDLE) {
+    if (isLoaded) {
         if (textureView != VK_NULL_HANDLE) {
             vkDestroyImageView(vulkanDevice->device, textureView, nullptr);
             textureView = VK_NULL_HANDLE;
         }
-        
+
         if (textureSampler != VK_NULL_HANDLE) {
             vkDestroySampler(vulkanDevice->device, textureSampler, nullptr);
             textureSampler = VK_NULL_HANDLE;
         }
-        
+
         if (textureImage != VK_NULL_HANDLE) {
             vkDestroyImage(vulkanDevice->device, textureImage, nullptr);
             textureImage = VK_NULL_HANDLE;
         }
-        
+
         if (textureMemory != VK_NULL_HANDLE) {
             vkFreeMemory(vulkanDevice->device, textureMemory, nullptr);
             textureMemory = VK_NULL_HANDLE;
         }
-        
+
         isLoaded = false;
     }
 
     // Destroy command pool
-    if (commandPool != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
+    if (commandPool != VK_NULL_HANDLE) {
         vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
     }

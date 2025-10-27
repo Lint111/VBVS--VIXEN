@@ -206,9 +206,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
     VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
     SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
-
-    std::cout << "[GeometryRenderNode::RecordDrawCommands] Retrieved vertex buffer: "
-              << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    
 
     if (renderPass == VK_NULL_HANDLE) {
         std::string errorMsg = "GeometryRenderNode: RenderPass is VK_NULL_HANDLE";
