@@ -53,15 +53,18 @@ ShaderLibraryNode::~ShaderLibraryNode() {
 
 void ShaderLibraryNode::Setup() {
     NODE_LOG_DEBUG("Setup: ShaderLibraryNode (MVP stub)");
-    
-    vulkanDevice = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-    
-    if (!vulkanDevice) {
+
+    VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    if (devicePtr == nullptr) {
         std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
+
     NODE_LOG_INFO("Setup: Shader library node ready (MVP stub - no shaders)");
 }
 
@@ -70,7 +73,7 @@ void ShaderLibraryNode::Compile() {
     // MVP: Output nothing - shaders will be loaded directly in application
     
     // Pass through device
-    Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
 
     // Register cleanup
     NodeInstance::RegisterCleanup();

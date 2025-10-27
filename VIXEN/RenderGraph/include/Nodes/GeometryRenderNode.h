@@ -74,9 +74,9 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
     VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    
-    // Synchronization
-    VkSemaphore renderCompleteSemaphore = VK_NULL_HANDLE;
+
+    // Synchronization (one semaphore per swapchain image)
+    std::vector<VkSemaphore> renderCompleteSemaphores;
 };
 
 } // namespace Vixen::RenderGraph

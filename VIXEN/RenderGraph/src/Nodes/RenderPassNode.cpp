@@ -51,13 +51,16 @@ RenderPassNode::~RenderPassNode() {
 }
 
 void RenderPassNode::Setup() {
-    vulkanDevice = In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
-    if (vulkanDevice == VK_NULL_HANDLE) {
+    if (devicePtr == nullptr) {
         std::string errorMsg = "RenderPassNode: VkDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
 
     NODE_LOG_INFO("Setup: Render pass node ready");
 }
@@ -166,7 +169,7 @@ void RenderPassNode::Compile() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    VkResult result = vkCreateRenderPass(vulkanDevice->device, &renderPassInfo, nullptr, &renderPass);
+    VkResult result = vkCreateRenderPass(device->device, &renderPassInfo, nullptr, &renderPass);
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to create render pass"};
         NODE_LOG_ERROR(error.toString());
@@ -175,7 +178,7 @@ void RenderPassNode::Compile() {
 
     // Set typed outputs
     Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
-    Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Render pass created successfully");
 
@@ -188,8 +191,8 @@ void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void RenderPassNode::CleanupImpl() {
-    if (renderPass != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(vulkanDevice->device, renderPass, nullptr);
+    if (renderPass != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(device->device, renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
 }

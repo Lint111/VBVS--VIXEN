@@ -264,11 +264,23 @@ void SwapChainNode::Compile() {
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
+    // Guard against execution after cleanup or during recreation
+    if (imageAvailableSemaphores.empty()) {
+        NODE_LOG_WARNING("SwapChainNode: Execute called with no semaphores - skipping frame");
+        return;
+    }
+
     // Acquire next swapchain image
     const uint32_t frameIndex = currentFrame % imageAvailableSemaphores.size();
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[frameIndex];
-    
+
     currentImageIndex = AcquireNextImage(imageAvailableSemaphore);
+
+    // If swapchain is out of date, skip this frame
+    if (currentImageIndex == UINT32_MAX) {
+        NODE_LOG_INFO("SwapChainNode: Skipping frame due to out-of-date swapchain");
+        return;
+    }
 
     // Output current frame's image index and semaphore for downstream nodes
     Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
@@ -382,9 +394,9 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
     );
 
     // Handle out-of-date swapchain
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        NODE_LOG_INFO("SwapChainNode: Swapchain is out of date, marking for recreation");
-        
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        NODE_LOG_INFO("SwapChainNode: Swapchain out of date/suboptimal, marking for recreation");
+
         // Publish render pause event for swapchain recreation
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
@@ -395,15 +407,13 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
                 )
             );
         }
-        
-        // Mark node as needing recompilation
+
+        // Mark node as needing recompilation - will be handled in next Update()
         MarkNeedsRecompile();
-        
-        // For now, throw an exception to indicate the swapchain needs recreation
-        // In a full implementation, this would trigger deferred recompilation
-        std::string errorMsg = "SwapChainNode: Swapchain out of date - needs recreation";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
+
+        // Return invalid index to skip this frame
+        // Recompilation will happen in the next Update() cycle
+        return UINT32_MAX;
     }
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         std::string errorMsg = "SwapChainNode: failed to acquire swapchain image";

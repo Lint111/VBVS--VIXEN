@@ -51,13 +51,16 @@ CommandPoolNode::~CommandPoolNode() {
 }
 
 void CommandPoolNode::Setup() {
-    vulkanDevice = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
-    if (vulkanDevice == VK_NULL_HANDLE) {
+    if (devicePtr == nullptr) {
         std::string errorMsg = "CommandPoolNode: VkDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
 }
 
 void CommandPoolNode::Compile() {
@@ -75,7 +78,7 @@ void CommandPoolNode::Compile() {
     poolInfo.queueFamilyIndex = queueFamilyIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VkResult result = vkCreateCommandPool(vulkanDevice->device, &poolInfo, nullptr, &commandPool);
+    VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "Failed to create command pool for node: " + instanceName;
         NODE_LOG_ERROR(errorMsg);
@@ -86,7 +89,7 @@ void CommandPoolNode::Compile() {
 
     // Store command pool handle in output resource (NEW VARIANT API)
     Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
-    Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 
@@ -101,8 +104,8 @@ void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void CommandPoolNode::CleanupImpl() {
-    if (isCreated && commandPool != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
+    if (isCreated && commandPool != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
         isCreated = false;
 

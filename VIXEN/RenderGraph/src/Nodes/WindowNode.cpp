@@ -165,6 +165,9 @@ void WindowNode::Compile() {
     Out(WindowNodeConfig::HEIGHT_OUT, height);
 
     NODE_LOG_INFO("[WindowNode] Surface created and all window data stored in outputs");
+
+    // Register cleanup for window and surface resources
+    RegisterCleanup();
 #endif
 }
 

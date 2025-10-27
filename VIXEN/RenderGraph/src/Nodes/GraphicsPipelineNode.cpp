@@ -53,15 +53,18 @@ GraphicsPipelineNode::~GraphicsPipelineNode() {
 
 void GraphicsPipelineNode::Setup() {
     NODE_LOG_DEBUG("Setup: Reading device input");
-    
-    vulkanDevice = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
-    
-    if (vulkanDevice == VK_NULL_HANDLE) {
+
+    VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+
+    if (devicePtr == nullptr) {
         std::string errorMsg = "GraphicsPipelineNode: VkDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
+
     // Create pipeline cache
     CreatePipelineCache();
 }
@@ -112,7 +115,7 @@ void GraphicsPipelineNode::Compile() {
     Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
     Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
     Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 
     // === REGISTER CLEANUP ===
     NodeInstance::RegisterCleanup();
@@ -124,18 +127,18 @@ void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void GraphicsPipelineNode::CleanupImpl() {
-    if (pipeline != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
-        vkDestroyPipeline(vulkanDevice->device, pipeline, nullptr);
+    if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device->device, pipeline, nullptr);
         pipeline = VK_NULL_HANDLE;
     }
 
-    if (pipelineLayout != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(vulkanDevice->device, pipelineLayout, nullptr);
+    if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
 
-    if (pipelineCache != VK_NULL_HANDLE && vulkanDevice != VK_NULL_HANDLE) {
-        vkDestroyPipelineCache(vulkanDevice->device, pipelineCache, nullptr);
+    if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
 }
@@ -149,7 +152,7 @@ void GraphicsPipelineNode::CreatePipelineCache() {
     cacheInfo.flags = 0;
 
     VkResult result = vkCreatePipelineCache(
-        vulkanDevice->device,
+        device->device,
         &cacheInfo,
         nullptr,
         &pipelineCache
@@ -173,7 +176,7 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
     layoutInfo.pPushConstantRanges = nullptr;
 
     VkResult result = vkCreatePipelineLayout(
-        vulkanDevice->device,
+        device->device,
         &layoutInfo,
         nullptr,
         &pipelineLayout
@@ -356,7 +359,7 @@ void GraphicsPipelineNode::CreatePipeline() {
     pipelineInfo.basePipelineIndex = -1;
 
     VkResult result = vkCreateGraphicsPipelines(
-        vulkanDevice->device,
+        device->device,
         pipelineCache,
         1,
         &pipelineInfo,
@@ -372,7 +375,7 @@ void GraphicsPipelineNode::CreatePipeline() {
     Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
     Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
     Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
 // Parse helper methods

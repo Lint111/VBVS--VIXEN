@@ -84,8 +84,6 @@ private:
     bool hasIndices = false;
     bool useTexture = false;
 
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-
     // Helper functions
     void CreateBuffer(
         VkDeviceSize size,

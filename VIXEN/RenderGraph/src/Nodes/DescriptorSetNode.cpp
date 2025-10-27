@@ -54,10 +54,14 @@ DescriptorSetNode::~DescriptorSetNode() {
 
 void DescriptorSetNode::Setup() {
     NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
-    vulkanDevice = In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
-    if (!vulkanDevice) {
+    VulkanDevicePtr devicePtr = In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+    if (devicePtr == nullptr) {
         throw std::runtime_error("DescriptorSetNode: VulkanDevice input is null");
     }
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
+
     NODE_LOG_INFO("Setup: Descriptor set node ready (MVP stub - no descriptors)");
 }
 
@@ -90,7 +94,7 @@ void DescriptorSetNode::Compile() {
     layoutInfo.pBindings = bindings;
 
     VkResult result = vkCreateDescriptorSetLayout(
-        vulkanDevice->device,
+        device->device,
         &layoutInfo,
         nullptr,
         &descriptorSetLayout
@@ -117,7 +121,7 @@ void DescriptorSetNode::Compile() {
     poolInfo.maxSets = 1; // MVP: Just one descriptor set
 
     result = vkCreateDescriptorPool(
-        vulkanDevice->device,
+        device->device,
         &poolInfo,
         nullptr,
         &descriptorPool
@@ -139,7 +143,7 @@ void DescriptorSetNode::Compile() {
     allocInfo.pSetLayouts = &descriptorSetLayout;
 
     result = vkAllocateDescriptorSets(
-        vulkanDevice->device,
+        device->device,
         &allocInfo,
         descriptorSets.data()
     );
@@ -161,13 +165,13 @@ void DescriptorSetNode::Compile() {
     bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    result = vkCreateBuffer(vulkanDevice->device, &bufferInfo, nullptr, &uboBuffer);
+    result = vkCreateBuffer(device->device, &bufferInfo, nullptr, &uboBuffer);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("DescriptorSetNode: Failed to create UBO");
     }
     
     VkMemoryRequirements memReqs;
-    vkGetBufferMemoryRequirements(vulkanDevice->device, uboBuffer, &memReqs);
+    vkGetBufferMemoryRequirements(device->device, uboBuffer, &memReqs);
     
     VkMemoryAllocateInfo allocMemInfo{};
     allocMemInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -176,7 +180,7 @@ void DescriptorSetNode::Compile() {
     
     // Find HOST_VISIBLE | HOST_COHERENT memory for persistent mapping
     VkPhysicalDeviceMemoryProperties memProps;
-    vkGetPhysicalDeviceMemoryProperties(*vulkanDevice->gpu, &memProps);
+    vkGetPhysicalDeviceMemoryProperties(*device->gpu, &memProps);
     for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
         if ((memReqs.memoryTypeBits & (1 << i)) &&
             (memProps.memoryTypes[i].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))) {
@@ -185,16 +189,16 @@ void DescriptorSetNode::Compile() {
         }
     }
     
-    result = vkAllocateMemory(vulkanDevice->device, &allocMemInfo, nullptr, &uboMemory);
+    result = vkAllocateMemory(device->device, &allocMemInfo, nullptr, &uboMemory);
     if (result != VK_SUCCESS) {
-        vkDestroyBuffer(vulkanDevice->device, uboBuffer, nullptr);
+        vkDestroyBuffer(device->device, uboBuffer, nullptr);
         throw std::runtime_error("DescriptorSetNode: Failed to allocate UBO memory");
     }
     
-    vkBindBufferMemory(vulkanDevice->device, uboBuffer, uboMemory, 0);
+    vkBindBufferMemory(device->device, uboBuffer, uboMemory, 0);
     
     // Map memory persistently (HOST_COHERENT means no need to flush/invalidate)
-    result = vkMapMemory(vulkanDevice->device, uboMemory, 0, sizeof(glm::mat4), 0, &uboMappedData);
+    result = vkMapMemory(device->device, uboMemory, 0, sizeof(glm::mat4), 0, &uboMappedData);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("DescriptorSetNode: Failed to map UBO memory");
     }
@@ -227,7 +231,7 @@ void DescriptorSetNode::Compile() {
     descriptorWrite.descriptorCount = 1;
     descriptorWrite.pBufferInfo = &bufferDescInfo;
     
-    vkUpdateDescriptorSets(vulkanDevice->device, 1, &descriptorWrite, 0, nullptr);
+    vkUpdateDescriptorSets(device->device, 1, &descriptorWrite, 0, nullptr);
     
     std::cout << "[DescriptorSetNode::Compile] Updated descriptor set with UBO (binding 0)" << std::endl;
     
@@ -251,7 +255,7 @@ void DescriptorSetNode::Compile() {
         textureWrite.descriptorCount = 1;
         textureWrite.pImageInfo = &imageInfo;
         
-        vkUpdateDescriptorSets(vulkanDevice->device, 1, &textureWrite, 0, nullptr);
+        vkUpdateDescriptorSets(device->device, 1, &textureWrite, 0, nullptr);
         
         std::cout << "[DescriptorSetNode::Compile] Updated descriptor set with texture (view=" 
                   << textureView << ", sampler=" << textureSampler << ")" << std::endl;
@@ -267,7 +271,7 @@ void DescriptorSetNode::Compile() {
     Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
     Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL, descriptorPool);
     Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets); 
-    Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, device);
 
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
 
@@ -315,9 +319,9 @@ void DescriptorSetNode::CleanupImpl() {
     NODE_LOG_DEBUG("Cleanup: DescriptorSetNode");
 
     // Destroy descriptor pool (this also frees descriptor sets)
-    if (descriptorPool != VK_NULL_HANDLE && vulkanDevice) {
+    if (descriptorPool != VK_NULL_HANDLE && device) {
         vkDestroyDescriptorPool(
-            vulkanDevice->device,
+            device->device,
             descriptorPool,
             nullptr
         );
@@ -327,9 +331,9 @@ void DescriptorSetNode::CleanupImpl() {
     }
 
     // Destroy descriptor set layout
-    if (descriptorSetLayout != VK_NULL_HANDLE && vulkanDevice) {
+    if (descriptorSetLayout != VK_NULL_HANDLE && device) {
         vkDestroyDescriptorSetLayout(
-            vulkanDevice->device,
+            device->device,
             descriptorSetLayout,
             nullptr
         );

@@ -49,15 +49,18 @@ FramebufferNode::~FramebufferNode() {
 
 void FramebufferNode::Setup() {
     NODE_LOG_DEBUG("Setup: Reading device input");
-    
-    vulkanDevice = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
-    
-    if (vulkanDevice == VK_NULL_HANDLE) {
+
+    VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
+
+    if (devicePtr == nullptr) {
         std::string errorMsg = "FramebufferNode: VkDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
+
     NODE_LOG_INFO("Setup: Framebuffer node ready");
 }
 
@@ -127,7 +130,7 @@ void FramebufferNode::Compile() {
         framebufferInfo.flags = 0;
 
         VkResult result = vkCreateFramebuffer(
-            vulkanDevice->device,
+            device->device,
             &framebufferInfo,
             nullptr,
             &framebuffers[i]
@@ -137,7 +140,7 @@ void FramebufferNode::Compile() {
             // Clean up already created framebuffers
             for (size_t j = 0; j < i; j++) {
                 if (framebuffers[j] != VK_NULL_HANDLE) {
-                    vkDestroyFramebuffer(vulkanDevice->device, framebuffers[j], nullptr);
+                    vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
                 }
             }
             framebuffers.clear();
@@ -156,7 +159,7 @@ void FramebufferNode::Compile() {
     Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
     std::cout << "[FramebufferNode::Compile] Output " << framebuffers.size() << " framebuffers as vector" << std::endl;
 
-    Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+    Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 
@@ -169,12 +172,12 @@ void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void FramebufferNode::CleanupImpl() {
-    if (!framebuffers.empty() && vulkanDevice != VK_NULL_HANDLE) {
+    if (!framebuffers.empty() && device != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 
         for (VkFramebuffer framebuffer : framebuffers) {
             if (framebuffer != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(vulkanDevice->device, framebuffer, nullptr);
+                vkDestroyFramebuffer(device->device, framebuffer, nullptr);
             }
         }
         framebuffers.clear();

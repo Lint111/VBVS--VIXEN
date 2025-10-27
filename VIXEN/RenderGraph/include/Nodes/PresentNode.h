@@ -54,9 +54,6 @@ private:
     // Configuration from parameters
     bool waitForIdle = true;
 
-    // Device handle
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-
     // State
     VkResult lastResult = VK_SUCCESS;
 };

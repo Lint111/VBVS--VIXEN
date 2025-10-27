@@ -92,8 +92,16 @@ void VulkanGraphApplication::Initialize() {
     messageBus->Subscribe(
         Vixen::EventBus::ShutdownAckEvent::TYPE,
         [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
-            const auto& ackMsg = static_cast<const Vixen::EventBus::ShutdownAckEvent&>(msg);
-            HandleShutdownAck(ackMsg.systemName);
+            try {
+                const auto* ackMsg = dynamic_cast<const Vixen::EventBus::ShutdownAckEvent*>(&msg);
+                if (ackMsg && shutdownRequested) {
+                    // Copy string immediately to avoid any lifetime issues
+                    std::string systemName = ackMsg->systemName;
+                    HandleShutdownAck(systemName);
+                }
+            } catch (...) {
+                // Ignore any errors during shutdown handling
+            }
             return true;
         }
     );
@@ -699,7 +707,9 @@ void VulkanGraphApplication::HandleShutdownRequest() {
 }
 
 void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
-    mainLogger->Info("Received shutdown acknowledgment from: " + systemName);
+    if (mainLogger) {
+        mainLogger->Info("Received shutdown acknowledgment from: " + systemName);
+    }
 
     auto it = shutdownAcksPending.find(systemName);
     if (it != shutdownAcksPending.end()) {
@@ -708,17 +718,23 @@ void VulkanGraphApplication::HandleShutdownAck(const std::string& systemName) {
 
     // Check if all systems have acknowledged
     if (shutdownAcksPending.empty()) {
-        mainLogger->Info("All systems acknowledged shutdown - destroying window");
+        if (mainLogger) {
+            mainLogger->Info("All systems acknowledged shutdown - destroying window");
+        }
         CompleteShutdown();
     } else {
-        mainLogger->Info("Still waiting for " + std::to_string(shutdownAcksPending.size()) + " system(s) to acknowledge");
+        if (mainLogger) {
+            mainLogger->Info("Still waiting for " + std::to_string(shutdownAcksPending.size()) + " system(s) to acknowledge");
+        }
     }
 }
 
 void VulkanGraphApplication::CompleteShutdown() {
     // All systems have cleaned up - now destroy the window
     if (windowHandle) {
-        mainLogger->Info("Destroying window to complete shutdown");
+        if (mainLogger) {
+            mainLogger->Info("Destroying window to complete shutdown");
+        }
         DestroyWindow(windowHandle);
         windowHandle = nullptr;
     }

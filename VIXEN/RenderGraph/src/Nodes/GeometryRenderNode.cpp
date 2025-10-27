@@ -110,14 +110,18 @@ void GeometryRenderNode::Compile() {
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to allocate command buffers");
     }
-    
-    // Create render complete semaphore
+
+    // Create render complete semaphores (one per swapchain image)
+    renderCompleteSemaphores.resize(imageCount);
+
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    
-    result = vkCreateSemaphore(vulkanDevice->device, &semaphoreInfo, nullptr, &renderCompleteSemaphore);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to create render complete semaphore");
+
+    for (uint32_t i = 0; i < imageCount; i++) {
+        result = vkCreateSemaphore(vulkanDevice->device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("GeometryRenderNode: Failed to create render complete semaphore " + std::to_string(i));
+        }
     }
     
     RegisterCleanup();
@@ -127,36 +131,43 @@ void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
     VkSemaphore imageAvailableSemaphore = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE);
-    
+
+    // Guard against invalid image index (swapchain out of date)
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
+        return;
+    }
+
     // Record draw commands for current image
     VkCommandBuffer cmdBuffer = commandBuffers[imageIndex];
     RecordDrawCommands(cmdBuffer, imageIndex);
-    
+
     // Submit command buffer to graphics queue
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    
+
     // Wait for image to be available before writing to it
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
     submitInfo.pWaitDstStageMask = &waitStage;
-    
+
     // Submit command buffer
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
-    
-    // Signal render complete semaphore when done
+
+    // Signal the render complete semaphore for THIS specific image
+    VkSemaphore currentRenderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
-    
+    submitInfo.pSignalSemaphores = &currentRenderCompleteSemaphore;
+
     VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
     }
-    
+
     // Output render complete semaphore for PresentNode
-    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, currentRenderCompleteSemaphore);
 }
 
 void GeometryRenderNode::CleanupImpl() {
@@ -170,11 +181,15 @@ void GeometryRenderNode::CleanupImpl() {
         );
         commandBuffers.clear();
     }
-    
-    // Destroy render complete semaphore
-    if (renderCompleteSemaphore != VK_NULL_HANDLE && vulkanDevice) {
-        vkDestroySemaphore(vulkanDevice->device, renderCompleteSemaphore, nullptr);
-        renderCompleteSemaphore = VK_NULL_HANDLE;
+
+    // Destroy all render complete semaphores
+    if (vulkanDevice) {
+        for (VkSemaphore semaphore : renderCompleteSemaphores) {
+            if (semaphore != VK_NULL_HANDLE) {
+                vkDestroySemaphore(vulkanDevice->device, semaphore, nullptr);
+            }
+        }
+        renderCompleteSemaphores.clear();
     }
 }
 

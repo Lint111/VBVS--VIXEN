@@ -49,25 +49,28 @@ TextureLoaderNode::~TextureLoaderNode() {
 
 void TextureLoaderNode::Setup() {
     // Read and validate device input
-    vulkanDevice = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
-    if (vulkanDevice == VK_NULL_HANDLE) {
+    VulkanDevicePtr devicePtr = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+    if (devicePtr == nullptr) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
     }
+
+    // Set base class device member for cleanup tracking
+    SetDevice(devicePtr);
 
     // Create temporary command pool for texture loading
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = vulkanDevice->graphicsQueueIndex;
+    poolInfo.queueFamilyIndex = device->graphicsQueueIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VkResult result = vkCreateCommandPool(vulkanDevice->device, &poolInfo, nullptr, &commandPool);
+    VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, &commandPool);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create command pool for texture loading");
     }
 
     // Create texture loader (using STB for common formats)
     textureLoader = std::make_unique<Vixen::TextureHandling::STBTextureLoader>(
-        vulkanDevice,
+        device,
         commandPool
     );
 }
@@ -105,7 +108,7 @@ void TextureLoaderNode::Compile() {
         Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
         Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
         Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
-        Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice);
+        Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
@@ -126,7 +129,7 @@ void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
 
 void TextureLoaderNode::CleanupImpl() {
     // Validate device is still valid before attempting cleanup
-    if (vulkanDevice == VK_NULL_HANDLE || vulkanDevice->device == VK_NULL_HANDLE) {
+    if (device == VK_NULL_HANDLE || device->device == VK_NULL_HANDLE) {
         // Device already destroyed - mark resources as invalid but don't try to destroy them
         textureView = VK_NULL_HANDLE;
         textureSampler = VK_NULL_HANDLE;
@@ -141,22 +144,22 @@ void TextureLoaderNode::CleanupImpl() {
     // Destroy texture resources
     if (isLoaded) {
         if (textureView != VK_NULL_HANDLE) {
-            vkDestroyImageView(vulkanDevice->device, textureView, nullptr);
+            vkDestroyImageView(device->device, textureView, nullptr);
             textureView = VK_NULL_HANDLE;
         }
 
         if (textureSampler != VK_NULL_HANDLE) {
-            vkDestroySampler(vulkanDevice->device, textureSampler, nullptr);
+            vkDestroySampler(device->device, textureSampler, nullptr);
             textureSampler = VK_NULL_HANDLE;
         }
 
         if (textureImage != VK_NULL_HANDLE) {
-            vkDestroyImage(vulkanDevice->device, textureImage, nullptr);
+            vkDestroyImage(device->device, textureImage, nullptr);
             textureImage = VK_NULL_HANDLE;
         }
 
         if (textureMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(vulkanDevice->device, textureMemory, nullptr);
+            vkFreeMemory(device->device, textureMemory, nullptr);
             textureMemory = VK_NULL_HANDLE;
         }
 
@@ -165,7 +168,7 @@ void TextureLoaderNode::CleanupImpl() {
 
     // Destroy command pool
     if (commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(vulkanDevice->device, commandPool, nullptr);
+        vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
     }
 
