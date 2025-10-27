@@ -96,8 +96,9 @@ void FramebufferNode::Compile() {
     NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
     std::cout << "[FramebufferNode::Compile] Creating " << colorAttachmentCount << " framebuffers from swapchain" << std::endl;
 
-    // Clear any existing framebuffers
-    Cleanup();
+    // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
+    // Clear the framebuffer vector to prepare for new framebuffers
+    framebuffers.clear();
 
     // Resize framebuffer array
     framebuffers.resize(colorAttachmentCount);
@@ -172,7 +173,7 @@ void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void FramebufferNode::CleanupImpl() {
-    if (!framebuffers.empty() && device != VK_NULL_HANDLE) {
+    if (!framebuffers.empty() && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 
         for (VkFramebuffer framebuffer : framebuffers) {

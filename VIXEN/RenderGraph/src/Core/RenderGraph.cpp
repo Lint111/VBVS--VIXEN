@@ -330,6 +330,13 @@ void RenderGraph::HandleWindowClose() {
 
 void RenderGraph::ExecuteCleanup() {
     std::cout << "[RenderGraph::ExecuteCleanup] Executing cleanup callbacks..." << std::endl;
+
+    // Check if cleanup has already been executed
+    if (cleanupStack.GetNodeCount() == 0) {
+        std::cout << "[RenderGraph::ExecuteCleanup] Cleanup already executed, skipping" << std::endl;
+        return;
+    }
+
     // Ensure devices are idle before running cleanup
     WaitForGraphDevicesIdle();
 
@@ -542,25 +549,43 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
 }
 
 void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck) {
+    // Prefer waiting on device(s) created by DeviceNode instances to avoid
+    // accidentally dereferencing dangling or uninitialized VulkanDevice wrappers
+    // that some nodes may hold as non-owning pointers.
     std::unordered_set<VkDevice> devicesToWait;
 
-    std::vector<NodeInstance*> nodesToCheck;
-
-    if (instancesToCheck.empty()) {
-        // Assuming `instances` is std::vector<std::unique_ptr<NodeInstance>>
-        nodesToCheck.reserve(instances.size());
-        for (const auto& inst : instances)
-            nodesToCheck.push_back(inst.get());
-    }
-    else {
-        nodesToCheck = instancesToCheck;
-    }
-
-    for (auto* instPtr : nodesToCheck) {
+    // First, collect VulkanDevice pointers from explicit Device nodes (trusted owners)
+    for (const auto& instPtrUp : instances) {
+        if (!instPtrUp) continue;
+        NodeInstance* instPtr = instPtrUp.get();
         if (!instPtr) continue;
-        auto* vdev = instPtr->GetDevice();
-        if (vdev && vdev->device != VK_NULL_HANDLE) {
-            devicesToWait.insert(vdev->device);
+        NodeType* type = instPtr->GetNodeType();
+        if (type && type->GetTypeName() == "Device") {
+            auto* vdev = instPtr->GetDevice();
+            if (vdev && vdev->device != VK_NULL_HANDLE) {
+                devicesToWait.insert(vdev->device);
+            }
+        }
+    }
+
+    // If no Device nodes found, fall back to scanning the provided instances list
+    if (devicesToWait.empty()) {
+        std::vector<NodeInstance*> nodesToCheck;
+        if (instancesToCheck.empty()) {
+            nodesToCheck.reserve(instances.size());
+            for (const auto& inst : instances)
+                nodesToCheck.push_back(inst.get());
+        }
+        else {
+            nodesToCheck = instancesToCheck;
+        }
+
+        for (auto* instPtr : nodesToCheck) {
+            if (!instPtr) continue;
+            auto* vdev = instPtr->GetDevice();
+            if (vdev && vdev->device != VK_NULL_HANDLE) {
+                devicesToWait.insert(vdev->device);
+            }
         }
     }
 
@@ -1044,12 +1069,15 @@ void RenderGraph::RecompileDirtyNodes() {
     
                 // Register cleanup again
                 node->RegisterCleanup();
-    
+
                 // Clear recompilation flag - node is now compiled
                 node->ClearNeedsRecompile();
-    
+
                 // Reset cleanup flag so node can be cleaned up again on next recompilation
                 node->ResetCleanupFlag();
+
+                // Reset the CleanupStack's executed flag for this node
+                cleanupStack.ResetExecuted(node->GetHandle());
     
                 // Mark all dependent nodes (consumers of this node's outputs) as dirty
                 // The cleanup stack tracks the dependency graph: provider -> dependents

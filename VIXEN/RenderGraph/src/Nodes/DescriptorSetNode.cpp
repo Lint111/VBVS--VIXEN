@@ -340,6 +340,28 @@ void DescriptorSetNode::CleanupImpl() {
         descriptorSetLayout = VK_NULL_HANDLE;
         NODE_LOG_DEBUG("Cleanup: Descriptor set layout destroyed");
     }
+
+    // Cleanup UBO resources (buffer, memory, mapping)
+    // These were created during Compile() and must be freed before device destruction
+    if (device) {
+        if (uboMappedData != nullptr) {
+            vkUnmapMemory(device->device, uboMemory);
+            uboMappedData = nullptr;
+            NODE_LOG_DEBUG("Cleanup: UBO memory unmapped");
+        }
+
+        if (uboBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device->device, uboBuffer, nullptr);
+            uboBuffer = VK_NULL_HANDLE;
+            NODE_LOG_DEBUG("Cleanup: UBO buffer destroyed");
+        }
+
+        if (uboMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device->device, uboMemory, nullptr);
+            uboMemory = VK_NULL_HANDLE;
+            NODE_LOG_DEBUG("Cleanup: UBO memory freed");
+        }
+    }
 }
 
 // ===== API METHODS (MVP STUBS) =====

@@ -57,8 +57,22 @@ public:
 
     /**
      * @brief Execute cleanup recursively: dependents first, then self
+     * @param visited Set of already-visited nodes to prevent duplicate execution
      */
-    void ExecuteCleanup() {
+    void ExecuteCleanup(std::unordered_set<NodeHandle>* visited = nullptr) {
+        // Use local set if not provided (top-level call)
+        std::unordered_set<NodeHandle> localVisited;
+        if (!visited) {
+            visited = &localVisited;
+        }
+
+        // Check if already visited in this recursive traversal
+        if (visited->count(nodeHandle) > 0) {
+            return; // Already cleaned in this traversal
+        }
+        visited->insert(nodeHandle);
+
+        // Also check the executed flag (for cases where cleanup was called multiple times)
         if (executed) {
             return; // Already cleaned up
         }
@@ -66,7 +80,7 @@ public:
         // Clean up all dependents first (children before parents)
         for (auto& dependent : dependents) {
             if (auto dep = dependent.lock()) {
-                dep->ExecuteCleanup();
+                dep->ExecuteCleanup(visited);
             }
         }
 
@@ -86,6 +100,14 @@ public:
      */
     void SetCallback(CleanupCallback cb) {
         cleanupCallback = std::move(cb);
+    }
+
+    /**
+     * @brief Reset the executed flag to allow cleanup to run again after recompilation
+     * Used when a node is recompiled and creates new resources that need cleanup
+     */
+    void ResetExecuted() {
+        executed = false;
     }
 
     /**
@@ -177,8 +199,8 @@ public:
      * Cleans up all registered nodes in dependency order
      */
     void ExecuteAll() {
-        // Find root nodes (nodes with no dependencies registered as dependents)
-        for (auto& [name, node] : nodes) {
+        // Execute cleanup for all nodes (duplicate execution prevented by visited tracking)
+        for (auto& [handle, node] : nodes) {
             node->ExecuteCleanup();
         }
         nodes.clear();
@@ -193,6 +215,18 @@ public:
         auto it = nodes.find(handle);
         if (it != nodes.end()) {
             it->second->ExecuteCleanup();
+        }
+    }
+
+    /**
+     * @brief Reset the executed flag for a node to allow cleanup to run again
+     * Call this when a node is recompiled and needs its cleanup to run again
+     * @param handle Handle of the node to reset
+     */
+    void ResetExecuted(NodeHandle handle) {
+        auto it = nodes.find(handle);
+        if (it != nodes.end()) {
+            it->second->ResetExecuted();
         }
     }
 

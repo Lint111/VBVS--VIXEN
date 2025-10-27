@@ -1,0 +1,642 @@
+[main] Starting VulkanGraphApplication...
+
+Instanced Layers
+================
+
+AMD switchable graphics layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_AMD_switchable_graphics
+
+NVIDIA Optimus layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_NV_optimus
+
+NVIDIA GR2608 layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_NV_present
+
+Steam Overlay Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_VALVE_steam_overlay
+
+Steam Pipeline Caching Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_VALVE_steam_fossilize
+
+Open Broadcaster Software hook
+	|
+	\ --- [Layer Name] --> VK_LAYER_OBS_HOOK
+
+Open Broadcaster Software hook
+	|
+	\ --- [Layer Name] --> VK_LAYER_OBS_HOOK
+
+LunarG API dump layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_api_dump
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+GFXReconstruct Capture Layer Version 1.0.5
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_gfxreconstruct
+
+Khronos Synchronization2 layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_synchronization2
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Validation Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_validation
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_report
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_utils
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+		|
+		|--- [LayerExtension] --> VK_EXT_validation_features
+
+Execution Monitoring Layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_monitor
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+LunarG image capture layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_screenshot
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Profiles layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_profiles
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Khronos Shader object layer
+	|
+	\ --- [Layer Name] --> VK_LAYER_KHRONOS_shader_object
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+
+Crash Diagnostic Layer is a crash/hang debugging tool that helps determines GPU progress in a Vulkan application.
+	|
+	\ --- [Layer Name] --> VK_LAYER_LUNARG_crash_diagnostic
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_report
+		|
+		|--- [LayerExtension] --> VK_EXT_debug_utils
+		|
+		|--- [LayerExtension] --> VK_EXT_layer_settings
+[main] Calling Initialize...
+Layer support found, keep the layer: VK_LAYER_KHRONOS_validation
+GetProcAddr: Found vkCreateDebugReportCallbackEXT function.
+GetProcAddr: Found vkDestroyDebugReportCallbackEXT function.
+Debug Callback: Successfully created.
+[main] Calling Prepare...
+[VulkanGraphApplication::Prepare] START
+[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...
+[BuildRenderGraph] Creating shader_constant node...
+[BuildRenderGraph] shader_constant node created successfully, handle=12
+[VulkanGraphApplication::Prepare] BuildRenderGraph complete
+[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...
+[CompileRenderGraph] START
+[CompileRenderGraph] Pre-compiling device node...
+[VulkanDevice::CreateDevice] Enabling 3 extensions:
+[VulkanDevice::CreateDevice]   0: VK_KHR_swapchain
+[VulkanDevice::CreateDevice]   1: VK_EXT_swapchain_maintenance1
+[VulkanDevice::CreateDevice]   2: VK_KHR_maintenance6
+[CompileRenderGraph] Device node compiled and marked as Compiled
+[CompileRenderGraph] Getting shader_constant node instance...
+[CompileRenderGraph] Calling SetValue() on shader_constant...
+[ConstantNode::SetValue] Setting value for node: shader_constant
+[ConstantNode::SetValue] Value set successfully
+[CompileRenderGraph] SetValue() complete
+[CompileRenderGraph] Calling SetCleanupCallback() on shader_constant...
+[ConstantNode::SetCleanupCallback] Setting callback for: shader_constant
+[ConstantNode::SetCleanupCallback] Callback set, valid=true, dependencies=1
+[CompileRenderGraph] SetCleanupCallback() complete
+[CompileRenderGraph] Calling graph.Compile()...
+[RenderGraph::Compile] Starting compilation...
+[RenderGraph::Compile] Phase: Validation...
+[RenderGraph::Compile] Phase: AnalyzeDependencies...
+[RenderGraph::Compile] Phase: AllocateResources...
+[RenderGraph::Compile] Phase: GeneratePipelines...
+[GeneratePipelines] Total instances to compile: 15
+[GeneratePipelines]   0: shader_constant
+[GeneratePipelines]   1: main_device
+[GeneratePipelines]   2: triangle_vb
+[GeneratePipelines]   3: main_cmd_pool
+[GeneratePipelines]   4: main_window
+[GeneratePipelines]   5: main_swapchain
+[GeneratePipelines]   6: shader_lib
+[GeneratePipelines]   7: depth_buffer
+[GeneratePipelines]   8: main_pass
+[GeneratePipelines]   9: main_fb
+[GeneratePipelines]   10: main_texture
+[GeneratePipelines]   11: main_descriptors
+[GeneratePipelines]   12: triangle_pipeline
+[GeneratePipelines]   13: triangle_render
+[GeneratePipelines]   14: present
+[GeneratePipelines] Calling Setup() on node: shader_constant
+[GeneratePipelines] Calling Compile() on node: shader_constant
+[ConstantNode::Compile] START for node: shader_constant
+[ConstantNode::Compile] Value is set, retrieving output resource...
+[ConstantNode::Compile] Moving resource to output...
+[ConstantNode::Compile] Output resource address: 0000016C5A3B4AC0
+[ConstantNode::Compile] Source resource is valid: 1
+[ConstantNode::Compile] Transferred resource is valid: 1
+[ConstantNode::Compile] SUCCESS - Resource transferred
+[ConstantNode::Compile] Checking cleanup callback: EXISTS
+[ConstantNode::Compile] Registering cleanup callback in CleanupStack...
+[ConstantNode::Compile] Cleanup callback registered successfully
+[GeneratePipelines] Node compiled successfully: shader_constant
+[GeneratePipelines] Skipping already-compiled node: main_device
+[GeneratePipelines] Calling Setup() on node: triangle_vb
+[GeneratePipelines] Calling Compile() on node: triangle_vb
+[VertexBufferNode::Compile] vertexBuffer BEFORE Out(): 4398046511108
+[VertexBufferNode::Compile] vertexBuffer AFTER Out(): 4398046511108
+[GeneratePipelines] Node compiled successfully: triangle_vb
+[GeneratePipelines] Calling Setup() on node: main_cmd_pool
+[GeneratePipelines] Calling Compile() on node: main_cmd_pool
+[GeneratePipelines] Node compiled successfully: main_cmd_pool
+[GeneratePipelines] Calling Setup() on node: main_window
+[GeneratePipelines] Calling Compile() on node: main_window
+[WindowNode::Compile] START
+[WindowNode::Compile] Creating window 800x600
+[GeneratePipelines] Node compiled successfully: main_window
+[GeneratePipelines] Calling Setup() on node: main_swapchain
+[GeneratePipelines] Calling Compile() on node: main_swapchain
+[SwapChainNode::Compile] START
+[SwapChainNode::Compile] Reading HWND...
+[SwapChainNode::Compile] Reading HINSTANCE...
+[SwapChainNode::Compile] Reading WIDTH...
+[SwapChainNode::Compile] WIDTH = 800
+[SwapChainNode::Compile] Reading HEIGHT...
+[SwapChainNode::Compile] HEIGHT = 600
+[SwapChainNode::Compile] Reading INSTANCE...
+[SwapChainNode::Compile] Validating dimensions...
+[SwapChainNode::Compile] Validating HWND...
+[SwapChainNode::Compile] Validating HINSTANCE...
+[SwapChainNode::Compile] Validating VkInstance...
+[SwapChainNode::Compile] Checking swapchain wrapper...
+[SwapChainNode::Compile] Swapchain wrapper OK
+[SwapChainNode::Compile] Loading swapchain extensions...
+[SwapChainNode::Compile] Instance handle: 0000016C0AFA6B30
+[SwapChainNode::Compile] Extension function pointers loaded successfully
+[ManagePresentMode] Available present modes: 2 3 1 0 1000361000 
+[ManagePresentMode] Selected MAILBOX mode
+[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)
+[SwapChainNode::Compile] ColorBuffers populated: 3 buffers
+[GeneratePipelines] Node compiled successfully: main_swapchain
+[GeneratePipelines] Calling Setup() on node: shader_lib
+[GeneratePipelines] Calling Compile() on node: shader_lib
+[GeneratePipelines] Node compiled successfully: shader_lib
+[GeneratePipelines] Calling Setup() on node: depth_buffer
+[GeneratePipelines] Calling Compile() on node: depth_buffer
+[GeneratePipelines] Node compiled successfully: depth_buffer
+[GeneratePipelines] Calling Setup() on node: main_pass
+[GeneratePipelines] Calling Compile() on node: main_pass
+[GeneratePipelines] Node compiled successfully: main_pass
+[GeneratePipelines] Calling Setup() on node: main_fb
+[GeneratePipelines] Calling Compile() on node: main_fb
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=0, device=valid
+[FramebufferNode::CleanupImpl] Skipping cleanup - empty=1, device=valid
+[FramebufferNode::Compile] Processing attachment 0, view=00000D000000000D
+[FramebufferNode::Compile] Created framebuffer[0]=0000170000000017
+[FramebufferNode::Compile] Processing attachment 1, view=00000E000000000E
+[FramebufferNode::Compile] Created framebuffer[1]=0000180000000018
+[FramebufferNode::Compile] Processing attachment 2, view=00000F000000000F
+[FramebufferNode::Compile] Created framebuffer[2]=0000190000000019
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[GeneratePipelines] Node compiled successfully: main_fb
+[GeneratePipelines] Calling Setup() on node: main_texture
+[TextureLoader] Base constructor - device=0000016C5A3BBCF0, cmdPool=00001A000000001A
+[STBTextureLoader] Constructor called
+[GeneratePipelines] Calling Compile() on node: main_texture
+[TextureLoader::Load] START
+[TextureLoader::Load] Calling LoadPixelData...
+[STB] LoadPixelData ENTRY
+[STB] Loading: C:\Users\liory\Downloads\earthmap.jpg
+[STB] Loaded 1024x512, 3 channels
+[GeneratePipelines] Node compiled successfully: main_texture
+[GeneratePipelines] Calling Setup() on node: main_descriptors
+[GeneratePipelines] Calling Compile() on node: main_descriptors
+[DescriptorSetNode::Compile] Created layout: 0000220000000022
+[DescriptorSetNode::Compile] Created descriptor pool: 0000230000000023
+[DescriptorSetNode::Compile] Allocated descriptor set: 0000240000000024
+[DescriptorSetNode::Compile] Created UBO with persistent mapping: 0000250000000025
+[DescriptorSetNode::Compile] Updated descriptor set with UBO (binding 0)
+[DescriptorSetNode::Compile] Updated descriptor set with texture (view=0000200000000020, sampler=0000210000000021)
+[DescriptorSetNode::Compile] Outputs set successfully
+[GeneratePipelines] Node compiled successfully: main_descriptors
+[GeneratePipelines] Calling Setup() on node: triangle_pipeline
+[GeneratePipelines] Calling Compile() on node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[GeneratePipelines] Node compiled successfully: triangle_pipeline
+[GeneratePipelines] Calling Setup() on node: triangle_render
+[GeneratePipelines] Calling Compile() on node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[GeneratePipelines] Node compiled successfully: triangle_render
+[GeneratePipelines] Calling Setup() on node: present
+[GeneratePipelines] Calling Compile() on node: present
+[GeneratePipelines] Node compiled successfully: present
+[RenderGraph::Compile] Phase: BuildExecutionOrder...
+[RenderGraph::Compile] Compilation complete!
+[CompileRenderGraph] Graph compilation complete
+[CompileRenderGraph] Validating graph...
+[CompileRenderGraph] Validation passed
+[CompileRenderGraph] SUCCESS
+[VulkanGraphApplication::Prepare] CompileRenderGraph complete
+[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true
+[main] Entering render loop...
+[RenderGraph] Window state changed: FOCUSED
+[RenderGraph] Render pause event: START (reason: 0)
+[RenderGraph] Rendering paused - continuing with event processing only
+[RenderGraph] Render pause event: END (reason: 0)
+[RenderGraph] Rendering resumed
+[WindowNode::WM_EXITSIZEMOVE] GetClientRect returned: 1255x600
+[WindowNode::WM_EXITSIZEMOVE] Old cached dimensions: 800x600
+[WindowNode::WM_EXITSIZEMOVE] Calling Out() with: 1255x600
+[WindowNode::WM_EXITSIZEMOVE] Read back from outputs: width=1255, height=600
+[WindowNode::WM_EXITSIZEMOVE] Publishing WindowResizedMessage with 1255x600
+[RenderGraph] Window resized: 1255x600
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: main_swapchain
+[SwapChainNode::CleanupImpl] Called
+[VulkanSwapChain::Destroy] Called with device=0000016C5A3E5A30, instance=0000016C0AFA6B30
+[VulkanSwapChain::Destroy] Current surface=0000080000000008, swapchain=0000090000000009
+  Destroying VkSurfaceKHR
+[VulkanSwapChain::Destroy] Cleanup complete
+[SwapChainNode::Compile] START
+[SwapChainNode::Compile] Reading HWND...
+[SwapChainNode::Compile] Reading HINSTANCE...
+[SwapChainNode::Compile] Reading WIDTH...
+[SwapChainNode::Compile] WIDTH = 1255
+[SwapChainNode::Compile] Reading HEIGHT...
+[SwapChainNode::Compile] HEIGHT = 600
+[SwapChainNode::Compile] Reading INSTANCE...
+[SwapChainNode::Compile] Validating dimensions...
+[SwapChainNode::Compile] Validating HWND...
+[SwapChainNode::Compile] Validating HINSTANCE...
+[SwapChainNode::Compile] Validating VkInstance...
+[SwapChainNode::Compile] Checking swapchain wrapper...
+[SwapChainNode::Compile] Swapchain wrapper OK
+[SwapChainNode::Compile] Loading swapchain extensions...
+[SwapChainNode::Compile] Instance handle: 0000016C0AFA6B30
+[SwapChainNode::Compile] Extension function pointers loaded successfully
+[ManagePresentMode] Available present modes: 2 3 1 0 1000361000 
+[ManagePresentMode] Selected MAILBOX mode
+[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)
+[SwapChainNode::Compile] ColorBuffers populated: 3 buffers
+[RenderGraph] Marking dependent node 'depth_buffer' for recompilation
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling 5 dirty nodes
+[RenderGraph] Recompiling node: depth_buffer
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000320000000032
+[FramebufferNode::Compile] Created framebuffer[0]=00003C000000003C
+[FramebufferNode::Compile] Processing attachment 1, view=0000330000000033
+[FramebufferNode::Compile] Created framebuffer[1]=00003D000000003D
+[FramebufferNode::Compile] Processing attachment 2, view=0000340000000034
+[FramebufferNode::Compile] Created framebuffer[2]=00003E000000003E
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 4 dirty nodes
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00003C000000003C
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00003D000000003D
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00003E000000003E
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000320000000032
+[FramebufferNode::Compile] Created framebuffer[0]=0000460000000046
+[FramebufferNode::Compile] Processing attachment 1, view=0000330000000033
+[FramebufferNode::Compile] Created framebuffer[1]=0000470000000047
+[FramebufferNode::Compile] Processing attachment 2, view=0000340000000034
+[FramebufferNode::Compile] Created framebuffer[2]=0000480000000048
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 3 dirty nodes
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000460000000046
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000470000000047
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000480000000048
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000320000000032
+[FramebufferNode::Compile] Created framebuffer[0]=00004F000000004F
+[FramebufferNode::Compile] Processing attachment 1, view=0000330000000033
+[FramebufferNode::Compile] Created framebuffer[1]=0000500000000050
+[FramebufferNode::Compile] Processing attachment 2, view=0000340000000034
+[FramebufferNode::Compile] Created framebuffer[2]=0000510000000051
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] All nodes successfully recompiled - graph is compiled
+[RenderGraph] Render pause event: START (reason: 0)
+[RenderGraph] Rendering paused - continuing with event processing only
+[RenderGraph] Render pause event: END (reason: 0)
+[RenderGraph] Rendering resumed
+[WindowNode::WM_SIZE] BEFORE Out() calls - width=1920, height=1009
+[WindowNode::WM_SIZE] AFTER Out() calls - verifying...
+[WindowNode::WM_SIZE] Read back: width=1920, height=1009
+[WindowNode::WM_SIZE] Publishing WindowResizedMessage with 1920x1009
+[RenderGraph] Window state changed: MAXIMIZED - resuming rendering
+[RenderGraph] Window resized: 1920x1009
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: main_swapchain
+[SwapChainNode::CleanupImpl] Called
+[VulkanSwapChain::Destroy] Called with device=0000016C5A3E5A30, instance=0000016C0AFA6B30
+[VulkanSwapChain::Destroy] Current surface=00002D000000002D, swapchain=00002E000000002E
+  Destroying VkSurfaceKHR
+[VulkanSwapChain::Destroy] Cleanup complete
+[SwapChainNode::Compile] START
+[SwapChainNode::Compile] Reading HWND...
+[SwapChainNode::Compile] Reading HINSTANCE...
+[SwapChainNode::Compile] Reading WIDTH...
+[SwapChainNode::Compile] WIDTH = 1920
+[SwapChainNode::Compile] Reading HEIGHT...
+[SwapChainNode::Compile] HEIGHT = 1009
+[SwapChainNode::Compile] Reading INSTANCE...
+[SwapChainNode::Compile] Validating dimensions...
+[SwapChainNode::Compile] Validating HWND...
+[SwapChainNode::Compile] Validating HINSTANCE...
+[SwapChainNode::Compile] Validating VkInstance...
+[SwapChainNode::Compile] Checking swapchain wrapper...
+[SwapChainNode::Compile] Swapchain wrapper OK
+[SwapChainNode::Compile] Loading swapchain extensions...
+[SwapChainNode::Compile] Instance handle: 0000016C0AFA6B30
+[SwapChainNode::Compile] Extension function pointers loaded successfully
+[ManagePresentMode] Available present modes: 2 3 1 0 1000361000 
+[ManagePresentMode] Selected MAILBOX mode
+[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)
+[SwapChainNode::Compile] ColorBuffers populated: 3 buffers
+[RenderGraph] Marking dependent node 'depth_buffer' for recompilation
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling 5 dirty nodes
+[RenderGraph] Recompiling node: depth_buffer
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00004F000000004F
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000500000000050
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000510000000051
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000600000000060
+[FramebufferNode::Compile] Created framebuffer[0]=00006A000000006A
+[FramebufferNode::Compile] Processing attachment 1, view=0000610000000061
+[FramebufferNode::Compile] Created framebuffer[1]=00006B000000006B
+[FramebufferNode::Compile] Processing attachment 2, view=0000620000000062
+[FramebufferNode::Compile] Created framebuffer[2]=00006C000000006C
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 4 dirty nodes
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00006A000000006A
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00006B000000006B
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00006C000000006C
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000600000000060
+[FramebufferNode::Compile] Created framebuffer[0]=0000740000000074
+[FramebufferNode::Compile] Processing attachment 1, view=0000610000000061
+[FramebufferNode::Compile] Created framebuffer[1]=0000750000000075
+[FramebufferNode::Compile] Processing attachment 2, view=0000620000000062
+[FramebufferNode::Compile] Created framebuffer[2]=0000760000000076
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 3 dirty nodes
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000740000000074
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000750000000075
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000760000000076
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=0000600000000060
+[FramebufferNode::Compile] Created framebuffer[0]=00007D000000007D
+[FramebufferNode::Compile] Processing attachment 1, view=0000610000000061
+[FramebufferNode::Compile] Created framebuffer[1]=00007E000000007E
+[FramebufferNode::Compile] Processing attachment 2, view=0000620000000062
+[FramebufferNode::Compile] Created framebuffer[2]=00007F000000007F
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] All nodes successfully recompiled - graph is compiled
+[RenderGraph] Render pause event: START (reason: 0)
+[RenderGraph] Rendering paused - continuing with event processing only
+[RenderGraph] Render pause event: END (reason: 0)
+[RenderGraph] Rendering resumed
+[WindowNode::WM_SIZE] BEFORE Out() calls - width=1255, height=600
+[WindowNode::WM_SIZE] AFTER Out() calls - verifying...
+[WindowNode::WM_SIZE] Read back: width=1255, height=600
+[WindowNode::WM_SIZE] Publishing WindowResizedMessage with 1255x600
+[RenderGraph] Window state changed: RESTORED - resuming rendering
+[RenderGraph] Window resized: 1255x600
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[SwapChainNode] Received WindowResizedMessage - marking self for recompilation
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: main_swapchain
+[SwapChainNode::CleanupImpl] Called
+[VulkanSwapChain::Destroy] Called with device=0000016C5A3E5A30, instance=0000016C0AFA6B30
+[VulkanSwapChain::Destroy] Current surface=00005B000000005B, swapchain=00005C000000005C
+  Destroying VkSurfaceKHR
+[VulkanSwapChain::Destroy] Cleanup complete
+[SwapChainNode::Compile] START
+[SwapChainNode::Compile] Reading HWND...
+[SwapChainNode::Compile] Reading HINSTANCE...
+[SwapChainNode::Compile] Reading WIDTH...
+[SwapChainNode::Compile] WIDTH = 1255
+[SwapChainNode::Compile] Reading HEIGHT...
+[SwapChainNode::Compile] HEIGHT = 600
+[SwapChainNode::Compile] Reading INSTANCE...
+[SwapChainNode::Compile] Validating dimensions...
+[SwapChainNode::Compile] Validating HWND...
+[SwapChainNode::Compile] Validating HINSTANCE...
+[SwapChainNode::Compile] Validating VkInstance...
+[SwapChainNode::Compile] Checking swapchain wrapper...
+[SwapChainNode::Compile] Swapchain wrapper OK
+[SwapChainNode::Compile] Loading swapchain extensions...
+[SwapChainNode::Compile] Instance handle: 0000016C0AFA6B30
+[SwapChainNode::Compile] Extension function pointers loaded successfully
+[ManagePresentMode] Available present modes: 2 3 1 0 1000361000 
+[ManagePresentMode] Selected MAILBOX mode
+[ManagePresentMode] Selected IMMEDIATE mode (uncapped FPS)
+[SwapChainNode::Compile] ColorBuffers populated: 3 buffers
+[RenderGraph] Marking dependent node 'depth_buffer' for recompilation
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling 5 dirty nodes
+[RenderGraph] Recompiling node: depth_buffer
+[RenderGraph] Marking dependent node 'main_pass' for recompilation
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00007D000000007D
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00007E000000007E
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00007F000000007F
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=00008E000000008E
+[FramebufferNode::Compile] Created framebuffer[0]=0000980000000098
+[FramebufferNode::Compile] Processing attachment 1, view=00008F000000008F
+[FramebufferNode::Compile] Created framebuffer[1]=0000990000000099
+[FramebufferNode::Compile] Processing attachment 2, view=0000900000000090
+[FramebufferNode::Compile] Created framebuffer[2]=00009A000000009A
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 4 dirty nodes
+[RenderGraph] Recompiling node: main_pass
+[RenderGraph] Marking dependent node 'main_fb' for recompilation
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Marking dependent node 'triangle_pipeline' for recompilation
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000980000000098
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000990000000099
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 00009A000000009A
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=00008E000000008E
+[FramebufferNode::Compile] Created framebuffer[0]=0000A200000000A2
+[FramebufferNode::Compile] Processing attachment 1, view=00008F000000008F
+[FramebufferNode::Compile] Created framebuffer[1]=0000A300000000A3
+[FramebufferNode::Compile] Processing attachment 2, view=0000900000000090
+[FramebufferNode::Compile] Created framebuffer[2]=0000A400000000A4
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 3 dirty nodes
+[RenderGraph] Recompiling node: main_fb
+[FramebufferNode::CleanupImpl] Called - framebuffers.size()=3, device=valid
+[FramebufferNode::CleanupImpl] Destroying 3 framebuffers
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000A200000000A2
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000A300000000A3
+[FramebufferNode::CleanupImpl] Destroying framebuffer: 0000A400000000A4
+[FramebufferNode::CleanupImpl] All framebuffers destroyed
+[FramebufferNode::Compile] Creating 3 framebuffers from swapchain
+[FramebufferNode::Compile] Processing attachment 0, view=00008E000000008E
+[FramebufferNode::Compile] Created framebuffer[0]=0000AB00000000AB
+[FramebufferNode::Compile] Processing attachment 1, view=00008F000000008F
+[FramebufferNode::Compile] Created framebuffer[1]=0000AC00000000AC
+[FramebufferNode::Compile] Processing attachment 2, view=0000900000000090
+[FramebufferNode::Compile] Created framebuffer[2]=0000AD00000000AD
+[FramebufferNode::Compile] Output 3 framebuffers as vector
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_pipeline
+[GraphicsPipelineNode::Compile] Read descriptor set layout: 0000220000000022
+[RenderGraph] Marking dependent node 'triangle_render' for recompilation
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] Recompiling 1 dirty nodes
+[RenderGraph] Recompiling node: triangle_render
+[GeometryRenderNode::Compile] Swapchain has 3 images, allocating command buffers
+[RenderGraph] All nodes successfully recompiled - graph is compiled
+[RenderGraph] Render pause event: START (reason: 0)
+[RenderGraph] Rendering paused - continuing with event processing only
+[RenderGraph] Render pause event: END (reason: 0)
+[RenderGraph] Rendering resumed
+[RenderGraph] Window state changed: MINIMIZED - pausing rendering, continuing updates
+[RenderGraph] Window state changed: UNFOCUSED
