@@ -1,6 +1,9 @@
 #include "EventBus/MessageBus.h"
 #include <iostream>
 #include <algorithm>
+#include <set>
+#include <cstdint>
+#include <unordered_set>
 
 namespace EventBus {
 
@@ -11,7 +14,18 @@ SubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
     SubscriptionID id = nextSubscriptionID++;
-    subscriptions.push_back({id, type, std::move(handler)});
+
+    Subscription sub;
+    sub.id = id;
+    sub.type = type;
+    sub.handler = std::move(handler);
+    sub.mode = (type == 0) ? FilterMode::All : FilterMode::Type;
+
+    subscriptions.push_back(std::move(sub));
+    auto it = std::prev(subscriptions.end());
+
+    // Register in type lookup
+    typeSubscriptions[it->type].push_back(&*it);
 
     if (loggingEnabled) {
         std::cout << "[MessageBus] Subscription " << id << " created for type " << type << "\n";
@@ -24,17 +38,68 @@ SubscriptionID MessageBus::SubscribeAll(MessageHandler handler) {
     return Subscribe(0, std::move(handler)); // Type 0 = all messages
 }
 
+SubscriptionID MessageBus::SubscribeCategory(EventCategory category, MessageHandler handler) {
+    std::lock_guard<std::mutex> lock(subscriptionMutex);
+
+    SubscriptionID id = nextSubscriptionID++;
+    Subscription sub;
+    sub.id = id;
+    sub.mode = FilterMode::Category;
+    sub.categoryFilter = category;
+    sub.type = 0;
+    sub.handler = std::move(handler);
+
+    subscriptions.push_back(std::move(sub));
+    auto it = std::prev(subscriptions.end());
+
+    // Register into categorySubscriptions per-bit
+    uint64_t bits = static_cast<uint64_t>(category);
+    while (bits) {
+        uint64_t bit = bits & (~(bits - 1)); // lowest set bit
+        categorySubscriptions[bit].push_back(&*it);
+        bits &= (bits - 1);
+    }
+
+    if (loggingEnabled) {
+        std::cout << "[MessageBus] Subscription " << id << " created for category " << static_cast<uint64_t>(category) << "\n";
+    }
+
+    return id;
+}
+
+SubscriptionID MessageBus::SubscribeCategories(EventCategory categories, MessageHandler handler) {
+    return SubscribeCategory(categories, std::move(handler));
+}
+
 void MessageBus::Unsubscribe(SubscriptionID id) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
-    auto it = std::remove_if(subscriptions.begin(), subscriptions.end(),
-        [id](const Subscription& sub) { return sub.id == id; });
+    // Find subscription in list
+    for (auto it = subscriptions.begin(); it != subscriptions.end(); ++it) {
+        if (it->id == id) {
+            // Remove from typeSubscriptions
+            if (it->mode == FilterMode::Type || it->mode == FilterMode::All) {
+                auto &vec = typeSubscriptions[it->type];
+                vec.erase(std::remove(vec.begin(), vec.end(), &*it), vec.end());
+            }
 
-    if (it != subscriptions.end()) {
-        subscriptions.erase(it, subscriptions.end());
+            // Remove from categorySubscriptions
+            if (it->mode == FilterMode::Category) {
+                uint64_t bits = static_cast<uint64_t>(it->categoryFilter);
+                while (bits) {
+                    uint64_t bit = bits & (~(bits - 1));
+                    auto &vec = categorySubscriptions[bit];
+                    vec.erase(std::remove(vec.begin(), vec.end(), &*it), vec.end());
+                    bits &= (bits - 1);
+                }
+            }
 
-        if (loggingEnabled) {
-            std::cout << "[MessageBus] Subscription " << id << " removed\n";
+            subscriptions.erase(it);
+
+            if (loggingEnabled) {
+                std::cout << "[MessageBus] Subscription " << id << " removed\n";
+            }
+            return;
         }
     }
 }
@@ -48,7 +113,7 @@ void MessageBus::UnsubscribeAll() {
     }
 }
 
-void MessageBus::Publish(std::unique_ptr<Message> message) {
+void MessageBus::Publish(std::unique_ptr<BaseEventMessage> message) {
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         messageQueue.push(std::move(message));
@@ -61,7 +126,7 @@ void MessageBus::Publish(std::unique_ptr<Message> message) {
     }
 }
 
-void MessageBus::PublishImmediate(const Message& message) {
+void MessageBus::PublishImmediate(const BaseEventMessage& message) {
     DispatchMessage(message);
 
     {
@@ -69,12 +134,13 @@ void MessageBus::PublishImmediate(const Message& message) {
         stats.totalPublished++;
         stats.totalProcessed++;
         stats.publishedByType[message.type]++;
+        stats.typeFilterHits++; // best-effort increment
     }
 }
 
 void MessageBus::ProcessMessages() {
     // Swap queue to minimize lock time
-    std::queue<std::unique_ptr<Message>> localQueue;
+    std::queue<std::unique_ptr<BaseEventMessage>> localQueue;
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         localQueue.swap(messageQueue);
@@ -105,20 +171,61 @@ void MessageBus::ProcessMessages() {
     }
 }
 
-void MessageBus::DispatchMessage(const Message& message) {
+void MessageBus::DispatchMessage(const BaseEventMessage& message) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
-    for (const auto& sub : subscriptions) {
-        // Check if subscription matches (type-specific or all)
-        if (sub.type == 0 || sub.type == message.type) {
-            bool handled = sub.handler(message);
+    // Collect candidate subscriptions from type lookup (exact type and type==0)
+    std::vector<Subscription*> candidates;
+    auto itType = typeSubscriptions.find(message.type);
+    if (itType != typeSubscriptions.end()) {
+        candidates.insert(candidates.end(), itType->second.begin(), itType->second.end());
+    }
+    auto itAll = typeSubscriptions.find(0);
+    if (itAll != typeSubscriptions.end()) {
+        candidates.insert(candidates.end(), itAll->second.begin(), itAll->second.end());
+    }
 
-            if (handled && loggingEnabled) {
-                std::cout << "[MessageBus] Message handled by subscription " << sub.id << "\n";
+    // Add category-subscribers (per-bit) if present
+    uint64_t bits = static_cast<uint64_t>(message.categoryFlags);
+    while (bits) {
+        uint64_t bit = bits & (~(bits - 1));
+        auto itCat = categorySubscriptions.find(bit);
+        if (itCat != categorySubscriptions.end()) {
+            candidates.insert(candidates.end(), itCat->second.begin(), itCat->second.end());
+        }
+        bits &= (bits - 1);
+    }
+
+    // Deduplicate candidates by subscription id
+    std::unordered_set<SubscriptionID> seen;
+    for (auto *subPtr : candidates) {
+        if (!subPtr) continue;
+        if (seen.find(subPtr->id) != seen.end()) continue;
+        seen.insert(subPtr->id);
+
+        bool matches = false;
+        if (subPtr->mode == FilterMode::All) {
+            matches = true;
+            stats.typeFilterHits++;
+        } else if (subPtr->mode == FilterMode::Type) {
+            matches = (subPtr->type == 0 || subPtr->type == message.type);
+            if (matches) stats.typeFilterHits++;
+        } else if (subPtr->mode == FilterMode::Category) {
+            if ((static_cast<uint64_t>(message.categoryFlags) & static_cast<uint64_t>(subPtr->categoryFilter)) != 0ULL) {
+                matches = true;
+                stats.categoryFilterHits++;
             }
+        }
 
-            // If handler returns true, it consumed the message (optional: stop propagation)
-            // Currently, all matching subscribers receive the message
+        if (!matches) continue;
+
+        try {
+            bool handled = subPtr->handler(message);
+            if (handled && loggingEnabled) {
+                std::cout << "[MessageBus] Message handled by subscription " << subPtr->id << "\n";
+            }
+        } catch (const std::exception &e) {
+            if (loggingEnabled) std::cerr << "[MessageBus] Handler threw: " << e.what() << "\n";
         }
     }
 

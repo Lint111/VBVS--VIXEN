@@ -25,6 +25,48 @@ using SenderID = uint64_t;
  */
 using MessageType = uint32_t;
 
+// ============================================================================
+// Event Category Bit Flags (64-bit)
+// ============================================================================
+enum class EventCategory : uint64_t {
+    None                = 0ULL,
+
+    // System (0-7)
+    System              = 1ULL << 0,
+
+    // Resource Invalidation (8-15)
+    ResourceInvalidation = 1ULL << 8,
+    WindowResize        = 1ULL << 9,
+    SwapChainInvalid    = 1ULL << 10,
+    PipelineInvalid     = 1ULL << 11,
+    DescriptorInvalid   = 1ULL << 12,
+    FramebufferInvalid  = 1ULL << 13,
+    TextureReload       = 1ULL << 14,
+
+    // Application State (16-23)
+    ApplicationState    = 1ULL << 16,
+    CameraUpdate        = 1ULL << 17,
+    LightingChange      = 1ULL << 18,
+    SceneChange         = 1ULL << 19,
+    MaterialChange      = 1ULL << 20,
+};
+
+inline EventCategory operator|(EventCategory a, EventCategory b) {
+    return static_cast<EventCategory>(static_cast<uint64_t>(a) | static_cast<uint64_t>(b));
+}
+
+inline EventCategory operator&(EventCategory a, EventCategory b) {
+    return static_cast<EventCategory>(static_cast<uint64_t>(a) & static_cast<uint64_t>(b));
+}
+
+inline EventCategory operator~(EventCategory a) {
+    return static_cast<EventCategory>(~static_cast<uint64_t>(a));
+}
+
+inline bool HasCategory(EventCategory flags, EventCategory category) {
+    return (static_cast<uint64_t>(flags) & static_cast<uint64_t>(category)) != 0ULL;
+}
+
 /**
  * @brief Base message class
  * 
@@ -41,24 +83,38 @@ using MessageType = uint32_t;
  * };
  * ```
  */
-struct Message {
-    SenderID sender;
+// New base message used throughout the system. Contains category flags
+// (for fast filtering) and the existing type/sender/timestamp fields.
+struct BaseEventMessage {
+    EventCategory categoryFlags;
     MessageType type;
+    SenderID sender;
     std::chrono::steady_clock::time_point timestamp;
 
-    Message(SenderID senderID, MessageType msgType)
-        : sender(senderID)
+    BaseEventMessage(EventCategory flags, MessageType msgType, SenderID senderId)
+        : categoryFlags(flags)
         , type(msgType)
+        , sender(senderId)
         , timestamp(std::chrono::steady_clock::now()) {}
 
-    virtual ~Message() = default;
+    virtual ~BaseEventMessage() = default;
 
-    // Convenience: Get time since message creation
     double GetAgeSeconds() const {
         auto now = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - timestamp);
         return duration.count() / 1000000.0;
     }
+
+    bool HasCategory(EventCategory cat) const {
+        return ::EventBus::HasCategory(categoryFlags, cat);
+    }
+};
+
+// Keep the legacy Message type for backward compatibility. It maps to
+// BaseEventMessage with default category = System.
+struct Message : public BaseEventMessage {
+    Message(SenderID senderID, MessageType msgType)
+        : BaseEventMessage(EventCategory::System, msgType, senderID) {}
 };
 
 // ============================================================================

@@ -3,6 +3,7 @@
 #include "Message.h"
 #include <functional>
 #include <vector>
+#include <list>
 #include <queue>
 #include <mutex>
 #include <unordered_map>
@@ -16,7 +17,7 @@ namespace EventBus {
  * Receives message by const reference.
  * Returns true if handled, false if should continue to other subscribers.
  */
-using MessageHandler = std::function<bool(const Message&)>;
+using MessageHandler = std::function<bool(const BaseEventMessage&)>;
 
 /**
  * @brief Subscription handle for unsubscribing
@@ -92,6 +93,19 @@ public:
     SubscriptionID SubscribeAll(MessageHandler handler);
 
     /**
+     * @brief Subscribe to messages by category flags (bit flags)
+     *
+     * Subscriber will receive messages whose categoryFlags match the provided
+     * category (HasAny semantics). Returns a SubscriptionID.
+     */
+    SubscriptionID SubscribeCategory(EventCategory category, MessageHandler handler);
+
+    /**
+     * @brief Subscribe to multiple categories (bitmask)
+     */
+    SubscriptionID SubscribeCategories(EventCategory categories, MessageHandler handler);
+
+    /**
      * @brief Unsubscribe from messages
      * 
      * @param id Subscription ID from Subscribe()
@@ -114,7 +128,7 @@ public:
      * 
      * @param message Unique pointer to message (ownership transferred)
      */
-    void Publish(std::unique_ptr<Message> message);
+    void Publish(std::unique_ptr<BaseEventMessage> message);
 
     /**
      * @brief Publish message immediately (synchronous)
@@ -124,7 +138,7 @@ public:
      * 
      * @param message Message reference (not transferred)
      */
-    void PublishImmediate(const Message& message);
+    void PublishImmediate(const BaseEventMessage& message);
 
     // ========================================================================
     // Message Processing
@@ -157,6 +171,8 @@ public:
         uint64_t totalProcessed = 0;
         uint64_t currentQueueSize = 0;
         std::unordered_map<MessageType, uint64_t> publishedByType;
+        uint64_t categoryFilterHits = 0;
+        uint64_t typeFilterHits = 0;
     };
 
     /**
@@ -175,19 +191,31 @@ public:
     void SetLoggingEnabled(bool enabled);
 
 private:
+    enum class FilterMode : uint8_t { All = 0, Type = 1, Category = 2 };
+
     struct Subscription {
         SubscriptionID id;
-        MessageType type;     // 0 = subscribe to all
+        FilterMode mode = FilterMode::All;
+        EventCategory categoryFilter = EventCategory::None; // used when mode==Category
+        MessageType type = 0;     // 0 = subscribe to all or category-only
         MessageHandler handler;
     };
 
-    void DispatchMessage(const Message& message);
+    void DispatchMessage(const BaseEventMessage& message);
 
-    std::queue<std::unique_ptr<Message>> messageQueue;
+    std::queue<std::unique_ptr<BaseEventMessage>> messageQueue;
     mutable std::mutex queueMutex;
 
-    std::vector<Subscription> subscriptions;
+    // Owning storage for subscriptions
+    std::list<Subscription> subscriptions;
     std::mutex subscriptionMutex;
+
+    // Fast lookup by MessageType (emT) -> list of subscribers
+    std::unordered_map<MessageType, std::vector<Subscription*>> typeSubscriptions;
+
+    // Optional: lookup by individual category bit -> subscribers
+    // key = uint64_t bit mask with single bit set
+    std::unordered_map<uint64_t, std::vector<Subscription*>> categorySubscriptions;
 
     SubscriptionID nextSubscriptionID = 1;
 
