@@ -4,6 +4,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace Vixen::RenderGraph {
 
@@ -827,17 +828,68 @@ void RenderGraph::RecompileDirtyNodes() {
     dirtyNodes.clear();
 
     // Recompile each dirty node
+    // Before destroying resources, ensure any GPU work referencing them has finished.
+    // Collect unique VkDevice handles used by the nodes and wait for device idle.
+    std::unordered_set<VkDevice> devicesToWait;
     for (NodeInstance* node : nodesToRecompile) {
+        if (!node) continue;
+        auto* vdev = node->GetDevice();
+        if (vdev && vdev->device != VK_NULL_HANDLE) {
+            devicesToWait.insert(vdev->device);
+        }
+    }
+
+    // If we didn't find any devices from the nodes-to-recompile, fall back to scanning
+    // all graph instances for any known devices. This covers cases where nodes don't
+    // store a VulkanDevice pointer directly but the graph contains a Device node.
+    if (devicesToWait.empty()) {
+        for (const auto& instPtr : instances) {
+            if (!instPtr) continue;
+            auto* vdev = instPtr->GetDevice();
+            if (vdev && vdev->device != VK_NULL_HANDLE) {
+                devicesToWait.insert(vdev->device);
+            }
+        }
+    }
+
+    for (VkDevice dev : devicesToWait) {
+        if (dev != VK_NULL_HANDLE) {
+            // Best-effort wait; if device becomes lost this will return an error which we ignore here
+            vkDeviceWaitIdle(dev);
+        }
+    }
+
+    for (NodeInstance* node : nodesToRecompile) {
+        if (!node) continue;
         std::cout << "[RenderGraph] Recompiling node: " << node->GetInstanceName() << std::endl;
-        
-        // Call cleanup first (destroy old resources)
-        node->Cleanup();
-        
-        // Recompile (create new resources)
-        node->Compile();
-        
-        // Register cleanup again
-        node->RegisterCleanup();
+
+        try {
+            // Call cleanup first (destroy old resources)
+            node->Cleanup();
+
+            // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
+            // Some nodes may not have device inputs available immediately; if Setup/Compile
+            // fails we'll catch and defer the recompilation to a later safe point.
+            node->Setup();
+
+            // Recompile (create new resources)
+            node->Compile();
+
+            // Register cleanup again
+            node->RegisterCleanup();
+        } catch (const std::exception& e) {
+            std::cerr << "[RenderGraph] Failed to recompile node '" << node->GetInstanceName()
+                      << "' - deferring. Error: " << e.what() << std::endl;
+
+            // Re-add to dirty set to retry next frame
+            // Find the node index to create a handle
+            for (uint32_t i = 0; i < instances.size(); ++i) {
+                if (instances[i].get() == node) {
+                    MarkNodeNeedsRecompile(CreateHandle(i));
+                    break;
+                }
+            }
+        }
     }
 
     // Mark graph as needing full recompilation since topology may have changed

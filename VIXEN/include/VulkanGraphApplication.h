@@ -5,6 +5,7 @@
 #include "Core/NodeTypeRegistry.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
+#include "EventBus/MessageBus.h"
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -89,6 +90,8 @@ private:
     // ====== Graph Components ======
     std::unique_ptr<NodeTypeRegistry> nodeRegistry;  // Node type registry
     std::unique_ptr<RenderGraph> renderGraph;        // Render graph instance
+    // Owned message bus for cross-system event dispatch (injected into RenderGraph)
+    std::unique_ptr<Vixen::EventBus::MessageBus> messageBus;
 
     // ====== Application State ======
     uint32_t currentFrame;                           // Current frame index

@@ -76,9 +76,9 @@ void VulkanGraphApplication::Initialize() {
     RegisterNodeTypes();
 
     // Create render graph
-    // NOTE: Device is passed to individual nodes, not to RenderGraph constructor
-    // Pass nullptr for messageBus (event-driven cleanup optional)
-    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), nullptr, mainLogger.get());
+    // Create a MessageBus for event-driven coordination and inject into RenderGraph
+    messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
+    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), messageBus.get(), mainLogger.get());
 
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");

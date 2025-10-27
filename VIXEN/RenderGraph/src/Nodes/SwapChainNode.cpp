@@ -54,13 +54,15 @@ void SwapChainNode::Setup() {
     // Setup is called before Compile()
     // Create the swapchain wrapper object if it doesn't exist
 
-	vulkanDevice = In(SwapChainNodeConfig::VULKAN_DEVICE_IN);
+    // Read device input and store on the base NodeInstance device member
+    auto* inDevice = In(SwapChainNodeConfig::VULKAN_DEVICE_IN);
+    SetDevice(inDevice);
 
-    if(vulkanDevice == VK_NULL_HANDLE) {
+    if (GetDevice() == VK_NULL_HANDLE) {
         std::string errorMsg = "SwapChainNode: VulkanDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
-	}
+    }
 
 
     
@@ -154,7 +156,7 @@ void SwapChainNode::Compile() {
     std::cout << "[SwapChainNode::Compile] Loading swapchain extensions..." << std::endl;
     std::cout << "[SwapChainNode::Compile] Instance handle: " << std::hex << instance << std::dec << std::endl;
     
-    result = swapChainWrapper->CreateSwapChainExtensions(instance, vulkanDevice->device);
+    result = swapChainWrapper->CreateSwapChainExtensions(instance, GetDevice()->device);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to load swapchain extension function pointers";
         NODE_LOG_ERROR(errorMsg);
@@ -171,9 +173,9 @@ void SwapChainNode::Compile() {
     }
 
     // Step 3: Get supported surface formats
-    swapChainWrapper->GetSupportedFormats(*vulkanDevice->gpu);
+    swapChainWrapper->GetSupportedFormats(*GetDevice()->gpu);
 
-    auto graphicsQueueIndex = vulkanDevice->GetGraphicsQueueHandle();
+    auto graphicsQueueIndex = GetDevice()->GetGraphicsQueueHandle();
 
 
     if (!graphicsQueueIndex.has_value()) {
@@ -183,18 +185,18 @@ void SwapChainNode::Compile() {
     }
 
     // Step 5: Query surface capabilities and present modes
-    swapChainWrapper->GetSurfaceCapabilitiesAndPresentMode(*vulkanDevice->gpu, width, height);
+    swapChainWrapper->GetSurfaceCapabilitiesAndPresentMode(*GetDevice()->gpu, width, height);
 
     // Step 6: Select optimal present mode
     swapChainWrapper->ManagePresentMode();
 
     // Step 7: Create the swapchain with configured settings
-    swapChainWrapper->CreateSwapChainColorImages(vulkanDevice->device);
+    swapChainWrapper->CreateSwapChainColorImages(GetDevice()->device);
 
     // Step 8: Create image views for each swapchain image
     // Note: We pass VK_NULL_HANDLE for command buffer since image views don't need it
     VkCommandBuffer dummyCmd = VK_NULL_HANDLE;
-    swapChainWrapper->CreateColorImageView(vulkanDevice->device, dummyCmd);
+    swapChainWrapper->CreateColorImageView(GetDevice()->device, dummyCmd);
 
     // Verify swapchain was created successfully
     if (swapChainWrapper->scPublicVars.swapChain == VK_NULL_HANDLE) {
@@ -230,7 +232,7 @@ void SwapChainNode::Compile() {
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
     for (uint32_t i = 0; i < imageCount; i++) {
-        VkResult result = vkCreateSemaphore(vulkanDevice->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
+    VkResult result = vkCreateSemaphore(GetDevice()->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
         if (result != VK_SUCCESS) {
             std::string errorMsg = "SwapChainNode::Compile - Failed to create image available semaphore " + std::to_string(i);
             NODE_LOG_ERROR(errorMsg);
@@ -281,10 +283,11 @@ void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
 
 void SwapChainNode::CleanupImpl() {
     // Destroy semaphores
-    if (vulkanDevice != VK_NULL_HANDLE) {
+    auto* devicePtr = GetDevice();
+    if (devicePtr != VK_NULL_HANDLE) {
         for (auto& semaphore : imageAvailableSemaphores) {
             if (semaphore != VK_NULL_HANDLE) {
-                vkDestroySemaphore(vulkanDevice->device, semaphore, nullptr);
+                vkDestroySemaphore(devicePtr->device, semaphore, nullptr);
             }
         }
     }
@@ -295,8 +298,9 @@ void SwapChainNode::CleanupImpl() {
         delete swapChainWrapper;
         swapChainWrapper = nullptr;
     }
-    
-    vulkanDevice = VK_NULL_HANDLE;
+
+    // Clear device pointer on this instance
+    SetDevice(nullptr);
 }
 
 VkSwapchainKHR SwapChainNode::GetSwapchain() const {
@@ -354,8 +358,9 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         throw std::runtime_error(errorMsg);
     }
 
+    auto* devicePtr = GetDevice();
     VkResult result = swapChainWrapper->fpAcquireNextImageKHR(
-        vulkanDevice->device,
+        devicePtr->device,
         swapChainWrapper->scPublicVars.swapChain,
         UINT64_MAX, // Timeout
         presentCompleteSemaphore,

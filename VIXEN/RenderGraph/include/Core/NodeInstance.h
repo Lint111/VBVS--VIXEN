@@ -142,6 +142,16 @@ public:
     EventBus::MessageBus* GetMessageBus() const { return messageBus; }
 
     /**
+     * @brief Set the Vulkan device for this node instance
+     *
+     * Many node implementations read a device handle from inputs during Setup/Compile
+     * and store it in a per-node variable. To centralize state, nodes should call
+     * SetDevice(...) so the base class holds the canonical device pointer which can
+     * be queried by the RenderGraph and other systems via GetDevice().
+     */
+    void SetDevice(Vixen::Vulkan::Resources::VulkanDevice* dev) { device = dev; }
+
+    /**
      * @brief Subscribe to a specific message type
      * @param type Message type to subscribe to
      * @param handler Callback function
