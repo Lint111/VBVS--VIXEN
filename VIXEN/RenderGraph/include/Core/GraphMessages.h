@@ -202,4 +202,35 @@ struct ShaderReloadedMessage : public EventBus::BaseEventMessage {
         , shaderPath(std::move(path)) {}
 };
 
+/**
+ * @brief Render pause/resume event for swapchain recreation or resource reallocation
+ * 
+ * Published when rendering needs to be temporarily paused (e.g., during swapchain recreation)
+ * and resumed when the operation completes.
+ */
+struct RenderPauseEvent : public EventBus::BaseEventMessage {
+    static constexpr EventBus::MessageType TYPE = 
+        static_cast<EventBus::MessageType>(GraphMessageType::RenderPause);
+    static constexpr EventBus::EventCategory FLAGS = 
+        EventBus::EventCategory::GraphManagement;
+    
+    enum class Reason {
+        SwapChainRecreation,
+        ResourceReallocation
+    };
+
+    enum class Action {
+        PAUSE_START,
+        PAUSE_END
+    };
+
+    Reason pauseReason;
+    Action pauseAction;
+
+    RenderPauseEvent(EventBus::SenderID sender, Reason reason, Action action)
+        : BaseEventMessage(FLAGS, TYPE, sender)
+        , pauseReason(reason)
+        , pauseAction(action) {}
+};
+
 } // namespace Vixen::RenderGraph

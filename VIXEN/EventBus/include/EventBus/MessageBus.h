@@ -9,7 +9,9 @@
 #include <unordered_map>
 #include <memory>
 
-namespace EventBus {
+class BaseEventMessage;
+
+namespace Vixen::EventBus {
 
 /**
  * @brief Message handler callback signature
@@ -22,7 +24,7 @@ using MessageHandler = std::function<bool(const BaseEventMessage&)>;
 /**
  * @brief Subscription handle for unsubscribing
  */
-using SubscriptionID = uint32_t;
+using EventSubscriptionID = uint32_t;
 
 /**
  * @brief Core message bus for publish-subscribe messaging
@@ -82,7 +84,7 @@ public:
      * @param handler Callback receiving messages
      * @return Subscription ID for unsubscribing
      */
-    SubscriptionID Subscribe(MessageType type, MessageHandler handler);
+    EventSubscriptionID Subscribe(MessageType type, MessageHandler handler);
 
     /**
      * @brief Subscribe to ALL message types
@@ -90,7 +92,7 @@ public:
      * @param handler Callback receiving all messages
      * @return Subscription ID
      */
-    SubscriptionID SubscribeAll(MessageHandler handler);
+    EventSubscriptionID SubscribeAll(MessageHandler handler);
 
     /**
      * @brief Subscribe to messages by category flags (bit flags)
@@ -98,19 +100,19 @@ public:
      * Subscriber will receive messages whose categoryFlags match the provided
      * category (HasAny semantics). Returns a SubscriptionID.
      */
-    SubscriptionID SubscribeCategory(EventCategory category, MessageHandler handler);
+    EventSubscriptionID SubscribeCategory(EventCategory category, MessageHandler handler);
 
     /**
      * @brief Subscribe to multiple categories (bitmask)
      */
-    SubscriptionID SubscribeCategories(EventCategory categories, MessageHandler handler);
+    EventSubscriptionID SubscribeCategories(EventCategory categories, MessageHandler handler);
 
     /**
      * @brief Unsubscribe from messages
      * 
      * @param id Subscription ID from Subscribe()
      */
-    void Unsubscribe(SubscriptionID id);
+    void Unsubscribe(EventSubscriptionID id);
 
     /**
      * @brief Unsubscribe all handlers
@@ -194,7 +196,7 @@ private:
     enum class FilterMode : uint8_t { All = 0, Type = 1, Category = 2 };
 
     struct Subscription {
-        SubscriptionID id;
+        EventSubscriptionID id;
         FilterMode mode = FilterMode::All;
         EventCategory categoryFilter = EventCategory::None; // used when mode==Category
         MessageType type = 0;     // 0 = subscribe to all or category-only
@@ -217,7 +219,7 @@ private:
     // key = uint64_t bit mask with single bit set
     std::unordered_map<uint64_t, std::vector<Subscription*>> categorySubscriptions;
 
-    SubscriptionID nextSubscriptionID = 1;
+    EventSubscriptionID nextSubscriptionID = 1;
 
     // Statistics
     Stats stats;

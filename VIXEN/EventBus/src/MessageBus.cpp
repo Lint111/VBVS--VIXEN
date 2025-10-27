@@ -5,15 +5,15 @@
 #include <cstdint>
 #include <unordered_set>
 
-namespace EventBus {
+namespace Vixen::EventBus {
 
 MessageBus::MessageBus() = default;
 MessageBus::~MessageBus() = default;
 
-SubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
+EventSubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
-    SubscriptionID id = nextSubscriptionID++;
+    EventSubscriptionID id = nextSubscriptionID++;
 
     Subscription sub;
     sub.id = id;
@@ -34,14 +34,14 @@ SubscriptionID MessageBus::Subscribe(MessageType type, MessageHandler handler) {
     return id;
 }
 
-SubscriptionID MessageBus::SubscribeAll(MessageHandler handler) {
+EventSubscriptionID MessageBus::SubscribeAll(MessageHandler handler) {
     return Subscribe(0, std::move(handler)); // Type 0 = all messages
 }
 
-SubscriptionID MessageBus::SubscribeCategory(EventCategory category, MessageHandler handler) {
+EventSubscriptionID MessageBus::SubscribeCategory(EventCategory category, MessageHandler handler) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
-    SubscriptionID id = nextSubscriptionID++;
+    EventSubscriptionID id = nextSubscriptionID++;
     Subscription sub;
     sub.id = id;
     sub.mode = FilterMode::Category;
@@ -67,11 +67,11 @@ SubscriptionID MessageBus::SubscribeCategory(EventCategory category, MessageHand
     return id;
 }
 
-SubscriptionID MessageBus::SubscribeCategories(EventCategory categories, MessageHandler handler) {
+EventSubscriptionID MessageBus::SubscribeCategories(EventCategory categories, MessageHandler handler) {
     return SubscribeCategory(categories, std::move(handler));
 }
 
-void MessageBus::Unsubscribe(SubscriptionID id) {
+void MessageBus::Unsubscribe(EventSubscriptionID id) {
     std::lock_guard<std::mutex> lock(subscriptionMutex);
 
     // Find subscription in list
@@ -197,7 +197,7 @@ void MessageBus::DispatchMessage(const BaseEventMessage& message) {
     }
 
     // Deduplicate candidates by subscription id
-    std::unordered_set<SubscriptionID> seen;
+    std::unordered_set<EventSubscriptionID> seen;
     for (auto *subPtr : candidates) {
         if (!subPtr) continue;
         if (seen.find(subPtr->id) != seen.end()) continue;

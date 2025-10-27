@@ -30,10 +30,40 @@ RenderGraph::RenderGraph(
     // Subscribe to cleanup events if bus provided
     if (messageBus) {
         cleanupEventSubscription = messageBus->Subscribe(
-            CleanupRequestedMessage::TYPE,
+            EventTypes::CleanupRequestedMessage::TYPE,
             [this](const EventBus::BaseEventMessage& msg) {
-                auto& cleanupMsg = static_cast<const CleanupRequestedMessage&>(msg);
+                auto& cleanupMsg = static_cast<const EventTypes::CleanupRequestedMessage&>(msg);
                 this->HandleCleanupRequest(cleanupMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to render pause events
+        renderPauseSubscription = messageBus->Subscribe(
+            EventTypes::RenderPauseEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& pauseMsg = static_cast<const EventTypes::RenderPauseEvent&>(msg);
+                this->HandleRenderPause(pauseMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to window resize events
+        windowResizeSubscription = messageBus->Subscribe(
+            EventTypes::WindowResizedMessage::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& resizeMsg = static_cast<const EventTypes::WindowResizedMessage&>(msg);
+                this->HandleWindowResize(resizeMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to window state change events (minimize/maximize/restore)
+        windowStateSubscription = messageBus->Subscribe(
+            EventBus::WindowStateChangeEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& stateMsg = static_cast<const EventBus::WindowStateChangeEvent&>(msg);
+                this->HandleWindowStateChange(stateMsg);
                 return true;
             }
         );
@@ -42,8 +72,19 @@ RenderGraph::RenderGraph(
 
 RenderGraph::~RenderGraph() {
     // Unsubscribe from events
-    if (messageBus && cleanupEventSubscription != 0) {
-        messageBus->Unsubscribe(cleanupEventSubscription);
+    if (messageBus) {
+        if (cleanupEventSubscription != 0) {
+            messageBus->Unsubscribe(cleanupEventSubscription);
+        }
+        if (renderPauseSubscription != 0) {
+            messageBus->Unsubscribe(renderPauseSubscription);
+        }
+        if (windowResizeSubscription != 0) {
+            messageBus->Unsubscribe(windowResizeSubscription);
+        }
+        if (windowStateSubscription != 0) {
+            messageBus->Unsubscribe(windowStateSubscription);
+        }
     }
     
     Clear();
@@ -295,6 +336,15 @@ VkResult RenderGraph::RenderFrame() {
         throw std::runtime_error("Graph must be compiled before rendering");
     }
 
+    // Event processing now handled in application's Update() phase
+    // This allows updating without rendering and different frame rates
+
+    // Check if rendering should be paused (e.g., during swapchain recreation or window minimization)
+    if (renderPaused) {
+        // Continue processing events and updates but skip rendering
+        return VK_SUCCESS;
+    }
+
     // The render graph orchestrates the frame by calling specialized nodes:
     //
     // 1. SwapChainNode - Acquires next swapchain image (internally manages semaphores)
@@ -327,7 +377,7 @@ VkResult RenderGraph::RenderFrame() {
             node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
             node->SetState(NodeState::Executing);
-            
+
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
             node->Execute(VK_NULL_HANDLE);
 
@@ -800,48 +850,73 @@ void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
     }
 }
 
-void RenderGraph::HandleCleanupRequest(const CleanupRequestedMessage& msg) {
-    std::cout << "[RenderGraph] Received cleanup request";
-    if (!msg.reason.empty()) {
-        std::cout << " - Reason: " << msg.reason;
-    }
-    std::cout << std::endl;
-    
-    std::vector<std::string> cleanedNodes;
-    size_t cleanedCount = 0;
-    
-    switch (msg.scope) {
-        case CleanupScope::Specific:
-            if (msg.targetNodeName.has_value()) {
-                cleanedCount = CleanupSubgraph(msg.targetNodeName.value());
-            }
-            break;
-            
-        case CleanupScope::ByTag:
-            if (msg.tag.has_value()) {
-                cleanedCount = CleanupByTag(msg.tag.value());
-            }
-            break;
-            
-        case CleanupScope::ByType:
-            if (msg.typeName.has_value()) {
-                cleanedCount = CleanupByType(msg.typeName.value());
-            }
-            break;
-            
-        case CleanupScope::Full:
-            std::cout << "[RenderGraph] Executing full cleanup" << std::endl;
-            ExecuteCleanup();
-            cleanedCount = instances.size();
-            break;
-    }
-    
+void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg) {
+    std::cout << "[RenderGraph] Received cleanup request (ID: " << msg.requestId << ")" << std::endl;
+
+    // Execute full cleanup for now - simplified from complex scope-based cleanup
+    ExecuteCleanup();
+    size_t cleanedCount = instances.size();
+
     // Publish completion event
     if (messageBus) {
-        auto completionMsg = std::make_unique<CleanupCompletedMessage>(0);
-        completionMsg->cleanedCount = cleanedCount;
+        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, cleanedCount);
         messageBus->Publish(std::move(completionMsg));
     }
+}
+
+void RenderGraph::HandleRenderPause(const EventTypes::RenderPauseEvent& msg) {
+    std::cout << "[RenderGraph] Render pause event: "
+              << (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START ? "START" : "END")
+              << " (reason: " << static_cast<int>(msg.pauseReason) << ")" << std::endl;
+
+    renderPaused = (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
+
+    if (renderPaused) {
+        std::cout << "[RenderGraph] Rendering paused - continuing with event processing only" << std::endl;
+    } else {
+        std::cout << "[RenderGraph] Rendering resumed" << std::endl;
+    }
+}
+
+void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg) {
+    std::cout << "[RenderGraph] Window resized: " << msg.newWidth << "x" << msg.newHeight << std::endl;
+
+    // Mark swapchain and framebuffer nodes as dirty for minimal recompilation
+    for (size_t i = 0; i < instances.size(); ++i) {
+        auto& instance = instances[i];
+        const std::string& typeName = instance->GetNodeType()->GetTypeName();
+
+        if (typeName == "SwapChain" || typeName == "Framebuffer") {
+            std::cout << "[RenderGraph] Marking " << typeName << " node for recompilation" << std::endl;
+            MarkNodeNeedsRecompile(CreateHandle(static_cast<uint32_t>(i)));
+        }
+    }
+}
+
+void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {
+    std::cout << "[RenderGraph] Window state changed: ";
+    
+    switch (msg.newState) {
+        case EventBus::WindowStateChangeEvent::State::Minimized:
+            std::cout << "MINIMIZED - pausing rendering, continuing updates";
+            renderPaused = true;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Maximized:
+            std::cout << "MAXIMIZED - resuming rendering";
+            renderPaused = false;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Restored:
+            std::cout << "RESTORED - resuming rendering";
+            renderPaused = false;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Focused:
+            std::cout << "FOCUSED";
+            break;
+        case EventBus::WindowStateChangeEvent::State::Unfocused:
+            std::cout << "UNFOCUSED";
+            break;
+    }
+    std::cout << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

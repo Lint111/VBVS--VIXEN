@@ -147,7 +147,7 @@ public:
      * @param handler Callback function
      * @return Subscription ID for unsubscribing
      */
-    EventBus::SubscriptionID SubscribeToMessage(
+    EventBus::EventSubscriptionID SubscribeToMessage(
         EventBus::MessageType type,
         EventBus::MessageHandler handler
     );
@@ -158,7 +158,7 @@ public:
      * @param handler Callback function
      * @return Subscription ID for unsubscribing
      */
-    EventBus::SubscriptionID SubscribeToCategory(
+    EventBus::EventSubscriptionID SubscribeToCategory(
         EventBus::EventCategory category,
         EventBus::MessageHandler handler
     );
@@ -167,7 +167,7 @@ public:
      * @brief Unsubscribe from a message
      * @param subscriptionId ID returned by SubscribeToMessage/Category
      */
-    void UnsubscribeFromMessage(EventBus::SubscriptionID subscriptionId);
+    void UnsubscribeFromMessage(EventBus::EventSubscriptionID subscriptionId);
 
     /**
      * @brief Mark this node as needing recompilation
@@ -246,7 +246,7 @@ protected:
 
     // EventBus integration
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
-    std::vector<EventBus::SubscriptionID> eventSubscriptions;
+    std::vector<EventBus::EventSubscriptionID> eventSubscriptions;
     bool needsRecompile = false;
     bool deferredRecompile = false;  // Set when marked dirty during execution
 

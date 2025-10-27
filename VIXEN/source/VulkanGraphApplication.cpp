@@ -136,20 +136,16 @@ bool VulkanGraphApplication::Render() {
 
     // Render a complete frame via the graph
     // The graph internally handles:
+    // - Event processing and deferred recompilation
     // - Image acquisition (SwapChainNode)
     // - Command buffer allocation & recording (GeometryRenderNode)
     // - Queue submission with semaphores (nodes manage sync)
     // - Presentation (PresentNode)
     VkResult result = renderGraph->RenderFrame();
 
-    // Handle swapchain recreation
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-        // TODO: Rebuild swapchain and recompile graph
-        mainLogger->Info("Swapchain out of date - needs rebuild");
-        return true;
-    }
-
-    if (result != VK_SUCCESS) {
+    // Event-driven swapchain recreation is now handled internally by RenderGraph
+    // VK_ERROR_OUT_OF_DATE_KHR will trigger events that mark nodes for recompilation
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         mainLogger->Error("Frame rendering failed with result: " + std::to_string(result));
         return false;
     }
@@ -166,12 +162,22 @@ void VulkanGraphApplication::Update() {
     // Update time for both application and graph
     // Application time (legacy - kept for compatibility)
     time.Update();
-    
+
     // Graph time (used by nodes for frame-rate independent animations)
     if (renderGraph) {
         renderGraph->UpdateTime();
     }
-    
+
+    // Process events and handle deferred recompilation
+    // This must happen in update phase, not render phase, to allow:
+    // - Updating without rendering (minimized windows)
+    // - Different update/render frame rates
+    // - Proper event-driven invalidation handling
+    if (renderGraph) {
+        renderGraph->ProcessEvents();
+        renderGraph->RecompileDirtyNodes();
+    }
+
     // Note: MVP matrix updates now handled by DescriptorSetNode during Execute()
     // using graph's centralized time system for frame-rate independent rotation
 }

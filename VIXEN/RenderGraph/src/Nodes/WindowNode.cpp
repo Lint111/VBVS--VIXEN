@@ -4,6 +4,7 @@
 #include <iostream>
 #include "Core/NodeLogging.h"
 #include "EventBus/Message.h"
+#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::RenderGraph {
 
@@ -223,11 +224,10 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 // Publish resize event
                 if (windowNode->GetMessageBus()) {
                     windowNode->GetMessageBus()->Publish(
-                        std::make_unique<EventBus::WindowResizeEvent>(
+                        std::make_unique<EventTypes::WindowResizedMessage>(
                             windowNode->instanceId,
                             windowNode->width,
-                            windowNode->height,
-                            false
+                            windowNode->height
                         )
                     );
                 }
@@ -249,11 +249,10 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     // Publish resize event
                     if (windowNode->GetMessageBus()) {
                         windowNode->GetMessageBus()->Publish(
-                            std::make_unique<EventBus::WindowResizeEvent>(
+                            std::make_unique<EventTypes::WindowResizedMessage>(
                                 windowNode->instanceId,
                                 newWidth,
-                                newHeight,
-                                (wParam == SIZE_MINIMIZED)
+                                newHeight
                             )
                         );
                     }

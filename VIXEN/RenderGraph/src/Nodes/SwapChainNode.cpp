@@ -2,6 +2,7 @@
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "EventTypes/RenderGraphEvents.h"
 #include "EventBus/Message.h"
 
 namespace Vixen::RenderGraph {
@@ -84,10 +85,10 @@ void SwapChainNode::Compile() {
     // Publish render pause starting event
     if (GetMessageBus()) {
         GetMessageBus()->Publish(
-            std::make_unique<EventBus::RenderPauseEvent>(
+            std::make_unique<EventTypes::RenderPauseEvent>(
                 instanceId,
-                EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
-                true  // pause starting
+                EventTypes::RenderPauseEvent::Reason::SwapChainRecreation,
+                EventTypes::RenderPauseEvent::Action::PAUSE_START
             )
         );
     }
@@ -255,10 +256,10 @@ void SwapChainNode::Compile() {
     // Publish render pause ending event
     if (GetMessageBus()) {
         GetMessageBus()->Publish(
-            std::make_unique<EventBus::RenderPauseEvent>(
+            std::make_unique<EventTypes::RenderPauseEvent>(
                 instanceId,
-                EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
-                false  // pause ending
+                EventTypes::RenderPauseEvent::Reason::SwapChainRecreation,
+                EventTypes::RenderPauseEvent::Action::PAUSE_END
             )
         );
     }
@@ -369,10 +370,10 @@ uint32_t SwapChainNode::AcquireNextImage(VkSemaphore presentCompleteSemaphore) {
         // Publish render pause event for swapchain recreation
         if (GetMessageBus()) {
             GetMessageBus()->Publish(
-                std::make_unique<EventBus::RenderPauseEvent>(
+                std::make_unique<EventTypes::RenderPauseEvent>(
                     instanceId,
-                    EventBus::RenderPauseEvent::Reason::SwapChainRecreation,
-                    true  // pause starting
+                    EventTypes::RenderPauseEvent::Reason::SwapChainRecreation,
+                    EventTypes::RenderPauseEvent::Action::PAUSE_START
                 )
             );
         }

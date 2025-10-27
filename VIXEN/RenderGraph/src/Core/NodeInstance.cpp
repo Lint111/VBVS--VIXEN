@@ -5,6 +5,14 @@
 #include <algorithm>
 #include <functional>
 #include <atomic>
+#include "EventBus/MessageBus.h"
+#include "EventBus/Message.h"
+
+namespace Vixen::EventBus {
+    class MessageBus;
+}
+
+
 
 namespace Vixen::RenderGraph {
 
@@ -46,7 +54,7 @@ NodeInstance::NodeInstance(
 NodeInstance::~NodeInstance() {
     // Unsubscribe from all EventBus messages
     if (messageBus) {
-        for (EventBus::SubscriptionID id : eventSubscriptions) {
+        for (EventBus::EventSubscriptionID id : eventSubscriptions) {
             messageBus->Unsubscribe(id);
         }
         eventSubscriptions.clear();
@@ -272,7 +280,7 @@ void NodeInstance::DeallocateResources() {
 
 // EventBus Integration Implementation
 
-EventBus::SubscriptionID NodeInstance::SubscribeToMessage(
+EventBus::EventSubscriptionID NodeInstance::SubscribeToMessage(
     EventBus::MessageType type,
     EventBus::MessageHandler handler
 ) {
@@ -280,12 +288,12 @@ EventBus::SubscriptionID NodeInstance::SubscribeToMessage(
         return 0;  // No bus available
     }
 
-    EventBus::SubscriptionID id = messageBus->Subscribe(type, std::move(handler));
+    EventBus::EventSubscriptionID id = messageBus->Subscribe(type, std::move(handler));
     eventSubscriptions.push_back(id);
     return id;
 }
 
-EventBus::SubscriptionID NodeInstance::SubscribeToCategory(
+EventBus::EventSubscriptionID NodeInstance::SubscribeToCategory(
     EventBus::EventCategory category,
     EventBus::MessageHandler handler
 ) {
@@ -293,12 +301,12 @@ EventBus::SubscriptionID NodeInstance::SubscribeToCategory(
         return 0;  // No bus available
     }
 
-    EventBus::SubscriptionID id = messageBus->SubscribeCategory(category, std::move(handler));
+    EventBus::EventSubscriptionID id = messageBus->SubscribeCategory(category, std::move(handler));
     eventSubscriptions.push_back(id);
     return id;
 }
 
-void NodeInstance::UnsubscribeFromMessage(EventBus::SubscriptionID subscriptionId) {
+void NodeInstance::UnsubscribeFromMessage(EventBus::EventSubscriptionID subscriptionId) {
     if (!messageBus) {
         return;
     }

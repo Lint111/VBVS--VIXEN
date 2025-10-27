@@ -8,8 +8,9 @@
 #include "ResourceVariant.h"
 #include "CleanupStack.h"
 #include "ResourceDependencyTracker.h"
-#include "GraphMessages.h"
+#include "EventTypes/RenderGraphEvents.h"
 #include "EventBus/MessageBus.h"
+#include "EventBus/Message.h"
 #include "Time/EngineTime.h"
 #include <memory>
 #include <string>
@@ -17,6 +18,7 @@
 #include <map>
 #include <unordered_map>
 #include <set>
+#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -297,7 +299,10 @@ private:
     // Core components
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
-    EventBus::SubscriptionID cleanupEventSubscription = 0;
+    EventBus::EventSubscriptionID cleanupEventSubscription = 0;
+    EventBus::EventSubscriptionID renderPauseSubscription = 0;
+    EventBus::EventSubscriptionID windowResizeSubscription = 0;
+    EventBus::EventSubscriptionID windowStateSubscription = 0;
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     #ifdef _DEBUG
@@ -325,6 +330,7 @@ private:
 
     // Event-driven recompilation
     std::set<NodeHandle> dirtyNodes;
+    bool renderPaused = false;
 
     // Cleanup management
     CleanupStack cleanupStack;
@@ -339,11 +345,14 @@ private:
     void AllocateResources();
     void GeneratePipelines();
     void BuildExecutionOrder();
-
-    // Cleanup helpers
     void ComputeDependentCounts();
     void RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& cleaned);
-    void HandleCleanupRequest(const CleanupRequestedMessage& msg);
+
+    // Event handling
+    void HandleRenderPause(const EventTypes::RenderPauseEvent& msg);
+    void HandleWindowResize(const EventTypes::WindowResizedMessage& msg);
+    void HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg);
+    void HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg);
 
     // Helpers
     NodeHandle CreateHandle(uint32_t index);

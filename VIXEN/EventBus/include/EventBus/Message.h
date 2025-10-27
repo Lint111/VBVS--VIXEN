@@ -5,7 +5,7 @@
 #include <string>
 #include <chrono>
 
-namespace EventBus {
+namespace Vixen::EventBus {
 
 /**
  * @brief Unique identifier for message sender
@@ -115,7 +115,7 @@ struct BaseEventMessage {
     }
 
     bool HasCategory(EventCategory cat) const {
-        return ::EventBus::HasCategory(categoryFlags, cat);
+        return EventBus::HasCategory(categoryFlags, cat);
     }
 };
 
@@ -238,13 +238,18 @@ struct RenderPauseEvent : public BaseEventMessage {
         ResourceReallocation
     };
 
-    Reason pauseReason;
-    bool isStarting;  // true = pause starting, false = pause ending
+    enum class Action {
+        PAUSE_START,
+        PAUSE_END
+    };
 
-    RenderPauseEvent(SenderID sender, Reason reason, bool starting)
+    Reason pauseReason;
+    Action pauseAction;
+
+    RenderPauseEvent(SenderID sender, Reason reason, Action action)
         : BaseEventMessage(CATEGORY, TYPE, sender)
         , pauseReason(reason)
-        , isStarting(starting) {}
+        , pauseAction(action) {}
 };
 
 } // namespace EventBus
