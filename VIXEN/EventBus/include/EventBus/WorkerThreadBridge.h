@@ -10,7 +10,7 @@
 #include <functional>
 #include <memory>
 
-namespace EventBus {
+namespace Vixen::EventBus {
 
 /**
  * @brief Work item submitted to worker thread

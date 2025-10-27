@@ -126,13 +126,7 @@ void VertexBufferNode::Compile() {
     NODE_LOG_INFO("Compile complete: Vertex buffer ready");
 
     // === REGISTER CLEANUP ===
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    NodeInstance::RegisterCleanup();
 }
 
 void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {

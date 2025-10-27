@@ -1,5 +1,6 @@
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/NodeInstance.h"
+#include "Core/RenderGraph.h"
 #include <algorithm>
 
 namespace Vixen::RenderGraph {
@@ -56,19 +57,18 @@ std::vector<NodeInstance*> ResourceDependencyTracker::GetDependenciesForNode(
     return dependencies;
 }
 
-std::vector<std::string> ResourceDependencyTracker::BuildCleanupDependencies(
+std::vector<NodeHandle> ResourceDependencyTracker::BuildCleanupDependencies(
     NodeInstance* consumer) const
 {
     std::vector<NodeInstance*> producers = GetDependenciesForNode(consumer);
-    std::vector<std::string> cleanupNames;
-    cleanupNames.reserve(producers.size());
+    std::vector<NodeHandle> cleanupHandles;
+    cleanupHandles.reserve(producers.size());
 
     for (NodeInstance* producer : producers) {
-        // Use consistent naming: InstanceName_Cleanup
-        cleanupNames.push_back(producer->GetInstanceName() + "_Cleanup");
+        cleanupHandles.push_back(producer->GetHandle());
     }
 
-    return cleanupNames;
+    return cleanupHandles;
 }
 
 void ResourceDependencyTracker::Clear() {

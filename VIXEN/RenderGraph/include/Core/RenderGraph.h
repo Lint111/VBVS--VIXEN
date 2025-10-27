@@ -8,15 +8,19 @@
 #include "ResourceVariant.h"
 #include "CleanupStack.h"
 #include "ResourceDependencyTracker.h"
-#include "GraphMessages.h"
+#include "DeferredDestruction.h"
+#include "EventTypes/RenderGraphEvents.h"
 #include "EventBus/MessageBus.h"
+#include "EventBus/Message.h"
 #include "Time/EngineTime.h"
 #include <memory>
 #include <string>
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
+#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
@@ -24,16 +28,7 @@ namespace Vixen::Vulkan::Resources {
 
 namespace Vixen::RenderGraph {
 
-/**
- * @brief Handle for referencing nodes in the graph
- */
-struct NodeHandle {
-    uint32_t index = UINT32_MAX;
-    
-    bool IsValid() const { return index != UINT32_MAX; }
-    bool operator==(const NodeHandle& other) const { return index == other.index; }
-    bool operator!=(const NodeHandle& other) const { return index != other.index; }
-};
+// NodeHandle defined in CleanupStack.h (included transitively)
 
 /**
  * @brief Main Render Graph class
@@ -198,6 +193,16 @@ public:
      */
     ResourceDependencyTracker& GetDependencyTracker() { return dependencyTracker; }
 
+    /**
+     * @brief Helper: Returns the cleanup node name for the Device node (if present)
+     *
+     * Nodes that need to ensure they are cleaned before the logical device can
+     * call this to obtain the correct dependency name instead of hard-coding
+     * "DeviceNode_Cleanup". Falls back to the legacy name if no device node
+     * instance is found.
+     */
+    std::string GetDeviceCleanupNodeName() const;
+
     // ====== Time Management ======
 
     /**
@@ -208,9 +213,54 @@ public:
     const Vixen::Core::EngineTime& GetTime() const { return time; }
 
     /**
-     * @brief Update time - call once per frame before Execute()
+     * @brief Update the engine time
+     * Should be called once per frame to maintain time-based animations
      */
     void UpdateTime() { time.Update(); }
+
+    /**
+     * @brief Process pending events from the message bus
+     * 
+     * Should be called once per frame, typically before RenderFrame().
+     * Processes events that may mark nodes as needing recompilation.
+     */
+    void ProcessEvents();
+
+    /**
+     * @brief Recompile nodes that have been marked as dirty
+     * 
+     * Called after ProcessEvents() to handle cascade recompilation.
+     * Only recompiles nodes that actually need it.
+     */
+    void RecompileDirtyNodes();
+
+    /**
+     * @brief Get the message bus (for nodes to publish events)
+     */
+    EventBus::MessageBus* GetMessageBus() const { return messageBus; }
+
+    /**
+     * @brief Get the deferred destruction queue
+     *
+     * For zero-stutter hot-reload: instead of blocking with vkDeviceWaitIdle(),
+     * nodes can queue resources for destruction after N frames have passed.
+     *
+     * Example (in PipelineNode::HandleCompilationResult):
+     * ```cpp
+     * auto* queue = renderGraph->GetDeferredDestructionQueue();
+     * queue->Add(device, oldPipeline, currentFrame, vkDestroyPipeline);
+     * ```
+     */
+    DeferredDestructionQueue* GetDeferredDestructionQueue() { return &deferredDestruction; }
+    const DeferredDestructionQueue* GetDeferredDestructionQueue() const { return &deferredDestruction; }
+
+    /**
+     * @brief Mark a node as needing recompilation
+     * 
+     * Called by NodeInstance when it receives an invalidation event.
+     * The node will be recompiled during the next RecompileDirtyNodes() call.
+     */
+    void MarkNodeNeedsRecompile(NodeHandle nodeHandle);
 
     /**
      * @brief Execute all cleanup callbacks in dependency order
@@ -266,7 +316,12 @@ private:
     // Core components
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
-    EventBus::SubscriptionID cleanupEventSubscription = 0;
+    EventBus::EventSubscriptionID cleanupEventSubscription = 0;
+    EventBus::EventSubscriptionID renderPauseSubscription = 0;
+    EventBus::EventSubscriptionID windowResizeSubscription = 0;
+    EventBus::EventSubscriptionID windowStateSubscription = 0;
+    EventBus::EventSubscriptionID deviceSyncSubscription = 0;
+    EventBus::EventSubscriptionID windowCloseSubscription = 0;
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
     #ifdef _DEBUG
@@ -292,10 +347,15 @@ private:
     std::vector<NodeInstance*> executionOrder;
     bool isCompiled = false;
 
+    // Event-driven recompilation
+    std::set<NodeHandle> dirtyNodes;
+    bool renderPaused = false;
+
     // Cleanup management
     CleanupStack cleanupStack;
     ResourceDependencyTracker dependencyTracker;
     std::unordered_map<NodeInstance*, size_t> dependentCounts;  // Reference counting for partial cleanup
+    DeferredDestructionQueue deferredDestruction;  // Zero-stutter hot-reload
 
     // Time management
     Vixen::Core::EngineTime time;
@@ -305,16 +365,27 @@ private:
     void AllocateResources();
     void GeneratePipelines();
     void BuildExecutionOrder();
-
-    // Cleanup helpers
     void ComputeDependentCounts();
     void RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& cleaned);
-    void HandleCleanupRequest(const CleanupRequestedMessage& msg);
+
+    // Event handling
+    void HandleRenderPause(const EventTypes::RenderPauseEvent& msg);
+    void HandleWindowResize(const EventTypes::WindowResizedMessage& msg);
+    void HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg);
+    void HandleWindowClose();
+    void HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg);
+    void HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedMessage& msg);
 
     // Helpers
-    NodeHandle CreateHandle(uint32_t index);
+    NodeHandle CreateHandle(uint32_t index) const;
     NodeInstance* GetInstanceInternal(NodeHandle handle);
     Resource* CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex);
+    // Wait for devices referenced by graph instances to be idle.
+    // If `instancesToCheck` is empty, waits for all devices referenced by the graph.
+    // Otherwise waits only for devices referenced by the provided instances.
+    void WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck = {});
+    // Wait for the provided set of VkDevice handles to be idle
+    void WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices);
 };
 
 } // namespace Vixen::RenderGraph

@@ -148,24 +148,12 @@ public:
         
         if (cleanupCallback && GetOwningGraph()) {
             std::cout << "[ConstantNode::Compile] Registering cleanup callback in CleanupStack..." << std::endl;
-            
-            // Convert dependency node handles to cleanup task names via owning graph
-            std::vector<std::string> cleanupDeps;
-            for (const auto& handle : cleanupDependencyHandles) {
-                NodeInstance* depNode = GetOwningGraph()->GetInstance(handle);
-                if (depNode) {
-                    std::string depCleanupName = depNode->GetInstanceName() + "_Cleanup";
-                    cleanupDeps.push_back(depCleanupName);
-                    std::cout << "[ConstantNode::Compile]   Will cleanup BEFORE: " << depCleanupName << std::endl;
-                } else {
-                    std::cout << "[ConstantNode::Compile]   WARNING: Invalid dependency handle, skipping" << std::endl;
-                }
-            }
-            
+
             GetOwningGraph()->GetCleanupStack().Register(
+                GetHandle(),
                 GetInstanceName() + "_Cleanup",
                 [this]() { this->Cleanup(); },
-                cleanupDeps  // Dependencies: this must be cleaned up before these nodes
+                cleanupDependencyHandles  // Dependencies: this must be cleaned up before these nodes
             );
             std::cout << "[ConstantNode::Compile] Cleanup callback registered successfully" << std::endl;
         } else {

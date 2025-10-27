@@ -5,6 +5,32 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <cstdint>
+
+namespace Vixen::RenderGraph {
+
+// NodeHandle definition (lightweight, safe to include)
+struct NodeHandle {
+    uint32_t index = UINT32_MAX;
+
+    bool IsValid() const { return index != UINT32_MAX; }
+    bool operator==(const NodeHandle& other) const { return index == other.index; }
+    bool operator!=(const NodeHandle& other) const { return index != other.index; }
+    bool operator<(const NodeHandle& other) const { return index < other.index; }
+};
+
+} // namespace Vixen::RenderGraph
+
+// Hash function for NodeHandle to enable use in unordered_set/unordered_map
+namespace std {
+    template<>
+    struct hash<Vixen::RenderGraph::NodeHandle> {
+        size_t operator()(const Vixen::RenderGraph::NodeHandle& handle) const {
+            return std::hash<uint32_t>{}(handle.index);
+        }
+    };
+}
 
 namespace Vixen::RenderGraph {
 
@@ -18,8 +44,8 @@ class CleanupNode {
 public:
     using CleanupCallback = std::function<void()>;
 
-    CleanupNode(const std::string& name, CleanupCallback callback)
-        : nodeName(name), cleanupCallback(std::move(callback)) {}
+    CleanupNode(NodeHandle handle, const std::string& name, CleanupCallback callback)
+        : nodeHandle(handle), nodeName(name), cleanupCallback(std::move(callback)) {}
 
     /**
      * @brief Register a dependent cleanup that must run before this one
@@ -53,9 +79,33 @@ public:
     }
 
     const std::string& GetName() const { return nodeName; }
+    NodeHandle GetHandle() const { return nodeHandle; }
+
+    /**
+     * @brief Update the cleanup callback for this node (used when a placeholder was created earlier)
+     */
+    void SetCallback(CleanupCallback cb) {
+        cleanupCallback = std::move(cb);
+    }
+
+    /**
+     * @brief Recursively collect all dependent node handles
+     * @param outHandles Set to populate with dependent handles (prevents duplicates)
+     */
+    void CollectDependentHandles(std::unordered_set<NodeHandle>& outHandles) const {
+        for (const auto& weakDep : dependents) {
+            if (auto dep = weakDep.lock()) {
+                // Add this dependent
+                outHandles.insert(dep->GetHandle());
+                // Recursively collect its dependents
+                dep->CollectDependentHandles(outHandles);
+            }
+        }
+    }
 
 private:
-    std::string nodeName;
+    NodeHandle nodeHandle;
+    std::string nodeName; // Keep for debugging
     CleanupCallback cleanupCallback;
     std::vector<std::weak_ptr<CleanupNode>> dependents;
     bool executed = false;
@@ -79,27 +129,44 @@ class CleanupStack {
 public:
     /**
      * @brief Register a cleanup action with optional dependencies
+     * @param handle Handle to the node instance
      * @param name Identifier for debugging
      * @param callback Cleanup function to execute
-     * @param dependencyNames Names of nodes this cleanup depends on
+     * @param dependencyHandles Handles of nodes this cleanup depends on
      * @return Shared pointer to created CleanupNode
      */
     std::shared_ptr<CleanupNode> Register(
+        NodeHandle handle,
         const std::string& name,
         CleanupNode::CleanupCallback callback,
-        const std::vector<std::string>& dependencyNames = {})
+        const std::vector<NodeHandle>& dependencyHandles = {})
     {
-        auto node = std::make_shared<CleanupNode>(name, std::move(callback));
-        nodes[name] = node;
+        // If a node with this handle already exists (placeholder), update its callback
+        auto itExisting = nodes.find(handle);
+        std::shared_ptr<CleanupNode> node;
+        if (itExisting != nodes.end()) {
+            node = itExisting->second;
+            // Update placeholder callback
+            node->SetCallback(std::move(callback));
+        } else {
+            node = std::make_shared<CleanupNode>(handle, name, std::move(callback));
+            nodes[handle] = node;
+        }
 
-        // Link to dependencies
-        for (const auto& depName : dependencyNames) {
-            auto it = nodes.find(depName);
-            if (it != nodes.end()) {
-                // This node depends on depName, so depName must clean up AFTER this node
-                // Therefore, this node is a dependent of depName
-                it->second->AddDependent(node);
+        // Link to dependencies. If a dependency isn't registered yet, create a placeholder
+        // node so that dependents can be linked regardless of registration order.
+        for (const auto& depHandle : dependencyHandles) {
+            auto it = nodes.find(depHandle);
+            if (it == nodes.end()) {
+                // Create placeholder with empty callback
+                auto placeholder = std::make_shared<CleanupNode>(depHandle, "", []() {});
+                nodes[depHandle] = placeholder;
+                it = nodes.find(depHandle);
             }
+
+            // This node depends on depHandle, so depHandle must clean up AFTER this node
+            // Therefore, this node is a dependent of depHandle
+            it->second->AddDependent(node);
         }
 
         return node;
@@ -120,10 +187,10 @@ public:
     /**
      * @brief Execute cleanup starting from a specific node
      * Only cleans up the specified node and its dependents
-     * @param name Name of the cleanup node to start from
+     * @param handle Handle of the cleanup node to start from
      */
-    void ExecuteFrom(const std::string& name) {
-        auto it = nodes.find(name);
+    void ExecuteFrom(NodeHandle handle) {
+        auto it = nodes.find(handle);
         if (it != nodes.end()) {
             it->second->ExecuteCleanup();
         }
@@ -144,8 +211,27 @@ public:
         return nodes.size();
     }
 
+    /**
+     * @brief Get all nodes that depend on the specified node (recursively)
+     *
+     * Returns all downstream dependents in the cleanup graph.
+     * Since cleanup goes from dependents -> providers,
+     * this returns nodes that would be cleaned BEFORE the specified node.
+     *
+     * @param handle Handle of the node to query dependents for
+     * @return Set of dependent node handles (empty if node not found)
+     */
+    std::unordered_set<NodeHandle> GetAllDependents(NodeHandle handle) const {
+        std::unordered_set<NodeHandle> dependents;
+        auto it = nodes.find(handle);
+        if (it != nodes.end()) {
+            it->second->CollectDependentHandles(dependents);
+        }
+        return dependents;
+    }
+
 private:
-    std::unordered_map<std::string, std::shared_ptr<CleanupNode>> nodes;
+    std::unordered_map<NodeHandle, std::shared_ptr<CleanupNode>> nodes;
 };
 
 } // namespace Vixen::RenderGraph

@@ -3,6 +3,8 @@
 #include "VulkanApplicationBase.h"
 #include <iostream>
 #include "Core/NodeLogging.h"
+#include "EventBus/Message.h"
+#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::RenderGraph {
 
@@ -187,11 +189,20 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
     switch (msg) {
         case WM_CLOSE:
-            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received");
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received - initiating graceful shutdown");
             if (windowNode) {
                 windowNode->shouldClose = true;
+                // Publish window close REQUESTED event to allow graceful shutdown
+                // Systems can subscribe to this event to save state, cleanup resources, etc.
+                // After all subscribers acknowledge, the window will actually close
+                if (windowNode->GetMessageBus()) {
+                    windowNode->GetMessageBus()->Publish(
+                        std::make_unique<EventBus::WindowCloseEvent>(windowNode->instanceId)
+                    );
+                }
+                // Don't destroy window immediately - let the application handle shutdown sequence
+                // Application will call DestroyWindow when shutdown is complete
             }
-            PostQuitMessage(0);
             return 0;
 
         case WM_DESTROY:
@@ -213,6 +224,43 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             if (windowNode) {
                 windowNode->isResizing = false;
                 windowNode->wasResized = true;
+
+                // Get ACTUAL client area dimensions (not cached member variables!)
+                RECT clientRect;
+                GetClientRect(hWnd, &clientRect);
+                UINT actualWidth = clientRect.right - clientRect.left;
+                UINT actualHeight = clientRect.bottom - clientRect.top;
+
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] GetClientRect returned: " << actualWidth << "x" << actualHeight << std::endl;
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Old cached dimensions: " << windowNode->width << "x" << windowNode->height << std::endl;
+
+                // Update member variables with actual dimensions
+                windowNode->width = actualWidth;
+                windowNode->height = actualHeight;
+
+                // Update outputs with actual dimensions
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling Out() with: " << actualWidth << "x" << actualHeight << std::endl;
+                windowNode->Out(WindowNodeConfig::WIDTH_OUT, actualWidth);
+                windowNode->Out(WindowNodeConfig::HEIGHT_OUT, actualHeight);
+
+                // Verify outputs were updated
+                uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
+                uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Read back from outputs: width=" << readBackWidth
+                          << ", height=" << readBackHeight << std::endl;
+
+                // Publish resize event with ACTUAL dimensions
+                if (windowNode->GetMessageBus()) {
+                    std::cout << "[WindowNode::WM_EXITSIZEMOVE] Publishing WindowResizedMessage with "
+                              << actualWidth << "x" << actualHeight << std::endl;
+                    windowNode->GetMessageBus()->Publish(
+                        std::make_unique<EventTypes::WindowResizedMessage>(
+                            windowNode->instanceId,
+                            actualWidth,
+                            actualHeight
+                        )
+                    );
+                }
             }
             return 0;
 
@@ -227,13 +275,73 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     windowNode->width = newWidth;
                     windowNode->height = newHeight;
                     windowNode->wasResized = true;
+
+                    // Update outputs with new dimensions so downstream nodes read new values
+                    std::cout << "[WindowNode::WM_SIZE] BEFORE Out() calls - width=" << newWidth
+                              << ", height=" << newHeight << std::endl;
+                    windowNode->Out(WindowNodeConfig::WIDTH_OUT, newWidth);
+                    windowNode->Out(WindowNodeConfig::HEIGHT_OUT, newHeight);
+                    std::cout << "[WindowNode::WM_SIZE] AFTER Out() calls - verifying..." << std::endl;
+
+                    // Verify outputs were updated
+                    uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
+                    uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
+                    std::cout << "[WindowNode::WM_SIZE] Read back: width=" << readBackWidth
+                              << ", height=" << readBackHeight << std::endl;
+
+                    // Publish resize event
+                    if (windowNode->GetMessageBus()) {
+                        std::cout << "[WindowNode::WM_SIZE] Publishing WindowResizedMessage with "
+                                  << newWidth << "x" << newHeight << std::endl;
+                        windowNode->GetMessageBus()->Publish(
+                            std::make_unique<EventTypes::WindowResizedMessage>(
+                                windowNode->instanceId,
+                                newWidth,
+                                newHeight
+                            )
+                        );
+                    }
                 }
             }
             return 0;
 
-        case WM_PAINT:
-            ValidateRect(hWnd, nullptr);
-            return 0;
+        case WM_SYSCOMMAND:
+            if (wParam == SC_MINIMIZE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Minimized
+                    )
+                );
+            } else if (wParam == SC_MAXIMIZE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Maximized
+                    )
+                );
+            } else if (wParam == SC_RESTORE && windowNode && windowNode->GetMessageBus()) {
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        EventBus::WindowStateChangeEvent::State::Restored
+                    )
+                );
+            }
+            break;
+
+        case WM_ACTIVATE:
+            if (windowNode && windowNode->GetMessageBus()) {
+                bool focused = (LOWORD(wParam) != WA_INACTIVE);
+                windowNode->GetMessageBus()->Publish(
+                    std::make_unique<EventBus::WindowStateChangeEvent>(
+                        windowNode->instanceId,
+                        focused ? EventBus::WindowStateChangeEvent::State::Focused
+                               : EventBus::WindowStateChangeEvent::State::Unfocused
+                    )
+                );
+            }
+            break;
 
         default:
             break;

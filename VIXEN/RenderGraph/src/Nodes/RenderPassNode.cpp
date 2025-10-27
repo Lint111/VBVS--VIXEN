@@ -180,13 +180,7 @@ void RenderPassNode::Compile() {
     NODE_LOG_INFO("Compile complete: Render pass created successfully");
 
     // === REGISTER CLEANUP ===
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    NodeInstance::RegisterCleanup();    
 }
 
 void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {

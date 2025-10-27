@@ -88,7 +88,9 @@
         "regex": "cpp",
         "stack": "cpp",
         "typeindex": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "coroutine": "cpp",
+        "resumable": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "CodeGPT.apiKey": "Ollama"

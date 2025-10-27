@@ -64,12 +64,14 @@ struct SwapChainPublicVariables {
 
 class VulkanSwapChain {
     public:
-    VulkanSwapChain();
-    ~VulkanSwapChain();
+        VulkanSwapChain() {};
+        ~VulkanSwapChain() {};
 
 
     public:
     void Initialize();
+	void CleanUp();
+    void Destroy(VkDevice device, VkInstance instance);  // Proper cleanup with all resources
     void CreateSwapChain(const VkCommandBuffer& cmd);
     void DestroySwapChain(VkDevice device);
     void SetSwapChainExtent(uint32_t width, uint32_t height);

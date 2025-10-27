@@ -161,13 +161,7 @@ void FramebufferNode::Compile() {
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 
     // === REGISTER CLEANUP ===
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    NodeInstance::RegisterCleanup();
 }
 
 void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {

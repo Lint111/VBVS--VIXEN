@@ -4,6 +4,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace Vixen::RenderGraph {
 
@@ -30,10 +31,59 @@ RenderGraph::RenderGraph(
     // Subscribe to cleanup events if bus provided
     if (messageBus) {
         cleanupEventSubscription = messageBus->Subscribe(
-            CleanupRequestedMessage::TYPE,
-            [this](const EventBus::Message& msg) {
-                auto& cleanupMsg = static_cast<const CleanupRequestedMessage&>(msg);
+            EventTypes::CleanupRequestedMessage::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& cleanupMsg = static_cast<const EventTypes::CleanupRequestedMessage&>(msg);
                 this->HandleCleanupRequest(cleanupMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to window close event for graceful shutdown
+        windowCloseSubscription = messageBus->Subscribe(
+            EventBus::WindowCloseEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                this->HandleWindowClose();
+                return true;
+            }
+        );
+
+        // Subscribe to render pause events
+        renderPauseSubscription = messageBus->Subscribe(
+            EventTypes::RenderPauseEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& pauseMsg = static_cast<const EventTypes::RenderPauseEvent&>(msg);
+                this->HandleRenderPause(pauseMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to window resize events
+        windowResizeSubscription = messageBus->Subscribe(
+            EventTypes::WindowResizedMessage::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& resizeMsg = static_cast<const EventTypes::WindowResizedMessage&>(msg);
+                this->HandleWindowResize(resizeMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to window state change events (minimize/maximize/restore)
+        windowStateSubscription = messageBus->Subscribe(
+            EventBus::WindowStateChangeEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& stateMsg = static_cast<const EventBus::WindowStateChangeEvent&>(msg);
+                this->HandleWindowStateChange(stateMsg);
+                return true;
+            }
+        );
+
+        // Subscribe to device sync events
+        deviceSyncSubscription = messageBus->Subscribe(
+            EventTypes::DeviceSyncRequestedMessage::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                auto& syncMsg = static_cast<const EventTypes::DeviceSyncRequestedMessage&>(msg);
+                this->HandleDeviceSyncRequest(syncMsg);
                 return true;
             }
         );
@@ -42,10 +92,27 @@ RenderGraph::RenderGraph(
 
 RenderGraph::~RenderGraph() {
     // Unsubscribe from events
-    if (messageBus && cleanupEventSubscription != 0) {
-        messageBus->Unsubscribe(cleanupEventSubscription);
+    if (messageBus) {
+        if (cleanupEventSubscription != 0) {
+            messageBus->Unsubscribe(cleanupEventSubscription);
+        }
+        if (renderPauseSubscription != 0) {
+            messageBus->Unsubscribe(renderPauseSubscription);
+        }
+        if (windowResizeSubscription != 0) {
+            messageBus->Unsubscribe(windowResizeSubscription);
+        }
+        if (windowStateSubscription != 0) {
+            messageBus->Unsubscribe(windowStateSubscription);
+        }
+        if (deviceSyncSubscription != 0) {
+            messageBus->Unsubscribe(deviceSyncSubscription);
+        }
     }
-    
+
+    // Flush deferred destructions before cleanup
+    deferredDestruction.Flush();
+
     Clear();
 }
 
@@ -86,8 +153,12 @@ NodeHandle RenderGraph::AddNode(
     nameToHandle[instanceName] = handle;
     instancesByType[typeId].push_back(instances[index].get());
 
-    // Set owning graph pointer for cleanup registration
+    // Set handle and owning graph pointer
+    instances[index]->SetHandle(handle);
     instances[index]->SetOwningGraph(this);
+
+    // Inject MessageBus for event publishing/subscription
+    instances[index]->SetMessageBus(messageBus);
 
     // Add logger if in debug mode (attach node to parent logger)
     #ifdef _DEBUG
@@ -217,7 +288,7 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 void RenderGraph::Clear() {
     // Execute cleanup callbacks in dependency order BEFORE clearing instances
     ExecuteCleanup();
-    
+
     instances.clear();
     resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
     nameToHandle.clear();
@@ -230,8 +301,38 @@ void RenderGraph::Clear() {
     isCompiled = false;
 }
 
+void RenderGraph::HandleWindowClose() {
+    std::cout << "[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup" << std::endl;
+
+    // Wait for GPU to finish all work before cleanup
+    for (const auto& inst : instances) {
+        if (inst) {
+            auto* device = inst->GetDevice();
+            if (device && device->device != VK_NULL_HANDLE) {
+                vkDeviceWaitIdle(device->device);
+                break;  // Only need to wait once per unique device
+            }
+        }
+    }
+
+    // Execute cleanup (destroys all Vulkan resources)
+    ExecuteCleanup();
+
+    std::cout << "[RenderGraph] Cleanup complete" << std::endl;
+
+    // Acknowledge shutdown to application
+    if (messageBus) {
+        messageBus->Publish(
+            std::make_unique<EventBus::ShutdownAckEvent>(0, "RenderGraph")
+        );
+    }
+}
+
 void RenderGraph::ExecuteCleanup() {
     std::cout << "[RenderGraph::ExecuteCleanup] Executing cleanup callbacks..." << std::endl;
+    // Ensure devices are idle before running cleanup
+    WaitForGraphDevicesIdle();
+
     cleanupStack.ExecuteAll();
     std::cout << "[RenderGraph::ExecuteCleanup] Cleanup complete" << std::endl;
 }
@@ -292,6 +393,15 @@ VkResult RenderGraph::RenderFrame() {
         throw std::runtime_error("Graph must be compiled before rendering");
     }
 
+    // Event processing now handled in application's Update() phase
+    // This allows updating without rendering and different frame rates
+
+    // Check if rendering should be paused (e.g., during swapchain recreation or window minimization)
+    if (renderPaused) {
+        // Continue processing events and updates but skip rendering
+        return VK_SUCCESS;
+    }
+
     // The render graph orchestrates the frame by calling specialized nodes:
     //
     // 1. SwapChainNode - Acquires next swapchain image (internally manages semaphores)
@@ -325,21 +435,24 @@ VkResult RenderGraph::RenderFrame() {
 
             node->SetState(NodeState::Executing);
 
-            // NOTE: Legacy PHASE 1 HACK removed - PresentNode now uses typed slots.
-            // SwapChain → PresentNode connections should be established via:
-            // Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN, presentNode, PresentNodeConfig::SWAPCHAIN)
-            // Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX, presentNode, PresentNodeConfig::IMAGE_INDEX)
-            // etc.
-
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
             node->Execute(VK_NULL_HANDLE);
 
             node->SetState(NodeState::Complete);
+
+            // Check if this node was marked for recompilation during execution
+            if (node->deferredRecompile) {
+                node->deferredRecompile = false;
+                // Find the handle and mark as dirty
+                for (size_t i = 0; i < instances.size(); ++i) {
+                    if (instances[i].get() == node) {
+                        MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                        break;
+                    }
+                }
+            }
         }
     }
-
-    // NOTE: Legacy GetLastResult() removed - use Out(PresentNodeConfig::PRESENT_RESULT) instead
-    // Get result via typed slot if needed, or check presentNode directly
 
     return VK_SUCCESS;
 }
@@ -415,7 +528,7 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
 
 // ====== Private Methods ======
 
-NodeHandle RenderGraph::CreateHandle(uint32_t index) {
+NodeHandle RenderGraph::CreateHandle(uint32_t index) const {
     NodeHandle handle;
     handle.index = index;
     return handle;
@@ -426,6 +539,40 @@ NodeInstance* RenderGraph::GetInstanceInternal(NodeHandle handle) {
         return instances[handle.index].get();
     }
     return nullptr;
+}
+
+void RenderGraph::WaitForGraphDevicesIdle(const std::vector<NodeInstance*>& instancesToCheck) {
+    std::unordered_set<VkDevice> devicesToWait;
+
+    std::vector<NodeInstance*> nodesToCheck;
+
+    if (instancesToCheck.empty()) {
+        // Assuming `instances` is std::vector<std::unique_ptr<NodeInstance>>
+        nodesToCheck.reserve(instances.size());
+        for (const auto& inst : instances)
+            nodesToCheck.push_back(inst.get());
+    }
+    else {
+        nodesToCheck = instancesToCheck;
+    }
+
+    for (auto* instPtr : nodesToCheck) {
+        if (!instPtr) continue;
+        auto* vdev = instPtr->GetDevice();
+        if (vdev && vdev->device != VK_NULL_HANDLE) {
+            devicesToWait.insert(vdev->device);
+        }
+    }
+
+    WaitForDevicesIdle(devicesToWait);
+}
+
+void RenderGraph::WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices) {
+    for (VkDevice dev : devices) {
+        if (dev != VK_NULL_HANDLE) {
+            vkDeviceWaitIdle(dev);
+        }
+    }
 }
 
 Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {
@@ -578,12 +725,25 @@ void RenderGraph::RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& 
     
     // Now clean this node
     std::cout << "[RecursiveCleanup] Cleaning node: " << node->GetInstanceName() << std::endl;
-    
-    // Execute cleanup callback via CleanupStack
-    cleanupStack.ExecuteFrom(node->GetInstanceName() + "_Cleanup");
+
+    // Execute cleanup callback via CleanupStack using handle
+    cleanupStack.ExecuteFrom(node->GetHandle());
     
     // Mark as cleaned
     cleaned.insert(node);
+}
+
+std::string RenderGraph::GetDeviceCleanupNodeName() const {
+    // Find first instance with type name "Device" and return its cleanup node name
+    for (const auto& instPtr : instances) {
+        if (!instPtr) continue;
+        NodeType* t = instPtr->GetNodeType();
+        if (t && t->GetTypeName() == "Device") {
+            return instPtr->GetInstanceName() + std::string("_Cleanup");
+        }
+    }
+    // Legacy fallback used by older code
+    return std::string("DeviceNode_Cleanup");
 }
 
 size_t RenderGraph::CleanupSubgraph(const std::string& rootNodeName) {
@@ -595,6 +755,21 @@ size_t RenderGraph::CleanupSubgraph(const std::string& rootNodeName) {
     
     std::cout << "[CleanupSubgraph] Starting partial cleanup from: " << rootNodeName << std::endl;
     
+    // Compute which nodes would be cleaned in this subgraph (dry-run)
+    std::vector<std::string> scope = GetCleanupScope(rootNodeName);
+
+    // Build list of NodeInstance pointers for the computed subgraph scope
+    std::vector<NodeInstance*> instancesToWait;
+    instancesToWait.reserve(scope.size());
+    for (const std::string& nodeName : scope) {
+        NodeInstance* inst = GetInstanceByName(nodeName);
+        if (!inst) continue;
+        instancesToWait.push_back(inst);
+    }
+
+    // Wait only on devices that are used by the subgraph about to be cleaned
+    WaitForGraphDevicesIdle(instancesToWait);
+
     // Compute reference counts
     ComputeDependentCounts();
     
@@ -673,6 +848,9 @@ size_t RenderGraph::CleanupByTag(const std::string& tag) {
         return 0;
     }
     
+    // Ensure devices are idle before performing cleanup
+    WaitForGraphDevicesIdle();
+
     // Compute reference counts
     ComputeDependentCounts();
     
@@ -702,6 +880,9 @@ size_t RenderGraph::CleanupByType(const std::string& typeName) {
         return 0;
     }
     
+    // Ensure devices are idle before performing cleanup
+    WaitForGraphDevicesIdle();
+
     // Compute reference counts
     ComputeDependentCounts();
     
@@ -715,48 +896,380 @@ size_t RenderGraph::CleanupByType(const std::string& typeName) {
     return cleaned.size();
 }
 
-void RenderGraph::HandleCleanupRequest(const CleanupRequestedMessage& msg) {
-    std::cout << "[RenderGraph] Received cleanup request";
-    if (!msg.reason.empty()) {
-        std::cout << " - Reason: " << msg.reason;
+void RenderGraph::ProcessEvents() {
+    if (!messageBus) {
+        return;  // No event bus configured
     }
-    std::cout << std::endl;
-    
-    std::vector<std::string> cleanedNodes;
-    size_t cleanedCount = 0;
-    
-    switch (msg.scope) {
-        case CleanupScope::Specific:
-            if (msg.targetNodeName.has_value()) {
-                cleanedCount = CleanupSubgraph(msg.targetNodeName.value());
-            }
-            break;
-            
-        case CleanupScope::ByTag:
-            if (msg.tag.has_value()) {
-                cleanedCount = CleanupByTag(msg.tag.value());
-            }
-            break;
-            
-        case CleanupScope::ByType:
-            if (msg.typeName.has_value()) {
-                cleanedCount = CleanupByType(msg.typeName.value());
-            }
-            break;
-            
-        case CleanupScope::Full:
-            std::cout << "[RenderGraph] Executing full cleanup" << std::endl;
-            ExecuteCleanup();
-            cleanedCount = instances.size();
-            break;
+
+    // Process all queued events
+    messageBus->ProcessMessages();
+}
+
+void RenderGraph::RecompileDirtyNodes() {
+    if (dirtyNodes.empty()) {
+        return;  // Nothing to recompile
     }
+
+    // Check if any dirty nodes are currently executing on GPU
+    // If so, defer recompilation until they're complete
+    std::vector<NodeHandle> deferredNodes;
+    for (NodeHandle handle : dirtyNodes) {
+        if (handle.IsValid() && handle.index < instances.size()) {
+            NodeInstance* node = instances[handle.index].get();
+            if (node && node->GetState() == NodeState::Executing) {
+                deferredNodes.push_back(handle);
+            }
+        }
+    }
+
+    // Remove deferred nodes from dirty set (they'll be re-added when execution completes)
+    for (NodeHandle handle : deferredNodes) {
+        dirtyNodes.erase(handle);
+    }
+
+    if (dirtyNodes.empty()) {
+        if (!deferredNodes.empty()) {
+            std::cout << "[RenderGraph] Deferring recompilation of " << deferredNodes.size() 
+                      << " nodes currently executing on GPU" << std::endl;
+        }
+        return;  // All dirty nodes are still executing
+    }
+
+    // Track if all nodes successfully recompiled
+    bool allNodesSucceeded = true;
+
+    // Track which nodes failed during this recompilation
+    std::unordered_set<NodeInstance*> failedNodes;
+
+    // Keep recompiling until there are no more dirty nodes
+    // (recompiling a node may mark its dependents as dirty)
+    while (!dirtyNodes.empty()) {
+        std::cout << "[RenderGraph] Recompiling " << dirtyNodes.size() << " dirty nodes" << std::endl;
+
+        // Convert dirty handles to set of node pointers for fast lookup
+        std::unordered_set<NodeInstance*> dirtyNodeSet;
+        for (NodeHandle handle : dirtyNodes) {
+            if (handle.IsValid() && handle.index < instances.size()) {
+                NodeInstance* node = instances[handle.index].get();
+                if (node) {
+                    dirtyNodeSet.insert(node);
+                }
+            }
+        }
+
+        // Collect nodes to recompile in execution order (respects dependencies)
+        std::vector<NodeInstance*> nodesToRecompile;
+        for (NodeInstance* node : executionOrder) {
+            if (dirtyNodeSet.count(node) > 0) {
+                nodesToRecompile.push_back(node);
+            }
+        }
+
+        // Clear dirty set before recompiling this batch
+        dirtyNodes.clear();
+
+        // Recompile each dirty node
+        // Before destroying resources, ensure any GPU work referencing them has finished.
+        // Collect unique VkDevice handles used by the nodes and wait for device idle.
+        std::unordered_set<VkDevice> devicesToWait;
+        for (NodeInstance* node : nodesToRecompile) {
+            if (!node) continue;
+            auto* vdev = node->GetDevice();
+            if (vdev && vdev->device != VK_NULL_HANDLE) {
+                devicesToWait.insert(vdev->device);
+            }
+        }
+
+        // If we didn't find any devices from the nodes-to-recompile, fall back to scanning
+        // all graph instances for any known devices. This covers cases where nodes don't
+        // store a VulkanDevice pointer directly but the graph contains a Device node.
+        if (devicesToWait.empty()) {
+            for (const auto& instPtr : instances) {
+                if (!instPtr) continue;
+                auto* vdev = instPtr->GetDevice();
+                if (vdev && vdev->device != VK_NULL_HANDLE) {
+                    devicesToWait.insert(vdev->device);
+                }
+            }
+        }
+
+        for (VkDevice dev : devicesToWait) {
+            if (dev != VK_NULL_HANDLE) {
+                // Best-effort wait; if device becomes lost this will return an error which we ignore here
+                vkDeviceWaitIdle(dev);
+            }
+        }
+
+        for (NodeInstance* node : nodesToRecompile) {
+            if (!node) continue;
+
+            // Check if any input dependencies failed during this recompilation
+            bool dependencyFailed = false;
+            std::vector<NodeInstance*> dependencies = dependencyTracker.GetDependenciesForNode(node);
+            for (NodeInstance* dep : dependencies) {
+                if (failedNodes.count(dep) > 0) {
+                    dependencyFailed = true;
+                    std::cout << "[RenderGraph] Skipping node '" << node->GetInstanceName()
+                              << "' - dependency '" << dep->GetInstanceName() << "' failed to recompile" << std::endl;
+                    break;
+                }
+            }
     
+            if (dependencyFailed) {
+                // Mark this node as failed and re-add to dirty set
+                failedNodes.insert(node);
+                for (uint32_t i = 0; i < instances.size(); ++i) {
+                    if (instances[i].get() == node) {
+                        MarkNodeNeedsRecompile(CreateHandle(i));
+                        break;
+                    }
+                }
+                allNodesSucceeded = false;
+                continue;
+            }
+    
+            std::cout << "[RenderGraph] Recompiling node: " << node->GetInstanceName() << std::endl;
+    
+            try {
+                // Call cleanup first (destroy old resources)
+                node->Cleanup();
+    
+                // Ensure node has a chance to recreate transient objects (e.g., swapchain wrapper)
+                // Some nodes may not have device inputs available immediately; if Setup/Compile
+                // fails we'll catch and defer the recompilation to a later safe point.
+                node->Setup();
+    
+                // Recompile (create new resources)
+                node->Compile();
+    
+                // Register cleanup again
+                node->RegisterCleanup();
+    
+                // Clear recompilation flag - node is now compiled
+                node->ClearNeedsRecompile();
+    
+                // Reset cleanup flag so node can be cleaned up again on next recompilation
+                node->ResetCleanupFlag();
+    
+                // Mark all dependent nodes (consumers of this node's outputs) as dirty
+                // The cleanup stack tracks the dependency graph: provider -> dependents
+                // We need to compile in the opposite direction: when a provider recompiles,
+                // all its dependents need to recompile
+                NodeHandle nodeHandle = node->GetHandle();
+                std::unordered_set<NodeHandle> dependentHandles = cleanupStack.GetAllDependents(nodeHandle);
+
+                for (NodeHandle depHandle : dependentHandles) {
+                    if (depHandle.IsValid() && depHandle.index < instances.size()) {
+                        NodeInstance* dependent = instances[depHandle.index].get();
+                        if (dependent) {
+                            std::cout << "[RenderGraph] Marking dependent node '" << dependent->GetInstanceName()
+                                      << "' for recompilation" << std::endl;
+                            dependent->MarkNeedsRecompile();
+                        }
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[RenderGraph] Failed to recompile node '" << node->GetInstanceName()
+                          << "' - deferring. Error: " << e.what() << std::endl;
+    
+                // Re-add to dirty set to retry next frame
+                // Find the node index to create a handle
+                for (uint32_t i = 0; i < instances.size(); ++i) {
+                    if (instances[i].get() == node) {
+                        MarkNodeNeedsRecompile(CreateHandle(i));
+                        break;
+                    }
+                }
+    
+                // Mark that at least one node failed
+                failedNodes.insert(node);
+                allNodesSucceeded = false;
+            }
+        } // End for (NodeInstance* node : nodesToRecompile)
+    } // End while loop
+
+    // Update graph compiled state
+    if (allNodesSucceeded && dirtyNodes.empty()) {
+        // All nodes successfully recompiled and no new dirty nodes were added
+        isCompiled = true;
+        std::cout << "[RenderGraph] All nodes successfully recompiled - graph is compiled" << std::endl;
+    } else {
+        // Some nodes failed or new dirty nodes were added during recompilation
+        isCompiled = false;
+        if (!allNodesSucceeded) {
+            std::cout << "[RenderGraph] Some nodes failed to recompile - graph remains uncompiled" << std::endl;
+        }
+    }
+}
+
+void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
+    if (nodeHandle.IsValid()) {
+        dirtyNodes.insert(nodeHandle);
+    }
+}
+
+void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg) {
+    std::cout << "[RenderGraph] Received cleanup request (ID: " << msg.requestId << ")" << std::endl;
+
+    // Execute full cleanup for now - simplified from complex scope-based cleanup
+    ExecuteCleanup();
+    size_t cleanedCount = instances.size();
+
     // Publish completion event
     if (messageBus) {
-        auto completionMsg = std::make_unique<CleanupCompletedMessage>(0);
-        completionMsg->cleanedCount = cleanedCount;
+        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, cleanedCount);
         messageBus->Publish(std::move(completionMsg));
     }
+}
+
+void RenderGraph::HandleRenderPause(const EventTypes::RenderPauseEvent& msg) {
+    std::cout << "[RenderGraph] Render pause event: "
+              << (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START ? "START" : "END")
+              << " (reason: " << static_cast<int>(msg.pauseReason) << ")" << std::endl;
+
+    renderPaused = (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
+
+    if (renderPaused) {
+        std::cout << "[RenderGraph] Rendering paused - continuing with event processing only" << std::endl;
+    } else {
+        std::cout << "[RenderGraph] Rendering resumed" << std::endl;
+    }
+}
+
+void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg) {
+    std::cout << "[RenderGraph] Window resized: " << msg.newWidth << "x" << msg.newHeight << std::endl;
+    // Note: Nodes that need to respond to window resize (e.g., SwapChainNode)
+    // subscribe to WindowResizedMessage and mark themselves dirty.
+    // Downstream consumers (DepthBufferNode, FramebufferNode, etc.) are automatically
+    // marked dirty by the recompilation system when their dependencies change.
+}
+
+void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {
+    std::cout << "[RenderGraph] Window state changed: ";
+    
+    switch (msg.newState) {
+        case EventBus::WindowStateChangeEvent::State::Minimized:
+            std::cout << "MINIMIZED - pausing rendering, continuing updates";
+            renderPaused = true;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Maximized:
+            std::cout << "MAXIMIZED - resuming rendering";
+            renderPaused = false;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Restored:
+            std::cout << "RESTORED - resuming rendering";
+            renderPaused = false;
+            break;
+        case EventBus::WindowStateChangeEvent::State::Focused:
+            std::cout << "FOCUSED";
+            break;
+        case EventBus::WindowStateChangeEvent::State::Unfocused:
+            std::cout << "UNFOCUSED";
+            break;
+    }
+    std::cout << std::endl;
+}
+
+void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedMessage& msg) {
+    auto startTime = std::chrono::steady_clock::now();
+
+    std::unordered_set<VkDevice> devicesToWait;
+    size_t deviceCount = 0;
+
+    switch (msg.scope) {
+        case EventTypes::DeviceSyncRequestedMessage::Scope::AllDevices:
+            {
+                // Wait for all devices referenced by graph instances
+                WaitForGraphDevicesIdle({});
+
+                // Count unique devices for statistics
+                for (const auto& instPtr : instances) {
+                    if (!instPtr) continue;
+                    auto* vdev = instPtr->GetDevice();
+                    if (vdev && vdev->device != VK_NULL_HANDLE) {
+                        devicesToWait.insert(vdev->device);
+                    }
+                }
+                deviceCount = devicesToWait.size();
+
+                std::cout << "[RenderGraph] Device sync completed for all devices ("
+                          << deviceCount << " devices)";
+                if (!msg.reason.empty()) {
+                    std::cout << " - Reason: " << msg.reason;
+                }
+                std::cout << std::endl;
+            }
+            break;
+
+        case EventTypes::DeviceSyncRequestedMessage::Scope::SpecificNodes:
+            {
+                // Collect instances for specific nodes
+                std::vector<NodeInstance*> nodesToSync;
+                for (const auto& nodeName : msg.nodeNames) {
+                    NodeInstance* node = GetInstanceByName(nodeName);
+                    if (node) {
+                        nodesToSync.push_back(node);
+                    } else {
+                        std::cerr << "[RenderGraph] Warning: Node not found for sync: "
+                                  << nodeName << std::endl;
+                    }
+                }
+
+                if (!nodesToSync.empty()) {
+                    WaitForGraphDevicesIdle(nodesToSync);
+
+                    // Count unique devices
+                    for (NodeInstance* node : nodesToSync) {
+                        auto* vdev = node->GetDevice();
+                        if (vdev && vdev->device != VK_NULL_HANDLE) {
+                            devicesToWait.insert(vdev->device);
+                        }
+                    }
+                    deviceCount = devicesToWait.size();
+
+                    std::cout << "[RenderGraph] Device sync completed for "
+                              << nodesToSync.size() << " nodes ("
+                              << deviceCount << " devices)";
+                    if (!msg.reason.empty()) {
+                        std::cout << " - Reason: " << msg.reason;
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            break;
+
+        case EventTypes::DeviceSyncRequestedMessage::Scope::SpecificDevices:
+            {
+                // Wait for specific VkDevice handles
+                devicesToWait.insert(msg.devices.begin(), msg.devices.end());
+                WaitForDevicesIdle(devicesToWait);
+                deviceCount = devicesToWait.size();
+
+                std::cout << "[RenderGraph] Device sync completed for "
+                          << deviceCount << " specific devices";
+                if (!msg.reason.empty()) {
+                    std::cout << " - Reason: " << msg.reason;
+                }
+                std::cout << std::endl;
+            }
+            break;
+    }
+
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime
+    );
+
+    // Publish completion event
+    if (messageBus) {
+        auto completionMsg = std::make_unique<EventTypes::DeviceSyncCompletedMessage>(
+            0,
+            deviceCount,
+            duration
+        );
+        messageBus->Publish(std::move(completionMsg));
+    }
+
+    std::cout << "[RenderGraph] Device sync took " << duration.count() << "ms" << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

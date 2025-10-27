@@ -151,13 +151,12 @@ void DepthBufferNode::Compile() {
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 
     // === REGISTER CLEANUP ===
-    if (GetOwningGraph()) {
-        GetOwningGraph()->GetCleanupStack().Register(
-            GetInstanceName() + "_Cleanup",
-            [this]() { this->Cleanup(); },
-            { "DeviceNode_Cleanup" }
-        );
-    }
+    // Let the CleanupStack / dependency tracker compute transitive dependencies.
+    // Do not manually force a dependency on the device cleanup entry here.
+    // Use the instance-level registration which builds cleanup dependencies
+    // (via the graph's ResourceDependencyTracker) so we don't hard-code
+    // transitive dependencies here.
+    RegisterCleanup();
 }
 
 void DepthBufferNode::Execute(VkCommandBuffer commandBuffer) {
