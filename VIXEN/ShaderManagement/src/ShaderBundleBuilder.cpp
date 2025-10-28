@@ -2,12 +2,10 @@
 #include "ShaderManagement/SPIRVReflection.h"
 #include "ShaderManagement/SdiRegistryManager.h"
 #include "ShaderManagement/ShaderLogger.h"
+#include "Hash.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#ifdef HAS_OPENSSL
-#include <openssl/sha.h>
-#endif
 
 namespace ShaderManagement {
 
@@ -94,26 +92,10 @@ std::string GenerateContentBasedUuid(
     }
 
     std::string content = contentStream.str();
-#ifdef HAS_OPENSSL
-    // Compute SHA-256 hash
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char*>(content.c_str()),
-           content.size(), hash);
-
-    // Convert to 32-character hex string
-    std::ostringstream hexStream;
-    hexStream << std::hex << std::setfill('0');
-    for (int i = 0; i < 16; ++i) {  // Use first 16 bytes for 32 hex chars
-        hexStream << std::setw(2) << static_cast<int>(hash[i]);
-    }
-
-    return hexStream.str();
-#else
-    // Fallback: use std::hash
-    std::ostringstream hexStream;
-    hexStream << std::hex << std::hash<std::string>{}(content);
-    return hexStream.str();
-#endif
+    // Compute SHA256 (or fallback deterministic hash) and return first 32 hex chars
+    auto full = ShaderManagement::ComputeSHA256Hex(reinterpret_cast<const void*>(content.data()), content.size());
+    if (full.size() >= 32) return full.substr(0, 32);
+    return full;
 }
 
 /**

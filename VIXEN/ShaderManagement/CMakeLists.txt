@@ -53,7 +53,21 @@ if(OpenSSL_FOUND)
     target_compile_definitions(ShaderManagement PRIVATE HAS_OPENSSL)
     target_include_directories(ShaderManagement PRIVATE ${OPENSSL_INCLUDE_DIR})
 else()
-    message(WARNING "OpenSSL not found - shader caching will use fallback hash")
+    message(STATUS "OpenSSL not found - attempting to fetch header-only hash library (stbrumme/hash-library)")
+    include(FetchContent)
+    FetchContent_Declare(
+        stbrumme_hash
+        GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(stbrumme_hash)
+    # Expose a macro so sources can pick the header-only implementation
+    target_compile_definitions(ShaderManagement PRIVATE HAS_STBRUMME_HASH)
+    # Add its source dir to include path; header layout may vary so include root
+    target_include_directories(ShaderManagement PRIVATE ${stbrumme_hash_SOURCE_DIR})
+    message(STATUS "stbrumme/hash-library fetched and added to include directories")
+    message(WARNING "OpenSSL not found - falling back to header-only hash library (or builtin fallback)")
 endif()
 
 # Link Vulkan

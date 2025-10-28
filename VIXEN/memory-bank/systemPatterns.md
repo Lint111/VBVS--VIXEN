@@ -52,6 +52,15 @@ The project uses **two parallel architectures**:
 └──────────┘      └──────────────┘  └─────────────┘  └──────────────┘
 ```
 
+## RenderGraph Design Patterns (October 27, 2025 Update)
+
+### Core Architecture Principles
+1. **Handle-Based Access** - O(1) node lookups via direct indexing
+2. **Dependency-Ordered Cleanup** - Auto-detected via input connections
+3. **Two-Semaphore Sync** - GPU-GPU synchronization per swapchain image
+4. **Event-Driven Invalidation** - Cascade recompilation through dependency graph
+5. **Graph-Owns-Resources** - Clear lifetime management, no circular dependencies
+
 ## RenderGraph Design Patterns
 
 ### 1. Resource Variant Pattern
@@ -191,6 +200,151 @@ public:
 **Purpose**: Single API pattern - nodes use `In()`/`Out()`, graph uses low-level wiring
 
 **Note**: Friend access is broad (architectural review recommends `INodeWiring` interface)
+
+### 7. Handle-Based Node Access Pattern (October 27, 2025)
+**Classes**: `NodeHandle`, `RenderGraph`, `CleanupStack`
+
+**Implementation**:
+```cpp
+// NodeHandle is a simple direct index
+struct NodeHandle {
+    size_t index;
+    bool IsValid() const { return index != INVALID_INDEX; }
+};
+
+// CleanupStack uses handles for O(1) access
+class CleanupStack {
+    std::unordered_map<NodeHandle, std::unique_ptr<CleanupNode>> nodes;
+
+    void RegisterNode(NodeHandle handle, std::function<void()> cleanup) {
+        nodes[handle] = std::make_unique<CleanupNode>(cleanup);
+    }
+};
+
+// GetAllDependents returns handles directly
+std::unordered_set<NodeHandle> GetAllDependents(NodeHandle handle);
+```
+
+**Purpose**: Eliminates string-based lookups, reduces recompilation cascade from O(n²) to O(n)
+
+**Key Insight**: Handles are stable during recompilation (no graph restructure), only invalidate when nodes added/removed
+
+### 8. Cleanup Dependency Pattern (October 27, 2025)
+**Classes**: `CleanupStack`, `NodeInstance`, `ResourceDependencyTracker`
+
+**Implementation**:
+```cpp
+// Nodes register cleanup during compilation
+void NodeInstance::RegisterCleanup() {
+    if (!cleanupCallback) {
+        cleanupCallback = [this]() { this->Cleanup(); };
+    }
+
+    if (auto graph = GetRenderGraph()) {
+        // Auto-detect dependencies from input connections
+        auto dependencies = ResourceDependencyTracker::BuildCleanupDependencies(this);
+        graph->GetCleanupStack().RegisterNode(handle, cleanupCallback, dependencies);
+    }
+}
+
+// CleanupStack executes in dependency order
+void CleanupStack::ExecuteAll() {
+    std::unordered_set<NodeHandle> visited;
+    for (auto& [handle, node] : nodes) {
+        ExecuteCleanup(handle, &visited);  // Recursive, visits children first
+    }
+}
+
+void CleanupStack::ExecuteCleanup(NodeHandle handle, std::unordered_set<NodeHandle>* visited) {
+    if (visited->count(handle)) return;  // Prevent duplicate cleanup
+    visited->insert(handle);
+
+    // Clean dependents first (children before parents)
+    for (auto& dep : nodes[handle]->dependents) {
+        ExecuteCleanup(dep, visited);
+    }
+
+    // Clean this node
+    nodes[handle]->cleanupCallback();
+}
+```
+
+**Purpose**: Ensures Vulkan resources destroyed in correct order (children before parents), prevents validation errors
+
+**Recompilation Flow**:
+```cpp
+// RenderGraph.cpp lines 1060-1075
+node->Cleanup();              // Destroy old resources
+node->Setup();                // Re-subscribe to events
+node->Compile();              // Create new resources
+node->RegisterCleanup();      // Register new cleanup callback
+node->ResetCleanupFlag();     // Allow cleanup to run again
+cleanupStack.ResetExecuted(handle);  // Allow CleanupStack to execute again
+```
+
+**Key Insight**: Nodes don't call `Cleanup()` in `Compile()` - RenderGraph handles lifecycle
+
+### 9. Two-Semaphore Synchronization Pattern (October 27, 2025)
+**Classes**: `SwapChainNode`, `GeometryRenderNode`, `PresentNode`
+
+**Implementation**:
+```cpp
+// SwapChainNode creates image available semaphores
+void SwapChainNode::Compile() {
+    imageAvailableSemaphores.resize(imageCount);
+    for (uint32_t i = 0; i < imageCount; i++) {
+        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
+    }
+}
+
+// GeometryRenderNode creates render complete semaphores
+void GeometryRenderNode::Compile() {
+    renderCompleteSemaphores.resize(imageCount);
+    for (uint32_t i = 0; i < imageCount; i++) {
+        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]);
+    }
+}
+
+// GeometryRenderNode waits on imageAvailable, signals renderComplete
+void GeometryRenderNode::Execute() {
+    VkSemaphore imageAvailableSem = In(IMAGE_AVAILABLE_SEMAPHORE);
+    VkSemaphore renderCompleteSem = renderCompleteSemaphores[imageIndex];
+
+    VkSubmitInfo submitInfo = {
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &imageAvailableSem,           // Wait for image
+        .pWaitDstStageMask = &waitStage,                 // COLOR_ATTACHMENT_OUTPUT_BIT
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &renderCompleteSem          // Signal render done
+    };
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+
+    Out(RENDER_COMPLETE_SEMAPHORE, renderCompleteSem);
+}
+
+// PresentNode waits on renderComplete
+void PresentNode::Present() {
+    VkSemaphore renderCompleteSem = In(RENDER_COMPLETE_SEMAPHORE);
+    VkPresentInfoKHR presentInfo = {
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &renderCompleteSem            // Wait for render
+    };
+    vkQueuePresentKHR(queue, &presentInfo);
+}
+```
+
+**Purpose**: GPU-GPU synchronization without CPU stalls, enables frame pipelining
+
+**Synchronization Timeline**:
+```
+vkAcquireNextImageKHR → signals imageAvailableSemaphores[i]
+    ↓ (GPU waits)
+vkQueueSubmit → waits imageAvailable, signals renderCompleteSemaphores[i]
+    ↓ (GPU waits)
+vkQueuePresentKHR → waits renderComplete
+```
+
+**Key Insight**: Distributed ownership - each node owns semaphores it creates, passes via slots
 
 ## Legacy Design Patterns (Reference)
 

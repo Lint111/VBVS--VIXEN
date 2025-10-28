@@ -1,12 +1,10 @@
 #include "ShaderManagement/SpirvReflector.h"
 #include "spirv_reflect.h"
+#include "Hash.h"
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
-#ifdef HAS_OPENSSL
-#include <openssl/sha.h>
-#endif
 
 namespace ShaderManagement {
 
@@ -372,38 +370,15 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::ReflectStage(
 }
 
 std::string SpirvReflector::ComputeInterfaceHash(const CompiledProgram& program) {
-#ifdef HAS_OPENSSL
-    // Compute SHA-256 hash of all SPIRV code
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-
+    // Build a byte buffer of all SPIR-V stage bytes
+    std::vector<uint8_t> buffer;
     for (const auto& stage : program.stages) {
         if (!stage.spirvCode.empty()) {
-            SHA256_Update(&sha256, stage.spirvCode.data(),
-                stage.spirvCode.size() * sizeof(uint32_t));
+            const uint8_t* bytes = reinterpret_cast<const uint8_t*>(stage.spirvCode.data());
+            buffer.insert(buffer.end(), bytes, bytes + stage.spirvCode.size() * sizeof(uint32_t));
         }
     }
-
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &sha256);
-
-    // Convert to hex string
-    std::ostringstream oss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-        oss << std::hex << std::setw(2) << std::setfill('0')
-            << static_cast<int>(hash[i]);
-    }
-
-    return oss.str();
-#else
-    // Fallback: simple hash based on code size and stage count
-    std::ostringstream oss;
-    oss << std::hex << program.stages.size() << "_";
-    for (const auto& stage : program.stages) {
-        oss << stage.spirvCode.size() << "_";
-    }
-    return oss.str();
-#endif
+    return ShaderManagement::ComputeSHA256Hex(buffer);
 }
 
 bool SpirvReflector::AreInterfacesCompatible(
