@@ -173,7 +173,7 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
     }
 
     const auto& buffer = builder.GetBuffer();
-    return ShaderManagement::ComputeSHA256Hex(buffer);
+    return Vixen::Hash::ComputeSHA256Hex(buffer);
 }
 
 ShaderDirtyFlags CompareBundles(

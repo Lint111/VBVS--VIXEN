@@ -378,7 +378,7 @@ std::string SpirvReflector::ComputeInterfaceHash(const CompiledProgram& program)
             buffer.insert(buffer.end(), bytes, bytes + stage.spirvCode.size() * sizeof(uint32_t));
         }
     }
-    return ShaderManagement::ComputeSHA256Hex(buffer);
+    return Vixen::Hash::ComputeSHA256Hex(buffer);
 }
 
 bool SpirvReflector::AreInterfacesCompatible(

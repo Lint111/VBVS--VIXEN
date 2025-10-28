@@ -1,4 +1,5 @@
 #include "PipelineCacher.h"
+#include "Hash.h"
 
 #include <functional>
 
@@ -15,17 +16,20 @@ PtrT PipelineCacher::Create(const PipelineCreateParams& ci) {
 }
 
 std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
-    std::uint64_t key = 1469598103934665603ull;
-    auto h1 = std::hash<std::string>{}(ci.vertexShaderChecksum);
-    auto h2 = std::hash<std::string>{}(ci.fragmentShaderChecksum);
-    auto h3 = std::hash<std::string>{}(ci.layoutKey);
-    auto h4 = std::hash<std::string>{}(ci.renderPassKey);
+    // Canonicalize CI into a deterministic byte sequence and compute SHA256 (hex)
+    std::string blob;
+    blob.reserve(ci.vertexShaderChecksum.size() + ci.fragmentShaderChecksum.size() + ci.layoutKey.size() + ci.renderPassKey.size() + 8);
+    blob.append(ci.vertexShaderChecksum);
+    blob.push_back('|');
+    blob.append(ci.fragmentShaderChecksum);
+    blob.push_back('|');
+    blob.append(ci.layoutKey);
+    blob.push_back('|');
+    blob.append(ci.renderPassKey);
 
-    key ^= (h1 + 0x9e3779b97f4a7c15ULL + (key<<6) + (key>>2));
-    key ^= (h2 + 0x9e3779b97f4a7c15ULL + (key<<6) + (key>>2));
-    key ^= (h3 + 0x9e3779b97f4a7c15ULL + (key<<6) + (key>>2));
-    key ^= (h4 + 0x9e3779b97f4a7c15ULL + (key<<6) + (key>>2));
-    return key;
+    auto hex = Vixen::Hash::ComputeSHA256Hex(reinterpret_cast<const void*>(blob.data()), blob.size());
+    // Reduce SHA256 hex to a 64-bit key (std::hash on hex is deterministic)
+    return static_cast<std::uint64_t>(std::hash<std::string>{}(hex));
 }
 
 bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {

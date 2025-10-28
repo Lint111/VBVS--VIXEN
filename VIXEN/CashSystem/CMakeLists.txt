@@ -8,8 +8,13 @@ add_library(CashSystem STATIC
 
 target_include_directories(CashSystem PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    # Project-level includes (so CashSystem can use common headers like include/Hash.h)
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
 )
 
 # Link dependencies here if/when required
 target_link_libraries(CashSystem PUBLIC
 )
+
+# Link ProjectHash so CashSystem uses the same hash provider includes/links
+target_link_libraries(CashSystem PRIVATE ProjectHash)

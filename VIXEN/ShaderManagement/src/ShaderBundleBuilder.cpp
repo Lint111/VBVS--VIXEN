@@ -93,7 +93,7 @@ std::string GenerateContentBasedUuid(
 
     std::string content = contentStream.str();
     // Compute SHA256 (or fallback deterministic hash) and return first 32 hex chars
-    auto full = ShaderManagement::ComputeSHA256Hex(reinterpret_cast<const void*>(content.data()), content.size());
+    auto full = Vixen::Hash::ComputeSHA256Hex(reinterpret_cast<const void*>(content.data()), content.size());
     if (full.size() >= 32) return full.substr(0, 32);
     return full;
 }

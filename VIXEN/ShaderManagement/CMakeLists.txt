@@ -42,32 +42,21 @@ target_include_directories(ShaderManagement
         ${spirv_reflect_SOURCE_DIR}
 )
 
+# Link to project-level hash provider for consistent hashing behavior
+target_link_libraries(ShaderManagement PRIVATE ProjectHash)
+
 # Find dependencies
 find_package(Vulkan REQUIRED)
 
 # Optional OpenSSL for SHA256 hashing
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)
-    message(STATUS "OpenSSL found - enabling SHA256 shader hashing")
+    message(STATUS "OpenSSL found - enabling SHA256 shader hashing for ShaderManagement")
     target_link_libraries(ShaderManagement PRIVATE OpenSSL::Crypto)
     target_compile_definitions(ShaderManagement PRIVATE HAS_OPENSSL)
     target_include_directories(ShaderManagement PRIVATE ${OPENSSL_INCLUDE_DIR})
 else()
-    message(STATUS "OpenSSL not found - attempting to fetch header-only hash library (stbrumme/hash-library)")
-    include(FetchContent)
-    FetchContent_Declare(
-        stbrumme_hash
-        GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
-        GIT_TAG        main
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(stbrumme_hash)
-    # Expose a macro so sources can pick the header-only implementation
-    target_compile_definitions(ShaderManagement PRIVATE HAS_STBRUMME_HASH)
-    # Add its source dir to include path; header layout may vary so include root
-    target_include_directories(ShaderManagement PRIVATE ${stbrumme_hash_SOURCE_DIR})
-    message(STATUS "stbrumme/hash-library fetched and added to include directories")
-    message(WARNING "OpenSSL not found - falling back to header-only hash library (or builtin fallback)")
+    message(WARNING "OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available")
 endif()
 
 # Link Vulkan

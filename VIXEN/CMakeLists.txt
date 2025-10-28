@@ -141,6 +141,40 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(stb)
 
+# ===== Global hash provider (OpenSSL or header-only fallback) =====
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+	message(STATUS "OpenSSL found - enabling global SHA256 support")
+	add_compile_definitions(HAS_OPENSSL)
+	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
+else()
+	message(STATUS "OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256")
+	FetchContent_Declare(
+		stbrumme_hash
+		GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
+		GIT_TAG        master
+		GIT_SHALLOW    TRUE
+	)
+	FetchContent_MakeAvailable(stbrumme_hash)
+	add_compile_definitions(HAS_STBRUMME_HASH)
+	include_directories(BEFORE ${stbrumme_hash_SOURCE_DIR})
+endif()
+
+# Project-level hash provider interface
+add_library(ProjectHash INTERFACE)
+if(OpenSSL_FOUND)
+	target_link_libraries(ProjectHash INTERFACE OpenSSL::Crypto)
+	target_include_directories(ProjectHash INTERFACE ${OPENSSL_INCLUDE_DIR})
+	target_compile_definitions(ProjectHash INTERFACE HAS_OPENSSL)
+elseif(TARGET stbrumme_hash OR DEFINED stbrumme_hash_SOURCE_DIR)
+	# If we fetched stbrumme_hash, expose its include dir
+	target_include_directories(ProjectHash INTERFACE ${stbrumme_hash_SOURCE_DIR})
+	target_compile_definitions(ProjectHash INTERFACE HAS_STBRUMME_HASH)
+else()
+	# fallback - no external provider, ProjectHash provides compile-time macro for fallback
+	target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
+endif()
+
 # Specify a suitable project name
 project(${Recipe_Name})
 
