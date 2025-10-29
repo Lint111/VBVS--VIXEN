@@ -11,17 +11,13 @@
 #   cmake --build . && ctest --output-on-failure
 #
 
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.15)
 
-# Include Google Test helpers
-include(GoogleTest)
+# This CMakeLists aggregates all per-library test subdirectories so the top-level
+# CMake can simply call add_subdirectory(tests).
 
-# ============================================================================
-# TEST CONFIGURATION
-# ============================================================================
-
-# Test discovery mode - use CMake's built-in test discovery
-set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
+# Include Google Test helpers (provided by FetchContent in the top-level CMake)
+include(GoogleTest OPTIONAL)
 
 # Common test compile options
 if(MSVC)
@@ -30,34 +26,35 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# ============================================================================
-# LIBRARY TESTS
-# ============================================================================
+# Helper macro: add subdirectory only if folder exists and contains CMakeLists.txt
+macro(maybe_add_subdir dir)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
+        message(STATUS "Adding tests subdir: ${dir}")
+        add_subdirectory(${dir})
+    else()
+        message(STATUS "Skipping tests subdir (missing): ${dir}")
+    endif()
+endmacro()
 
-# ShaderManagement library tests
-# TEMPORARILY DISABLED - integration issues
-# add_subdirectory(ShaderManagement)
+# List of test subfolders to include. Add new entries as needed.
+set(TEST_SUBFOLDERS
+    RenderGraph
+    EventBus
+    ResourceManagement
+    Logger
+    VulkanResources
+)
 
-# Add more library test directories here as they are created:
-# add_subdirectory(EventBus)
-# add_subdirectory(ResourceManagement)
-# add_subdirectory(RenderGraph)
+# Optionally include ShaderManagement tests only when the library or headers are available.
+# This prevents test aggregation failures on machines that don't build ShaderManagement yet.
+if(TARGET ShaderManagement OR EXISTS "${CMAKE_SOURCE_DIR}/ShaderManagement/include/ShaderManagement/ShaderProgram.h")
+    list(APPEND TEST_SUBFOLDERS ShaderManagement)
+else()
+    message(STATUS "Skipping ShaderManagement tests: library target or headers not available")
+endif()
 
-# ============================================================================
-# TEST SUMMARY
-# ============================================================================
+foreach(subdir IN LISTS TEST_SUBFOLDERS)
+    maybe_add_subdir(${subdir})
+endforeach()
 
-message(STATUS "")
-message(STATUS "═══════════════════════════════════════════════════════════")
-message(STATUS "  Test Suite Configuration")
-message(STATUS "═══════════════════════════════════════════════════════════")
-message(STATUS "  Enabled test suites:")
-# message(STATUS "    - ShaderManagement")
-message(STATUS "    (none currently enabled)")
-message(STATUS "")
-message(STATUS "  Run tests with:")
-message(STATUS "    ctest")
-message(STATUS "    ctest --output-on-failure")
-message(STATUS "    ctest --verbose")
-message(STATUS "═══════════════════════════════════════════════════════════")
-message(STATUS "")
+message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")

@@ -1065,6 +1065,9 @@ void RenderGraph::RecompileDirtyNodes() {
                 node->Setup();
     
                 // Recompile (create new resources)
+                // Reset per-input "used in compile" markers so the Compile() pass
+                // can record which inputs are actually used during compilation.
+                node->ResetInputsUsedInCompile();
                 node->Compile();
     
                 // Register cleanup again

@@ -281,8 +281,65 @@ protected:
     std::vector<std::vector<Resource*>> inputs;
     std::vector<std::vector<Resource*>> outputs;
 
+    // Runtime tracking: which input slots were used during the last Compile() call.
+    // This is transient runtime state (not serialized). It is mutable so that
+    // const accessors (like TypedNode::In()) can mark usage during Compile().
+    mutable std::vector<std::vector<bool>> inputUsedInCompile;
+
+public:
+    // Slot role flags used by TypedNode::In() to indicate the access semantics.
+    // Implemented as bitflags so callers can combine roles (e.g., ExecuteOnly | CleanupOnly).
+    enum class SlotRole : uint8_t {
+        Dependency   = 1u << 0,
+        ExecuteOnly  = 1u << 1,
+        CleanupOnly  = 1u << 2
+    };
+
+    // NOTE: bitwise operator helpers for SlotRole are declared at namespace scope
+    // after the class definition so they behave as non-member operators.
+
+    // Active bundle index for this node instance. This lets In()/Out() use a
+    // per-instance "current bundle" instead of requiring callers to pass an
+    // explicit array index everywhere. Default = 0.
+    void SetActiveBundleIndex(size_t idx) { activeBundleIndex = idx; }
+    size_t GetActiveBundleIndex() const { return activeBundleIndex; }
+
+    // Mark that a specific input slot (slotIndex) was used during compile.
+    // The array/bundle index is resolved using the node's active bundle index.
+    // This method is const so it can be called from const accessors.
+    void MarkInputUsedInCompile(uint32_t slotIndex) const {
+        uint32_t arrayIndex = static_cast<uint32_t>(activeBundleIndex);
+        // Ensure the vector dimensions
+        if (inputUsedInCompile.size() <= slotIndex) {
+            inputUsedInCompile.resize(slotIndex + 1);
+        }
+        auto& vec = inputUsedInCompile[slotIndex];
+        if (vec.size() <= arrayIndex) vec.resize(arrayIndex + 1, false);
+        vec[arrayIndex] = true;
+    }
+
+    // Query whether a given input slot/array index was marked as used during
+    // the last Compile() call. Safe to call from external systems that need to
+    // decide compile-time dependencies.
+    bool IsInputUsedInCompile(uint32_t slotIndex, uint32_t arrayIndex) const {
+        if (slotIndex >= inputUsedInCompile.size()) return false;
+        const auto& vec = inputUsedInCompile[slotIndex];
+        if (arrayIndex >= vec.size()) return false;
+        return vec[arrayIndex];
+    }
+
+    // Reset used-in-compile markers for all inputs. Called before a new Compile().
+    void ResetInputsUsedInCompile() const {
+        for (auto& vec : inputUsedInCompile) {
+            std::fill(vec.begin(), vec.end(), false);
+        }
+    }
+
     // Instance-specific parameters
     std::map<std::string, ParamTypeValue> parameters;
+
+    // Current active bundle index used by In()/Out() when callers omit explicit array index
+    size_t activeBundleIndex = 0;
 
     // Execution state
     NodeState state = NodeState::Created;
@@ -320,6 +377,15 @@ T NodeInstance::GetParameterValue(const std::string& name, const T& defaultValue
     }
     
     return defaultValue;
+}
+
+// Bitwise operators for SlotRole (non-member) so callers can combine flags naturally.
+inline NodeInstance::SlotRole operator|(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
+    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+}
+
+inline NodeInstance::SlotRole operator&(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
+    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
 }
 
 } // namespace Vixen::RenderGraph
