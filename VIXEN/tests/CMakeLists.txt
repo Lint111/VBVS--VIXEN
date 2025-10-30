@@ -38,6 +38,7 @@ endmacro()
 
 # List of test subfolders to include. Add new entries as needed.
 set(TEST_SUBFOLDERS
+    CashSystem
     RenderGraph
     EventBus
     ResourceManagement
@@ -47,10 +48,10 @@ set(TEST_SUBFOLDERS
 
 # Optionally include ShaderManagement tests only when the library or headers are available.
 # This prevents test aggregation failures on machines that don't build ShaderManagement yet.
-if(TARGET ShaderManagement OR EXISTS "${CMAKE_SOURCE_DIR}/ShaderManagement/include/ShaderManagement/ShaderProgram.h")
+if(TARGET ShaderManagement)
     list(APPEND TEST_SUBFOLDERS ShaderManagement)
 else()
-    message(STATUS "Skipping ShaderManagement tests: library target or headers not available")
+    message(STATUS "Skipping ShaderManagement tests: ShaderManagement target not available")
 endif()
 
 foreach(subdir IN LISTS TEST_SUBFOLDERS)

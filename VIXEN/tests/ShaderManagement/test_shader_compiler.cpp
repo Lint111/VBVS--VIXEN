@@ -333,7 +333,7 @@ TEST_F(ShaderCompilerTest, CompileFromNonexistentFile) {
     );
 
     EXPECT_FALSE(result.success);
-    EXPECT_FALSE(result.errorMessage.empty());
+    EXPECT_FALSE(result.errorLog.empty());
 }
 
 // ============================================================================

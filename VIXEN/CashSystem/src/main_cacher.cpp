@@ -1,5 +1,8 @@
-#include "MainCacher.h"
-
+#include "CashSystem/MainCacher.h"
+#include "CashSystem/ShaderModuleCacher.h"
+#include "CashSystem/TextureCacher.h"
+#include "CashSystem/DescriptorCacher.h"
+#include "CashSystem/PipelineCacher.h"
 #include <cassert>
 
 namespace CashSystem {
@@ -9,34 +12,35 @@ MainCacher& MainCacher::Instance() {
     return instance;
 }
 
-void MainCacher::RegisterCacher(std::unique_ptr<CacherBase> cacher) {
-    std::lock_guard lock(m_registryLock);
-    m_cachers.push_back(std::move(cacher));
+DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device) {
+    DeviceIdentifier deviceId(const_cast<const ::Vixen::Vulkan::Resources::VulkanDevice*>(device));
+    return GetOrCreateDeviceRegistry(deviceId);
 }
 
-bool MainCacher::SaveAll(const std::filesystem::path& dir) const {
-    std::lock_guard lock(m_registryLock);
-    bool ok = true;
-    for (const auto& c : m_cachers) {
-        auto path = dir / (std::string(c->name()) + ".cache");
-        ok = ok && c->SerializeToFile(path);
+DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId) {
+    std::lock_guard lock(m_deviceRegistriesMutex);
+
+    // Check if registry already exists for this device
+    auto it = m_deviceRegistries.find(deviceId);
+    if (it != m_deviceRegistries.end()) {
+        return it->second;
     }
-    return ok;
+
+    // Create new device registry
+    auto [newIt, inserted] = m_deviceRegistries.try_emplace(deviceId, deviceId);
+    return newIt->second;
 }
 
-bool MainCacher::LoadAll(const std::filesystem::path& dir, void* device) {
-    std::lock_guard lock(m_registryLock);
-    bool ok = true;
-    for (const auto& c : m_cachers) {
-        auto path = dir / (std::string(c->name()) + ".cache");
-        ok = ok && c->DeserializeFromFile(path, device);
-    }
-    return ok;
+bool MainCacher::SaveGlobalCaches(const std::filesystem::path& directory) const {
+    std::shared_lock lock(m_globalRegistryMutex);
+    // TODO: Implement global cache serialization
+    return true;
 }
 
-void MainCacher::ClearAll() {
-    std::lock_guard lock(m_registryLock);
-    for (auto& c : m_cachers) c->Clear();
+bool MainCacher::LoadGlobalCaches(const std::filesystem::path& directory) {
+    std::lock_guard lock(m_globalRegistryMutex);
+    // TODO: Implement global cache deserialization
+    return true;
 }
 
 } // namespace CashSystem

@@ -116,6 +116,7 @@ private:
     void CreateDescriptorSetLayout();
     void CreateDescriptorPool();
     void AllocateDescriptorSets();
+    void CreateDescriptorSetLayoutManually();
 };
 
 } // namespace Vixen::RenderGraph

@@ -36,3 +36,6 @@ else()
 endif()
 
 gtest_discover_tests(test_typednode_helpers)
+
+# Additional typed-node tests
+target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)

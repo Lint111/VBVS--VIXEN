@@ -33,14 +33,16 @@ endif()
 target_include_directories(RenderGraph PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../CashSystem/include
 )
 
 # Link dependencies
-target_link_libraries(RenderGraph PUBLIC 
-    VulkanResources 
-    Logger 
-    EventBus 
-    ResourceManagement 
+target_link_libraries(RenderGraph PUBLIC
+    VulkanResources
+    Logger
+    EventBus
+    ResourceManagement
+    CashSystem
     # ShaderManagement  # MVP: Temporarily disabled
     magic_enum::magic_enum
 )

@@ -1,6 +1,7 @@
 #include "Nodes/TextureLoaderNode.h"
 #include "TextureHandling/Loading/STBTextureLoader.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "CashSystem/MainCacher.h"
 
 namespace Vixen::RenderGraph {
 
@@ -85,34 +86,76 @@ void TextureLoaderNode::Compile() {
     std::string uploadModeStr = GetParameterValue<std::string>(TextureLoaderNodeConfig::UPLOAD_MODE, "Optimal");
     bool generateMipmaps = GetParameterValue<bool>(TextureLoaderNodeConfig::GENERATE_MIPMAPS, false);
 
-    // Configure load settings
-    Vixen::TextureHandling::TextureLoadConfig config;
-    if (uploadModeStr == "Linear") {
-        config.uploadMode = Vixen::TextureHandling::TextureLoadConfig::UploadMode::Linear;
-    } else {
-        config.uploadMode = Vixen::TextureHandling::TextureLoadConfig::UploadMode::Optimal;
+    // TODO: Re-enable CashSystem integration once build issues are resolved
+    // Get texture cacher from MainCacher
+    // auto& mainCacher = CashSystem::MainCacher::Instance();
+    // auto* textureCacher = mainCacher.GetTextureCacher();
+
+    // Try to load texture with caching first
+    bool textureLoaded = false;
+    // if (textureCacher) {
+    //     try {
+    //         // Configure filter modes
+    //         VkFilter minFilter = generateMipmaps ? VK_FILTER_LINEAR : VK_FILTER_LINEAR;
+    //         VkFilter magFilter = VK_FILTER_LINEAR;
+    //         VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    //
+    //         auto cachedTexture = textureCacher->GetOrCreateTexture(
+    //             filePath,
+    //             VK_FORMAT_R8G8B8A8_UNORM, // Default format
+    //             generateMipmaps,
+    //             minFilter,
+    //             magFilter,
+    //             addressMode
+    //         );
+    //
+    //         if (cachedTexture && cachedTexture->image != VK_NULL_HANDLE) {
+    //             // Use cached texture
+    //             textureImage = cachedTexture->image;
+    //             textureView = cachedTexture->view;
+    //             textureSampler = cachedTexture->sampler;
+    //             textureMemory = cachedTexture->memory;
+    //             isLoaded = true;
+    //             textureLoaded = true;
+    //         }
+    //     } catch (const std::exception& e) {
+    //         // Cache failed, fall back to direct loading
+    //         textureLoaded = false;
+    //     }
+    // }
+    
+    // Fallback to direct loading if cache not available or cache miss
+    if (!textureLoaded) {
+        // Configure load settings
+        Vixen::TextureHandling::TextureLoadConfig config;
+        if (uploadModeStr == "Linear") {
+            config.uploadMode = Vixen::TextureHandling::TextureLoadConfig::UploadMode::Linear;
+        } else {
+            config.uploadMode = Vixen::TextureHandling::TextureLoadConfig::UploadMode::Optimal;
+        }
+
+        // Load the texture directly
+        try {
+            Vixen::TextureHandling::TextureData textureData = textureLoader->Load(filePath.c_str(), config);
+            
+            // Store resources for output
+            textureImage = textureData.image;
+            textureView = textureData.view;
+            textureSampler = textureData.sampler;
+            textureMemory = textureData.mem;
+            isLoaded = true;
+            textureLoaded = true;
+
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
+        }
     }
 
-    // Load the texture
-    try {
-        Vixen::TextureHandling::TextureData textureData = textureLoader->Load(filePath.c_str(), config);
-        
-        // Store resources for output
-        textureImage = textureData.image;
-        textureView = textureData.view;
-        textureSampler = textureData.sampler;
-        textureMemory = textureData.mem;
-        isLoaded = true;
-
-        // Set typed outputs
-        Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
-        Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
-        Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
-        Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
-
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to load texture: " + std::string(e.what()));
-    }
+    // Set typed outputs
+    Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
+    Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
+    Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
+    Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 
     // === REGISTER CLEANUP ===
     // Automatically resolves dependency on DeviceNode via VULKAN_DEVICE_IN input

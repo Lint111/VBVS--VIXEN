@@ -68,7 +68,8 @@ private:
     void CreatePipelineCache();
     void CreatePipelineLayout();
     void CreatePipeline();
-    
+    void CreatePipelineWithCache();
+
     VkCullModeFlags ParseCullMode(const std::string& mode);
     VkPolygonMode ParsePolygonMode(const std::string& mode);
     VkPrimitiveTopology ParseTopology(const std::string& topo);

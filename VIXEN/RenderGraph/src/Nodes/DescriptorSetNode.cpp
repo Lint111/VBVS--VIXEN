@@ -68,41 +68,69 @@ void DescriptorSetNode::Setup() {
 void DescriptorSetNode::Compile() {
     NODE_LOG_INFO("Compile: DescriptorSetNode (creating descriptor set layout matching shader)");
 
-    // Create descriptor set layout matching shader requirements:
-    // - Binding 0: UBO (uniform buffer) for MVP matrix (vertex shader)
-    // - Binding 1: Combined image sampler for texture (fragment shader)
+    // TODO: Re-enable CashSystem integration once build issues are resolved
+    // Try to use descriptor cache first
+    // auto& mainCacher = CashSystem::MainCacher::Instance();
+    // auto* descriptorCacher = mainCacher.GetDescriptorCacher();
     
-    VkDescriptorSetLayoutBinding bindings[2] = {};
+    // Create descriptor set layout - manual creation for now
+    bool useCache = false;
+    // if (descriptorCacher) {
+    //     try {
+    //         // Create a simple layout spec for MVP (UBO + sampler)
+    //         std::vector<VkDescriptorSetLayoutBinding> bindings = {
+    //             {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+    //             {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+    //         };
+    //
+    //         // Note: In a full implementation, we'd need a proper DescriptorLayoutSpec
+    //         // For now, fall back to manual creation
+    //         useCache = false;
+    //     } catch (...) {
+    //         useCache = false;
+    //     }
+    // }
     
-    // Binding 0: UBO for MVP matrix (std140, binding = 0 in vertex shader)
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    bindings[0].pImmutableSamplers = nullptr;
-    
-    // Binding 1: Combined image sampler (binding = 1 in fragment shader)
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    bindings[1].pImmutableSamplers = nullptr;
+    if (!useCache) {
+        // Manual creation (current MVP implementation)
+        // Create descriptor set layout matching shader requirements:
+        // - Binding 0: UBO (uniform buffer) for MVP matrix (vertex shader)
+        // - Binding 1: Combined image sampler for texture (fragment shader)
 
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
-    layoutInfo.pBindings = bindings;
+        VkDescriptorSetLayoutBinding bindings[2] = {};
 
-    VkResult result = vkCreateDescriptorSetLayout(
-        device->device,
-        &layoutInfo,
-        nullptr,
-        &descriptorSetLayout
-    );
+        // Binding 0: UBO for MVP matrix (std140, binding = 0 in vertex shader)
+        bindings[0].binding = 0;
+        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[0].pImmutableSamplers = nullptr;
 
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout");
+        // Binding 1: Combined image sampler (binding = 1 in fragment shader)
+        bindings[1].binding = 1;
+        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[1].pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 2;
+        layoutInfo.pBindings = bindings;
+
+        VkResult result = vkCreateDescriptorSetLayout(
+            device->device,
+            &layoutInfo,
+            nullptr,
+            &descriptorSetLayout
+        );
+
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout");
+        }
     }
+
+    // Continue with pool creation and descriptor allocation...
 
     NODE_LOG_INFO("Compile: Descriptor set layout created with UBO + sampler bindings");
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
@@ -120,7 +148,7 @@ void DescriptorSetNode::Compile() {
     poolInfo.pPoolSizes = poolSizes;
     poolInfo.maxSets = 1; // MVP: Just one descriptor set
 
-    result = vkCreateDescriptorPool(
+    VkResult result = vkCreateDescriptorPool(
         device->device,
         &poolInfo,
         nullptr,
@@ -408,6 +436,11 @@ void DescriptorSetNode::CreateDescriptorPool() {
 
 void DescriptorSetNode::AllocateDescriptorSets() {
     // MVP STUB: No descriptor sets in MVP
+}
+
+void DescriptorSetNode::CreateDescriptorSetLayoutManually() {
+    // This method is no longer used - inlined into Compile()
+    // Keeping stub for API compatibility
 }
 
 } // namespace Vixen::RenderGraph

@@ -258,6 +258,9 @@ set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
 # RenderGraph static library (replaces old inline definitions)
 add_subdirectory(RenderGraph)
 
+# CashSystem static library (caching and resource management)
+add_subdirectory(CashSystem)
+
 # ============================================================================
 # MAIN EXECUTABLE
 # ============================================================================
@@ -284,6 +287,7 @@ add_executable(${Recipe_Name}
 # Link libraries to main executable
 target_link_libraries(${Recipe_Name}
     RenderGraph
+    CashSystem
     VulkanResources
     Logger
     ${VULKAN_LIB_LIST}

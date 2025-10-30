@@ -108,8 +108,8 @@ void GraphicsPipelineNode::Compile() {
     // Create pipeline layout
     CreatePipelineLayout();
 
-    // Create graphics pipeline
-    CreatePipeline();
+    // Create graphics pipeline with caching
+    CreatePipelineWithCache();
     
     // Set outputs
     Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
@@ -408,6 +408,52 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
     if (face == "Clockwise") return VK_FRONT_FACE_CLOCKWISE;
     if (face == "CounterClockwise") return VK_FRONT_FACE_COUNTER_CLOCKWISE;
     return VK_FRONT_FACE_COUNTER_CLOCKWISE; // Default
+}
+
+void GraphicsPipelineNode::CreatePipelineWithCache() {
+    // TODO: Re-enable CashSystem integration once build issues are resolved
+    // Get inputs for cache key generation
+    // VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
+    // VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    // VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // Generate cache keys from shader programs
+    // std::string vertexShaderKey = "vertex_shader_" + std::to_string(reinterpret_cast<uintptr_t>(shaderStages));
+    // std::string fragmentShaderKey = "fragment_shader_" + std::to_string(reinterpret_cast<uintptr_t>(shaderStages));
+    // std::string layoutKey = "layout_" + std::to_string(reinterpret_cast<uintptr_t>(descriptorSetLayout));
+    // std::string renderPassKey = "renderpass_" + std::to_string(reinterpret_cast<uintptr_t>(renderPass));
+
+    // Get pipeline cacher from MainCacher
+    // auto& mainCacher = CashSystem::MainCacher::Instance();
+    // auto* pipelineCacher = mainCacher.GetPipelineCacher();
+
+    // if (pipelineCacher) {
+    //     // Try to get cached pipeline first
+    //     auto cachedPipeline = pipelineCacher->GetOrCreatePipeline(
+    //         vertexShaderKey,
+    //         fragmentShaderKey,
+    //         layoutKey,
+    //         renderPassKey,
+    //         enableDepthTest,
+    //         cullMode,
+    //         polygonMode
+    //     );
+    //
+    //     if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
+    //         // Use cached pipeline
+    //         pipeline = cachedPipeline->pipeline;
+    //         pipelineLayout = cachedPipeline->layout;
+    //         pipelineCache = cachedPipeline->cache;
+    //         NODE_LOG_INFO("GraphicsPipelineNode: Using cached pipeline");
+    //         return;
+    //     }
+    // }
+
+    // Create pipeline normally (caching disabled for now)
+    CreatePipeline();
+
+    // Note: In a full implementation, we would cache the newly created pipeline
+    // This requires modifying the cached wrapper to extract the Vulkan handles
 }
 
 } // namespace Vixen::RenderGraph

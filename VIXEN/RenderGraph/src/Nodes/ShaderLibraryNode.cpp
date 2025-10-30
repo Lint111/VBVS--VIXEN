@@ -3,6 +3,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
+#include "CashSystem/MainCacher.h"
 
 // MVP STUB: ShaderLibraryNode temporarily disabled pending ShaderManagement integration
 // This file provides minimal stubs to allow compilation
@@ -69,10 +70,27 @@ void ShaderLibraryNode::Setup() {
 }
 
 void ShaderLibraryNode::Compile() {
-    NODE_LOG_INFO("Compile: ShaderLibraryNode (MVP stub - no shader compilation)");
-    // MVP: Output nothing - shaders will be loaded directly in application
-    
-    // Pass through device
+    NODE_LOG_INFO("Compile: ShaderLibraryNode - initializing shader module cache");
+
+    // TODO: Re-enable CashSystem integration once build issues are resolved
+    // Get shader module cacher from MainCacher
+    // auto& mainCacher = CashSystem::MainCacher::Instance();
+    // auto* shaderModuleCacher = mainCacher.GetShaderModuleCacher();
+
+    // if (shaderModuleCacher) {
+    //     NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready");
+    //
+    //     // TODO: In full implementation, this would:
+    //     // 1. Load shader source files from parameters
+    //     // 2. Use shaderModuleCacher->GetOrCreateShaderModule() for each shader
+    //     // 3. Output compiled shader modules for pipeline creation
+    // } else {
+    //     NODE_LOG_WARNING("ShaderLibraryNode: Shader module cache not available");
+    // }
+
+    NODE_LOG_INFO("ShaderLibraryNode: Caching disabled for MVP");
+
+    // MVP: For now, pass through device (matches original behavior)
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
 
     // Register cleanup

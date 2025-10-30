@@ -8,6 +8,12 @@
 #include <optional>
 #include <vector>
 #include <cstdint>
+#include <typeindex>
+
+// Forward declarations for type safety
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;
+}
 
 namespace CashSystem {
 
@@ -21,7 +27,27 @@ public:
     using CreateInfoT = CI;
     using PtrT = std::shared_ptr<ResourceT>;
 
+    TypedCacher() : m_device(nullptr), m_initialized(false) {}
     virtual ~TypedCacher() = default;
+
+    /**
+     * @brief Initialize the cacher with device context
+     */
+    virtual void Initialize(Vixen::Vulkan::Resources::VulkanDevice* device) {
+        m_device = device;
+        m_initialized = true;
+        OnInitialize();
+    }
+
+    /**
+     * @brief Check if the cacher has been initialized
+     */
+    bool IsInitialized() const noexcept { return m_initialized; }
+
+    /**
+     * @brief Get the device context
+     */
+    Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const noexcept { return m_device; }
 
     // Typed convenience API — callers should use this
     PtrT GetOrCreate(const CreateInfoT& ci) {
@@ -128,6 +154,14 @@ protected:
     mutable std::shared_mutex m_lock;
     std::unordered_map<std::uint64_t, CacheEntry> m_entries;
     std::unordered_map<std::uint64_t, std::shared_future<PtrT>> m_pending;
+
+    // Device context and initialization tracking
+    Vixen::Vulkan::Resources::VulkanDevice* m_device;
+    bool m_initialized;
+    
+    // Hook for derived classes to perform initialization
+    virtual void OnInitialize() {}
 };
 
 } // namespace CashSystem
+
