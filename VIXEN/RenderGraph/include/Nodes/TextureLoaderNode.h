@@ -5,6 +5,11 @@
 #include "Nodes/TextureLoaderNodeConfig.h"
 #include "TextureHandling/Loading/TextureLoader.h"
 
+// Forward declarations
+namespace CashSystem {
+    class TextureCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -42,8 +47,11 @@ private:
     VkImageView textureView = VK_NULL_HANDLE;
     VkSampler textureSampler = VK_NULL_HANDLE;
     VkDeviceMemory textureMemory = VK_NULL_HANDLE;
-    
+
     bool isLoaded = false;
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::TextureCacher* textureCacher = nullptr;
 };
 
 /**

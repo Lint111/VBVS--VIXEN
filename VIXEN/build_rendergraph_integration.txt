@@ -1,0 +1,42 @@
+MSBuild version 17.14.23+b0019275e for .NET Framework
+
+  Logger.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\Logger.lib
+  CashSystem.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\CashSystem\Debug\CashSystem.lib
+  EventBus.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\EventBus\Debug\EventBus.lib
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-build\glm\Debug\glm.lib
+  VulkanResources.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\VulkanResources.lib
+  DescriptorSetNode.cpp
+  GraphicsPipelineNode.cpp
+  TextureLoaderNode.cpp
+  Generating Code...
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(91,38): error C2027: use of undefined type 'Vixen::RenderGraph::RenderGraph' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Core\ResourceVariant.h(337,18):
+      see declaration of 'Vixen::RenderGraph::RenderGraph'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(91,22): error C2530: 'mainCacher': references must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(94,10): error C3536: 'mainCacher': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(98,25): error C2275: 'CashSystem::TextureCreateParams': expected an expression instead of a type [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(104,9): error C3861: 'NODE_LOG_DEBUG': identifier not found [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(110,21): error C2371: 'CashSystem::TextureWrapper': redefinition; different basic types [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\CashSystem\include\CashSystem\TextureCacher.h(24,8):
+      see declaration of 'CashSystem::TextureWrapper'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(111,21): error C2371: 'CashSystem::TextureCreateParams': redefinition; different basic types [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\CashSystem\include\CashSystem\TextureCacher.h(50,8):
+      see declaration of 'CashSystem::TextureCreateParams'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(112,5): error C2143: syntax error: missing ';' before '>' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(112,5): error C2059: syntax error: '>' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(115,9): error C3536: 'textureCacher': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\TextureLoaderNode.cpp(116,9): error C3861: 'NODE_LOG_INFO': identifier not found [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  gli_dummy.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\gli-build\gli\Debug\gli_dummy.exe
+  gmock.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock.lib
+  gmock_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock_main.lib
+  gtest.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest.lib
+  gtest_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest_main.lib
+  test_eventbus_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\EventBus\Debug\test_eventbus_basic.exe
+  test_logger_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\Logger\Debug\test_logger_basic.exe
+  test_registration_api.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\CashSystem\Debug\test_registration_api.exe
+  test_resourcemanagement_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ResourceManagement\Debug\test_resourcemanagement_basic.exe
+  test_resourcevariant_handles.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ResourceManagement\Debug\test_resourcevariant_handles.exe
+  test_vulkanresources_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\VulkanResources\Debug\test_vulkanresources_basic.exe

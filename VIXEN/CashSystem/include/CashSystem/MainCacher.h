@@ -25,6 +25,11 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+namespace Vixen::EventBus {
+    class MessageBus;
+    using EventSubscriptionID = uint32_t;
+}
+
 namespace CashSystem {
 
 // Forward declarations for cacher types
@@ -50,9 +55,11 @@ public:
     static MainCacher& Instance();
 
     /**
-     * @brief Initialize the MainCacher (default no-op)
+     * @brief Initialize the MainCacher and subscribe to device invalidation events
+     *
+     * @param messageBus Optional MessageBus to subscribe to device invalidation events
      */
-    void Initialize() {}
+    void Initialize(Vixen::EventBus::MessageBus* messageBus = nullptr);
 
     /**
      * @brief Register a new cacher factory for a specific resource type
@@ -407,9 +414,13 @@ public:
 
 private:
     MainCacher() = default;
-    ~MainCacher() = default;
+    ~MainCacher();
     MainCacher(const MainCacher&) = delete;
     MainCacher& operator=(const MainCacher&) = delete;
+
+    // Event bus integration for device invalidation
+    Vixen::EventBus::MessageBus* m_messageBus = nullptr;
+    Vixen::EventBus::EventSubscriptionID m_deviceInvalidationSubscription = 0;
     
     // Device registry management
     DeviceRegistry& GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device);

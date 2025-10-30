@@ -243,7 +243,7 @@ struct ShutdownAckEvent : public BaseEventMessage {
 
 /**
  * @brief Render pause event
- * 
+ *
  * Published by SwapChainNode during compilation/recreation to prevent
  * accessing resources that may be temporarily unavailable
  */
@@ -268,6 +268,42 @@ struct RenderPauseEvent : public BaseEventMessage {
         : BaseEventMessage(CATEGORY, TYPE, sender)
         , pauseReason(reason)
         , pauseAction(action) {}
+};
+
+// ============================================================================
+// Device Management Events
+// ============================================================================
+
+/**
+ * @brief Device invalidation event
+ *
+ * Published when VulkanDevice state changes requiring cache invalidation:
+ * - GPU hot-swap (disconnect/reconnect during runtime)
+ * - Driver reset (TDR recovery)
+ * - Device recompilation/recreation
+ *
+ * Subscribers (e.g., MainCacher) clear device-dependent caches automatically
+ */
+struct DeviceInvalidationEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 105;
+    static constexpr EventCategory CATEGORY = EventCategory::ResourceInvalidation;
+
+    enum class Reason {
+        DeviceDisconnected,   // GPU physically removed/disconnected
+        DriverReset,          // TDR or driver crash recovery
+        DeviceRecompilation,  // DeviceNode recompiled (rare edge case)
+        ManualInvalidation    // Explicit cache clear request
+    };
+
+    void* deviceHandle;  // VulkanDevice* (opaque to avoid header dependency)
+    Reason reason;
+    std::string deviceDescription;  // Human-readable device info
+
+    DeviceInvalidationEvent(SenderID sender, void* device, Reason invalidationReason, const std::string& desc = "")
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , deviceHandle(device)
+        , reason(invalidationReason)
+        , deviceDescription(desc) {}
 };
 
 } // namespace EventBus

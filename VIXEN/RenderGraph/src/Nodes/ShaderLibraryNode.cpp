@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "CashSystem/MainCacher.h"
+#include "CashSystem/ShaderModuleCacher.h"
 
 // MVP STUB: ShaderLibraryNode temporarily disabled pending ShaderManagement integration
 // This file provides minimal stubs to allow compilation
@@ -72,23 +73,40 @@ void ShaderLibraryNode::Setup() {
 void ShaderLibraryNode::Compile() {
     NODE_LOG_INFO("Compile: ShaderLibraryNode - initializing shader module cache");
 
-    // TODO: Re-enable CashSystem integration once build issues are resolved
-    // Get shader module cacher from MainCacher
-    // auto& mainCacher = CashSystem::MainCacher::Instance();
-    // auto* shaderModuleCacher = mainCacher.GetShaderModuleCacher();
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
-    // if (shaderModuleCacher) {
-    //     NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready");
-    //
-    //     // TODO: In full implementation, this would:
-    //     // 1. Load shader source files from parameters
-    //     // 2. Use shaderModuleCacher->GetOrCreateShaderModule() for each shader
-    //     // 3. Output compiled shader modules for pipeline creation
-    // } else {
-    //     NODE_LOG_WARNING("ShaderLibraryNode: Shader module cache not available");
-    // }
+    // Register ShaderModuleCacher (idempotent - safe to call multiple times during recompile)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::ShaderModuleCacher,
+            CashSystem::ShaderModuleWrapper,
+            CashSystem::ShaderModuleCreateParams
+        >(
+            typeid(CashSystem::ShaderModuleWrapper),
+            "ShaderModule",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("ShaderLibraryNode: Registered ShaderModuleCacher");
+    }
 
-    NODE_LOG_INFO("ShaderLibraryNode: Caching disabled for MVP");
+    // Cache the cacher reference for use throughout node lifetime
+    shaderModuleCacher = mainCacher.GetCacher<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(typeid(CashSystem::ShaderModuleWrapper), device);
+
+    if (shaderModuleCacher) {
+        NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready");
+
+        // TODO: In full implementation, this would:
+        // 1. Load shader source files from parameters
+        // 2. Use shaderModuleCacher->GetOrCreate() for each shader
+        // 3. Output compiled shader modules for pipeline creation
+    } else {
+        NODE_LOG_WARNING("ShaderLibraryNode: Shader module cache not available");
+    }
 
     // MVP: For now, pass through device (matches original behavior)
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);

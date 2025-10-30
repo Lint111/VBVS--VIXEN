@@ -7,6 +7,11 @@
 // #include <ShaderManagement/ShaderLibrary.h>
 #include <memory>
 
+// Forward declarations
+namespace CashSystem {
+    class ShaderModuleCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -63,6 +68,9 @@ protected:
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::ShaderModuleCacher* shaderModuleCacher = nullptr;
 };
 
 } // namespace Vixen::RenderGraph

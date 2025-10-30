@@ -1,5 +1,7 @@
 #include "Nodes/DeviceNode.h"
 #include "Core/RenderGraph.h"
+#include "EventBus/Message.h"
+#include "EventBus/MessageBus.h"
 #include <iostream>
 #include "Core/NodeLogging.h"
 
@@ -80,6 +82,19 @@ void DeviceNode::Setup() {
 
 void DeviceNode::Compile() {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
+
+    // If device already exists, publish invalidation event before recreation
+    if (vulkanDevice && vulkanDevice.get()) {
+        auto& messageBus = GetOwningGraph()->GetMessageBus();
+        auto invalidationEvent = std::make_unique<Vixen::EventBus::DeviceInvalidationEvent>(
+            GetNodeID(),
+            vulkanDevice.get(),
+            Vixen::EventBus::DeviceInvalidationEvent::Reason::DeviceRecompilation,
+            "DeviceNode recompilation"
+        );
+        messageBus.Publish(std::move(invalidationEvent));
+        NODE_LOG_INFO("[DeviceNode] Published device invalidation event (recompilation)");
+    }
 
     // Get gpu_index parameter (default to 0 if not set)
     selectedGPUIndex = GetParameterValue<uint32_t>(

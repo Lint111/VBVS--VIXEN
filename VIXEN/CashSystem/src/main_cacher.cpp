@@ -3,6 +3,9 @@
 #include "CashSystem/TextureCacher.h"
 #include "CashSystem/DescriptorCacher.h"
 #include "CashSystem/PipelineCacher.h"
+#include "EventBus/MessageBus.h"
+#include "EventBus/Message.h"
+#include "VulkanResources/VulkanDevice.h"
 #include <cassert>
 
 namespace CashSystem {
@@ -10,6 +13,40 @@ namespace CashSystem {
 MainCacher& MainCacher::Instance() {
     static MainCacher instance;
     return instance;
+}
+
+MainCacher::~MainCacher() {
+    // Unsubscribe from message bus
+    if (m_messageBus && m_deviceInvalidationSubscription != 0) {
+        m_messageBus->Unsubscribe(m_deviceInvalidationSubscription);
+    }
+}
+
+void MainCacher::Initialize(Vixen::EventBus::MessageBus* messageBus) {
+    if (messageBus) {
+        m_messageBus = messageBus;
+
+        // Subscribe to device invalidation events
+        m_deviceInvalidationSubscription = m_messageBus->Subscribe(
+            Vixen::EventBus::DeviceInvalidationEvent::TYPE,
+            [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
+                const auto& event = static_cast<const Vixen::EventBus::DeviceInvalidationEvent&>(msg);
+
+                // Cast deviceHandle back to VulkanDevice*
+                auto* device = static_cast<::Vixen::Vulkan::Resources::VulkanDevice*>(event.deviceHandle);
+
+                if (device) {
+                    // Clear all device-dependent caches for this device
+                    ClearDeviceCaches(device);
+
+                    // Log the invalidation (optional)
+                    // Logger could be integrated here if needed
+                }
+
+                return true; // Event handled
+            }
+        );
+    }
 }
 
 DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device) {

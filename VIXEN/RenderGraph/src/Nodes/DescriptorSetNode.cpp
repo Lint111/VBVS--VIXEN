@@ -2,6 +2,8 @@
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "CashSystem/MainCacher.h"
+#include "CashSystem/DescriptorCacher.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstring> // for memcpy
@@ -68,29 +70,38 @@ void DescriptorSetNode::Setup() {
 void DescriptorSetNode::Compile() {
     NODE_LOG_INFO("Compile: DescriptorSetNode (creating descriptor set layout matching shader)");
 
-    // TODO: Re-enable CashSystem integration once build issues are resolved
-    // Try to use descriptor cache first
-    // auto& mainCacher = CashSystem::MainCacher::Instance();
-    // auto* descriptorCacher = mainCacher.GetDescriptorCacher();
-    
-    // Create descriptor set layout - manual creation for now
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+
+    // Register DescriptorCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::DescriptorWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::DescriptorCacher,
+            CashSystem::DescriptorWrapper,
+            CashSystem::DescriptorCreateParams
+        >(
+            typeid(CashSystem::DescriptorWrapper),
+            "Descriptor",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("DescriptorSetNode: Registered DescriptorCacher");
+    }
+
+    // Cache the cacher reference for use throughout node lifetime
+    descriptorCacher = mainCacher.GetCacher<
+        CashSystem::DescriptorCacher,
+        CashSystem::DescriptorWrapper,
+        CashSystem::DescriptorCreateParams
+    >(typeid(CashSystem::DescriptorWrapper), device);
+
     bool useCache = false;
-    // if (descriptorCacher) {
-    //     try {
-    //         // Create a simple layout spec for MVP (UBO + sampler)
-    //         std::vector<VkDescriptorSetLayoutBinding> bindings = {
-    //             {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
-    //             {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
-    //         };
-    //
-    //         // Note: In a full implementation, we'd need a proper DescriptorLayoutSpec
-    //         // For now, fall back to manual creation
-    //         useCache = false;
-    //     } catch (...) {
-    //         useCache = false;
-    //     }
-    // }
-    
+    if (descriptorCacher) {
+        NODE_LOG_INFO("DescriptorSetNode: Descriptor cache ready");
+        // TODO: Implement descriptor caching
+        // auto cachedDescriptor = descriptorCacher->GetOrCreate(params);
+        useCache = false;  // Not yet implemented
+    }
+
     if (!useCache) {
         // Manual creation (current MVP implementation)
         // Create descriptor set layout matching shader requirements:

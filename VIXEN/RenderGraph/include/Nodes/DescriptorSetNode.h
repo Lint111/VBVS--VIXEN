@@ -7,6 +7,11 @@
 #include <memory>
 #include <unordered_map>
 
+// Forward declarations
+namespace CashSystem {
+    class DescriptorCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -107,6 +112,9 @@ private:
     VkDeviceMemory uboMemory = VK_NULL_HANDLE;
     void* uboMappedData = nullptr;
     float rotationAngle = 0.0f;
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::DescriptorCacher* descriptorCacher = nullptr;
     
     // Pipeline layout for binding descriptor sets
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

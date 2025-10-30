@@ -1,7 +1,10 @@
 #include "Nodes/TextureLoaderNode.h"
+#include "Core/RenderGraph.h"
+#include "Core/NodeLogging.h"
 #include "TextureHandling/Loading/STBTextureLoader.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "CashSystem/MainCacher.h"
+#include "CashSystem/TextureCacher.h"
 
 namespace Vixen::RenderGraph {
 
@@ -86,45 +89,39 @@ void TextureLoaderNode::Compile() {
     std::string uploadModeStr = GetParameterValue<std::string>(TextureLoaderNodeConfig::UPLOAD_MODE, "Optimal");
     bool generateMipmaps = GetParameterValue<bool>(TextureLoaderNodeConfig::GENERATE_MIPMAPS, false);
 
-    // TODO: Re-enable CashSystem integration once build issues are resolved
-    // Get texture cacher from MainCacher
-    // auto& mainCacher = CashSystem::MainCacher::Instance();
-    // auto* textureCacher = mainCacher.GetTextureCacher();
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
-    // Try to load texture with caching first
+    // Register TextureCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::TextureWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::TextureCacher,
+            CashSystem::TextureWrapper,
+            CashSystem::TextureCreateParams
+        >(
+            typeid(CashSystem::TextureWrapper),
+            "Texture",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("TextureLoaderNode: Registered TextureCacher");
+    }
+
+    // Cache the cacher reference for use throughout node lifetime
+    textureCacher = mainCacher.GetCacher<
+        CashSystem::TextureCacher,
+        CashSystem::TextureWrapper,
+        CashSystem::TextureCreateParams
+    >(typeid(CashSystem::TextureWrapper), device);
+
     bool textureLoaded = false;
-    // if (textureCacher) {
-    //     try {
-    //         // Configure filter modes
-    //         VkFilter minFilter = generateMipmaps ? VK_FILTER_LINEAR : VK_FILTER_LINEAR;
-    //         VkFilter magFilter = VK_FILTER_LINEAR;
-    //         VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    //
-    //         auto cachedTexture = textureCacher->GetOrCreateTexture(
-    //             filePath,
-    //             VK_FORMAT_R8G8B8A8_UNORM, // Default format
-    //             generateMipmaps,
-    //             minFilter,
-    //             magFilter,
-    //             addressMode
-    //         );
-    //
-    //         if (cachedTexture && cachedTexture->image != VK_NULL_HANDLE) {
-    //             // Use cached texture
-    //             textureImage = cachedTexture->image;
-    //             textureView = cachedTexture->view;
-    //             textureSampler = cachedTexture->sampler;
-    //             textureMemory = cachedTexture->memory;
-    //             isLoaded = true;
-    //             textureLoaded = true;
-    //         }
-    //     } catch (const std::exception& e) {
-    //         // Cache failed, fall back to direct loading
-    //         textureLoaded = false;
-    //     }
-    // }
-    
-    // Fallback to direct loading if cache not available or cache miss
+    if (textureCacher) {
+        NODE_LOG_INFO("TextureLoaderNode: Texture cache ready");
+        // TODO: Implement texture caching
+        // auto cachedTexture = textureCacher->GetOrCreate(params);
+        textureLoaded = false;  // Not yet implemented
+    }
+
+    // Fallback to direct loading if cache not available or not yet implemented
     if (!textureLoaded) {
         // Configure load settings
         Vixen::TextureHandling::TextureLoadConfig config;

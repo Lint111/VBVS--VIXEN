@@ -4,6 +4,11 @@
 #include "Nodes/GraphicsPipelineNodeConfig.h"
 #include <memory>
 
+// Forward declarations
+namespace CashSystem {
+    class PipelineCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -74,6 +79,9 @@ private:
     VkPolygonMode ParsePolygonMode(const std::string& mode);
     VkPrimitiveTopology ParseTopology(const std::string& topo);
     VkFrontFace ParseFrontFace(const std::string& face);
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::PipelineCacher* pipelineCacher = nullptr;
 };
 
 } // namespace Vixen::RenderGraph

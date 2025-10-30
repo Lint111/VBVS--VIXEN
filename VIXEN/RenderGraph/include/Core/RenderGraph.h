@@ -13,6 +13,7 @@
 #include "EventBus/MessageBus.h"
 #include "EventBus/Message.h"
 #include "Time/EngineTime.h"
+#include "CashSystem/MainCacher.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -238,6 +239,14 @@ public:
      * @brief Get the message bus (for nodes to publish events)
      */
     EventBus::MessageBus* GetMessageBus() const { return messageBus; }
+
+    /**
+     * @brief Get the main cacher instance (for nodes to register and access caches)
+     *
+     * Nodes can use this to register cachers during Setup/Compile and access them.
+     * Registration is idempotent - multiple nodes can call RegisterCacher for the same type.
+     */
+    CashSystem::MainCacher& GetMainCacher() { return CashSystem::MainCacher::Instance(); }
 
     /**
      * @brief Get the deferred destruction queue

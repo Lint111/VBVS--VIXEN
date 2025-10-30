@@ -4,6 +4,8 @@
 #include "VulkanShader.h" // For VulkanShader MVP approach
 #include "VulkanSwapChain.h"
 #include "Core/NodeLogging.h"
+#include "CashSystem/MainCacher.h"
+#include "CashSystem/PipelineCacher.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -411,49 +413,51 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
 }
 
 void GraphicsPipelineNode::CreatePipelineWithCache() {
-    // TODO: Re-enable CashSystem integration once build issues are resolved
-    // Get inputs for cache key generation
-    // VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
-    // VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
-    // VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
-    // Generate cache keys from shader programs
-    // std::string vertexShaderKey = "vertex_shader_" + std::to_string(reinterpret_cast<uintptr_t>(shaderStages));
-    // std::string fragmentShaderKey = "fragment_shader_" + std::to_string(reinterpret_cast<uintptr_t>(shaderStages));
-    // std::string layoutKey = "layout_" + std::to_string(reinterpret_cast<uintptr_t>(descriptorSetLayout));
-    // std::string renderPassKey = "renderpass_" + std::to_string(reinterpret_cast<uintptr_t>(renderPass));
+    // Register PipelineCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::PipelineWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::PipelineCacher,
+            CashSystem::PipelineWrapper,
+            CashSystem::PipelineCreateParams
+        >(
+            typeid(CashSystem::PipelineWrapper),
+            "Pipeline",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Registered PipelineCacher");
+    }
 
-    // Get pipeline cacher from MainCacher
-    // auto& mainCacher = CashSystem::MainCacher::Instance();
-    // auto* pipelineCacher = mainCacher.GetPipelineCacher();
+    // Cache the cacher reference for use throughout node lifetime
+    pipelineCacher = mainCacher.GetCacher<
+        CashSystem::PipelineCacher,
+        CashSystem::PipelineWrapper,
+        CashSystem::PipelineCreateParams
+    >(typeid(CashSystem::PipelineWrapper), device);
 
-    // if (pipelineCacher) {
-    //     // Try to get cached pipeline first
-    //     auto cachedPipeline = pipelineCacher->GetOrCreatePipeline(
-    //         vertexShaderKey,
-    //         fragmentShaderKey,
-    //         layoutKey,
-    //         renderPassKey,
-    //         enableDepthTest,
-    //         cullMode,
-    //         polygonMode
-    //     );
-    //
-    //     if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
-    //         // Use cached pipeline
-    //         pipeline = cachedPipeline->pipeline;
-    //         pipelineLayout = cachedPipeline->layout;
-    //         pipelineCache = cachedPipeline->cache;
-    //         NODE_LOG_INFO("GraphicsPipelineNode: Using cached pipeline");
-    //         return;
-    //     }
-    // }
+    if (pipelineCacher) {
+        NODE_LOG_INFO("GraphicsPipelineNode: Pipeline cache ready");
 
-    // Create pipeline normally (caching disabled for now)
+        // TODO: Implement pipeline caching
+        // Get inputs for cache key generation
+        // VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
+        // VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+        // VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+        // auto cachedPipeline = pipelineCacher->GetOrCreate(params);
+        // if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
+        //     pipeline = cachedPipeline->pipeline;
+        //     pipelineLayout = cachedPipeline->layout;
+        //     pipelineCache = cachedPipeline->cache;
+        //     NODE_LOG_INFO("GraphicsPipelineNode: Using cached pipeline");
+        //     return;
+        // }
+    }
+
+    // Create pipeline normally (caching available but not yet implemented)
     CreatePipeline();
-
-    // Note: In a full implementation, we would cache the newly created pipeline
-    // This requires modifying the cached wrapper to extract the Vulkan handles
 }
 
 } // namespace Vixen::RenderGraph
