@@ -314,8 +314,8 @@ void VulkanGraphApplication::CompileRenderGraph() {
     
     // Load SPIR-V bytecode from files (paths relative to binaries/ execution directory)
     size_t vertSize = 0, fragSize = 0;
-    uint32_t* vertSpv = static_cast<uint32_t*>(::ReadFile("../BuiltAssets/CompiledShaders/Draw.vert.spv", &vertSize));
-    uint32_t* fragSpv = static_cast<uint32_t*>(::ReadFile("../BuiltAssets/CompiledShaders/Draw.frag.spv", &fragSize));
+    uint32_t* vertSpv = static_cast<uint32_t*>(::ReadFile("../builtAssets/CompiledShaders/Draw.vert.spv", &vertSize));
+    uint32_t* fragSpv = static_cast<uint32_t*>(::ReadFile("../builtAssets/CompiledShaders/Draw.frag.spv", &fragSize));
     
     if (!vertSpv || !fragSpv) {
         mainLogger->Error("Failed to load shader files");

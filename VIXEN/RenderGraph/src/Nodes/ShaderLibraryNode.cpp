@@ -103,7 +103,7 @@ void ShaderLibraryNode::Compile() {
         try {
             // Load vertex shader using cacher (GetOrCreate checks cache first)
             vertexShader = shaderModuleCacher->GetOrCreateShaderModule(
-                "../BuiltAssets/CompiledShaders/Draw.vert.spv",
+                "builtAssets/CompiledShaders/Draw.vert.spv",
                 "main",
                 {},  // no macros
                 VK_SHADER_STAGE_VERTEX_BIT,
@@ -115,7 +115,7 @@ void ShaderLibraryNode::Compile() {
 
             // Load fragment shader using cacher
             fragmentShader = shaderModuleCacher->GetOrCreateShaderModule(
-                "../BuiltAssets/CompiledShaders/Draw.frag.spv",
+                "builtAssets/CompiledShaders/Draw.frag.spv",
                 "main",
                 {},  // no macros
                 VK_SHADER_STAGE_FRAGMENT_BIT,

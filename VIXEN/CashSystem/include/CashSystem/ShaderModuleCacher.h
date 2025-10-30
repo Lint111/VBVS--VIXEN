@@ -55,6 +55,9 @@ public:
     ShaderModuleCacher() = default;
     ~ShaderModuleCacher() override = default;
 
+    // Override to add cache hit/miss logging
+    std::shared_ptr<ShaderModuleWrapper> GetOrCreate(const ShaderModuleCreateParams& ci);
+
     // Convenience API for shader library integration
     std::shared_ptr<ShaderModuleWrapper> GetOrCreateShaderModule(
         const std::string& sourcePath,

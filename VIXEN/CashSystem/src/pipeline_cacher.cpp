@@ -4,8 +4,39 @@
 #include <sstream>
 #include <stdexcept>
 #include <vulkan/vulkan.h>
+#include <iostream>
+#include <shared_mutex>
 
 namespace CashSystem {
+
+std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreate(const PipelineCreateParams& ci) {
+    auto key = ComputeKey(ci);
+    std::string pipelineName = ci.vertexShaderKey + "+" + ci.fragmentShaderKey;
+
+    // Check cache first
+    {
+        std::shared_lock rlock(m_lock);
+        auto it = m_entries.find(key);
+        if (it != m_entries.end()) {
+            std::cout << "[PipelineCacher::GetOrCreate] CACHE HIT for pipeline " << pipelineName
+                      << " (key=" << key << ", VkPipeline="
+                      << reinterpret_cast<uint64_t>(it->second.resource->pipeline) << ")" << std::endl;
+            return it->second.resource;
+        }
+        auto pit = m_pending.find(key);
+        if (pit != m_pending.end()) {
+            std::cout << "[PipelineCacher::GetOrCreate] CACHE PENDING for pipeline " << pipelineName
+                      << " (key=" << key << "), waiting..." << std::endl;
+            return pit->second.get();
+        }
+    }
+
+    std::cout << "[PipelineCacher::GetOrCreate] CACHE MISS for pipeline " << pipelineName
+              << " (key=" << key << "), creating new resource..." << std::endl;
+
+    // Call parent implementation which will invoke Create()
+    return TypedCacher<PipelineWrapper, PipelineCreateParams>::GetOrCreate(ci);
+}
 
 std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreatePipeline(
     const std::string& vertexShaderKey,
@@ -16,6 +47,8 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreatePipeline(
     VkCullModeFlags cullMode,
     VkPolygonMode polygonMode)
 {
+    std::cout << "[PipelineCacher] GetOrCreatePipeline ENTRY: " << vertexShaderKey << " + " << fragmentShaderKey << std::endl;
+
     PipelineCreateParams params;
     params.vertexShaderKey = vertexShaderKey;
     params.fragmentShaderKey = fragmentShaderKey;
@@ -24,11 +57,14 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreatePipeline(
     params.enableDepthTest = enableDepthTest;
     params.cullMode = cullMode;
     params.polygonMode = polygonMode;
-    
+
     return GetOrCreate(params);
 }
 
 std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreateParams& ci) {
+    std::cout << "[PipelineCacher::Create] CACHE MISS - Creating new pipeline: "
+              << ci.vertexShaderKey << " + " << ci.fragmentShaderKey << std::endl;
+
     auto wrapper = std::make_shared<PipelineWrapper>();
     wrapper->vertexShaderKey = ci.vertexShaderKey;
     wrapper->fragmentShaderKey = ci.fragmentShaderKey;
@@ -39,12 +75,18 @@ std::shared_ptr<PipelineWrapper> PipelineCacher::Create(const PipelineCreatePara
     wrapper->cullMode = ci.cullMode;
     wrapper->polygonMode = ci.polygonMode;
     wrapper->topology = ci.topology;
-    
+
     // Create pipeline components
+    std::cout << "[PipelineCacher::Create] Creating pipeline cache..." << std::endl;
     CreatePipelineCache(ci, *wrapper);
+    std::cout << "[PipelineCacher::Create] Creating pipeline layout..." << std::endl;
     CreatePipelineLayout(ci, *wrapper);
+    std::cout << "[PipelineCacher::Create] Creating VkPipeline..." << std::endl;
     CreatePipeline(ci, *wrapper);
-    
+
+    std::cout << "[PipelineCacher::Create] VkPipeline created: "
+              << reinterpret_cast<uint64_t>(wrapper->pipeline) << std::endl;
+
     return wrapper;
 }
 

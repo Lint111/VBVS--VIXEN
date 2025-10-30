@@ -87,6 +87,9 @@ public:
     PipelineCacher() = default;
     ~PipelineCacher() override = default;
 
+    // Override to add cache hit/miss logging
+    std::shared_ptr<PipelineWrapper> GetOrCreate(const PipelineCreateParams& ci);
+
     // Convenience API for pipeline creation
     std::shared_ptr<PipelineWrapper> GetOrCreatePipeline(
         const std::string& vertexShaderKey,
