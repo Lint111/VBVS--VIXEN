@@ -18,10 +18,11 @@ namespace CashSystem {
 
 // Wrapper for compiled shader modules
 struct ShaderModuleWrapper {
-    std::vector<uint32_t> spirvCode;
+    VkShaderModule shaderModule = VK_NULL_HANDLE;  // Created Vulkan shader module
+    std::vector<uint32_t> spirvCode;               // SPIR-V bytecode
     std::string shaderName;
     VkShaderStageFlagBits stage = VK_SHADER_STAGE_VERTEX_BIT;
-    
+
     // For cache key computation
     std::string sourcePath;
     std::string entryPoint;

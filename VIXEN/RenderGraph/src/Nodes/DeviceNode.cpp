@@ -85,14 +85,18 @@ void DeviceNode::Compile() {
 
     // If device already exists, publish invalidation event before recreation
     if (vulkanDevice && vulkanDevice.get()) {
-        auto& messageBus = GetOwningGraph()->GetMessageBus();
+        auto* messageBus = GetOwningGraph()->GetMessageBus();
+
+        // Create and publish device invalidation event
+        // SenderID 0 = system/device (no specific sender node ID)
         auto invalidationEvent = std::make_unique<Vixen::EventBus::DeviceInvalidationEvent>(
-            GetNodeID(),
+            0,  // System sender
             vulkanDevice.get(),
             Vixen::EventBus::DeviceInvalidationEvent::Reason::DeviceRecompilation,
             "DeviceNode recompilation"
         );
-        messageBus.Publish(std::move(invalidationEvent));
+
+        messageBus->Publish(std::move(invalidationEvent));
         NODE_LOG_INFO("[DeviceNode] Published device invalidation event (recompilation)");
     }
 

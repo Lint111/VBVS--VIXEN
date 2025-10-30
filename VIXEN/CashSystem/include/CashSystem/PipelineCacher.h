@@ -43,25 +43,31 @@ struct PipelineWrapper {
  * @brief Pipeline creation parameters
  */
 struct PipelineCreateParams {
-    // Shader keys from cachers
+    // Shader modules (actual handles, not keys)
+    VkShaderModule vertexShaderModule = VK_NULL_HANDLE;
+    VkShaderModule fragmentShaderModule = VK_NULL_HANDLE;
+
+    // Layout and render pass (actual handles)
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+
+    // Keys for cache lookup
     std::string vertexShaderKey;
     std::string fragmentShaderKey;
-    
-    // Layout and render pass keys
     std::string layoutKey;
     std::string renderPassKey;
-    
+
     // Pipeline state
     bool enableDepthTest = true;
     bool enableDepthWrite = true;
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    
+
     // Vertex input description (if needed)
     std::vector<VkVertexInputAttributeDescription> vertexAttributes;
     std::vector<VkVertexInputBindingDescription> vertexBindings;
-    
+
     // Shader specialization constants (if needed)
     std::vector<VkSpecializationMapEntry> specMapEntries;
     std::vector<uint8_t> specData;

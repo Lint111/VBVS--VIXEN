@@ -1,8 +1,10 @@
 #include "CashSystem/ShaderModuleCacher.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "Hash.h"
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <cstring>
 #include <vulkan/vulkan.h>
 
 // Helper function to compute SHA256 - BEFORE including Hash to ensure proper namespace
@@ -53,10 +55,29 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModu
     wrapper->sourcePath = ci.sourcePath;
     wrapper->entryPoint = ci.entryPoint;
     wrapper->macroDefinitions = ci.macroDefinitions;
-    
-    // Compile shader from source
+
+    // Load/compile SPIR-V bytecode
     CompileShader(ci, *wrapper);
-    
+
+    // Create VkShaderModule from SPIR-V
+    if (!wrapper->spirvCode.empty() && GetDevice()) {
+        VkShaderModuleCreateInfo moduleCreateInfo{};
+        moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleCreateInfo.codeSize = wrapper->spirvCode.size() * sizeof(uint32_t);
+        moduleCreateInfo.pCode = wrapper->spirvCode.data();
+
+        VkResult result = vkCreateShaderModule(
+            GetDevice()->device,
+            &moduleCreateInfo,
+            nullptr,
+            &wrapper->shaderModule
+        );
+
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create shader module: " + wrapper->shaderName);
+        }
+    }
+
     return wrapper;
 }
 
@@ -83,21 +104,39 @@ std::string ShaderModuleCacher::ComputeSourceChecksum(const std::string& sourceP
 
 void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, ShaderModuleWrapper& wrapper) {
     // TODO: Integrate with ShaderManagement library for compilation
-    // For now, this is a placeholder that would integrate with glslang or similar
-    
-    // Placeholder: Load precompiled SPIR-V file (for MVP)
-    std::string spirvPath = ci.sourcePath.substr(0, ci.sourcePath.find_last_of('.')) + ".spv";
-    
-    try {
-        std::ifstream file(spirvPath, std::ios::binary);
-        if (file.is_open()) {
-            wrapper.spirvCode.assign(std::istreambuf_iterator<char>(file), {});
+    // For now, load precompiled SPIR-V file
+
+    // Try to load SPIR-V file
+    std::string spirvPath = ci.sourcePath;
+
+    // If source path doesn't end with .spv, assume it's source and look for .spv
+    if (spirvPath.find(".spv") == std::string::npos) {
+        size_t lastDot = spirvPath.find_last_of('.');
+        if (lastDot != std::string::npos) {
+            spirvPath = spirvPath.substr(0, lastDot) + ".spv";
         } else {
-            // Fallback: create empty SPIR-V for compilation testing
-            wrapper.spirvCode = {0x03, 0x02, 0x01, 0x00}; // Minimal SPIR-V header
+            spirvPath += ".spv";
         }
-    } catch (const std::exception&) {
-        wrapper.spirvCode = {0x03, 0x02, 0x01, 0x00}; // Fallback SPIR-V
+    }
+
+    try {
+        std::ifstream file(spirvPath, std::ios::binary | std::ios::ate);
+        if (file.is_open()) {
+            size_t fileSize = static_cast<size_t>(file.tellg());
+            file.seekg(0);
+
+            // Read as bytes and convert to uint32_t
+            std::vector<char> buffer(fileSize);
+            file.read(buffer.data(), fileSize);
+
+            // SPIR-V must be aligned to uint32_t
+            wrapper.spirvCode.resize(fileSize / sizeof(uint32_t));
+            std::memcpy(wrapper.spirvCode.data(), buffer.data(), fileSize);
+        } else {
+            throw std::runtime_error("Failed to open SPIR-V file: " + spirvPath);
+        }
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Shader compilation failed for " + ci.shaderName + ": " + e.what());
     }
 }
 

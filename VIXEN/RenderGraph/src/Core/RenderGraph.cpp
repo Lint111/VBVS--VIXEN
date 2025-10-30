@@ -11,10 +11,12 @@ namespace Vixen::RenderGraph {
 RenderGraph::RenderGraph(
     NodeTypeRegistry* registry,
     EventBus::MessageBus* messageBus,
-    Logger* mainLogger
+    Logger* mainLogger,
+    CashSystem::MainCacher* mainCacher
 )
     : typeRegistry(registry)
     , messageBus(messageBus)
+    , mainCacher(mainCacher)
 {
     if (!registry) {
         throw std::runtime_error("Node type registry cannot be null");

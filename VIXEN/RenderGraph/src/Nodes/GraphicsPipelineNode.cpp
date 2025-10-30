@@ -438,25 +438,74 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
     >(typeid(CashSystem::PipelineWrapper), device);
 
     if (pipelineCacher) {
-        NODE_LOG_INFO("GraphicsPipelineNode: Pipeline cache ready");
+        NODE_LOG_INFO("GraphicsPipelineNode: Pipeline cache ready - attempting cached pipeline creation");
 
-        // TODO: Implement pipeline caching
-        // Get inputs for cache key generation
-        // VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
-        // VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
-        // VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+        // Get inputs for cache params
+        VulkanShader* shaderStages = In(GraphicsPipelineNodeConfig::SHADER_STAGES);
+        VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
 
-        // auto cachedPipeline = pipelineCacher->GetOrCreate(params);
-        // if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
-        //     pipeline = cachedPipeline->pipeline;
-        //     pipelineLayout = cachedPipeline->layout;
-        //     pipelineCache = cachedPipeline->cache;
-        //     NODE_LOG_INFO("GraphicsPipelineNode: Using cached pipeline");
-        //     return;
-        // }
+        // Build vertex input descriptions
+        std::vector<VkVertexInputBindingDescription> vertexBindings;
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+
+        if (enableVertexInput) {
+            VkVertexInputBindingDescription binding{};
+            binding.binding = 0;
+            binding.stride = sizeof(float) * 6; // vec4 + vec2
+            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            vertexBindings.push_back(binding);
+
+            VkVertexInputAttributeDescription posAttr{};
+            posAttr.location = 0;
+            posAttr.binding = 0;
+            posAttr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+            posAttr.offset = 0;
+            vertexAttributes.push_back(posAttr);
+
+            VkVertexInputAttributeDescription uvAttr{};
+            uvAttr.location = 1;
+            uvAttr.binding = 0;
+            uvAttr.format = VK_FORMAT_R32G32_SFLOAT;
+            uvAttr.offset = sizeof(float) * 4;
+            vertexAttributes.push_back(uvAttr);
+        }
+
+        // Setup pipeline create params for cacher
+        CashSystem::PipelineCreateParams params;
+        params.vertexShaderModule = shaderStages->shaderStages[0].module;  // Vertex shader
+        params.fragmentShaderModule = shaderStages->shaderStages[1].module;  // Fragment shader
+        params.pipelineLayout = pipelineLayout;
+        params.renderPass = renderPass;
+        params.vertexShaderKey = "Draw.vert";
+        params.fragmentShaderKey = "Draw.frag";
+        params.layoutKey = std::to_string(reinterpret_cast<uint64_t>(pipelineLayout));
+        params.renderPassKey = std::to_string(reinterpret_cast<uint64_t>(renderPass));
+        params.enableDepthTest = enableDepthTest;
+        params.enableDepthWrite = enableDepthWrite;
+        params.cullMode = cullMode;
+        params.polygonMode = polygonMode;
+        params.topology = topology;
+        params.vertexBindings = vertexBindings;
+        params.vertexAttributes = vertexAttributes;
+
+        try {
+            // Use cacher to get or create pipeline
+            auto cachedPipeline = pipelineCacher->GetOrCreate(params);
+
+            if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
+                pipeline = cachedPipeline->pipeline;
+                pipelineCache = cachedPipeline->cache;
+                NODE_LOG_INFO("GraphicsPipelineNode: Pipeline retrieved from cacher (cache hit or newly created)");
+                return;
+            }
+        } catch (const std::exception& e) {
+            NODE_LOG_ERROR("GraphicsPipelineNode: Cacher failed: " + std::string(e.what()));
+            // Fall through to manual creation
+        }
     }
 
-    // Create pipeline normally (caching available but not yet implemented)
+    // Fallback: Create pipeline manually if cacher unavailable or failed
+    NODE_LOG_WARNING("GraphicsPipelineNode: Creating pipeline without cacher");
     CreatePipeline();
 }
 

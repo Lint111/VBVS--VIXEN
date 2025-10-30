@@ -22,15 +22,15 @@ MainCacher::~MainCacher() {
     }
 }
 
-void MainCacher::Initialize(Vixen::EventBus::MessageBus* messageBus) {
+void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
     if (messageBus) {
         m_messageBus = messageBus;
 
         // Subscribe to device invalidation events
         m_deviceInvalidationSubscription = m_messageBus->Subscribe(
-            Vixen::EventBus::DeviceInvalidationEvent::TYPE,
-            [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
-                const auto& event = static_cast<const Vixen::EventBus::DeviceInvalidationEvent&>(msg);
+            ::Vixen::EventBus::DeviceInvalidationEvent::TYPE,
+            [this](const ::Vixen::EventBus::BaseEventMessage& msg) -> bool {
+                const auto& event = static_cast<const ::Vixen::EventBus::DeviceInvalidationEvent&>(msg);
 
                 // Cast deviceHandle back to VulkanDevice*
                 auto* device = static_cast<::Vixen::Vulkan::Resources::VulkanDevice*>(event.deviceHandle);

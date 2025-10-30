@@ -47,11 +47,13 @@ public:
      * @param registry The node type registry
      * @param messageBus Event bus for graph events (optional)
      * @param mainLogger Optional logger for debug output (in debug builds)
+     * @param mainCacher Main cache system (optional, defaults to singleton)
      */
     explicit RenderGraph(
         NodeTypeRegistry* registry,
         EventBus::MessageBus* messageBus = nullptr,
-        Logger* mainLogger = nullptr
+        Logger* mainLogger = nullptr,
+        CashSystem::MainCacher* mainCacher = nullptr
     );
 
     ~RenderGraph();
@@ -246,7 +248,9 @@ public:
      * Nodes can use this to register cachers during Setup/Compile and access them.
      * Registration is idempotent - multiple nodes can call RegisterCacher for the same type.
      */
-    CashSystem::MainCacher& GetMainCacher() { return CashSystem::MainCacher::Instance(); }
+    CashSystem::MainCacher& GetMainCacher() {
+        return mainCacher ? *mainCacher : CashSystem::MainCacher::Instance();
+    }
 
     /**
      * @brief Get the deferred destruction queue
@@ -325,6 +329,7 @@ private:
     // Core components
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer
+    CashSystem::MainCacher* mainCacher = nullptr;  // Non-owning pointer
     EventBus::EventSubscriptionID cleanupEventSubscription = 0;
     EventBus::EventSubscriptionID renderPauseSubscription = 0;
     EventBus::EventSubscriptionID windowResizeSubscription = 0;

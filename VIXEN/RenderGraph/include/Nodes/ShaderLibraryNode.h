@@ -10,6 +10,7 @@
 // Forward declarations
 namespace CashSystem {
     class ShaderModuleCacher;
+    struct ShaderModuleWrapper;
 }
 
 namespace Vixen::RenderGraph {
@@ -71,6 +72,10 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::ShaderModuleCacher* shaderModuleCacher = nullptr;
+
+    // Loaded shader modules (cached from ShaderModuleCacher)
+    std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;
+    std::shared_ptr<CashSystem::ShaderModuleWrapper> fragmentShader;
 };
 
 } // namespace Vixen::RenderGraph

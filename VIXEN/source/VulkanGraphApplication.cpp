@@ -5,6 +5,7 @@
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
 #include "VulkanShader.h"  // MVP: Direct shader loading
 #include "wrapper.h"  // MVP: File reading utility
+#include "CashSystem/MainCacher.h"  // Cache system initialization
 
 // Global VkInstance for nodes to access (temporary Phase 1 hack)
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
@@ -78,7 +79,19 @@ void VulkanGraphApplication::Initialize() {
     // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
-    renderGraph = std::make_unique<RenderGraph>(nodeRegistry.get(), messageBus.get(), mainLogger.get());
+
+    // Initialize MainCacher and connect it to MessageBus for device invalidation events
+    auto& mainCacher = CashSystem::MainCacher::Instance();
+    mainCacher.Initialize(messageBus.get());
+    mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
+
+    // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
+    renderGraph = std::make_unique<RenderGraph>(
+        nodeRegistry.get(),
+        messageBus.get(),
+        mainLogger.get(),
+        &mainCacher
+    );
 
     // Subscribe to shutdown events
     messageBus->Subscribe(

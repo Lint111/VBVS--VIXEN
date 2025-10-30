@@ -1,4 +1,5 @@
 #include "CashSystem/PipelineCacher.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "Hash.h"
 #include <sstream>
 #include <stdexcept>
@@ -66,36 +67,153 @@ std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
 }
 
 void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
-    // TODO: Implement actual Vulkan pipeline creation
-    // For now, set placeholder handles
-    
-    wrapper.pipeline = VK_NULL_HANDLE;
-    
-    // In a real implementation, this would:
-    // 1. Create VkGraphicsPipelineCreateInfo with shader stages
-    // 2. Set up vertex input state
-    // 3. Configure rasterization, depth/stencil, blending state
-    // 4. Create pipeline with vkCreateGraphicsPipelines
+    if (!GetDevice()) {
+        throw std::runtime_error("PipelineCacher: No device available for pipeline creation");
+    }
+
+    // Shader stages
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+
+    if (ci.vertexShaderModule != VK_NULL_HANDLE) {
+        VkPipelineShaderStageCreateInfo vertStage{};
+        vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertStage.module = ci.vertexShaderModule;
+        vertStage.pName = "main";
+        shaderStages.push_back(vertStage);
+    }
+
+    if (ci.fragmentShaderModule != VK_NULL_HANDLE) {
+        VkPipelineShaderStageCreateInfo fragStage{};
+        fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragStage.module = ci.fragmentShaderModule;
+        fragStage.pName = "main";
+        shaderStages.push_back(fragStage);
+    }
+
+    // Vertex input state
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(ci.vertexBindings.size());
+    vertexInputInfo.pVertexBindingDescriptions = ci.vertexBindings.data();
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(ci.vertexAttributes.size());
+    vertexInputInfo.pVertexAttributeDescriptions = ci.vertexAttributes.data();
+
+    // Input assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = ci.topology;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // Viewport/scissor state (dynamic)
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    // Rasterization
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = ci.polygonMode;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = ci.cullMode;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+
+    // Multisampling
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    // Depth/stencil
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = ci.enableDepthTest ? VK_TRUE : VK_FALSE;
+    depthStencil.depthWriteEnable = ci.enableDepthWrite ? VK_TRUE : VK_FALSE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
+    // Color blending
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    // Dynamic state
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
+
+    // Pipeline create info
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+    pipelineInfo.pStages = shaderStages.data();
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = ci.pipelineLayout;
+    pipelineInfo.renderPass = ci.renderPass;
+    pipelineInfo.subpass = 0;
+
+    VkResult result = vkCreateGraphicsPipelines(
+        GetDevice()->device,
+        wrapper.cache,
+        1,
+        &pipelineInfo,
+        nullptr,
+        &wrapper.pipeline
+    );
+
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create graphics pipeline");
+    }
 }
 
 void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
-    // TODO: Implement pipeline layout creation from descriptor set layouts
-    wrapper.layout = VK_NULL_HANDLE;
-    
-    // In a real implementation, this would:
-    // 1. Get descriptor set layouts from cached descriptors
-    // 2. Create push constant ranges if needed
-    // 3. Create pipeline layout with vkCreatePipelineLayout
+    // Use the provided pipeline layout from params
+    // Layout is created externally (by DescriptorSetNode or GraphicsPipelineNode)
+    wrapper.layout = ci.pipelineLayout;
 }
 
 void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
-    // TODO: Implement pipeline cache creation for performance
-    wrapper.cache = VK_NULL_HANDLE;
-    
-    // In a real implementation, this would:
-    // 1. Create VkPipelineCacheCreateInfo
-    // 2. Optionally load from serialized cache data
-    // 3. Create cache with vkCreatePipelineCache
+    if (!GetDevice()) {
+        return;
+    }
+
+    // Create pipeline cache for performance
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+    VkResult result = vkCreatePipelineCache(
+        GetDevice()->device,
+        &cacheInfo,
+        nullptr,
+        &wrapper.cache
+    );
+
+    if (result != VK_SUCCESS) {
+        // Non-fatal - can still create pipelines without cache
+        wrapper.cache = VK_NULL_HANDLE;
+    }
 }
 
 bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {

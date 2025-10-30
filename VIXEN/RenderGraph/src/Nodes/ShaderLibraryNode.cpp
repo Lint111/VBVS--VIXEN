@@ -98,17 +98,43 @@ void ShaderLibraryNode::Compile() {
     >(typeid(CashSystem::ShaderModuleWrapper), device);
 
     if (shaderModuleCacher) {
-        NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready");
+        NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready - loading shaders");
 
-        // TODO: In full implementation, this would:
-        // 1. Load shader source files from parameters
-        // 2. Use shaderModuleCacher->GetOrCreate() for each shader
-        // 3. Output compiled shader modules for pipeline creation
+        try {
+            // Load vertex shader using cacher (GetOrCreate checks cache first)
+            vertexShader = shaderModuleCacher->GetOrCreateShaderModule(
+                "../BuiltAssets/CompiledShaders/Draw.vert.spv",
+                "main",
+                {},  // no macros
+                VK_SHADER_STAGE_VERTEX_BIT,
+                "Draw_Vertex"
+            );
+
+            NODE_LOG_INFO("ShaderLibraryNode: Vertex shader loaded (VkShaderModule: " +
+                         std::to_string(reinterpret_cast<uint64_t>(vertexShader->shaderModule)) + ")");
+
+            // Load fragment shader using cacher
+            fragmentShader = shaderModuleCacher->GetOrCreateShaderModule(
+                "../BuiltAssets/CompiledShaders/Draw.frag.spv",
+                "main",
+                {},  // no macros
+                VK_SHADER_STAGE_FRAGMENT_BIT,
+                "Draw_Fragment"
+            );
+
+            NODE_LOG_INFO("ShaderLibraryNode: Fragment shader loaded (VkShaderModule: " +
+                         std::to_string(reinterpret_cast<uint64_t>(fragmentShader->shaderModule)) + ")");
+
+            NODE_LOG_INFO("ShaderLibraryNode: Both shaders successfully loaded via cacher");
+        } catch (const std::exception& e) {
+            NODE_LOG_ERROR("ShaderLibraryNode: Failed to load shaders: " + std::string(e.what()));
+            throw;
+        }
     } else {
         NODE_LOG_WARNING("ShaderLibraryNode: Shader module cache not available");
     }
 
-    // MVP: For now, pass through device (matches original behavior)
+    // Output device (matches original behavior)
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
 
     // Register cleanup
