@@ -5,6 +5,7 @@
 #include <string>
 #include <cstdint>
 #include <optional>
+#include <mutex>
 
 namespace ShaderManagement {
 

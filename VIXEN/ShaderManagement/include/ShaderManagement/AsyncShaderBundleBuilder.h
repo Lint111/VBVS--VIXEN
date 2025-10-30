@@ -48,7 +48,7 @@ namespace ShaderManagement {
  *
  * Usage:
  * @code
- * EventBus::MessageBus bus;
+ * Vixen::EventBus::MessageBus bus;
  * AsyncShaderBundleBuilder asyncBuilder(&bus);
  *
  * // Subscribe to completion
@@ -95,7 +95,7 @@ public:
      */
     class AsyncConfigurator {
     public:
-        AsyncConfigurator(AsyncShaderBundleBuilder* parent, EventBus::SenderID sender)
+        AsyncConfigurator(AsyncShaderBundleBuilder* parent, Vixen::EventBus::SenderID sender)
             : parent_(parent)
             , senderID_(sender) {}
 
@@ -191,7 +191,7 @@ public:
     private:
         ShaderBundleBuilder builder_;  // Internal builder
         AsyncShaderBundleBuilder* parent_;  // Parent async builder
-        EventBus::SenderID senderID_;
+        Vixen::EventBus::SenderID senderID_;
     };
 
     /**
@@ -201,7 +201,7 @@ public:
      * @param workerThreadCount Number of worker threads (0 = hardware concurrency)
      */
     explicit AsyncShaderBundleBuilder(
-        EventBus::MessageBus* messageBus,
+        Vixen::EventBus::MessageBus* messageBus,
         uint32_t workerThreadCount = 0
     );
 
@@ -213,7 +213,7 @@ public:
      * @param sender Sender ID for events
      * @return Configurator for fluent interface
      */
-    AsyncConfigurator BuildAsync(EventBus::SenderID sender = 0);
+    AsyncConfigurator BuildAsync(Vixen::EventBus::SenderID sender = 0);
 
     /**
      * @brief Cancel an in-progress build
@@ -279,9 +279,9 @@ public:
     uint32_t CleanupCompleted();
 
 private:
-    void SubmitBuildInternal(ShaderBundleBuilder builder, EventBus::SenderID sender);
+    void SubmitBuildInternal(ShaderBundleBuilder builder, Vixen::EventBus::SenderID sender);
 
-    EventBus::MessageBus* messageBus_;
+    Vixen::EventBus::MessageBus* messageBus_;
     uint32_t workerThreadCount_;
 
     // Thread pool for compilation with per-thread work queues (reduces contention)
@@ -307,7 +307,7 @@ private:
     mutable std::mutex buildsMutex_;
 
     void WorkerThreadLoop(uint32_t threadIndex);
-    void ExecuteBuild(ShaderBundleBuilder builder, EventBus::SenderID sender);
+    void ExecuteBuild(ShaderBundleBuilder builder, Vixen::EventBus::SenderID sender);
     bool TryStealWork(uint32_t myIndex, std::function<void()>& outWork);
 };
 

@@ -25,14 +25,14 @@ enum class ShaderMessageType : uint32_t {
 /**
  * @brief Shader compilation started event
  */
-struct ShaderCompilationStartedMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationStarted);
+struct ShaderCompilationStartedMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationStarted);
 
     std::string programName;
     std::string uuid;
     uint32_t stageCount;
 
-    ShaderCompilationStartedMessage(EventBus::SenderID sender, std::string name, std::string id, uint32_t stages)
+    ShaderCompilationStartedMessage(Vixen::EventBus::SenderID sender, std::string name, std::string id, uint32_t stages)
         : Message(sender, TYPE)
         , programName(std::move(name))
         , uuid(std::move(id))
@@ -42,8 +42,8 @@ struct ShaderCompilationStartedMessage : public EventBus::Message {
 /**
  * @brief Compilation progress update
  */
-struct ShaderCompilationProgressMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationProgress);
+struct ShaderCompilationProgressMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationProgress);
 
     std::string uuid;
     std::string currentStage;  // "Preprocessing", "Compiling", "Reflecting", "Generating SDI"
@@ -52,7 +52,7 @@ struct ShaderCompilationProgressMessage : public EventBus::Message {
     float progressPercent;     // 0.0 - 1.0
 
     ShaderCompilationProgressMessage(
-        EventBus::SenderID sender,
+        Vixen::EventBus::SenderID sender,
         std::string id,
         std::string stage,
         uint32_t completed,
@@ -71,8 +71,8 @@ struct ShaderCompilationProgressMessage : public EventBus::Message {
  *
  * Contains the complete ShaderDataBundle ready to use.
  */
-struct ShaderCompilationCompletedMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationCompleted);
+struct ShaderCompilationCompletedMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationCompleted);
 
     ShaderDataBundle bundle;
     bool usedCache;
@@ -86,7 +86,7 @@ struct ShaderCompilationCompletedMessage : public EventBus::Message {
 
     std::vector<std::string> warnings;
 
-    ShaderCompilationCompletedMessage(EventBus::SenderID sender, ShaderDataBundle b)
+    ShaderCompilationCompletedMessage(Vixen::EventBus::SenderID sender, ShaderDataBundle b)
         : Message(sender, TYPE)
         , bundle(std::move(b))
         , usedCache(false)
@@ -100,8 +100,8 @@ struct ShaderCompilationCompletedMessage : public EventBus::Message {
 /**
  * @brief Shader compilation failed
  */
-struct ShaderCompilationFailedMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationFailed);
+struct ShaderCompilationFailedMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::CompilationFailed);
 
     std::string programName;
     std::string uuid;
@@ -110,7 +110,7 @@ struct ShaderCompilationFailedMessage : public EventBus::Message {
     std::vector<std::string> warnings;
 
     ShaderCompilationFailedMessage(
-        EventBus::SenderID sender,
+        Vixen::EventBus::SenderID sender,
         std::string name,
         std::string id,
         std::string error,
@@ -126,8 +126,8 @@ struct ShaderCompilationFailedMessage : public EventBus::Message {
 /**
  * @brief SDI header file generated
  */
-struct SdiGeneratedMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::SdiGenerated);
+struct SdiGeneratedMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::SdiGenerated);
 
     std::string uuid;
     std::string sdiHeaderPath;
@@ -135,7 +135,7 @@ struct SdiGeneratedMessage : public EventBus::Message {
     std::string aliasName;
 
     SdiGeneratedMessage(
-        EventBus::SenderID sender,
+        Vixen::EventBus::SenderID sender,
         std::string id,
         std::string path,
         std::string ns,
@@ -151,8 +151,8 @@ struct SdiGeneratedMessage : public EventBus::Message {
 /**
  * @brief Central SDI registry updated
  */
-struct SdiRegistryUpdatedMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::RegistryUpdated);
+struct SdiRegistryUpdatedMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::RegistryUpdated);
 
     std::string registryHeaderPath;
     uint32_t activeShaderCount;
@@ -160,7 +160,7 @@ struct SdiRegistryUpdatedMessage : public EventBus::Message {
     std::vector<std::string> removedUuids;
 
     SdiRegistryUpdatedMessage(
-        EventBus::SenderID sender,
+        Vixen::EventBus::SenderID sender,
         std::string path,
         uint32_t count
     )
@@ -175,8 +175,8 @@ struct SdiRegistryUpdatedMessage : public EventBus::Message {
  * Emitted when a shader recompilation is complete and interface is compatible
  * with the previous version (safe to hot-swap).
  */
-struct ShaderHotReloadReadyMessage : public EventBus::Message {
-    static constexpr EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::HotReloadReady);
+struct ShaderHotReloadReadyMessage : public Vixen::EventBus::Message {
+    static constexpr Vixen::EventBus::MessageType TYPE = static_cast<uint32_t>(ShaderMessageType::HotReloadReady);
 
     std::string uuid;
     ShaderDataBundle newBundle;
@@ -185,7 +185,7 @@ struct ShaderHotReloadReadyMessage : public EventBus::Message {
     std::string newInterfaceHash;
 
     ShaderHotReloadReadyMessage(
-        EventBus::SenderID sender,
+        Vixen::EventBus::SenderID sender,
         std::string id,
         ShaderDataBundle bundle,
         bool changed,

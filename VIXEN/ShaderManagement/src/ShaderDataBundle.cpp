@@ -1,5 +1,5 @@
 #include "ShaderManagement/ShaderDataBundle.h"
-#include "Hash.h"
+#include "ShaderManagement/Hash.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -173,7 +173,7 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
     }
 
     const auto& buffer = builder.GetBuffer();
-    return Vixen::Hash::ComputeSHA256Hex(buffer);
+    return ShaderManagement::ComputeSHA256Hex(buffer);
 }
 
 ShaderDirtyFlags CompareBundles(

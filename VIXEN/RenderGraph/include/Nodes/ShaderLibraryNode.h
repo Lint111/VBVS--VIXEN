@@ -3,8 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "ShaderLibraryNodeConfig.h"
-// TEMPORARILY REMOVED - MVP uses VulkanShader directly
-// #include <ShaderManagement/ShaderLibrary.h>
+#include <ShaderManagement/ShaderDataBundle.h>
 #include <memory>
 
 // Forward declarations
@@ -72,6 +71,9 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::ShaderModuleCacher* shaderModuleCacher = nullptr;
+
+    // ShaderManagement integration - Phase 1
+    std::shared_ptr<ShaderManagement::ShaderDataBundle> shaderBundle_;
 
     // Loaded shader modules (cached from ShaderModuleCacher)
     std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;

@@ -2,7 +2,7 @@
 #include "ShaderManagement/SPIRVReflection.h"
 #include "ShaderManagement/SdiRegistryManager.h"
 #include "ShaderManagement/ShaderLogger.h"
-#include "Hash.h"
+#include "ShaderManagement/Hash.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -93,7 +93,7 @@ std::string GenerateContentBasedUuid(
 
     std::string content = contentStream.str();
     // Compute SHA256 (or fallback deterministic hash) and return first 32 hex chars
-    auto full = Vixen::Hash::ComputeSHA256Hex(reinterpret_cast<const void*>(content.data()), content.size());
+    auto full = ShaderManagement::ComputeSHA256Hex(reinterpret_cast<const void*>(content.data()), content.size());
     if (full.size() >= 32) return full.substr(0, 32);
     return full;
 }
@@ -196,7 +196,8 @@ ShaderBundleBuilder& ShaderBundleBuilder::AddStageFromFile(
 
     // Read with size limit (redundant check but defensive)
     std::string source;
-    source.reserve(std::min(fileSize, MAX_SHADER_SOURCE_SIZE));
+    size_t reserveSize = (fileSize < MAX_SHADER_SOURCE_SIZE) ? fileSize : MAX_SHADER_SOURCE_SIZE;
+    source.reserve(reserveSize);
 
     std::string line;
     size_t totalSize = 0;
@@ -344,16 +345,13 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
             if (!preprocessed.success) {
                 result.success = false;
-                result.errorMessage = "Preprocessing failed: " + preprocessed.errorLog;
+                result.errorMessage = "Preprocessing failed: " + preprocessed.errorMessage;
                 return result;
             }
 
             sourceToCompile = preprocessed.processedSource;
 
-            // Add warnings
-            for (const auto& warning : preprocessed.warnings) {
-                result.warnings.push_back("Preprocessor: " + warning);
-            }
+            // Preprocessing completed (no separate warnings field in PreprocessedSource)
         }
 
         // Check cache if enabled
@@ -435,10 +433,10 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         stage.entryPoint = stageSource.entryPoint;
         program.stages.push_back(stage);
 
-        // Add warnings
-        for (const auto& warning : compiled.warnings) {
+        // Add info/warnings from compilation
+        if (!compiled.infoLog.empty()) {
             result.warnings.push_back(ShaderStageName(stageSource.stage) +
-                std::string(": ") + warning);
+                std::string(": ") + compiled.infoLog);
         }
     }
 
@@ -593,15 +591,15 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
     // 4. Assemble bundle
     ShaderDataBundle bundle;
     bundle.program = program;
-    bundle.reflectionData = reflectionData;
-    bundle.descriptorLayout = descriptorLayout;
+    bundle.reflectionData = std::shared_ptr<SpirvReflectionData>(std::move(reflectionData));
+    bundle.descriptorLayout = std::shared_ptr<DescriptorLayoutSpec>(std::move(descriptorLayout));
     bundle.uuid = uuid_;
     bundle.sdiHeaderPath = sdiPath;
     bundle.sdiNamespace = sdiNamespace;
     bundle.createdAt = std::chrono::system_clock::now();
 
     // Compute descriptor-only interface hash (generalized, reusable)
-    bundle.descriptorInterfaceHash = ComputeDescriptorInterfaceHash(*reflectionData);
+    bundle.descriptorInterfaceHash = ComputeDescriptorInterfaceHash(*bundle.reflectionData);
 
     // 5. Register with central SDI registry if enabled
     if (registryManager_ && !sdiPath.empty()) {

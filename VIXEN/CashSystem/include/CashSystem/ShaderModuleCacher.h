@@ -67,6 +67,15 @@ public:
         const std::string& shaderName = ""
     );
 
+    // Create shader module directly from SPIR-V bytecode (Phase 1 integration)
+    std::shared_ptr<ShaderModuleWrapper> GetOrCreateFromSpirv(
+        const std::vector<uint32_t>& spirvCode,
+        const std::string& entryPoint = "main",
+        const std::vector<std::string>& macros = {},
+        VkShaderStageFlagBits stage = VK_SHADER_STAGE_VERTEX_BIT,
+        const std::string& shaderName = ""
+    );
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<ShaderModuleWrapper> Create(const ShaderModuleCreateParams& ci) override;

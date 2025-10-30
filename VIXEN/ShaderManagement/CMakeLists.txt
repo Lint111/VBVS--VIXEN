@@ -37,6 +37,7 @@ add_library(ShaderManagement STATIC
 target_include_directories(ShaderManagement
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../EventBus/include  # Explicit EventBus include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${spirv_reflect_SOURCE_DIR}
@@ -44,6 +45,9 @@ target_include_directories(ShaderManagement
 
 # Link to project-level hash provider for consistent hashing behavior
 target_link_libraries(ShaderManagement PRIVATE ProjectHash)
+
+# Link to EventBus for shader events
+target_link_libraries(ShaderManagement PUBLIC EventBus)
 
 # Find dependencies
 find_package(Vulkan REQUIRED)

@@ -1,6 +1,6 @@
 #include "ShaderManagement/SpirvReflector.h"
 #include "spirv_reflect.h"
-#include "Hash.h"
+#include "ShaderManagement/Hash.h"
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>
@@ -15,7 +15,7 @@ namespace {
 /**
  * @brief Convert SPIRV-Reflect type to our SpirvTypeInfo
  */
-SpirvTypeInfo ConvertType(const SpvReflectTypeDescription* typeDesc) {
+SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
     SpirvTypeInfo info;
 
     if (!typeDesc) {
@@ -120,7 +120,7 @@ const char* DescriptorTypeToString(VkDescriptorType type) {
 /**
  * @brief Convert SPIRV-Reflect descriptor type to Vulkan descriptor type
  */
-VkDescriptorType ConvertDescriptorType(SpvReflectDescriptorType spvType) {
+VkDescriptorType ConvertDescriptorType(::SpvReflectDescriptorType spvType) {
     switch (spvType) {
         case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLER:
             return VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -335,8 +335,8 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::ReflectStage(
         data->stages.push_back(stage);
 
         // Create SPIRV-Reflect module
-        SpvReflectShaderModule module;
-        SpvReflectResult result = spvReflectCreateShaderModule(
+        ::SpvReflectShaderModule module;
+        ::SpvReflectResult result = spvReflectCreateShaderModule(
             spirvCode.size() * sizeof(uint32_t),
             spirvCode.data(),
             &module
@@ -378,7 +378,7 @@ std::string SpirvReflector::ComputeInterfaceHash(const CompiledProgram& program)
             buffer.insert(buffer.end(), bytes, bytes + stage.spirvCode.size() * sizeof(uint32_t));
         }
     }
-    return Vixen::Hash::ComputeSHA256Hex(buffer);
+    return ShaderManagement::ComputeSHA256Hex(buffer);
 }
 
 bool SpirvReflector::AreInterfacesCompatible(
@@ -392,18 +392,18 @@ bool SpirvReflector::AreInterfacesCompatible(
 // ===== Private Implementation Helpers =====
 
 void SpirvReflector::ReflectDescriptors(
-    SpvReflectShaderModule& module,
+    ::SpvReflectShaderModule& module,
     ShaderStage stage,
     SpirvReflectionData& data
 ) {
     uint32_t bindingCount = 0;
-    SpvReflectResult result = spvReflectEnumerateDescriptorBindings(&module, &bindingCount, nullptr);
+    ::SpvReflectResult result = spvReflectEnumerateDescriptorBindings(&module, &bindingCount, nullptr);
 
     if (result != SPV_REFLECT_RESULT_SUCCESS || bindingCount == 0) {
         return;
     }
 
-    std::vector<SpvReflectDescriptorBinding*> bindings(bindingCount);
+    std::vector<::SpvReflectDescriptorBinding*> bindings(bindingCount);
     result = spvReflectEnumerateDescriptorBindings(&module, &bindingCount, bindings.data());
 
     if (result != SPV_REFLECT_RESULT_SUCCESS) {
@@ -430,18 +430,18 @@ void SpirvReflector::ReflectDescriptors(
 }
 
 void SpirvReflector::ReflectPushConstants(
-    SpvReflectShaderModule& module,
+    ::SpvReflectShaderModule& module,
     ShaderStage stage,
     SpirvReflectionData& data
 ) {
     uint32_t pushConstantCount = 0;
-    SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(&module, &pushConstantCount, nullptr);
+    ::SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(&module, &pushConstantCount, nullptr);
 
     if (result != SPV_REFLECT_RESULT_SUCCESS || pushConstantCount == 0) {
         return;
     }
 
-    std::vector<SpvReflectBlockVariable*> pushConstants(pushConstantCount);
+    std::vector<::SpvReflectBlockVariable*> pushConstants(pushConstantCount);
     result = spvReflectEnumeratePushConstantBlocks(&module, &pushConstantCount, pushConstants.data());
 
     if (result != SPV_REFLECT_RESULT_SUCCESS) {
@@ -464,17 +464,17 @@ void SpirvReflector::ReflectPushConstants(
 }
 
 void SpirvReflector::ReflectVertexInputs(
-    SpvReflectShaderModule& module,
+    ::SpvReflectShaderModule& module,
     SpirvReflectionData& data
 ) {
     uint32_t inputCount = 0;
-    SpvReflectResult result = spvReflectEnumerateInputVariables(&module, &inputCount, nullptr);
+    ::SpvReflectResult result = spvReflectEnumerateInputVariables(&module, &inputCount, nullptr);
 
     if (result != SPV_REFLECT_RESULT_SUCCESS || inputCount == 0) {
         return;
     }
 
-    std::vector<SpvReflectInterfaceVariable*> inputs(inputCount);
+    std::vector<::SpvReflectInterfaceVariable*> inputs(inputCount);
     result = spvReflectEnumerateInputVariables(&module, &inputCount, inputs.data());
 
     if (result != SPV_REFLECT_RESULT_SUCCESS) {
@@ -501,16 +501,16 @@ void SpirvReflector::ReflectVertexInputs(
 }
 
 void SpirvReflector::ReflectStageInputsOutputs(
-    SpvReflectShaderModule& module,
+    ::SpvReflectShaderModule& module,
     ShaderStage stage,
     SpirvReflectionData& data
 ) {
     // Reflect outputs
     uint32_t outputCount = 0;
-    SpvReflectResult result = spvReflectEnumerateOutputVariables(&module, &outputCount, nullptr);
+    ::SpvReflectResult result = spvReflectEnumerateOutputVariables(&module, &outputCount, nullptr);
 
     if (result == SPV_REFLECT_RESULT_SUCCESS && outputCount > 0) {
-        std::vector<SpvReflectInterfaceVariable*> outputs(outputCount);
+        std::vector<::SpvReflectInterfaceVariable*> outputs(outputCount);
         result = spvReflectEnumerateOutputVariables(&module, &outputCount, outputs.data());
 
         if (result == SPV_REFLECT_RESULT_SUCCESS) {
@@ -531,7 +531,7 @@ void SpirvReflector::ReflectStageInputsOutputs(
 }
 
 void SpirvReflector::ReflectSpecializationConstants(
-    SpvReflectShaderModule& module,
+    ::SpvReflectShaderModule& module,
     SpirvReflectionData& data
 ) {
     // SPIRV-Reflect doesn't have direct specialization constant enumeration
@@ -539,11 +539,11 @@ void SpirvReflector::ReflectSpecializationConstants(
     // Leave as future enhancement
 }
 
-SpirvTypeInfo SpirvReflector::ConvertTypeInfo(const SpvReflectTypeDescription* typeDesc) {
+SpirvTypeInfo SpirvReflector::ConvertTypeInfo(const ::SpvReflectTypeDescription* typeDesc) {
     return ConvertType(typeDesc);
 }
 
-SpirvStructDefinition SpirvReflector::ConvertStructDefinition(const SpvReflectTypeDescription* typeDesc) {
+SpirvStructDefinition SpirvReflector::ConvertStructDefinition(const ::SpvReflectTypeDescription* typeDesc) {
     SpirvStructDefinition structDef;
 
     if (!typeDesc || !(typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_STRUCT)) {

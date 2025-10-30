@@ -34,6 +34,7 @@ target_include_directories(RenderGraph PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../CashSystem/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ShaderManagement/include
 )
 
 # Link dependencies
@@ -43,7 +44,7 @@ target_link_libraries(RenderGraph PUBLIC
     EventBus
     ResourceManagement
     CashSystem
-    # ShaderManagement  # MVP: Temporarily disabled
+    ShaderManagement  # Phase 1: Re-enabled for integration
     magic_enum::magic_enum
 )
 

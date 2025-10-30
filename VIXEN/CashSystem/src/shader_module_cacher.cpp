@@ -94,6 +94,104 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateShaderModule
     return result;
 }
 
+std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
+    const std::vector<uint32_t>& spirvCode,
+    const std::string& entryPoint,
+    const std::vector<std::string>& macros,
+    VkShaderStageFlagBits stage,
+    const std::string& shaderName)
+{
+    std::cout << "[ShaderModuleCacher] GetOrCreateFromSpirv ENTRY: " << shaderName << std::endl;
+    std::cout << "[ShaderModuleCacher]   SPIR-V size=" << spirvCode.size() << " uint32_t words" << std::endl;
+    std::cout << "[ShaderModuleCacher]   entryPoint=" << entryPoint << std::endl;
+    std::cout << "[ShaderModuleCacher]   stage=" << stage << std::endl;
+
+    // Compute hash of SPIR-V code for cache key
+    std::uint64_t spirvHash = 14695981039346656037ULL;
+    for (uint32_t word : spirvCode) {
+        spirvHash ^= word;
+        spirvHash *= 1099511628211ULL;
+    }
+    std::ostringstream oss;
+    oss << std::hex << spirvHash;
+    std::string spirvChecksum = oss.str();
+
+    // Create pseudo-source path from shader name and checksum (for cache key)
+    std::string pseudoSourcePath = "spirv://" + shaderName + "/" + spirvChecksum;
+
+    ShaderModuleCreateParams params;
+    params.sourcePath = pseudoSourcePath;
+    params.entryPoint = entryPoint;
+    params.macroDefinitions = macros;
+    params.stage = stage;
+    params.shaderName = shaderName;
+    params.sourceChecksum = spirvChecksum;
+
+    uint64_t key = ComputeKey(params);
+    std::cout << "[ShaderModuleCacher]   cache_key=" << key << std::endl;
+
+    // Check cache first
+    {
+        std::shared_lock rlock(m_lock);
+        auto it = m_entries.find(key);
+        if (it != m_entries.end()) {
+            std::cout << "[ShaderModuleCacher] CACHE HIT for SPIR-V " << shaderName
+                      << " (key=" << key << ", VkShaderModule="
+                      << reinterpret_cast<uint64_t>(it->second.resource->shaderModule) << ")" << std::endl;
+            return it->second.resource;
+        }
+    }
+
+    std::cout << "[ShaderModuleCacher] CACHE MISS for SPIR-V " << shaderName
+              << " (key=" << key << "), creating new VkShaderModule..." << std::endl;
+
+    // Create wrapper directly from SPIR-V
+    auto wrapper = std::make_shared<ShaderModuleWrapper>();
+    wrapper->shaderName = shaderName;
+    wrapper->stage = stage;
+    wrapper->sourcePath = pseudoSourcePath;
+    wrapper->entryPoint = entryPoint;
+    wrapper->macroDefinitions = macros;
+    wrapper->spirvCode = spirvCode;
+
+    // Create VkShaderModule from SPIR-V
+    if (!wrapper->spirvCode.empty() && GetDevice()) {
+        VkShaderModuleCreateInfo moduleCreateInfo{};
+        moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        moduleCreateInfo.codeSize = wrapper->spirvCode.size() * sizeof(uint32_t);
+        moduleCreateInfo.pCode = wrapper->spirvCode.data();
+
+        VkResult result = vkCreateShaderModule(
+            GetDevice()->device,
+            &moduleCreateInfo,
+            nullptr,
+            &wrapper->shaderModule
+        );
+
+        if (result != VK_SUCCESS) {
+            std::cout << "[ShaderModuleCacher] FAILED to create VkShaderModule from SPIR-V (VkResult=" << result << ")" << std::endl;
+            throw std::runtime_error("Failed to create shader module from SPIR-V: " + shaderName);
+        }
+
+        std::cout << "[ShaderModuleCacher] VkShaderModule created from SPIR-V: "
+                  << reinterpret_cast<uint64_t>(wrapper->shaderModule) << std::endl;
+    }
+
+    // Cache the result
+    {
+        std::unique_lock wlock(m_lock);
+        CacheEntry entry;
+        entry.resource = wrapper;
+        entry.key = key;
+        m_entries[key] = std::move(entry);
+    }
+
+    std::cout << "[ShaderModuleCacher] GetOrCreateFromSpirv EXIT: VkShaderModule="
+              << reinterpret_cast<uint64_t>(wrapper->shaderModule) << std::endl;
+
+    return wrapper;
+}
+
 std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::Create(const ShaderModuleCreateParams& ci) {
     std::cout << "[ShaderModuleCacher::Create] CACHE MISS - Creating new shader module: " << ci.shaderName << std::endl;
 

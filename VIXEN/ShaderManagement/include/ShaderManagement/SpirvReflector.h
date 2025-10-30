@@ -4,6 +4,10 @@
 #include "ShaderProgram.h"
 #include <memory>
 
+// Forward declare SPIRV-Reflect types from global namespace
+struct SpvReflectShaderModule;
+struct SpvReflectTypeDescription;
+
 namespace ShaderManagement {
 
 /**
@@ -76,35 +80,35 @@ public:
 private:
     // Internal helpers
     static void ReflectDescriptors(
-        struct SpvReflectShaderModule& module,
+        struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
     static void ReflectPushConstants(
-        struct SpvReflectShaderModule& module,
+        struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
     static void ReflectVertexInputs(
-        struct SpvReflectShaderModule& module,
+        struct ::SpvReflectShaderModule& module,
         SpirvReflectionData& data
     );
 
     static void ReflectStageInputsOutputs(
-        struct SpvReflectShaderModule& module,
+        struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
     static void ReflectSpecializationConstants(
-        struct SpvReflectShaderModule& module,
+        struct ::SpvReflectShaderModule& module,
         SpirvReflectionData& data
     );
 
-    static SpirvTypeInfo ConvertTypeInfo(const struct SpvReflectTypeDescription* typeDesc);
-    static SpirvStructDefinition ConvertStructDefinition(const struct SpvReflectTypeDescription* typeDesc);
+    static SpirvTypeInfo ConvertTypeInfo(const struct ::SpvReflectTypeDescription* typeDesc);
+    static SpirvStructDefinition ConvertStructDefinition(const struct ::SpvReflectTypeDescription* typeDesc);
     static void MergeReflectionData(SpirvReflectionData& dest, const SpirvReflectionData& src);
 };
 

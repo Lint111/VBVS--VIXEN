@@ -6,7 +6,7 @@ namespace ShaderManagement {
 // ===== AsyncShaderBundleBuilder Implementation =====
 
 AsyncShaderBundleBuilder::AsyncShaderBundleBuilder(
-    EventBus::MessageBus* messageBus,
+    Vixen::EventBus::MessageBus* messageBus,
     uint32_t workerThreadCount
 )
     : messageBus_(messageBus)
@@ -41,7 +41,7 @@ AsyncShaderBundleBuilder::~AsyncShaderBundleBuilder() {
 }
 
 AsyncShaderBundleBuilder::AsyncConfigurator AsyncShaderBundleBuilder::BuildAsync(
-    EventBus::SenderID sender
+    Vixen::EventBus::SenderID sender
 ) {
     return AsyncConfigurator(this, sender);
 }
@@ -162,7 +162,7 @@ uint32_t AsyncShaderBundleBuilder::CleanupCompleted() {
 
 void AsyncShaderBundleBuilder::SubmitBuildInternal(
     ShaderBundleBuilder builder,
-    EventBus::SenderID sender
+    Vixen::EventBus::SenderID sender
 ) {
     // Create build handle
     auto handle = std::make_shared<AsyncBuildHandle>(builder.GetUuid());
@@ -256,7 +256,7 @@ bool AsyncShaderBundleBuilder::TryStealWork(uint32_t myIndex, std::function<void
 
 void AsyncShaderBundleBuilder::ExecuteBuild(
     ShaderBundleBuilder builder,
-    EventBus::SenderID sender
+    Vixen::EventBus::SenderID sender
 ) {
     auto startTime = std::chrono::steady_clock::now();
 
@@ -292,7 +292,7 @@ void AsyncShaderBundleBuilder::ExecuteBuild(
     if (result.success) {
         // Publish: Compilation completed
         auto completedMsg = std::make_unique<ShaderCompilationCompletedMessage>(
-            sender, *result.bundle);
+            sender, std::move(*result.bundle));
         completedMsg->usedCache = result.usedCache;
         completedMsg->preprocessTime = result.preprocessTime;
         completedMsg->compileTime = result.compileTime;

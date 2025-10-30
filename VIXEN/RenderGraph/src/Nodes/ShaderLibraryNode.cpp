@@ -5,9 +5,7 @@
 #include "error/VulkanError.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/ShaderModuleCacher.h"
-
-// MVP STUB: ShaderLibraryNode temporarily disabled pending ShaderManagement integration
-// This file provides minimal stubs to allow compilation
+#include <ShaderManagement/ShaderBundleBuilder.h>
 
 namespace Vixen::RenderGraph {
 
@@ -71,12 +69,46 @@ void ShaderLibraryNode::Setup() {
 }
 
 void ShaderLibraryNode::Compile() {
-    NODE_LOG_INFO("Compile: ShaderLibraryNode - initializing shader module cache");
+    NODE_LOG_INFO("Compile: ShaderLibraryNode - Phase 1 ShaderManagement integration");
+
+    // Step 1: Build shader bundle from GLSL source using ShaderManagement
+    NODE_LOG_INFO("ShaderLibraryNode: Building shader bundle from GLSL source");
+
+    ShaderManagement::ShaderBundleBuilder builder;
+    builder.SetProgramName("Draw_Shader")
+           .SetUuid("Draw_Shader_UUID")
+           .AddStageFromFile(
+               ShaderManagement::ShaderStage::Vertex,
+               "Shaders/Draw.vert",
+               "main"
+           )
+           .AddStageFromFile(
+               ShaderManagement::ShaderStage::Fragment,
+               "Shaders/Draw.frag",
+               "main"
+           );
+
+    auto result = builder.Build();
+    if (!result.success) {
+        std::string errorMsg = "ShaderLibraryNode: Shader compilation failed: " + result.errorMessage;
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
+    NODE_LOG_INFO("ShaderLibraryNode: Shader bundle built successfully");
+    NODE_LOG_INFO("  - Compile time: " + std::to_string(result.compileTime.count()) + "ms");
+    NODE_LOG_INFO("  - Reflect time: " + std::to_string(result.reflectTime.count()) + "ms");
+
+    // Store bundle for future descriptor automation (Phase 2)
+    shaderBundle_ = std::move(result.bundle);
+
+    // Step 2: Create VkShaderModules using CashSystem caching
+    NODE_LOG_INFO("ShaderLibraryNode: Creating VkShaderModules via CashSystem");
 
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
-    // Register ShaderModuleCacher (idempotent - safe to call multiple times during recompile)
+    // Register ShaderModuleCacher (idempotent)
     if (!mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper))) {
         mainCacher.RegisterCacher<
             CashSystem::ShaderModuleCacher,
@@ -90,48 +122,59 @@ void ShaderLibraryNode::Compile() {
         NODE_LOG_DEBUG("ShaderLibraryNode: Registered ShaderModuleCacher");
     }
 
-    // Cache the cacher reference for use throughout node lifetime
+    // Get cacher reference
     shaderModuleCacher = mainCacher.GetCacher<
         CashSystem::ShaderModuleCacher,
         CashSystem::ShaderModuleWrapper,
         CashSystem::ShaderModuleCreateParams
     >(typeid(CashSystem::ShaderModuleWrapper), device);
 
-    if (shaderModuleCacher) {
-        NODE_LOG_INFO("ShaderLibraryNode: Shader module cache ready - loading shaders");
+    if (!shaderModuleCacher) {
+        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
 
-        try {
-            // Load vertex shader using cacher (GetOrCreate checks cache first)
-            vertexShader = shaderModuleCacher->GetOrCreateShaderModule(
-                "builtAssets/CompiledShaders/Draw.vert.spv",
-                "main",
+    // Step 3: Create shader modules from ShaderDataBundle SPIR-V
+    try {
+        for (const auto& stage : shaderBundle_->program.stages) {
+            VkShaderStageFlagBits vkStage;
+            const char* stageName;
+
+            if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
+                vkStage = VK_SHADER_STAGE_VERTEX_BIT;
+                stageName = "Vertex";
+            } else if (stage.stage == ShaderManagement::ShaderStage::Fragment) {
+                vkStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+                stageName = "Fragment";
+            } else {
+                continue; // Skip other stages for now
+            }
+
+            // Use cacher to create/retrieve shader module from SPIR-V
+            auto shaderWrapper = shaderModuleCacher->GetOrCreateFromSpirv(
+                stage.spirvCode,
+                stage.entryPoint,
                 {},  // no macros
-                VK_SHADER_STAGE_VERTEX_BIT,
-                "Draw_Vertex"
+                vkStage,
+                std::string("Draw_") + stageName
             );
 
-            NODE_LOG_INFO("ShaderLibraryNode: Vertex shader loaded (VkShaderModule: " +
-                         std::to_string(reinterpret_cast<uint64_t>(vertexShader->shaderModule)) + ")");
-
-            // Load fragment shader using cacher
-            fragmentShader = shaderModuleCacher->GetOrCreateShaderModule(
-                "builtAssets/CompiledShaders/Draw.frag.spv",
-                "main",
-                {},  // no macros
-                VK_SHADER_STAGE_FRAGMENT_BIT,
-                "Draw_Fragment"
-            );
-
-            NODE_LOG_INFO("ShaderLibraryNode: Fragment shader loaded (VkShaderModule: " +
-                         std::to_string(reinterpret_cast<uint64_t>(fragmentShader->shaderModule)) + ")");
-
-            NODE_LOG_INFO("ShaderLibraryNode: Both shaders successfully loaded via cacher");
-        } catch (const std::exception& e) {
-            NODE_LOG_ERROR("ShaderLibraryNode: Failed to load shaders: " + std::string(e.what()));
-            throw;
+            if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
+                vertexShader = shaderWrapper;
+                NODE_LOG_INFO("ShaderLibraryNode: Vertex shader module created (VkShaderModule: " +
+                             std::to_string(reinterpret_cast<uint64_t>(vertexShader->shaderModule)) + ")");
+            } else {
+                fragmentShader = shaderWrapper;
+                NODE_LOG_INFO("ShaderLibraryNode: Fragment shader module created (VkShaderModule: " +
+                             std::to_string(reinterpret_cast<uint64_t>(fragmentShader->shaderModule)) + ")");
+            }
         }
-    } else {
-        NODE_LOG_WARNING("ShaderLibraryNode: Shader module cache not available");
+
+        NODE_LOG_INFO("ShaderLibraryNode: All shader modules successfully created via CashSystem");
+    } catch (const std::exception& e) {
+        NODE_LOG_ERROR("ShaderLibraryNode: Failed to create shader modules: " + std::string(e.what()));
+        throw;
     }
 
     // Output device (matches original behavior)
