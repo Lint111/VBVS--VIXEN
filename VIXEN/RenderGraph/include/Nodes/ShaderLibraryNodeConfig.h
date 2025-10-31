@@ -47,7 +47,7 @@ struct ShaderProgramDescriptor {
 // Compile-time slot counts (declared early for reuse)
 namespace ShaderLibraryNodeCounts {
     static constexpr size_t INPUTS = 1;
-    static constexpr size_t OUTPUTS = 3;  // Phase 2: device_out, vulkan_shader (legacy), shader_data_bundle
+    static constexpr size_t OUTPUTS = 2;  // Phase 2: device_out, shader_data_bundle
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -59,54 +59,37 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
-    // ===== OUTPUTS (3) =====
-    // Device output
+    // ===== OUTPUTS (2) =====
     CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0, false);
-
-    // VulkanShader wrapper (Phase 1 compatibility - TODO: remove when pipeline uses reflection)
-    CONSTEXPR_OUTPUT(VULKAN_SHADER, VulkanShaderPtr, 1, false);
-
-    // ShaderDataBundle with reflection data (Phase 2 descriptor automation)
-    CONSTEXPR_OUTPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 2, false);
+    CONSTEXPR_OUTPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1, false);
 
     ShaderLibraryNodeConfig() {
-        // Initialize input descriptors
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device_in", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Initialize output descriptors
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // VulkanShader wrapper output (Phase 1 legacy)
-        HandleDescriptor vulkanShaderDesc{"VulkanShader*"};
-        INIT_OUTPUT_DESC(VULKAN_SHADER, "vulkan_shader", ResourceLifetime::Persistent, vulkanShaderDesc);
-
-        // ShaderDataBundle output (Phase 2)
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_OUTPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
     }
 
     // Compile-time validations
-    static_assert(INPUT_COUNT == ShaderLibraryNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == ShaderLibraryNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == ShaderLibraryNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    static_assert(INPUT_COUNT == ShaderLibraryNodeCounts::INPUTS);
+    static_assert(OUTPUT_COUNT == ShaderLibraryNodeCounts::OUTPUTS);
+    static_assert(ARRAY_MODE == ShaderLibraryNodeCounts::ARRAY_MODE);
 
-    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
-    static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
+    static_assert(!VULKAN_DEVICE_IN_Slot::nullable);
 
-    static_assert(VULKAN_DEVICE_OUT_Slot::index == 0, "DEVICE_OUT must be at index 0");
-    static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
+    static_assert(VULKAN_DEVICE_OUT_Slot::index == 0);
+    static_assert(!VULKAN_DEVICE_OUT_Slot::nullable);
 
-    static_assert(VULKAN_SHADER_Slot::index == 1, "VULKAN_SHADER must be at index 1");
-    static_assert(!VULKAN_SHADER_Slot::nullable, "VULKAN_SHADER is required");
-
-    static_assert(SHADER_DATA_BUNDLE_Slot::index == 2, "SHADER_DATA_BUNDLE must be at index 2");
-    static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
+    static_assert(SHADER_DATA_BUNDLE_Slot::index == 1);
+    static_assert(!SHADER_DATA_BUNDLE_Slot::nullable);
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<VULKAN_SHADER_Slot::Type, VulkanShaderPtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
 };
 

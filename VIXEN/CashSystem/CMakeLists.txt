@@ -1,16 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 project(CashSystem)
 
-add_library(CashSystem STATIC
-    src/main_cacher.cpp
-    src/device_identifier.cpp
-    src/pipeline_cacher.cpp
-    src/shader_module_cacher.cpp
-    src/shader_compilation_cacher.cpp
-    src/texture_cacher.cpp
-    src/descriptor_cacher.cpp
-    src/MainCashLogger.cpp
+# Recursively collect all source files
+file(GLOB_RECURSE CASHSYSTEM_SOURCES
+    "src/*.cpp"
 )
+
+add_library(CashSystem STATIC ${CASHSYSTEM_SOURCES})
 
 # Set C++ standard for CashSystem
 set_property(TARGET CashSystem PROPERTY CXX_STANDARD 23)

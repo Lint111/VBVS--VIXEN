@@ -3,11 +3,18 @@
 #include "Core/NodeType.h"
 #include "Nodes/GraphicsPipelineNodeConfig.h"
 #include <memory>
+#include <unordered_map>
 
 // Forward declarations
 namespace CashSystem {
     class PipelineCacher;
     struct PipelineWrapper;
+    struct ShaderModuleWrapper;
+}
+
+namespace ShaderManagement {
+    struct ShaderDataBundle;
+    enum class ShaderStage : uint32_t;
 }
 
 namespace Vixen::RenderGraph {
@@ -70,7 +77,17 @@ private:
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
+    // Shader stage data (built from reflection)
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStageInfos;
+    std::unordered_map<ShaderManagement::ShaderStage, std::shared_ptr<CashSystem::ShaderModuleWrapper>> shaderModules;
+    std::shared_ptr<ShaderManagement::ShaderDataBundle> currentShaderBundle;  // Current bundle for reflection
+
     // Helper functions
+    void BuildShaderStages(std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle);
+    void BuildVertexInputsFromReflection(
+        std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle,
+        std::vector<VkVertexInputBindingDescription>& outBindings,
+        std::vector<VkVertexInputAttributeDescription>& outAttributes);
     void CreatePipelineCache();
     void CreatePipelineLayout();
     void CreatePipeline();

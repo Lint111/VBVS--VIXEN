@@ -248,38 +248,8 @@ void ShaderLibraryNode::Compile() {
         throw;
     }
 
-    // Step 4: Create VulkanShader wrapper for compatibility with GraphicsPipelineNode (Phase 1)
-    NODE_LOG_INFO("ShaderLibraryNode: Creating VulkanShader compatibility wrapper");
-
-    vulkanShader = new VulkanShader();
-    vulkanShader->creationDevice = device;
-    vulkanShader->stagesCount = 2;
-
-    // Populate vertex shader stage
-    vulkanShader->shaderStages[0] = {};
-    vulkanShader->shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vulkanShader->shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vulkanShader->shaderStages[0].module = vertexShader->shaderModule;
-    vulkanShader->shaderStages[0].pName = "main";
-
-    // Populate fragment shader stage
-    vulkanShader->shaderStages[1] = {};
-    vulkanShader->shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vulkanShader->shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    vulkanShader->shaderStages[1].module = fragmentShader->shaderModule;
-    vulkanShader->shaderStages[1].pName = "main";
-
-    vulkanShader->initialized = true;
-
-    NODE_LOG_INFO("ShaderLibraryNode: VulkanShader wrapper created successfully");
-
-    // Output device (matches original behavior)
+    // Output device and shader data bundle
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
-
-    // Output VulkanShader wrapper for GraphicsPipelineNode (Phase 1 legacy - TODO: remove)
-    Out(ShaderLibraryNodeConfig::VULKAN_SHADER, vulkanShader);
-
-    // Output ShaderDataBundle for reflection-based automation (Phase 2)
     Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
 
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
@@ -295,16 +265,8 @@ void ShaderLibraryNode::Execute(VkCommandBuffer commandBuffer) {
 void ShaderLibraryNode::CleanupImpl() {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - releasing resources");
 
-    // Cleanup VulkanShader wrapper (don't destroy modules - they're in cacher)
-    if (vulkanShader) {
-        // Note: Don't call DestroyShader() - modules are managed by CashSystem cacher
-        delete vulkanShader;
-        vulkanShader = nullptr;
-        NODE_LOG_DEBUG("ShaderLibraryNode: VulkanShader wrapper destroyed");
-    }
-
     // Release shared_ptrs (cacher owns the VkShaderModule handles and will destroy them)
-    std::cout << "[ShaderLibraryNode::CleanupImpl] Releasing shader module references (cacher owns resources)" << std::endl;
+    NODE_LOG_DEBUG("ShaderLibraryNode: Releasing shader module references (cacher owns resources)");
     vertexShader.reset();
     fragmentShader.reset();
 

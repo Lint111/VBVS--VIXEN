@@ -15,22 +15,28 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+// Forward declaration
+struct PipelineLayoutWrapper;
+
 /**
  * @brief Pipeline resource wrapper
- * 
+ *
  * Stores Vulkan pipeline objects and associated metadata.
+ * Pipeline layout is shared via PipelineLayoutCacher.
  */
 struct PipelineWrapper {
     VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipelineCache cache = VK_NULL_HANDLE;
-    
+
+    // Shared pipeline layout (from PipelineLayoutCacher)
+    std::shared_ptr<PipelineLayoutWrapper> pipelineLayoutWrapper;
+
     // Cache identification
     std::string vertexShaderKey;
     std::string fragmentShaderKey;
     std::string layoutKey;
     std::string renderPassKey;
-    
+
     // Pipeline configuration
     bool enableDepthTest = true;
     bool enableDepthWrite = true;
@@ -41,14 +47,25 @@ struct PipelineWrapper {
 
 /**
  * @brief Pipeline creation parameters
+ *
+ * Supports two modes:
+ * 1. Explicit: Provide pipelineLayoutWrapper from PipelineLayoutCacher (transparent, efficient)
+ * 2. Convenience: Provide descriptorSetLayout, PipelineCacher creates layout internally
  */
 struct PipelineCreateParams {
-    // Shader modules (actual handles, not keys)
-    VkShaderModule vertexShaderModule = VK_NULL_HANDLE;
-    VkShaderModule fragmentShaderModule = VK_NULL_HANDLE;
+    // ===== Sub-cacher Resources (Explicit Dependencies) =====
+    // If provided, use directly (recommended for transparency)
+    std::shared_ptr<PipelineLayoutWrapper> pipelineLayoutWrapper;
 
-    // Layout and render pass (actual handles)
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    // ===== Convenience Fallbacks =====
+    // If pipelineLayoutWrapper not provided, create from these:
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+
+    // ===== Direct Pipeline Resources =====
+    // Shader stages (dynamic - supports all stage types)
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+
+    // Render pass (NOT owned by PipelineWrapper)
     VkRenderPass renderPass = VK_NULL_HANDLE;
 
     // Keys for cache lookup

@@ -1,4 +1,6 @@
 #include "CashSystem/PipelineCacher.h"
+#include "CashSystem/PipelineLayoutCacher.h"
+#include "CashSystem/MainCacher.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Hash.h"
 #include <sstream>
@@ -22,11 +24,10 @@ void PipelineCacher::Cleanup() {
                     vkDestroyPipeline(GetDevice()->device, entry.resource->pipeline, nullptr);
                     entry.resource->pipeline = VK_NULL_HANDLE;
                 }
-                if (entry.resource->layout != VK_NULL_HANDLE) {
-                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineLayout: "
-                              << reinterpret_cast<uint64_t>(entry.resource->layout) << std::endl;
-                    vkDestroyPipelineLayout(GetDevice()->device, entry.resource->layout, nullptr);
-                    entry.resource->layout = VK_NULL_HANDLE;
+                // Pipeline layout is owned by PipelineLayoutCacher (shared resource)
+                if (entry.resource->pipelineLayoutWrapper) {
+                    std::cout << "[PipelineCacher::Cleanup] Releasing shared pipeline layout wrapper" << std::endl;
+                    entry.resource->pipelineLayoutWrapper.reset();
                 }
                 if (entry.resource->cache != VK_NULL_HANDLE) {
                     std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineCache: "
@@ -152,26 +153,15 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
         throw std::runtime_error("PipelineCacher: No device available for pipeline creation");
     }
 
-    // Shader stages
-    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+    // Use dynamic shader stages (supports all 14 stage types)
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages = ci.shaderStages;
 
-    if (ci.vertexShaderModule != VK_NULL_HANDLE) {
-        VkPipelineShaderStageCreateInfo vertStage{};
-        vertStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertStage.module = ci.vertexShaderModule;
-        vertStage.pName = "main";
-        shaderStages.push_back(vertStage);
+    if (shaderStages.empty()) {
+        throw std::runtime_error("PipelineCacher::CreatePipeline: No shader stages provided");
     }
 
-    if (ci.fragmentShaderModule != VK_NULL_HANDLE) {
-        VkPipelineShaderStageCreateInfo fragStage{};
-        fragStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragStage.module = ci.fragmentShaderModule;
-        fragStage.pName = "main";
-        shaderStages.push_back(fragStage);
-    }
+    std::cout << "[PipelineCacher::CreatePipeline] Using " << shaderStages.size()
+              << " shader stages" << std::endl;
 
     // Vertex input state
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
@@ -251,7 +241,7 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
     pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = ci.pipelineLayout;
+    pipelineInfo.layout = wrapper.pipelineLayoutWrapper->layout;  // Use shared layout
     pipelineInfo.renderPass = ci.renderPass;
     pipelineInfo.subpass = 0;
 
@@ -270,9 +260,61 @@ void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrap
 }
 
 void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {
-    // Use the provided pipeline layout from params
-    // Layout is created externally (by DescriptorSetNode or GraphicsPipelineNode)
-    wrapper.layout = ci.pipelineLayout;
+    if (!GetDevice()) {
+        throw std::runtime_error("PipelineCacher: No device available for pipeline layout creation");
+    }
+
+    // ===== Explicit Path: Use provided wrapper (transparent) =====
+    if (ci.pipelineLayoutWrapper) {
+        std::cout << "[PipelineCacher] Using explicitly provided VkPipelineLayout: "
+                  << reinterpret_cast<uint64_t>(ci.pipelineLayoutWrapper->layout) << std::endl;
+        wrapper.pipelineLayoutWrapper = ci.pipelineLayoutWrapper;
+        return;
+    }
+
+    // ===== Convenience Path: Create from descriptor set layout =====
+    std::cout << "[PipelineCacher] No layout wrapper provided, using convenience path (PipelineLayoutCacher)" << std::endl;
+
+    // Get PipelineLayoutCacher from MainCacher (register if needed)
+    auto& mainCacher = MainCacher::Instance();
+
+    if (!mainCacher.IsRegistered(typeid(PipelineLayoutWrapper))) {
+        std::cout << "[PipelineCacher] Registering PipelineLayoutCacher" << std::endl;
+        mainCacher.RegisterCacher<
+            PipelineLayoutCacher,
+            PipelineLayoutWrapper,
+            PipelineLayoutCreateParams
+        >(
+            typeid(PipelineLayoutWrapper),
+            "PipelineLayout",
+            true  // device-dependent
+        );
+    }
+
+    auto* layoutCacher = mainCacher.GetCacher<
+        PipelineLayoutCacher,
+        PipelineLayoutWrapper,
+        PipelineLayoutCreateParams
+    >(typeid(PipelineLayoutWrapper), GetDevice());
+
+    if (!layoutCacher) {
+        throw std::runtime_error("PipelineCacher: Failed to get PipelineLayoutCacher");
+    }
+
+    // Get or create shared pipeline layout
+    PipelineLayoutCreateParams layoutParams;
+    layoutParams.descriptorSetLayout = ci.descriptorSetLayout;
+    layoutParams.pushConstantRanges = {};  // No push constants for now
+    layoutParams.layoutKey = ci.layoutKey;
+
+    wrapper.pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
+
+    if (!wrapper.pipelineLayoutWrapper || wrapper.pipelineLayoutWrapper->layout == VK_NULL_HANDLE) {
+        throw std::runtime_error("PipelineCacher: Failed to create/get pipeline layout");
+    }
+
+    std::cout << "[PipelineCacher] Using shared VkPipelineLayout: "
+              << reinterpret_cast<uint64_t>(wrapper.pipelineLayoutWrapper->layout) << std::endl;
 }
 
 void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {

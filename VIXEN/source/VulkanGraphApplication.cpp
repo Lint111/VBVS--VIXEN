@@ -558,9 +558,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     // --- RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
-    // Phase 1: Connect ShaderLibraryNode directly to pipeline
-    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::VULKAN_SHADER,
-                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES)
+    // Phase 2: Connect ShaderDataBundle to both DescriptorSetNode and GraphicsPipelineNode
+    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
                   pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -569,10 +571,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   pipelineNode, GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
-
-    // Phase 2: Connect ShaderDataBundle to DescriptorSetNode for reflection-based descriptor layout
-    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
-                  descriptorSetNode, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
 
     // --- Device → TextureLoader device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
