@@ -105,6 +105,23 @@ public:
      */
     std::filesystem::path GetSdiPath(const std::string& uuid) const;
 
+    /**
+     * @brief Generate shader-specific Names.h file
+     *
+     * Creates {programName}Names.h with shader-specific constexpr constants
+     * and type aliases that map to the generic .si.h interface.
+     *
+     * @param programName Name of the shader program (e.g., "Draw_Shader")
+     * @param uuid UUID of the shader (for namespace lookup)
+     * @param reflectionData Reflected SPIRV metadata
+     * @return Path to generated Names.h file, or empty string on error
+     */
+    std::string GenerateNamesHeader(
+        const std::string& programName,
+        const std::string& uuid,
+        const SpirvReflectionData& reflectionData
+    );
+
 private:
     SdiGeneratorConfig config_;
 

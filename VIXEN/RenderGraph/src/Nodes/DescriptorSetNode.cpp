@@ -10,6 +10,18 @@
 #include <cstring> // for memcpy
 #include <unordered_map>
 
+// Phase 3: Generated SDI headers (demonstration)
+// #include "generated/sdi/Draw_ShaderNames.h"
+// Usage example with generated constants:
+// - Descriptor binding: Draw_Shader::myBufferVals_SET, Draw_Shader::myBufferVals_BINDING
+// - Type constant: Draw_Shader::myBufferVals_TYPE (VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+// - Access generic interface: Draw_Shader::SDI::Set0::myBufferVals::SET
+//
+// Once UBO struct reflection is enhanced, usage will be:
+// Draw_Shader::BufferVals uboData;  // Strongly-typed struct from reflection
+// uboData.mvp = Projection * View * Model;
+// memcpy(uboMappedData, &uboData, sizeof(Draw_Shader::BufferVals));
+
 namespace Vixen::RenderGraph {
 
 // ===== NODE TYPE =====

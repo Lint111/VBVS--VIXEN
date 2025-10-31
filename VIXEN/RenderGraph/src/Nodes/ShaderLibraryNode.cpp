@@ -115,9 +115,17 @@ void ShaderLibraryNode::Compile() {
 
     std::cout << "[ShaderLibraryNode] Creating ShaderBundleBuilder..." << std::endl;
 
+    // Configure SDI generation to write to binaries/generated/sdi (runtime shaders only)
+    ShaderManagement::SdiGeneratorConfig sdiConfig;
+    sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
+    sdiConfig.namespacePrefix = "ShaderInterface";
+    sdiConfig.generateComments = true;
+
     ShaderManagement::ShaderBundleBuilder builder;
     builder.SetProgramName("Draw_Shader")
-           .SetUuid("Draw_Shader_UUID")
+           // UUID will be auto-generated from content hash (deterministic)
+           .SetSdiConfig(sdiConfig)
+           .EnableSdiGeneration(true)  // Phase 3: Enable SDI generation
            .AddStageFromFile(
                ShaderManagement::ShaderStage::Vertex,
                vertPath,
@@ -129,7 +137,7 @@ void ShaderLibraryNode::Compile() {
                "main"
            );
 
-    std::cout << "[ShaderLibraryNode] Stages added, calling Build()..." << std::endl;
+    std::cout << "[ShaderLibraryNode] Stages added (SDI enabled), calling Build()..." << std::endl;
 
     auto result = builder.Build();
     if (!result.success) {

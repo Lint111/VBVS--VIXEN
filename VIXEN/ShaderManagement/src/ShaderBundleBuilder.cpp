@@ -573,7 +573,12 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
         auto sdiStart = std::chrono::steady_clock::now();
 
         SpirvInterfaceGenerator generator(sdiConfig_);
+
+        // Generate generic .si.h interface
         std::string generatedPath = generator.Generate(uuid_, *reflectionData);
+
+        // Generate shader-specific Names.h
+        std::string namesPath = generator.GenerateNamesHeader(programName_, uuid_, *reflectionData);
 
         auto sdiEnd = std::chrono::steady_clock::now();
         result.sdiGenTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -585,6 +590,12 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
             sdiPath = generatedPath;
             sdiNamespace = sdiConfig_.namespacePrefix + "::" +
                 SanitizeForNamespace(uuid_);
+
+            if (namesPath.empty()) {
+                result.warnings.push_back("Names header generation failed");
+            } else {
+                ShaderLogger::LogInfo("Generated shader-specific Names header: " + namesPath, "SDI");
+            }
         }
     }
 

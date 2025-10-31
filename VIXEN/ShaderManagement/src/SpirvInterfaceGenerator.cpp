@@ -169,6 +169,111 @@ std::filesystem::path SpirvInterfaceGenerator::GetSdiPath(const std::string& uui
     return config_.outputDirectory / (uuid + "-SDI.h");
 }
 
+std::string SpirvInterfaceGenerator::GenerateNamesHeader(
+    const std::string& programName,
+    const std::string& uuid,
+    const SpirvReflectionData& reflectionData
+) {
+    try {
+        std::ostringstream code;
+
+        // Header
+        code << "// ============================================================================\n";
+        code << "// Shader-Specific Names Header\n";
+        code << "// ============================================================================\n";
+        code << "//\n";
+        code << "// Program: " << programName << "\n";
+        code << "// UUID: " << uuid << "\n";
+        code << "// Generated: " << GetTimestamp() << "\n";
+        code << "//\n";
+        code << "// This file provides shader-specific constexpr constants and type aliases\n";
+        code << "// that map to the generic .si.h interface.\n";
+        code << "//\n";
+        code << "// Usage: #include \"" << programName << "Names.h\"\n";
+        code << "//\n";
+        code << "// DO NOT MODIFY THIS FILE MANUALLY - it will be regenerated.\n";
+        code << "//\n";
+        code << "// ============================================================================\n";
+        code << "\n";
+        code << "#pragma once\n";
+        code << "\n";
+        code << "#include \"" << uuid << "-SDI.h\"\n";
+        code << "\n";
+
+        // Namespace
+        std::string sanitizedName = SanitizeName(programName);
+        code << "namespace " << sanitizedName << " {\n";
+        code << "\n";
+
+        // Reference to SDI namespace
+        std::string sdiNs = config_.namespacePrefix + "::" + SanitizeName(uuid);
+        code << "// Reference to generic SDI namespace\n";
+        code << "namespace SDI = " << sdiNs << ";\n";
+        code << "\n";
+
+        // Generate descriptor binding constants
+        if (!reflectionData.descriptorSets.empty()) {
+            code << "// ============================================================================\n";
+            code << "// Descriptor Binding Constants\n";
+            code << "// ============================================================================\n";
+            code << "\n";
+
+            for (const auto& [setIndex, bindings] : reflectionData.descriptorSets) {
+                for (const auto& binding : bindings) {
+                    std::string bindingName = SanitizeName(binding.name);
+                    if (bindingName.empty()) {
+                        bindingName = "Binding" + std::to_string(binding.binding);
+                    }
+
+                    // Generate constexpr aliases for this binding
+                    code << "// " << binding.name << " (Set " << setIndex
+                         << ", Binding " << binding.binding << ")\n";
+                    code << "using " << bindingName << "_t = SDI::Set" << setIndex
+                         << "::" << bindingName << ";\n";
+                    code << "constexpr uint32_t " << bindingName << "_SET = "
+                         << bindingName << "_t::SET;\n";
+                    code << "constexpr uint32_t " << bindingName << "_BINDING = "
+                         << bindingName << "_t::BINDING;\n";
+                    code << "constexpr VkDescriptorType " << bindingName << "_TYPE = "
+                         << bindingName << "_t::TYPE;\n";
+                    code << "\n";
+                }
+            }
+        }
+
+        // Generate struct type aliases
+        if (!reflectionData.structDefinitions.empty()) {
+            code << "// ============================================================================\n";
+            code << "// UBO/SSBO Struct Type Aliases\n";
+            code << "// ============================================================================\n";
+            code << "\n";
+
+            for (const auto& structDef : reflectionData.structDefinitions) {
+                code << "using " << structDef.name << " = SDI::" << structDef.name << ";\n";
+            }
+            code << "\n";
+        }
+
+        // Close namespace
+        code << "} // namespace " << sanitizedName << "\n";
+
+        // Write to file
+        std::filesystem::path filePath = config_.outputDirectory / (programName + "Names.h");
+        std::ofstream file(filePath);
+        if (!file.is_open()) {
+            return "";
+        }
+
+        file << code.str();
+        file.close();
+
+        return filePath.string();
+
+    } catch (const std::exception& e) {
+        return "";
+    }
+}
+
 // ===== Code Generation Helpers =====
 
 std::string SpirvInterfaceGenerator::GenerateHeader(
