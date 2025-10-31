@@ -135,6 +135,9 @@ private:
     void CreatePipeline(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
     void CreatePipelineLayout(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
     void CreatePipelineCache(const PipelineCreateParams& ci, PipelineWrapper& wrapper);
+
+    // Global pipeline cache loaded from disk (used for all new pipeline creations)
+    VkPipelineCache m_globalCache = VK_NULL_HANDLE;
 };
 
 } // namespace CashSystem

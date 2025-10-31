@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <vulkan/vulkan.h>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <shared_mutex>
 
 namespace CashSystem {
@@ -29,13 +31,21 @@ void PipelineCacher::Cleanup() {
                     std::cout << "[PipelineCacher::Cleanup] Releasing shared pipeline layout wrapper" << std::endl;
                     entry.resource->pipelineLayoutWrapper.reset();
                 }
-                if (entry.resource->cache != VK_NULL_HANDLE) {
+                // Don't destroy individual caches if they're pointing to m_globalCache
+                if (entry.resource->cache != VK_NULL_HANDLE && entry.resource->cache != m_globalCache) {
                     std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineCache: "
                               << reinterpret_cast<uint64_t>(entry.resource->cache) << std::endl;
                     vkDestroyPipelineCache(GetDevice()->device, entry.resource->cache, nullptr);
                     entry.resource->cache = VK_NULL_HANDLE;
                 }
             }
+        }
+
+        // Destroy global cache
+        if (m_globalCache != VK_NULL_HANDLE) {
+            std::cout << "[PipelineCacher::Cleanup] Destroying global pipeline cache" << std::endl;
+            vkDestroyPipelineCache(GetDevice()->device, m_globalCache, nullptr);
+            m_globalCache = VK_NULL_HANDLE;
         }
     }
 
@@ -322,7 +332,15 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
         return;
     }
 
-    // Create pipeline cache for performance
+    // If we have a global cache, merge it with the new cache
+    // This allows new pipelines to benefit from cached data
+    if (m_globalCache != VK_NULL_HANDLE) {
+        // Just use the global cache directly instead of creating individual caches
+        wrapper.cache = m_globalCache;
+        return;
+    }
+
+    // Create pipeline cache for performance (fallback if no global cache)
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 
@@ -340,15 +358,151 @@ void PipelineCacher::CreatePipelineCache(const PipelineCreateParams& ci, Pipelin
 }
 
 bool PipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
-    // TODO: Implement serialization of pipeline cache data
-    (void)path;
+    if (!GetDevice()) {
+        std::cerr << "[PipelineCacher] Cannot serialize: no device available" << std::endl;
+        return false;
+    }
+
+    // Collect all valid pipeline caches from entries
+    std::vector<VkPipelineCache> caches;
+    for (const auto& [key, entry] : m_entries) {
+        if (entry.resource && entry.resource->cache != VK_NULL_HANDLE) {
+            caches.push_back(entry.resource->cache);
+        }
+    }
+
+    if (caches.empty()) {
+        std::cout << "[PipelineCacher] No pipeline caches to serialize" << std::endl;
+        return true;
+    }
+
+    // Merge all caches into a single cache for serialization
+    VkPipelineCacheCreateInfo mergedCacheInfo{};
+    mergedCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+    VkPipelineCache mergedCache = VK_NULL_HANDLE;
+    VkResult result = vkCreatePipelineCache(GetDevice()->device, &mergedCacheInfo, nullptr, &mergedCache);
+    if (result != VK_SUCCESS) {
+        std::cerr << "[PipelineCacher] Failed to create merged cache: " << result << std::endl;
+        return false;
+    }
+
+    // Merge all individual caches into the merged cache
+    result = vkMergePipelineCaches(GetDevice()->device, mergedCache,
+                                   static_cast<uint32_t>(caches.size()), caches.data());
+    if (result != VK_SUCCESS) {
+        std::cerr << "[PipelineCacher] Failed to merge pipeline caches: " << result << std::endl;
+        vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+        return false;
+    }
+
+    // Get size of cache data
+    size_t cacheSize = 0;
+    result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, nullptr);
+    if (result != VK_SUCCESS || cacheSize == 0) {
+        std::cerr << "[PipelineCacher] Failed to get cache size: " << result << std::endl;
+        vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+        return false;
+    }
+
+    // Get cache data
+    std::vector<uint8_t> cacheData(cacheSize);
+    result = vkGetPipelineCacheData(GetDevice()->device, mergedCache, &cacheSize, cacheData.data());
+    if (result != VK_SUCCESS) {
+        std::cerr << "[PipelineCacher] Failed to get cache data: " << result << std::endl;
+        vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+        return false;
+    }
+
+    // Destroy merged cache (no longer needed)
+    vkDestroyPipelineCache(GetDevice()->device, mergedCache, nullptr);
+
+    // Write cache data to file
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        std::cerr << "[PipelineCacher] Failed to open file for writing: " << path << std::endl;
+        return false;
+    }
+
+    // Write version header (for future compatibility)
+    uint32_t version = 1;
+    file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+    // Write cache size
+    uint64_t size64 = static_cast<uint64_t>(cacheSize);
+    file.write(reinterpret_cast<const char*>(&size64), sizeof(size64));
+
+    // Write cache data
+    file.write(reinterpret_cast<const char*>(cacheData.data()), cacheSize);
+
+    if (!file) {
+        std::cerr << "[PipelineCacher] Failed to write cache data to file" << std::endl;
+        return false;
+    }
+
+    std::cout << "[PipelineCacher] Serialized " << caches.size() << " pipeline caches ("
+              << cacheSize << " bytes) to " << path << std::endl;
     return true;
 }
 
 bool PipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    // TODO: Implement deserialization of pipeline cache data
-    (void)path;
-    (void)device;
+    // Not an error if cache file doesn't exist yet
+    if (!std::filesystem::exists(path)) {
+        std::cout << "[PipelineCacher] No cache file found at " << path << " (first run)" << std::endl;
+        return true;
+    }
+
+    if (!GetDevice()) {
+        std::cerr << "[PipelineCacher] Cannot deserialize: no device available" << std::endl;
+        return false;
+    }
+
+    // Open cache file
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        std::cerr << "[PipelineCacher] Failed to open cache file: " << path << std::endl;
+        return false;
+    }
+
+    // Read version header
+    uint32_t version = 0;
+    file.read(reinterpret_cast<char*>(&version), sizeof(version));
+    if (!file || version != 1) {
+        std::cerr << "[PipelineCacher] Unsupported cache version: " << version << std::endl;
+        return false;
+    }
+
+    // Read cache size
+    uint64_t cacheSize = 0;
+    file.read(reinterpret_cast<char*>(&cacheSize), sizeof(cacheSize));
+    if (!file || cacheSize == 0) {
+        std::cerr << "[PipelineCacher] Invalid cache size in file" << std::endl;
+        return false;
+    }
+
+    // Read cache data
+    std::vector<uint8_t> cacheData(cacheSize);
+    file.read(reinterpret_cast<char*>(cacheData.data()), cacheSize);
+    if (!file) {
+        std::cerr << "[PipelineCacher] Failed to read cache data from file" << std::endl;
+        return false;
+    }
+
+    // Create global pipeline cache from loaded data
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    cacheInfo.initialDataSize = cacheSize;
+    cacheInfo.pInitialData = cacheData.data();
+
+    VkResult result = vkCreatePipelineCache(GetDevice()->device, &cacheInfo, nullptr, &m_globalCache);
+    if (result != VK_SUCCESS) {
+        std::cerr << "[PipelineCacher] Failed to create pipeline cache from file: " << result << std::endl;
+        m_globalCache = VK_NULL_HANDLE;
+        return false;
+    }
+
+    std::cout << "[PipelineCacher] Loaded pipeline cache from " << path
+              << " (" << cacheSize << " bytes)" << std::endl;
     return true;
 }
 

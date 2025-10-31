@@ -323,6 +323,23 @@ void RenderGraph::HandleWindowClose() {
         }
     }
 
+    // Save persistent caches BEFORE cleanup destroys resources (async for responsiveness)
+    if (mainCacher) {
+        std::filesystem::path cacheDir = "binaries/cache";
+        std::cout << "[RenderGraph] Saving persistent caches asynchronously to: " << cacheDir.string() << std::endl;
+
+        auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
+
+        // Wait for async save to complete before cleanup
+        bool saveSuccess = saveFuture.get();
+
+        if (saveSuccess) {
+            std::cout << "[RenderGraph] Persistent caches saved successfully" << std::endl;
+        } else {
+            std::cerr << "[RenderGraph] Warning: Some caches failed to save" << std::endl;
+        }
+    }
+
     // Execute cleanup (destroys all Vulkan resources)
     ExecuteCleanup();
 

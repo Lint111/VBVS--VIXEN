@@ -19,6 +19,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <optional>
+#include <future>
 
 // Forward declarations for type safety
 namespace Vixen::Vulkan::Resources {
@@ -328,10 +329,11 @@ public:
 
     /**
      * @brief Save all caches to disk (organized by device and global)
+     * @note Synchronous version - blocks until complete
      */
     bool SaveAll(const std::filesystem::path& directory) const {
         bool success = true;
-        
+
         // Save device-specific caches
         {
             std::shared_lock deviceLock(m_deviceRegistriesMutex);
@@ -343,7 +345,7 @@ public:
                 success &= registry.SaveAll(deviceDir);
             }
         }
-        
+
         // Save global caches
         {
             auto globalDir = directory / "global";
@@ -352,16 +354,59 @@ public:
             }
             success &= SaveGlobalCaches(globalDir);
         }
-        
+
         return success;
     }
 
     /**
-     * @brief Load all caches from disk
+     * @brief Save all caches to disk asynchronously (non-blocking)
+     * @return Future that resolves to true if all saves succeeded
+     * @note Launches parallel tasks for each device registry and global caches
+     */
+    std::future<bool> SaveAllAsync(const std::filesystem::path& directory) const {
+        return std::async(std::launch::async, [this, directory]() {
+            std::vector<std::future<bool>> futures;
+
+            // Launch parallel save tasks for each device registry
+            {
+                std::shared_lock deviceLock(m_deviceRegistriesMutex);
+                for (const auto& [deviceId, registry] : m_deviceRegistries) {
+                    auto deviceDir = directory / "devices" / deviceId.GetDescription();
+
+                    // Capture by value to avoid dangling references
+                    futures.push_back(std::async(std::launch::async,
+                        [deviceDir, &registry]() {
+                            std::filesystem::create_directories(deviceDir);
+                            return registry.SaveAll(deviceDir);
+                        }
+                    ));
+                }
+            }
+
+            // Launch global cache save
+            futures.push_back(std::async(std::launch::async, [this, directory]() {
+                auto globalDir = directory / "global";
+                std::filesystem::create_directories(globalDir);
+                return SaveGlobalCaches(globalDir);
+            }));
+
+            // Wait for all saves to complete
+            bool success = true;
+            for (auto& future : futures) {
+                success &= future.get();
+            }
+
+            return success;
+        });
+    }
+
+    /**
+     * @brief Load all caches from disk (synchronous)
+     * @note Blocks until all caches are loaded
      */
     bool LoadAll(const std::filesystem::path& directory) {
         bool success = true;
-        
+
         // Load device-specific caches
         auto devicesDir = directory / "devices";
         if (std::filesystem::exists(devicesDir)) {
@@ -369,7 +414,7 @@ public:
                 if (entry.is_directory()) {
                     auto deviceDir = entry.path();
                     auto deviceId = DeviceIdentifier::FromDirectoryName(deviceDir.filename().string());
-                    
+
                     if (deviceId.IsValid()) {
                         auto& registry = GetOrCreateDeviceRegistry(deviceId);
                         success &= registry.LoadAll(deviceDir);
@@ -377,14 +422,68 @@ public:
                 }
             }
         }
-        
+
         // Load global caches
         auto globalDir = directory / "global";
         if (std::filesystem::exists(globalDir)) {
             success &= LoadGlobalCaches(globalDir);
         }
-        
+
         return success;
+    }
+
+    /**
+     * @brief Load all caches from disk asynchronously (non-blocking)
+     * @return Future that resolves to true if all loads succeeded
+     * @note Launches parallel tasks for each device registry and global caches
+     */
+    std::future<bool> LoadAllAsync(const std::filesystem::path& directory) {
+        return std::async(std::launch::async, [this, directory]() {
+            std::vector<std::future<bool>> futures;
+
+            // Collect device directories to load
+            auto devicesDir = directory / "devices";
+            std::vector<std::pair<DeviceIdentifier, std::filesystem::path>> deviceDirs;
+
+            if (std::filesystem::exists(devicesDir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(devicesDir)) {
+                    if (entry.is_directory()) {
+                        auto deviceDir = entry.path();
+                        auto deviceId = DeviceIdentifier::FromDirectoryName(deviceDir.filename().string());
+
+                        if (deviceId.IsValid()) {
+                            deviceDirs.emplace_back(deviceId, deviceDir);
+                        }
+                    }
+                }
+            }
+
+            // Launch parallel load tasks for each device registry
+            for (const auto& [deviceId, deviceDir] : deviceDirs) {
+                futures.push_back(std::async(std::launch::async,
+                    [this, deviceId, deviceDir]() {
+                        auto& registry = GetOrCreateDeviceRegistry(deviceId);
+                        return registry.LoadAll(deviceDir);
+                    }
+                ));
+            }
+
+            // Launch global cache load
+            auto globalDir = directory / "global";
+            if (std::filesystem::exists(globalDir)) {
+                futures.push_back(std::async(std::launch::async, [this, globalDir]() {
+                    return LoadGlobalCaches(globalDir);
+                }));
+            }
+
+            // Wait for all loads to complete
+            bool success = true;
+            for (auto& future : futures) {
+                success &= future.get();
+            }
+
+            return success;
+        });
     }
 
     /**

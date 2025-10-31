@@ -1,6 +1,10 @@
 #include "CashSystem/DeviceIdentifier.h"
 #include "Hash.h"
 #include <sstream>
+#include <iostream>
+#include <filesystem>
+#include <future>
+#include <vector>
 
 namespace CashSystem {
 
@@ -62,13 +66,76 @@ void DeviceRegistry::ClearAll() {
 
 bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);
-    // TODO: Implement serialization
-    return true;
+
+    // Launch parallel save for each cacher
+    std::vector<std::future<bool>> futures;
+
+    for (const auto& cacher : m_deviceCachers) {
+        if (cacher) {
+            auto cacheName = std::string(cacher->name());
+            auto cacheFile = directory / (cacheName + ".cache");
+
+            futures.push_back(std::async(std::launch::async,
+                [&cacher, cacheName, cacheFile]() {
+                    std::cout << "[DeviceRegistry] Saving " << cacheName << " to " << cacheFile << std::endl;
+                    bool saved = cacher->SerializeToFile(cacheFile);
+                    if (!saved) {
+                        std::cerr << "[DeviceRegistry] Failed to save " << cacheName << std::endl;
+                    }
+                    return saved;
+                }
+            ));
+        }
+    }
+
+    // Wait for all saves to complete
+    bool success = true;
+    for (auto& future : futures) {
+        success &= future.get();
+    }
+
+    return success;
 }
 
 bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
-    // TODO: Implement deserialization
-    return true;
+    if (!std::filesystem::exists(directory)) {
+        std::cout << "[DeviceRegistry] No cache directory found at " << directory << std::endl;
+        return true;  // Not an error - just no caches to load
+    }
+
+    // Launch parallel load for each cacher
+    std::vector<std::future<bool>> futures;
+
+    for (auto& cacher : m_deviceCachers) {
+        if (cacher) {
+            auto cacheName = std::string(cacher->name());
+            auto cacheFile = directory / (cacheName + ".cache");
+
+            futures.push_back(std::async(std::launch::async,
+                [&cacher, cacheName, cacheFile, this]() {
+                    if (std::filesystem::exists(cacheFile)) {
+                        std::cout << "[DeviceRegistry] Loading " << cacheName << " from " << cacheFile << std::endl;
+                        bool loaded = cacher->DeserializeFromFile(cacheFile, m_device);
+                        if (!loaded) {
+                            std::cerr << "[DeviceRegistry] Failed to load " << cacheName << std::endl;
+                        }
+                        return loaded;
+                    } else {
+                        std::cout << "[DeviceRegistry] No cache file for " << cacheName << " (first run)" << std::endl;
+                        return true;  // Not an error
+                    }
+                }
+            ));
+        }
+    }
+
+    // Wait for all loads to complete
+    bool success = true;
+    for (auto& future : futures) {
+        success &= future.get();
+    }
+
+    return success;
 }
 
 void DeviceRegistry::OnInitialize() {

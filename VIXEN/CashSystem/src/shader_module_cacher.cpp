@@ -334,18 +334,212 @@ void ShaderModuleCacher::Cleanup() {
 }
 
 bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) const {
-    // TODO: Implement serialization of shader modules
-    // For now, return true (no-op)
-    (void)path;
-    return true;
+    try {
+        std::ofstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            std::cerr << "[ShaderModuleCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+            return false;
+        }
+
+        std::cout << "[ShaderModuleCacher::SerializeToFile] Saving " << m_entries.size() << " shader modules to " << path << std::endl;
+
+        // Write header: version + entry count
+        uint32_t version = 1;
+        uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
+        file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        file.write(reinterpret_cast<const char*>(&entryCount), sizeof(entryCount));
+
+        // Write each cache entry
+        for (const auto& [key, entry] : m_entries) {
+            if (!entry.resource || entry.resource->spirvCode.empty()) {
+                continue;  // Skip invalid entries
+            }
+
+            // Write cache key
+            file.write(reinterpret_cast<const char*>(&key), sizeof(key));
+
+            // Write creation params
+            const auto& ci = entry.ci;
+
+            // sourcePath
+            uint32_t sourcePathLen = static_cast<uint32_t>(ci.sourcePath.size());
+            file.write(reinterpret_cast<const char*>(&sourcePathLen), sizeof(sourcePathLen));
+            file.write(ci.sourcePath.data(), sourcePathLen);
+
+            // entryPoint
+            uint32_t entryPointLen = static_cast<uint32_t>(ci.entryPoint.size());
+            file.write(reinterpret_cast<const char*>(&entryPointLen), sizeof(entryPointLen));
+            file.write(ci.entryPoint.data(), entryPointLen);
+
+            // shader stage
+            file.write(reinterpret_cast<const char*>(&ci.stage), sizeof(ci.stage));
+
+            // shaderName
+            uint32_t shaderNameLen = static_cast<uint32_t>(ci.shaderName.size());
+            file.write(reinterpret_cast<const char*>(&shaderNameLen), sizeof(shaderNameLen));
+            file.write(ci.shaderName.data(), shaderNameLen);
+
+            // sourceChecksum
+            uint32_t checksumLen = static_cast<uint32_t>(ci.sourceChecksum.size());
+            file.write(reinterpret_cast<const char*>(&checksumLen), sizeof(checksumLen));
+            file.write(ci.sourceChecksum.data(), checksumLen);
+
+            // macroDefinitions count
+            uint32_t macroCount = static_cast<uint32_t>(ci.macroDefinitions.size());
+            file.write(reinterpret_cast<const char*>(&macroCount), sizeof(macroCount));
+            for (const auto& macro : ci.macroDefinitions) {
+                uint32_t macroLen = static_cast<uint32_t>(macro.size());
+                file.write(reinterpret_cast<const char*>(&macroLen), sizeof(macroLen));
+                file.write(macro.data(), macroLen);
+            }
+
+            // Write SPIR-V bytecode
+            uint32_t spirvSize = static_cast<uint32_t>(entry.resource->spirvCode.size());
+            file.write(reinterpret_cast<const char*>(&spirvSize), sizeof(spirvSize));
+            file.write(reinterpret_cast<const char*>(entry.resource->spirvCode.data()),
+                       spirvSize * sizeof(uint32_t));
+        }
+
+        file.close();
+        std::cout << "[ShaderModuleCacher::SerializeToFile] Successfully saved cache" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[ShaderModuleCacher::SerializeToFile] Exception: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 bool ShaderModuleCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    // TODO: Implement deserialization of shader modules
-    // For now, return true (no-op)
-    (void)path;
-    (void)device;
-    return true;
+    try {
+        if (!std::filesystem::exists(path)) {
+            std::cout << "[ShaderModuleCacher::DeserializeFromFile] Cache file doesn't exist: " << path << std::endl;
+            return true;  // Not an error, just no cache to load
+        }
+
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+            return false;
+        }
+
+        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Loading cache from " << path << std::endl;
+
+        // Read header
+        uint32_t version = 0;
+        uint32_t entryCount = 0;
+        file.read(reinterpret_cast<char*>(&version), sizeof(version));
+        file.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
+
+        if (version != 1) {
+            std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Unsupported cache version: " << version << std::endl;
+            return false;
+        }
+
+        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Loading " << entryCount << " shader modules" << std::endl;
+
+        // Read each entry
+        for (uint32_t i = 0; i < entryCount; ++i) {
+            // Read cache key
+            std::uint64_t key = 0;
+            file.read(reinterpret_cast<char*>(&key), sizeof(key));
+
+            // Read creation params
+            ShaderModuleCreateParams ci;
+
+            // sourcePath
+            uint32_t sourcePathLen = 0;
+            file.read(reinterpret_cast<char*>(&sourcePathLen), sizeof(sourcePathLen));
+            ci.sourcePath.resize(sourcePathLen);
+            file.read(ci.sourcePath.data(), sourcePathLen);
+
+            // entryPoint
+            uint32_t entryPointLen = 0;
+            file.read(reinterpret_cast<char*>(&entryPointLen), sizeof(entryPointLen));
+            ci.entryPoint.resize(entryPointLen);
+            file.read(ci.entryPoint.data(), entryPointLen);
+
+            // shader stage
+            file.read(reinterpret_cast<char*>(&ci.stage), sizeof(ci.stage));
+
+            // shaderName
+            uint32_t shaderNameLen = 0;
+            file.read(reinterpret_cast<char*>(&shaderNameLen), sizeof(shaderNameLen));
+            ci.shaderName.resize(shaderNameLen);
+            file.read(ci.shaderName.data(), shaderNameLen);
+
+            // sourceChecksum
+            uint32_t checksumLen = 0;
+            file.read(reinterpret_cast<char*>(&checksumLen), sizeof(checksumLen));
+            ci.sourceChecksum.resize(checksumLen);
+            file.read(ci.sourceChecksum.data(), checksumLen);
+
+            // macroDefinitions
+            uint32_t macroCount = 0;
+            file.read(reinterpret_cast<char*>(&macroCount), sizeof(macroCount));
+            ci.macroDefinitions.resize(macroCount);
+            for (uint32_t m = 0; m < macroCount; ++m) {
+                uint32_t macroLen = 0;
+                file.read(reinterpret_cast<char*>(&macroLen), sizeof(macroLen));
+                ci.macroDefinitions[m].resize(macroLen);
+                file.read(ci.macroDefinitions[m].data(), macroLen);
+            }
+
+            // Read SPIR-V bytecode
+            uint32_t spirvSize = 0;
+            file.read(reinterpret_cast<char*>(&spirvSize), sizeof(spirvSize));
+            std::vector<uint32_t> spirvCode(spirvSize);
+            file.read(reinterpret_cast<char*>(spirvCode.data()), spirvSize * sizeof(uint32_t));
+
+            // Create wrapper and recreate VkShaderModule
+            auto wrapper = std::make_shared<ShaderModuleWrapper>();
+            wrapper->shaderName = ci.shaderName;
+            wrapper->stage = ci.stage;
+            wrapper->sourcePath = ci.sourcePath;
+            wrapper->entryPoint = ci.entryPoint;
+            wrapper->macroDefinitions = ci.macroDefinitions;
+            wrapper->spirvCode = std::move(spirvCode);
+
+            // Recreate VkShaderModule if device available
+            if (GetDevice() && !wrapper->spirvCode.empty()) {
+                VkShaderModuleCreateInfo moduleCreateInfo{};
+                moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+                moduleCreateInfo.codeSize = wrapper->spirvCode.size() * sizeof(uint32_t);
+                moduleCreateInfo.pCode = wrapper->spirvCode.data();
+
+                VkResult result = vkCreateShaderModule(
+                    GetDevice()->device,
+                    &moduleCreateInfo,
+                    nullptr,
+                    &wrapper->shaderModule
+                );
+
+                if (result != VK_SUCCESS) {
+                    std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Failed to recreate VkShaderModule for "
+                              << ci.shaderName << std::endl;
+                    continue;  // Skip this entry
+                }
+            }
+
+            // Insert into cache
+            CacheEntry entry;
+            entry.key = key;
+            entry.ci = std::move(ci);
+            entry.resource = wrapper;
+
+            std::unique_lock lock(m_lock);
+            m_entries.emplace(key, std::move(entry));
+        }
+
+        file.close();
+        std::cout << "[ShaderModuleCacher::DeserializeFromFile] Successfully loaded " << m_entries.size()
+                  << " shader modules from cache" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[ShaderModuleCacher::DeserializeFromFile] Exception: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 } // namespace CashSystem
