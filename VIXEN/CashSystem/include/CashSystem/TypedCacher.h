@@ -127,6 +127,12 @@ public:
         m_pending.clear();
     }
 
+    void Cleanup() override {
+        // Default implementation: just clear the cache
+        // Derived classes should override to destroy Vulkan resources before clearing
+        Clear();
+    }
+
     bool SerializeToFile(const std::filesystem::path& path) const override {
         // default stub: derived classes should override if they need real serialization
         (void)path;

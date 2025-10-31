@@ -106,6 +106,17 @@ std::shared_ptr<ShaderModuleWrapper> ShaderModuleCacher::GetOrCreateFromSpirv(
     std::cout << "[ShaderModuleCacher]   entryPoint=" << entryPoint << std::endl;
     std::cout << "[ShaderModuleCacher]   stage=" << stage << std::endl;
 
+    // Debug: Check SPIR-V header (first 5 words)
+    if (spirvCode.size() >= 5) {
+        std::cout << "[ShaderModuleCacher]   SPIR-V header: magic=" << std::hex << spirvCode[0]
+                  << " version=" << spirvCode[1]
+                  << " generator=" << spirvCode[2]
+                  << " bound=" << spirvCode[3]
+                  << " schema=" << spirvCode[4] << std::dec << std::endl;
+    } else {
+        std::cout << "[ShaderModuleCacher]   ERROR: SPIR-V too small (< 5 words)" << std::endl;
+    }
+
     // Compute hash of SPIR-V code for cache key
     std::uint64_t spirvHash = 14695981039346656037ULL;
     for (uint32_t word : spirvCode) {
@@ -299,6 +310,27 @@ void ShaderModuleCacher::CompileShader(const ShaderModuleCreateParams& ci, Shade
         std::cout << "[ShaderModuleCacher::CompileShader] EXCEPTION: " << e.what() << std::endl;
         throw std::runtime_error("Shader compilation failed for " + ci.shaderName + ": " + e.what());
     }
+}
+
+void ShaderModuleCacher::Cleanup() {
+    std::cout << "[ShaderModuleCacher::Cleanup] Cleaning up " << m_entries.size() << " cached shader modules" << std::endl;
+
+    // Destroy all cached VkShaderModule handles
+    if (GetDevice()) {
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource && entry.resource->shaderModule != VK_NULL_HANDLE) {
+                std::cout << "[ShaderModuleCacher::Cleanup] Destroying VkShaderModule: "
+                          << reinterpret_cast<uint64_t>(entry.resource->shaderModule) << std::endl;
+                vkDestroyShaderModule(GetDevice()->device, entry.resource->shaderModule, nullptr);
+                entry.resource->shaderModule = VK_NULL_HANDLE;
+            }
+        }
+    }
+
+    // Clear the cache entries after destroying resources
+    Clear();
+
+    std::cout << "[ShaderModuleCacher::Cleanup] Cleanup complete" << std::endl;
 }
 
 bool ShaderModuleCacher::SerializeToFile(const std::filesystem::path& path) const {

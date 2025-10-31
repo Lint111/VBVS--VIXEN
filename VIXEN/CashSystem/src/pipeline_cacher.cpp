@@ -9,6 +9,41 @@
 
 namespace CashSystem {
 
+void PipelineCacher::Cleanup() {
+    std::cout << "[PipelineCacher::Cleanup] Cleaning up " << m_entries.size() << " cached pipelines" << std::endl;
+
+    // Destroy all cached Vulkan resources
+    if (GetDevice()) {
+        for (auto& [key, entry] : m_entries) {
+            if (entry.resource) {
+                if (entry.resource->pipeline != VK_NULL_HANDLE) {
+                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipeline: "
+                              << reinterpret_cast<uint64_t>(entry.resource->pipeline) << std::endl;
+                    vkDestroyPipeline(GetDevice()->device, entry.resource->pipeline, nullptr);
+                    entry.resource->pipeline = VK_NULL_HANDLE;
+                }
+                if (entry.resource->layout != VK_NULL_HANDLE) {
+                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineLayout: "
+                              << reinterpret_cast<uint64_t>(entry.resource->layout) << std::endl;
+                    vkDestroyPipelineLayout(GetDevice()->device, entry.resource->layout, nullptr);
+                    entry.resource->layout = VK_NULL_HANDLE;
+                }
+                if (entry.resource->cache != VK_NULL_HANDLE) {
+                    std::cout << "[PipelineCacher::Cleanup] Destroying VkPipelineCache: "
+                              << reinterpret_cast<uint64_t>(entry.resource->cache) << std::endl;
+                    vkDestroyPipelineCache(GetDevice()->device, entry.resource->cache, nullptr);
+                    entry.resource->cache = VK_NULL_HANDLE;
+                }
+            }
+        }
+    }
+
+    // Clear the cache entries after destroying resources
+    Clear();
+
+    std::cout << "[PipelineCacher::Cleanup] Cleanup complete" << std::endl;
+}
+
 std::shared_ptr<PipelineWrapper> PipelineCacher::GetOrCreate(const PipelineCreateParams& ci) {
     auto key = ComputeKey(ci);
     std::string pipelineName = ci.vertexShaderKey + "+" + ci.fragmentShaderKey;
@@ -102,10 +137,14 @@ std::uint64_t PipelineCacher::ComputeKey(const PipelineCreateParams& ci) const {
               << ci.cullMode << "|"
               << ci.polygonMode << "|"
               << ci.topology;
-    
+
     // Use hash function to create 64-bit key
     const std::string keyString = keyStream.str();
-    return std::hash<std::string>{}(keyString);
+    std::uint64_t hash = std::hash<std::string>{}(keyString);
+
+    std::cout << "[PipelineCacher::ComputeKey] keyString=\"" << keyString << "\" hash=" << hash << std::endl;
+
+    return hash;
 }
 
 void PipelineCacher::CreatePipeline(const PipelineCreateParams& ci, PipelineWrapper& wrapper) {

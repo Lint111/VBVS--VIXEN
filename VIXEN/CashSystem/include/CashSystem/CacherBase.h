@@ -25,6 +25,10 @@ public:
     virtual void Erase(std::uint64_t key) = 0;
     virtual void Clear() = 0;
 
+    // Cleanup all Vulkan resources owned by this cacher
+    // Called by MainCacher during device cleanup or application shutdown
+    virtual void Cleanup() = 0;
+
     // Persist in-memory cache to disk at path
     virtual bool SerializeToFile(const std::filesystem::path& path) const = 0;
 

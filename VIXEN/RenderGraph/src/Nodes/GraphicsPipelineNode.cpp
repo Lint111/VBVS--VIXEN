@@ -129,19 +129,30 @@ void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void GraphicsPipelineNode::CleanupImpl() {
-    if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        vkDestroyPipeline(device->device, pipeline, nullptr);
-        pipeline = VK_NULL_HANDLE;
-    }
+    // If we have a cached pipeline wrapper, just release the shared_ptr
+    // The cacher owns the Vulkan resources and will destroy them when appropriate
+    if (cachedPipelineWrapper) {
+        std::cout << "[GraphicsPipelineNode::CleanupImpl] Releasing cached pipeline wrapper (cacher owns resources)" << std::endl;
+        cachedPipelineWrapper.reset();
+    } else {
+        // Fallback: cleanup locally-created pipeline (if created without cacher)
+        if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline" << std::endl;
+            vkDestroyPipeline(device->device, pipeline, nullptr);
+            pipeline = VK_NULL_HANDLE;
+        }
 
-    if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
-        pipelineLayout = VK_NULL_HANDLE;
-    }
+        if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline layout" << std::endl;
+            vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
+            pipelineLayout = VK_NULL_HANDLE;
+        }
 
-    if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
-        pipelineCache = VK_NULL_HANDLE;
+        if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline cache" << std::endl;
+            vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
+            pipelineCache = VK_NULL_HANDLE;
+        }
     }
 }
 
@@ -478,8 +489,9 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
         params.renderPass = renderPass;
         params.vertexShaderKey = "Draw.vert";
         params.fragmentShaderKey = "Draw.frag";
-        params.layoutKey = std::to_string(reinterpret_cast<uint64_t>(pipelineLayout));
-        params.renderPassKey = std::to_string(reinterpret_cast<uint64_t>(renderPass));
+        // Use semantic keys instead of handle addresses for stable caching across recompiles
+        params.layoutKey = "main_pipeline_layout";
+        params.renderPassKey = "main_render_pass";
         params.enableDepthTest = enableDepthTest;
         params.enableDepthWrite = enableDepthWrite;
         params.cullMode = cullMode;
@@ -488,13 +500,18 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
         params.vertexBindings = vertexBindings;
         params.vertexAttributes = vertexAttributes;
 
+        std::cout << "[GraphicsPipelineNode] Pipeline params: depth=" << enableDepthTest
+                  << " depthWrite=" << enableDepthWrite << " cull=" << cullMode
+                  << " polyMode=" << polygonMode << " topo=" << topology << std::endl;
+
         try {
             // Use cacher to get or create pipeline
-            auto cachedPipeline = pipelineCacher->GetOrCreate(params);
+            cachedPipelineWrapper = pipelineCacher->GetOrCreate(params);
 
-            if (cachedPipeline && cachedPipeline->pipeline != VK_NULL_HANDLE) {
-                pipeline = cachedPipeline->pipeline;
-                pipelineCache = cachedPipeline->cache;
+            if (cachedPipelineWrapper && cachedPipelineWrapper->pipeline != VK_NULL_HANDLE) {
+                pipeline = cachedPipelineWrapper->pipeline;
+                pipelineCache = cachedPipelineWrapper->cache;
+                pipelineLayout = cachedPipelineWrapper->layout;
                 NODE_LOG_INFO("GraphicsPipelineNode: Pipeline retrieved from cacher (cache hit or newly created)");
                 return;
             }

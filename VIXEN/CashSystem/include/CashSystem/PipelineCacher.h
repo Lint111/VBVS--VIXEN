@@ -106,6 +106,9 @@ protected:
     std::shared_ptr<PipelineWrapper> Create(const PipelineCreateParams& ci) override;
     std::uint64_t ComputeKey(const PipelineCreateParams& ci) const override;
 
+    // Resource cleanup
+    void Cleanup() override;
+
     // Serialization
     bool SerializeToFile(const std::filesystem::path& path) const override;
     bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;

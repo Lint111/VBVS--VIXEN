@@ -7,6 +7,7 @@
 // Forward declarations
 namespace CashSystem {
     class PipelineCacher;
+    struct PipelineWrapper;
 }
 
 namespace Vixen::RenderGraph {
@@ -82,6 +83,7 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::PipelineCacher* pipelineCacher = nullptr;
+    std::shared_ptr<CashSystem::PipelineWrapper> cachedPipelineWrapper;
 };
 
 } // namespace Vixen::RenderGraph

@@ -294,9 +294,9 @@ void ShaderLibraryNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void ShaderLibraryNode::CleanupImpl() {
-    NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - destroying VulkanShader wrapper");
+    NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - releasing resources");
 
-    // Cleanup VulkanShader wrapper (shader modules themselves are owned by CashSystem)
+    // Cleanup VulkanShader wrapper (don't destroy modules - they're in cacher)
     if (vulkanShader) {
         // Note: Don't call DestroyShader() - modules are managed by CashSystem cacher
         delete vulkanShader;
@@ -304,7 +304,8 @@ void ShaderLibraryNode::CleanupImpl() {
         NODE_LOG_DEBUG("ShaderLibraryNode: VulkanShader wrapper destroyed");
     }
 
-    // CashSystem-managed shader modules will be cleaned up by the cacher
+    // Release shared_ptrs (cacher owns the VkShaderModule handles and will destroy them)
+    std::cout << "[ShaderLibraryNode::CleanupImpl] Releasing shader module references (cacher owns resources)" << std::endl;
     vertexShader.reset();
     fragmentShader.reset();
 
