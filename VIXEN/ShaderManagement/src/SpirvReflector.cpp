@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 
 namespace ShaderManagement {
 
@@ -463,6 +464,103 @@ void SpirvReflector::ReflectPushConstants(
     }
 }
 
+/**
+ * @brief Convert SpirvTypeInfo to VkFormat for vertex attributes
+ */
+VkFormat ConvertTypeToVkFormat(const SpirvTypeInfo& type) {
+    // Handle float types
+    if (type.baseType == SpirvTypeInfo::BaseType::Float) {
+        if (type.width == 32) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R32_SFLOAT;
+                case 2: return VK_FORMAT_R32G32_SFLOAT;
+                case 3: return VK_FORMAT_R32G32B32_SFLOAT;
+                case 4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+            }
+        } else if (type.width == 64) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R64_SFLOAT;
+                case 2: return VK_FORMAT_R64G64_SFLOAT;
+                case 3: return VK_FORMAT_R64G64B64_SFLOAT;
+                case 4: return VK_FORMAT_R64G64B64A64_SFLOAT;
+            }
+        } else if (type.width == 16) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R16_SFLOAT;
+                case 2: return VK_FORMAT_R16G16_SFLOAT;
+                case 3: return VK_FORMAT_R16G16B16_SFLOAT;
+                case 4: return VK_FORMAT_R16G16B16A16_SFLOAT;
+            }
+        }
+    }
+    // Handle signed int types
+    else if (type.baseType == SpirvTypeInfo::BaseType::Int) {
+        if (type.width == 32) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R32_SINT;
+                case 2: return VK_FORMAT_R32G32_SINT;
+                case 3: return VK_FORMAT_R32G32B32_SINT;
+                case 4: return VK_FORMAT_R32G32B32A32_SINT;
+            }
+        } else if (type.width == 16) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R16_SINT;
+                case 2: return VK_FORMAT_R16G16_SINT;
+                case 3: return VK_FORMAT_R16G16B16_SINT;
+                case 4: return VK_FORMAT_R16G16B16A16_SINT;
+            }
+        } else if (type.width == 8) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R8_SINT;
+                case 2: return VK_FORMAT_R8G8_SINT;
+                case 3: return VK_FORMAT_R8G8B8_SINT;
+                case 4: return VK_FORMAT_R8G8B8A8_SINT;
+            }
+        }
+    }
+    // Handle unsigned int types
+    else if (type.baseType == SpirvTypeInfo::BaseType::UInt) {
+        if (type.width == 32) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R32_UINT;
+                case 2: return VK_FORMAT_R32G32_UINT;
+                case 3: return VK_FORMAT_R32G32B32_UINT;
+                case 4: return VK_FORMAT_R32G32B32A32_UINT;
+            }
+        } else if (type.width == 16) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R16_UINT;
+                case 2: return VK_FORMAT_R16G16_UINT;
+                case 3: return VK_FORMAT_R16G16B16_UINT;
+                case 4: return VK_FORMAT_R16G16B16A16_UINT;
+            }
+        } else if (type.width == 8) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R8_UINT;
+                case 2: return VK_FORMAT_R8G8_UINT;
+                case 3: return VK_FORMAT_R8G8B8_UINT;
+                case 4: return VK_FORMAT_R8G8B8A8_UINT;
+            }
+        }
+    }
+    // Handle vector types (already handled above via vecSize)
+    else if (type.baseType == SpirvTypeInfo::BaseType::Vector) {
+        // Recursively determine format based on the vector's element type
+        // For now, assume float vectors as most common case
+        if (type.width == 32) {
+            switch (type.vecSize) {
+                case 1: return VK_FORMAT_R32_SFLOAT;
+                case 2: return VK_FORMAT_R32G32_SFLOAT;
+                case 3: return VK_FORMAT_R32G32B32_SFLOAT;
+                case 4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+            }
+        }
+    }
+
+    // Default fallback
+    return VK_FORMAT_R32G32B32A32_SFLOAT;
+}
+
 void SpirvReflector::ReflectVertexInputs(
     ::SpvReflectShaderModule& module,
     SpirvReflectionData& data
@@ -492,9 +590,13 @@ void SpirvReflector::ReflectVertexInputs(
         vertexInput.name = input->name ? input->name : "";
         vertexInput.type = ConvertType(input->type_description);
 
-        // Convert to VkFormat (simplified)
-        // TODO: More comprehensive format mapping
-        vertexInput.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        // SPIRV-Reflect provides VkFormat directly - use it!
+        vertexInput.format = static_cast<VkFormat>(input->format);
+
+        std::cout << "[SpirvReflector::ReflectVertexInputs] location=" << input->location
+                  << " name=" << (input->name ? input->name : "unnamed")
+                  << " format=" << vertexInput.format
+                  << " (from SPIRV-Reflect)" << std::endl;
 
         data.vertexInputs.push_back(vertexInput);
     }

@@ -283,6 +283,11 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     // Check if reflection data is available
     bool hasReflection = (bundle && bundle->reflectionData && !bundle->GetVertexInputs().empty());
 
+    std::cout << "[BuildVertexInputsFromReflection] bundle=" << (bundle ? "valid" : "null")
+              << " reflectionData=" << (bundle && bundle->reflectionData ? "valid" : "null")
+              << " vertexInputCount=" << (bundle ? bundle->GetVertexInputs().size() : 0)
+              << " hasReflection=" << hasReflection << std::endl;
+
     if (hasReflection) {
         // Build from reflection
         const auto& vertexInputs = bundle->GetVertexInputs();
@@ -332,6 +337,7 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
                      std::to_string(currentOffset) + " bytes");
     } else {
         // Hardcoded fallback for current Draw shader (vec4 pos + vec2 uv)
+        std::cout << "[GraphicsPipelineNode::BuildVertexInputsFromReflection] No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)" << std::endl;
         NODE_LOG_WARNING("GraphicsPipelineNode: No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)");
 
         VkVertexInputBindingDescription binding{};
@@ -607,8 +613,23 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
         std::vector<VkVertexInputBindingDescription> vertexBindings;
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
 
+        std::cout << "[GraphicsPipelineNode] enableVertexInput=" << enableVertexInput << std::endl;
         if (enableVertexInput) {
+            std::cout << "[GraphicsPipelineNode] Calling BuildVertexInputsFromReflection..." << std::endl;
             BuildVertexInputsFromReflection(currentShaderBundle, vertexBindings, vertexAttributes);
+            std::cout << "[GraphicsPipelineNode] BuildVertexInputsFromReflection complete: "
+                      << vertexBindings.size() << " bindings, "
+                      << vertexAttributes.size() << " attributes" << std::endl;
+
+            // Log details
+            for (const auto& binding : vertexBindings) {
+                std::cout << "  Binding " << binding.binding << ": stride=" << binding.stride
+                          << " inputRate=" << binding.inputRate << std::endl;
+            }
+            for (const auto& attr : vertexAttributes) {
+                std::cout << "  Attribute location=" << attr.location << " binding=" << attr.binding
+                          << " format=" << attr.format << " offset=" << attr.offset << std::endl;
+            }
         }
 
         // Setup pipeline create params for cacher
