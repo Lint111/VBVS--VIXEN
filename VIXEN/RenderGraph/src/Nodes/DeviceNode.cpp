@@ -115,6 +115,11 @@ void DeviceNode::Compile() {
     // Create logical device using VulkanDevice wrapper
     CreateLogicalDevice();
 
+    // Register device with MainCacher to create device registry
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    mainCacher.GetOrCreateDeviceRegistry(vulkanDevice.get());
+    NODE_LOG_INFO("[DeviceNode] Registered device with MainCacher");
+
     // Store outputs - output VulkanDevice pointer (contains device, gpu, memory properties, queues, etc.)
     Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());
     Out(DeviceNodeConfig::INSTANCE, instance);
@@ -131,13 +136,23 @@ void DeviceNode::Execute(VkCommandBuffer commandBuffer) {
 }
 
 void DeviceNode::CleanupImpl() {
-    NODE_LOG_INFO("[DeviceNode] Cleanup");
+    NODE_LOG_INFO("[DeviceNode] Cleanup: Cleaning device-dependent caches");
+
+    // Cleanup all device-dependent caches BEFORE destroying the device
+    // DeviceNode manages the device lifecycle, so it's responsible for cache cleanup
+    if (vulkanDevice) {
+        auto& mainCacher = GetOwningGraph()->GetMainCacher();
+        mainCacher.ClearDeviceCaches(vulkanDevice.get());
+        NODE_LOG_INFO("[DeviceNode] Cleared device-dependent caches for device");
+    }
 
     // VulkanDevice destructor handles device destruction
     vulkanDevice.reset();
 
     availableGPUs.clear();
     instance = VK_NULL_HANDLE;
+
+    NODE_LOG_INFO("[DeviceNode] Cleanup complete");
 }
 
 // ============================================================================

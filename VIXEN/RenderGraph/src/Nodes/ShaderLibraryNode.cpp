@@ -283,6 +283,9 @@ void ShaderLibraryNode::Compile() {
     // Output VulkanShader wrapper for GraphicsPipelineNode (Phase 1)
     Out(ShaderLibraryNodeConfig::VULKAN_SHADER, vulkanShader);
 
+    // Output ShaderDataBundle for DescriptorSetNode (Phase 2)
+    Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
+
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for pipeline node");
 
     // Register cleanup

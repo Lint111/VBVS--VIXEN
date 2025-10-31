@@ -93,6 +93,12 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    // Note: Device-dependent cache cleanup happens in DeviceNode::CleanupImpl()
+    // Only cleanup global (device-independent) caches here
+    if (mainCacher) {
+        mainCacher->CleanupGlobalCaches();
+    }
+
     // Unsubscribe from events
     if (messageBus) {
         if (cleanupEventSubscription != 0) {

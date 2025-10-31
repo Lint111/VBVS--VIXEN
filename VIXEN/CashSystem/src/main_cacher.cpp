@@ -15,28 +15,19 @@ MainCacher& MainCacher::Instance() {
     return instance;
 }
 
-MainCacher::~MainCacher() {
-    // Cleanup all device-dependent cachers first
-    {
-        std::lock_guard lock(m_deviceRegistriesMutex);
-        for (auto& [deviceId, deviceRegistry] : m_deviceRegistries) {
-            for (auto& cacher : deviceRegistry.m_deviceCachers) {
-                if (cacher) {
-                    cacher->Cleanup();
-                }
-            }
-        }
-    }
-
+void MainCacher::CleanupGlobalCaches() {
     // Cleanup all device-independent cachers
-    {
-        std::lock_guard lock(m_globalRegistryMutex);
-        for (auto& [typeIndex, cacher] : m_globalCachers) {
-            if (cacher) {
-                cacher->Cleanup();
-            }
+    std::lock_guard lock(m_globalRegistryMutex);
+    for (auto& [typeIndex, cacher] : m_globalCachers) {
+        if (cacher) {
+            cacher->Cleanup();
         }
     }
+}
+
+MainCacher::~MainCacher() {
+    // Cleanup global caches if not already done
+    CleanupGlobalCaches();
 
     // Unsubscribe from message bus
     if (m_messageBus && m_deviceInvalidationSubscription != 0) {

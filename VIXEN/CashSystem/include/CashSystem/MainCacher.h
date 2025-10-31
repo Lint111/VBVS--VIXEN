@@ -62,6 +62,14 @@ public:
     void Initialize(Vixen::EventBus::MessageBus* messageBus = nullptr);
 
     /**
+     * @brief Cleanup device-independent (global) caches
+     *
+     * Called during RenderGraph shutdown to cleanup global shared resources.
+     * Note: Device-dependent caches are cleaned up by DeviceNode::CleanupImpl().
+     */
+    void CleanupGlobalCaches();
+
+    /**
      * @brief Register a new cacher factory for a specific resource type
      * 
      * @tparam CacherT The specific cacher type (e.g., ShaderModuleCacher, ShaderCompilationCacher)
@@ -273,15 +281,29 @@ public:
 
     /**
      * @brief Clear all caches for a specific device
+     *
+     * Calls Cleanup() on all device-dependent cachers for this device,
+     * then removes the device registry.
      */
     void ClearDeviceCaches(Vixen::Vulkan::Resources::VulkanDevice* device) {
         if (!device) {
             return;
         }
-        
+
         std::lock_guard lock(m_deviceRegistriesMutex);
         auto deviceId = DeviceIdentifier(device);
-        m_deviceRegistries.erase(deviceId);
+
+        auto it = m_deviceRegistries.find(deviceId);
+        if (it != m_deviceRegistries.end()) {
+            // Call Cleanup() on all cachers in this device registry
+            for (auto& cacher : it->second.m_deviceCachers) {
+                if (cacher) {
+                    cacher->Cleanup();
+                }
+            }
+            // Now erase the registry
+            m_deviceRegistries.erase(it);
+        }
     }
 
     /**
@@ -419,6 +441,18 @@ public:
         return stats;
     }
 
+    /**
+     * @brief Get or create a device registry for the specified device
+     *
+     * This should be called by DeviceNode during Compile() to register the device
+     * with the caching system. It creates a device registry that will hold all
+     * device-dependent cachers for this device.
+     *
+     * @param device VulkanDevice pointer
+     * @return Reference to the device registry
+     */
+    DeviceRegistry& GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device);
+
     /* Legacy compatibility - use GetCacher() template instead
     ShaderModuleCacher* GetShaderModuleCacher(Vixen::Vulkan::Resources::VulkanDevice* device = nullptr);
     TextureCacher* GetTextureCacher(Vixen::Vulkan::Resources::VulkanDevice* device = nullptr);
@@ -435,9 +469,8 @@ private:
     // Event bus integration for device invalidation
     Vixen::EventBus::MessageBus* m_messageBus = nullptr;
     Vixen::EventBus::EventSubscriptionID m_deviceInvalidationSubscription = 0;
-    
-    // Device registry management
-    DeviceRegistry& GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device);
+
+    // Device registry management (private overload)
     DeviceRegistry& GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId);
     
     // Global cache management
