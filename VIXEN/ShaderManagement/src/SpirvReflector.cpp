@@ -243,16 +243,16 @@ std::string SpirvTypeInfo::ToCppType() const {
             oss << (width == 64 ? "double" : "float");
             break;
         case BaseType::Vector:
-            // Use GLSL-style vector types (vec2, vec3, vec4)
+            // Use GLM vector types (glm::vec2, glm::vec3, glm::vec4)
             if (width == 32) {
-                oss << "vec" << vecSize;
+                oss << "glm::vec" << vecSize;
             } else {
-                oss << "dvec" << vecSize;
+                oss << "glm::dvec" << vecSize;
             }
             break;
         case BaseType::Matrix:
-            // Use GLSL-style matrix types (mat4, mat3x4, etc.)
-            oss << "mat";
+            // Use GLM matrix types (glm::mat4, glm::mat3x4, etc.)
+            oss << "glm::mat";
             if (columns != rows) {
                 oss << columns << "x" << rows;
             } else {

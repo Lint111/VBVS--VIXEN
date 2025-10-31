@@ -35,6 +35,7 @@ target_include_directories(RenderGraph PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../CashSystem/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../ShaderManagement/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../binaries  # Phase 5: For generated SDI headers
 )
 
 # Link dependencies

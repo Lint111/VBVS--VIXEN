@@ -11,17 +11,8 @@
 #include <cstring> // for memcpy
 #include <unordered_map>
 
-// Phase 3: Generated SDI headers (demonstration)
-// #include "generated/sdi/Draw_ShaderNames.h"
-// Usage example with generated constants:
-// - Descriptor binding: Draw_Shader::myBufferVals_SET, Draw_Shader::myBufferVals_BINDING
-// - Type constant: Draw_Shader::myBufferVals_TYPE (VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-// - Access generic interface: Draw_Shader::SDI::Set0::myBufferVals::SET
-//
-// Once UBO struct reflection is enhanced, usage will be:
-// Draw_Shader::BufferVals uboData;  // Strongly-typed struct from reflection
-// uboData.mvp = Projection * View * Model;
-// memcpy(uboMappedData, &uboData, sizeof(Draw_Shader::BufferVals));
+// Phase 5: Type-safe UBO updates with generated SDI headers
+#include "generated/sdi/Draw_ShaderNames.h"
 
 namespace Vixen::RenderGraph {
 
@@ -278,7 +269,7 @@ void DescriptorSetNode::Compile() {
         throw std::runtime_error("DescriptorSetNode: Failed to map UBO memory");
     }
     
-    // Write initial MVP transformation matching Learning Vulkan reference implementation
+    // Write initial MVP transformation using type-safe SDI struct
     glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
     glm::mat4 View = glm::lookAt(
         glm::vec3(10.0f, 3.0f, 10.0f),  // Camera in World Space
@@ -286,8 +277,11 @@ void DescriptorSetNode::Compile() {
         glm::vec3(0.0f, -1.0f, 0.0f)     // Up vector (Y-axis down)
     );
     glm::mat4 Model = glm::mat4(1.0f);
-    glm::mat4 MVP = Projection * View * Model;
-    memcpy(uboMappedData, &MVP, sizeof(glm::mat4));
+
+    // Phase 5: Type-safe UBO update using generated SDI struct
+    Draw_Shader::bufferVals ubo;
+    ubo.mvp = Projection * View * Model;
+    memcpy(uboMappedData, &ubo, sizeof(Draw_Shader::bufferVals));
     
     std::cout << "[DescriptorSetNode::Compile] Created UBO with persistent mapping: " << uboBuffer << std::endl;
     
@@ -384,10 +378,10 @@ void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
     Model = glm::rotate(Model, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f))      // Rotate around Y
           * glm::rotate(Model, rotationAngle, glm::vec3(1.0f, 1.0f, 1.0f));    // Rotate around diagonal
     
-    glm::mat4 MVP = Projection * View * Model;
-    
-    // Update UBO (HOST_COHERENT memory, no flush needed)
-    memcpy(uboMappedData, &MVP, sizeof(glm::mat4));
+    // Phase 5: Type-safe per-frame UBO update using generated SDI struct
+    Draw_Shader::bufferVals ubo;
+    ubo.mvp = Projection * View * Model;
+    memcpy(uboMappedData, &ubo, sizeof(Draw_Shader::bufferVals));
 }
 
 void DescriptorSetNode::CleanupImpl() {

@@ -73,6 +73,12 @@ std::string SanitizeName(const std::string& name) {
     std::replace(sanitized.begin(), sanitized.end(), ' ', '_');
     std::replace(sanitized.begin(), sanitized.end(), '-', '_');
     std::replace(sanitized.begin(), sanitized.end(), '.', '_');
+
+    // Ensure name doesn't start with a digit (for UUIDs)
+    if (!sanitized.empty() && std::isdigit(static_cast<unsigned char>(sanitized[0]))) {
+        sanitized = "_" + sanitized;
+    }
+
     return sanitized;
 }
 
@@ -300,6 +306,7 @@ std::string SpirvInterfaceGenerator::GenerateHeader(
     code << "\n";
     code << "#include <cstdint>\n";
     code << "#include <vulkan/vulkan.h>\n";
+    code << "#include <glm/glm.hpp>\n";
     code << "\n";
 
     return code.str();
@@ -467,6 +474,15 @@ std::string SpirvInterfaceGenerator::GeneratePushConstantInfo(
     code << "// ============================================================================\n";
     code << "\n";
 
+    // First, generate struct definitions for push constant data types
+    for (const auto& pushConst : data.pushConstants) {
+        if (!pushConst.structDef.name.empty()) {
+            code << GenerateStructDefinition(pushConst.structDef);
+            code << "\n";
+        }
+    }
+
+    // Then generate push constant info structs
     for (const auto& pushConst : data.pushConstants) {
         std::string name = SanitizeName(pushConst.name);
 
@@ -483,7 +499,9 @@ std::string SpirvInterfaceGenerator::GeneratePushConstantInfo(
         code << Indent(1) << "static constexpr uint32_t OFFSET = " << pushConst.offset << ";\n";
         code << Indent(1) << "static constexpr uint32_t SIZE = " << pushConst.size << ";\n";
         code << Indent(1) << "static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;\n";
-        code << Indent(1) << "using DataType = " << pushConst.structDef.name << ";\n";
+        if (!pushConst.structDef.name.empty()) {
+            code << Indent(1) << "using DataType = " << pushConst.structDef.name << ";\n";
+        }
         code << "};\n";
         code << "\n";
     }
