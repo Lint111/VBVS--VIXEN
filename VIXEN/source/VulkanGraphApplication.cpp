@@ -85,20 +85,8 @@ void VulkanGraphApplication::Initialize() {
     mainCacher.Initialize(messageBus.get());
     mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
 
-    // Load persistent caches from disk asynchronously (shader modules, pipelines, etc.)
-    std::filesystem::path cacheDir = "binaries/cache";
-    mainLogger->Info("Loading persistent caches asynchronously from: " + cacheDir.string());
-
-    auto loadFuture = mainCacher.LoadAllAsync(cacheDir);
-
-    // Wait for cache loading to complete before proceeding
-    bool loadSuccess = loadFuture.get();
-
-    if (loadSuccess) {
-        mainLogger->Info("Persistent caches loaded successfully");
-    } else {
-        mainLogger->Warning("Some persistent caches failed to load (will recreate)");
-    }
+    // NOTE: Cache loading will happen automatically when devices request cached resources
+    // This is because we need VulkanDevice to be created first before we can load caches
 
     // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
     renderGraph = std::make_unique<RenderGraph>(
@@ -272,14 +260,8 @@ void VulkanGraphApplication::DeInitialize() {
         mainLogger->ClearChildren();
     }
 
-    // Save persistent caches to disk before destroying Vulkan resources
-    std::filesystem::path cacheDir = "binaries/cache";
-    std::cout << "[DeInitialize] Saving persistent caches to: " << cacheDir.string() << std::endl;
-    auto& mainCacher = CashSystem::MainCacher::Instance();
-    mainCacher.SaveAll(cacheDir);
-    std::cout << "[DeInitialize] Persistent caches saved successfully" << std::endl;
-
     // CRITICAL: Destroy render graph (triggers CleanupStack execution) BEFORE base class destroys device
+    // NOTE: RenderGraph destructor handles cache saving automatically
     // This ensures all node-owned Vulkan resources (buffers, images, views, shaders) are destroyed
     // while the VkDevice is still valid.
     // Note: ConstantNode's cleanup callback will destroy the shader via registered callback

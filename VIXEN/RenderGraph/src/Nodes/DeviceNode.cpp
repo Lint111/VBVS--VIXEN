@@ -3,7 +3,14 @@
 #include "EventBus/Message.h"
 #include "EventBus/MessageBus.h"
 #include <iostream>
+#include <filesystem>
+#include <future>
 #include "Core/NodeLogging.h"
+#include "CashSystem/ShaderModuleCacher.h"
+#include "CashSystem/PipelineCacher.h"
+#include "CashSystem/PipelineLayoutCacher.h"
+#include "CashSystem/DescriptorSetLayoutCacher.h"
+#include "CashSystem/TextureCacher.h"
 
 extern VkInstance g_VulkanInstance;
 extern std::vector<const char*> deviceExtensionNames;
@@ -117,8 +124,11 @@ void DeviceNode::Compile() {
 
     // Register device with MainCacher to create device registry
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
-    mainCacher.GetOrCreateDeviceRegistry(vulkanDevice.get());
+    auto& deviceRegistry = mainCacher.GetOrCreateDeviceRegistry(vulkanDevice.get());
     NODE_LOG_INFO("[DeviceNode] Registered device with MainCacher");
+
+    // NOTE: Cache loading will happen AFTER graph compilation completes
+    // This ensures all nodes have registered their cachers first
 
     // Store outputs - output VulkanDevice pointer (contains device, gpu, memory properties, queues, etc.)
     Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());

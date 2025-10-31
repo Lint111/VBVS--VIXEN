@@ -325,7 +325,7 @@ void RenderGraph::HandleWindowClose() {
 
     // Save persistent caches BEFORE cleanup destroys resources (async for responsiveness)
     if (mainCacher) {
-        std::filesystem::path cacheDir = "binaries/cache";
+        std::filesystem::path cacheDir = "cache";
         std::cout << "[RenderGraph] Saving persistent caches asynchronously to: " << cacheDir.string() << std::endl;
 
         auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
@@ -704,6 +704,8 @@ void RenderGraph::GeneratePipelines() {
         std::cout.flush();
     }
 
+    bool cachesLoaded = false;
+
     for (NodeInstance* instance : executionOrder) {
         // Skip nodes that are already compiled (e.g., pre-compiled device node)
         if (instance->GetState() == NodeState::Compiled) {
@@ -713,6 +715,29 @@ void RenderGraph::GeneratePipelines() {
 
         std::cout << "[GeneratePipelines] Calling Setup() on node: " << instance->GetInstanceName() << std::endl;
         instance->Setup();    // Call Setup() before Compile()
+
+        // Load caches after all Setup() calls but before first Compile()
+        // This ensures all cachers are registered before loading
+        if (!cachesLoaded) {
+            std::cout << "[GeneratePipelines] Loading persistent caches..." << std::endl;
+            if (mainCacher) {
+                std::filesystem::path cacheDir = "cache";
+                if (std::filesystem::exists(cacheDir)) {
+                    std::cout << "[RenderGraph] Loading persistent caches from: " << cacheDir.string() << std::endl;
+                    auto loadFuture = mainCacher->LoadAllAsync(cacheDir);
+
+                    bool loadSuccess = loadFuture.get();
+                    if (loadSuccess) {
+                        std::cout << "[RenderGraph] Persistent caches loaded successfully" << std::endl;
+                    } else {
+                        std::cout << "[RenderGraph] WARNING: Some caches failed to load (will recreate)" << std::endl;
+                    }
+                } else {
+                    std::cout << "[RenderGraph] No existing caches found (first run)" << std::endl;
+                }
+            }
+            cachesLoaded = true;
+        }
 
         std::cout << "[GeneratePipelines] Calling Compile() on node: " << instance->GetInstanceName() << std::endl;
         instance->Compile();

@@ -63,7 +63,7 @@ void GeometryRenderNode::Setup() {
     if (!vulkanDevice) {
         throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
     }
-    
+
     commandPool = In(GeometryRenderNodeConfig::COMMAND_POOL);
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("GeometryRenderNode: CommandPool input is null");

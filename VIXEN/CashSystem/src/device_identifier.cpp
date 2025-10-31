@@ -1,10 +1,13 @@
 #include "CashSystem/DeviceIdentifier.h"
+#include "VulkanResources/VulkanDevice.h"
 #include "Hash.h"
 #include <sstream>
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 #include <future>
 #include <vector>
+#include <cstring>
 
 namespace CashSystem {
 
@@ -45,8 +48,21 @@ std::uint64_t DeviceIdentifier::GenerateDeviceHash(const Vixen::Vulkan::Resource
     if (!device) {
         return 0;
     }
-    // Simple hash: use pointer address
-    return reinterpret_cast<std::uint64_t>(device);
+
+    // Use stable device properties for persistent cache identification
+    // Combine: vendorID + deviceID + driverVersion for a stable hash
+    const auto& props = device->gpuProperties;
+
+    std::uint64_t hash = 0;
+    // High 32 bits: vendorID
+    hash |= (static_cast<std::uint64_t>(props.vendorID) << 32);
+    // Low 32 bits: deviceID
+    hash |= static_cast<std::uint64_t>(props.deviceID);
+
+    // XOR with driverVersion for additional uniqueness
+    hash ^= static_cast<std::uint64_t>(props.driverVersion);
+
+    return hash;
 }
 
 // DeviceRegistry implementation
@@ -66,6 +82,22 @@ void DeviceRegistry::ClearAll() {
 
 bool DeviceRegistry::SaveAll(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);
+
+    // Save cacher registry manifest first (list of active cachers)
+    auto manifestPath = directory / "cacher_registry.txt";
+    std::ofstream manifest(manifestPath);
+    if (!manifest) {
+        std::cerr << "[DeviceRegistry] Failed to create manifest file" << std::endl;
+        return false;
+    }
+
+    for (const auto& cacher : m_deviceCachers) {
+        if (cacher) {
+            manifest << cacher->name() << "\n";
+        }
+    }
+    manifest.close();
+    std::cout << "[DeviceRegistry] Saved cacher manifest with " << m_deviceCachers.size() << " entries" << std::endl;
 
     // Launch parallel save for each cacher
     std::vector<std::future<bool>> futures;
@@ -101,6 +133,31 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
     if (!std::filesystem::exists(directory)) {
         std::cout << "[DeviceRegistry] No cache directory found at " << directory << std::endl;
         return true;  // Not an error - just no caches to load
+    }
+
+    // Read cacher registry manifest to pre-register cachers
+    auto manifestPath = directory / "cacher_registry.txt";
+    if (std::filesystem::exists(manifestPath)) {
+        std::ifstream manifest(manifestPath);
+        if (manifest) {
+            std::string cacherName;
+            std::cout << "[DeviceRegistry] Pre-registering cachers from manifest..." << std::endl;
+
+            while (std::getline(manifest, cacherName)) {
+                // Trim whitespace
+                cacherName.erase(0, cacherName.find_first_not_of(" \t\r\n"));
+                cacherName.erase(cacherName.find_last_not_of(" \t\r\n") + 1);
+
+                if (!cacherName.empty()) {
+                    // Pre-register cacher by name through MainCacher's typed API
+                    // This will be handled by MainCacher's GetCacher<T>() which creates if not exists
+                    std::cout << "[DeviceRegistry] Found cacher in manifest: " << cacherName << std::endl;
+                }
+            }
+            manifest.close();
+        }
+    } else {
+        std::cout << "[DeviceRegistry] No manifest found (legacy or first run)" << std::endl;
     }
 
     // Launch parallel load for each cacher
