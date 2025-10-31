@@ -4,9 +4,11 @@
 #include "Core/NodeLogging.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/DescriptorCacher.h"
+#include <ShaderManagement/ShaderDataBundle.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstring> // for memcpy
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -68,7 +70,15 @@ void DescriptorSetNode::Setup() {
 }
 
 void DescriptorSetNode::Compile() {
-    NODE_LOG_INFO("Compile: DescriptorSetNode (creating descriptor set layout matching shader)");
+    NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
+
+    // Phase 2: Read ShaderDataBundle from input
+    auto shaderBundle = In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+    if (!shaderBundle) {
+        throw std::runtime_error("DescriptorSetNode: ShaderDataBundle input is null");
+    }
+
+    std::cout << "[DescriptorSetNode::Compile] Received ShaderDataBundle: " << shaderBundle->GetProgramName() << std::endl;
 
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
@@ -102,32 +112,43 @@ void DescriptorSetNode::Compile() {
         useCache = false;  // Not yet implemented
     }
 
+    // Phase 2: Extract descriptor sets from reflection (we'll use set 0 for now)
+    auto descriptorBindings = shaderBundle->GetDescriptorSet(0);
+
+    if (descriptorBindings.empty()) {
+        throw std::runtime_error("DescriptorSetNode: No descriptor bindings found in ShaderDataBundle set 0");
+    }
+
+    std::cout << "[DescriptorSetNode::Compile] Found " << descriptorBindings.size()
+              << " descriptor bindings in set 0" << std::endl;
+
     if (!useCache) {
-        // Manual creation (current MVP implementation)
-        // Create descriptor set layout matching shader requirements:
-        // - Binding 0: UBO (uniform buffer) for MVP matrix (vertex shader)
-        // - Binding 1: Combined image sampler for texture (fragment shader)
+        // Phase 2: Generate descriptor set layout from shader reflection data
+        // Convert SpirvDescriptorBinding to VkDescriptorSetLayoutBinding
+        std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+        vkBindings.reserve(descriptorBindings.size());
 
-        VkDescriptorSetLayoutBinding bindings[2] = {};
+        for (const auto& spirvBinding : descriptorBindings) {
+            VkDescriptorSetLayoutBinding vkBinding{};
+            vkBinding.binding = spirvBinding.binding;
+            vkBinding.descriptorType = spirvBinding.descriptorType;
+            vkBinding.descriptorCount = spirvBinding.descriptorCount;
+            vkBinding.stageFlags = spirvBinding.stageFlags;
+            vkBinding.pImmutableSamplers = nullptr;
 
-        // Binding 0: UBO for MVP matrix (std140, binding = 0 in vertex shader)
-        bindings[0].binding = 0;
-        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[0].descriptorCount = 1;
-        bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        bindings[0].pImmutableSamplers = nullptr;
+            vkBindings.push_back(vkBinding);
 
-        // Binding 1: Combined image sampler (binding = 1 in fragment shader)
-        bindings[1].binding = 1;
-        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        bindings[1].descriptorCount = 1;
-        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        bindings[1].pImmutableSamplers = nullptr;
+            std::cout << "[DescriptorSetNode::Compile] Binding " << vkBinding.binding
+                      << ": type=" << vkBinding.descriptorType
+                      << ", count=" << vkBinding.descriptorCount
+                      << ", stages=" << std::hex << vkBinding.stageFlags << std::dec
+                      << ", name=" << spirvBinding.name << std::endl;
+        }
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 2;
-        layoutInfo.pBindings = bindings;
+        layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+        layoutInfo.pBindings = vkBindings.data();
 
         VkResult result = vkCreateDescriptorSetLayout(
             device->device,
@@ -137,26 +158,38 @@ void DescriptorSetNode::Compile() {
         );
 
         if (result != VK_SUCCESS) {
-            throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout");
+            throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout from reflection");
         }
+
+        std::cout << "[DescriptorSetNode::Compile] Successfully created descriptor set layout from reflection" << std::endl;
     }
 
     // Continue with pool creation and descriptor allocation...
 
-    NODE_LOG_INFO("Compile: Descriptor set layout created with UBO + sampler bindings");
+    NODE_LOG_INFO("Compile: Descriptor set layout created from reflection");
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
-    // Create descriptor pool (MVP: allocate 1 descriptor set)
-    VkDescriptorPoolSize poolSizes[2] = {};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = 1;
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = 1;
+    // Phase 2: Create descriptor pool from reflection data
+    // Count descriptor types to create pool sizes
+    std::unordered_map<VkDescriptorType, uint32_t> descriptorTypeCounts;
+    for (const auto& spirvBinding : descriptorBindings) {
+        descriptorTypeCounts[spirvBinding.descriptorType] += spirvBinding.descriptorCount;
+    }
+
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    poolSizes.reserve(descriptorTypeCounts.size());
+    for (const auto& [type, count] : descriptorTypeCounts) {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = type;
+        poolSize.descriptorCount = count;
+        poolSizes.push_back(poolSize);
+        std::cout << "[DescriptorSetNode::Compile] Pool size: type=" << type << ", count=" << count << std::endl;
+    }
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 2;
-    poolInfo.pPoolSizes = poolSizes;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = 1; // MVP: Just one descriptor set
 
     VkResult result = vkCreateDescriptorPool(

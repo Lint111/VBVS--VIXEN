@@ -276,17 +276,13 @@ void ShaderLibraryNode::Compile() {
     // Output device (matches original behavior)
     Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    // Output shader modules for downstream nodes (Phase 1)
-    Out(ShaderLibraryNodeConfig::VERTEX_MODULE, vertexShader->shaderModule);
-    Out(ShaderLibraryNodeConfig::FRAGMENT_MODULE, fragmentShader->shaderModule);
-
-    // Output VulkanShader wrapper for GraphicsPipelineNode (Phase 1)
+    // Output VulkanShader wrapper for GraphicsPipelineNode (Phase 1 legacy - TODO: remove)
     Out(ShaderLibraryNodeConfig::VULKAN_SHADER, vulkanShader);
 
-    // Output ShaderDataBundle for DescriptorSetNode (Phase 2)
+    // Output ShaderDataBundle for reflection-based automation (Phase 2)
     Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
 
-    NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for pipeline node");
+    NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 
     // Register cleanup
     NodeInstance::RegisterCleanup();

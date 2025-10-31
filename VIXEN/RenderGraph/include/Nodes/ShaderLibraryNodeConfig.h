@@ -47,7 +47,7 @@ struct ShaderProgramDescriptor {
 // Compile-time slot counts (declared early for reuse)
 namespace ShaderLibraryNodeCounts {
     static constexpr size_t INPUTS = 1;
-    static constexpr size_t OUTPUTS = 6;  // Added vertex_module, fragment_module, vulkan_shader, and shader_data_bundle outputs
+    static constexpr size_t OUTPUTS = 3;  // Phase 2: device_out, vulkan_shader (legacy), shader_data_bundle
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -59,22 +59,15 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
 
-    // ===== OUTPUTS (6) =====
-    // Array of shader program descriptors
-    CONSTEXPR_OUTPUT(SHADER_PROGRAMS, ShaderProgramDescriptor*, 0, false);
-
+    // ===== OUTPUTS (3) =====
     // Device output
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0, false);
 
-    // Shader modules (Phase 1 integration with ShaderManagement)
-    CONSTEXPR_OUTPUT(VERTEX_MODULE, VkShaderModule, 2, false);
-    CONSTEXPR_OUTPUT(FRAGMENT_MODULE, VkShaderModule, 3, false);
-
-    // VulkanShader wrapper (Phase 1 compatibility with GraphicsPipelineNode)
-    CONSTEXPR_OUTPUT(VULKAN_SHADER, VulkanShaderPtr, 4, false);
+    // VulkanShader wrapper (Phase 1 compatibility - TODO: remove when pipeline uses reflection)
+    CONSTEXPR_OUTPUT(VULKAN_SHADER, VulkanShaderPtr, 1, false);
 
     // ShaderDataBundle with reflection data (Phase 2 descriptor automation)
-    CONSTEXPR_OUTPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5, false);
+    CONSTEXPR_OUTPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 2, false);
 
     ShaderLibraryNodeConfig() {
         // Initialize input descriptors
@@ -82,20 +75,9 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device_in", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
         // Initialize output descriptors
-        // Output: array of pointers to program descriptors
-        INIT_OUTPUT_DESC(SHADER_PROGRAMS, "shader_programs",
-            ResourceLifetime::Persistent,
-            BufferDescription{}  // Opaque handles
-        );
-
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Shader module outputs (VkShaderModule handles)
-        HandleDescriptor shaderModuleDesc{"VkShaderModule"};
-        INIT_OUTPUT_DESC(VERTEX_MODULE, "vertex_module", ResourceLifetime::Persistent, shaderModuleDesc);
-        INIT_OUTPUT_DESC(FRAGMENT_MODULE, "fragment_module", ResourceLifetime::Persistent, shaderModuleDesc);
-
-        // VulkanShader wrapper output
+        // VulkanShader wrapper output (Phase 1 legacy)
         HandleDescriptor vulkanShaderDesc{"VulkanShader*"};
         INIT_OUTPUT_DESC(VULKAN_SHADER, "vulkan_shader", ResourceLifetime::Persistent, vulkanShaderDesc);
 
@@ -112,30 +94,18 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(SHADER_PROGRAMS_Slot::index == 0, "SHADER_PROGRAMS must be at index 0");
-    static_assert(!SHADER_PROGRAMS_Slot::nullable, "SHADER_PROGRAMS is required");
-
-    static_assert(VULKAN_DEVICE_OUT_Slot::index == 1, "DEVICE_OUT must be at index 1");
+    static_assert(VULKAN_DEVICE_OUT_Slot::index == 0, "DEVICE_OUT must be at index 0");
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
 
-    static_assert(VERTEX_MODULE_Slot::index == 2, "VERTEX_MODULE must be at index 2");
-    static_assert(!VERTEX_MODULE_Slot::nullable, "VERTEX_MODULE is required");
-
-    static_assert(FRAGMENT_MODULE_Slot::index == 3, "FRAGMENT_MODULE must be at index 3");
-    static_assert(!FRAGMENT_MODULE_Slot::nullable, "FRAGMENT_MODULE is required");
-
-    static_assert(VULKAN_SHADER_Slot::index == 4, "VULKAN_SHADER must be at index 4");
+    static_assert(VULKAN_SHADER_Slot::index == 1, "VULKAN_SHADER must be at index 1");
     static_assert(!VULKAN_SHADER_Slot::nullable, "VULKAN_SHADER is required");
 
-    static_assert(SHADER_DATA_BUNDLE_Slot::index == 5, "SHADER_DATA_BUNDLE must be at index 5");
+    static_assert(SHADER_DATA_BUNDLE_Slot::index == 2, "SHADER_DATA_BUNDLE must be at index 2");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<SHADER_PROGRAMS_Slot::Type, ShaderProgramDescriptor*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<VERTEX_MODULE_Slot::Type, VkShaderModule>);
-    static_assert(std::is_same_v<FRAGMENT_MODULE_Slot::Type, VkShaderModule>);
     static_assert(std::is_same_v<VULKAN_SHADER_Slot::Type, VulkanShaderPtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
 };

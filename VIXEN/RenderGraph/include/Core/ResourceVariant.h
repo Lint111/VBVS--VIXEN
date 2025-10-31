@@ -20,6 +20,7 @@ class VulkanShader; // Forward declare for MVP shader approach
 // Forward declare ShaderManagement types to avoid hard dependency
 namespace ShaderManagement {
     struct CompiledProgram;
+    struct ShaderDataBundle;
 }
 
 namespace Vixen::Vulkan::Resources {
@@ -35,6 +36,7 @@ using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
 using VulkanShaderPtr = VulkanShader*; // MVP approach
 using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
 using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
+using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
@@ -108,6 +110,7 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(SwapChainPublicVariablesPtr,     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramPtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramDescriptorPtr,      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(ShaderDataBundlePtr,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPipeline,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPipelineLayout,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPipelineCache,                 HandleDescriptor,      ResourceType::Buffer) \
