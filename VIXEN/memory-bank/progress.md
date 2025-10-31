@@ -1,22 +1,26 @@
 # Progress
 
-## Current State: Feature Parity with Legacy Architecture ✅
+## Current State: Phase 2 Complete - Data-Driven Pipeline System ✅
 
-**Last Updated**: October 27, 2025
+**Last Updated**: October 31, 2025
 
-The project has achieved **functional equivalence** with the original monolithic VulkanApplication. The RenderGraph system now provides production-quality node-based rendering with:
-- ✅ Handle-based O(1) node access
-- ✅ Dependency-ordered cleanup (zero validation errors)
-- ✅ Two-semaphore GPU synchronization
-- ✅ Event-driven recompilation cascade
-- ✅ Zero warnings, clean shutdown
+The project has achieved **data-driven pipeline creation** with SPIRV reflection fully integrated. The system now:
+- ✅ Extracts vertex formats correctly from SPIRV (vec4+vec2)
+- ✅ Supports all 14 Vulkan shader stage types dynamically
+- ✅ Shares pipeline layouts via PipelineLayoutCacher
+- ✅ Derives shader keys from bundle metadata
+- ✅ Zero hardcoded shader assumptions
+- ✅ Transparent caching architecture
+- ✅ Zero validation errors, clean shutdown
+
+**Next**: Phase 3 - Type-Safe UBO Updates via SDI generation
 
 ---
 
 ## Completed Systems ✅
 
-### 1. ShaderManagement Library Integration - Phase 1 Complete (October 31, 2025)
-**Status**: ✅ Phase 0 & Phase 1 Complete - Shader loading working via RenderGraph
+### 1. ShaderManagement Library Integration - Phase 2 Complete (October 31, 2025)
+**Status**: ✅ Phase 0, Phase 1, Phase 2 Complete - Data-driven pipeline creation working
 
 **Phase 0 - Library Compilation**:
 - EventBus namespace issues (`EventBus::` → `Vixen::EventBus::`)
@@ -33,24 +37,49 @@ The project has achieved **functional equivalence** with the original monolithic
 - CashSystem cache logging activated (CACHE HIT/MISS working)
 - Rendering works (triangle appears, zero validation errors)
 
-**Build Status**: ShaderManagement.lib integrated, shader loading via RenderGraph working
+**Phase 2 - Data-Driven Pipeline Creation** ✅:
+- **PipelineLayoutCacher** - Separate cacher for sharing VkPipelineLayout
+  - Transparent architecture (explicit `pipelineLayoutWrapper` field)
+  - Convenience fallback (auto-creates from descriptorSetLayout)
+  - Proper cleanup in virtual `Cleanup()` method
+- **SPIRV Reflection Vertex Format Extraction** - Fixed hardcoded vec4 bug
+  - Now uses `input->format` from SPIRV-Reflect directly
+  - Correct formats: vec4 (109), vec2 (103), stride=24 bytes
+- **Dynamic Shader Stage Support** - Removed hardcoded vertex+fragment requirement
+  - `BuildShaderStages()` creates stages from bundle reflection
+  - Supports all 14 Vulkan shader stage types
+  - Shader keys derived from `bundle->GetProgramName()`
+- **Data-Driven Vertex Input** - `BuildVertexInputsFromReflection()` extracts layout
+- **Removed Legacy Fields** - Eliminated vertexShaderModule/fragmentShaderModule
 
-**Key Files**: `ShaderManagement/src/ShaderBundleBuilder.cpp`, `RenderGraph/src/Nodes/ShaderLibraryNode.cpp`, `documentation/ShaderManagement-Integration-Plan.md`
+**Build Status**: ShaderManagement.lib integrated, data-driven pipeline creation working, cube renders correctly
+
+**Key Files**:
+- `RenderGraph/src/Nodes/GraphicsPipelineNode.cpp` (BuildVertexInputsFromReflection, BuildShaderStages)
+- `CashSystem/include/CashSystem/PipelineLayoutCacher.h`
+- `ShaderManagement/src/SpirvReflector.cpp` (lines 593-594: input->format extraction)
+- `documentation/ShaderManagement-Integration-Plan.md`
 
 ### 2. CashSystem Caching Infrastructure (October 31, 2025)
-**Status**: ✅ Complete with virtual Cleanup() architecture, zero validation errors
+**Status**: ✅ Complete with PipelineLayoutCacher, zero validation errors
 
 **Features**:
 - TypedCacher template with MainCacher registry
-- ShaderModuleCacher with comprehensive CACHE HIT/MISS logging + Cleanup()
+- ShaderModuleCacher with CACHE HIT/MISS logging + Cleanup()
 - PipelineCacher with cache activity tracking + Cleanup()
+- **PipelineLayoutCacher** with transparent two-mode API + Cleanup()
 - Virtual Cleanup() method in CacherBase for polymorphic resource destruction
 - MainCacher orchestration (ClearDeviceCaches, CleanupGlobalCaches)
 - DeviceNode integration for device-dependent cache cleanup
 - FNV-1a hash-based cache keys
 - Thread-safe cacher operations
 
-**Key Files**: `CashSystem/src/shader_module_cacher.cpp`, `CashSystem/src/pipeline_cacher.cpp`, `CashSystem/include/CashSystem/MainCacher.h`, `documentation/Cleanup-Architecture.md`
+**Key Files**:
+- `CashSystem/src/pipeline_layout_cacher.cpp`
+- `CashSystem/include/CashSystem/PipelineLayoutCacher.h`
+- `CashSystem/src/shader_module_cacher.cpp`
+- `CashSystem/src/pipeline_cacher.cpp`
+- `documentation/Cleanup-Architecture.md`
 
 ### 3. Variant Resource System (October 2025)
 **Status**: ✅ Complete, zero warnings
@@ -81,7 +110,7 @@ The project has achieved **functional equivalence** with the original monolithic
 - CleanupStack provides dependency graph for cascade propagation
 - While-loop recompilation ensures all dirty nodes are processed
 
-**Key Files**: `EventBus/include/EventBus.h`, `RenderGraph/src/Core/RenderGraph.cpp` (RecompileDirtyNodes), `documentation/EventBusArchitecture.md`
+**Key Files**: `EventBus/include/EventBus.h`, `RenderGraph/src/Core/RenderGraph.cpp`, `documentation/EventBusArchitecture.md`
 
 ### 6. RenderGraph Core (October 2025)
 **Status**: ✅ Complete, modular library structure
@@ -100,7 +129,7 @@ The project has achieved **functional equivalence** with the original monolithic
 ### 8. Build System (CMake Modular Architecture)
 **Status**: ✅ Clean incremental compilation
 
-Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManagement, RenderGraph
+Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManagement, RenderGraph, CashSystem
 
 **Build Status**: Exit Code 0, Zero warnings in RenderGraph
 
@@ -123,7 +152,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 - ResetExecuted() enables recompilation cleanup
 - All nodes use base class `device` member via `SetDevice()`
 
-**Key Files**: `RenderGraph/include/CleanupStack.h`, `RenderGraph/src/Core/RenderGraph.cpp` (lines 1060-1075)
+**Key Files**: `RenderGraph/include/CleanupStack.h`, `RenderGraph/src/Core/RenderGraph.cpp`
 
 ### 11. Vulkan Synchronization (October 27, 2025)
 **Status**: ✅ Complete, two-semaphore pattern
@@ -139,29 +168,29 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. ShaderManagement Integration - Phase 2 Descriptor Automation (October 31, 2025)
-**Priority**: HIGH - Phase 2 Descriptor Automation
-**Status**: ⏳ Phase 1 complete, starting Phase 2
+### 1. ShaderManagement Integration - Phase 3 Type-Safe UBO Updates (October 31, 2025)
+**Priority**: HIGH - Phase 3 SDI Generation
+**Status**: ⏳ Phase 2 complete, starting Phase 3
 
-**Phase 0 Completed** ✅:
-- ShaderManagement library enabled in CMake
-- 9 compilation error categories resolved (namespace conflicts, API mismatches)
-- Full project builds successfully (7e_ShadersWithSPIRV.exe)
-- Integration plan created (6 phases documented)
-
-**Phase 1 Completed** ✅:
-- Created raw GLSL shader files (Shaders/Draw.vert, Shaders/Draw.frag)
-- Implemented ShaderLibraryNode::Compile() using ShaderBundleBuilder
-- Removed MVP manual shader loading from VulkanGraphApplication.cpp
-- CashSystem cache logging activated (CACHE HIT/MISS working)
+**Phase 0-2 Completed** ✅:
+- ShaderManagement library enabled and compiling
+- ShaderLibraryNode loading shaders via ShaderBundleBuilder
+- CashSystem cache logging activated
+- Data-driven pipeline creation working
+- SPIRV reflection extracting correct vertex formats
+- All 14 shader stage types supported
+- PipelineLayoutCacher sharing layouts
 - Zero validation errors, rendering works
 
-**Phase 2 Tasks** ⏳:
-1. Extract descriptor set layouts from ShaderDataBundle reflection
-2. Generate VkDescriptorSetLayoutBinding automatically
-3. Update DescriptorSetNode to consume reflection data
-4. Remove manual descriptor configuration from GraphicsPipelineNode
-5. Verify descriptor binding validation passes
+**Phase 3 Tasks** ⏳:
+1. Enable SDI generation in ShaderBundleBuilder
+2. Integrate SpirvInterfaceGenerator with shader compilation
+3. Update GeometryRenderNode to use typed UBO structs from .si.h
+4. Generate descriptor binding constants (SET0_BINDING0, etc.)
+5. Remove manual descriptor constants from nodes
+6. Verify descriptor binding validation passes
+
+**Phase 3 Goal**: Generate `.si.h` headers with strongly-typed structs for uniform buffers, enabling compile-time type safety for UBO updates.
 
 **See**: `documentation/ShaderManagement-Integration-Plan.md` for complete roadmap
 
@@ -169,9 +198,9 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 **Priority**: MEDIUM
 
 **Tasks**:
-1. ⏳ Update systemPatterns.md with CleanupStack architecture
-2. ⏳ Document handle-based refactoring patterns
-3. ⏳ Create synchronization patterns document
+1. ⏳ Update systemPatterns.md with PipelineLayoutCacher pattern
+2. ⏳ Document data-driven pipeline creation patterns
+3. ⏳ Create Phase 2 architecture document
 
 ### 3. Node Expansion
 **Priority**: MEDIUM
@@ -188,17 +217,19 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 ## Architectural State
 
 ### Strengths ✅
-1. **Type Safety**: Best-in-class compile-time checking (matches Frostbite)
-2. **Resource Ownership**: Crystal clear RAII model
-3. **Abstraction Layers**: Clean separation (RenderGraph → NodeInstance → TypedNode → ConcreteNode)
-4. **EventBus**: Decoupled invalidation architecture
-5. **Zero Warnings**: Professional codebase quality
+1. **Type Safety**: Compile-time checking throughout resource system
+2. **Data-Driven**: Zero hardcoded shader assumptions, all from reflection
+3. **Transparent Caching**: Clear dependency tracking in CreateParams
+4. **Resource Ownership**: Crystal clear RAII model
+5. **Abstraction Layers**: Clean separation (RenderGraph → NodeInstance → TypedNode → ConcreteNode)
+6. **EventBus**: Decoupled invalidation architecture
+7. **Zero Warnings**: Professional codebase quality
 
 ### Known Limitations ⚠️
-1. **Parallelization**: No wave metadata for multi-threading
-2. **Memory Aliasing**: No transient resource optimization
-3. **Virtual Dispatch**: `Execute()` overhead (~2-5ns per call, acceptable <200 nodes)
-4. **Friend Access**: Too-broad access (narrow interface recommended)
+1. **No SDI Generation Yet**: Manual UBO struct definitions
+2. **Parallelization**: No wave metadata for multi-threading
+3. **Memory Aliasing**: No transient resource optimization
+4. **Virtual Dispatch**: `Execute()` overhead (~2-5ns per call, acceptable <200 nodes)
 5. **Memory Budget**: No allocation tracking
 
 ### Performance Characteristics
@@ -206,42 +237,34 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 - **Bottleneck**: Virtual dispatch
 - **Threading**: Single-threaded execution
 
-**Verdict**: Ready for production single-threaded rendering. Parallelization needed for 500+ node graphs.
-
----
-
-## Legacy Systems Status
-
-### VulkanApplication (Legacy Renderer)
-**Status**: ⚠️ Coexists with RenderGraph
-
-Components: VulkanRenderer, VulkanDrawable, VulkanPipeline (monolithic classes)
-
-**Future**: Maintain as reference implementation or gradually migrate.
+**Verdict**: Ready for production single-threaded data-driven rendering. SDI generation needed for type-safe UBO updates.
 
 ---
 
 ## Next Immediate Steps
 
-### Phase 1: Architecture Refinements (1-2 weeks)
-1. Implement resource type validation
-2. Replace `friend` with `INodeWiring` interface
-3. Add `RenderGraph::RenderFrame()` method
+### Phase 3: Type-Safe UBO Updates (Current - 1 week)
+1. Enable SDI generation in ShaderBundleBuilder
+2. Integrate SpirvInterfaceGenerator with shader compilation workflow
+3. Update GeometryRenderNode to use typed UBO structs
+4. Generate descriptor binding constants from reflection
+5. Verify descriptor binding validation with typed structs
 
-### Phase 2: Complete Rendering Pipeline (2-3 weeks)
-1. Wire nodes for complete frame
-2. Test event-driven resize handling
-3. Implement frame synchronization
+### Phase 4: Pipeline Layout Automation (2 weeks)
+1. Use ShaderDataBundle for VkPipelineLayout creation
+2. Extract push constants from reflection
+3. Size descriptor pools from reflection
+4. Test cache persistence (CACHE HIT on second run)
 
-### Phase 3: Node Catalog Expansion (1-2 weeks)
-1. Add remaining core nodes
-2. Document node patterns
-3. Create node templates
+### Phase 5: Cache Validation (1 week)
+1. Verify cache persistence across runs
+2. Add cache metrics and statistics
+3. Implement cache eviction policy
 
-### Phase 4: Example Scenes (1 week)
-1. Triangle scene
-2. Textured mesh scene
-3. Shadow mapping scene
+### Phase 6: Hot Reload (2 weeks)
+1. Runtime shader recompilation
+2. Pipeline invalidation on shader change
+3. Automatic graph recompilation
 
 ---
 
@@ -250,16 +273,16 @@ Components: VulkanRenderer, VulkanDrawable, VulkanPipeline (monolithic classes)
 ### Memory Bank
 - ✅ projectbrief.md - Updated
 - ✅ progress.md - This file
-- ⏳ systemPatterns.md - Needs RenderGraph patterns
-- ⏳ activeContext.md - Needs update
-- ⏳ techContext.md - Needs variant system docs
+- ✅ activeContext.md - Updated with Phase 2 completion
+- ⏳ systemPatterns.md - Needs PipelineLayoutCacher pattern
+- ⏳ techContext.md - Needs data-driven pipeline docs
 
 ### Documentation Folder
 - ✅ EventBusArchitecture.md - Complete
+- ✅ Cleanup-Architecture.md - CashSystem cleanup patterns
+- ✅ ShaderManagement-Integration-Plan.md - 6-phase roadmap
 - ✅ GraphArchitecture/ - 20+ docs
-- ⏳ ResourceVariant-Migration.md - Mark as historical
-- ⏳ RenderGraph-Architecture-Overview.md - NEW
-- ⏳ ArchitecturalReview-2025-10.md - NEW
+- ⏳ Phase2-DataDrivenPipelines.md - NEW (should document Phase 2 achievements)
 
 ---
 
@@ -269,23 +292,29 @@ Components: VulkanRenderer, VulkanDrawable, VulkanPipeline (monolithic classes)
 |--------|--------|---------|--------|
 | Build Warnings | 0 | 0 (RenderGraph) | ✅ |
 | Type Safety | Compile-time | Compile-time | ✅ |
+| Data-Driven Pipelines | Yes | Yes (Phase 2 ✅) | ✅ |
+| SDI Generation | Yes | Not yet (Phase 3 ⏳) | 🟡 |
 | Node Count | 20+ | 15+ | 🟡 75% |
 | Code Quality | <200 instructions/class | Compliant | ✅ |
-| Documentation | Complete | 80% | 🟡 |
+| Documentation | Complete | 85% | 🟡 |
 | Example Scenes | 3+ | 0 | ❌ |
 
 ---
 
 ## Historical Context
 
-**Origin**: Chapter-based Vulkan learning (Chapters 3-7)  
-**Pivot**: October 2025 - Graph-based architecture  
-**Milestone**: October 23, 2025 - Variant migration complete, typed API enforced, zero warnings
+**Origin**: Chapter-based Vulkan learning (Chapters 3-7)
+**Pivot**: October 2025 - Graph-based architecture
+**Milestone 1**: October 23, 2025 - Variant migration complete, typed API enforced, zero warnings
+**Milestone 2**: October 31, 2025 - Data-driven pipeline creation complete (Phase 2)
 
 **Key Decisions**:
 1. Macro-based type registry (zero-overhead type safety)
 2. Graph-owns-resources pattern
 3. Protected legacy methods (enforces single API)
 4. EventBus for invalidation
+5. PipelineLayoutCacher for transparent layout sharing
+6. SPIRV-Reflect format field for vertex input extraction
+7. Data-driven pipeline creation (zero hardcoded assumptions)
 
 See `documentation/ArchitecturalReview-2025-10.md` for industry comparison (Unity HDRP, Unreal RDG, Frostbite).
