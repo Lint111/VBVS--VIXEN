@@ -3,6 +3,7 @@
 #include "Headers.h"
 #include "TypedCacher.h"
 #include "MainCacher.h"
+#include "PipelineLayoutCacher.h"  // Need full definition for std::shared_ptr<PipelineLayoutWrapper>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -14,9 +15,6 @@ namespace CashSystem {
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
-
-// Forward declaration
-struct PipelineLayoutWrapper;
 
 /**
  * @brief Pipeline resource wrapper
@@ -60,6 +58,7 @@ struct PipelineCreateParams {
     // ===== Convenience Fallbacks =====
     // If pipelineLayoutWrapper not provided, create from these:
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    std::vector<VkPushConstantRange> pushConstantRanges;  // Extracted from reflection (Phase 5)
 
     // ===== Direct Pipeline Resources =====
     // Shader stages (dynamic - supports all stage types)

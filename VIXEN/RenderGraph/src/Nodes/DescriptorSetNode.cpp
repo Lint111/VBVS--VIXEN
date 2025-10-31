@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/DescriptorCacher.h"
+#include "CashSystem/DescriptorSetLayoutCacher.h"  // Phase 5: Helper functions
 #include <ShaderManagement/ShaderDataBundle.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -181,22 +182,12 @@ void DescriptorSetNode::Compile() {
     NODE_LOG_INFO("Compile: Descriptor set layout created from reflection");
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
-    // Phase 2: Create descriptor pool from reflection data
-    // Count descriptor types to create pool sizes
-    std::unordered_map<VkDescriptorType, uint32_t> descriptorTypeCounts;
-    for (const auto& spirvBinding : descriptorBindings) {
-        descriptorTypeCounts[spirvBinding.descriptorType] += spirvBinding.descriptorCount;
-    }
-
-    std::vector<VkDescriptorPoolSize> poolSizes;
-    poolSizes.reserve(descriptorTypeCounts.size());
-    for (const auto& [type, count] : descriptorTypeCounts) {
-        VkDescriptorPoolSize poolSize{};
-        poolSize.type = type;
-        poolSize.descriptorCount = count;
-        poolSizes.push_back(poolSize);
-        std::cout << "[DescriptorSetNode::Compile] Pool size: type=" << type << ", count=" << count << std::endl;
-    }
+    // Phase 5: Use helper function to calculate descriptor pool sizes from reflection
+    std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(
+        *shaderBundle,
+        0,  // setIndex
+        1   // maxSets
+    );
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;

@@ -304,7 +304,7 @@ void PipelineCacher::CreatePipelineLayout(const PipelineCreateParams& ci, Pipeli
     // Get or create shared pipeline layout
     PipelineLayoutCreateParams layoutParams;
     layoutParams.descriptorSetLayout = ci.descriptorSetLayout;
-    layoutParams.pushConstantRanges = {};  // No push constants for now
+    layoutParams.pushConstantRanges = ci.pushConstantRanges;  // Phase 5: Use push constants from reflection
     layoutParams.layoutKey = ci.layoutKey;
 
     wrapper.pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);

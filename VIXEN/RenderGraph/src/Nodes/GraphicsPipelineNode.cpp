@@ -6,6 +6,7 @@
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/PipelineCacher.h"
 #include "CashSystem/PipelineLayoutCacher.h"
+#include "CashSystem/DescriptorSetLayoutCacher.h"
 #include "CashSystem/ShaderModuleCacher.h"
 #include <ShaderManagement/ShaderDataBundle.h>
 #include <ShaderManagement/ShaderStage.h>
@@ -92,10 +93,8 @@ void GraphicsPipelineNode::Compile() {
     // Get inputs
     currentShaderBundle = In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
     VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
-    VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    VkDescriptorSetLayout manualDescriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
     SwapChainPublicVariables* swapchainInfo = In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
-
-    NODE_LOG_DEBUG("GraphicsPipelineNode::Compile - descriptor set layout: " + std::to_string(reinterpret_cast<uint64_t>(descriptorSetLayout)));
 
     // Validate inputs
     if (!currentShaderBundle) {
@@ -104,10 +103,61 @@ void GraphicsPipelineNode::Compile() {
     if (renderPass == VK_NULL_HANDLE) {
         throw std::runtime_error("GraphicsPipelineNode: render pass not set");
     }
-    if (descriptorSetLayout == VK_NULL_HANDLE) {
-        NODE_LOG_ERROR("GraphicsPipelineNode: descriptor set layout is VK_NULL_HANDLE");
-        throw std::runtime_error("GraphicsPipelineNode: descriptor set layout not set");
+
+    // Automatically generate descriptor set layout from shader reflection (Phase 4)
+    // This eliminates manual configuration - layouts are extracted from SPIR-V
+
+    if (manualDescriptorSetLayout != VK_NULL_HANDLE) {
+        // Backward compatibility: Use manual layout if provided
+        this->descriptorSetLayout = manualDescriptorSetLayout;
+        NODE_LOG_INFO("GraphicsPipelineNode: Using manually provided descriptor set layout");
+    } else {
+        // NEW (Phase 4): Auto-generate from ShaderDataBundle reflection
+        NODE_LOG_INFO("GraphicsPipelineNode: Auto-generating descriptor set layout from shader reflection");
+
+        auto* renderGraph = GetOwningGraph();
+        if (!renderGraph) {
+            throw std::runtime_error("GraphicsPipelineNode: Owning graph not available");
+        }
+
+        auto& mainCacher = renderGraph->GetMainCacher();
+
+        VulkanDevicePtr device = GetDevice();
+        if (!device) {
+            throw std::runtime_error("GraphicsPipelineNode: Device not available for descriptor layout creation");
+        }
+
+        auto* descLayoutCacher = mainCacher.GetCacher<
+            CashSystem::DescriptorSetLayoutCacher,
+            CashSystem::DescriptorSetLayoutWrapper,
+            CashSystem::DescriptorSetLayoutCreateParams
+        >(typeid(CashSystem::DescriptorSetLayoutWrapper), device);
+
+        if (!descLayoutCacher) {
+            throw std::runtime_error("GraphicsPipelineNode: Failed to get DescriptorSetLayoutCacher");
+        }
+
+        // Create descriptor layout from bundle
+        CashSystem::DescriptorSetLayoutCreateParams layoutParams;
+        layoutParams.shaderBundle = currentShaderBundle;
+        layoutParams.descriptorSetIndex = 0;  // Use set 0
+        layoutParams.layoutKey = currentShaderBundle->descriptorInterfaceHash;  // Content-based key
+        layoutParams.device = device;
+
+        auto layoutWrapper = descLayoutCacher->GetOrCreate(layoutParams);
+        if (!layoutWrapper || layoutWrapper->layout == VK_NULL_HANDLE) {
+            throw std::runtime_error("GraphicsPipelineNode: Failed to create descriptor set layout from reflection");
+        }
+
+        this->descriptorSetLayout = layoutWrapper->layout;
+        NODE_LOG_INFO("GraphicsPipelineNode: Successfully auto-generated descriptor set layout");
     }
+
+    NODE_LOG_DEBUG("GraphicsPipelineNode::Compile - descriptor set layout: " + std::to_string(reinterpret_cast<uint64_t>(this->descriptorSetLayout)));
+
+    // Extract push constants from shader reflection (Phase 5)
+    pushConstantRanges = CashSystem::ExtractPushConstantsFromReflection(*currentShaderBundle);
+    NODE_LOG_INFO("GraphicsPipelineNode: Extracted " + std::to_string(pushConstantRanges.size()) + " push constant ranges from shader reflection");
 
     // Build shader stage create infos from reflection
     BuildShaderStages(currentShaderBundle);
@@ -195,14 +245,14 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
         pipelineLayout = VK_NULL_HANDLE;
     }
 
-    // Get descriptor set layout from input
-    VkDescriptorSetLayout descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    // NOTE: descriptorSetLayout is already set in CompileImpl (either manual or auto-generated)
+    // We use the class member 'descriptorSetLayout' which was set during compilation
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.pNext = nullptr;
     layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &descriptorSetLayout;
+    layoutInfo.pSetLayouts = &descriptorSetLayout;  // Use the compiled descriptor layout
     layoutInfo.pushConstantRangeCount = 0;
     layoutInfo.pPushConstantRanges = nullptr;
 
@@ -651,11 +701,10 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
         }
         NODE_LOG_DEBUG("GraphicsPipelineNode: Shader stages: " + stageKeys);
 
-        // Pipeline layout - Two modes:
-        // 1. Explicit (recommended): Get from PipelineLayoutCacher and pass via params.pipelineLayoutWrapper
-        // 2. Convenience (current): Pass descriptor set layout, PipelineCacher creates layout internally
-        params.descriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-        // params.pipelineLayoutWrapper = layoutCacher->GetOrCreate(...);  // Explicit mode (future)
+        // Pipeline layout - Use the descriptor set layout (auto-generated or manual from CompileImpl)
+        params.descriptorSetLayout = descriptorSetLayout;  // Already set in CompileImpl
+        params.pushConstantRanges = pushConstantRanges;  // Phase 5: Use push constants from reflection
+        // Note: PipelineCacher will internally use PipelineLayoutCacher to create/cache the layout
 
         params.renderPass = renderPass;
 

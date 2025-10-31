@@ -67,6 +67,8 @@ private:
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;  // Auto-generated or manual
+    std::vector<VkPushConstantRange> pushConstantRanges;  // Extracted from reflection (Phase 5)
 
     // Configuration from parameters
     bool enableDepthTest = true;

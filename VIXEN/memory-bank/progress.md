@@ -1,20 +1,19 @@
 # Progress
 
-## Current State: Phase 3 Complete - Type-Safe UBO Updates ✅
+## Current State: Phase 4 Complete - Descriptor Layout Automation ✅
 
 **Last Updated**: October 31, 2025
 
-The project has achieved **type-safe UBO updates via SDI generation**. The system now:
-- ✅ Generates UBO struct definitions from SPIRV reflection
-- ✅ Split architecture: generic `.si.h` (UUID-based) + shader-specific `Names.h`
-- ✅ Content-hash UUID system (deterministic, shareable interfaces)
-- ✅ Separate output directories (build-time vs runtime)
-- ✅ Correct matrix type detection (mat4, mat3, etc.)
-- ✅ Recursive struct member extraction
-- ✅ Index-based struct linking (no dangling pointers)
-- ✅ Zero validation errors, clean build
+The project has achieved **automatic descriptor set layout generation from SPIR-V reflection**. The system now:
+- ✅ DescriptorSetLayoutCacher extracts layouts from ShaderDataBundle
+- ✅ Content-based caching using descriptorInterfaceHash
+- ✅ GraphicsPipelineNode auto-generates layouts when not manually provided
+- ✅ Backward compatible - uses manual layouts if provided
+- ✅ Pipeline layouts correctly include descriptor sets (no more "0|0" bug)
+- ✅ Application runs without validation errors
+- ✅ Zero crashes, proper resource cleanup
 
-**Next**: Phase 4 - Pipeline Layout Automation from reflection
+**Next**: Phase 5 - Push constants extraction and descriptor pool sizing
 
 ---
 
@@ -74,24 +73,43 @@ The project has achieved **type-safe UBO updates via SDI generation**. The syste
   - `SpirvDescriptorBinding::structDefIndex` references `structDefinitions[]`
   - No pointer invalidation during vector reallocation
 
-**Build Status**: ShaderManagement.lib integrated, data-driven pipeline creation working, SDI generation complete, cube renders correctly
+**Phase 4 - Descriptor Set Layout Automation** ✅ (October 31, 2025):
+- **DescriptorSetLayoutCacher** - Auto-creates VkDescriptorSetLayout from ShaderDataBundle
+  - `ExtractBindingsFromBundle()` converts SPIR-V reflection to VkDescriptorSetLayoutBinding
+  - Content-based caching using `descriptorInterfaceHash` from bundle
+  - Helper functions for push constant extraction
+  - Fixed namespace issues (`:Vixen::Vulkan::Resources::VulkanDevice*`)
+- **GraphicsPipelineNode Integration** - Auto-generation with backward compatibility
+  - Checks if manual layout provided via DESCRIPTOR_SET_LAYOUT input
+  - Falls back to DescriptorSetLayoutCacher if not provided
+  - Fixed variable shadowing bug (local `descriptorSetLayout` vs member)
+  - Properly passes descriptor layout to PipelineCacher
+- **Bug Fix** - Pipeline layout "0|0" issue resolved
+  - Local variable was shadowing member variable
+  - Changed to explicit `this->descriptorSetLayout` assignments
+  - PipelineLayoutCacher now receives valid descriptor layout handle
+
+**Build Status**: All systems operational, zero validation errors, application renders correctly
 
 **Key Files**:
-- `RenderGraph/src/Nodes/GraphicsPipelineNode.cpp` (BuildVertexInputsFromReflection, BuildShaderStages)
+- `RenderGraph/src/Nodes/GraphicsPipelineNode.cpp` (BuildVertexInputsFromReflection, BuildShaderStages, auto-descriptor-layout)
 - `CashSystem/include/CashSystem/PipelineLayoutCacher.h`
+- `CashSystem/include/CashSystem/DescriptorSetLayoutCacher.h` (NEW - Phase 4)
+- `CashSystem/src/DescriptorSetLayoutCacher.cpp` (NEW - Phase 4)
 - `ShaderManagement/src/SpirvReflector.cpp` (ExtractBlockMembers, matrix detection lines 195-204)
 - `ShaderManagement/src/SpirvInterfaceGenerator.cpp` (GenerateNamesHeader, index-based linking)
 - `ShaderManagement/include/ShaderManagement/SpirvReflectionData.h` (structDefIndex: line 102)
 - `documentation/ShaderManagement-Integration-Plan.md`
 
 ### 2. CashSystem Caching Infrastructure (October 31, 2025)
-**Status**: ✅ Complete with PipelineLayoutCacher, zero validation errors
+**Status**: ✅ Complete with DescriptorSetLayoutCacher (Phase 4), zero validation errors
 
 **Features**:
 - TypedCacher template with MainCacher registry
 - ShaderModuleCacher with CACHE HIT/MISS logging + Cleanup()
 - PipelineCacher with cache activity tracking + Cleanup()
-- **PipelineLayoutCacher** with transparent two-mode API + Cleanup()
+- PipelineLayoutCacher with transparent two-mode API + Cleanup()
+- **DescriptorSetLayoutCacher** (NEW - Phase 4) with automatic SPIR-V extraction + Cleanup()
 - Virtual Cleanup() method in CacherBase for polymorphic resource destruction
 - MainCacher orchestration (ClearDeviceCaches, CleanupGlobalCaches)
 - DeviceNode integration for device-dependent cache cleanup
@@ -101,6 +119,8 @@ The project has achieved **type-safe UBO updates via SDI generation**. The syste
 **Key Files**:
 - `CashSystem/src/pipeline_layout_cacher.cpp`
 - `CashSystem/include/CashSystem/PipelineLayoutCacher.h`
+- `CashSystem/include/CashSystem/DescriptorSetLayoutCacher.h` (NEW - Phase 4)
+- `CashSystem/src/DescriptorSetLayoutCacher.cpp` (NEW - Phase 4)
 - `CashSystem/src/shader_module_cacher.cpp`
 - `CashSystem/src/pipeline_cacher.cpp`
 - `documentation/Cleanup-Architecture.md`
@@ -192,11 +212,11 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. ShaderManagement Integration - Phase 4 Pipeline Layout Automation (October 31, 2025)
-**Priority**: HIGH - Phase 4 Descriptor Automation
-**Status**: ⏳ Phase 0-3 complete, starting Phase 4
+### 1. ShaderManagement Integration - Phase 5 Push Constants & Pool Sizing (October 31, 2025)
+**Priority**: MEDIUM - Phase 5 Advanced Descriptor Features
+**Status**: ✅ Phase 0-4 complete, starting Phase 5
 
-**Phase 0-3 Completed** ✅:
+**Phase 0-4 Completed** ✅:
 - ShaderManagement library enabled and compiling
 - ShaderLibraryNode loading shaders via ShaderBundleBuilder
 - CashSystem cache logging activated
@@ -207,17 +227,18 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 - **SDI generation with UBO struct extraction** ✅
 - **Split architecture (generic `.si.h` + `Names.h`)** ✅
 - **Content-hash UUID system** ✅
+- **DescriptorSetLayoutCacher with automatic extraction** ✅ (Phase 4)
+- **GraphicsPipelineNode auto-generation** ✅ (Phase 4)
 - Zero validation errors, rendering works
 
-**Phase 4 Tasks** ⏳:
-1. Use ShaderDataBundle for VkDescriptorSetLayout creation
-2. Extract push constants from reflection for VkPipelineLayout
-3. Size descriptor pools from reflection metadata
-4. Update nodes to use generated SDI headers
-5. Remove manual descriptor constants
-6. Test cache persistence (CACHE HIT on second run)
+**Phase 5 Tasks** ⏳:
+1. Extract push constants from reflection and pass to PipelineLayoutCacher
+2. Size descriptor pools from reflection metadata (pool creation from bundle)
+3. Update DescriptorSetNode to use reflection-based pool sizing
+4. Test cache persistence across runs (verify CACHE HIT on second execution)
+5. Performance profiling of descriptor layout caching
 
-**Phase 4 Goal**: Automate descriptor set layout and pipeline layout creation from SPIRV reflection, eliminating all manual Vulkan descriptor setup.
+**Phase 5 Goal**: Complete descriptor automation with push constants and intelligent pool sizing.
 
 **See**: `documentation/ShaderManagement-Integration-Plan.md` for complete roadmap
 
@@ -314,6 +335,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 | Type Safety | Compile-time | Compile-time | ✅ |
 | Data-Driven Pipelines | Yes | Yes (Phase 2 ✅) | ✅ |
 | SDI Generation | Yes | Yes (Phase 3 ✅) | ✅ |
+| Descriptor Automation | Yes | Yes (Phase 4 ✅) | ✅ |
 | Node Count | 20+ | 15+ | 🟡 75% |
 | Code Quality | <200 instructions/class | Compliant | ✅ |
 | Documentation | Complete | 85% | 🟡 |
@@ -328,6 +350,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 **Milestone 1**: October 23, 2025 - Variant migration complete, typed API enforced, zero warnings
 **Milestone 2**: October 31, 2025 - Data-driven pipeline creation complete (Phase 2)
 **Milestone 3**: October 31, 2025 - SDI generation with type-safe UBO structs (Phase 3)
+**Milestone 4**: October 31, 2025 - Descriptor set layout automation (Phase 4)
 
 **Key Decisions**:
 1. Macro-based type registry (zero-overhead type safety)

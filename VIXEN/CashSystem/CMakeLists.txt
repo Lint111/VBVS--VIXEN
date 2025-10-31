@@ -25,6 +25,7 @@ target_link_libraries(CashSystem PUBLIC
     Vulkan::Vulkan
     Logger
     EventBus  # For device invalidation event subscription
+    ShaderManagement  # For ShaderDataBundle and reflection data
 )
 
 # Link ProjectHash so CashSystem uses the same hash provider includes/links
