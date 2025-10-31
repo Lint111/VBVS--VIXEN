@@ -64,24 +64,9 @@ void HashDescriptorBinding(BinaryHashBuilder& builder, const SpirvDescriptorBind
     builder.Append(binding.typeInfo.rows);
     builder.Append(binding.typeInfo.arraySize);
 
-    // Include struct layout if present
-    if (binding.structDef) {
-        builder.Append(uint8_t{1});  // Marker: has struct
-        builder.Append(binding.structDef->name);
-        builder.Append(binding.structDef->sizeInBytes);
-        builder.Append(binding.structDef->alignment);
-
-        builder.Append(static_cast<uint32_t>(binding.structDef->members.size()));
-        for (const auto& member : binding.structDef->members) {
-            builder.Append(member.name);
-            builder.Append(static_cast<uint32_t>(member.type.baseType));
-            builder.Append(member.offset);
-            builder.Append(member.arrayStride);
-            builder.Append(member.matrixStride);
-        }
-    } else {
-        builder.Append(uint8_t{0});  // Marker: no struct
-    }
+    // TODO: Include struct layout in hash (currently using index-based struct linking)
+    // Struct data is stored in SpirvReflectionData::structDefinitions
+    builder.Append(binding.structDefIndex);
 }
 
 /**

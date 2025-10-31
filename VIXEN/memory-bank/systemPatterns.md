@@ -346,6 +346,108 @@ vkQueuePresentKHR → waits renderComplete
 
 **Key Insight**: Distributed ownership - each node owns semaphores it creates, passes via slots
 
+### 10. Split SDI Architecture Pattern (October 31, 2025)
+**Classes**: `SpirvInterfaceGenerator`, `ShaderBundleBuilder`, `ShaderDataBundle`
+
+**Implementation**:
+```cpp
+// Generic interface file: {content-hash}-SDI.h
+namespace ShaderInterface {
+namespace 2071dff093caf4b3 {  // UUID from content hash
+
+    // UBO struct definition from SPIRV reflection
+    struct bufferVals {
+        mat4 mvp;  // Offset: 0, extracted via ExtractBlockMembers()
+    };
+
+    // Descriptor binding metadata
+    namespace Set0 {
+        struct myBufferVals {
+            static constexpr uint32_t SET = 0;
+            static constexpr uint32_t BINDING = 0;
+            static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_VERTEX_BIT;
+            using DataType = bufferVals;  // Linked via structDefIndex
+        };
+    };
+}
+}
+
+// Shader-specific names file: Draw_ShaderNames.h
+namespace Draw_Shader {
+    namespace SDI = ShaderInterface::2071dff093caf4b3;
+
+    // Convenience constants
+    using myBufferVals_t = SDI::Set0::myBufferVals;
+    constexpr uint32_t myBufferVals_SET = myBufferVals_t::SET;
+    constexpr uint32_t myBufferVals_BINDING = myBufferVals_t::BINDING;
+}
+```
+
+**Recursive UBO Struct Extraction**:
+```cpp
+// ShaderManagement/src/SpirvReflector.cpp:177-220
+void ExtractBlockMembers(
+    const ::SpvReflectBlockVariable* blockVar,
+    std::vector<SpirvStructMember>& outMembers
+) {
+    for (uint32_t i = 0; i < blockVar->member_count; ++i) {
+        const auto& member = blockVar->members[i];
+        SpirvStructMember spirvMember;
+
+        // Matrix detection via stride checking
+        if (member.numeric.matrix.stride > 0 && member.numeric.matrix.column_count > 0) {
+            spirvMember.type.baseType = SpirvTypeInfo::BaseType::Matrix;
+            spirvMember.type.columns = member.numeric.matrix.column_count;
+            spirvMember.type.rows = member.numeric.matrix.row_count;
+        }
+        // Nested struct handling (recursive)
+        else if (member.member_count > 0) {
+            spirvMember.type.baseType = SpirvTypeInfo::BaseType::Struct;
+            spirvMember.type.structName = member.type_description->type_name;
+        }
+
+        outMembers.push_back(spirvMember);
+    }
+}
+```
+
+**Index-Based Struct Linking**:
+```cpp
+// SpirvReflectionData.h - prevents dangling pointers
+struct SpirvDescriptorBinding {
+    int structDefIndex = -1;  // Index into SpirvReflectionData::structDefinitions
+    // NOT: SpirvStructDefinition* structDef (invalidated on vector reallocation)
+};
+
+// SpirvInterfaceGenerator.cpp - safe access
+if (binding.structDefIndex >= 0 &&
+    binding.structDefIndex < static_cast<int>(data.structDefinitions.size())) {
+    const auto& structDef = data.structDefinitions[binding.structDefIndex];
+    code << "using DataType = " << structDef.name << ";\n";
+}
+```
+
+**Content-Hash UUID System**:
+```cpp
+// ShaderBundleBuilder.cpp - deterministic UUID generation
+std::string uuid = GenerateContentBasedUuid(preprocessedSource);
+// Same source → same UUID → shared generic .si.h file
+// Example: "2071dff093caf4b3" for specific interface layout
+```
+
+**Purpose**:
+- Generic interface sharing across shaders with same layout
+- Type-safe UBO updates via generated struct definitions
+- Shader-specific convenience while maintaining interface reuse
+- Deterministic UUID enables interface caching and sharing
+
+**Key Insight**: Split architecture enables interface sharing (generic `.si.h`) while maintaining shader-specific convenience (`Names.h`). Content-hash UUID ensures determinism. Index-based linking prevents dangling pointer bugs during vector reallocation. Matrix detection requires checking stride in block variable, not type description.
+
+**Directory Separation**:
+- Build-time shaders: `generated/sdi/` (project level, version controlled)
+- Runtime shaders: `binaries/generated/sdi/` (application-specific)
+
 ## Legacy Design Patterns (Reference)
 
 ### 1. Singleton Pattern

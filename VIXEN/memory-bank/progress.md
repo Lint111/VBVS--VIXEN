@@ -1,19 +1,20 @@
 # Progress
 
-## Current State: Phase 2 Complete - Data-Driven Pipeline System ✅
+## Current State: Phase 3 Complete - Type-Safe UBO Updates ✅
 
 **Last Updated**: October 31, 2025
 
-The project has achieved **data-driven pipeline creation** with SPIRV reflection fully integrated. The system now:
-- ✅ Extracts vertex formats correctly from SPIRV (vec4+vec2)
-- ✅ Supports all 14 Vulkan shader stage types dynamically
-- ✅ Shares pipeline layouts via PipelineLayoutCacher
-- ✅ Derives shader keys from bundle metadata
-- ✅ Zero hardcoded shader assumptions
-- ✅ Transparent caching architecture
-- ✅ Zero validation errors, clean shutdown
+The project has achieved **type-safe UBO updates via SDI generation**. The system now:
+- ✅ Generates UBO struct definitions from SPIRV reflection
+- ✅ Split architecture: generic `.si.h` (UUID-based) + shader-specific `Names.h`
+- ✅ Content-hash UUID system (deterministic, shareable interfaces)
+- ✅ Separate output directories (build-time vs runtime)
+- ✅ Correct matrix type detection (mat4, mat3, etc.)
+- ✅ Recursive struct member extraction
+- ✅ Index-based struct linking (no dangling pointers)
+- ✅ Zero validation errors, clean build
 
-**Next**: Phase 3 - Type-Safe UBO Updates via SDI generation
+**Next**: Phase 4 - Pipeline Layout Automation from reflection
 
 ---
 
@@ -52,12 +53,35 @@ The project has achieved **data-driven pipeline creation** with SPIRV reflection
 - **Data-Driven Vertex Input** - `BuildVertexInputsFromReflection()` extracts layout
 - **Removed Legacy Fields** - Eliminated vertexShaderModule/fragmentShaderModule
 
-**Build Status**: ShaderManagement.lib integrated, data-driven pipeline creation working, cube renders correctly
+**Phase 3 - Type-Safe UBO Updates via SDI Generation** ✅ (October 31, 2025):
+- **SDI Split Architecture** - Generic `.si.h` (UUID-based) + shader-specific `Names.h`
+  - `.si.h` contains UUID namespace with descriptor/struct definitions
+  - `Names.h` provides constexpr constants and type aliases for specific shader
+  - Enables interface sharing across shaders with same layout
+- **UBO Struct Extraction** - Recursive SPIRV reflection extracts complete struct definitions
+  - Walks `SpvReflectBlockVariable` member hierarchy
+  - Extracts member names, types, offsets, strides
+  - Handles nested structs, arrays, matrices
+  - Correct matrix type detection (mat4, mat3x2, etc.)
+- **Content-Hash UUID System** - Deterministic UUID generation from shader source
+  - `GenerateContentBasedUuid()` creates stable hashes
+  - Same interface = same UUID = shared `.si.h` file
+  - Removed program name from generic SDI (program-agnostic)
+- **Separate Output Directories** - Build-time vs runtime shader generation
+  - Project-level: `generated/sdi/` (version-controlled, build-time shaders)
+  - Runtime: `binaries/generated/sdi/` (app-specific, runtime shaders)
+- **Index-Based Struct Linking** - `structDefIndex` prevents dangling pointer bugs
+  - `SpirvDescriptorBinding::structDefIndex` references `structDefinitions[]`
+  - No pointer invalidation during vector reallocation
+
+**Build Status**: ShaderManagement.lib integrated, data-driven pipeline creation working, SDI generation complete, cube renders correctly
 
 **Key Files**:
 - `RenderGraph/src/Nodes/GraphicsPipelineNode.cpp` (BuildVertexInputsFromReflection, BuildShaderStages)
 - `CashSystem/include/CashSystem/PipelineLayoutCacher.h`
-- `ShaderManagement/src/SpirvReflector.cpp` (lines 593-594: input->format extraction)
+- `ShaderManagement/src/SpirvReflector.cpp` (ExtractBlockMembers, matrix detection lines 195-204)
+- `ShaderManagement/src/SpirvInterfaceGenerator.cpp` (GenerateNamesHeader, index-based linking)
+- `ShaderManagement/include/ShaderManagement/SpirvReflectionData.h` (structDefIndex: line 102)
 - `documentation/ShaderManagement-Integration-Plan.md`
 
 ### 2. CashSystem Caching Infrastructure (October 31, 2025)
@@ -168,11 +192,11 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. ShaderManagement Integration - Phase 3 Type-Safe UBO Updates (October 31, 2025)
-**Priority**: HIGH - Phase 3 SDI Generation
-**Status**: ⏳ Phase 2 complete, starting Phase 3
+### 1. ShaderManagement Integration - Phase 4 Pipeline Layout Automation (October 31, 2025)
+**Priority**: HIGH - Phase 4 Descriptor Automation
+**Status**: ⏳ Phase 0-3 complete, starting Phase 4
 
-**Phase 0-2 Completed** ✅:
+**Phase 0-3 Completed** ✅:
 - ShaderManagement library enabled and compiling
 - ShaderLibraryNode loading shaders via ShaderBundleBuilder
 - CashSystem cache logging activated
@@ -180,17 +204,20 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 - SPIRV reflection extracting correct vertex formats
 - All 14 shader stage types supported
 - PipelineLayoutCacher sharing layouts
+- **SDI generation with UBO struct extraction** ✅
+- **Split architecture (generic `.si.h` + `Names.h`)** ✅
+- **Content-hash UUID system** ✅
 - Zero validation errors, rendering works
 
-**Phase 3 Tasks** ⏳:
-1. Enable SDI generation in ShaderBundleBuilder
-2. Integrate SpirvInterfaceGenerator with shader compilation
-3. Update GeometryRenderNode to use typed UBO structs from .si.h
-4. Generate descriptor binding constants (SET0_BINDING0, etc.)
-5. Remove manual descriptor constants from nodes
-6. Verify descriptor binding validation passes
+**Phase 4 Tasks** ⏳:
+1. Use ShaderDataBundle for VkDescriptorSetLayout creation
+2. Extract push constants from reflection for VkPipelineLayout
+3. Size descriptor pools from reflection metadata
+4. Update nodes to use generated SDI headers
+5. Remove manual descriptor constants
+6. Test cache persistence (CACHE HIT on second run)
 
-**Phase 3 Goal**: Generate `.si.h` headers with strongly-typed structs for uniform buffers, enabling compile-time type safety for UBO updates.
+**Phase 4 Goal**: Automate descriptor set layout and pipeline layout creation from SPIRV reflection, eliminating all manual Vulkan descriptor setup.
 
 **See**: `documentation/ShaderManagement-Integration-Plan.md` for complete roadmap
 
@@ -226,7 +253,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 7. **Zero Warnings**: Professional codebase quality
 
 ### Known Limitations ⚠️
-1. **No SDI Generation Yet**: Manual UBO struct definitions
+1. **Manual Descriptor Setup**: Nodes still create descriptor layouts manually (Phase 4 will automate)
 2. **Parallelization**: No wave metadata for multi-threading
 3. **Memory Aliasing**: No transient resource optimization
 4. **Virtual Dispatch**: `Execute()` overhead (~2-5ns per call, acceptable <200 nodes)
@@ -237,20 +264,13 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 - **Bottleneck**: Virtual dispatch
 - **Threading**: Single-threaded execution
 
-**Verdict**: Ready for production single-threaded data-driven rendering. SDI generation needed for type-safe UBO updates.
+**Verdict**: Ready for production single-threaded data-driven rendering. SDI generation complete with type-safe UBO structs. Next: descriptor automation.
 
 ---
 
 ## Next Immediate Steps
 
-### Phase 3: Type-Safe UBO Updates (Current - 1 week)
-1. Enable SDI generation in ShaderBundleBuilder
-2. Integrate SpirvInterfaceGenerator with shader compilation workflow
-3. Update GeometryRenderNode to use typed UBO structs
-4. Generate descriptor binding constants from reflection
-5. Verify descriptor binding validation with typed structs
-
-### Phase 4: Pipeline Layout Automation (2 weeks)
+### Phase 4: Pipeline Layout Automation (Current - 2 weeks)
 1. Use ShaderDataBundle for VkPipelineLayout creation
 2. Extract push constants from reflection
 3. Size descriptor pools from reflection
@@ -293,7 +313,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 | Build Warnings | 0 | 0 (RenderGraph) | ✅ |
 | Type Safety | Compile-time | Compile-time | ✅ |
 | Data-Driven Pipelines | Yes | Yes (Phase 2 ✅) | ✅ |
-| SDI Generation | Yes | Not yet (Phase 3 ⏳) | 🟡 |
+| SDI Generation | Yes | Yes (Phase 3 ✅) | ✅ |
 | Node Count | 20+ | 15+ | 🟡 75% |
 | Code Quality | <200 instructions/class | Compliant | ✅ |
 | Documentation | Complete | 85% | 🟡 |
@@ -307,6 +327,7 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 **Pivot**: October 2025 - Graph-based architecture
 **Milestone 1**: October 23, 2025 - Variant migration complete, typed API enforced, zero warnings
 **Milestone 2**: October 31, 2025 - Data-driven pipeline creation complete (Phase 2)
+**Milestone 3**: October 31, 2025 - SDI generation with type-safe UBO structs (Phase 3)
 
 **Key Decisions**:
 1. Macro-based type registry (zero-overhead type safety)

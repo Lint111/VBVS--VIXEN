@@ -1,10 +1,13 @@
-# Render Graph Architecture Documentation
+# RenderGraph Documentation
+
+**Status**: Production-Ready - 15+ nodes implemented, zero validation errors
+**Last Updated**: October 31, 2025
 
 ## Overview
 
-This directory contains the complete design documentation for the Render Graph system - a dynamic, graph-based rendering pipeline for Vulkan.
+Graph-based rendering system for Vulkan with compile-time type safety, automatic resource management, and event-driven invalidation.
 
-**Project Goal:** Transition from static resource management to a flexible, node-based system where rendering pipelines are dynamically compiled from reusable components with automatic resource management and caching.
+**Current State**: Fully operational with data-driven pipeline creation, handle-based node access, and dependency-ordered cleanup.
 
 ---
 
@@ -65,8 +68,16 @@ This directory contains the complete design documentation for the Render Graph s
 
 ### 📖 Reference
 
-- **[API Reference](api-reference.md)** - Complete class and method documentation
-- **[Type Registry](type-registry.md)** - Built-in node types and schemas
+- **[NodeCatalog.md](NodeCatalog.md)** - Complete catalog of 15+ node types
+- **[ResourceVariant-Quick-Reference.md](ResourceVariant-Quick-Reference.md)** - Resource type system
+- **[TypedNodeExample.md](TypedNodeExample.md)** - Typed node usage examples
+- **[NodeConfig-API-Improvements.md](NodeConfig-API-Improvements.md)** - API improvements
+- **[NodeBased_vs_Legacy_Rendering.md](NodeBased_vs_Legacy_Rendering.md)** - Migration guide
+- **[PartialCleanupStrategy.md](PartialCleanupStrategy.md)** - Cleanup dependency tracking
+- **[ApplicationArchitecture.md](ApplicationArchitecture.md)** - Application integration
+- **[ResourceConfig.md](ResourceConfig.md)** - Resource configuration system
+- **[ResourceStateManagement.md](ResourceStateManagement.md)** - State tracking
+- **[render-graph-quick-reference.md](render-graph-quick-reference.md)** - Quick API reference
 
 ---
 

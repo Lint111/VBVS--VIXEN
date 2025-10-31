@@ -287,7 +287,6 @@ std::string SpirvInterfaceGenerator::GenerateHeader(
     code << "// ============================================================================\n";
     code << "//\n";
     code << "// UUID: " << uuid << "\n";
-    code << "// Program: " << data.programName << "\n";
     code << "// Generated: " << GetTimestamp() << "\n";
     code << "//\n";
     code << "// This file provides compile-time type-safe access to shader resources.\n";
@@ -437,8 +436,10 @@ std::string SpirvInterfaceGenerator::GenerateDescriptorInfo(
             code << ";\n";
 
             // If this binding references a struct, include type alias
-            if (binding.structDef) {
-                code << Indent(2) << "using DataType = " << binding.structDef->name << ";\n";
+            if (binding.structDefIndex >= 0 &&
+                binding.structDefIndex < static_cast<int>(data.structDefinitions.size())) {
+                const auto& structDef = data.structDefinitions[binding.structDefIndex];
+                code << Indent(2) << "using DataType = " << structDef.name << ";\n";
             }
 
             code << Indent(1) << "};\n";

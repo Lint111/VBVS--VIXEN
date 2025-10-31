@@ -98,8 +98,8 @@ struct SpirvDescriptorBinding {
     // Type information
     SpirvTypeInfo typeInfo;
 
-    // For UBO/SSBO: struct definition
-    SpirvStructDefinition* structDef = nullptr;  // Non-owning pointer
+    // For UBO/SSBO: index into SpirvReflectionData::structDefinitions (-1 = none)
+    int structDefIndex = -1;
 
     // For images/samplers: format and dimension info
     VkFormat imageFormat = VK_FORMAT_UNDEFINED;

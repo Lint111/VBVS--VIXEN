@@ -171,6 +171,54 @@ VkShaderStageFlagBits ShaderStageToVulkan(ShaderStage stage) {
     }
 }
 
+/**
+ * @brief Helper to recursively extract struct members from SpvReflectBlockVariable
+ */
+void ExtractBlockMembers(
+    const ::SpvReflectBlockVariable* blockVar,
+    std::vector<SpirvStructMember>& outMembers
+) {
+    if (!blockVar) return;
+
+    // Recursively process all members
+    for (uint32_t i = 0; i < blockVar->member_count; ++i) {
+        const auto& member = blockVar->members[i];
+
+        SpirvStructMember spirvMember;
+        spirvMember.name = member.name ? member.name : "";
+        spirvMember.offset = member.offset;
+
+        // Extract stride information
+        spirvMember.arrayStride = member.array.stride;
+        spirvMember.matrixStride = member.numeric.matrix.stride;
+
+        // Check if this is a matrix type by checking matrix stride
+        if (member.numeric.matrix.stride > 0 && member.numeric.matrix.column_count > 0) {
+            // This is a matrix - use matrix information from block variable
+            spirvMember.type.baseType = SpirvTypeInfo::BaseType::Matrix;
+            spirvMember.type.columns = member.numeric.matrix.column_count;
+            spirvMember.type.rows = member.numeric.matrix.row_count;
+            spirvMember.type.width = member.numeric.scalar.width;
+            spirvMember.type.sizeInBytes = member.size;
+            spirvMember.type.alignment = spirvMember.matrixStride;
+        }
+        // Nested struct handling
+        else if (member.member_count > 0) {
+            spirvMember.type.baseType = SpirvTypeInfo::BaseType::Struct;
+            spirvMember.type.structName = member.type_description && member.type_description->type_name
+                ? member.type_description->type_name
+                : "NestedStruct";
+            spirvMember.type.sizeInBytes = member.size;
+        }
+        // Other types - use type_description
+        else {
+            spirvMember.type = ConvertType(member.type_description);
+        }
+
+        outMembers.push_back(spirvMember);
+    }
+}
+
 } // anonymous namespace
 
 // ===== SpirvTypeInfo Methods =====
@@ -423,8 +471,29 @@ void SpirvReflector::ReflectDescriptors(
         desc.stageFlags = stageFlag;
         desc.typeInfo = ConvertType(binding->type_description);
 
-        // TODO: Extract struct definition for UBO/SSBO
-        // This would require walking the type_description tree
+        // Extract struct definition for UBO/SSBO from block variable
+        if (binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+            binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+
+            // UBO/SSBO data is in the block member
+            if (binding->block.member_count > 0) {
+                SpirvStructDefinition structDef;
+                structDef.name = binding->block.type_description && binding->block.type_description->type_name
+                    ? binding->block.type_description->type_name
+                    : (binding->block.name ? binding->block.name : "BufferStruct");
+                structDef.sizeInBytes = binding->block.size;
+                structDef.alignment = 16;  // std140/std430 alignment
+
+                // Extract members recursively
+                ExtractBlockMembers(&binding->block, structDef.members);
+
+                // Add to reflection data's struct definitions
+                data.structDefinitions.push_back(structDef);
+
+                // Link descriptor to struct definition by index
+                desc.structDefIndex = static_cast<int>(data.structDefinitions.size()) - 1;
+            }
+        }
 
         data.descriptorSets[desc.set].push_back(desc);
     }
@@ -458,7 +527,17 @@ void SpirvReflector::ReflectPushConstants(
         range.size = pushConstant->size;
         range.stageFlags = stageFlag;
 
-        // TODO: Extract struct definition from type_description
+        // Extract struct definition from block variable
+        if (pushConstant->member_count > 0) {
+            range.structDef.name = pushConstant->type_description && pushConstant->type_description->type_name
+                ? pushConstant->type_description->type_name
+                : (pushConstant->name ? pushConstant->name : "PushConstantBlock");
+            range.structDef.sizeInBytes = pushConstant->size;
+            range.structDef.alignment = 16;
+
+            // Extract members recursively
+            ExtractBlockMembers(pushConstant, range.structDef.members);
+        }
 
         data.pushConstants.push_back(range);
     }
@@ -653,10 +732,8 @@ SpirvStructDefinition SpirvReflector::ConvertStructDefinition(const ::SpvReflect
     }
 
     structDef.name = typeDesc->type_name ? typeDesc->type_name : "AnonymousStruct";
-    structDef.sizeInBytes = typeDesc->traits.numeric.scalar.width / 8;
-
-    // TODO: Walk struct members and populate
-    // This requires recursive type_description traversal
+    structDef.sizeInBytes = 0;
+    structDef.alignment = 16;  // std140/std430 default alignment
 
     return structDef;
 }
