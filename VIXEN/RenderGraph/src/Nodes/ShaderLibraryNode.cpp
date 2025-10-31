@@ -186,6 +186,9 @@ void ShaderLibraryNode::Compile() {
 
     // Get cacher reference (using base class device member)
     std::cout << "[ShaderLibraryNode] Getting ShaderModuleCacher from MainCacher..." << std::endl;
+    std::cout << "[ShaderLibraryNode] Device pointer value: " << device << std::endl;
+    std::cout << "[ShaderLibraryNode] IsDeviceDependent: " << mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) << std::endl;
+
     shaderModuleCacher = mainCacher.GetCacher<
         CashSystem::ShaderModuleCacher,
         CashSystem::ShaderModuleWrapper,
@@ -195,10 +198,13 @@ void ShaderLibraryNode::Compile() {
     if (!shaderModuleCacher) {
         std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
         std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
+        std::cout << "[ShaderLibraryNode] ERROR: device=" << device << std::endl;
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
     std::cout << "[ShaderLibraryNode] Got ShaderModuleCacher successfully" << std::endl;
+    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->IsInitialized()=" << shaderModuleCacher->IsInitialized() << std::endl;
+    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->GetDevice()=" << shaderModuleCacher->GetDevice() << std::endl;
 
     // Step 3: Create shader modules from ShaderDataBundle SPIR-V
     try {

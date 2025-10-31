@@ -51,7 +51,24 @@ void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
 
 DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources::VulkanDevice* device) {
     DeviceIdentifier deviceId(const_cast<const ::Vixen::Vulkan::Resources::VulkanDevice*>(device));
-    return GetOrCreateDeviceRegistry(deviceId);
+
+    std::lock_guard lock(m_deviceRegistriesMutex);
+
+    // Check if registry already exists for this device
+    auto it = m_deviceRegistries.find(deviceId);
+    if (it != m_deviceRegistries.end()) {
+        return it->second;
+    }
+
+    // Create new device registry
+    auto [newIt, inserted] = m_deviceRegistries.try_emplace(deviceId, deviceId);
+
+    // Initialize the new registry with the device pointer
+    if (inserted && device) {
+        newIt->second.Initialize(device);
+    }
+
+    return newIt->second;
 }
 
 DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId) {
@@ -64,7 +81,10 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& de
     }
 
     // Create new device registry
+    // Note: This overload doesn't have the device pointer, so registry won't be initialized
+    // Only the VulkanDevice* overload above initializes the registry
     auto [newIt, inserted] = m_deviceRegistries.try_emplace(deviceId, deviceId);
+
     return newIt->second;
 }
 

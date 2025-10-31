@@ -126,24 +126,38 @@ public:
         
         // Get or create device registry
         auto& deviceRegistry = GetOrCreateDeviceRegistry(device);
-        
-        // Get or create the specific cacher within this device registry
-        auto* typedCacher = deviceRegistry.GetOrCreateCacher<CacherT>(
-            typeIndex,
-            [this, &deviceRegistry, typeIndex](std::unique_ptr<CacherT> newCacher) -> CacherT* {
-                // Initialize device for the new cacher
-                newCacher->Initialize(deviceRegistry.GetDevice());
-                
-                std::lock_guard lock(m_deviceRegistriesMutex);
-                auto& cachedCacher = deviceRegistry.m_deviceCachers.emplace_back(std::move(newCacher));
-                return dynamic_cast<CacherT*>(cachedCacher.get());
+
+        // Check if cacher already exists in device registry
+        auto* typedCacher = deviceRegistry.GetOrCreateCacher<CacherT>(typeIndex, nullptr);
+
+        if (!typedCacher) {
+            // Cacher doesn't exist - create using global factory
+            std::lock_guard globalLock(m_globalRegistryMutex);
+            auto factoryIt = m_globalFactories.find(typeIndex);
+            if (factoryIt == m_globalFactories.end()) {
+                return nullptr;  // Factory not registered (shouldn't happen after registration check)
             }
-        );
-        
+
+            // Create new cacher instance using global factory
+            auto newCacher = factoryIt->second();
+            typedCacher = dynamic_cast<CacherT*>(newCacher.get());
+
+            if (!typedCacher) {
+                return nullptr;  // Factory returned wrong type
+            }
+
+            // Initialize with device
+            typedCacher->Initialize(deviceRegistry.GetDevice());
+
+            // Store in device registry
+            std::lock_guard deviceLock(m_deviceRegistriesMutex);
+            deviceRegistry.m_deviceCachers.emplace_back(std::move(newCacher));
+        }
+
         if (typedCacher && !typedCacher->IsInitialized()) {
             typedCacher->Initialize(deviceRegistry.GetDevice());
         }
-        
+
         return typedCacher;
     }
 
