@@ -192,6 +192,20 @@ public:
 
     size_t GetTrackedCount() const { return trackedFiles_.size(); }
 
+    void Save() {
+        nlohmann::json j;
+        j["version"] = 1;
+        j["files"] = nlohmann::json::array();
+        for (const auto& file : trackedFiles_) {
+            j["files"].push_back(file);
+        }
+
+        std::ofstream file(manifestPath_);
+        if (file.is_open()) {
+            file << j.dump(2);
+        }
+    }
+
 private:
     void Load() {
         if (!fs::exists(manifestPath_)) return;
@@ -210,20 +224,6 @@ private:
         } catch (...) {
             // Corrupted manifest - start fresh
             trackedFiles_.clear();
-        }
-    }
-
-    void Save() {
-        nlohmann::json j;
-        j["version"] = 1;
-        j["files"] = nlohmann::json::array();
-        for (const auto& file : trackedFiles_) {
-            j["files"].push_back(file);
-        }
-
-        std::ofstream file(manifestPath_);
-        if (file.is_open()) {
-            file << j.dump(2);
         }
     }
 
@@ -338,8 +338,8 @@ ShaderStage DetectStageFromExtension(const fs::path& path) {
     if (ext == ".frag") return ShaderStage::Fragment;
     if (ext == ".comp") return ShaderStage::Compute;
     if (ext == ".geom") return ShaderStage::Geometry;
-    if (ext == ".tesc") return ShaderStage::TessellationControl;
-    if (ext == ".tese") return ShaderStage::TessellationEvaluation;
+    if (ext == ".tesc") return ShaderStage::TessControl;
+    if (ext == ".tese") return ShaderStage::TessEval;
     if (ext == ".mesh") return ShaderStage::Mesh;
     if (ext == ".task") return ShaderStage::Task;
     if (ext == ".rgen") return ShaderStage::RayGen;
@@ -643,7 +643,13 @@ int CommandBuildRegistry(const ToolOptions& options) {
     sdiConfig.outputDirectory = registryPath / "sdi";
     sdiConfig.namespacePrefix = options.sdiConfig.namespacePrefix.empty() ? "SDI" : options.sdiConfig.namespacePrefix;
 
-    SdiRegistryManager registry(sdiConfig);
+    // Create registry config
+    SdiRegistryManager::Config registryConfig;
+    registryConfig.sdiDirectory = sdiConfig.outputDirectory;
+    registryConfig.registryHeaderPath = registryPath / "SDI_Registry.h";
+    registryConfig.registryNamespace = sdiConfig.namespacePrefix;
+
+    SdiRegistryManager registry(registryConfig);
 
     // Load and register each bundle
     for (const auto& bundleFile : options.inputFiles) {
@@ -667,18 +673,13 @@ int CommandBuildRegistry(const ToolOptions& options) {
         }
     }
 
-    // Generate registry header
-    fs::path outputFile;
-    if (!options.outputPath.empty()) {
-        outputFile = options.outputPath;
-    } else {
-        outputFile = registryPath / "SDI_Registry.h";
-    }
-
-    if (!registry.GenerateRegistryHeader(outputFile)) {
+    // Generate registry header (happens automatically via RegenerateRegistry)
+    if (!registry.RegenerateRegistry()) {
         std::cerr << "Error: Failed to generate registry header\n";
         return 1;
     }
+
+    fs::path outputFile = registryConfig.registryHeaderPath;
 
     if (options.verbose) {
         std::cout << "Registry header generated: " << outputFile << "\n";

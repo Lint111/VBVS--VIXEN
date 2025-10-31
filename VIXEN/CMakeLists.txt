@@ -13,6 +13,12 @@ set(Recipe_Name "7e_ShadersWithSPIRV")
 # OFF - Vulkan SDK path can be specified manually. This is helpful to test the build on various Vulkan version.
 option(AUTO_LOCATE_VULKAN "AUTO_LOCATE_VULKAN" ON)
 
+# Enable testing early so subprojects can use BUILD_TESTING
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+    set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
+endif()
+
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
 	
@@ -317,7 +323,6 @@ endif()
 # ============================================================================
 # TESTING INFRASTRUCTURE
 # ============================================================================
-option(BUILD_TESTS "Build unit tests" ON)
 
 if(BUILD_TESTS)
     # Enable testing with CTest

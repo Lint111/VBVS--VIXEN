@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderDataBundle.h>
+#include "VulkanShader.h"
 #include <memory>
 
 // Forward declarations
@@ -67,7 +68,8 @@ protected:
     // In MVP, load shaders directly via VulkanShader class in application code
 
 private:
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    // Note: device member is inherited from base class NodeInstance
+    // Set in Setup() via SetDevice(), used throughout Compile()
 
     // CashSystem integration - cached during Compile()
     CashSystem::ShaderModuleCacher* shaderModuleCacher = nullptr;
@@ -78,6 +80,9 @@ private:
     // Loaded shader modules (cached from ShaderModuleCacher)
     std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;
     std::shared_ptr<CashSystem::ShaderModuleWrapper> fragmentShader;
+
+    // VulkanShader wrapper for compatibility with GraphicsPipelineNode (Phase 1)
+    VulkanShader* vulkanShader = nullptr;
 };
 
 } // namespace Vixen::RenderGraph

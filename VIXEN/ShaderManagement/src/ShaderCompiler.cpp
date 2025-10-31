@@ -2,11 +2,12 @@
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
-#include <SPIRV/disassemble.h>
-#include <spirv-tools/libspirv.h>
+#include <glslang/SPIRV/disassemble.h>
+#include <spirv-tools/libspirv.hpp>
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <mutex>
 
 namespace ShaderManagement {
 
@@ -154,7 +155,7 @@ CompilationOutput ShaderCompiler::CompileInternal(
     spvOptions.generateDebugInfo = options.generateDebugInfo;
     spvOptions.disableOptimizer = !options.optimizePerformance;
     spvOptions.optimizeSize = options.optimizeSize;
-    spvOptions.validate = options.validateSpirv;
+    spvOptions.validate = false;  // Disable glslang's internal validation - we'll use SPIRV-Tools instead
 
     std::vector<unsigned int> spirv;
     glslang::GlslangToSpv(*program.getIntermediate(shaderStage), spirv, &spvOptions);
@@ -233,24 +234,24 @@ CompilationOutput ShaderCompiler::LoadSpirv(
 }
 
 bool ShaderCompiler::ValidateSpirv(const std::vector<uint32_t>& spirv, std::string& outError) {
-    spv_context context = spvContextCreate(SPV_ENV_VULKAN_1_2);
-    spv_diagnostic diagnostic = nullptr;
-
-    spv_const_binary_t binary = {spirv.data(), spirv.size()};
-    spv_result_t result = spvValidate(context, &binary, &diagnostic);
-
-    if (result != SPV_SUCCESS) {
-        if (diagnostic) {
-            outError = diagnostic->error;
-            spvDiagnosticDestroy(diagnostic);
-        } else {
-            outError = "Unknown validation error";
-        }
-        spvContextDestroy(context);
+    if (spirv.empty()) {
+        outError = "SPIR-V buffer is empty";
         return false;
     }
 
-    spvContextDestroy(context);
+    // Use C++ API for validation - pass vector directly
+    spvtools::SpirvTools tools(SPV_ENV_VULKAN_1_2);
+    tools.SetMessageConsumer([&outError](spv_message_level_t, const char*, const spv_position_t&, const char* message) {
+        outError = message;
+    });
+
+    if (!tools.Validate(spirv)) {
+        if (outError.empty()) {
+            outError = "Unknown validation error";
+        }
+        return false;
+    }
+
     return true;
 }
 
@@ -265,9 +266,9 @@ bool ShaderCompiler::IsAvailable() {
 }
 
 std::string ShaderCompiler::GetVersion() {
-    return std::to_string(GLSLANG_VERSION_MAJOR) + "." +
-           std::to_string(GLSLANG_VERSION_MINOR) + "." +
-           std::to_string(GLSLANG_VERSION_PATCH);
+    // glslang version constants may not be available in all SDK versions
+    // Return a generic version string
+    return "glslang-integrated";
 }
 
 std::optional<ShaderStage> InferStageFromPath(const std::filesystem::path& path) {

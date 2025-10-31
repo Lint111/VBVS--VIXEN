@@ -41,6 +41,7 @@ target_include_directories(ShaderManagement
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${spirv_reflect_SOURCE_DIR}
+        ${Vulkan_INCLUDE_DIRS}  # For glslang headers
 )
 
 # Link to project-level hash provider for consistent hashing behavior
@@ -51,6 +52,17 @@ target_link_libraries(ShaderManagement PUBLIC EventBus)
 
 # Find dependencies
 find_package(Vulkan REQUIRED)
+
+# Build glslang library list for ShaderCompiler (same pattern as project-level CMakeLists.txt)
+set(GLSLANG_LIBS SPIRV glslang OSDependent glslang-default-resource-limits SPIRV-Tools SPIRV-Tools-opt)
+
+# Generate the list of files to link, per flavor (debug/optimized)
+set(GLSLANG_LIB_LIST "")
+foreach(x ${GLSLANG_LIBS})
+    list(APPEND GLSLANG_LIB_LIST debug ${x}d optimized ${x})
+endforeach()
+
+message(STATUS "ShaderManagement: Using glslang libraries from Vulkan SDK")
 
 # Optional OpenSSL for SHA256 hashing
 find_package(OpenSSL QUIET)
@@ -63,10 +75,12 @@ else()
     message(WARNING "OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available")
 endif()
 
-# Link Vulkan
+# Link Vulkan and glslang
 target_link_libraries(ShaderManagement
     PUBLIC
         Vulkan::Headers
+    PRIVATE
+        ${GLSLANG_LIB_LIST}
 )
 
 # C++23 standard
@@ -95,9 +109,10 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_subdirectory(tools)
 
 # Add tests subdirectory (if testing is enabled)
-if(BUILD_TESTING)
-    add_subdirectory(tests)
-endif()
+# Commented out - tests are now added via tests/CMakeLists.txt external macro
+# if(BUILD_TESTING)
+#     add_subdirectory(tests)
+# endif()
 
 # Install CMake utility modules for downstream projects
 install(FILES

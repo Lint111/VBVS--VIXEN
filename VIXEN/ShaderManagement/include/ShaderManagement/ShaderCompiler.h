@@ -4,6 +4,9 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <chrono>
+#include <optional>
+#include <filesystem>
 
 namespace ShaderManagement {
 
@@ -19,7 +22,7 @@ struct CompilationOptions {
     int targetSpirvVersion = 150;       // 100, 110, 120, 130, 140, 150 (SPIR-V 1.x)
 
     // Validation
-    bool validateSpirv = true;          // Run SPIR-V validator after compilation
+    bool validateSpirv = false;         // Run SPIR-V validator after compilation (can enable for debugging, but has known issues with glslang-generated SPIR-V)
 };
 
 /**

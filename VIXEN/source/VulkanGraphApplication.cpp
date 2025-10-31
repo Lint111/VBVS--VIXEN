@@ -304,65 +304,12 @@ void VulkanGraphApplication::CompileRenderGraph() {
     deviceNode->SetState(NodeState::Compiled);  // CRITICAL: Mark as compiled to prevent re-compilation
     std::cout << "[CompileRenderGraph] Device node compiled and marked as Compiled" << std::endl;
     
-    // Now device is ready, load shaders
-    mainLogger->Info("Loading SPIR-V shaders...");
-    auto* vulkanDevice = deviceNode->GetVulkanDevice();
-    if (!vulkanDevice) {
-        mainLogger->Error("Cannot load shaders: VulkanDevice not available");
-        throw std::runtime_error("VulkanDevice required for shader loading");
-    }
-    
-    // Load SPIR-V bytecode from files (paths relative to binaries/ execution directory)
-    size_t vertSize = 0, fragSize = 0;
-    uint32_t* vertSpv = static_cast<uint32_t*>(::ReadFile("../builtAssets/CompiledShaders/Draw.vert.spv", &vertSize));
-    uint32_t* fragSpv = static_cast<uint32_t*>(::ReadFile("../builtAssets/CompiledShaders/Draw.frag.spv", &fragSize));
-    
-    if (!vertSpv || !fragSpv) {
-        mainLogger->Error("Failed to load shader files");
-        throw std::runtime_error("Shader files not found");
-    }
-    
-    // Create VulkanShader and build shader modules
-    triangleShader = new VulkanShader();
-    triangleShader->BuildShaderModuleWithSPV(vertSpv, vertSize, fragSpv, fragSize, vulkanDevice);
-    
-    // Clean up file buffers
-    delete[] vertSpv;
-    delete[] fragSpv;
-    mainLogger->Info("Shaders loaded successfully");
-    
-    // Inject shader into ConstantNode BEFORE graph compilation
-    mainLogger->Info("Injecting shader into ConstantNode...");
-    std::cout << "[CompileRenderGraph] Getting shader_constant node instance..." << std::endl;
-    auto* shaderConstNode = static_cast<ConstantNode*>(renderGraph->GetInstance(shaderConstantNodeHandle));
-    if (!shaderConstNode) {
-        std::cout << "[CompileRenderGraph] ERROR: shader_constant node is NULL!" << std::endl;
-        throw std::runtime_error("shader_constant node not found");
-    }
-    std::cout << "[CompileRenderGraph] Calling SetValue() on shader_constant..." << std::endl;
-    shaderConstNode->SetValue(triangleShader);
-    std::cout << "[CompileRenderGraph] SetValue() complete" << std::endl;
-    
-    // CRITICAL: Register cleanup callback for shader destruction
-    // Capture the shader pointer and device to ensure proper cleanup during graph destruction
-    // IMPORTANT: Shader cleanup must happen BEFORE device cleanup (dependency ordering)
-    mainLogger->Info("Registering shader cleanup callback...");
-    std::cout << "[CompileRenderGraph] Calling SetCleanupCallback() on shader_constant..." << std::endl;
-    shaderConstNode->SetCleanupCallback(
-        [this]() {
-            std::cout << "[ShaderCleanupCallback] Destroying shader..." << std::endl;
-            if (triangleShader) {
-                triangleShader->DestroyShader(nullptr);  // Uses creationDevice stored in VulkanShader
-                delete triangleShader;
-                triangleShader = nullptr;
-                std::cout << "[ShaderCleanupCallback] Shader destroyed successfully" << std::endl;
-            }
-        },
-        {deviceNodeHandle}  // Dependency: shader must be destroyed BEFORE device node
-    );
-    std::cout << "[CompileRenderGraph] SetCleanupCallback() complete" << std::endl;
-    
-    mainLogger->Info("Shader value injected and cleanup registered - ready for compilation");
+    // Phase 1 Integration: Shaders now loaded by ShaderLibraryNode
+    // - ShaderLibraryNode compiles GLSL → SPIR-V via ShaderManagement
+    // - Creates VkShaderModules via CashSystem (with caching)
+    // - Outputs VulkanShader wrapper directly to GraphicsPipelineNode
+    // - Cleanup handled automatically by node cleanup system
+    mainLogger->Info("Shaders will be compiled by ShaderLibraryNode during graph compilation...");
 
     // Now compile the full graph (all nodes including pipeline with shaders ready)
     std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
@@ -447,24 +394,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
     pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
     
-    // MVP: Shader constant node (value set during compilation after device creation)
-    std::cout << "[BuildRenderGraph] Creating shader_constant node..." << std::endl;
-    NodeHandle shaderConstantNode;
-    try {
-        shaderConstantNode = renderGraph->AddNode("ShaderConstant", "shader_constant");
-        std::cout << "[BuildRenderGraph] shader_constant node created successfully, handle=" 
-                  << shaderConstantNode.index << std::endl;
-    } catch (const std::exception& e) {
-        std::cout << "[BuildRenderGraph] ERROR creating shader_constant: " << e.what() << std::endl;
-        throw;
-    }
-    shaderConstantNodeHandle = shaderConstantNode; // Cache for post-compile value injection
+    // Phase 1: ShaderLibraryNode replaces manual shader loading
+    // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
 
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
-    mainLogger->Info("Created 14 node instances");
+    mainLogger->Info("Created 13 node instances (removed ConstantNode - Phase 1)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -621,10 +558,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pipelineNode, GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     // --- RenderPass + DescriptorSet + SwapChain → Pipeline connections ---
-    // MVP: Shader connection deferred - shaders loaded after compilation
-    // batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::SHADER_PROGRAMS,
-    //               pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES)
-    batch.Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
+    // Phase 1: Connect ShaderLibraryNode directly to pipeline
+    batch.Connect(shaderLibNode, ShaderLibraryNodeConfig::VULKAN_SHADER,
+                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES)
+         .Connect(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
                   pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
@@ -632,10 +569,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   pipelineNode, GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
-    
-    // MVP: Connect shader constant node to pipeline (value injected during compilation)
-    batch.Connect(shaderConstantNode, ConstantNodeConfig::OUTPUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::SHADER_STAGES);
 
     // --- Device → TextureLoader device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

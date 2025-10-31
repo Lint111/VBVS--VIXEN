@@ -111,6 +111,7 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkPipeline,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPipelineLayout,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPipelineCache,                 HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkShaderModule,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkCommandBuffer,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkQueue,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkViewportPtr,                   HandleDescriptor,      ResourceType::Buffer) \

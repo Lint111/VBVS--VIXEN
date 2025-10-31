@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <mutex>
+#include <unordered_map>
 
 namespace ShaderManagement {
 

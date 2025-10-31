@@ -262,7 +262,7 @@ public:
 
 private:
     Config config_;
-    mutable std::mutex mutex_;
+    mutable std::recursive_mutex mutex_;
 
     // Registry data
     std::unordered_map<std::string, SdiRegistryEntry> entries_;  // uuid -> entry

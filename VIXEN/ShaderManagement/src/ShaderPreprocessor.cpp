@@ -6,8 +6,8 @@
 
 namespace ShaderManagement {
 
-ShaderPreprocessor::ShaderPreprocessor(const PreprocessorConfig& config)
-    : config_(config)
+ShaderPreprocessor::ShaderPreprocessor(const PreprocessorConfig& cfg)
+    : config(cfg)
 {
 }
 
@@ -16,38 +16,21 @@ PreprocessedSource ShaderPreprocessor::Preprocess(
     const std::unordered_map<std::string, std::string>& defines,
     const std::filesystem::path& currentFilePath)
 {
-    PreprocessedSource result;
-    result.success = false;
-
     // Merge global and local defines
-    std::unordered_map<std::string, std::string> allDefines = config_.globalDefines;
+    std::unordered_map<std::string, std::string> allDefines = config.globalDefines;
     allDefines.insert(defines.begin(), defines.end());
 
     // Track included files to prevent circular includes
-    std::unordered_set<std::string> includedFiles;
-    uint32_t includeDepth = 0;
+    std::unordered_set<std::string> includeGuard;
 
     // Process source
-    std::string processed = ProcessSource(
+    return ProcessRecursive(
         source,
         currentFilePath,
         allDefines,
-        includedFiles,
-        includeDepth,
-        result.errorMessage
+        includeGuard,
+        0
     );
-
-    if (result.errorMessage.empty()) {
-        result.processedSource = processed;
-        result.success = true;
-
-        // Copy included files
-        for (const auto& file : includedFiles) {
-            result.includedFiles.push_back(file);
-        }
-    }
-
-    return result;
 }
 
 PreprocessedSource ShaderPreprocessor::PreprocessFile(
@@ -55,32 +38,30 @@ PreprocessedSource ShaderPreprocessor::PreprocessFile(
     const std::unordered_map<std::string, std::string>& defines)
 {
     // Read file
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
+    std::string source = ReadFileToString(filePath);
+    if (source.empty()) {
         PreprocessedSource result;
         result.success = false;
         result.errorMessage = "Failed to open file: " + filePath.string();
         return result;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
-
     return Preprocess(source, defines, filePath);
 }
 
-std::string ShaderPreprocessor::ProcessSource(
+PreprocessedSource ShaderPreprocessor::ProcessRecursive(
     const std::string& source,
     const std::filesystem::path& currentFilePath,
-    const std::unordered_map<std::string, std::string>& defines,
-    std::unordered_set<std::string>& includedFiles,
-    uint32_t& includeDepth,
-    std::string& errorMessage)
+    const std::unordered_map<std::string, std::string>& allDefines,
+    std::unordered_set<std::string>& includeGuard,
+    uint32_t depth)
 {
-    if (includeDepth >= config_.maxIncludeDepth) {
-        errorMessage = "Maximum include depth exceeded (" + std::to_string(config_.maxIncludeDepth) + ")";
-        return "";
+    PreprocessedSource result;
+    result.success = false;
+
+    if (depth >= config.maxIncludeDepth) {
+        result.errorMessage = "Maximum include depth exceeded (" + std::to_string(config.maxIncludeDepth) + ")";
+        return result;
     }
 
     std::stringstream output;
@@ -92,80 +73,79 @@ std::string ShaderPreprocessor::ProcessSource(
         ++lineNumber;
 
         // Check for #include directive
-        std::regex includeRegex(R"(^\s*#\s*include\s+[\"<]([^">]+)[\">])");
-        std::smatch match;
-
-        if (std::regex_search(line, match, includeRegex)) {
-            std::string includePath = match[1].str();
-
+        std::string includeName;
+        if (IsIncludeDirective(line, includeName)) {
             // Resolve include path
-            std::filesystem::path resolvedPath = ResolveIncludePath(includePath, currentFilePath);
+            auto resolvedPath = ResolveIncludePath(includeName, currentFilePath);
 
-            if (resolvedPath.empty()) {
-                errorMessage = "Failed to resolve include: " + includePath + " at line " + std::to_string(lineNumber);
-                return "";
+            if (!resolvedPath.has_value()) {
+                result.errorMessage = "Failed to resolve include: " + includeName + " at line " + std::to_string(lineNumber);
+                return result;
             }
 
             // Check for circular includes
-            std::string canonicalPath = std::filesystem::canonical(resolvedPath).string();
-            if (includedFiles.count(canonicalPath) > 0) {
-                errorMessage = "Circular include detected: " + canonicalPath;
-                return "";
+            std::string canonicalPath = std::filesystem::canonical(resolvedPath.value()).string();
+            if (includeGuard.count(canonicalPath) > 0) {
+                result.errorMessage = "Circular include detected: " + canonicalPath;
+                return result;
             }
 
             // Read included file
-            std::ifstream includeFile(resolvedPath);
-            if (!includeFile.is_open()) {
-                errorMessage = "Failed to open include file: " + resolvedPath.string();
-                return "";
+            std::string includeSource = ReadFileToString(resolvedPath.value());
+            if (includeSource.empty()) {
+                result.errorMessage = "Failed to open include file: " + resolvedPath.value().string();
+                return result;
             }
 
-            std::stringstream includeBuffer;
-            includeBuffer << includeFile.rdbuf();
-            std::string includeSource = includeBuffer.str();
-
             // Mark as included
-            includedFiles.insert(canonicalPath);
+            includeGuard.insert(canonicalPath);
+            result.includedFiles.push_back(resolvedPath.value());
 
             // Recursively process included file
-            includeDepth++;
-            std::string processedInclude = ProcessSource(
+            PreprocessedSource nestedResult = ProcessRecursive(
                 includeSource,
-                resolvedPath,
-                defines,
-                includedFiles,
-                includeDepth,
-                errorMessage
+                resolvedPath.value(),
+                allDefines,
+                includeGuard,
+                depth + 1
             );
-            includeDepth--;
 
-            if (!errorMessage.empty()) {
-                return "";
+            if (!nestedResult.success) {
+                return nestedResult;
             }
 
             // Add line directive if enabled
-            if (config_.enableLineDirectives) {
-                output << "#line 1 \"" << resolvedPath.string() << "\"\n";
+            if (config.enableLineDirectives) {
+                output << "#line 1 \"" << resolvedPath.value().string() << "\"\n";
             }
 
-            output << processedInclude << "\n";
+            output << nestedResult.processedSource << "\n";
 
             // Restore line directive
-            if (config_.enableLineDirectives) {
+            if (config.enableLineDirectives) {
                 output << "#line " << (lineNumber + 1) << " \"" << currentFilePath.string() << "\"\n";
             }
+
+            // Merge included files from nested result
+            result.includedFiles.insert(
+                result.includedFiles.end(),
+                nestedResult.includedFiles.begin(),
+                nestedResult.includedFiles.end()
+            );
         }
         else {
-            // Not an include - process defines
-            std::string processedLine = ProcessDefines(line, defines);
+            // Not an include - inject defines
+            std::string processedLine = InjectDefines(line, allDefines);
             output << processedLine << "\n";
         }
     }
 
-    return output.str();
+    result.processedSource = output.str();
+    result.success = true;
+    return result;
 }
 
-std::string ShaderPreprocessor::ProcessDefines(
+std::string ShaderPreprocessor::InjectDefines(
     const std::string& line,
     const std::unordered_map<std::string, std::string>& defines)
 {
@@ -181,7 +161,7 @@ std::string ShaderPreprocessor::ProcessDefines(
     return result;
 }
 
-std::filesystem::path ShaderPreprocessor::ResolveIncludePath(
+std::optional<std::filesystem::path> ShaderPreprocessor::ResolveIncludePath(
     const std::string& includePath,
     const std::filesystem::path& currentFilePath)
 {
@@ -194,42 +174,73 @@ std::filesystem::path ShaderPreprocessor::ResolveIncludePath(
     }
 
     // Try include search paths
-    for (const auto& searchPath : config_.includePaths) {
+    for (const auto& searchPath : config.includePaths) {
         std::filesystem::path fullPath = searchPath / includePath;
         if (std::filesystem::exists(fullPath)) {
             return fullPath;
         }
     }
 
-    return {}; // Not found
+    return std::nullopt; // Not found
+}
+
+std::string ShaderPreprocessor::ReadFileToString(const std::filesystem::path& path)
+{
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return "";
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+bool ShaderPreprocessor::IsIncludeDirective(const std::string& line, std::string& outIncludeName)
+{
+    // Check for #include directive
+    std::regex includeRegex(R"(^\s*#\s*include\s+[\"<]([^\">]+)[\">])");
+    std::smatch match;
+
+    if (std::regex_search(line, match, includeRegex)) {
+        outIncludeName = match[1].str();
+        return true;
+    }
+
+    return false;
+}
+
+std::string ShaderPreprocessor::NormalizeIncludePath(const std::filesystem::path& path)
+{
+    return path.lexically_normal().string();
 }
 
 void ShaderPreprocessor::AddIncludePath(const std::filesystem::path& path) {
-    config_.includePaths.push_back(path);
+    config.includePaths.push_back(path);
 }
 
 void ShaderPreprocessor::SetIncludePaths(const std::vector<std::filesystem::path>& paths) {
-    config_.includePaths = paths;
+    config.includePaths = paths;
 }
 
 const std::vector<std::filesystem::path>& ShaderPreprocessor::GetIncludePaths() const {
-    return config_.includePaths;
+    return config.includePaths;
 }
 
 void ShaderPreprocessor::AddGlobalDefine(const std::string& name, const std::string& value) {
-    config_.globalDefines[name] = value;
+    config.globalDefines[name] = value;
 }
 
 void ShaderPreprocessor::RemoveGlobalDefine(const std::string& name) {
-    config_.globalDefines.erase(name);
+    config.globalDefines.erase(name);
 }
 
 void ShaderPreprocessor::ClearGlobalDefines() {
-    config_.globalDefines.clear();
+    config.globalDefines.clear();
 }
 
 const std::unordered_map<std::string, std::string>& ShaderPreprocessor::GetGlobalDefines() const {
-    return config_.globalDefines;
+    return config.globalDefines;
 }
 
 std::unordered_map<std::string, std::string> ParseDefinesString(const std::string& definesStr) {

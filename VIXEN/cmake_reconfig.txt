@@ -1,0 +1,60 @@
+-- Attempting auto locate Vulkan using CMake......
+CMake Deprecation Warning at build/_deps/glm-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+CMake Deprecation Warning at build/_deps/glm-src/CMakeLists.txt:2 (cmake_policy):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+CMake Deprecation Warning at build/_deps/gli-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+CMake Deprecation Warning at build/_deps/spirv_reflect-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+CMake Warning at ShaderManagement/CMakeLists.txt:75 (message):
+  OpenSSL not found - ShaderManagement will use the project hash fallback or
+  header-only provider if available
+
+
+-- Using the multi-header code from C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/nlohmann_json-src/include/
+-- Adding tests subdir: CashSystem
+-- Adding tests subdir: RenderGraph
+-- Adding tests subdir: EventBus
+-- Adding tests subdir: ResourceManagement
+-- Adding tests subdir: Logger
+-- Adding tests subdir: VulkanResources
+-- Adding tests subdir: ShaderManagement
+-- ShaderManagement tests configured
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (23.9s)
+-- Generating done (4.4s)
+-- Build files have been written to: C:/cpp/VBVS--VIXEN/VIXEN/build

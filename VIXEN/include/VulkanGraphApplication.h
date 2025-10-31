@@ -120,11 +120,11 @@ private:
     HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
     NodeHandle windowNodeHandle;                     // Cached for accessing window HWND
 
-    // ====== MVP Shader Management ======
-    VulkanShader* triangleShader = nullptr;          // MVP: Direct shader (temporary)
-    NodeHandle deviceNodeHandle;                     // MVP: Cached for post-compile shader loading
-    NodeHandle pipelineNodeHandle;                   // MVP: Cached for post-compile connection
-    NodeHandle shaderConstantNodeHandle;             // MVP: ConstantNode holding shader pointer
+    // ====== Phase 1: Shader Management via ShaderLibraryNode ======
+    // triangleShader and shaderConstantNodeHandle removed
+    // Shaders now managed by ShaderLibraryNode
+    NodeHandle deviceNodeHandle;                     // Cached for pre-compilation
+    NodeHandle pipelineNodeHandle;                   // Cached for pipeline access (if needed)
 
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application

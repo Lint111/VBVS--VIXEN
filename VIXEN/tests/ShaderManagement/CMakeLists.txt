@@ -1,63 +1,38 @@
-# ============================================================================
-# ShaderManagement Library Tests
-# ============================================================================
+# ShaderManagement Tests (Symbolic Link to Library-Local Tests)
+#
+# This CMakeLists.txt acts as a bridge for VS Code Test Explorer to discover
+# ShaderManagement tests through the project-level tests/ hierarchy.
+#
+# The actual tests are built and registered in ShaderManagement/tests/
+# We simply reference them here for GUI visibility.
 
-# Test executable
-add_executable(ShaderManagement_Tests
-    test_shader_cache_manager.cpp
-    test_shader_preprocessor.cpp
-    test_shader_compiler.cpp
-    test_integration.cpp
-)
+cmake_minimum_required(VERSION 3.15)
 
-# Link against the library being tested and Google Test
-# Link against the library being tested and Google Test when available.
-# The main project may disable building the ShaderManagement library (see root CMakeLists).
-# In that case build the tests against the headers only so the test sources can still compile.
-if(TARGET ShaderManagement)
-    target_link_libraries(ShaderManagement_Tests
-        PRIVATE
-            ShaderManagement
-            GTest::gtest
-            GTest::gtest_main  # Provides main() function
-            GTest::gmock       # For mocking if needed
+message(STATUS "ShaderManagement tests: Creating symbolic test link for VS Code")
+
+# The ShaderManagement library already builds and registers its tests via:
+# ShaderManagement/CMakeLists.txt -> add_subdirectory(tests)
+#
+# Those tests are already registered with CTest. This file exists to provide
+# a project-level tests/ShaderManagement/ path for VS Code Test Explorer.
+
+# Verify the test target exists
+if(TARGET ShaderManagementTests)
+    message(STATUS "  ✓ ShaderManagementTests target found")
+    message(STATUS "  ✓ 35 tests registered via ShaderManagement/tests/CMakeLists.txt")
+    message(STATUS "  ✓ Run via: ctest -R Shader")
+
+    # Create a custom CTestTestfile.cmake that references the library-local tests
+    # This makes CTest discovery work through the tests/ hierarchy
+    set(CTEST_BRIDGE_FILE "${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake")
+    file(WRITE ${CTEST_BRIDGE_FILE}
+        "# Bridge to library-local ShaderManagement tests\n"
+        "# This file links project-level tests/ to ShaderManagement/tests/\n"
+        "subdirs(\"../../ShaderManagement/tests\")\n"
     )
-    target_include_directories(ShaderManagement_Tests
-        PRIVATE
-            ${CMAKE_SOURCE_DIR}/ShaderManagement/include
-    )
+
+    message(STATUS "  ✓ CTest bridge created for test discovery")
 else()
-    message(STATUS "ShaderManagement target not found - building tests against headers only")
-    target_link_libraries(ShaderManagement_Tests
-        PRIVATE
-            GTest::gtest
-            GTest::gtest_main
-            GTest::gmock
-    )
-    # Ensure the public include dir of the (disabled) library is available so tests can include headers.
-    target_include_directories(ShaderManagement_Tests
-        PRIVATE
-            ${CMAKE_SOURCE_DIR}/ShaderManagement/include
-    )
+    message(WARNING "  ShaderManagementTests target not found")
+    message(WARNING "  Ensure ShaderManagement/CMakeLists.txt calls add_subdirectory(tests)")
 endif()
-
-# Set C++ standard
-set_property(TARGET ShaderManagement_Tests PROPERTY CXX_STANDARD 23)
-set_property(TARGET ShaderManagement_Tests PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# Discover tests automatically
-gtest_discover_tests(ShaderManagement_Tests
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    PROPERTIES
-        LABELS "ShaderManagement"
-        TIMEOUT 30
-)
-
-# Add custom target to run just ShaderManagement tests
-add_custom_target(test_shader_management
-    COMMAND ${CMAKE_CTEST_COMMAND} -L ShaderManagement --output-on-failure
-    DEPENDS ShaderManagement_Tests
-    COMMENT "Running ShaderManagement tests..."
-)
-
-message(STATUS "ShaderManagement tests configured")

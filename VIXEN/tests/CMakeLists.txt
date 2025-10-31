@@ -36,6 +36,16 @@ macro(maybe_add_subdir dir)
     endif()
 endmacro()
 
+# Helper macro: add external test directory from outside the tests/ folder
+macro(maybe_add_external_subdir dir)
+    if(EXISTS "${PROJECT_SOURCE_DIR}/${dir}/CMakeLists.txt")
+        message(STATUS "Adding external tests subdir: ${dir}")
+        add_subdirectory(${PROJECT_SOURCE_DIR}/${dir} ${CMAKE_CURRENT_BINARY_DIR}/${dir})
+    else()
+        message(STATUS "Skipping external tests subdir (missing): ${dir}")
+    endif()
+endmacro()
+
 # List of test subfolders to include. Add new entries as needed.
 set(TEST_SUBFOLDERS
     CashSystem
@@ -46,16 +56,16 @@ set(TEST_SUBFOLDERS
     VulkanResources
 )
 
-# Optionally include ShaderManagement tests only when the library or headers are available.
-# This prevents test aggregation failures on machines that don't build ShaderManagement yet.
-if(TARGET ShaderManagement)
-    list(APPEND TEST_SUBFOLDERS ShaderManagement)
-else()
-    message(STATUS "Skipping ShaderManagement tests: ShaderManagement target not available")
-endif()
+set(EXTERNAL_TEST_DIRS
+    ShaderManagement/tests
+)
 
 foreach(subdir IN LISTS TEST_SUBFOLDERS)
     maybe_add_subdir(${subdir})
+endforeach()
+
+foreach(external_subdir IN LISTS EXTERNAL_TEST_DIRS)
+    maybe_add_external_subdir(${external_subdir})
 endforeach()
 
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")
