@@ -1,20 +1,23 @@
 # Progress
 
-## Current State: Phase 5 Complete - Push Constants & Pool Sizing ✅
+## Current State: CRITICAL - Phase 0 Required Before All Work 🔴
 
-**Last Updated**: October 31, 2025
+**Last Updated**: November 1, 2025
 
-The project has achieved **complete descriptor automation with push constants and intelligent pool sizing**. The system now:
-- ✅ Push constants automatically extracted from SPIR-V reflection
-- ✅ Push constants passed through PipelineCacher → PipelineLayoutCacher
-- ✅ Pipeline layout keys include push constant data ("15393162788878|1|16:0:16")
-- ✅ CalculateDescriptorPoolSizes() helper function for reflection-based pool sizing
-- ✅ DescriptorSetNode uses helper for automatic pool creation
-- ✅ In-memory caching working (CACHE HIT for shader modules and pipelines)
-- ✅ Zero validation errors, proper cleanup
-- ✅ Application renders correctly
+**HALT ALL WORK**: Comprehensive architectural review identified **5 P0 correctness bugs** that must be fixed first.
 
-**Next**: Phase 6 - Hot Reload (runtime shader recompilation) or continue with other features
+**New Phase 0 Required** (6-10 days):
+1. 🔴 Per-frame resource management missing (UBO race conditions)
+2. 🔴 Frame-in-flight synchronization missing (CPU-GPU sync)
+3. 🔴 Command buffer recording strategy undefined
+4. 🔴 Multi-rate update loop missing (blocks gameplay)
+5. 🔴 Template method pattern missing (boilerplate elimination)
+
+**Phase A (Persistent Cache)**: ⏸️ PAUSED at 50% - Resume after Phase 0.2 (frame-in-flight sync)
+
+**Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
+
+**Next**: Begin Phase 0.1 - Per-Frame Resources refactor
 
 ---
 
@@ -237,7 +240,32 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. ShaderManagement Integration - Phase 6 Hot Reload (October 31, 2025)
+### 1. Phase A - Persistent Cache Infrastructure (October 31, 2025)
+**Priority**: HIGH - Critical Performance Feature
+**Status**: ✅ COMPLETE - Async save/load working, stable device IDs, CACHE HIT confirmed
+
+**Completed** ✅:
+- Async cascade architecture (MainCacher → DeviceRegistry → Cachers)
+- Stable device hash (vendorID | deviceID ^ driverVersion)
+- Manifest-based cacher pre-registration (cacher_registry.txt)
+- Cache loading timing (Setup → LoadCaches → Compile)
+- Cache directory fixed (binaries/cache → cache)
+- Double SaveAll crash fixed
+- Zero validation errors, clean shutdown
+
+**Test Results**:
+- Cold start: CACHE MISS → creates cache files
+- Warm start: CACHE HIT for ShaderModuleCacher and PipelineCacher
+- Async I/O parallelism working across all cachers
+- Stable device paths (Device_0x10de91476520 format)
+
+**Key Files**:
+- `CashSystem/src/device_identifier.cpp` (stable hash, manifest save/load)
+- `RenderGraph/src/Core/RenderGraph.cpp` (cache loading in GeneratePipelines)
+- `CashSystem/include/CashSystem/MainCacher.h` (SaveAllAsync/LoadAllAsync)
+- `RenderGraph/src/Nodes/DeviceNode.cpp` (device registration)
+
+### 2. ShaderManagement Integration - Phase 6 Hot Reload (October 31, 2025)
 **Priority**: LOW - Advanced Feature for Developer Experience
 **Status**: ✅ Phase 0-5 complete, Phase 6 not yet started
 
@@ -273,7 +301,38 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 **See**: `documentation/ShaderManagement/ShaderManagement-Integration-Plan.md` for complete roadmap
 
-### 2. Documentation Updates
+### 3. Architectural Improvements (Identified - October 31, 2025)
+**Priority**: MIXED - Defer lifecycle, prioritize update loop
+**Status**: ⏳ NOT STARTED - Identified during Phase A implementation
+
+**A. Graph Lifecycle Phases Cleanup** (P2 - Cosmetic):
+- **Effort**: 1-2 days (grows linearly with node count)
+- **Trigger**: When node count > 30-50 OR before major graph refactor
+- **Changes**:
+  - Split `Setup()` into `RegisterCachers()` and `Setup()`
+  - Three separate loops: RegisterCachers → LoadCaches → Setup → Compile
+  - Cleaner separation of concerns
+- **Verdict**: Defer until node count warrants it (currently 15 nodes)
+- **Risk**: Low - complexity scales linearly, refactor cost grows slowly
+
+**B. Update Loop Architecture** (P0 - Fundamental):
+- **Effort**: 2-3 days
+- **Priority**: HIGH - Foundation for gameplay features
+- **Changes**:
+  - Add `Update()` virtual method to NodeInstance
+  - Multi-rate update scheduler in RenderGraph
+  - Support PerFrame, Fixed60Hz, Fixed120Hz, FixedDelta update rates
+  - Move main loop control into RenderGraph
+- **Why Now**:
+  - Fundamental execution model change
+  - Harder to bolt on after gameplay nodes exist
+  - Enables physics (fixed timestep), animation (per-frame), AI (lower rate)
+- **Verdict**: Implement BEFORE Phase B (next major feature)
+- **Risk**: HIGH if deferred - deep API changes across all future nodes
+
+**See**: Architectural discussion from Phase A session (October 31, 2025)
+
+### 4. Documentation Updates
 **Priority**: MEDIUM
 
 **Tasks**:
@@ -281,12 +340,12 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 2. ⏳ Document data-driven pipeline creation patterns
 3. ⏳ Create Phase 2 architecture document
 
-### 3. Node Expansion
+### 5. Node Expansion
 **Priority**: MEDIUM
 
 **Remaining**: ComputePipelineNode, ShadowMapPassNode, PostProcessNode, CopyImageNode
 
-### 4. Example Scenes
+### 6. Example Scenes
 **Priority**: LOW
 
 **Planned**: Triangle scene, Textured mesh, Shadow mapping
@@ -322,18 +381,38 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## Next Immediate Steps
 
-### Phase 4: Pipeline Layout Automation (Current - 2 weeks)
-1. Use ShaderDataBundle for VkPipelineLayout creation
-2. Extract push constants from reflection
-3. Size descriptor pools from reflection
-4. Test cache persistence (CACHE HIT on second run)
+### Phase B: Update Loop Architecture (HIGH PRIORITY - Before next features)
+**Duration**: 2-3 days
+**Rationale**: Fundamental execution model change - must be done before gameplay nodes
 
-### Phase 5: Cache Validation (1 week)
-1. Verify cache persistence across runs
-2. Add cache metrics and statistics
-3. Implement cache eviction policy
+**Tasks**:
+1. Add `Update(float deltaTime)` virtual method to NodeInstance
+2. Implement `UpdateScheduler` in RenderGraph
+3. Support update rate policies:
+   - `PerFrame` (runs every frame)
+   - `Fixed60Hz` (physics simulation at 60 Hz)
+   - `Fixed120Hz` (high-rate systems)
+   - `FixedDelta(float seconds)` (custom rates)
+4. Implement fixed-timestep accumulator pattern
+5. Move main loop control into RenderGraph (RenderGraph::RunFrame())
+6. Update VulkanGraphApplication to use RenderGraph::RunFrame()
 
-### Phase 6: Hot Reload (2 weeks)
+**Goal**: Enable multi-rate update systems (physics at 60Hz, render at variable rate, AI at 10Hz)
+
+**See**: `documentation/UpdateLoopArchitecture.md` (to be created during implementation)
+
+### Phase C: Descriptor & Buffer Automation (2 weeks)
+1. Auto-allocate uniform buffers from SPIR-V reflection
+2. Auto-bind descriptor sets in GraphicsPipelineNode
+3. Type-safe buffer updates via SDI headers
+4. Remove manual descriptor setup from nodes
+
+### Phase D: Cache Validation & Metrics (1 week)
+1. Add cache metrics and statistics
+2. Implement cache eviction policy (LRU)
+3. Add cache warming strategies
+
+### Phase E: Hot Reload (2 weeks - Optional)
 1. Runtime shader recompilation
 2. Pipeline invalidation on shader change
 3. Automatic graph recompilation

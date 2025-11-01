@@ -56,7 +56,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 6; // Added texture inputs + ShaderDataBundle
+    static constexpr size_t INPUTS = 8; // Added SWAPCHAIN_PUBLIC and IMAGE_INDEX for per-frame resources
     static constexpr size_t OUTPUTS = 4;  // Added VULKAN_DEVICE_OUT for pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -79,7 +79,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     // ShaderDataBundle with reflection data (Phase 2 descriptor automation)
     CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5, false);
-    // ===== OUTPUTS (3) =====
+
+    // Per-frame resource management (Phase 0.1)
+    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6, false);
+    CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 7, false);
+
+    // ===== OUTPUTS (4) =====
     // Descriptor set layout
     CONSTEXPR_OUTPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0, false);
 
