@@ -1,0 +1,64 @@
+#pragma once
+#include "Core/ResourceConfig.h"
+#include "Core/LoopManager.h"
+
+namespace Vixen::RenderGraph {
+
+// Compile-time slot counts
+namespace LoopBridgeNodeCounts {
+    static constexpr size_t INPUTS = 0;   // No inputs - accesses graph system directly
+    static constexpr size_t OUTPUTS = 2;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+/**
+ * @brief Pure constexpr resource configuration for LoopBridgeNode
+ *
+ * Phase 0.4: Graph-native loop system bridge
+ * Accesses graph-owned LoopManager and publishes loop state
+ *
+ * Inputs: 0 (accesses RenderGraph::GetLoopManager() directly)
+ * Outputs: 2 (LOOP_OUT: LoopReference*, SHOULD_EXECUTE: bool)
+ * Parameters: LOOP_ID (uint32_t)
+ */
+CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
+                      LoopBridgeNodeCounts::INPUTS,
+                      LoopBridgeNodeCounts::OUTPUTS,
+                      LoopBridgeNodeCounts::ARRAY_MODE) {
+    // Compile-time output slot definitions
+    CONSTEXPR_OUTPUT(LOOP_OUT, const LoopReference*, 0, false);
+    CONSTEXPR_OUTPUT(SHOULD_EXECUTE, bool, 1, false);
+
+    // Parameter definition
+    PARAM_DEFINITION(LOOP_ID, uint32_t);
+
+    // Constructor for runtime descriptor initialization
+    LoopBridgeNodeConfig() {
+        // Initialize output descriptors
+        HandleDescriptor loopRefDesc{"const LoopReference*"};
+        INIT_OUTPUT_DESC(LOOP_OUT, "loop_out", ResourceLifetime::Transient, loopRefDesc);
+
+        HandleDescriptor boolDesc{"bool"};
+        INIT_OUTPUT_DESC(SHOULD_EXECUTE, "should_execute", ResourceLifetime::Transient, boolDesc);
+    }
+
+    // Compile-time validation
+    static_assert(INPUT_COUNT == LoopBridgeNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == LoopBridgeNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == LoopBridgeNodeCounts::ARRAY_MODE, "Array mode mismatch");
+
+    static_assert(LOOP_OUT_Slot::index == 0, "LOOP_OUT must be at index 0");
+    static_assert(SHOULD_EXECUTE_Slot::index == 1, "SHOULD_EXECUTE must be at index 1");
+    static_assert(!LOOP_OUT_Slot::nullable, "LOOP_OUT is not nullable");
+    static_assert(!SHOULD_EXECUTE_Slot::nullable, "SHOULD_EXECUTE is not nullable");
+
+    // Type validations
+    static_assert(std::is_same_v<LOOP_OUT_Slot::Type, const LoopReference*>);
+    static_assert(std::is_same_v<SHOULD_EXECUTE_Slot::Type, bool>);
+};
+
+// Global compile-time validations
+static_assert(LoopBridgeNodeConfig::INPUT_COUNT == LoopBridgeNodeCounts::INPUTS);
+static_assert(LoopBridgeNodeConfig::OUTPUT_COUNT == LoopBridgeNodeCounts::OUTPUTS);
+
+} // namespace Vixen::RenderGraph

@@ -342,4 +342,54 @@ void NodeInstance::MarkNeedsRecompile() {
     }
 }
 
+// Phase 0.4: Loop connection implementation
+void NodeInstance::SetLoopInput(const LoopReference* loopRef) {
+    if (!loopRef) return;
+
+    // Add to connected loops (avoid duplicates)
+    if (std::find(connectedLoops.begin(), connectedLoops.end(), loopRef) == connectedLoops.end()) {
+        connectedLoops.push_back(loopRef);
+    }
+}
+
+const LoopReference* NodeInstance::GetLoopOutput() const {
+    // Pass through first connected loop (or nullptr)
+    return connectedLoops.empty() ? nullptr : connectedLoops[0];
+}
+
+bool NodeInstance::ShouldExecuteThisFrame() const {
+    if (connectedLoops.empty()) {
+        return true;  // No loops = always execute
+    }
+
+    // Execute if ANY connected loop is active (OR logic)
+    for (const auto* loop : connectedLoops) {
+        if (loop && loop->shouldExecuteThisFrame) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+double NodeInstance::GetLoopDeltaTime() const {
+    // Return first active loop's delta time
+    for (const auto* loop : connectedLoops) {
+        if (loop && loop->shouldExecuteThisFrame) {
+            return loop->deltaTime;
+        }
+    }
+    return 0.0;
+}
+
+uint64_t NodeInstance::GetLoopStepCount() const {
+    // Return first active loop's step count
+    for (const auto* loop : connectedLoops) {
+        if (loop && loop->shouldExecuteThisFrame) {
+            return loop->stepCount;
+        }
+    }
+    return 0;
+}
+
 } // namespace Vixen::RenderGraph

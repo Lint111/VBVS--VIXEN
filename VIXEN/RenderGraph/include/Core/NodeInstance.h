@@ -4,6 +4,7 @@
 #include "NodeType.h"
 #include "Data/ParameterDataTypes.h"
 #include "CleanupStack.h"
+#include "LoopManager.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -43,6 +44,11 @@ class NodeInstance {
     friend class ConnectionBatch;
 
 public:
+    // Phase 0.4: Auto-generated loop slots (reserved slot indices)
+    // These slots are automatically available on all nodes for loop connections
+    static constexpr uint32_t AUTO_LOOP_IN_SLOT = UINT32_MAX - 1;
+    static constexpr uint32_t AUTO_LOOP_OUT_SLOT = UINT32_MAX - 2;
+
     NodeInstance(
         const std::string& instanceName,
         NodeType* nodeType
@@ -208,6 +214,57 @@ public:
      */
     void ResetCleanupFlag() { cleanedUp = false; }
 
+    // Phase 0.4: Loop connection API
+    /**
+     * @brief Connect this node to a loop
+     *
+     * Adds loopRef to the node's connected loops. Nodes can be connected to
+     * multiple loops (OR logic - executes if ANY loop active).
+     *
+     * @param loopRef Stable pointer to LoopReference from LoopManager
+     */
+    void SetLoopInput(const LoopReference* loopRef);
+
+    /**
+     * @brief Get loop reference for pass-through to connected nodes
+     *
+     * Returns the first connected loop, or nullptr if no loops connected.
+     * Used by RenderGraph during loop propagation.
+     *
+     * @return Const pointer to first LoopReference, or nullptr
+     */
+    const LoopReference* GetLoopOutput() const;
+
+    /**
+     * @brief Check if this node should execute this frame
+     *
+     * Returns true if:
+     * - No loops connected (always execute), OR
+     * - At least one connected loop has shouldExecuteThisFrame = true
+     *
+     * @return true if node should execute, false otherwise
+     */
+    bool ShouldExecuteThisFrame() const;
+
+    /**
+     * @brief Get fixed timestep delta time from connected loop
+     *
+     * Returns deltaTime from the first active loop, or 0.0 if no loops active.
+     * Useful for nodes that need to know their update rate.
+     *
+     * @return Delta time in seconds
+     */
+    double GetLoopDeltaTime() const;
+
+    /**
+     * @brief Get step count from connected loop
+     *
+     * Returns stepCount from the first active loop, or 0 if no loops active.
+     *
+     * @return Total steps executed by loop
+     */
+    uint64_t GetLoopStepCount() const;
+
     // Virtual methods for derived classes to implement
     virtual void Setup() {}
     virtual void Compile() {}
@@ -340,6 +397,9 @@ public:
 
     // Current active bundle index used by In()/Out() when callers omit explicit array index
     size_t activeBundleIndex = 0;
+
+    // Phase 0.4: Loop connections (zero or more loops)
+    std::vector<const LoopReference*> connectedLoops;
 
     // Execution state
     NodeState state = NodeState::Created;
