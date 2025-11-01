@@ -50,7 +50,7 @@ CommandPoolNode::~CommandPoolNode() {
     Cleanup();
 }
 
-void CommandPoolNode::Setup() {
+void CommandPoolNode::SetupImpl() {
     VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -63,7 +63,7 @@ void CommandPoolNode::Setup() {
     SetDevice(devicePtr);
 }
 
-void CommandPoolNode::Compile() {
+void CommandPoolNode::CompileImpl() {
 
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
@@ -92,13 +92,9 @@ void CommandPoolNode::Compile() {
     Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
-
-    // === REGISTER CLEANUP ===
-    // Automatically resolves dependency on DeviceNode via input slot 0
-    RegisterCleanup();
 }
 
-void CommandPoolNode::Execute(VkCommandBuffer commandBuffer) {
+void CommandPoolNode::ExecuteImpl() {
     // Command pool creation happens in Compile phase
     // Execute is a no-op
 }

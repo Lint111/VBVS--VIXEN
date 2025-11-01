@@ -51,7 +51,7 @@ TextureLoaderNode::~TextureLoaderNode() {
     Cleanup();
 }
 
-void TextureLoaderNode::Setup() {
+void TextureLoaderNode::SetupImpl() {
     // Read and validate device input
     VulkanDevicePtr devicePtr = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -79,7 +79,7 @@ void TextureLoaderNode::Setup() {
     );
 }
 
-void TextureLoaderNode::Compile() {
+void TextureLoaderNode::CompileImpl() {
     // Get parameters using config constants
     std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
@@ -153,13 +153,9 @@ void TextureLoaderNode::Compile() {
     Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
     Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
     Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
-
-    // === REGISTER CLEANUP ===
-    // Automatically resolves dependency on DeviceNode via VULKAN_DEVICE_IN input
-    RegisterCleanup();
 }
 
-void TextureLoaderNode::Execute(VkCommandBuffer commandBuffer) {
+void TextureLoaderNode::ExecuteImpl() {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     

@@ -26,18 +26,38 @@
 - Only re-record when dirty (saves CPU work for static scenes)
 - **Descriptor set invalidation bug FIXED**: Command buffers re-recorded when descriptor sets change
 
+**Phase 0.4 Multi-Rate Loop System**: ✅ COMPLETE (November 1, 2025)
+- **Timer Class** (`RenderGraph/include/Core/Timer.h`) - High-resolution delta time tracking
+- **LoopManager** (`RenderGraph/include/Core/LoopManager.h`) - Multi-rate loop orchestration
+  - Fixed timestep accumulator pattern (Gaffer on Games)
+  - Three catchup modes: FireAndForget, SingleCorrectiveStep, MultipleSteps (default)
+  - LoopReference with stable memory address (pointer-based propagation)
+  - Per-loop profiling (stepCount, lastExecutionTimeMs, deltaTime)
+- **LoopBridgeNode** (Type ID 110) - Publishes loop state to graph
+  - LOOP_ID input (from ConstantNode), LOOP_OUT + SHOULD_EXECUTE outputs
+  - Connects to graph-owned LoopManager via GetOwningGraph()
+- **BoolOpNode** (Type ID 111) - Multi-input boolean logic for loop composition
+  - Six operations: AND, OR, XOR, NOT, NAND, NOR
+  - Single INPUTS slot accepting `std::vector<bool>` (not indexed array pattern)
+- **AUTO_LOOP Slots** - All nodes have AUTO_LOOP_IN_SLOT and AUTO_LOOP_OUT_SLOT
+  - Loop state propagates through connections automatically
+  - ShouldExecuteThisFrame() uses OR logic across connected loops
+- **ResourceVariant Type Registrations** - Added bool, BoolVector, BoolOpEnum, LoopReferencePtr
+- **Test Setup**: PhysicsLoop at 60Hz wired to GeometryRenderNode via AUTO_LOOP connections
+- **Key Design**: Vector-based input (not indexed), CONSTEXPR_NODE_CONFIG pattern
+
 **Remaining Phase 0 Tasks** (2 sub-phases, 3-5 days):
 1. ~~Per-frame resource management~~ ✅ COMPLETE
 2. ~~Frame-in-flight synchronization~~ ✅ COMPLETE
 3. ~~Command buffer recording strategy~~ ✅ COMPLETE
-4. 🔴 Multi-rate update loop missing (blocks gameplay) - 2-3 days
+4. ~~Multi-rate update loop~~ ✅ COMPLETE (Phase 0.4)
 5. 🔴 Template method pattern missing (boilerplate elimination) - 1-2 days
 
 **Phase A (Persistent Cache)**: ⏸️ PAUSED - Resume after Phase 0 complete
 
 **Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 
-**Next**: Phase 0.4 - Multi-Rate Update Loop (enables gameplay)
+**Next**: Phase 0.5 (Template Method Pattern) OR Phase A (Resume Persistent Cache)
 
 ---
 
@@ -176,10 +196,11 @@
 ### 3. Variant Resource System (October 2025)
 **Status**: ✅ Complete, zero warnings
 
-- 25+ Vulkan types registered via `RESOURCE_TYPE_REGISTRY` macro
+- 29+ types registered via `RESOURCE_TYPE_REGISTRY` macro (including Phase 0.4 additions)
 - Single-source type definition eliminates duplication
 - `ResourceHandleVariant` provides compile-time type safety
 - Zero-overhead `std::variant` (no virtual dispatch)
+- **Phase 0.4 Types**: bool, BoolVector (std::vector<bool>), BoolOpEnum, LoopReferencePtr
 
 **Key Files**: `RenderGraph/include/Core/ResourceVariant.h`, `RenderGraph/include/Data/VariantDescriptors.h`
 
@@ -189,7 +210,8 @@
 - `TypedNode<ConfigType>` template with compile-time slot validation
 - `In(SlotType)` / `Out(SlotType, value)` API replaces manual accessors
 - Protected legacy methods (`GetInput/GetOutput`) - graph wiring only
-- All node implementations migrated (15+ nodes)
+- All node implementations migrated (17+ nodes)
+- AUTO_LOOP_IN_SLOT and AUTO_LOOP_OUT_SLOT on all nodes (Phase 0.4)
 
 **Key Files**: `RenderGraph/include/Core/TypedNodeInstance.h`, `RenderGraph/include/Core/NodeInstance.h`
 
@@ -210,20 +232,21 @@
 - Graph compilation phases: Validate → AnalyzeDependencies → AllocateResources → GeneratePipelines
 - Topology-based execution ordering
 - Resource lifetime management (graph owns resources)
+- **Phase 0.4**: LoopManager integration with UpdateLoops() and loop propagation in Execute()
 
-**Key Files**: `RenderGraph/src/Core/RenderGraph.cpp`, `RenderGraph/include/Core/NodeInstance.h`
+**Key Files**: `RenderGraph/src/Core/RenderGraph.cpp`, `RenderGraph/include/Core/NodeInstance.h`, `RenderGraph/include/Core/LoopManager.h`
 
-### 7. Node Implementations (15+ Nodes)
+### 7. Node Implementations (17+ Nodes)
 **Status**: ✅ Core nodes implemented
 
-**Catalog**: WindowNode, DeviceNode, CommandPoolNode, SwapChainNode, DepthBufferNode, VertexBufferNode, TextureLoaderNode, RenderPassNode, FramebufferNode, GraphicsPipelineNode, DescriptorSetNode, GeometryPassNode, GeometryRenderNode, PresentNode, ShaderLibraryNode
+**Catalog**: WindowNode, DeviceNode, CommandPoolNode, SwapChainNode, DepthBufferNode, VertexBufferNode, TextureLoaderNode, RenderPassNode, FramebufferNode, GraphicsPipelineNode, DescriptorSetNode, GeometryPassNode, GeometryRenderNode, PresentNode, ShaderLibraryNode, FrameSyncNode, ConstantNode, LoopBridgeNode, BoolOpNode
 
 ### 8. Build System (CMake Modular Architecture)
 **Status**: ✅ Clean incremental compilation
 
 Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManagement, RenderGraph, CashSystem
 
-**Build Status**: Exit Code 0, Zero warnings in RenderGraph
+**Build Status**: Exit Code 0, Zero warnings in RenderGraph, Phase 0.4 branch ready to merge
 
 ### 9. Handle-Based System (October 27, 2025)
 **Status**: ✅ Complete, O(1) node access

@@ -57,7 +57,7 @@ GeometryRenderNode::~GeometryRenderNode() {
     Cleanup();
 }
 
-void GeometryRenderNode::Setup() {
+void GeometryRenderNode::SetupImpl() {
     // Get device and command pool from inputs
     vulkanDevice = In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
@@ -70,7 +70,7 @@ void GeometryRenderNode::Setup() {
     }
 }
 
-void GeometryRenderNode::Compile() {
+void GeometryRenderNode::CompileImpl() {
     // Get parameters
     vertexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::VERTEX_COUNT, 0);
     instanceCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INSTANCE_COUNT, 1);
@@ -121,21 +121,19 @@ void GeometryRenderNode::Compile() {
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // No need to create per-swapchain-image semaphores anymore
-
-    RegisterCleanup();
 }
 
-void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
+void GeometryRenderNode::ExecuteImpl() {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Phase 0.2: Get per-flight sync primitives from FrameSyncNode
+    // Phase 0.4: Get per-flight sync primitives from FrameSyncNode
+    // Note: FrameSyncNode already waited on the fence, so we only need the semaphores here
     VkSemaphore imageAvailableSemaphore = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, NodeInstance::SlotRole::ExecuteOnly);
     VkSemaphore renderCompleteSemaphore = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN, NodeInstance::SlotRole::ExecuteOnly);
     VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Wait for previous frame using this fence to complete (CPU-GPU sync)
-    vkWaitForFences(vulkanDevice->device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);
 
     // Guard against invalid image index (swapchain out of date)

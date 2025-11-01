@@ -542,10 +542,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
 
-    // --- FrameSync → SwapChain connection (Phase 0.2) ---
-    // SwapChainNode receives per-flight semaphore for vkAcquireNextImageKHR
-    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
-                  swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE_IN);
+    // --- FrameSync → SwapChain connections (Phase 0.4) ---
+    // Phase 0.4: Per-flight semaphores and current frame index
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_INDEX);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -654,10 +658,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE)  // Phase 0.2: Per-flight semaphore (wait)
-         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN)  // Phase 0.2: Per-flight semaphore (signal)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE)  // Phase 0.4: Per-image semaphore (wait)
+         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN)  // Phase 0.4: Per-image semaphore (signal)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE);  // Phase 0.2: Per-flight fence (CPU-GPU sync)
 
@@ -686,14 +690,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
 
-    // --- Phase 0.4: Loop Propagation Connections (after batch registration) ---
-    // Connect AUTO_LOOP slots: LoopBridge → GeometryRender
-    // This gates GeometryRender execution based on physics loop timing (60Hz)
-    renderGraph->Connect(
-        physicsLoopBridge, NodeInstance::AUTO_LOOP_OUT_SLOT,
-        geometryRenderNode, NodeInstance::AUTO_LOOP_IN_SLOT
-    );
-    mainLogger->Info("Connected physics loop propagation to GeometryRenderNode");
+    // --- Phase 0.4: Loop Propagation Connections ---
+    // TODO: Re-enable loop propagation connections after implementing proper API
+    // Note: AUTO_LOOP slots exist on all nodes, but direct Connect() is not exposed on RenderGraph
+    // batch.Connect(
+    //     physicsLoopBridge, NodeInstance::AUTO_LOOP_OUT_SLOT,
+    //     geometryRenderNode, NodeInstance::AUTO_LOOP_IN_SLOT
+    // );
+    // mainLogger->Info("Connected physics loop propagation to GeometryRenderNode");
 
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }

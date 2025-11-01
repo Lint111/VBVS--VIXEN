@@ -42,10 +42,6 @@ public:
     );
     virtual ~WindowNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Accessors
 #ifdef _WIN32
     HWND GetWindow() const { return window; }
@@ -62,6 +58,10 @@ public:
     void ClearResizeFlag() { wasResized = false; }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

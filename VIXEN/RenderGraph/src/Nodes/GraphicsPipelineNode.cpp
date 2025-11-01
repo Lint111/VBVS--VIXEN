@@ -57,7 +57,7 @@ GraphicsPipelineNode::~GraphicsPipelineNode() {
     Cleanup();
 }
 
-void GraphicsPipelineNode::Setup() {
+void GraphicsPipelineNode::SetupImpl() {
     NODE_LOG_DEBUG("Setup: Reading device input");
 
     VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
@@ -74,7 +74,7 @@ void GraphicsPipelineNode::Setup() {
     // Pipeline cache will be created by PipelineCacher during Compile()
 }
 
-void GraphicsPipelineNode::Compile() {
+void GraphicsPipelineNode::CompileImpl() {
     // Get parameters using typed config constants
     enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
     enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
@@ -170,12 +170,9 @@ void GraphicsPipelineNode::Compile() {
     Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
     Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
     Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
-
-    // === REGISTER CLEANUP ===
-    NodeInstance::RegisterCleanup();
 }
 
-void GraphicsPipelineNode::Execute(VkCommandBuffer commandBuffer) {
+void GraphicsPipelineNode::ExecuteImpl() {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }

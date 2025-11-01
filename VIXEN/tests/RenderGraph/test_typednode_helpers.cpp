@@ -14,8 +14,10 @@ public:
     using NodeInstance::SetOutput;
     using NodeInstance::GetInputs;
     using NodeInstance::GetOutputs;
+
+protected:
     // Provide minimal Execute implementation to satisfy abstract base
-    void Execute(VkCommandBuffer) override {}
+    void ExecuteImpl() override {}
 };
 
 class DummyNodeType : public NodeType {

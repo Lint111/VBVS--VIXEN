@@ -47,7 +47,7 @@ PresentNode::~PresentNode() {
     Cleanup();
 }
 
-void PresentNode::Setup() {
+void PresentNode::SetupImpl() {
     // Read and validate device input
     VulkanDevicePtr devicePtr = In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -58,7 +58,7 @@ void PresentNode::Setup() {
     SetDevice(devicePtr);
 }
 
-void PresentNode::Compile() {
+void PresentNode::CompileImpl() {
     // Get parameters using config constants
     waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
@@ -71,7 +71,7 @@ void PresentNode::Compile() {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::Execute(VkCommandBuffer commandBuffer) {
+void PresentNode::ExecuteImpl() {
     // Call Present() during graph execution
     // Swapchain and imageIndex must be set before this is called
     Present();

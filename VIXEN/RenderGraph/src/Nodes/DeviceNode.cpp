@@ -66,7 +66,7 @@ DeviceNode::~DeviceNode() {
     Cleanup();
 }
 
-void DeviceNode::Setup() {
+void DeviceNode::SetupImpl() {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 
     // Get VkInstance from global (Phase 1 temporary solution)
@@ -87,7 +87,7 @@ void DeviceNode::Setup() {
     NODE_LOG_INFO("[DeviceNode] Setup complete");
 }
 
-void DeviceNode::Compile() {
+void DeviceNode::CompileImpl() {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // If device already exists, publish invalidation event before recreation
@@ -135,13 +135,9 @@ void DeviceNode::Compile() {
     Out(DeviceNodeConfig::INSTANCE, instance);
 
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
-
-    // === REGISTER CLEANUP ===
-    // Device is a root node (no input dependencies) - cleanup runs last
-    RegisterCleanup();
 }
 
-void DeviceNode::Execute(VkCommandBuffer commandBuffer) {
+void DeviceNode::ExecuteImpl() {
     // DeviceNode doesn't record commands - it just provides the device
 }
 

@@ -12,7 +12,8 @@ public:
     using NodeInstance::NodeInstance;
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
-    void Execute(VkCommandBuffer) override {}
+protected:
+    void ExecuteImpl() override {}
 };
 
 class DummyNodeType : public NodeType {

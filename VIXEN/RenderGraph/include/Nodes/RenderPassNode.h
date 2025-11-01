@@ -28,16 +28,15 @@ public:
 
     virtual ~RenderPassNode();
 
-    // NodeInstance interface
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Access render pass for pipeline/framebuffer creation
     VkRenderPass GetRenderPass() const { return renderPass; }
     bool HasDepthAttachment() const { return hasDepth; }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

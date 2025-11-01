@@ -30,8 +30,8 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 7;  // Phase 0.2: Added IMAGE_AVAILABLE_SEMAPHORE_IN
-    static constexpr size_t OUTPUTS = 4;  // SWAPCHAIN_IMAGES, HANDLE, PUBLIC, WIDTH_OUT, HEIGHT_OUT, IMAGE_INDEX, IMAGE_AVAILABLE_SEMAPHORE
+    static constexpr size_t INPUTS = 9;  // Phase 0.4: Added CURRENT_FRAME_INDEX + semaphore arrays
+    static constexpr size_t OUTPUTS = 5;  // Phase 0.4: Added RENDER_COMPLETE_SEMAPHORE output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -39,7 +39,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
                       SwapChainNodeCounts::INPUTS,
                       SwapChainNodeCounts::OUTPUTS,
                       SwapChainNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (7) =====
+    // ===== INPUTS (9) =====
     // Required window handles from WindowNode
     CONSTEXPR_INPUT(HWND, ::HWND, 0, false);
     CONSTEXPR_INPUT(HINSTANCE, ::HINSTANCE, 1, false);
@@ -54,10 +54,12 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5, false);
 
-    // Phase 0.2: Per-flight semaphore from FrameSyncNode for vkAcquireNextImageKHR
-    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORE_IN, VkSemaphore, 6, false);
+    // Phase 0.4: Per-flight semaphore arrays and current frame index from FrameSyncNode
+    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 6, false);
+    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 7, false);
+    CONSTEXPR_INPUT(CURRENT_FRAME_INDEX, uint32_t, 8, false);
 
-    // ===== OUTPUTS (4) =====    
+    // ===== OUTPUTS (5) =====
 
     // Additional outputs: swapchain handle and public variables
     CONSTEXPR_OUTPUT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 0, false);
@@ -65,9 +67,10 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
     // Current frame image index (updated per frame in Execute())
     CONSTEXPR_OUTPUT(IMAGE_INDEX, uint32_t, 2, false);
-    
-    // Image available semaphore (signaled when image is acquired, for queue submission wait)
+
+    // Phase 0.4: Per-image semaphores (indexed from arrays using IMAGE_INDEX)
     CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORE, VkSemaphore, 3, false);
+    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 4, false);
 
 
     SwapChainNodeConfig() {
@@ -105,9 +108,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Phase 0.2: Image available semaphore from FrameSyncNode
-        HandleDescriptor semaphoreDesc{"VkSemaphore"};
-        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORE_IN, "image_available_semaphore_in", ResourceLifetime::Transient, semaphoreDesc);
+        // Phase 0.4: Semaphore arrays and frame index from FrameSyncNode
+        HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
+        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
+        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
+
+        HandleDescriptor frameIndexDesc{"uint32_t"};
+        INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
 
         INIT_OUTPUT_DESC(SWAPCHAIN_HANDLE, "swapchain_handle",
             ResourceLifetime::Persistent,
@@ -123,11 +130,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
             ResourceLifetime::Transient,
             BufferDescription{}  // uint32_t current image index
         );
-        
+
+        // Phase 0.4: Per-image semaphores (indexed from arrays)
+        HandleDescriptor semaphoreDesc{"VkSemaphore"};
         INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORE, "image_available_semaphore",
-            ResourceLifetime::Transient,
-            BufferDescription{}  // VkSemaphore for queue wait
-        );
+            ResourceLifetime::Transient, semaphoreDesc);
+        INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
+            ResourceLifetime::Transient, semaphoreDesc);
     }
 
     // Compile-time validations
@@ -153,8 +162,14 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 5, "VULKAN_DEVICE input must be at index 5");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::index == 6, "IMAGE_AVAILABLE_SEMAPHORE_IN must be at index 6");
-    static_assert(!IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORE_IN is required");
+    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 6, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 6");
+    static_assert(!IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY is required");
+
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 7, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 7");
+    static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
+
+    static_assert(CURRENT_FRAME_INDEX_Slot::index == 8, "CURRENT_FRAME_INDEX must be at index 8");
+    static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is required");
 
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
     static_assert(!SWAPCHAIN_HANDLE_Slot::nullable, "SWAPCHAIN_HANDLE is required");
@@ -168,6 +183,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(IMAGE_AVAILABLE_SEMAPHORE_Slot::index == 3, "IMAGE_AVAILABLE_SEMAPHORE must be at index 3");
     static_assert(!IMAGE_AVAILABLE_SEMAPHORE_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORE is required");
 
+    static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 4, "RENDER_COMPLETE_SEMAPHORE must be at index 4");
+    static_assert(!RENDER_COMPLETE_SEMAPHORE_Slot::nullable, "RENDER_COMPLETE_SEMAPHORE is required");
+
     // Type validations
     static_assert(std::is_same_v<HWND_Slot::Type, ::HWND>);
     static_assert(std::is_same_v<HINSTANCE_Slot::Type, ::HINSTANCE>);
@@ -175,12 +193,15 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::Type, VkSemaphore>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
+    static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORE_Slot::Type, VkSemaphore>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };
 
 // Global compile-time validations

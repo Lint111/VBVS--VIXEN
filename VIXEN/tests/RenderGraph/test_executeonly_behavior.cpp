@@ -20,7 +20,9 @@ public:
         : TypedNode<TestConfig>(name, type) {}
 
     using NodeInstance::SetInput; // expose for tests
-    void Execute(VkCommandBuffer) override {}
+
+protected:
+    void ExecuteImpl() override {}
 };
 
 // A tiny dummy NodeType so we can construct instances

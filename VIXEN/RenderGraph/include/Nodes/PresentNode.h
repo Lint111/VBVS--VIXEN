@@ -40,14 +40,14 @@ public:
     );
     virtual ~PresentNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Execute presentation
     VkResult Present();
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

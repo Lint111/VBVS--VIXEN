@@ -17,8 +17,10 @@ public:
     using NodeInstance::SetOutput;
     using NodeInstance::GetInputs;
     using NodeInstance::GetOutputs;
-    // Provide minimal Execute implementation to satisfy abstract base
-    void Execute(VkCommandBuffer) override {}
+
+protected:
+    // Provide minimal Execute implementation to satisfy abstract base (uses template method pattern)
+    void ExecuteImpl() override {}
 };
 
 class DummyNodeType : public NodeType {

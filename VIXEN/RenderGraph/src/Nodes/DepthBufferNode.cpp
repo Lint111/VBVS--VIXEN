@@ -55,7 +55,7 @@ DepthBufferNode::~DepthBufferNode() {
     Cleanup();
 }
 
-void DepthBufferNode::Setup() {
+void DepthBufferNode::SetupImpl() {
     NODE_LOG_DEBUG("Setup: Reading device input");
     
     vulkanDevice = In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -70,7 +70,7 @@ void DepthBufferNode::Setup() {
     NODE_LOG_INFO("Setup complete");
 }
 
-void DepthBufferNode::Compile() {
+void DepthBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Helper macro for VkDevice
@@ -149,17 +149,9 @@ void DepthBufferNode::Compile() {
 
     isCreated = true;
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
-
-    // === REGISTER CLEANUP ===
-    // Let the CleanupStack / dependency tracker compute transitive dependencies.
-    // Do not manually force a dependency on the device cleanup entry here.
-    // Use the instance-level registration which builds cleanup dependencies
-    // (via the graph's ResourceDependencyTracker) so we don't hard-code
-    // transitive dependencies here.
-    RegisterCleanup();
 }
 
-void DepthBufferNode::Execute(VkCommandBuffer commandBuffer) {
+void DepthBufferNode::ExecuteImpl() {
     // No-op - depth buffer is created in Compile phase
 }
 

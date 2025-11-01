@@ -49,10 +49,6 @@ public:
     );
     virtual ~SwapChainNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Accessors
     VkSwapchainKHR GetSwapchain() const;
     const std::vector<VkImageView>& GetColorImageViews() const;
@@ -72,6 +68,10 @@ public:
     void Recreate(uint32_t newWidth, uint32_t newHeight);
 
 protected:
+    // Template method pattern - override *Impl() methods
+    void SetupImpl() override;
+    void CompileImpl() override;
+    void ExecuteImpl() override;
     void CleanupImpl() override;
 
 
@@ -84,6 +84,10 @@ private:
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // Removed: std::vector<VkSemaphore> imageAvailableSemaphores
     uint32_t currentFrame = 0;
+
+    // Phase 0.4: Track semaphore availability to prevent reuse
+    // Each semaphore is used with its corresponding image index
+    std::vector<bool> semaphoreInFlight;  // true if semaphore is currently in use
 
     // Current state
     uint32_t currentImageIndex = 0;

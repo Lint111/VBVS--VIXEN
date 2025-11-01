@@ -52,6 +52,7 @@ using DescriptorSetVector = std::vector<VkDescriptorSet>;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 using BoolVector = std::vector<bool>;  // Phase 0.4
+using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Per-image semaphore arrays
 
 namespace Vixen::RenderGraph {
 
@@ -105,6 +106,7 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkDescriptorSet,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkCommandPool,                   CommandPoolDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(VkSemaphore,                     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkSemaphoreArrayPtr,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFence,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \

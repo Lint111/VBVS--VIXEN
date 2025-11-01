@@ -48,10 +48,6 @@ public:
     );
     virtual ~VertexBufferNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Accessors for other nodes
     VkBuffer GetVertexBuffer() const { return vertexBuffer; }
     VkBuffer GetIndexBuffer() const { return indexBuffer; }
@@ -62,6 +58,10 @@ public:
     bool HasIndices() const { return hasIndices; }
 
 protected:
+    // Template method pattern - override *Impl() methods
+    void SetupImpl() override;
+    void CompileImpl() override;
+    void ExecuteImpl() override;
     void CleanupImpl() override;
 
 private:

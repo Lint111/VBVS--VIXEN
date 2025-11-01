@@ -47,7 +47,7 @@ FramebufferNode::~FramebufferNode() {
     Cleanup();
 }
 
-void FramebufferNode::Setup() {
+void FramebufferNode::SetupImpl() {
     NODE_LOG_DEBUG("Setup: Reading device input");
 
     VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
@@ -64,7 +64,7 @@ void FramebufferNode::Setup() {
     NODE_LOG_INFO("Setup: Framebuffer node ready");
 }
 
-void FramebufferNode::Compile() {
+void FramebufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Get typed inputs
@@ -163,12 +163,9 @@ void FramebufferNode::Compile() {
     Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
-
-    // === REGISTER CLEANUP ===
-    NodeInstance::RegisterCleanup();
 }
 
-void FramebufferNode::Execute(VkCommandBuffer commandBuffer) {
+void FramebufferNode::ExecuteImpl() {
     // No-op - framebuffers are created in Compile phase
 }
 

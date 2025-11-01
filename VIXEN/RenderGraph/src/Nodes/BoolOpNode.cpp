@@ -31,15 +31,15 @@ BoolOpNode::~BoolOpNode() {
     Cleanup();
 }
 
-void BoolOpNode::Setup() {
-    NODE_LOG_DEBUG("BoolOpNode::Setup()");
+void BoolOpNode::SetupImpl() {
+    NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 
     // Read OPERATION from input (connected to ConstantNode)
     operation = In(BoolOpNodeConfig::OPERATION);
 }
 
-void BoolOpNode::Compile() {
-    NODE_LOG_DEBUG("BoolOpNode::Compile()");
+void BoolOpNode::CompileImpl() {
+    NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
 
     // Validate operation type
     if (static_cast<uint8_t>(operation) > static_cast<uint8_t>(BoolOp::NOR)) {
@@ -47,7 +47,7 @@ void BoolOpNode::Compile() {
     }
 }
 
-void BoolOpNode::Execute(VkCommandBuffer commandBuffer) {
+void BoolOpNode::ExecuteImpl() {
     // Read vector of bools from INPUTS slot
     std::vector<bool> inputs = In(BoolOpNodeConfig::INPUTS);
 

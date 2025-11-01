@@ -49,14 +49,14 @@ public:
     );
     virtual ~GeometryRenderNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Record draw commands for a specific framebuffer
     void RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

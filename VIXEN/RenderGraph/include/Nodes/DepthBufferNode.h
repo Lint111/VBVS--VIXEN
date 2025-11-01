@@ -28,15 +28,14 @@ public:
 
     virtual ~DepthBufferNode();
 
-    // NodeInstance interface
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Accessor for depth image view
     VkImageView GetDepthImageView() const { return depthImage.view; }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

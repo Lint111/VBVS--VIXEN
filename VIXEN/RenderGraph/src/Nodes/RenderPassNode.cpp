@@ -50,7 +50,7 @@ RenderPassNode::~RenderPassNode() {
     Cleanup();
 }
 
-void RenderPassNode::Setup() {
+void RenderPassNode::SetupImpl() {
     VulkanDevicePtr devicePtr = In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -65,7 +65,7 @@ void RenderPassNode::Setup() {
     NODE_LOG_INFO("Setup: Render pass node ready");
 }
 
-void RenderPassNode::Compile() {
+void RenderPassNode::CompileImpl() {
     NODE_LOG_INFO("Compile: Creating render pass");
 
     // Get swapchain info bundle and extract format
@@ -181,12 +181,9 @@ void RenderPassNode::Compile() {
     Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Render pass created successfully");
-
-    // === REGISTER CLEANUP ===
-    NodeInstance::RegisterCleanup();    
 }
 
-void RenderPassNode::Execute(VkCommandBuffer commandBuffer) {
+void RenderPassNode::ExecuteImpl() {
     // No-op - render pass is created in Compile phase
 }
 

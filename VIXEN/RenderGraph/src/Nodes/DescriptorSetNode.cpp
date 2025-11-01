@@ -61,7 +61,7 @@ DescriptorSetNode::~DescriptorSetNode() {
     Cleanup();
 }
 
-void DescriptorSetNode::Setup() {
+void DescriptorSetNode::SetupImpl() {
     NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
     VulkanDevicePtr devicePtr = In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -74,7 +74,7 @@ void DescriptorSetNode::Setup() {
     NODE_LOG_INFO("Setup: Descriptor set node ready (MVP stub - no descriptors)");
 }
 
-void DescriptorSetNode::Compile() {
+void DescriptorSetNode::CompileImpl() {
     NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Phase 2: Read ShaderDataBundle from input
@@ -174,18 +174,32 @@ void DescriptorSetNode::Compile() {
     NODE_LOG_INFO("Compile: Descriptor set layout created from reflection");
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
+    // Phase 0.4: Get swapchain image count for per-image resource allocation
+    auto* swapchainPublic = In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
+    if (!swapchainPublic) {
+        throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
+    }
+
+    uint32_t imageCount = swapchainPublic->swapChainImageCount;
+    if (imageCount == 0) {
+        throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
+    }
+
+    std::cout << "[DescriptorSetNode::Compile] Creating per-frame resources for " << imageCount << " swapchain images" << std::endl;
+
     // Phase 5: Use helper function to calculate descriptor pool sizes from reflection
+    // Phase 0.4: Multiply maxSets by imageCount for per-image descriptor sets
     std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(
         *shaderBundle,
         0,  // setIndex
-        1   // maxSets
+        imageCount   // maxSets (per-image)
     );
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 1; // MVP: Just one descriptor set
+    poolInfo.maxSets = imageCount; // Phase 0.4: Per-image descriptor sets
 
     VkResult result = vkCreateDescriptorPool(
         device->device,
@@ -200,14 +214,16 @@ void DescriptorSetNode::Compile() {
 
     std::cout << "[DescriptorSetNode::Compile] Created descriptor pool: " << descriptorPool << std::endl;
 
-    // Allocate descriptor sets
-    descriptorSets.resize(1); // MVP: Just one descriptor set
+    // Phase 0.4: Allocate per-swapchain-image descriptor sets to prevent invalidation
+    // This avoids the validation error: "vkUpdateDescriptorSets invalidates command buffers"
+    descriptorSets.resize(imageCount);
 
+    std::vector<VkDescriptorSetLayout> layouts(imageCount, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &descriptorSetLayout;
+    allocInfo.descriptorSetCount = imageCount;
+    allocInfo.pSetLayouts = layouts.data();
 
     result = vkAllocateDescriptorSets(
         device->device,
@@ -219,22 +235,9 @@ void DescriptorSetNode::Compile() {
         throw std::runtime_error("DescriptorSetNode: Failed to allocate descriptor sets");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Allocated descriptor set: " << descriptorSets[0] << std::endl;
+    std::cout << "[DescriptorSetNode::Compile] Allocated " << imageCount << " descriptor sets (per-image)" << std::endl;
 
-    // Phase 0.1: Get swapchain image count for per-frame resource allocation
-    auto* swapchainPublic = In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
-    if (!swapchainPublic) {
-        throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
-    }
-
-    uint32_t imageCount = swapchainPublic->swapChainImageCount;
-    if (imageCount == 0) {
-        throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
-    }
-
-    std::cout << "[DescriptorSetNode::Compile] Creating per-frame resources for " << imageCount << " swapchain images" << std::endl;
-
-    // Phase 0.1: Initialize per-frame resources (ring buffer pattern)
+    // Phase 0.4: Initialize per-frame resources (ring buffer pattern)
     perFrameResources.Initialize(device, imageCount);
 
     // Create UBO for each frame to prevent race conditions
@@ -259,53 +262,59 @@ void DescriptorSetNode::Compile() {
 
     std::cout << "[DescriptorSetNode::Compile] Created " << imageCount << " per-frame UBOs" << std::endl;
 
-    // Phase 0.1: Update descriptor set with first frame's UBO (binding 0)
-    // Note: We only have 1 descriptor set, so we'll update it with frame 0's buffer initially
-    // In Execute(), we'll rebind the correct per-frame buffer based on IMAGE_INDEX
-    VkDescriptorBufferInfo bufferDescInfo{};
-    bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(0);
-    bufferDescInfo.offset = 0;
-    bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSets[0];
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pBufferInfo = &bufferDescInfo;
-
-    vkUpdateDescriptorSets(device->device, 1, &descriptorWrite, 0, nullptr);
-    
-    std::cout << "[DescriptorSetNode::Compile] Updated descriptor set with UBO (binding 0)" << std::endl;
-    
+    // Phase 0.4: Update each descriptor set with its corresponding per-frame UBO
+    // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
     // Check if texture inputs are provided
     VkImageView textureView = In(DescriptorSetNodeConfig::TEXTURE_VIEW);
     VkSampler textureSampler = In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
-    
+
+    for (uint32_t i = 0; i < imageCount; i++) {
+        // UBO descriptor (binding 0)
+        VkDescriptorBufferInfo bufferDescInfo{};
+        bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(i);
+        bufferDescInfo.offset = 0;
+        bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+
+        VkWriteDescriptorSet bufferWrite{};
+        bufferWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        bufferWrite.dstSet = descriptorSets[i];
+        bufferWrite.dstBinding = 0;
+        bufferWrite.dstArrayElement = 0;
+        bufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bufferWrite.descriptorCount = 1;
+        bufferWrite.pBufferInfo = &bufferDescInfo;
+
+        if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
+            // Texture descriptor (binding 1)
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = textureView;
+            imageInfo.sampler = textureSampler;
+
+            VkWriteDescriptorSet textureWrite{};
+            textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            textureWrite.dstSet = descriptorSets[i];
+            textureWrite.dstBinding = 1;
+            textureWrite.dstArrayElement = 0;
+            textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            textureWrite.descriptorCount = 1;
+            textureWrite.pImageInfo = &imageInfo;
+
+            VkWriteDescriptorSet writes[] = {bufferWrite, textureWrite};
+            vkUpdateDescriptorSets(device->device, 2, writes, 0, nullptr);
+        } else {
+            // UBO only
+            vkUpdateDescriptorSets(device->device, 1, &bufferWrite, 0, nullptr);
+        }
+
+        std::cout << "[DescriptorSetNode::Compile] Updated descriptor set " << i << " with UBO" << std::endl;
+    }
+
     if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
-        // Update descriptor set with real texture (binding 1)
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = textureView;
-        imageInfo.sampler = textureSampler;
-        
-        VkWriteDescriptorSet textureWrite{};
-        textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        textureWrite.dstSet = descriptorSets[0];
-        textureWrite.dstBinding = 1;
-        textureWrite.dstArrayElement = 0;
-        textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        textureWrite.descriptorCount = 1;
-        textureWrite.pImageInfo = &imageInfo;
-        
-        vkUpdateDescriptorSets(device->device, 1, &textureWrite, 0, nullptr);
-        
-        std::cout << "[DescriptorSetNode::Compile] Updated descriptor set with texture (view=" 
+        std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated with texture (view="
                   << textureView << ", sampler=" << textureSampler << ")" << std::endl;
     } else {
-        std::cout << "[DescriptorSetNode::Compile] WARNING: No texture inputs provided, descriptor binding 1 will be invalid!" << std::endl;
+        std::cout << "[DescriptorSetNode::Compile] WARNING: No texture inputs provided!" << std::endl;
     }
     
     // Note: We're intentionally NOT storing dummyUBO/dummyUBOMemory for cleanup
@@ -319,12 +328,10 @@ void DescriptorSetNode::Compile() {
     Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, device);
 
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
-
-    NodeInstance::RegisterCleanup();
 }
 
-void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
-    // Phase 0.1: Get current image index to select correct per-frame buffer
+void DescriptorSetNode::ExecuteImpl() {
+    // Phase 0.4: Get current image index to select correct per-frame buffer
     uint32_t imageIndex = In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
     if (!perFrameResources.IsInitialized()) {
@@ -355,8 +362,8 @@ void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
     Model = glm::rotate(Model, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f))      // Rotate around Y
           * glm::rotate(Model, rotationAngle, glm::vec3(1.0f, 1.0f, 1.0f));    // Rotate around diagonal
 
-    // Phase 0.1: Type-safe per-frame UBO update using generated SDI struct
-    // ✅ NO RACE CONDITION: Update only the buffer for THIS frame (imageIndex)
+    // Phase 0.4: Update per-frame UBO (no descriptor set update needed)
+    // Each image index has its own descriptor set pre-bound to its UBO
     Draw_Shader::bufferVals ubo;
     ubo.mvp = Projection * View * Model;
 
@@ -368,23 +375,8 @@ void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
 
     memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
 
-    // Phase 0.1: Update descriptor set to point to this frame's UBO
-    // (This is necessary because we only have 1 descriptor set but N UBO buffers)
-    VkDescriptorBufferInfo bufferDescInfo{};
-    bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(imageIndex);
-    bufferDescInfo.offset = 0;
-    bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSets[0];
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pBufferInfo = &bufferDescInfo;
-
-    vkUpdateDescriptorSets(device->device, 1, &descriptorWrite, 0, nullptr);
+    // Phase 0.4: NO DESCRIPTOR SET UPDATE - each image uses its own set
+    // This avoids invalidating command buffers that reference the descriptor sets
 }
 
 void DescriptorSetNode::CleanupImpl() {

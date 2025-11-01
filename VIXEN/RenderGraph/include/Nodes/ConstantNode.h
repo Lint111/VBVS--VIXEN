@@ -104,16 +104,18 @@ public:
         cleanupCallback = std::move(callback);
         cleanupDependencyHandles = std::move(dependencyHandles);
         
-        std::cout << "[ConstantNode::SetCleanupCallback] Callback set, valid=" 
-                  << (cleanupCallback ? "true" : "false") 
+        std::cout << "[ConstantNode::SetCleanupCallback] Callback set, valid="
+                  << (cleanupCallback ? "true" : "false")
                   << ", dependencies=" << cleanupDependencyHandles.size() << std::endl;
     }
 
-    void Setup() override {
+protected:
+    // Template method pattern - override *Impl() methods
+    void SetupImpl() override {
         // No setup needed - graph will allocate output Resource
     }
 
-    void Compile() override {
+    void CompileImpl() override {
         std::cout << "[ConstantNode::Compile] START for node: " << GetInstanceName() << std::endl;
 
         // Ensure value has been set
@@ -163,12 +165,10 @@ public:
         }
     }
 
-    void Execute(VkCommandBuffer commandBuffer) override {
+    void ExecuteImpl() override {
         // No execution needed - this is a data node
-        (void)commandBuffer; // Suppress unused parameter warning
     }
 
-protected:
     void CleanupImpl() override {
         // Invoke custom cleanup callback if set (for externally-managed resources)
         if (cleanupCallback) {

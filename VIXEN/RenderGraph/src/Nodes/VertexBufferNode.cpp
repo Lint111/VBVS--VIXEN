@@ -46,7 +46,7 @@ VertexBufferNode::~VertexBufferNode() {
     Cleanup();
 }
 
-void VertexBufferNode::Setup() {
+void VertexBufferNode::SetupImpl() {
     // Read and validate device input
     VulkanDevicePtr devicePtr = In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -59,7 +59,7 @@ void VertexBufferNode::Setup() {
     NODE_LOG_INFO("Setup: Vertex buffer node ready");
 }
 
-void VertexBufferNode::Compile() {
+void VertexBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers");
 
     // Get typed parameters
@@ -127,12 +127,9 @@ void VertexBufferNode::Compile() {
     Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Vertex buffer ready");
-
-    // === REGISTER CLEANUP ===
-    NodeInstance::RegisterCleanup();
 }
 
-void VertexBufferNode::Execute(VkCommandBuffer commandBuffer) {
+void VertexBufferNode::ExecuteImpl() {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }

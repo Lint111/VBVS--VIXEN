@@ -1,0 +1,26 @@
+MSBuild version 17.14.23+b0019275e for .NET Framework
+
+  EventBus.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\EventBus\Debug\EventBus.lib
+  Logger.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\Logger.lib
+  ShaderManagement.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\ShaderManagement\Debug\ShaderManagement.lib
+  CashSystem.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\CashSystem\Debug\CashSystem.lib
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-build\glm\Debug\glm.lib
+  VulkanResources.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\VulkanResources.lib
+  RenderGraph.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\RenderGraph.lib
+  7e_ShadersWithSPIRV.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\binaries\7e_ShadersWithSPIRV.exe
+  gtest.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest.lib
+  gtest_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest_main.lib
+  ShaderManagementTests.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ShaderManagement\tests\Debug\ShaderManagementTests.exe
+  gli_dummy.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\gli-build\gli\Debug\gli_dummy.exe
+  gmock.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock.lib
+  gmock_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock_main.lib
+  shader_tool.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\bin\Debug\shader_tool.exe
+  test_eventbus_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\EventBus\Debug\test_eventbus_basic.exe
+  test_logger_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\Logger\Debug\test_logger_basic.exe
+  test_registration_api.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\CashSystem\Debug\test_registration_api.exe
+  test_rendergraph_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\RenderGraph\Debug\test_rendergraph_basic.exe
+  test_rendergraph_dependency.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\RenderGraph\Debug\test_rendergraph_dependency.exe
+  test_resourcemanagement_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ResourceManagement\Debug\test_resourcemanagement_basic.exe
+  test_resourcevariant_handles.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ResourceManagement\Debug\test_resourcevariant_handles.exe
+  test_typednode_helpers.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\RenderGraph\Debug\test_typednode_helpers.exe
+  test_vulkanresources_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\VulkanResources\Debug\test_vulkanresources_basic.exe

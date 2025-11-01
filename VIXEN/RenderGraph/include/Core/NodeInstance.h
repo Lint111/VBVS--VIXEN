@@ -265,10 +265,45 @@ public:
      */
     uint64_t GetLoopStepCount() const;
 
-    // Virtual methods for derived classes to implement
-    virtual void Setup() {}
-    virtual void Compile() {}
-    virtual void Execute(VkCommandBuffer commandBuffer) = 0;
+    // Template method pattern - public final methods with automatic boilerplate
+    /**
+     * @brief Setup lifecycle method with automatic boilerplate
+     *
+     * Automatically handles:
+     * - Reset compile-time input tracking
+     * - Calls SetupImpl() for derived class logic
+     *
+     * Derived classes should override SetupImpl(), NOT this method.
+     */
+    virtual void Setup() final {
+        ResetInputsUsedInCompile();
+        SetupImpl();
+    }
+
+    /**
+     * @brief Compile lifecycle method with automatic cleanup registration
+     *
+     * Automatically handles:
+     * - Calls CompileImpl() for derived class logic
+     * - Registers node in CleanupStack (prevents forgetting RegisterCleanup())
+     *
+     * Derived classes should override CompileImpl(), NOT this method.
+     */
+    virtual void Compile() final {
+        CompileImpl();
+        RegisterCleanup();
+    }
+
+    /**
+     * @brief Execute lifecycle method (abstract - must be implemented)
+     *
+     * Calls ExecuteImpl() for derived class logic.
+     *
+     * Derived classes should override ExecuteImpl(), NOT this method.
+     */
+    virtual void Execute(VkCommandBuffer commandBuffer) final {
+        ExecuteImpl();
+    }
 
     /**
      * @brief Final cleanup method with double-cleanup protection
@@ -288,14 +323,55 @@ public:
     }
 
 protected:
+    // ============================================================================
+    // TEMPLATE METHOD PATTERN - Override these *Impl() methods in derived classes
+    // ============================================================================
+
     /**
-     * @brief Virtual cleanup implementation for derived classes
+     * @brief Setup implementation for derived classes
      *
-     * Override this in derived classes to implement cleanup logic.
+     * Override this to implement setup logic (reading config, connecting to managers, etc.).
+     * Called automatically by Setup() after resetting input tracking.
+     *
+     * Default: No-op (some nodes don't need setup).
+     */
+    virtual void SetupImpl() {}
+
+    /**
+     * @brief Compile implementation for derived classes
+     *
+     * Override this to implement compilation logic (creating Vulkan resources, pipelines, etc.).
+     * Called automatically by Compile(). RegisterCleanup() is called automatically after this.
+     *
+     * IMPORTANT: Do NOT call RegisterCleanup() manually - it happens automatically!
+     *
+     * Default: No-op (must override in most nodes).
+     */
+    virtual void CompileImpl() {}
+
+    /**
+     * @brief Execute implementation for derived classes
+     *
+     * Override this to implement execution logic (recording commands, updating state, etc.).
+     * Called automatically by Execute().
+     *
+     * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
+     *
+     * Note: Nodes that need VkCommandBuffer should read it from their input slots.
+     */
+    virtual void ExecuteImpl() = 0;
+
+    /**
+     * @brief Cleanup implementation for derived classes
+     *
+     * Override this to implement cleanup logic (destroying Vulkan resources, etc.).
      * Guaranteed to be called exactly once per node lifetime.
+     * Called automatically by Cleanup() with double-cleanup protection.
      *
      * IMPORTANT: Always null out VulkanDevice pointers and handles
      * after destroying Vulkan resources to prevent dangling references.
+     *
+     * Default: No-op (some nodes don't allocate resources).
      */
     virtual void CleanupImpl() {}
 

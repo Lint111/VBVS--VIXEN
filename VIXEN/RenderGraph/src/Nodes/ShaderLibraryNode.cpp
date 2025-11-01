@@ -51,7 +51,7 @@ ShaderLibraryNode::~ShaderLibraryNode() {
     Cleanup();
 }
 
-void ShaderLibraryNode::Setup() {
+void ShaderLibraryNode::SetupImpl() {
     std::cout << "[ShaderLibraryNode::Setup] Called" << std::endl;
 
     VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
@@ -68,7 +68,7 @@ void ShaderLibraryNode::Setup() {
     std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
 }
 
-void ShaderLibraryNode::Compile() {
+void ShaderLibraryNode::CompileImpl() {
     std::cout << "[ShaderLibraryNode::Compile] START - Phase 1 integration" << std::endl;
 
     // Step 1: Build shader bundle from GLSL source using ShaderManagement
@@ -261,12 +261,9 @@ void ShaderLibraryNode::Compile() {
     Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
 
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
-
-    // Register cleanup
-    NodeInstance::RegisterCleanup();
 }
 
-void ShaderLibraryNode::Execute(VkCommandBuffer commandBuffer) {
+void ShaderLibraryNode::ExecuteImpl() {
     // MVP STUB: No-op - shaders loaded directly in application
 }
 

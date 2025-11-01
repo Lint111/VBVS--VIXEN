@@ -1,4 +1,5 @@
 #include "Nodes/SwapChainNode.h"
+#include "Nodes/FrameSyncNodeConfig.h"  // Phase 0.4: For CURRENT_FRAME_INDEX input
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
@@ -50,7 +51,7 @@ SwapChainNode::~SwapChainNode() {
     Cleanup();
 }
 
-void SwapChainNode::Setup() {
+void SwapChainNode::SetupImpl() {
     SetDevice(In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
 
     if (GetDevice() == nullptr) {
@@ -82,7 +83,7 @@ void SwapChainNode::Setup() {
     currentFrame = 0;
 }
 
-void SwapChainNode::Compile() {
+void SwapChainNode::CompileImpl() {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
 
     // Publish render pause starting event
@@ -235,8 +236,6 @@ void SwapChainNode::Compile() {
     // No need to create per-swapchain-image semaphores anymore
     NODE_LOG_INFO("SwapChainNode::Compile - Swapchain created with " + std::to_string(imageCount) + " images");
 
-    NodeInstance::RegisterCleanup();
-    
     // Publish render pause ending event
     if (GetMessageBus()) {
         GetMessageBus()->Publish(
@@ -249,12 +248,26 @@ void SwapChainNode::Compile() {
     }
 }
 
-void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
-    // Phase 0.2: Get per-flight semaphore from FrameSyncNode
-    VkSemaphore imageAvailableSemaphore = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE_IN);
+void SwapChainNode::ExecuteImpl() {
+    // Phase 0.4: Get per-IMAGE semaphore arrays from FrameSyncNode
+    const VkSemaphore* imageAvailableSemaphores = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
-    // Acquire next swapchain image using per-flight semaphore
-    currentImageIndex = AcquireNextImage(imageAvailableSemaphore);
+    if (!imageAvailableSemaphores || !renderCompleteSemaphores) {
+        throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
+    }
+
+    // Phase 0.4: CORRECT per Vulkan validation
+    // - imageAvailable: Indexed by FRAME INDEX (per-flight)
+    // - renderComplete: Indexed by IMAGE INDEX (per-image)
+
+    uint32_t currentFrameIndex = In(SwapChainNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Acquisition semaphore indexed by frame
+    VkSemaphore acquireSemaphore = imageAvailableSemaphores[currentFrameIndex];
+
+    // Acquire the next available image using the per-FLIGHT semaphore
+    currentImageIndex = AcquireNextImage(acquireSemaphore);
 
     // If swapchain is out of date, skip this frame
     if (currentImageIndex == UINT32_MAX) {
@@ -262,12 +275,20 @@ void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
         return;
     }
 
-    // Output current frame's image index
+    // Render complete semaphore indexed by ACQUIRED image
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[currentImageIndex];
+
+    // Output the acquired image index
     Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
 
-    // Phase 0.2: Also output the semaphore for backward compatibility
-    // (GeometryRenderNode now gets it directly from FrameSyncNode, but keeping for now)
-    Out(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, imageAvailableSemaphore);
+    // Output semaphores: acquire by frame, renderComplete by image
+    Out(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, acquireSemaphore);
+    Out(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+
+    NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
+                  + ", frameIdx=" + std::to_string(currentFrameIndex)
+                  + ", acquireSem=0x" + std::to_string(reinterpret_cast<uint64_t>(acquireSemaphore))
+                  + ", renderCompleteSem=0x" + std::to_string(reinterpret_cast<uint64_t>(renderCompleteSemaphores[currentImageIndex])));
 
     currentFrame++;
 }

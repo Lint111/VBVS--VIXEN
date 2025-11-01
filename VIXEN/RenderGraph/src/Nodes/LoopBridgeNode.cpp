@@ -32,8 +32,8 @@ LoopBridgeNode::~LoopBridgeNode() {
     Cleanup();
 }
 
-void LoopBridgeNode::Setup() {
-    NODE_LOG_DEBUG("LoopBridgeNode::Setup()");
+void LoopBridgeNode::SetupImpl() {
+    NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
     loopID = In(LoopBridgeNodeConfig::LOOP_ID);
@@ -48,8 +48,8 @@ void LoopBridgeNode::Setup() {
     }
 }
 
-void LoopBridgeNode::Compile() {
-    NODE_LOG_DEBUG("LoopBridgeNode::Compile()");
+void LoopBridgeNode::CompileImpl() {
+    NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Verify loop exists
     if (loopManager) {
@@ -60,7 +60,7 @@ void LoopBridgeNode::Compile() {
     }
 }
 
-void LoopBridgeNode::Execute(VkCommandBuffer commandBuffer) {
+void LoopBridgeNode::ExecuteImpl() {
     if (!loopManager) return;
 
     // Get current loop state

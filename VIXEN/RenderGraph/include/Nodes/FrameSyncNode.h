@@ -51,24 +51,23 @@ public:
 
     ~FrameSyncNode() override;
 
-    // Node lifecycle
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
 protected:
+    // Template method pattern - override *Impl() methods
+    void SetupImpl() override;
+    void CompileImpl() override;
+    void ExecuteImpl() override;
     void CleanupImpl() override;
 
 private:
-    // Per-flight synchronization data
+    // Per-flight synchronization data (for CPU-GPU sync)
     struct FrameSyncData {
         VkFence inFlightFence = VK_NULL_HANDLE;
-        VkSemaphore imageAvailable = VK_NULL_HANDLE;
-        VkSemaphore renderComplete = VK_NULL_HANDLE;
     };
 
-    std::vector<FrameSyncData> frameSyncData;  // Size = MAX_FRAMES_IN_FLIGHT
-    uint32_t currentFrameIndex = 0;             // Current frame-in-flight index
+    std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT
+    std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = swapchain image count
+    std::vector<VkSemaphore> renderCompleteSemaphores;  // Size = swapchain image count
+    uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
     bool isCreated = false;
 };
 

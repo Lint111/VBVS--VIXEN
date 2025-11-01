@@ -64,10 +64,6 @@ public:
     );
     virtual ~DescriptorSetNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     /**
      * @brief Update descriptor set with actual resources
      * @param setIndex Which set to update (0 to maxSets-1)
@@ -95,6 +91,10 @@ public:
     const ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

@@ -28,11 +28,6 @@ public:
 
     virtual ~FramebufferNode();
 
-    // NodeInstance interface
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Access framebuffers for external use (legacy compatibility)
     const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }
     VkFramebuffer GetFramebuffer(uint32_t index) const {
@@ -41,6 +36,10 @@ public:
     uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

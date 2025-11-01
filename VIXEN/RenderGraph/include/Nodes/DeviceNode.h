@@ -53,16 +53,16 @@ public:
     );
     virtual ~DeviceNode();
 
-    void Setup() override;
-    void Compile() override;
-    void Execute(VkCommandBuffer commandBuffer) override;
-
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {
         return vulkanDevice.get();
     }
 
 protected:
+	// Template method pattern - override *Impl() methods
+	void SetupImpl() override;
+	void CompileImpl() override;
+	void ExecuteImpl() override;
 	void CleanupImpl() override;
 
 private:

@@ -45,7 +45,7 @@ WindowNode::~WindowNode() {
     Cleanup();
 }
 
-void WindowNode::Setup() {
+void WindowNode::SetupImpl() {
     NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 
 #ifdef _WIN32
@@ -79,7 +79,7 @@ void WindowNode::Setup() {
 #endif
 }
 
-void WindowNode::Compile() {
+void WindowNode::CompileImpl() {
     std::cout << "[WindowNode::Compile] START" << std::endl;
     
     // Get parameters using typed names from config
@@ -165,13 +165,10 @@ void WindowNode::Compile() {
     Out(WindowNodeConfig::HEIGHT_OUT, height);
 
     NODE_LOG_INFO("[WindowNode] Surface created and all window data stored in outputs");
-
-    // Register cleanup for window and surface resources
-    RegisterCleanup();
 #endif
 }
 
-void WindowNode::Execute(VkCommandBuffer commandBuffer) {
+void WindowNode::ExecuteImpl() {
     // Process Windows messages
 #ifdef _WIN32
     MSG msg;
