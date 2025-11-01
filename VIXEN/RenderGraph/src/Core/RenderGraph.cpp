@@ -407,15 +407,34 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
         throw std::runtime_error("Graph must be compiled before execution");
     }
 
-    // Execute nodes in order
+    // Phase 0.4: Update loop states
+    double frameTime = frameTimer.GetDeltaTime();
+    loopManager.SetCurrentFrame(globalFrameIndex);
+    loopManager.UpdateLoops(frameTime);
+    globalFrameIndex++;
+
+    // Phase 0.4: Propagate loop references through AUTO_LOOP_IN/OUT connections
+    for (const auto& conn : topology.GetConnections()) {
+        if (conn.sourceOutputIndex == NodeInstance::AUTO_LOOP_OUT_SLOT &&
+            conn.destInputIndex == NodeInstance::AUTO_LOOP_IN_SLOT) {
+
+            const LoopReference* loopRef = conn.sourceNode->GetLoopOutput();
+            conn.destNode->SetLoopInput(loopRef);
+        }
+    }
+
+    // Execute nodes in order (now with loop gating via ShouldExecuteThisFrame)
     for (NodeInstance* node : executionOrder) {
         if (node->GetState() == NodeState::Ready ||
             node->GetState() == NodeState::Compiled ||
             node->GetState() == NodeState::Complete) {  // Execute completed nodes again each frame
 
-            node->SetState(NodeState::Executing);
-            node->Execute(commandBuffer);
-            node->SetState(NodeState::Complete);
+            // Phase 0.4: Check if node should execute this frame (loop gating)
+            if (node->ShouldExecuteThisFrame()) {
+                node->SetState(NodeState::Executing);
+                node->Execute(commandBuffer);
+                node->SetState(NodeState::Complete);
+            }
         }
     }
 }

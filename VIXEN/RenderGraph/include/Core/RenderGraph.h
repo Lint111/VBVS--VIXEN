@@ -14,6 +14,7 @@
 #include "EventBus/Message.h"
 #include "Time/EngineTime.h"
 #include "CashSystem/MainCacher.h"
+#include "LoopManager.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -221,6 +222,32 @@ public:
      */
     void UpdateTime() { time.Update(); }
 
+    // ====== Loop Management (Phase 0.4) ======
+
+    /**
+     * @brief Register a new loop with the graph
+     *
+     * Creates a loop with the specified configuration. Returns a unique loop ID
+     * that should be passed to LoopBridgeNode via LOOP_ID parameter.
+     *
+     * @param config Loop configuration (timestep, name, catch-up mode)
+     * @return Unique loop ID for use with LoopBridgeNode
+     */
+    uint32_t RegisterLoop(const LoopManager::LoopConfig& config) {
+        return loopManager.RegisterLoop(config);
+    }
+
+    /**
+     * @brief Get the loop manager (for LoopBridgeNode access)
+     *
+     * LoopBridgeNodes access this directly via GetGraph()->GetLoopManager()
+     * to publish loop state into the graph.
+     *
+     * @return Reference to graph-owned LoopManager
+     */
+    LoopManager& GetLoopManager() { return loopManager; }
+    const LoopManager& GetLoopManager() const { return loopManager; }
+
     /**
      * @brief Process pending events from the message bus
      * 
@@ -373,6 +400,11 @@ private:
 
     // Time management
     Vixen::Core::EngineTime time;
+
+    // Phase 0.4: Loop management
+    LoopManager loopManager;
+    Timer frameTimer;
+    uint64_t globalFrameIndex = 0;
 
     // Compilation phases
     void AnalyzeDependencies();
