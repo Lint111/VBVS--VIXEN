@@ -683,8 +683,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
     size_t connectionCount = batch.GetConnectionCount();
     mainLogger->Info("Registering " + std::to_string(connectionCount) + " connections...");
     batch.RegisterAll();
-    
+
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
+
+    // --- Phase 0.4: Loop Propagation Connections (after batch registration) ---
+    // Connect AUTO_LOOP slots: LoopBridge → GeometryRender
+    // This gates GeometryRender execution based on physics loop timing (60Hz)
+    renderGraph->Connect(
+        physicsLoopBridge, NodeInstance::AUTO_LOOP_OUT_SLOT,
+        geometryRenderNode, NodeInstance::AUTO_LOOP_IN_SLOT
+    );
+    mainLogger->Info("Connected physics loop propagation to GeometryRenderNode");
+
     mainLogger->Info("Complete render pipeline built with " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
 }
 
