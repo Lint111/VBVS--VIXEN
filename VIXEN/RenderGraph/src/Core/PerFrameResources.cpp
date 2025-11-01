@@ -176,7 +176,7 @@ uint32_t PerFrameResources::FindMemoryType(uint32_t typeFilter, VkMemoryProperty
     }
 
     VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(device->gpu, &memProperties);
+    vkGetPhysicalDeviceMemoryProperties(*device->gpu, &memProperties);
 
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) &&
