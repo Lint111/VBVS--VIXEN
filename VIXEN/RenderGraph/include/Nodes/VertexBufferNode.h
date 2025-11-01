@@ -5,6 +5,11 @@
 #include "../../include/MeshData.h"
 #include <memory>
 
+// Forward declaration for MeshWrapper
+namespace CashSystem {
+    struct MeshWrapper;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -65,13 +70,12 @@ protected:
     void CleanupImpl() override;
 
 private:
-    // Vertex buffer resources
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
+    // Cached mesh wrapper (owns Vulkan buffers and cached CPU data)
+    std::shared_ptr<CashSystem::MeshWrapper> cachedMeshWrapper;
 
-    // Index buffer resources (optional)
+    // Direct buffer references (for convenience, point to cached wrapper's buffers)
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
     VkBuffer indexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory indexMemory = VK_NULL_HANDLE;
 
     // Vertex input description
     VkVertexInputBindingDescription vertexBinding{};

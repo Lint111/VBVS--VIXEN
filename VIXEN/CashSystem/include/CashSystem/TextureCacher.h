@@ -16,17 +16,28 @@ namespace Vixen::RenderGraph {
 
 namespace CashSystem {
 
+// Forward declaration
+struct SamplerWrapper;
+
 /**
  * @brief Texture resource wrapper
- * 
- * Stores both Vulkan handles and metadata for cache identification.
+ *
+ * Stores Vulkan handles, decoded pixel data, and metadata.
+ * Caches BOTH Vulkan resources AND decoded pixel data for maximum efficiency.
+ *
+ * NOTE: Sampler is managed separately via SamplerCacher (composition pattern).
  */
 struct TextureWrapper {
     VkImage image = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
-    VkSampler sampler = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
-    
+
+    // Reference to cached sampler (managed by SamplerCacher)
+    std::shared_ptr<SamplerWrapper> samplerWrapper;
+
+    // Cached decoded pixel data - key benefit of TextureCacher
+    std::vector<uint8_t> pixelData;
+
     // Cache identification
     std::string filePath;
     VkFormat format = VK_FORMAT_UNDEFINED;
@@ -34,18 +45,16 @@ struct TextureWrapper {
     uint32_t height = 0;
     uint32_t mipLevels = 1;
     uint32_t arrayLayers = 1;
-    
+
     // Loading parameters
     bool generateMipmaps = false;
-    VkFilter minFilter = VK_FILTER_LINEAR;
-    VkFilter magFilter = VK_FILTER_LINEAR;
-    VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    VkSamplerAddressMode addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    VkSamplerAddressMode addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 };
 
 /**
  * @brief Texture creation parameters
+ *
+ * TextureCacher uses composition pattern - accepts a SamplerWrapper from SamplerCacher
+ * rather than creating its own sampler. This allows sampler reuse across textures.
  */
 struct TextureCreateParams {
     std::string filePath;
@@ -53,43 +62,73 @@ struct TextureCreateParams {
     uint32_t width = 0;
     uint32_t height = 0;
     bool generateMipmaps = false;
-    VkFilter minFilter = VK_FILTER_LINEAR;
-    VkFilter magFilter = VK_FILTER_LINEAR;
-    VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    VkSamplerAddressMode addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    VkSamplerAddressMode addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    
+
+    // Sampler from SamplerCacher (required)
+    std::shared_ptr<SamplerWrapper> samplerWrapper;
+
     // Hash for quick validation
     std::string fileChecksum;
 };
 
 /**
  * @brief TypedCacher for texture resources
- * 
- * Caches loaded textures based on:
- * - File path and content hash
- * - Texture parameters (format, dimensions, filters)
- * - Sampler configuration
+ *
+ * Caches textures based on file path, format, and mip levels.
+ * Textures are expensive to create because:
+ * - Heavy I/O (file loading from disk)
+ * - Expensive decode (PNG, JPEG, KTX decompression)
+ * - GPU resource allocation and upload
+ *
+ * This cacher stores BOTH decoded pixel data AND Vulkan resources,
+ * eliminating the need to reload and decode the same image file multiple times.
+ *
+ * Usage (with composition pattern):
+ * ```cpp
+ * auto& mainCacher = GetOwningGraph()->GetMainCacher();
+ *
+ * // Step 1: Get sampler from SamplerCacher
+ * auto* samplerCacher = mainCacher.GetCacher<SamplerCacher, SamplerWrapper, SamplerCreateParams>(...);
+ * SamplerCreateParams samplerParams{};
+ * samplerParams.minFilter = VK_FILTER_LINEAR;
+ * samplerParams.magFilter = VK_FILTER_LINEAR;
+ * auto samplerWrapper = samplerCacher->GetOrCreate(samplerParams);
+ *
+ * // Step 2: Get texture from TextureCacher (passing sampler wrapper)
+ * auto* textureCacher = mainCacher.GetCacher<TextureCacher, TextureWrapper, TextureCreateParams>(...);
+ * TextureCreateParams params{};
+ * params.filePath = "textures/sample.png";
+ * params.format = VK_FORMAT_R8G8B8A8_UNORM;
+ * params.samplerWrapper = samplerWrapper;  // Pass sampler from step 1
+ *
+ * // Get or create cached texture
+ * auto textureWrapper = textureCacher->GetOrCreate(params);
+ * VkImage image = textureWrapper->image;
+ * VkSampler sampler = textureWrapper->samplerWrapper->resource;
+ * ```
  */
 class TextureCacher : public TypedCacher<TextureWrapper, TextureCreateParams> {
 public:
     TextureCacher() = default;
     ~TextureCacher() override = default;
 
-    // Convenience API for texture loading
+    // Override to add cache hit/miss logging
+    std::shared_ptr<TextureWrapper> GetOrCreate(const TextureCreateParams& ci);
+
+    // Convenience API for texture loading (accepts sampler from SamplerCacher)
     std::shared_ptr<TextureWrapper> GetOrCreateTexture(
         const std::string& filePath,
+        std::shared_ptr<SamplerWrapper> samplerWrapper,
         VkFormat format = VK_FORMAT_R8G8B8A8_UNORM,
-        bool generateMipmaps = false,
-        VkFilter minFilter = VK_FILTER_LINEAR,
-        VkFilter magFilter = VK_FILTER_LINEAR,
-        VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT
+        bool generateMipmaps = false
     );
 
 protected:
     // TypedCacher implementation
     std::shared_ptr<TextureWrapper> Create(const TextureCreateParams& ci) override;
     std::uint64_t ComputeKey(const TextureCreateParams& ci) const override;
+
+    // Resource cleanup
+    void Cleanup() override;
 
     // Serialization
     bool SerializeToFile(const std::filesystem::path& path) const override;

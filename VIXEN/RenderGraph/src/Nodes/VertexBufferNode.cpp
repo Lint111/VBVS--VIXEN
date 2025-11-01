@@ -3,7 +3,10 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
+#include "CashSystem/MeshCacher.h"
+#include "CashSystem/MainCacher.h"
 #include <cstring>
+#include <typeindex>
 
 namespace Vixen::RenderGraph {
 
@@ -60,7 +63,7 @@ void VertexBufferNode::SetupImpl() {
 }
 
 void VertexBufferNode::CompileImpl() {
-    NODE_LOG_INFO("Compile: Creating vertex and index buffers");
+    NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Get typed parameters
     vertexCount = GetParameterValue<uint32_t>(
@@ -80,37 +83,65 @@ void VertexBufferNode::CompileImpl() {
                    ", stride: " + std::to_string(vertexStride) +
                    ", texture: " + std::string(useTexture ? "enabled" : "disabled"));
 
-    VkDeviceSize vertexBufferSize = vertexCount * vertexStride;
-
-    // Create and upload vertex buffer
-    CreateBuffer(
-        vertexBufferSize,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        vertexBuffer,
-        vertexMemory
-    );
-
-    UploadData(vertexMemory, geometryData, vertexBufferSize);
-    NODE_LOG_DEBUG("Uploaded " + std::to_string(vertexBufferSize) + " bytes of vertex data");
-
-    // Check if we have index data
     indexCount = GetParameterValue<uint32_t>(
         VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0);
-    if (indexCount > 0) {
-        hasIndices = true;
-        VkDeviceSize indexBufferSize = indexCount * sizeof(uint32_t);
+    hasIndices = (indexCount > 0);
 
-        CreateBuffer(
-            indexBufferSize,
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            indexBuffer,
-            indexMemory
+    // Register MeshCacher if not already registered
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    if (!mainCacher.IsRegistered(std::type_index(typeid(CashSystem::MeshWrapper)))) {
+        NODE_LOG_INFO("Registering MeshCacher with MainCacher");
+        mainCacher.RegisterCacher<
+            CashSystem::MeshCacher,
+            CashSystem::MeshWrapper,
+            CashSystem::MeshCreateParams
+        >(
+            std::type_index(typeid(CashSystem::MeshWrapper)),
+            "Mesh",
+            true  // device-dependent
         );
-
-        NODE_LOG_DEBUG("Created index buffer for " + std::to_string(indexCount) + " indices");
-    } else {
-        NODE_LOG_DEBUG("No index buffer (non-indexed rendering)");
     }
+
+    // Get or create cached mesh
+    auto* cacher = mainCacher.GetCacher<
+        CashSystem::MeshCacher,
+        CashSystem::MeshWrapper,
+        CashSystem::MeshCreateParams
+    >(std::type_index(typeid(CashSystem::MeshWrapper)), device);
+
+    if (!cacher) {
+        throw std::runtime_error("VertexBufferNode: Failed to get MeshCacher from MainCacher");
+    }
+
+    // Build cache parameters
+    CashSystem::MeshCreateParams cacheParams{};
+    // For now, using procedural geometry data (no file path)
+    cacheParams.filePath = "";  // Empty = procedural data
+    cacheParams.vertexDataPtr = geometryData;
+    cacheParams.vertexDataSize = vertexCount * vertexStride;
+    cacheParams.vertexStride = vertexStride;
+    cacheParams.vertexCount = vertexCount;
+    cacheParams.indexCount = indexCount;
+    cacheParams.indexDataPtr = nullptr;  // No index data for now
+    cacheParams.indexDataSize = 0;
+    cacheParams.vertexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    cacheParams.indexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    // Get or create cached mesh
+    cachedMeshWrapper = cacher->GetOrCreate(cacheParams);
+
+    if (!cachedMeshWrapper || cachedMeshWrapper->vertexBuffer == VK_NULL_HANDLE) {
+        throw std::runtime_error("VertexBufferNode: Failed to get or create mesh from cache");
+    }
+
+    // Store direct references for convenience
+    vertexBuffer = cachedMeshWrapper->vertexBuffer;
+    indexBuffer = cachedMeshWrapper->indexBuffer;
+
+    NODE_LOG_DEBUG("Using cached mesh: vertex buffer = " +
+                   std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)) +
+                   ", index buffer = " +
+                   std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
 
     // Setup vertex input description
     SetupVertexInputDescription();
@@ -126,7 +157,7 @@ void VertexBufferNode::CompileImpl() {
     }
     Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    NODE_LOG_INFO("Compile complete: Vertex buffer ready");
+    NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
 void VertexBufferNode::ExecuteImpl() {
@@ -135,39 +166,12 @@ void VertexBufferNode::ExecuteImpl() {
 }
 
 void VertexBufferNode::CleanupImpl() {
-    // Validate device before cleanup
-    if (device == nullptr) {
-        NODE_LOG_WARNING("Cleanup: VulkanDevice is null - skipping buffer destruction");
-        return;
-    }
-
-    if (device->device == VK_NULL_HANDLE) {
-        NODE_LOG_WARNING("Cleanup: VkDevice is null - skipping buffer destruction");
-        return;
-    }
-    
-    if ((vertexBuffer != VK_NULL_HANDLE || indexBuffer != VK_NULL_HANDLE)) {
-        NODE_LOG_DEBUG("Cleanup: Destroying vertex and index buffers");
-
-        if (vertexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->device, vertexBuffer, nullptr);
-            vertexBuffer = VK_NULL_HANDLE;
-        }
-
-        if (vertexMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->device, vertexMemory, nullptr);
-            vertexMemory = VK_NULL_HANDLE;
-        }
-
-        if (indexBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->device, indexBuffer, nullptr);
-            indexBuffer = VK_NULL_HANDLE;
-        }
-
-        if (indexMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->device, indexMemory, nullptr);
-            indexMemory = VK_NULL_HANDLE;
-        }
+    // Release cached wrapper - cacher owns VkBuffer and VkDeviceMemory and destroys when appropriate
+    if (cachedMeshWrapper) {
+        NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper (cacher owns resources)");
+        cachedMeshWrapper.reset();
+        vertexBuffer = VK_NULL_HANDLE;
+        indexBuffer = VK_NULL_HANDLE;
     }
 }
 

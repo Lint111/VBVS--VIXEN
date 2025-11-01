@@ -8,6 +8,8 @@
 // Forward declarations
 namespace CashSystem {
     class TextureCacher;
+    struct TextureWrapper;
+    struct SamplerWrapper;
 }
 
 namespace Vixen::RenderGraph {
@@ -51,6 +53,8 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::TextureCacher* textureCacher = nullptr;
+    std::shared_ptr<CashSystem::TextureWrapper> cachedTextureWrapper;
+    std::shared_ptr<CashSystem::SamplerWrapper> cachedSamplerWrapper;
 };
 
 /**

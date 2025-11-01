@@ -5,6 +5,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/TextureCacher.h"
+#include "CashSystem/SamplerCacher.h"
 
 namespace Vixen::RenderGraph {
 
@@ -106,6 +107,20 @@ void TextureLoaderNode::CompileImpl() {
         NODE_LOG_DEBUG("TextureLoaderNode: Registered TextureCacher");
     }
 
+    // Register SamplerCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::SamplerWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::SamplerCacher,
+            CashSystem::SamplerWrapper,
+            CashSystem::SamplerCreateParams
+        >(
+            typeid(CashSystem::SamplerWrapper),
+            "Sampler",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("TextureLoaderNode: Registered SamplerCacher");
+    }
+
     // Cache the cacher reference for use throughout node lifetime
     textureCacher = mainCacher.GetCacher<
         CashSystem::TextureCacher,
@@ -113,15 +128,45 @@ void TextureLoaderNode::CompileImpl() {
         CashSystem::TextureCreateParams
     >(typeid(CashSystem::TextureWrapper), device);
 
+    // Use TextureCacher to get or create cached texture
     bool textureLoaded = false;
+
     if (textureCacher) {
-        NODE_LOG_INFO("TextureLoaderNode: Texture cache ready");
-        // TODO: Implement texture caching
-        // auto cachedTexture = textureCacher->GetOrCreate(params);
-        textureLoaded = false;  // Not yet implemented
+        NODE_LOG_INFO("TextureLoaderNode: Using TextureCacher for " + filePath);
+
+        // Build cache parameters
+        CashSystem::TextureCreateParams cacheParams{};
+        cacheParams.filePath = filePath;
+        cacheParams.format = VK_FORMAT_R8G8B8A8_UNORM;
+        cacheParams.generateMipmaps = generateMipmaps;
+        cacheParams.minFilter = VK_FILTER_LINEAR;
+        cacheParams.magFilter = VK_FILTER_LINEAR;
+        cacheParams.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        cacheParams.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        cacheParams.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+        // Get or create cached texture
+        try {
+            cachedTextureWrapper = textureCacher->GetOrCreate(cacheParams);
+
+            if (cachedTextureWrapper && cachedTextureWrapper->image != VK_NULL_HANDLE) {
+                // Use cached resources
+                textureImage = cachedTextureWrapper->image;
+                textureView = cachedTextureWrapper->view;
+                textureSampler = cachedTextureWrapper->sampler;
+                textureMemory = cachedTextureWrapper->memory;
+                isLoaded = true;
+                textureLoaded = true;
+
+                NODE_LOG_INFO("TextureLoaderNode: Texture loaded from cache successfully");
+            }
+        } catch (const std::exception& e) {
+            NODE_LOG_WARNING("TextureLoaderNode: Cache failed, falling back to direct load: " + std::string(e.what()));
+            textureLoaded = false;
+        }
     }
 
-    // Fallback to direct loading if cache not available or not yet implemented
+    // Fallback to direct loading if cache not available or failed
     if (!textureLoaded) {
         // Configure load settings
         Vixen::TextureHandling::TextureLoadConfig config;
@@ -134,12 +179,58 @@ void TextureLoaderNode::CompileImpl() {
         // Load the texture directly
         try {
             Vixen::TextureHandling::TextureData textureData = textureLoader->Load(filePath.c_str(), config);
-            
+
             // Store resources for output
             textureImage = textureData.image;
             textureView = textureData.view;
-            textureSampler = textureData.sampler;
             textureMemory = textureData.mem;
+
+            // Use cached sampler instead of the one created by TextureLoader
+            // Get SamplerCacher
+            auto* samplerCacher = mainCacher.GetCacher<
+                CashSystem::SamplerCacher,
+                CashSystem::SamplerWrapper,
+                CashSystem::SamplerCreateParams
+            >(typeid(CashSystem::SamplerWrapper), device);
+
+            if (samplerCacher) {
+                // Build sampler parameters matching TextureLoader defaults (from TextureLoader.cpp:391-412)
+                CashSystem::SamplerCreateParams samplerParams{};
+                samplerParams.minFilter = VK_FILTER_LINEAR;
+                samplerParams.magFilter = VK_FILTER_LINEAR;
+                samplerParams.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+                samplerParams.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+                samplerParams.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+                samplerParams.maxAnisotropy = 16.0f;
+                samplerParams.compareEnable = VK_FALSE;
+                samplerParams.compareOp = VK_COMPARE_OP_NEVER;
+                samplerParams.mipLodBias = 0.0f;
+                samplerParams.minLod = 0.0f;
+                samplerParams.maxLod = static_cast<float>(textureData.minMapLevels);
+                samplerParams.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+                samplerParams.unnormalizedCoordinates = VK_FALSE;
+
+                // Get or create cached sampler
+                cachedSamplerWrapper = samplerCacher->GetOrCreate(samplerParams);
+                if (cachedSamplerWrapper && cachedSamplerWrapper->resource != VK_NULL_HANDLE) {
+                    // Destroy the inline sampler created by TextureLoader
+                    if (textureData.sampler != VK_NULL_HANDLE) {
+                        vkDestroySampler(device->device, textureData.sampler, nullptr);
+                    }
+                    // Use cached sampler
+                    textureSampler = cachedSamplerWrapper->resource;
+                    NODE_LOG_INFO("TextureLoaderNode: Using cached sampler");
+                } else {
+                    // Fallback to inline sampler if caching failed
+                    textureSampler = textureData.sampler;
+                    NODE_LOG_INFO("TextureLoaderNode: Fallback to inline sampler");
+                }
+            } else {
+                // Fallback to inline sampler if cacher unavailable
+                textureSampler = textureData.sampler;
+                NODE_LOG_INFO("TextureLoaderNode: No sampler cacher available, using inline sampler");
+            }
+
             isLoaded = true;
             textureLoaded = true;
 
@@ -177,16 +268,27 @@ void TextureLoaderNode::CleanupImpl() {
         return;
     }
 
-    // Destroy texture resources
-    if (isLoaded) {
+    // Release cached texture wrapper - cacher owns resources and destroys when appropriate
+    if (cachedTextureWrapper) {
+        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached texture wrapper (cacher owns resources)");
+        cachedTextureWrapper.reset();
+        textureImage = VK_NULL_HANDLE;
+        textureView = VK_NULL_HANDLE;
+        textureMemory = VK_NULL_HANDLE;
+    }
+
+    // Release cached sampler wrapper - cacher owns VkSampler and destroys when appropriate
+    if (cachedSamplerWrapper) {
+        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached sampler wrapper (cacher owns resource)");
+        cachedSamplerWrapper.reset();
+        textureSampler = VK_NULL_HANDLE;
+    }
+
+    // Destroy texture resources ONLY if NOT cached (fallback path owns resources)
+    if (isLoaded && !cachedTextureWrapper) {
         if (textureView != VK_NULL_HANDLE) {
             vkDestroyImageView(device->device, textureView, nullptr);
             textureView = VK_NULL_HANDLE;
-        }
-
-        if (textureSampler != VK_NULL_HANDLE) {
-            vkDestroySampler(device->device, textureSampler, nullptr);
-            textureSampler = VK_NULL_HANDLE;
         }
 
         if (textureImage != VK_NULL_HANDLE) {
@@ -197,6 +299,12 @@ void TextureLoaderNode::CleanupImpl() {
         if (textureMemory != VK_NULL_HANDLE) {
             vkFreeMemory(device->device, textureMemory, nullptr);
             textureMemory = VK_NULL_HANDLE;
+        }
+
+        // Only destroy sampler if NOT cached (fallback path)
+        if (textureSampler != VK_NULL_HANDLE && !cachedSamplerWrapper) {
+            vkDestroySampler(device->device, textureSampler, nullptr);
+            textureSampler = VK_NULL_HANDLE;
         }
 
         isLoaded = false;
