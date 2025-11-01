@@ -139,6 +139,7 @@ private:
     // Helper methods
     std::string ComputeFileChecksum(const std::string& filePath) const;
     void LoadTextureFromFile(const TextureCreateParams& ci, TextureWrapper& wrapper);
+    void CreateFallbackTexture(const TextureCreateParams& ci, TextureWrapper& wrapper);
 };
 
 } // namespace CashSystem

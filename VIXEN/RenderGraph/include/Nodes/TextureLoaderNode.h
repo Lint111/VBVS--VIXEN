@@ -3,7 +3,6 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "Nodes/TextureLoaderNodeConfig.h"
-#include "TextureHandling/Loading/TextureLoader.h"
 
 // Forward declarations
 namespace CashSystem {
@@ -39,10 +38,6 @@ protected:
     void CleanupImpl() override;
 
 private:
-    std::unique_ptr<Vixen::TextureHandling::TextureLoader> textureLoader;
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-    
     // Loaded texture resources (output via typed slots)
     VkImage textureImage = VK_NULL_HANDLE;
     VkImageView textureView = VK_NULL_HANDLE;
@@ -51,8 +46,7 @@ private:
 
     bool isLoaded = false;
 
-    // CashSystem integration - cached during Compile()
-    CashSystem::TextureCacher* textureCacher = nullptr;
+    // CashSystem integration - cached wrappers
     std::shared_ptr<CashSystem::TextureWrapper> cachedTextureWrapper;
     std::shared_ptr<CashSystem::SamplerWrapper> cachedSamplerWrapper;
 };

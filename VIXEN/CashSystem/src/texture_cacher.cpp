@@ -30,13 +30,8 @@ void TextureCacher::Cleanup() {
                     wrapper->view = VK_NULL_HANDLE;
                 }
 
-                // Destroy Sampler
-                if (wrapper->sampler != VK_NULL_HANDLE) {
-                    std::cout << "[TextureCacher::Cleanup] Destroying VkSampler: "
-                              << reinterpret_cast<uint64_t>(wrapper->sampler) << std::endl;
-                    vkDestroySampler(GetDevice()->device, wrapper->sampler, nullptr);
-                    wrapper->sampler = VK_NULL_HANDLE;
-                }
+                // Sampler is managed by SamplerCacher (composition pattern)
+                // No need to destroy it here - just release the shared_ptr reference
 
                 // Destroy Image
                 if (wrapper->image != VK_NULL_HANDLE) {
@@ -105,40 +100,49 @@ std::shared_ptr<TextureWrapper> TextureCacher::Create(const TextureCreateParams&
     wrapper->filePath = ci.filePath;
     wrapper->format = ci.format;
     wrapper->generateMipmaps = ci.generateMipmaps;
-    wrapper->minFilter = ci.minFilter;
-    wrapper->magFilter = ci.magFilter;
-    wrapper->addressModeU = ci.addressModeU;
-    wrapper->addressModeV = ci.addressModeV;
-    wrapper->addressModeW = ci.addressModeW;
 
-    // Load texture from file using TextureLoader integration
+    // Store sampler reference from SamplerCacher (composition pattern)
+    wrapper->samplerWrapper = ci.samplerWrapper;
+
+    // Try to load texture from file using TextureLoader integration
     try {
         LoadTextureFromFile(ci, *wrapper);
-    } catch (const std::exception& e) {
-        throw std::runtime_error("TextureCacher: Failed to load texture from " + ci.filePath +
-                                 " - " + std::string(e.what()));
-    }
 
-    std::cout << "[TextureCacher::Create] Texture created: VkImage="
-              << reinterpret_cast<uint64_t>(wrapper->image)
-              << ", VkImageView=" << reinterpret_cast<uint64_t>(wrapper->view)
-              << ", size=" << wrapper->width << "x" << wrapper->height
-              << ", pixelData=" << wrapper->pixelData.size() << " bytes" << std::endl;
+        std::cout << "[TextureCacher::Create] Texture created: VkImage="
+                  << reinterpret_cast<uint64_t>(wrapper->image)
+                  << ", VkImageView=" << reinterpret_cast<uint64_t>(wrapper->view)
+                  << ", size=" << wrapper->width << "x" << wrapper->height
+                  << ", pixelData=" << wrapper->pixelData.size() << " bytes" << std::endl;
+    } catch (const std::exception& e) {
+        // Fallback: Create a default 1x1 magenta texture to indicate missing/failed texture
+        std::cout << "[TextureCacher::Create] WARNING: Failed to load texture from " << ci.filePath
+                  << " - " << e.what() << std::endl;
+        std::cout << "[TextureCacher::Create] Using fallback: Creating 1x1 magenta placeholder texture" << std::endl;
+
+        try {
+            CreateFallbackTexture(ci, *wrapper);
+
+            std::cout << "[TextureCacher::Create] Fallback texture created: VkImage="
+                      << reinterpret_cast<uint64_t>(wrapper->image)
+                      << ", VkImageView=" << reinterpret_cast<uint64_t>(wrapper->view)
+                      << ", size=" << wrapper->width << "x" << wrapper->height << std::endl;
+        } catch (const std::exception& fallbackError) {
+            // If even fallback fails, this is a critical error
+            throw std::runtime_error("TextureCacher: CRITICAL - Both texture loading and fallback failed for " +
+                                     ci.filePath + " - " + std::string(fallbackError.what()));
+        }
+    }
 
     return wrapper;
 }
 
 std::uint64_t TextureCacher::ComputeKey(const TextureCreateParams& ci) const {
-    // Combine all parameters into a unique key string
+    // Combine texture-specific parameters into a unique key string
+    // Note: Sampler is managed separately, so we don't include sampler params in texture key
     std::ostringstream keyStream;
     keyStream << ci.filePath << "|"
               << static_cast<uint32_t>(ci.format) << "|"
               << ci.generateMipmaps << "|"
-              << static_cast<uint32_t>(ci.minFilter) << "|"
-              << static_cast<uint32_t>(ci.magFilter) << "|"
-              << static_cast<uint32_t>(ci.addressModeU) << "|"
-              << static_cast<uint32_t>(ci.addressModeV) << "|"
-              << static_cast<uint32_t>(ci.addressModeW) << "|"
               << ci.fileChecksum;
 
     // Use standard hash function (matching template pattern)
@@ -197,7 +201,7 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
         // Store Vulkan handles
         wrapper.image = textureData.image;
         wrapper.view = textureData.view;
-        wrapper.sampler = textureData.sampler;
+        // Note: Sampler is managed by SamplerCacher via samplerWrapper, ignore textureData.sampler
         wrapper.memory = textureData.mem;
         wrapper.width = textureData.textureWidth;
         wrapper.height = textureData.textureHeight;
@@ -219,23 +223,107 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
     vkDestroyCommandPool(devicePtr->device, commandPool, nullptr);
 }
 
+void TextureCacher::CreateFallbackTexture(const TextureCreateParams& ci, TextureWrapper& wrapper) {
+    // Get device handle
+    auto* devicePtr = GetDevice();
+    if (!devicePtr || devicePtr->device == VK_NULL_HANDLE) {
+        throw std::runtime_error("TextureCacher: Invalid device handle for fallback");
+    }
+
+    // Create a 1x1 magenta texture (R=255, G=0, B=255, A=255)
+    wrapper.width = 1;
+    wrapper.height = 1;
+    wrapper.mipLevels = 1;
+
+    // Create image
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = wrapper.width;
+    imageInfo.extent.height = wrapper.height;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = wrapper.mipLevels;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = ci.format;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkResult result = vkCreateImage(devicePtr->device, &imageInfo, nullptr, &wrapper.image);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("TextureCacher: Failed to create fallback image");
+    }
+
+    // Allocate memory
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(devicePtr->device, wrapper.image, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+
+    // Find suitable memory type using device's cached memory properties
+    uint32_t memoryTypeIndex = UINT32_MAX;
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    for (uint32_t i = 0; i < devicePtr->gpuMemoryProperties.memoryTypeCount; i++) {
+        if ((memRequirements.memoryTypeBits & (1 << i)) &&
+            (devicePtr->gpuMemoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+
+    if (memoryTypeIndex == UINT32_MAX) {
+        vkDestroyImage(devicePtr->device, wrapper.image, nullptr);
+        throw std::runtime_error("TextureCacher: Failed to find suitable memory type for fallback");
+    }
+
+    allocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(devicePtr->device, &allocInfo, nullptr, &wrapper.memory);
+    if (result != VK_SUCCESS) {
+        vkDestroyImage(devicePtr->device, wrapper.image, nullptr);
+        throw std::runtime_error("TextureCacher: Failed to allocate memory for fallback");
+    }
+
+    vkBindImageMemory(devicePtr->device, wrapper.image, wrapper.memory, 0);
+
+    // Create image view
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = wrapper.image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = ci.format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = wrapper.mipLevels;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    result = vkCreateImageView(devicePtr->device, &viewInfo, nullptr, &wrapper.view);
+    if (result != VK_SUCCESS) {
+        vkFreeMemory(devicePtr->device, wrapper.memory, nullptr);
+        vkDestroyImage(devicePtr->device, wrapper.image, nullptr);
+        throw std::runtime_error("TextureCacher: Failed to create image view for fallback");
+    }
+
+    // Store magenta pixel data (1x1 RGBA)
+    wrapper.pixelData = {255, 0, 255, 255};  // Magenta
+}
+
 std::shared_ptr<TextureWrapper> TextureCacher::GetOrCreateTexture(
     const std::string& filePath,
+    std::shared_ptr<SamplerWrapper> samplerWrapper,
     VkFormat format,
-    bool generateMipmaps,
-    VkFilter minFilter,
-    VkFilter magFilter,
-    VkSamplerAddressMode addressMode)
+    bool generateMipmaps)
 {
     TextureCreateParams params;
     params.filePath = filePath;
     params.format = format;
     params.generateMipmaps = generateMipmaps;
-    params.minFilter = minFilter;
-    params.magFilter = magFilter;
-    params.addressModeU = addressMode;
-    params.addressModeV = addressMode;
-    params.addressModeW = addressMode;
+    params.samplerWrapper = samplerWrapper;
     params.fileChecksum = ComputeFileChecksum(filePath);
 
     return GetOrCreate(params);
