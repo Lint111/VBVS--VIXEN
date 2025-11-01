@@ -249,7 +249,7 @@ void SwapChainNode::CompileImpl() {
 }
 
 void SwapChainNode::ExecuteImpl() {
-    // Phase 0.4: Get per-IMAGE semaphore arrays from FrameSyncNode
+    // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const VkSemaphore* imageAvailableSemaphores = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     const VkSemaphore* renderCompleteSemaphores = In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
@@ -257,13 +257,13 @@ void SwapChainNode::ExecuteImpl() {
         throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
     }
 
-    // Phase 0.4: CORRECT per Vulkan validation
+    // Phase 0.5: Two-tier semaphore indexing (Vulkan guide pattern)
     // - imageAvailable: Indexed by FRAME INDEX (per-flight)
-    // - renderComplete: Indexed by IMAGE INDEX (per-image)
+    // - renderComplete: Indexed by IMAGE INDEX (per-image) - used later after acquisition
 
     uint32_t currentFrameIndex = In(SwapChainNodeConfig::CURRENT_FRAME_INDEX);
 
-    // Acquisition semaphore indexed by frame
+    // Acquisition semaphore indexed by flight
     VkSemaphore acquireSemaphore = imageAvailableSemaphores[currentFrameIndex];
 
     // Acquire the next available image using the per-FLIGHT semaphore

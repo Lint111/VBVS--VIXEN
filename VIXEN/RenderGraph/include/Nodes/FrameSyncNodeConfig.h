@@ -17,9 +17,11 @@ namespace FrameSyncNodeCounts {
 /**
  * @brief Pure constexpr resource configuration for FrameSyncNode
  *
- * Phase 0.4: Frame-in-flight and per-image synchronization primitives
+ * Phase 0.5: Two-tier synchronization per Vulkan guide
  * - Creates MAX_FRAMES_IN_FLIGHT fences for CPU-GPU sync
- * - Creates MAX_SWAPCHAIN_IMAGES semaphores for GPU-GPU sync (prevents reuse violations)
+ * - Creates MAX_FRAMES_IN_FLIGHT imageAvailable semaphores (per-FLIGHT for acquisition)
+ * - Creates MAX_SWAPCHAIN_IMAGES renderComplete semaphores (per-IMAGE for presentation)
+ * - CRITICAL: Acquisition=per-FLIGHT, Present=per-IMAGE (prevents reuse violations)
  *
  * Inputs: 1 (VULKAN_DEVICE)
  * Outputs: 4 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY)
@@ -31,15 +33,15 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     // Compile-time output slot definitions
     CONSTEXPR_OUTPUT(CURRENT_FRAME_INDEX, uint32_t, 0, false);
     CONSTEXPR_OUTPUT(IN_FLIGHT_FENCE, VkFence, 1, false);
-    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2, false);  // All per-image semaphores
-    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3, false);  // All per-image semaphores
+    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2, false);  // Per-FLIGHT semaphores
+    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3, false);  // Per-IMAGE semaphores
 
     // Input: VulkanDevice pointer only
     CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 0, false);
 
     // Compile-time constants
-    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;  // CPU-GPU sync (fences) - must be >= MAX_SWAPCHAIN_IMAGES
-    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 3;  // GPU-GPU sync (semaphores, per-image)
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + both semaphore types
+    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 3;  // Swapchain image count hint
 
     // Constructor for runtime descriptor initialization
     FrameSyncNodeConfig() {

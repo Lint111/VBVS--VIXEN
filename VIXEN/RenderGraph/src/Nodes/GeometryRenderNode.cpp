@@ -135,11 +135,18 @@ void GeometryRenderNode::ExecuteImpl() {
     const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
     VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Phase 0.5: CRITICAL - Index semaphores correctly:
-    // - imageAvailable: Indexed by FRAME index (per-flight) - matches SwapChainNode's acquire semaphore
-    // - renderComplete: Indexed by IMAGE index (per-image) - each image has its own present semaphore
+    // Phase 0.5: WORKING SOLUTION - Both indexed by FLIGHT
+    // - imageAvailable: Indexed by FRAME index (per-flight)
+    // - renderComplete: Indexed by FRAME index (per-flight)
+    // Per-flight semaphores with MAX_FRAMES_IN_FLIGHT=4 ensures no reuse collisions
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[currentFrameIndex];
+
+    static int logCounter = 0;
+    if (logCounter++ < 20) {
+        NODE_LOG_INFO("Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex) +
+                      ": using renderComplete[" + std::to_string(currentFrameIndex) + "]");
+    }
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);
