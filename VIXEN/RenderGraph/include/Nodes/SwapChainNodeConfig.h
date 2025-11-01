@@ -30,7 +30,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 6;
+    static constexpr size_t INPUTS = 7;  // Phase 0.2: Added IMAGE_AVAILABLE_SEMAPHORE_IN
     static constexpr size_t OUTPUTS = 4;  // SWAPCHAIN_IMAGES, HANDLE, PUBLIC, WIDTH_OUT, HEIGHT_OUT, IMAGE_INDEX, IMAGE_AVAILABLE_SEMAPHORE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -39,7 +39,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
                       SwapChainNodeCounts::INPUTS,
                       SwapChainNodeCounts::OUTPUTS,
                       SwapChainNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (6) =====
+    // ===== INPUTS (7) =====
     // Required window handles from WindowNode
     CONSTEXPR_INPUT(HWND, ::HWND, 0, false);
     CONSTEXPR_INPUT(HINSTANCE, ::HINSTANCE, 1, false);
@@ -53,6 +53,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
     CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5, false);
+
+    // Phase 0.2: Per-flight semaphore from FrameSyncNode for vkAcquireNextImageKHR
+    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORE_IN, VkSemaphore, 6, false);
 
     // ===== OUTPUTS (4) =====    
 
@@ -102,6 +105,10 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
+        // Phase 0.2: Image available semaphore from FrameSyncNode
+        HandleDescriptor semaphoreDesc{"VkSemaphore"};
+        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORE_IN, "image_available_semaphore_in", ResourceLifetime::Transient, semaphoreDesc);
+
         INIT_OUTPUT_DESC(SWAPCHAIN_HANDLE, "swapchain_handle",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle for VkSwapchainKHR
@@ -146,6 +153,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 5, "VULKAN_DEVICE input must be at index 5");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
+    static_assert(IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::index == 6, "IMAGE_AVAILABLE_SEMAPHORE_IN must be at index 6");
+    static_assert(!IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORE_IN is required");
+
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
     static_assert(!SWAPCHAIN_HANDLE_Slot::nullable, "SWAPCHAIN_HANDLE is required");
 
@@ -165,6 +175,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORE_IN_Slot::Type, VkSemaphore>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);

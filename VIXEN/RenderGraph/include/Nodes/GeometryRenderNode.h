@@ -80,9 +80,8 @@ private:
     VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Phase 0.1: Per-frame synchronization
-    // One render-complete semaphore per swapchain image for GPU-GPU sync
-    std::vector<VkSemaphore> renderCompleteSemaphores;  // One per swapchain image
+    // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
+    // Removed: std::vector<VkSemaphore> renderCompleteSemaphores
 };
 
 } // namespace Vixen::RenderGraph

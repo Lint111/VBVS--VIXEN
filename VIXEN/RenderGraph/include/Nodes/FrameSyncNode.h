@@ -1,0 +1,75 @@
+#pragma once
+
+#include "Core/TypedNodeInstance.h"
+#include "Nodes/FrameSyncNodeConfig.h"
+#include "VulkanResources/VulkanDevice.h"
+#include <vector>
+
+namespace Vixen::RenderGraph {
+
+/**
+ * @brief FrameSyncNodeType - Defines frame-in-flight synchronization node
+ */
+class FrameSyncNodeType : public NodeType {
+public:
+    FrameSyncNodeType(const std::string& typeName = "FrameSync");
+
+    std::unique_ptr<NodeInstance> CreateInstance(
+        const std::string& instanceName
+    ) const override;
+};
+
+/**
+ * @brief FrameSyncNode - Manages frame-in-flight synchronization primitives
+ *
+ * Phase 0.2: Creates and manages MAX_FRAMES_IN_FLIGHT fences and semaphores
+ * for CPU-GPU synchronization to prevent CPU from racing ahead of GPU.
+ *
+ * Inputs:
+ *  - VULKAN_DEVICE (VulkanDevicePtr): Device to create sync primitives on
+ *
+ * Outputs:
+ *  - CURRENT_FRAME_INDEX (uint32_t): Current frame-in-flight index (0 to MAX_FRAMES_IN_FLIGHT-1)
+ *  - IN_FLIGHT_FENCE (VkFence): Fence for current frame (CPU-GPU sync)
+ *  - IMAGE_AVAILABLE_SEMAPHORE (VkSemaphore): Semaphore for image acquisition (GPU-GPU)
+ *  - RENDER_COMPLETE_SEMAPHORE (VkSemaphore): Semaphore for render completion (GPU-GPU)
+ *
+ * Usage pattern:
+ *  1. Wait on IN_FLIGHT_FENCE before starting frame work
+ *  2. Reset fence
+ *  3. Use IMAGE_AVAILABLE_SEMAPHORE for vkAcquireNextImageKHR
+ *  4. Use RENDER_COMPLETE_SEMAPHORE for vkQueuePresentKHR
+ *  5. Signal fence at queue submit
+ *  6. Advance CURRENT_FRAME_INDEX (wraps at MAX_FRAMES_IN_FLIGHT)
+ */
+class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
+public:
+    FrameSyncNode(
+        const std::string& instanceName,
+        NodeType* nodeType
+    );
+
+    ~FrameSyncNode() override;
+
+    // Node lifecycle
+    void Setup() override;
+    void Compile() override;
+    void Execute(VkCommandBuffer commandBuffer) override;
+
+protected:
+    void CleanupImpl() override;
+
+private:
+    // Per-flight synchronization data
+    struct FrameSyncData {
+        VkFence inFlightFence = VK_NULL_HANDLE;
+        VkSemaphore imageAvailable = VK_NULL_HANDLE;
+        VkSemaphore renderComplete = VK_NULL_HANDLE;
+    };
+
+    std::vector<FrameSyncData> frameSyncData;  // Size = MAX_FRAMES_IN_FLIGHT
+    uint32_t currentFrameIndex = 0;             // Current frame-in-flight index
+    bool isCreated = false;
+};
+
+} // namespace Vixen::RenderGraph

@@ -59,11 +59,7 @@ public:
     SwapChainPublicVariables* GetSwapchainPublic() const;
     uint32_t GetImageCount() const;
     uint32_t GetCurrentImageIndex() const { return currentImageIndex; }
-    VkSemaphore GetImageAvailableSemaphore() const {
-        if (imageAvailableSemaphores.empty()) return VK_NULL_HANDLE;
-        const uint32_t frameIndex = (currentFrame > 0 ? currentFrame - 1 : 0) % imageAvailableSemaphores.size();
-        return imageAvailableSemaphores[frameIndex];
-    }
+    // Phase 0.2: Removed GetImageAvailableSemaphore() - semaphores managed by FrameSyncNode
     VkFormat GetFormat() const;
 
     // Set the VulkanSwapChain wrapper to use
@@ -85,8 +81,8 @@ private:
 
     // Device handle is stored in the parent NodeInstance::device member
 
-    // Synchronization
-    std::vector<VkSemaphore> imageAvailableSemaphores;  // Signaled when image is acquired
+    // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
+    // Removed: std::vector<VkSemaphore> imageAvailableSemaphores
     uint32_t currentFrame = 0;
 
     // Current state

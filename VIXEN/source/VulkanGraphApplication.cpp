@@ -14,6 +14,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/WindowNode.h"
 #include "Nodes/DeviceNode.h"
 #include "Nodes/CommandPoolNode.h"
+#include "Nodes/FrameSyncNode.h"  // Phase 0.2: Frame-in-flight synchronization
 #include "Nodes/TextureLoaderNode.h"
 #include "Nodes/DepthBufferNode.h"
 #include "Nodes/SwapChainNode.h"
@@ -344,10 +345,11 @@ void VulkanGraphApplication::RegisterNodeTypes() {
 
     mainLogger->Info("Registering all built-in node types");
 
-    // Register all 14 node types
+    // Register all node types
     nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DeviceNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<CommandPoolNodeType>());
+    nodeRegistry->RegisterNodeType(std::make_unique<FrameSyncNodeType>());  // Phase 0.2
     nodeRegistry->RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DepthBufferNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<SwapChainNodeType>());
@@ -362,7 +364,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ShaderConstantNodeType>());  // MVP: VulkanShader* injection
     nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
 
-    mainLogger->Info("Successfully registered 16 node types");
+    mainLogger->Info("Successfully registered 17 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -382,6 +384,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     windowNodeHandle = windowNode; // Cache for shutdown handling
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
     deviceNodeHandle = deviceNode; // MVP: Cache for post-compile shader loading
+    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");  // Phase 0.2
     NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
@@ -405,7 +408,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
-    mainLogger->Info("Created 13 node instances (removed ConstantNode - Phase 1)");
+    mainLogger->Info("Created 14 node instances (Phase 0.2: added FrameSyncNode)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -511,6 +514,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::INSTANCE)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
+
+    // --- Device → FrameSync connection (Phase 0.2) ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  frameSyncNode, FrameSyncNodeConfig::VULKAN_DEVICE);
+
+    // --- FrameSync → SwapChain connection (Phase 0.2) ---
+    // SwapChainNode receives per-flight semaphore for vkAcquireNextImageKHR
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
+                  swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE_IN);
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -619,20 +631,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE);
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE)  // Phase 0.2: Per-flight semaphore (wait)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN)  // Phase 0.2: Per-flight semaphore (signal)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE);  // Phase 0.2: Per-flight fence (CPU-GPU sync)
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain + GeometryRender → Present connections ---
+    // --- SwapChain + GeometryRender → Present connections (Phase 0.2) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
          .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
 

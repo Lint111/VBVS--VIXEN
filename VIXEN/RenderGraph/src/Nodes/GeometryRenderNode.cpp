@@ -111,26 +111,24 @@ void GeometryRenderNode::Compile() {
         throw std::runtime_error("GeometryRenderNode: Failed to allocate command buffers");
     }
 
-    // Create render complete semaphores (one per swapchain image)
-    renderCompleteSemaphores.resize(imageCount);
+    // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
+    // No need to create per-swapchain-image semaphores anymore
 
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    for (uint32_t i = 0; i < imageCount; i++) {
-        result = vkCreateSemaphore(vulkanDevice->device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("GeometryRenderNode: Failed to create render complete semaphore " + std::to_string(i));
-        }
-    }
-    
     RegisterCleanup();
 }
 
 void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
+
+    // Phase 0.2: Get per-flight sync primitives from FrameSyncNode
     VkSemaphore imageAvailableSemaphore = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, NodeInstance::SlotRole::ExecuteOnly);
+    VkSemaphore renderCompleteSemaphore = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN, NodeInstance::SlotRole::ExecuteOnly);
+    VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
+
+    // Wait for previous frame using this fence to complete (CPU-GPU sync)
+    vkWaitForFences(vulkanDevice->device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(vulkanDevice->device, 1, &inFlightFence);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
@@ -156,18 +154,18 @@ void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    // Signal the render complete semaphore for THIS specific image
-    VkSemaphore currentRenderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+    // Phase 0.2: Signal the per-flight render complete semaphore from FrameSyncNode
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &currentRenderCompleteSemaphore;
+    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
-    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
+    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
     }
 
-    // Output render complete semaphore for PresentNode
-    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, currentRenderCompleteSemaphore);
+    // Output the same render complete semaphore for PresentNode (pass-through)
+    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
 void GeometryRenderNode::CleanupImpl() {
@@ -182,15 +180,7 @@ void GeometryRenderNode::CleanupImpl() {
         commandBuffers.clear();
     }
 
-    // Destroy all render complete semaphores
-    if (vulkanDevice) {
-        for (VkSemaphore semaphore : renderCompleteSemaphores) {
-            if (semaphore != VK_NULL_HANDLE) {
-                vkDestroySemaphore(vulkanDevice->device, semaphore, nullptr);
-            }
-        }
-        renderCompleteSemaphores.clear();
-    }
+    // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
 }
 
 void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {

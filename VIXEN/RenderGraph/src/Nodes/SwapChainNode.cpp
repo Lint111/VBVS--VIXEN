@@ -231,23 +231,9 @@ void SwapChainNode::Compile() {
     // Output 2: Pointer to public swapchain variables (NEW VARIANT API)
     Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
 
-    // === CREATE SYNCHRONIZATION PRIMITIVES ===
-    // Create semaphores for image acquisition (one per swapchain image)
-    imageAvailableSemaphores.resize(imageCount);
-    
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    for (uint32_t i = 0; i < imageCount; i++) {
-    VkResult result = vkCreateSemaphore(GetDevice()->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]);
-        if (result != VK_SUCCESS) {
-            std::string errorMsg = "SwapChainNode::Compile - Failed to create image available semaphore " + std::to_string(i);
-            NODE_LOG_ERROR(errorMsg);
-            throw std::runtime_error(errorMsg);
-        }
-    }
-
-    NODE_LOG_INFO("SwapChainNode::Compile - Swapchain created with " + std::to_string(imageCount) + " images and semaphores");
+    // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
+    // No need to create per-swapchain-image semaphores anymore
+    NODE_LOG_INFO("SwapChainNode::Compile - Swapchain created with " + std::to_string(imageCount) + " images");
 
     NodeInstance::RegisterCleanup();
     
@@ -264,16 +250,10 @@ void SwapChainNode::Compile() {
 }
 
 void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
-    // Guard against execution after cleanup or during recreation
-    if (imageAvailableSemaphores.empty()) {
-        NODE_LOG_WARNING("SwapChainNode: Execute called with no semaphores - skipping frame");
-        return;
-    }
+    // Phase 0.2: Get per-flight semaphore from FrameSyncNode
+    VkSemaphore imageAvailableSemaphore = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE_IN);
 
-    // Acquire next swapchain image
-    const uint32_t frameIndex = currentFrame % imageAvailableSemaphores.size();
-    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[frameIndex];
-
+    // Acquire next swapchain image using per-flight semaphore
     currentImageIndex = AcquireNextImage(imageAvailableSemaphore);
 
     // If swapchain is out of date, skip this frame
@@ -282,8 +262,11 @@ void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
         return;
     }
 
-    // Output current frame's image index and semaphore for downstream nodes
+    // Output current frame's image index
     Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
+
+    // Phase 0.2: Also output the semaphore for backward compatibility
+    // (GeometryRenderNode now gets it directly from FrameSyncNode, but keeping for now)
     Out(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, imageAvailableSemaphore);
 
     currentFrame++;
@@ -292,16 +275,7 @@ void SwapChainNode::Execute(VkCommandBuffer commandBuffer) {
 void SwapChainNode::CleanupImpl() {
     std::cout << "[SwapChainNode::CleanupImpl] Called" << std::endl;
 
-    // Destroy semaphores
-    auto* devicePtr = GetDevice();
-    if (devicePtr != nullptr) {
-        for (auto& semaphore : imageAvailableSemaphores) {
-            if (semaphore != VK_NULL_HANDLE) {
-                vkDestroySemaphore(devicePtr->device, semaphore, nullptr);
-            }
-        }
-    }
-    imageAvailableSemaphores.clear();
+    // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
 
     // Cleanup swapchain wrapper if we own it
     if (swapChainWrapper) {
@@ -316,8 +290,9 @@ void SwapChainNode::CleanupImpl() {
             // Instance might not be available during shutdown - that's ok
         }
 
-        if (devicePtr != nullptr) {
-            device = devicePtr->device;
+        auto* dev = GetDevice();
+        if (dev != nullptr) {
+            device = dev->device;
         }
 
         // Destroy all Vulkan resources (wrapper loads extension pointers automatically if needed)

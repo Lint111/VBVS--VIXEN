@@ -1,6 +1,6 @@
 # Progress
 
-## Current State: Phase 0.1 COMPLETE ✅ - Continuing Phase 0
+## Current State: Phase 0.2 COMPLETE ✅ - Continuing Phase 0
 
 **Last Updated**: November 1, 2025
 
@@ -12,18 +12,27 @@
 - Documented in `documentation/GraphArchitecture/08-per-frame-resources.md`
 - **Race condition ELIMINATED**: CPU writes frame N while GPU reads frame N-1
 
-**Remaining Phase 0 Tasks** (4 sub-phases, 4-8 days):
+**Phase 0.2 Frame-in-Flight Synchronization**: ✅ COMPLETE
+- Created FrameSyncNode managing MAX_FRAMES_IN_FLIGHT=2 sync primitives
+- Per-flight pattern: 2 fences + 2 semaphore pairs (vs 3 per-swapchain-image)
+- Refactored SwapChainNode: removed per-image semaphore creation
+- Refactored GeometryRenderNode: uses FrameSyncNode's semaphores
+- Fixed PresentNode wiring: waits on GeometryRenderNode output (not FrameSyncNode)
+- Tested successfully: zero validation errors
+- **CPU-GPU race ELIMINATED**: Fences prevent CPU from running >2 frames ahead
+
+**Remaining Phase 0 Tasks** (3 sub-phases, 3-6 days):
 1. ~~Per-frame resource management~~ ✅ COMPLETE
-2. 🔴 Frame-in-flight synchronization missing (CPU-GPU fences) - 1-2 days
+2. ~~Frame-in-flight synchronization~~ ✅ COMPLETE
 3. 🔴 Command buffer recording strategy undefined - 1 day
 4. 🔴 Multi-rate update loop missing (blocks gameplay) - 2-3 days
 5. 🔴 Template method pattern missing (boilerplate elimination) - 1-2 days
 
-**Phase A (Persistent Cache)**: ⏸️ PAUSED - Resume after Phase 0.2 complete
+**Phase A (Persistent Cache)**: ⏸️ PAUSED - Resume after Phase 0 complete
 
 **Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 
-**Next**: Ready to begin Phase 0.2 - Frame-in-Flight Synchronization
+**Next**: Phase 0.3 - Command Buffer Recording Strategy
 
 ---
 
