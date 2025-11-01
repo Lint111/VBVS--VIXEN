@@ -2,6 +2,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
+#include "Core/StatefulContainer.h"
 #include "GeometryRenderNodeConfig.h"
 #include <memory>
 #include <vector>
@@ -73,15 +74,21 @@ private:
 
     // Phase 0.1: Per-frame command buffer management
     // Command buffers are allocated per swapchain image to prevent race conditions.
-    // Recording strategy: Dynamic (re-recorded every frame in Execute())
-    // Note: This is correct but suboptimal. Phase 0.3 will implement conditional
-    // re-recording (only when dirty) for better performance.
-    std::vector<VkCommandBuffer> commandBuffers;  // One per swapchain image
     VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // Removed: std::vector<VkSemaphore> renderCompleteSemaphores
+
+    // Phase 0.3: Command buffer with state tracking
+    // Tracks command buffers + their dirty/ready state
+    StatefulContainer<VkCommandBuffer> commandBuffers;  // One per swapchain image
+
+    // Previous frame inputs (for dirty detection)
+    VkRenderPass lastRenderPass = VK_NULL_HANDLE;
+    VkPipeline lastPipeline = VK_NULL_HANDLE;
+    VkBuffer lastVertexBuffer = VK_NULL_HANDLE;
+    VkDescriptorSet lastDescriptorSet = VK_NULL_HANDLE;
 };
 
 } // namespace Vixen::RenderGraph

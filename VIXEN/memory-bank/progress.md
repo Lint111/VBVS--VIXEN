@@ -1,6 +1,6 @@
 # Progress
 
-## Current State: Phase 0.2 COMPLETE ✅ - Continuing Phase 0
+## Current State: Phase 0.3 COMPLETE ✅ - Continuing Phase 0
 
 **Last Updated**: November 1, 2025
 
@@ -9,7 +9,6 @@
 - Refactored DescriptorSetNode for per-frame UBOs
 - Wired SWAPCHAIN_PUBLIC and IMAGE_INDEX connections
 - Tested successfully (3 distinct UBO buffers verified)
-- Documented in `documentation/GraphArchitecture/08-per-frame-resources.md`
 - **Race condition ELIMINATED**: CPU writes frame N while GPU reads frame N-1
 
 **Phase 0.2 Frame-in-Flight Synchronization**: ✅ COMPLETE
@@ -18,13 +17,19 @@
 - Refactored SwapChainNode: removed per-image semaphore creation
 - Refactored GeometryRenderNode: uses FrameSyncNode's semaphores
 - Fixed PresentNode wiring: waits on GeometryRenderNode output (not FrameSyncNode)
-- Tested successfully: zero validation errors
 - **CPU-GPU race ELIMINATED**: Fences prevent CPU from running >2 frames ahead
 
-**Remaining Phase 0 Tasks** (3 sub-phases, 3-6 days):
+**Phase 0.3 Command Buffer Recording Strategy**: ✅ COMPLETE
+- Created `StatefulContainer<T>` - reusable state tracking container
+- Command buffers track Dirty/Ready/Stale/Invalid states
+- Automatic dirty detection when inputs change (pipeline, descriptor sets, buffers)
+- Only re-record when dirty (saves CPU work for static scenes)
+- **Descriptor set invalidation bug FIXED**: Command buffers re-recorded when descriptor sets change
+
+**Remaining Phase 0 Tasks** (2 sub-phases, 3-5 days):
 1. ~~Per-frame resource management~~ ✅ COMPLETE
 2. ~~Frame-in-flight synchronization~~ ✅ COMPLETE
-3. 🔴 Command buffer recording strategy undefined - 1 day
+3. ~~Command buffer recording strategy~~ ✅ COMPLETE
 4. 🔴 Multi-rate update loop missing (blocks gameplay) - 2-3 days
 5. 🔴 Template method pattern missing (boilerplate elimination) - 1-2 days
 
@@ -32,7 +37,7 @@
 
 **Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 
-**Next**: Phase 0.3 - Command Buffer Recording Strategy
+**Next**: Phase 0.4 - Multi-Rate Update Loop (enables gameplay)
 
 ---
 

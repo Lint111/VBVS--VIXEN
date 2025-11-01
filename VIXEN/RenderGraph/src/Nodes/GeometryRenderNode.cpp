@@ -99,16 +99,24 @@ void GeometryRenderNode::Compile() {
     uint32_t imageCount = swapchainInfo->swapChainImageCount;
     std::cout << "[GeometryRenderNode::Compile] Swapchain has " << imageCount << " images, allocating command buffers" << std::endl;
     commandBuffers.resize(imageCount);
-    
+
+    // Allocate raw command buffers
+    std::vector<VkCommandBuffer> rawCommandBuffers(imageCount);
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = imageCount;
-    
-    VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, commandBuffers.data());
+
+    VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, rawCommandBuffers.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to allocate command buffers");
+    }
+
+    // Phase 0.3: Store in stateful container (all start as Dirty - need initial recording)
+    for (uint32_t i = 0; i < imageCount; i++) {
+        commandBuffers[i] = rawCommandBuffers[i];
+        commandBuffers.MarkDirty(i);
     }
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
@@ -136,9 +144,32 @@ void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
         return;
     }
 
-    // Record draw commands for current image
-    VkCommandBuffer cmdBuffer = commandBuffers[imageIndex];
-    RecordDrawCommands(cmdBuffer, imageIndex);
+    // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
+    VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS, NodeInstance::SlotRole::ExecuteOnly);
+    VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE, NodeInstance::SlotRole::ExecuteOnly);
+    VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER, NodeInstance::SlotRole::ExecuteOnly);
+    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, NodeInstance::SlotRole::ExecuteOnly);
+    VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
+
+    if (currentRenderPass != lastRenderPass ||
+        currentPipeline != lastPipeline ||
+        currentVertexBuffer != lastVertexBuffer ||
+        currentDescriptorSet != lastDescriptorSet) {
+        // Inputs changed - mark all command buffers dirty
+        commandBuffers.MarkAllDirty();
+
+        lastRenderPass = currentRenderPass;
+        lastPipeline = currentPipeline;
+        lastVertexBuffer = currentVertexBuffer;
+        lastDescriptorSet = currentDescriptorSet;
+    }
+
+    // Phase 0.3: Only re-record if dirty
+    VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
+    if (commandBuffers.IsDirty(imageIndex)) {
+        RecordDrawCommands(cmdBuffer, imageIndex);
+        commandBuffers.MarkReady(imageIndex);
+    }
 
     // Submit command buffer to graphics queue
     VkSubmitInfo submitInfo{};
@@ -171,11 +202,18 @@ void GeometryRenderNode::Execute(VkCommandBuffer commandBuffer) {
 void GeometryRenderNode::CleanupImpl() {
     // Free command buffers
     if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && vulkanDevice) {
+        // Extract raw command buffer handles for vkFreeCommandBuffers
+        std::vector<VkCommandBuffer> rawHandles;
+        rawHandles.reserve(commandBuffers.size());
+        for (size_t i = 0; i < commandBuffers.size(); i++) {
+            rawHandles.push_back(commandBuffers.GetValue(i));
+        }
+
         vkFreeCommandBuffers(
             vulkanDevice->device,
             commandPool,
-            static_cast<uint32_t>(commandBuffers.size()),
-            commandBuffers.data()
+            static_cast<uint32_t>(rawHandles.size()),
+            rawHandles.data()
         );
         commandBuffers.clear();
     }
