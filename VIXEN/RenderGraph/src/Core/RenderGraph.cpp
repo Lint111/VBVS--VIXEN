@@ -414,12 +414,12 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
     globalFrameIndex++;
 
     // Phase 0.4: Propagate loop references through AUTO_LOOP_IN/OUT connections
-    for (const auto& conn : topology.GetConnections()) {
-        if (conn.sourceOutputIndex == NodeInstance::AUTO_LOOP_OUT_SLOT &&
-            conn.destInputIndex == NodeInstance::AUTO_LOOP_IN_SLOT) {
+    for (const auto& edge : topology.GetEdges()) {
+        if (edge.sourceOutputIndex == NodeInstance::AUTO_LOOP_OUT_SLOT &&
+            edge.targetInputIndex == NodeInstance::AUTO_LOOP_IN_SLOT) {
 
-            const LoopReference* loopRef = conn.sourceNode->GetLoopOutput();
-            conn.destNode->SetLoopInput(loopRef);
+            const LoopReference* loopRef = edge.source->GetLoopOutput();
+            edge.target->SetLoopInput(loopRef);
         }
     }
 

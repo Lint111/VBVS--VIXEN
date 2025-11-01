@@ -233,7 +233,7 @@ public:
      * @param config Loop configuration (timestep, name, catch-up mode)
      * @return Unique loop ID for use with LoopBridgeNode
      */
-    uint32_t RegisterLoop(const LoopManager::LoopConfig& config) {
+    uint32_t RegisterLoop(const LoopConfig& config) {
         return loopManager.RegisterLoop(config);
     }
 
