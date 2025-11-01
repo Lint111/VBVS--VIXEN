@@ -275,15 +275,8 @@ void SwapChainNode::ExecuteImpl() {
         return;
     }
 
-    // Render complete semaphore indexed by ACQUIRED image
-    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[currentImageIndex];
-
     // Output the acquired image index
     Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
-
-    // Output semaphores: acquire by frame, renderComplete by image
-    Out(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, acquireSemaphore);
-    Out(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 
     NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
                   + ", frameIdx=" + std::to_string(currentFrameIndex)

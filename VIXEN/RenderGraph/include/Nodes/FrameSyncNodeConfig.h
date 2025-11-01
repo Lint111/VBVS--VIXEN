@@ -10,7 +10,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 // Compile-time slot counts (declared early for reuse)
 namespace FrameSyncNodeCounts {
     static constexpr size_t INPUTS = 1;  // Back to 1: only VulkanDevice
-    static constexpr size_t OUTPUTS = 6;  // Semaphore arrays
+    static constexpr size_t OUTPUTS = 4;  // Phase 0.5: Only array outputs
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -22,7 +22,7 @@ namespace FrameSyncNodeCounts {
  * - Creates MAX_SWAPCHAIN_IMAGES semaphores for GPU-GPU sync (prevents reuse violations)
  *
  * Inputs: 1 (VULKAN_DEVICE)
- * Outputs: 6 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORE, RENDER_COMPLETE_SEMAPHORE, arrays)
+ * Outputs: 4 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY)
  */
 CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
                       FrameSyncNodeCounts::INPUTS,
@@ -31,10 +31,8 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     // Compile-time output slot definitions
     CONSTEXPR_OUTPUT(CURRENT_FRAME_INDEX, uint32_t, 0, false);
     CONSTEXPR_OUTPUT(IN_FLIGHT_FENCE, VkFence, 1, false);
-    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORE, VkSemaphore, 2, false);  // For backwards compat (image 0)
-    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 3, false);  // For backwards compat (image 0)
-    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 4, false);  // All per-image semaphores
-    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 5, false);  // All per-image semaphores
+    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2, false);  // All per-image semaphores
+    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3, false);  // All per-image semaphores
 
     // Input: VulkanDevice pointer only
     CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 0, false);
@@ -54,11 +52,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         INIT_OUTPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
 
         HandleDescriptor fenceDesc{"VkFence"};
-        INIT_OUTPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Persistent, fenceDesc);
-
-        HandleDescriptor semaphoreDesc{"VkSemaphore"};
-        INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORE, "image_available_semaphore", ResourceLifetime::Persistent, semaphoreDesc);
-        INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Persistent, semaphoreDesc);
+        INIT_OUTPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Persistent, fenceDesc);        
 
         HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
         INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
@@ -75,17 +69,13 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
 
     static_assert(CURRENT_FRAME_INDEX_Slot::index == 0, "CURRENT_FRAME_INDEX must be at index 0");
     static_assert(IN_FLIGHT_FENCE_Slot::index == 1, "IN_FLIGHT_FENCE must be at index 1");
-    static_assert(IMAGE_AVAILABLE_SEMAPHORE_Slot::index == 2, "IMAGE_AVAILABLE_SEMAPHORE must be at index 2");
-    static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 3, "RENDER_COMPLETE_SEMAPHORE must be at index 3");
-    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 4, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 4");
-    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 5, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 5");
+    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 2, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 2");
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 3, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 3");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORE_Slot::Type, VkSemaphore>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
 };

@@ -658,10 +658,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  geometryRenderNode, GeometryRenderNodeConfig::CURRENT_FRAME_INDEX)  // Phase 0.5: Frame-in-flight index for semaphore indexing
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
                   geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE)  // Phase 0.5: Per-flight fence (CPU-GPU sync)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of all per-image semaphores
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of all per-flight semaphores
          .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of all per-image semaphores
 

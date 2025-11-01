@@ -123,10 +123,6 @@ void FrameSyncNode::CompileImpl() {
     Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
     Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
 
-    // Backwards compat: output image 0 semaphores
-    Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, imageAvailableSemaphores[0]);
-    Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphores[0]);
-
     NODE_LOG_INFO("Synchronization primitives created successfully");
 }
 

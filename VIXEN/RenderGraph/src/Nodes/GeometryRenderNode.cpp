@@ -127,13 +127,18 @@ void GeometryRenderNode::ExecuteImpl() {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Phase 0.5: Get per-image semaphore arrays from FrameSyncNode
+    // Phase 0.5: Get current frame-in-flight index from FrameSyncNode
+    uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX, NodeInstance::SlotRole::ExecuteOnly);
+
+    // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
     const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
     VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Index arrays by imageIndex to get per-image semaphores
-    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[imageIndex];
+    // Phase 0.5: CRITICAL - Index semaphores correctly:
+    // - imageAvailable: Indexed by FRAME index (per-flight) - matches SwapChainNode's acquire semaphore
+    // - renderComplete: Indexed by IMAGE index (per-image) - for presentation
+    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
     VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
