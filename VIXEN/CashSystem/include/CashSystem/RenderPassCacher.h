@@ -8,11 +8,6 @@
 
 namespace CashSystem {
 
-// Forward declarations
-namespace Vixen::Vulkan::Resources {
-    class VulkanDevice;
-}
-
 /**
  * @brief Render pass resource wrapper
  *

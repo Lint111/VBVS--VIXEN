@@ -182,8 +182,9 @@ std::uint64_t RenderPassCacher::ComputeKey(const RenderPassCreateParams& ci) con
               << static_cast<int>(ci.srcAccessMask) << "|"
               << static_cast<int>(ci.dstAccessMask);
 
-    // Use FNV-1a hash
-    return ComputeFNV1aHash(keyStream.str());
+    // Use standard hash function
+    const std::string keyString = keyStream.str();
+    return std::hash<std::string>{}(keyString);
 }
 
 bool RenderPassCacher::SerializeToFile(const std::filesystem::path& path) const {
