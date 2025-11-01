@@ -66,6 +66,12 @@ Graph-based rendering system for Vulkan with compile-time type safety, automatic
    - Resource sharing optimization
    - Performance analysis
 
+8. **[Per-Frame Resources](08-per-frame-resources.md)** ✅ NEW
+   - Ring buffer pattern for CPU-GPU race prevention
+   - PerFrameResources helper class
+   - Ownership rules and best practices
+   - Implementation in DescriptorSetNode, GeometryRenderNode
+
 ### 📖 Reference
 
 - **[NodeCatalog.md](NodeCatalog.md)** - Complete catalog of 15+ node types
