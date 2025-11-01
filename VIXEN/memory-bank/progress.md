@@ -1,23 +1,29 @@
 # Progress
 
-## Current State: CRITICAL - Phase 0 Required Before All Work 🔴
+## Current State: Phase 0.1 COMPLETE ✅ - Continuing Phase 0
 
 **Last Updated**: November 1, 2025
 
-**HALT ALL WORK**: Comprehensive architectural review identified **5 P0 correctness bugs** that must be fixed first.
+**Phase 0.1 Per-Frame Resources**: ✅ COMPLETE
+- Created PerFrameResources helper class (ring buffer pattern)
+- Refactored DescriptorSetNode for per-frame UBOs
+- Wired SWAPCHAIN_PUBLIC and IMAGE_INDEX connections
+- Tested successfully (3 distinct UBO buffers verified)
+- Documented in `documentation/GraphArchitecture/08-per-frame-resources.md`
+- **Race condition ELIMINATED**: CPU writes frame N while GPU reads frame N-1
 
-**New Phase 0 Required** (6-10 days):
-1. 🔴 Per-frame resource management missing (UBO race conditions)
-2. 🔴 Frame-in-flight synchronization missing (CPU-GPU sync)
-3. 🔴 Command buffer recording strategy undefined
-4. 🔴 Multi-rate update loop missing (blocks gameplay)
-5. 🔴 Template method pattern missing (boilerplate elimination)
+**Remaining Phase 0 Tasks** (4 sub-phases, 4-8 days):
+1. ~~Per-frame resource management~~ ✅ COMPLETE
+2. 🔴 Frame-in-flight synchronization missing (CPU-GPU fences) - 1-2 days
+3. 🔴 Command buffer recording strategy undefined - 1 day
+4. 🔴 Multi-rate update loop missing (blocks gameplay) - 2-3 days
+5. 🔴 Template method pattern missing (boilerplate elimination) - 1-2 days
 
-**Phase A (Persistent Cache)**: ⏸️ PAUSED at 50% - Resume after Phase 0.2 (frame-in-flight sync)
+**Phase A (Persistent Cache)**: ⏸️ PAUSED - Resume after Phase 0.2 complete
 
 **Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 
-**Next**: Begin Phase 0.1 - Per-Frame Resources refactor
+**Next**: Ready to begin Phase 0.2 - Frame-in-Flight Synchronization
 
 ---
 
