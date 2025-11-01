@@ -4,6 +4,7 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
+#include "CashSystem/RenderPassCacher.h"
 
 namespace Vixen::RenderGraph {
 
@@ -66,7 +67,7 @@ void RenderPassNode::SetupImpl() {
 }
 
 void RenderPassNode::CompileImpl() {
-    NODE_LOG_INFO("Compile: Creating render pass");
+    NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Get swapchain info bundle and extract format
     SwapChainPublicVariables* swapchainInfo = In(RenderPassNodeConfig::SWAPCHAIN_INFO);
@@ -74,7 +75,7 @@ void RenderPassNode::CompileImpl() {
         throw std::runtime_error("RenderPassNode: swapchain info bundle is null");
     }
     VkFormat colorFormat = swapchainInfo->Format;
-    
+
     // Get depth format directly
     VkFormat depthFormat = In(RenderPassNodeConfig::DEPTH_FORMAT);
 
@@ -97,90 +98,47 @@ void RenderPassNode::CompileImpl() {
     hasDepth = (depthFormat != VK_FORMAT_UNDEFINED);
     NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
 
-    // Setup attachments
-    VkAttachmentDescription attachments[2];
-    
-    // Color attachment
-    attachments[0] = {};
-    attachments[0].format = colorFormat;
-    attachments[0].samples = GetSampleCount(sampleCount);
-    attachments[0].loadOp = ConvertLoadOp(colorLoadOp);
-    attachments[0].storeOp = ConvertStoreOp(colorStoreOp);
-    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = ConvertImageLayout(initialLayout);
-    attachments[0].finalLayout = ConvertImageLayout(finalLayout);
-    attachments[0].flags = 0;
+    // Build cache parameters
+    CashSystem::RenderPassCreateParams cacheParams{};
+    cacheParams.colorFormat = colorFormat;
+    cacheParams.samples = GetSampleCount(sampleCount);
+    cacheParams.colorLoadOp = ConvertLoadOp(colorLoadOp);
+    cacheParams.colorStoreOp = ConvertStoreOp(colorStoreOp);
+    cacheParams.initialLayout = ConvertImageLayout(initialLayout);
+    cacheParams.finalLayout = ConvertImageLayout(finalLayout);
+    cacheParams.hasDepth = hasDepth;
+    cacheParams.depthFormat = depthFormat;
+    cacheParams.depthLoadOp = ConvertLoadOp(depthLoadOp);
+    cacheParams.depthStoreOp = ConvertStoreOp(depthStoreOp);
+    cacheParams.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    cacheParams.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    cacheParams.srcAccessMask = 0;
+    cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    // Depth attachment (if enabled)
-    if (hasDepth) {
-        attachments[1] = {};
-        attachments[1].format = depthFormat;
-        attachments[1].samples = GetSampleCount(sampleCount);
-        attachments[1].loadOp = ConvertLoadOp(depthLoadOp);
-        attachments[1].storeOp = ConvertStoreOp(depthStoreOp);
-        attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-        attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        attachments[1].flags = 0;
+    // Get or create cached render pass
+    auto* cacher = GetOwningGraph()->GetMainCacher().GetCacher<
+        CashSystem::RenderPassCacher,
+        CashSystem::RenderPassWrapper,
+        CashSystem::RenderPassCreateParams
+    >(std::type_index(typeid(CashSystem::RenderPassWrapper)), device);
+
+    if (!cacher) {
+        throw std::runtime_error("RenderPassNode: Failed to get RenderPassCacher from MainCacher");
     }
 
-    // Attachment references
-    VkAttachmentReference colorReference = {};
-    colorReference.attachment = 0;
-    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    cachedRenderPassWrapper = cacher->GetOrCreate(cacheParams);
 
-    VkAttachmentReference depthReference = {};
-    depthReference.attachment = 1;
-    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    // Subpass
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.flags = 0;
-    subpass.inputAttachmentCount = 0;
-    subpass.pInputAttachments = nullptr;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorReference;
-    subpass.pResolveAttachments = nullptr;
-    subpass.pDepthStencilAttachment = hasDepth ? &depthReference : nullptr;
-    subpass.preserveAttachmentCount = 0;
-    subpass.pPreserveAttachments = nullptr;
-
-    // Subpass dependency for layout transition
-    VkSubpassDependency dependency = {};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dependency.dependencyFlags = 0;
-
-    // Create render pass
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.pNext = nullptr;
-    renderPassInfo.attachmentCount = hasDepth ? 2 : 1;
-    renderPassInfo.pAttachments = attachments;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
-
-    VkResult result = vkCreateRenderPass(device->device, &renderPassInfo, nullptr, &renderPass);
-    if (result != VK_SUCCESS) {
-        VulkanError error{result, "Failed to create render pass"};
-        NODE_LOG_ERROR(error.toString());
-        throw std::runtime_error(error.toString());
+    if (!cachedRenderPassWrapper || cachedRenderPassWrapper->renderPass == VK_NULL_HANDLE) {
+        throw std::runtime_error("RenderPassNode: Failed to get or create render pass from cache");
     }
+
+    renderPass = cachedRenderPassWrapper->renderPass;
 
     // Set typed outputs
     Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
     Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    NODE_LOG_INFO("Compile complete: Render pass created successfully");
+    NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
 void RenderPassNode::ExecuteImpl() {
@@ -188,8 +146,10 @@ void RenderPassNode::ExecuteImpl() {
 }
 
 void RenderPassNode::CleanupImpl() {
-    if (renderPass != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(device->device, renderPass, nullptr);
+    // Release cached wrapper - cacher owns VkRenderPass and destroys when appropriate
+    if (cachedRenderPassWrapper) {
+        std::cout << "[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)" << std::endl;
+        cachedRenderPassWrapper.reset();
         renderPass = VK_NULL_HANDLE;
     }
 }

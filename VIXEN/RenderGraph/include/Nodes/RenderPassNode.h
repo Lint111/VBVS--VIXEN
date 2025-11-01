@@ -3,6 +3,12 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "RenderPassNodeConfig.h"
+#include <memory>
+
+// Forward declarations
+namespace CashSystem {
+    struct RenderPassWrapper;
+}
 
 namespace Vixen::RenderGraph {
 
@@ -43,6 +49,9 @@ private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     VkRenderPass renderPass = VK_NULL_HANDLE;
     bool hasDepth = false;
+
+    // Cached wrapper from RenderPassCacher
+    std::shared_ptr<CashSystem::RenderPassWrapper> cachedRenderPassWrapper;
 
     VkAttachmentLoadOp ConvertLoadOp(AttachmentLoadOp op);
     VkAttachmentStoreOp ConvertStoreOp(AttachmentStoreOp op);
