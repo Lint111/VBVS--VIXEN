@@ -18,6 +18,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <fstream>
+#include <future>
+#include <iostream>
 #include <optional>
 #include <future>
 
@@ -573,8 +576,104 @@ private:
     DeviceRegistry& GetOrCreateDeviceRegistry(const DeviceIdentifier& deviceId);
     
     // Global cache management
-    bool SaveGlobalCaches(const std::filesystem::path& directory) const;
-    bool LoadGlobalCaches(const std::filesystem::path& directory);
+    bool SaveGlobalCaches(const std::filesystem::path& directory) const {
+        std::cout << "[MainCacher] Saving global caches to " << directory << std::endl;
+
+        // Save manifest
+        auto manifestPath = directory / "manifest.txt";
+        std::ofstream manifest(manifestPath);
+        if (!manifest) {
+            std::cerr << "[MainCacher] Failed to create global cacher manifest" << std::endl;
+            return false;
+        }
+
+        std::shared_lock lock(m_globalRegistryMutex);
+        for (const auto& [typeIndex, cacher] : m_globalCachers) {
+            if (cacher) {
+                manifest << cacher->name() << "\n";
+            }
+        }
+        manifest.close();
+        std::cout << "[MainCacher] Saved global cacher manifest with " << m_globalCachers.size() << " entries" << std::endl;
+
+        // Launch parallel save for each global cacher
+        std::vector<std::future<bool>> futures;
+
+        for (const auto& [typeIndex, cacher] : m_globalCachers) {
+            if (cacher) {
+                auto cacheName = std::string(cacher->name());
+                auto cacheFile = directory / (cacheName + ".cache");
+
+                // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
+                CacherBase* cacherPtr = cacher.get();
+
+                futures.push_back(std::async(std::launch::async,
+                    [cacherPtr, cacheName, cacheFile]() {
+                        std::cout << "[MainCacher] Saving global " << cacheName << " to " << cacheFile << std::endl;
+                        bool saved = cacherPtr->SerializeToFile(cacheFile);
+                        if (!saved) {
+                            std::cerr << "[MainCacher] Failed to save global " << cacheName << std::endl;
+                        }
+                        return saved;
+                    }
+                ));
+            }
+        }
+
+        // Wait for all saves to complete
+        bool success = true;
+        for (auto& future : futures) {
+            success &= future.get();
+        }
+
+        std::cout << "[MainCacher] Global cache save " << (success ? "succeeded" : "failed") << std::endl;
+        return success;
+    }
+
+    bool LoadGlobalCaches(const std::filesystem::path& directory) {
+        std::cout << "[MainCacher] Loading global caches from " << directory << std::endl;
+
+        if (!std::filesystem::exists(directory)) {
+            std::cout << "[MainCacher] No global cache directory found" << std::endl;
+            return true;  // Not an error
+        }
+
+        // Launch parallel load for each global cacher
+        std::vector<std::future<bool>> futures;
+
+        std::shared_lock lock(m_globalRegistryMutex);
+        for (const auto& [typeIndex, cacher] : m_globalCachers) {
+            if (cacher) {
+                auto cacheName = std::string(cacher->name());
+                auto cacheFile = directory / (cacheName + ".cache");
+
+                if (std::filesystem::exists(cacheFile)) {
+                    // Capture raw pointer for thread safety (cacher is owned by m_globalCachers which is stable)
+                    CacherBase* cacherPtr = cacher.get();
+
+                    futures.push_back(std::async(std::launch::async,
+                        [cacherPtr, cacheName, cacheFile]() {
+                            std::cout << "[MainCacher] Loading global " << cacheName << " from " << cacheFile << std::endl;
+                            bool loaded = cacherPtr->DeserializeFromFile(cacheFile, nullptr);
+                            if (!loaded) {
+                                std::cerr << "[MainCacher] Failed to load global " << cacheName << std::endl;
+                            }
+                            return loaded;
+                        }
+                    ));
+                }
+            }
+        }
+
+        // Wait for all loads to complete
+        bool success = true;
+        for (auto& future : futures) {
+            success &= future.get();
+        }
+
+        std::cout << "[MainCacher] Global cache load " << (success ? "succeeded" : "failed") << std::endl;
+        return success;
+    }
     
     // Global type registration (shared across all devices)
     using GlobalFactory = std::function<std::unique_ptr<CacherBase>()>;

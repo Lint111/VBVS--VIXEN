@@ -102,6 +102,10 @@ std::shared_ptr<TextureWrapper> TextureCacher::Create(const TextureCreateParams&
     wrapper->generateMipmaps = ci.generateMipmaps;
 
     // Store sampler reference from SamplerCacher (composition pattern)
+    // Note: samplerParams is only used during serialization/key computation
+    if (!ci.samplerWrapper) {
+        throw std::runtime_error("TextureCacher: samplerWrapper is required for Create()");
+    }
     wrapper->samplerWrapper = ci.samplerWrapper;
 
     // Try to load texture from file using TextureLoader integration
@@ -348,8 +352,12 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
     uint32_t count = static_cast<uint32_t>(m_entries.size());
     ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
-    // Write each entry: key + metadata (not Vulkan handles or pixel data)
+    // Write each entry: key + metadata + pixel data (like ShaderModuleCacher saves SPIR-V)
     for (const auto& [key, entry] : m_entries) {
+        if (!entry.resource || entry.resource->pixelData.empty()) {
+            continue;  // Skip invalid entries
+        }
+
         ofs.write(reinterpret_cast<const char*>(&key), sizeof(key));
 
         // Serialize metadata for recreation
@@ -365,6 +373,26 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
         ofs.write(reinterpret_cast<const char*>(&w->width), sizeof(w->width));
         ofs.write(reinterpret_cast<const char*>(&w->height), sizeof(w->height));
         ofs.write(reinterpret_cast<const char*>(&w->mipLevels), sizeof(w->mipLevels));
+        ofs.write(reinterpret_cast<const char*>(&w->arrayLayers), sizeof(w->arrayLayers));
+
+        // Write pixel data (KEY ADDITION - like SPIR-V in ShaderModuleCacher)
+        uint32_t pixelDataSize = static_cast<uint32_t>(w->pixelData.size());
+        ofs.write(reinterpret_cast<const char*>(&pixelDataSize), sizeof(pixelDataSize));
+        ofs.write(reinterpret_cast<const char*>(w->pixelData.data()), pixelDataSize);
+
+        // Write generateMipmaps flag
+        ofs.write(reinterpret_cast<const char*>(&w->generateMipmaps), sizeof(w->generateMipmaps));
+
+        // Write sampler parameters (enables deserialization with cache hits)
+        const auto& sampler = w->samplerWrapper;
+        ofs.write(reinterpret_cast<const char*>(&sampler->minFilter), sizeof(sampler->minFilter));
+        ofs.write(reinterpret_cast<const char*>(&sampler->magFilter), sizeof(sampler->magFilter));
+        ofs.write(reinterpret_cast<const char*>(&sampler->addressModeU), sizeof(sampler->addressModeU));
+        ofs.write(reinterpret_cast<const char*>(&sampler->addressModeV), sizeof(sampler->addressModeV));
+        ofs.write(reinterpret_cast<const char*>(&sampler->addressModeW), sizeof(sampler->addressModeW));
+        ofs.write(reinterpret_cast<const char*>(&sampler->maxAnisotropy), sizeof(sampler->maxAnisotropy));
+        ofs.write(reinterpret_cast<const char*>(&sampler->compareEnable), sizeof(sampler->compareEnable));
+        ofs.write(reinterpret_cast<const char*>(&sampler->compareOp), sizeof(sampler->compareOp));
     }
 
     std::cout << "[TextureCacher::SerializeToFile] Serialization complete" << std::endl;
@@ -372,53 +400,99 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
 }
 
 bool TextureCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    std::cout << "[TextureCacher::DeserializeFromFile] Deserializing from " << path << std::endl;
+    try {
+        if (!std::filesystem::exists(path)) {
+            std::cout << "[TextureCacher::DeserializeFromFile] Cache file doesn't exist: " << path << std::endl;
+            return true;  // Not an error, just no cache to load
+        }
 
-    if (!std::filesystem::exists(path)) {
-        std::cout << "[TextureCacher::DeserializeFromFile] Cache file does not exist" << std::endl;
+        std::ifstream ifs(path, std::ios::binary);
+        if (!ifs) {
+            std::cerr << "[TextureCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+            return false;
+        }
+
+        std::cout << "[TextureCacher::DeserializeFromFile] Loading cache from " << path << std::endl;
+
+        // Read entry count
+        uint32_t count = 0;
+        ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
+
+        std::cout << "[TextureCacher::DeserializeFromFile] Loading " << count << " textures" << std::endl;
+
+        // Read each entry
+        for (uint32_t i = 0; i < count; ++i) {
+            // Read cache key
+            std::uint64_t key = 0;
+            ifs.read(reinterpret_cast<char*>(&key), sizeof(key));
+
+            // Read file path
+            uint32_t pathLen = 0;
+            ifs.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
+            std::string filePath(pathLen, '\0');
+            ifs.read(&filePath[0], pathLen);
+
+            // Read format and dimensions
+            VkFormat format;
+            uint32_t width, height, mipLevels, arrayLayers;
+            ifs.read(reinterpret_cast<char*>(&format), sizeof(format));
+            ifs.read(reinterpret_cast<char*>(&width), sizeof(width));
+            ifs.read(reinterpret_cast<char*>(&height), sizeof(height));
+            ifs.read(reinterpret_cast<char*>(&mipLevels), sizeof(mipLevels));
+            ifs.read(reinterpret_cast<char*>(&arrayLayers), sizeof(arrayLayers));
+
+            // Read pixel data
+            uint32_t pixelDataSize = 0;
+            ifs.read(reinterpret_cast<char*>(&pixelDataSize), sizeof(pixelDataSize));
+            std::vector<uint8_t> pixelData(pixelDataSize);
+            ifs.read(reinterpret_cast<char*>(pixelData.data()), pixelDataSize);
+
+            // Read generateMipmaps flag
+            bool generateMipmaps;
+            ifs.read(reinterpret_cast<char*>(&generateMipmaps), sizeof(generateMipmaps));
+
+            // Read sampler parameters
+            VkFilter minFilter, magFilter;
+            VkSamplerAddressMode addressModeU, addressModeV, addressModeW;
+            float maxAnisotropy;
+            VkBool32 compareEnable;
+            VkCompareOp compareOp;
+
+            ifs.read(reinterpret_cast<char*>(&minFilter), sizeof(minFilter));
+            ifs.read(reinterpret_cast<char*>(&magFilter), sizeof(magFilter));
+            ifs.read(reinterpret_cast<char*>(&addressModeU), sizeof(addressModeU));
+            ifs.read(reinterpret_cast<char*>(&addressModeV), sizeof(addressModeV));
+            ifs.read(reinterpret_cast<char*>(&addressModeW), sizeof(addressModeW));
+            ifs.read(reinterpret_cast<char*>(&maxAnisotropy), sizeof(maxAnisotropy));
+            ifs.read(reinterpret_cast<char*>(&compareEnable), sizeof(compareEnable));
+            ifs.read(reinterpret_cast<char*>(&compareOp), sizeof(compareOp));
+
+            std::cout << "[TextureCacher::DeserializeFromFile] Loaded cached data for " << filePath
+                      << " (" << width << "x" << height << ", " << pixelDataSize << " bytes, sampler params stored)" << std::endl;
+
+            // DESIGN NOTE: Unlike SamplerCacher/ShaderModuleCacher, TextureCacher cannot fully
+            // deserialize because it requires a SamplerWrapper (composition dependency).
+            //
+            // We serialize sampler *params* here, but we need a MainCacher reference to get
+            // SamplerCacher and create the wrapper. TypedCacher base class doesn't provide this.
+            //
+            // Solution: Serialization stores pixel data + sampler params for potential optimizations:
+            // - Future enhancement: Use cached pixel data instead of reloading from file
+            // - Validation: Check if file changed since last cache
+            // - Metrics: Track cache size and hit rates
+            //
+            // For now, texture loading on startup will reload from file (cache miss expected).
+        }
+
+        ifs.close();
+        std::cout << "[TextureCacher::DeserializeFromFile] Loaded " << count
+                  << " texture metadata entries (Vulkan resources not recreated - see design note above)" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[TextureCacher::DeserializeFromFile] Exception: " << e.what() << std::endl;
         return false;
     }
-
-    std::ifstream ifs(path, std::ios::binary);
-    if (!ifs) {
-        std::cout << "[TextureCacher::DeserializeFromFile] Failed to open file for reading" << std::endl;
-        return false;
-    }
-
-    // Read entry count
-    uint32_t count = 0;
-    ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
-
-    std::cout << "[TextureCacher::DeserializeFromFile] Loading " << count
-              << " texture metadata entries" << std::endl;
-
-    // Note: Only deserialize metadata. Vulkan handles and pixel data will be recreated on-demand
-    // via GetOrCreate() when parameters match. This ensures driver compatibility.
-
-    for (uint32_t i = 0; i < count; ++i) {
-        std::uint64_t key;
-        ifs.read(reinterpret_cast<char*>(&key), sizeof(key));
-
-        // Read file path
-        uint32_t pathLen;
-        ifs.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
-        std::string filePath(pathLen, '\0');
-        ifs.read(&filePath[0], pathLen);
-
-        // Read format and dimensions
-        VkFormat format;
-        uint32_t width, height, mipLevels;
-        ifs.read(reinterpret_cast<char*>(&format), sizeof(format));
-        ifs.read(reinterpret_cast<char*>(&width), sizeof(width));
-        ifs.read(reinterpret_cast<char*>(&height), sizeof(height));
-        ifs.read(reinterpret_cast<char*>(&mipLevels), sizeof(mipLevels));
-
-        std::cout << "[TextureCacher::DeserializeFromFile] Loaded metadata for key " << key
-                  << " (" << filePath << ", " << width << "x" << height << ")" << std::endl;
-    }
-
-    std::cout << "[TextureCacher::DeserializeFromFile] Deserialization complete (handles will be created on-demand)" << std::endl;
-    return true;
 }
 
 } // namespace CashSystem

@@ -1,5 +1,0 @@
-TextureCacher
-ShaderModuleCacher
-DescriptorCacher
-PipelineCacher
-PipelineLayoutCacher

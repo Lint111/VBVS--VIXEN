@@ -175,55 +175,116 @@ bool SamplerCacher::SerializeToFile(const std::filesystem::path& path) const {
 }
 
 bool SamplerCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    std::cout << "[SamplerCacher::DeserializeFromFile] Deserializing from " << path << std::endl;
+    try {
+        if (!std::filesystem::exists(path)) {
+            std::cout << "[SamplerCacher::DeserializeFromFile] Cache file doesn't exist: " << path << std::endl;
+            return true;  // Not an error, just no cache to load
+        }
 
-    if (!std::filesystem::exists(path)) {
-        std::cout << "[SamplerCacher::DeserializeFromFile] Cache file does not exist" << std::endl;
+        std::ifstream ifs(path, std::ios::binary);
+        if (!ifs) {
+            std::cerr << "[SamplerCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+            return false;
+        }
+
+        std::cout << "[SamplerCacher::DeserializeFromFile] Loading cache from " << path << std::endl;
+
+        // Read entry count
+        uint32_t count = 0;
+        ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
+
+        std::cout << "[SamplerCacher::DeserializeFromFile] Loading " << count << " samplers" << std::endl;
+
+        // Read each entry and recreate VkSampler
+        for (uint32_t i = 0; i < count; ++i) {
+            std::uint64_t key = 0;
+            ifs.read(reinterpret_cast<char*>(&key), sizeof(key));
+
+            // Read metadata fields
+            VkFilter minFilter, magFilter;
+            VkSamplerAddressMode addressModeU, addressModeV, addressModeW;
+            float maxAnisotropy;
+            VkBool32 compareEnable;
+            VkCompareOp compareOp;
+
+            ifs.read(reinterpret_cast<char*>(&minFilter), sizeof(minFilter));
+            ifs.read(reinterpret_cast<char*>(&magFilter), sizeof(magFilter));
+            ifs.read(reinterpret_cast<char*>(&addressModeU), sizeof(addressModeU));
+            ifs.read(reinterpret_cast<char*>(&addressModeV), sizeof(addressModeV));
+            ifs.read(reinterpret_cast<char*>(&addressModeW), sizeof(addressModeW));
+            ifs.read(reinterpret_cast<char*>(&maxAnisotropy), sizeof(maxAnisotropy));
+            ifs.read(reinterpret_cast<char*>(&compareEnable), sizeof(compareEnable));
+            ifs.read(reinterpret_cast<char*>(&compareOp), sizeof(compareOp));
+
+            // Create wrapper and recreate VkSampler (like ShaderModuleCacher does)
+            auto wrapper = std::make_shared<SamplerWrapper>();
+            wrapper->minFilter = minFilter;
+            wrapper->magFilter = magFilter;
+            wrapper->addressModeU = addressModeU;
+            wrapper->addressModeV = addressModeV;
+            wrapper->addressModeW = addressModeW;
+            wrapper->maxAnisotropy = maxAnisotropy;
+            wrapper->compareEnable = compareEnable;
+            wrapper->compareOp = compareOp;
+
+            // Recreate VkSampler if device available
+            if (GetDevice()) {
+                VkSamplerCreateInfo createInfo{};
+                createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+                createInfo.magFilter = magFilter;
+                createInfo.minFilter = minFilter;
+                createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+                createInfo.addressModeU = addressModeU;
+                createInfo.addressModeV = addressModeV;
+                createInfo.addressModeW = addressModeW;
+                createInfo.anisotropyEnable = (maxAnisotropy > 1.0f) ? VK_TRUE : VK_FALSE;
+                createInfo.maxAnisotropy = maxAnisotropy;
+                createInfo.compareEnable = compareEnable;
+                createInfo.compareOp = compareOp;
+                createInfo.minLod = 0.0f;
+                createInfo.maxLod = VK_LOD_CLAMP_NONE;
+                createInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+                createInfo.unnormalizedCoordinates = VK_FALSE;
+
+                VkResult result = vkCreateSampler(GetDevice()->device, &createInfo, nullptr, &wrapper->resource);
+                if (result != VK_SUCCESS) {
+                    std::cerr << "[SamplerCacher::DeserializeFromFile] Failed to recreate VkSampler" << std::endl;
+                    continue;  // Skip this entry
+                }
+
+                std::cout << "[SamplerCacher::DeserializeFromFile] Recreated VkSampler: "
+                          << reinterpret_cast<uint64_t>(wrapper->resource) << std::endl;
+            }
+
+            // Insert into cache (KEY STEP - enables cache hits after deserialization)
+            SamplerCreateParams ci{};
+            ci.minFilter = minFilter;
+            ci.magFilter = magFilter;
+            ci.addressModeU = addressModeU;
+            ci.addressModeV = addressModeV;
+            ci.addressModeW = addressModeW;
+            ci.maxAnisotropy = maxAnisotropy;
+            ci.compareEnable = compareEnable;
+            ci.compareOp = compareOp;
+
+            CacheEntry entry;
+            entry.key = key;
+            entry.ci = ci;
+            entry.resource = wrapper;
+
+            std::unique_lock lock(m_lock);
+            m_entries.emplace(key, std::move(entry));
+        }
+
+        ifs.close();
+        std::cout << "[SamplerCacher::DeserializeFromFile] Successfully loaded " << m_entries.size()
+                  << " samplers from cache" << std::endl;
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[SamplerCacher::DeserializeFromFile] Exception: " << e.what() << std::endl;
         return false;
     }
-
-    std::ifstream ifs(path, std::ios::binary);
-    if (!ifs) {
-        std::cout << "[SamplerCacher::DeserializeFromFile] Failed to open file for reading" << std::endl;
-        return false;
-    }
-
-    // Read entry count
-    uint32_t count = 0;
-    ifs.read(reinterpret_cast<char*>(&count), sizeof(count));
-
-    std::cout << "[SamplerCacher::DeserializeFromFile] Loading " << count
-              << " sampler metadata entries" << std::endl;
-
-    // Note: Only deserialize metadata. Vulkan handles will be recreated on-demand
-    // via GetOrCreate() when parameters match. This ensures driver compatibility.
-
-    for (uint32_t i = 0; i < count; ++i) {
-        std::uint64_t key;
-        ifs.read(reinterpret_cast<char*>(&key), sizeof(key));
-
-        // Read metadata fields (but don't recreate samplers yet)
-        VkFilter minFilter, magFilter;
-        VkSamplerAddressMode addressModeU, addressModeV, addressModeW;
-        float maxAnisotropy;
-        VkBool32 compareEnable;
-        VkCompareOp compareOp;
-
-        ifs.read(reinterpret_cast<char*>(&minFilter), sizeof(minFilter));
-        ifs.read(reinterpret_cast<char*>(&magFilter), sizeof(magFilter));
-        ifs.read(reinterpret_cast<char*>(&addressModeU), sizeof(addressModeU));
-        ifs.read(reinterpret_cast<char*>(&addressModeV), sizeof(addressModeV));
-        ifs.read(reinterpret_cast<char*>(&addressModeW), sizeof(addressModeW));
-        ifs.read(reinterpret_cast<char*>(&maxAnisotropy), sizeof(maxAnisotropy));
-        ifs.read(reinterpret_cast<char*>(&compareEnable), sizeof(compareEnable));
-        ifs.read(reinterpret_cast<char*>(&compareOp), sizeof(compareOp));
-
-        std::cout << "[SamplerCacher::DeserializeFromFile] Loaded metadata for key " << key
-                  << " (min=" << minFilter << ", mag=" << magFilter << ")" << std::endl;
-    }
-
-    std::cout << "[SamplerCacher::DeserializeFromFile] Deserialization complete (handles will be created on-demand)" << std::endl;
-    return true;
 }
 
 } // namespace CashSystem

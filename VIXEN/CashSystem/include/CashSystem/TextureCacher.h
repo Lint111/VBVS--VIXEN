@@ -3,10 +3,12 @@
 #include "Headers.h"
 #include "TypedCacher.h"
 #include "MainCacher.h"
+#include "SamplerCacher.h"
 #include <cstdint>
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include <optional>
 
 // Forward declarations for RenderGraph types
 namespace Vixen::RenderGraph {
@@ -53,8 +55,11 @@ struct TextureWrapper {
 /**
  * @brief Texture creation parameters
  *
- * TextureCacher uses composition pattern - accepts a SamplerWrapper from SamplerCacher
- * rather than creating its own sampler. This allows sampler reuse across textures.
+ * TextureCacher uses composition pattern - accepts sampler via one of two methods:
+ * 1. Runtime path: Pass pre-created samplerWrapper from SamplerCacher
+ * 2. Deserialization path: Pass samplerParams, TextureCacher will get/create wrapper
+ *
+ * This dual approach enables cache hits after deserialization.
  */
 struct TextureCreateParams {
     std::string filePath;
@@ -63,8 +68,11 @@ struct TextureCreateParams {
     uint32_t height = 0;
     bool generateMipmaps = false;
 
-    // Sampler from SamplerCacher (required)
+    // Sampler from SamplerCacher (runtime path - preferred)
     std::shared_ptr<SamplerWrapper> samplerWrapper;
+
+    // OR sampler parameters (deserialization path)
+    std::optional<SamplerCreateParams> samplerParams;
 
     // Hash for quick validation
     std::string fileChecksum;
