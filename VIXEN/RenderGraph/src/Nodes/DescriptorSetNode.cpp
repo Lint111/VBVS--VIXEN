@@ -220,77 +220,52 @@ void DescriptorSetNode::Compile() {
 
     std::cout << "[DescriptorSetNode::Compile] Allocated descriptor set: " << descriptorSets[0] << std::endl;
 
-    // MVP: Create UBO buffer for animated rotation (Learning Vulkan Chapter 10 feature parity)
-    uboBuffer = VK_NULL_HANDLE;
-    uboMemory = VK_NULL_HANDLE;
-    uboMappedData = nullptr;
-    
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(glm::mat4); // Single MVP matrix
-    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
-    result = vkCreateBuffer(device->device, &bufferInfo, nullptr, &uboBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("DescriptorSetNode: Failed to create UBO");
+    // Phase 0.1: Get swapchain image count for per-frame resource allocation
+    auto* swapchainPublic = In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
+    if (!swapchainPublic) {
+        throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
     }
-    
-    VkMemoryRequirements memReqs;
-    vkGetBufferMemoryRequirements(device->device, uboBuffer, &memReqs);
-    
-    VkMemoryAllocateInfo allocMemInfo{};
-    allocMemInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocMemInfo.allocationSize = memReqs.size;
-    allocMemInfo.memoryTypeIndex = 0;
-    
-    // Find HOST_VISIBLE | HOST_COHERENT memory for persistent mapping
-    VkPhysicalDeviceMemoryProperties memProps;
-    vkGetPhysicalDeviceMemoryProperties(*device->gpu, &memProps);
-    for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-        if ((memReqs.memoryTypeBits & (1 << i)) &&
-            (memProps.memoryTypes[i].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))) {
-            allocMemInfo.memoryTypeIndex = i;
-            break;
-        }
-    }
-    
-    result = vkAllocateMemory(device->device, &allocMemInfo, nullptr, &uboMemory);
-    if (result != VK_SUCCESS) {
-        vkDestroyBuffer(device->device, uboBuffer, nullptr);
-        throw std::runtime_error("DescriptorSetNode: Failed to allocate UBO memory");
-    }
-    
-    vkBindBufferMemory(device->device, uboBuffer, uboMemory, 0);
-    
-    // Map memory persistently (HOST_COHERENT means no need to flush/invalidate)
-    result = vkMapMemory(device->device, uboMemory, 0, sizeof(glm::mat4), 0, &uboMappedData);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("DescriptorSetNode: Failed to map UBO memory");
-    }
-    
-    // Write initial MVP transformation using type-safe SDI struct
-    glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
-    glm::mat4 View = glm::lookAt(
-        glm::vec3(10.0f, 3.0f, 10.0f),  // Camera in World Space
-        glm::vec3(0.0f, 0.0f, 0.0f),     // Look at origin
-        glm::vec3(0.0f, -1.0f, 0.0f)     // Up vector (Y-axis down)
-    );
-    glm::mat4 Model = glm::mat4(1.0f);
 
-    // Phase 5: Type-safe UBO update using generated SDI struct
-    Draw_Shader::bufferVals ubo;
-    ubo.mvp = Projection * View * Model;
-    memcpy(uboMappedData, &ubo, sizeof(Draw_Shader::bufferVals));
-    
-    std::cout << "[DescriptorSetNode::Compile] Created UBO with persistent mapping: " << uboBuffer << std::endl;
-    
-    // Update descriptor set with UBO (binding 0)
+    uint32_t imageCount = swapchainPublic->swapChainImageCount;
+    if (imageCount == 0) {
+        throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
+    }
+
+    std::cout << "[DescriptorSetNode::Compile] Creating per-frame resources for " << imageCount << " swapchain images" << std::endl;
+
+    // Phase 0.1: Initialize per-frame resources (ring buffer pattern)
+    perFrameResources.Initialize(device, imageCount);
+
+    // Create UBO for each frame to prevent race conditions
+    for (uint32_t i = 0; i < imageCount; i++) {
+        perFrameResources.CreateUniformBuffer(i, sizeof(Draw_Shader::bufferVals));
+
+        // Write initial MVP transformation using type-safe SDI struct
+        glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
+        glm::mat4 View = glm::lookAt(
+            glm::vec3(10.0f, 3.0f, 10.0f),  // Camera in World Space
+            glm::vec3(0.0f, 0.0f, 0.0f),     // Look at origin
+            glm::vec3(0.0f, -1.0f, 0.0f)     // Up vector (Y-axis down)
+        );
+        glm::mat4 Model = glm::mat4(1.0f);
+
+        Draw_Shader::bufferVals ubo;
+        ubo.mvp = Projection * View * Model;
+
+        void* mappedData = perFrameResources.GetUniformBufferMapped(i);
+        memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
+    }
+
+    std::cout << "[DescriptorSetNode::Compile] Created " << imageCount << " per-frame UBOs" << std::endl;
+
+    // Phase 0.1: Update descriptor set with first frame's UBO (binding 0)
+    // Note: We only have 1 descriptor set, so we'll update it with frame 0's buffer initially
+    // In Execute(), we'll rebind the correct per-frame buffer based on IMAGE_INDEX
     VkDescriptorBufferInfo bufferDescInfo{};
-    bufferDescInfo.buffer = uboBuffer;
+    bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(0);
     bufferDescInfo.offset = 0;
-    bufferDescInfo.range = sizeof(glm::mat4);
-    
+    bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+
     VkWriteDescriptorSet descriptorWrite{};
     descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrite.dstSet = descriptorSets[0];
@@ -299,7 +274,7 @@ void DescriptorSetNode::Compile() {
     descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorWrite.descriptorCount = 1;
     descriptorWrite.pBufferInfo = &bufferDescInfo;
-    
+
     vkUpdateDescriptorSets(device->device, 1, &descriptorWrite, 0, nullptr);
     
     std::cout << "[DescriptorSetNode::Compile] Updated descriptor set with UBO (binding 0)" << std::endl;
@@ -348,44 +323,77 @@ void DescriptorSetNode::Compile() {
 }
 
 void DescriptorSetNode::Execute(VkCommandBuffer commandBuffer) {
-    // Update MVP matrix with rotation (Learning Vulkan Chapter 10 feature parity)
-    if (!uboMappedData) {
-        std::cout << "[DescriptorSetNode::Execute] WARNING: UBO not mapped!" << std::endl;
-        return; // UBO not initialized yet
+    // Phase 0.1: Get current image index to select correct per-frame buffer
+    uint32_t imageIndex = In(DescriptorSetNodeConfig::IMAGE_INDEX);
+
+    if (!perFrameResources.IsInitialized()) {
+        std::cout << "[DescriptorSetNode::Execute] WARNING: PerFrameResources not initialized!" << std::endl;
+        return;
     }
-    
+
     // Get delta time from graph's centralized time system
     RenderGraph* graph = GetOwningGraph();
     if (!graph) {
         std::cout << "[DescriptorSetNode::Execute] WARNING: No graph context!" << std::endl;
-        return; // No graph context
+        return;
     }
-    
+
     float deltaTime = graph->GetTime().GetDeltaTime();
-    
-    // Increment rotation angle (0.0005 radians per frame at 60fps ≈ 0.03 rad/sec)
-    // Using deltaTime: 0.03 rad/sec for frame-rate independence
+
+    // Increment rotation angle (0.03 rad/sec for frame-rate independence)
     rotationAngle += 0.03f * deltaTime;
-    
+
     // Recalculate MVP with rotation
     glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
     glm::mat4 View = glm::lookAt(
-        glm::vec3(0.0f, 0.0f, 5.0f),     // Camera position (different from initial - matches update())
+        glm::vec3(0.0f, 0.0f, 5.0f),     // Camera position
         glm::vec3(0.0f, 0.0f, 0.0f),     // Look at origin
-        glm::vec3(0.0f, 1.0f, 0.0f)      // Up vector (Y-axis up - matches update())
+        glm::vec3(0.0f, 1.0f, 0.0f)      // Up vector (Y-axis up)
     );
     glm::mat4 Model = glm::mat4(1.0f);
     Model = glm::rotate(Model, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f))      // Rotate around Y
           * glm::rotate(Model, rotationAngle, glm::vec3(1.0f, 1.0f, 1.0f));    // Rotate around diagonal
-    
-    // Phase 5: Type-safe per-frame UBO update using generated SDI struct
+
+    // Phase 0.1: Type-safe per-frame UBO update using generated SDI struct
+    // ✅ NO RACE CONDITION: Update only the buffer for THIS frame (imageIndex)
     Draw_Shader::bufferVals ubo;
     ubo.mvp = Projection * View * Model;
-    memcpy(uboMappedData, &ubo, sizeof(Draw_Shader::bufferVals));
+
+    void* mappedData = perFrameResources.GetUniformBufferMapped(imageIndex);
+    if (!mappedData) {
+        std::cout << "[DescriptorSetNode::Execute] WARNING: Frame " << imageIndex << " UBO not mapped!" << std::endl;
+        return;
+    }
+
+    memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
+
+    // Phase 0.1: Update descriptor set to point to this frame's UBO
+    // (This is necessary because we only have 1 descriptor set but N UBO buffers)
+    VkDescriptorBufferInfo bufferDescInfo{};
+    bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(imageIndex);
+    bufferDescInfo.offset = 0;
+    bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = descriptorSets[0];
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pBufferInfo = &bufferDescInfo;
+
+    vkUpdateDescriptorSets(device->device, 1, &descriptorWrite, 0, nullptr);
 }
 
 void DescriptorSetNode::CleanupImpl() {
     NODE_LOG_DEBUG("Cleanup: DescriptorSetNode");
+
+    // Phase 0.1: Cleanup per-frame resources (UBOs for all frames)
+    if (perFrameResources.IsInitialized()) {
+        perFrameResources.Cleanup();
+        NODE_LOG_DEBUG("Cleanup: Per-frame resources cleaned up");
+    }
 
     // Destroy descriptor pool (this also frees descriptor sets)
     if (descriptorPool != VK_NULL_HANDLE && device) {
@@ -408,28 +416,6 @@ void DescriptorSetNode::CleanupImpl() {
         );
         descriptorSetLayout = VK_NULL_HANDLE;
         NODE_LOG_DEBUG("Cleanup: Descriptor set layout destroyed");
-    }
-
-    // Cleanup UBO resources (buffer, memory, mapping)
-    // These were created during Compile() and must be freed before device destruction
-    if (device) {
-        if (uboMappedData != nullptr) {
-            vkUnmapMemory(device->device, uboMemory);
-            uboMappedData = nullptr;
-            NODE_LOG_DEBUG("Cleanup: UBO memory unmapped");
-        }
-
-        if (uboBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->device, uboBuffer, nullptr);
-            uboBuffer = VK_NULL_HANDLE;
-            NODE_LOG_DEBUG("Cleanup: UBO buffer destroyed");
-        }
-
-        if (uboMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->device, uboMemory, nullptr);
-            uboMemory = VK_NULL_HANDLE;
-            NODE_LOG_DEBUG("Cleanup: UBO memory freed");
-        }
     }
 }
 

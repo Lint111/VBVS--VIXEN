@@ -127,6 +127,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
 
+        // Per-frame resource inputs (Phase 0.1)
+        HandleDescriptor swapchainPublicDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public", ResourceLifetime::Persistent, swapchainPublicDesc);
+
+        INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
+
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
             ResourceLifetime::Persistent,
@@ -162,6 +168,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 5, "SHADER_DATA_BUNDLE must be at index 5");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
+
+    static_assert(SWAPCHAIN_PUBLIC_Slot::index == 6, "SWAPCHAIN_PUBLIC must be at index 6");
+    static_assert(!SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC is required");
+
+    static_assert(IMAGE_INDEX_Slot::index == 7, "IMAGE_INDEX must be at index 7");
+    static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
 
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");

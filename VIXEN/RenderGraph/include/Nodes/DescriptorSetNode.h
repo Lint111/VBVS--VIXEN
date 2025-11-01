@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/PerFrameResources.h"
 #include "DescriptorSetNodeConfig.h"
 // TEMPORARILY REMOVED - MVP uses hardcoded descriptor layouts
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
@@ -107,10 +108,8 @@ private:
 
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
 
-    // MVP: UBO for rotation animation (Learning Vulkan Chapter 10 feature parity)
-    VkBuffer uboBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory uboMemory = VK_NULL_HANDLE;
-    void* uboMappedData = nullptr;
+    // Phase 0.1: Per-frame resources to prevent CPU-GPU race conditions
+    PerFrameResources perFrameResources;
     float rotationAngle = 0.0f;
 
     // CashSystem integration - cached during Compile()
