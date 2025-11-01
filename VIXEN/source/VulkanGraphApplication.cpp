@@ -571,6 +571,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   pipelineNode, GraphicsPipelineNodeConfig::RENDER_PASS)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   descriptorSetNode, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  descriptorSetNode, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX)
          .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
