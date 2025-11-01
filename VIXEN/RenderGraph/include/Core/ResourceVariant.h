@@ -51,6 +51,7 @@ using FramebufferVector = std::vector<VkFramebuffer>;
 using DescriptorSetVector = std::vector<VkDescriptorSet>;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
+using BoolVector = std::vector<bool>;  // Phase 0.4
 
 namespace Vixen::RenderGraph {
 
@@ -133,6 +134,8 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
 
 // ============================================================================

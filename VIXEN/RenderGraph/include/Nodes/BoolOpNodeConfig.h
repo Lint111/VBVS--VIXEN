@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/ResourceConfig.h"
+#include "Core/ResourceVariant.h"  // For BoolVector typedef
 
 namespace Vixen::RenderGraph {
 
@@ -17,7 +18,7 @@ enum class BoolOp : uint8_t {
 
 // Compile-time slot counts
 namespace BoolOpNodeCounts {
-    static constexpr size_t INPUTS = 2;   // OPERATION, INPUTS (array slot with multiple connections)
+    static constexpr size_t INPUTS = 2;   // OPERATION, INPUTS (vector of bools)
     static constexpr size_t OUTPUTS = 1;  // OUTPUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -44,7 +45,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
                       BoolOpNodeCounts::ARRAY_MODE) {
     // Compile-time input slot definitions
     CONSTEXPR_INPUT(OPERATION, BoolOpEnum, 0, false);
-    CONSTEXPR_INPUT(INPUTS, bool, 1, false);  // Array slot - multiple connections
+    CONSTEXPR_INPUT(INPUTS, BoolVector, 1, false);  // Vector of bools
 
     // Compile-time output slot definition
     CONSTEXPR_OUTPUT(OUTPUT, bool, 0, false);
@@ -55,10 +56,10 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
         HandleDescriptor boolOpDesc{"BoolOp"};
         INIT_INPUT_DESC(OPERATION, "operation", ResourceLifetime::Transient, boolOpDesc);
 
-        HandleDescriptor boolDesc{"bool"};
-        INIT_INPUT_DESC(INPUTS, "inputs", ResourceLifetime::Transient, boolDesc);  // Array slot
+        HandleDescriptor boolVecDesc{"std::vector<bool>"};
+        INIT_INPUT_DESC(INPUTS, "inputs", ResourceLifetime::Transient, boolVecDesc);
 
-        // Initialize output descriptor
+        HandleDescriptor boolDesc{"bool"};
         INIT_OUTPUT_DESC(OUTPUT, "output", ResourceLifetime::Transient, boolDesc);
     }
 
@@ -76,7 +77,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOpEnum>);
-    static_assert(std::is_same_v<INPUTS_Slot::Type, bool>);
+    static_assert(std::is_same_v<INPUTS_Slot::Type, BoolVector>);
     static_assert(std::is_same_v<OUTPUT_Slot::Type, bool>);
 };
 

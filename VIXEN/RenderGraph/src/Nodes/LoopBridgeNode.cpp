@@ -32,7 +32,7 @@ void LoopBridgeNode::Setup() {
     NODE_LOG_DEBUG("LoopBridgeNode::Setup()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
-    loopID = In<uint32_t>(LoopBridgeNodeConfig::LOOP_ID);
+    loopID = In(LoopBridgeNodeConfig::LOOP_ID);
 
     // Access graph-owned LoopManager
     RenderGraph* graph = GetOwningGraph();

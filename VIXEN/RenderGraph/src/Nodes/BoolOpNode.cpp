@@ -31,7 +31,7 @@ void BoolOpNode::Setup() {
     NODE_LOG_DEBUG("BoolOpNode::Setup()");
 
     // Read OPERATION from input (connected to ConstantNode)
-    operation = In<BoolOpEnum>(BoolOpNodeConfig::OPERATION);
+    operation = In(BoolOpNodeConfig::OPERATION);
 }
 
 void BoolOpNode::Compile() {
@@ -44,20 +44,13 @@ void BoolOpNode::Compile() {
 }
 
 void BoolOpNode::Execute(VkCommandBuffer commandBuffer) {
-    // Get number of connections to INPUTS slot
-    size_t inputCount = GetInputCount(BoolOpNodeConfig::INPUTS);
+    // Read vector of bools from INPUTS slot
+    std::vector<bool> inputs = In(BoolOpNodeConfig::INPUTS);
 
-    if (inputCount == 0) {
-        NODE_LOG_ERROR("BoolOpNode has no inputs connected");
+    if (inputs.empty()) {
+        NODE_LOG_ERROR("BoolOpNode has no inputs");
         Out(BoolOpNodeConfig::OUTPUT, false);
         return;
-    }
-
-    // Read all inputs from the slot (multiple connections)
-    std::vector<bool> inputs;
-    inputs.reserve(inputCount);
-    for (size_t i = 0; i < inputCount; ++i) {
-        inputs.push_back(In<bool>(BoolOpNodeConfig::INPUTS, static_cast<uint32_t>(i)));
     }
 
     // Perform boolean operation across all inputs
