@@ -257,6 +257,9 @@ void SwapChainNode::ExecuteImpl() {
         throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
     }
 
+    // Phase 0.7: Get present fences array (VK_EXT_swapchain_maintenance1)
+    VkFenceVector presentFencesArray = In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+
     // Phase 0.6: CORRECT two-tier semaphore indexing (Vulkan guide pattern)
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     //
@@ -270,8 +273,22 @@ void SwapChainNode::ExecuteImpl() {
     // Acquisition semaphore indexed by flight
     VkSemaphore acquireSemaphore = imageAvailableSemaphores[currentFrameIndex];
 
+    // Phase 0.7: Wait for previous present to finish with the image we're about to acquire
+    // Note: We don't know which image index we'll get yet, so we'll wait after acquisition
+    // This is safe because presentFences are per-image and we wait before reusing that image
+
     // Acquire the next available image using the per-FLIGHT semaphore
     currentImageIndex = AcquireNextImage(acquireSemaphore);
+
+    // Phase 0.7: Now that we know which image we got, wait for presentation to finish with it
+    // This ensures the presentation engine has released the image before we start rendering to it
+    if (currentImageIndex != UINT32_MAX && presentFencesArray != nullptr && !presentFencesArray->empty()) {
+        VkFence presentFence = (*presentFencesArray)[currentImageIndex];
+        if (presentFence != VK_NULL_HANDLE && GetDevice() != nullptr) {
+            vkWaitForFences(GetDevice()->device, 1, &presentFence, VK_TRUE, UINT64_MAX);
+            vkResetFences(GetDevice()->device, 1, &presentFence);
+        }
+    }
 
     // If swapchain is out of date, skip this frame
     if (currentImageIndex == UINT32_MAX) {

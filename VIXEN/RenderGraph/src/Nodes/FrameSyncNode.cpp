@@ -118,6 +118,20 @@ void FrameSyncNode::CompileImpl() {
         }
     }
 
+    // Phase 0.7: Create per-IMAGE present fences (VK_KHR_swapchain_maintenance1)
+    // These track when the presentation engine has finished with each swapchain image
+    presentFences.resize(imageCount);
+
+    VkFenceCreateInfo presentFenceInfo{};
+    presentFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    presentFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled (no wait on first use)
+
+    for (uint32_t i = 0; i < imageCount; i++) {
+        if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create present fence for image " + std::to_string(i));
+        }
+    }
+
     isCreated = true;
     currentFrameIndex = 0;
 
@@ -128,10 +142,12 @@ void FrameSyncNode::CompileImpl() {
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
     Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
     Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
+    Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, &presentFences);
 
     NODE_LOG_INFO("Synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
     NODE_LOG_INFO("Created " + std::to_string(renderCompleteSemaphores.size()) + " renderComplete semaphores (per-image)");
+    NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
 void FrameSyncNode::ExecuteImpl() {
@@ -181,9 +197,18 @@ void FrameSyncNode::CleanupImpl() {
             }
         }
 
+        // Destroy per-image present fences
+        for (auto& fence : presentFences) {
+            if (fence != VK_NULL_HANDLE) {
+                vkDestroyFence(device->device, fence, nullptr);
+                fence = VK_NULL_HANDLE;
+            }
+        }
+
         frameSyncData.clear();
         imageAvailableSemaphores.clear();
         renderCompleteSemaphores.clear();
+        presentFences.clear();
         currentFrameIndex = 0;
         isCreated = false;
 

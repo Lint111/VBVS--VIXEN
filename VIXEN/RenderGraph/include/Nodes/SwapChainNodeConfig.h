@@ -30,7 +30,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
-    static constexpr size_t INPUTS = 9;  // Phase 0.4: Added CURRENT_FRAME_INDEX + semaphore arrays
+    static constexpr size_t INPUTS = 10;  // Phase 0.7: Added PRESENT_FENCES_ARRAY
     static constexpr size_t OUTPUTS = 3;  // Phase 0.5: Removed single semaphore outputs (use arrays from FrameSyncNode)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -58,6 +58,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 6, false);
     CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 7, false);
     CONSTEXPR_INPUT(CURRENT_FRAME_INDEX, uint32_t, 8, false);
+
+    // Phase 0.7: Present fences array (VK_EXT_swapchain_maintenance1)
+    CONSTEXPR_INPUT(PRESENT_FENCES_ARRAY, VkFenceVector, 9, false);
 
     // ===== OUTPUTS (3) =====
 
@@ -112,6 +115,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         HandleDescriptor frameIndexDesc{"uint32_t"};
         INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, frameIndexDesc);
 
+        HandleDescriptor fenceArrayDesc{"VkFenceArrayPtr"};
+        INIT_INPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
+
         INIT_OUTPUT_DESC(SWAPCHAIN_HANDLE, "swapchain_handle",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle for VkSwapchainKHR
@@ -160,6 +166,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(CURRENT_FRAME_INDEX_Slot::index == 8, "CURRENT_FRAME_INDEX must be at index 8");
     static_assert(!CURRENT_FRAME_INDEX_Slot::nullable, "CURRENT_FRAME_INDEX is required");
 
+    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 9, "PRESENT_FENCES_ARRAY must be at index 9");
+    static_assert(!PRESENT_FENCES_ARRAY_Slot::nullable, "PRESENT_FENCES_ARRAY is required");
+
     static_assert(SWAPCHAIN_HANDLE_Slot::index == 0, "SWAPCHAIN_HANDLE must be at index 0");
     static_assert(!SWAPCHAIN_HANDLE_Slot::nullable, "SWAPCHAIN_HANDLE is required");
 
@@ -179,6 +188,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, VkFenceVector>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);

@@ -550,6 +550,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    // Phase 0.7: Present fences array (VK_EXT_swapchain_maintenance1)
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  swapChainNode, SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
 
     // --- Device → CommandPool connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -678,6 +681,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
          .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
+
+    // --- FrameSync → Present connections (Phase 0.7) ---
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
 

@@ -29,7 +29,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace PresentNodeCounts {
-    static constexpr size_t INPUTS = 5;
+    static constexpr size_t INPUTS = 6;
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -56,6 +56,9 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
 
     // Function pointer to vkQueuePresentKHR (from device extension) - OPTIONAL (fallback to direct call)
     CONSTEXPR_INPUT(PRESENT_FUNCTION, PFN_vkQueuePresentKHR, 4, true);
+
+    // Swapchain present fence info (optional for backwards compatibility)
+    CONSTEXPR_INPUT(PRESENT_FENCE_ARRAY, VkFenceVector, 5, true);
 
     // ===== OUTPUTS (2) =====
     // Result of the present operation (pointer to VkResult)
@@ -85,6 +88,11 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore",
             ResourceLifetime::Persistent,
             BufferDescription{}  // Opaque handle
+        );
+
+        INIT_INPUT_DESC(PRESENT_FENCE_ARRAY, "present_fence_array",
+            ResourceLifetime::Persistent,
+            BufferDescription{}  // Opaque handle array
         );
 
         INIT_INPUT_DESC(PRESENT_FUNCTION, "present_function",
@@ -124,6 +132,9 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static_assert(PRESENT_FUNCTION_Slot::index == 4, "PRESENT_FUNCTION must be at index 4");
     static_assert(PRESENT_FUNCTION_Slot::nullable, "PRESENT_FUNCTION is optional (uses VulkanDevice::GetPresentFunction())");
 
+    static_assert(PRESENT_FENCE_ARRAY_Slot::index == 5, "PRESENT_FENCE_ARRAY must be at index 5");
+    static_assert(PRESENT_FENCE_ARRAY_Slot::nullable, "PRESENT_FENCE_ARRAY is optional");
+
     static_assert(PRESENT_RESULT_Slot::index == 0, "PRESENT_RESULT must be at index 0");
     static_assert(!PRESENT_RESULT_Slot::nullable, "PRESENT_RESULT is required");
 
@@ -136,6 +147,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
+    static_assert(std::is_same_v<PRESENT_FENCE_ARRAY_Slot::Type, VkFenceVector>);
     static_assert(std::is_same_v<PRESENT_FUNCTION_Slot::Type, PFN_vkQueuePresentKHR>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };

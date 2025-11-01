@@ -1,16 +1,15 @@
 #pragma once
 #include "Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/ResourceVariant.h"
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 // Compile-time slot counts (declared early for reuse)
 namespace FrameSyncNodeCounts {
     static constexpr size_t INPUTS = 1;  // Back to 1: only VulkanDevice
-    static constexpr size_t OUTPUTS = 4;  // Phase 0.5: Only array outputs
+    static constexpr size_t OUTPUTS = 5;  // Phase 0.6: Added PRESENT_FENCES_ARRAY for VK_KHR_swapchain_maintenance1
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -30,7 +29,7 @@ namespace FrameSyncNodeCounts {
  * - Prevents "semaphore still in use by swapchain" errors
  *
  * Inputs: 1 (VULKAN_DEVICE)
- * Outputs: 4 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY)
+ * Outputs: 5 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY, PRESENT_FENCES_ARRAY)
  */
 CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
                       FrameSyncNodeCounts::INPUTS,
@@ -41,6 +40,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     CONSTEXPR_OUTPUT(IN_FLIGHT_FENCE, VkFence, 1, false);
     CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2, false);  // Per-FLIGHT semaphores
     CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3, false);  // Per-IMAGE semaphores
+    CONSTEXPR_OUTPUT(PRESENT_FENCES_ARRAY, VkFenceVector, 4, false);  // Per-IMAGE fences (VK_KHR_swapchain_maintenance1)
 
     // Input: VulkanDevice pointer only
     CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 0, false);
@@ -65,6 +65,9 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
         INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
+
+        HandleDescriptor fenceArrayDesc{"VkFenceArrayPtr"};
+        INIT_OUTPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
     }
 
     // Compile-time validation using declared constants
@@ -79,6 +82,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(IN_FLIGHT_FENCE_Slot::index == 1, "IN_FLIGHT_FENCE must be at index 1");
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 2, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 2");
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 3, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 3");
+    static_assert(PRESENT_FENCES_ARRAY_Slot::index == 4, "PRESENT_FENCES_ARRAY must be at index 4");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevicePtr>);
@@ -86,6 +90,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
+    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, VkFenceVector>);
 };
 
 // Global compile-time validations

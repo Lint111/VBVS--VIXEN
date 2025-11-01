@@ -19,13 +19,43 @@ using SenderID = uint64_t;
 
 /**
  * @brief Message type identifier for filtering
- * 
+ *
  * Users define their own message type enums and cast to MessageType.
  * Base types (0-99 reserved):
  * - 0: Generic message
  * - 1: Worker thread result
  */
 using MessageType = uint32_t;
+
+// ============================================================================
+// Auto-Incrementing Message Type Counter (Compile-Time)
+// ============================================================================
+
+/**
+ * @brief Compile-time counter for automatic message type ID assignment
+ *
+ * Usage in message structs:
+ * ```cpp
+ * struct MyMessage : public BaseEventMessage {
+ *     static constexpr MessageType TYPE = NextMessageType<__COUNTER__>::value;
+ *     // ... rest of message definition
+ * };
+ * ```
+ *
+ * This prevents manual ID collisions by auto-incrementing from a base offset.
+ */
+namespace detail {
+    // Base offset for auto-generated IDs (start at 1000 to avoid manual IDs)
+    constexpr MessageType MESSAGE_TYPE_BASE = 1000;
+
+    template<int N>
+    struct NextMessageType {
+        static constexpr MessageType value = MESSAGE_TYPE_BASE + N;
+    };
+}
+
+// Helper macro for declaring message types with auto-increment
+#define AUTO_MESSAGE_TYPE() (::Vixen::EventBus::detail::MESSAGE_TYPE_BASE + __COUNTER__)
 
 // ============================================================================
 // Event Category Bit Flags (64-bit)
@@ -175,7 +205,7 @@ struct WorkerResultMessage : public Message {
  * Published when window dimensions change (resize, maximize, restore)
  */
 struct WindowResizeEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 100;
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::WindowResize;
 
     uint32_t newWidth;
@@ -195,7 +225,7 @@ struct WindowResizeEvent : public BaseEventMessage {
  * Published when window state changes (minimize, maximize, restore, focus)
  */
 struct WindowStateChangeEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 101;
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
 
     enum class State {
@@ -220,7 +250,7 @@ struct WindowStateChangeEvent : public BaseEventMessage {
  * Systems should subscribe to this event to perform graceful shutdown
  */
 struct WindowCloseEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 102;
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
 
     WindowCloseEvent(SenderID sender)
@@ -234,7 +264,7 @@ struct WindowCloseEvent : public BaseEventMessage {
  * Application tracks these to know when it's safe to destroy the window
  */
 struct ShutdownAckEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 104;  // 103 taken by RenderPauseEvent
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();  // 103 taken by RenderPauseEvent
     static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
 
     std::string systemName;  // Name of system that acknowledged shutdown
@@ -250,7 +280,7 @@ struct ShutdownAckEvent : public BaseEventMessage {
  * accessing resources that may be temporarily unavailable
  */
 struct RenderPauseEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 103;
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::GraphManagement;
 
     enum class Reason {
@@ -287,7 +317,7 @@ struct RenderPauseEvent : public BaseEventMessage {
  * Subscribers (e.g., MainCacher) clear device-dependent caches automatically
  */
 struct DeviceInvalidationEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 105;
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::ResourceInvalidation;
 
     enum class Reason {
@@ -360,7 +390,7 @@ struct DeviceInfo {
  * - Multi-GPU managers: Know all available GPUs for load balancing
  */
 struct DeviceMetadataEvent : public BaseEventMessage {
-    static constexpr MessageType TYPE = 107;  // Changed from 106 to avoid collision with CleanupRequestedMessage
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventCategory CATEGORY = EventCategory::System;
 
     // All detected devices

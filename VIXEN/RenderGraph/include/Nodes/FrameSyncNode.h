@@ -67,6 +67,7 @@ private:
     std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT
     std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = swapchain image count
     std::vector<VkSemaphore> renderCompleteSemaphores;  // Size = swapchain image count
+    std::vector<VkFence> presentFences;          // Size = swapchain image count (VK_KHR_swapchain_maintenance1)
     uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
     bool isCreated = false;
 };

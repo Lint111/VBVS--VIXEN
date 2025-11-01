@@ -12,7 +12,7 @@ namespace Vixen::EventTypes {
  * and resumed when the operation completes.
  */
 struct RenderPauseEvent : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 103;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory CATEGORY = EventBus::EventCategory::GraphManagement;
 
     enum class Reason {
@@ -40,7 +40,7 @@ struct RenderPauseEvent : public EventBus::BaseEventMessage {
  * Published when the window dimensions change, triggering render graph recompilation.
  */
 struct WindowResizedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 104;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory FLAGS =
         EventBus::EventCategory::ResourceInvalidation |
         EventBus::EventCategory::WindowResize;
@@ -58,7 +58,7 @@ struct WindowResizedMessage : public EventBus::BaseEventMessage {
  * @brief Shader file changed - triggers pipeline recreation
  */
 struct ShaderReloadedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 105;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory FLAGS =
         EventBus::EventCategory::ResourceInvalidation |
         EventBus::EventCategory::ShaderHotReload;
@@ -76,7 +76,7 @@ struct ShaderReloadedMessage : public EventBus::BaseEventMessage {
  * Published when a component requests cleanup of resources.
  */
 struct CleanupRequestedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 106;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory CATEGORY = EventBus::EventCategory::CleanupRequest;
 
     uint32_t requestId;
@@ -92,7 +92,7 @@ struct CleanupRequestedMessage : public EventBus::BaseEventMessage {
  * Published when cleanup operation finishes.
  */
 struct CleanupCompletedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 107;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory CATEGORY = EventBus::EventCategory::CleanupRequest;
 
     uint32_t cleanedCount;
@@ -119,7 +119,7 @@ struct CleanupCompletedMessage : public EventBus::BaseEventMessage {
  * ```
  */
 struct DeviceSyncRequestedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 108;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory FLAGS =
         EventBus::EventCategory::GraphManagement |
         EventBus::EventCategory::Debug;
@@ -174,7 +174,7 @@ struct DeviceSyncRequestedMessage : public EventBus::BaseEventMessage {
  * Contains statistics about sync duration for performance monitoring.
  */
 struct DeviceSyncCompletedMessage : public EventBus::BaseEventMessage {
-    static constexpr EventBus::MessageType TYPE = 109;
+    static constexpr EventBus::MessageType TYPE = AUTO_MESSAGE_TYPE();
     static constexpr EventBus::EventCategory CATEGORY = EventBus::EventCategory::GraphManagement;
 
     size_t deviceCount = 0;
