@@ -43,7 +43,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
                       BoolOpNodeCounts::OUTPUTS,
                       BoolOpNodeCounts::ARRAY_MODE) {
     // Compile-time input slot definitions
-    CONSTEXPR_INPUT(OPERATION, BoolOp, 0, false);
+    CONSTEXPR_INPUT(OPERATION, BoolOpEnum, 0, false);
     CONSTEXPR_INPUT(INPUTS, bool, 1, false);  // Array slot - multiple connections
 
     // Compile-time output slot definition
@@ -75,7 +75,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
     static_assert(!OUTPUT_Slot::nullable, "OUTPUT is not nullable");
 
     // Type validations
-    static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOp>);
+    static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOpEnum>);
     static_assert(std::is_same_v<INPUTS_Slot::Type, bool>);
     static_assert(std::is_same_v<OUTPUT_Slot::Type, bool>);
 };

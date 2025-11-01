@@ -31,6 +31,12 @@ namespace Vixen::RenderGraph {
     struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
 }
 
+// Forward declarations for Phase 0.4 loop system
+namespace Vixen::RenderGraph {
+    struct LoopReference;  // From LoopManager.h
+    enum class BoolOp : uint8_t;  // From BoolOpNodeConfig.h
+}
+
 // Type aliases for pointer types (needed for variant registry - macros can't handle namespaces)
 using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
 using VulkanShaderPtr = VulkanShader*; // MVP approach
@@ -43,6 +49,8 @@ using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 using FramebufferVector = std::vector<VkFramebuffer>;
 using DescriptorSetVector = std::vector<VkDescriptorSet>;
+using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
+using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 
 namespace Vixen::RenderGraph {
 
@@ -123,6 +131,8 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
 
 // ============================================================================

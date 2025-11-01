@@ -28,7 +28,7 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
     CONSTEXPR_INPUT(LOOP_ID, uint32_t, 0, false);
 
     // Compile-time output slot definitions
-    CONSTEXPR_OUTPUT(LOOP_OUT, const LoopReference*, 0, false);
+    CONSTEXPR_OUTPUT(LOOP_OUT, LoopReferencePtr, 0, false);
     CONSTEXPR_OUTPUT(SHOULD_EXECUTE, bool, 1, false);
 
     // Constructor for runtime descriptor initialization
@@ -60,7 +60,7 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<LOOP_ID_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<LOOP_OUT_Slot::Type, const LoopReference*>);
+    static_assert(std::is_same_v<LOOP_OUT_Slot::Type, LoopReferencePtr>);
     static_assert(std::is_same_v<SHOULD_EXECUTE_Slot::Type, bool>);
 };
 

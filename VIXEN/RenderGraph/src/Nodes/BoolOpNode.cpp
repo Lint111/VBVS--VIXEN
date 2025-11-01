@@ -31,7 +31,7 @@ void BoolOpNode::Setup() {
     NODE_LOG_DEBUG("BoolOpNode::Setup()");
 
     // Read OPERATION from input (connected to ConstantNode)
-    operation = In<BoolOp>(BoolOpNodeConfig::OPERATION);
+    operation = In<BoolOpEnum>(BoolOpNodeConfig::OPERATION);
 }
 
 void BoolOpNode::Compile() {
