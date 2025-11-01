@@ -1,6 +1,6 @@
 # Progress
 
-## Current State: Phase 0.3 COMPLETE ✅ - Continuing Phase 0
+## Current State: Phase 0.7 COMPLETE ✅ - Synchronization Complete
 
 **Last Updated**: November 1, 2025
 
@@ -26,7 +26,12 @@
 - Only re-record when dirty (saves CPU work for static scenes)
 - **Descriptor set invalidation bug FIXED**: Command buffers re-recorded when descriptor sets change
 
-**Phase 0.4 Multi-Rate Loop System**: ✅ COMPLETE (November 1, 2025)
+**Phase 0.4 Multi-Rate Loop System**: ✅ COMPLETE
+**Phase 0.5 Two-Tier Synchronization**: ✅ COMPLETE
+**Phase 0.6 Per-Image Semaphore Indexing**: ✅ COMPLETE
+**Phase 0.7 Present Fences & Auto Message Types**: ✅ COMPLETE (November 1, 2025)
+
+**Phase 0.4 Multi-Rate Loop System**:
 - **Timer Class** (`RenderGraph/include/Core/Timer.h`) - High-resolution delta time tracking
 - **LoopManager** (`RenderGraph/include/Core/LoopManager.h`) - Multi-rate loop orchestration
   - Fixed timestep accumulator pattern (Gaffer on Games)
@@ -46,18 +51,53 @@
 - **Test Setup**: PhysicsLoop at 60Hz wired to GeometryRenderNode via AUTO_LOOP connections
 - **Key Design**: Vector-based input (not indexed), CONSTEXPR_NODE_CONFIG pattern
 
-**Remaining Phase 0 Tasks** (2 sub-phases, 3-5 days):
-1. ~~Per-frame resource management~~ ✅ COMPLETE
-2. ~~Frame-in-flight synchronization~~ ✅ COMPLETE
-3. ~~Command buffer recording strategy~~ ✅ COMPLETE
-4. ~~Multi-rate update loop~~ ✅ COMPLETE (Phase 0.4)
-5. 🔴 Template method pattern missing (boilerplate elimination) - 1-2 days
+**Phase 0.5 Two-Tier Synchronization**:
+- Separated CPU-GPU sync (fences) from GPU-GPU sync (semaphores)
+- **Fences**: Per-flight (MAX_FRAMES_IN_FLIGHT=4) - CPU pacing
+- **Semaphores**: imageAvailable (per-flight) + renderComplete (per-image)
+- SwapChainNode acquires with per-flight imageAvailable semaphore
+- GeometryRenderNode submits with fence + both semaphore arrays
+- PresentNode waits on per-image renderComplete semaphore
+- Array-based outputs from FrameSyncNode (consumers index dynamically)
 
-**Phase A (Persistent Cache)**: ⏸️ PAUSED - Resume after Phase 0 complete
+**Phase 0.6 Per-Image Semaphore Indexing**:
+- Fixed semaphore indexing per Vulkan validation guide
+- **imageAvailable**: Indexed by FRAME (per-flight) - acquisition tracking
+- **renderComplete**: Indexed by IMAGE (per-image) - presentation tracking
+- Eliminates "semaphore still in use by swapchain" validation errors
+- FrameSyncNode outputs semaphore arrays, nodes index appropriately
+
+**Phase 0.7 Present Fences & Auto Message Types**:
+- **VK_EXT_swapchain_maintenance1 Integration**:
+  - Added `VkFenceVector` type (`std::vector<VkFence>*`) for `.empty()` support
+  - FrameSyncNode creates per-IMAGE present fences (MAX_SWAPCHAIN_IMAGES=3)
+  - SwapChainNode waits/resets present fence AFTER acquiring image index
+  - PresentNode signals fence via `VkSwapchainPresentFenceInfoEXT` pNext chain
+  - Prevents race: ensures presentation engine released image before reuse
+- **Auto-Incrementing MessageType System**:
+  - Created `AUTO_MESSAGE_TYPE()` macro using `__COUNTER__` (base offset 1000)
+  - Converted all message types in Message.h and RenderGraphEvents.h
+  - **Critical bug fix**: DeviceMetadataEvent and CleanupRequestedMessage both had TYPE=106
+  - Type collision caused DeviceMetadataEvent to trigger spurious graph cleanup
+  - Zero-cost compile-time unique ID generation prevents future collisions
+- **Files**: ResourceVariant.h, FrameSyncNode, SwapChainNode, PresentNode, Message.h, RenderGraphEvents.h
+- **Documentation**: `documentation/EventBus/AutoMessageTypeSystem.md`
+
+**All Phase 0 Tasks COMPLETE** ✅:
+1. ~~Per-frame resource management~~ ✅ COMPLETE (Phase 0.1)
+2. ~~Frame-in-flight synchronization~~ ✅ COMPLETE (Phase 0.2)
+3. ~~Command buffer recording strategy~~ ✅ COMPLETE (Phase 0.3)
+4. ~~Multi-rate update loop~~ ✅ COMPLETE (Phase 0.4)
+5. ~~Two-tier synchronization~~ ✅ COMPLETE (Phase 0.5)
+6. ~~Per-image semaphore indexing~~ ✅ COMPLETE (Phase 0.6)
+7. ~~Present fences + auto message types~~ ✅ COMPLETE (Phase 0.7)
+8. ~~Template method pattern~~ ✅ COMPLETE (Already implemented - Setup/Compile/Execute/Cleanup use final methods calling *Impl())
+
+**Phase A (Persistent Cache)**: ⏸️ PAUSED - Can now resume (Phase 0 complete!)
 
 **Previously Completed**: ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 
-**Next**: Phase 0.5 (Template Method Pattern) OR Phase A (Resume Persistent Cache)
+**Next**: Phase A (Resume Persistent Cache) - All Phase 0 infrastructure complete!
 
 ---
 
