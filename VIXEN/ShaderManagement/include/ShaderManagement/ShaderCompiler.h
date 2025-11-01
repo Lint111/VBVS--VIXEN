@@ -18,8 +18,8 @@ struct CompilationOptions {
     bool optimizeSize = false;          // Optimize for size instead of performance
     bool generateDebugInfo = false;     // Include debug symbols
     bool treatWarningsAsErrors = false;
-    int targetVulkanVersion = 120;      // 110, 111, 120, 130 (Vulkan 1.x.0)
-    int targetSpirvVersion = 150;       // 100, 110, 120, 130, 140, 150 (SPIR-V 1.x)
+    int targetVulkanVersion = 130;      // 110, 111, 120, 130 (Vulkan 1.x.0)
+    int targetSpirvVersion = 160;       // 100, 110, 120, 130, 140, 150, 160 (SPIR-V 1.x) - SPIR-V 1.6 for Vulkan 1.3
 
     // Validation
     bool validateSpirv = false;         // Run SPIR-V validator after compilation (can enable for debugging, but has known issues with glslang-generated SPIR-V)

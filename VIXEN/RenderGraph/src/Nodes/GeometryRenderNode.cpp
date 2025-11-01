@@ -127,11 +127,14 @@ void GeometryRenderNode::ExecuteImpl() {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Phase 0.4: Get per-flight sync primitives from FrameSyncNode
-    // Note: FrameSyncNode already waited on the fence, so we only need the semaphores here
-    VkSemaphore imageAvailableSemaphore = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE, NodeInstance::SlotRole::ExecuteOnly);
-    VkSemaphore renderCompleteSemaphore = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN, NodeInstance::SlotRole::ExecuteOnly);
+    // Phase 0.5: Get per-image semaphore arrays from FrameSyncNode
+    const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
+    const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
     VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
+
+    // Index arrays by imageIndex to get per-image semaphores
+    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[imageIndex];
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);

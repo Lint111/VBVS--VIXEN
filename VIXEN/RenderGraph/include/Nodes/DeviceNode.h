@@ -85,6 +85,7 @@ private:
     void EnumeratePhysicalDevices();
     void SelectPhysicalDevice();
     void CreateLogicalDevice();
+    void PublishDeviceMetadata();  // Publish device capabilities via EventBus
 };
 
 } // namespace Vixen::RenderGraph

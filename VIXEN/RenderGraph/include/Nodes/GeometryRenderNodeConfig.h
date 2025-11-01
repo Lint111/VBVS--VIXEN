@@ -42,7 +42,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace GeometryRenderNodeCounts {
-    static constexpr size_t INPUTS = 14;  // Phase 0.2: Added RENDER_COMPLETE_SEMAPHORE_IN + IN_FLIGHT_FENCE
+    static constexpr size_t INPUTS = 14;  // Phase 0.5: Using array-based semaphores only
     static constexpr size_t OUTPUTS = 2;  // COMMAND_BUFFERS, RENDER_COMPLETE_SEMAPHORE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array; // Framebuffers + descriptor sets are arrays
 }
@@ -98,15 +98,15 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     
     // Current image index from SwapChainNode
     CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 10, false);
-    
-    // Image available semaphore to wait on (from FrameSyncNode via SwapChainNode)
-    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORE, VkSemaphore, 11, false);
 
-    // Phase 0.2: Render complete semaphore to signal (from FrameSyncNode)
-    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORE_IN, VkSemaphore, 12, false);
+    // Phase 0.5: In-flight fence for CPU-GPU synchronization (from FrameSyncNode)
+    CONSTEXPR_INPUT(IN_FLIGHT_FENCE, VkFence, 11, false);
 
-    // Phase 0.2: In-flight fence for CPU-GPU synchronization (from FrameSyncNode)
-    CONSTEXPR_INPUT(IN_FLIGHT_FENCE, VkFence, 13, false);
+    // Phase 0.5: Array of image available semaphores (indexed by imageIndex)
+    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 12, false);
+
+    // Phase 0.5: Array of render complete semaphores (indexed by imageIndex)
+    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 13, false);
 
     // ===== OUTPUTS (2) =====
     // Recorded command buffers (array - one per framebuffer)
@@ -173,22 +173,24 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
             ResourceLifetime::Transient,
             BufferDescription{}
         );
-        
-        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORE, "image_available_semaphore",
-            ResourceLifetime::Transient,
-            BufferDescription{}
-        );
 
-        // Phase 0.2: Render complete semaphore input from FrameSyncNode
-        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORE_IN, "render_complete_semaphore_in",
-            ResourceLifetime::Transient,
-            BufferDescription{}
-        );
-
-        // Phase 0.2: In-flight fence input from FrameSyncNode
+        // Phase 0.5: In-flight fence input from FrameSyncNode
         INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence",
             ResourceLifetime::Transient,
             BufferDescription{}
+        );
+
+        // Phase 0.5: Semaphore arrays for per-image synchronization
+        HandleDescriptor semaphoreArrayDesc{"VkSemaphore*"};
+
+        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array",
+            ResourceLifetime::Persistent,
+            semaphoreArrayDesc
+        );
+
+        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array",
+            ResourceLifetime::Persistent,
+            semaphoreArrayDesc
         );
 
         // Initialize output descriptors
@@ -240,15 +242,15 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     
     static_assert(IMAGE_INDEX_Slot::index == 10, "IMAGE_INDEX must be at index 10");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
-    
-    static_assert(IMAGE_AVAILABLE_SEMAPHORE_Slot::index == 11, "IMAGE_AVAILABLE_SEMAPHORE must be at index 11");
-    static_assert(!IMAGE_AVAILABLE_SEMAPHORE_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORE is required");
 
-    static_assert(RENDER_COMPLETE_SEMAPHORE_IN_Slot::index == 12, "RENDER_COMPLETE_SEMAPHORE_IN must be at index 12");
-    static_assert(!RENDER_COMPLETE_SEMAPHORE_IN_Slot::nullable, "RENDER_COMPLETE_SEMAPHORE_IN is required");
-
-    static_assert(IN_FLIGHT_FENCE_Slot::index == 13, "IN_FLIGHT_FENCE must be at index 13");
+    static_assert(IN_FLIGHT_FENCE_Slot::index == 11, "IN_FLIGHT_FENCE must be at index 11");
     static_assert(!IN_FLIGHT_FENCE_Slot::nullable, "IN_FLIGHT_FENCE is required");
+
+    static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 12, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY must be at index 12");
+    static_assert(!IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::nullable, "IMAGE_AVAILABLE_SEMAPHORES_ARRAY is required");
+
+    static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 13, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 13");
+    static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
 
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(!COMMAND_BUFFERS_Slot::nullable, "COMMAND_BUFFERS is required");
@@ -268,9 +270,9 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORE_Slot::Type, VkSemaphore>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_IN_Slot::Type, VkSemaphore>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, VkSemaphoreArrayPtr>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };

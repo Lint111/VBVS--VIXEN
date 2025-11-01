@@ -83,6 +83,14 @@ private:
 
     // VulkanShader wrapper for compatibility with GraphicsPipelineNode (Phase 1)
     VulkanShader* vulkanShader = nullptr;
+
+    // Device metadata (received via EventBus)
+    int deviceVulkanVersion = 130;  // Default: Vulkan 1.3
+    int deviceSpirvVersion = 160;   // Default: SPIR-V 1.6
+    bool hasReceivedDeviceMetadata = false;
+
+    // Event handlers
+    void OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message);
 };
 
 } // namespace Vixen::RenderGraph

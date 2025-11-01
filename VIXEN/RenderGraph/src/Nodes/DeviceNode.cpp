@@ -122,6 +122,9 @@ void DeviceNode::CompileImpl() {
     // Create logical device using VulkanDevice wrapper
     CreateLogicalDevice();
 
+    // Publish device metadata for other systems to configure themselves
+    PublishDeviceMetadata();
+
     // Register device with MainCacher to create device registry
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
     auto& deviceRegistry = mainCacher.GetOrCreateDeviceRegistry(vulkanDevice.get());
@@ -262,6 +265,109 @@ void DeviceNode::CreateLogicalDevice() {
     NODE_LOG_INFO("[DeviceNode] Logical device created successfully");
     NODE_LOG_INFO("[DeviceNode] Device handle: " + std::to_string(reinterpret_cast<uint64_t>(vulkanDevice->device)));
     NODE_LOG_INFO("[DeviceNode] Queue handle: " + std::to_string(reinterpret_cast<uint64_t>(vulkanDevice->queue)));
+}
+
+void DeviceNode::PublishDeviceMetadata() {
+    if (!vulkanDevice) {
+        NODE_LOG_WARNING("[DeviceNode] Cannot publish metadata - device not created");
+        return;
+    }
+
+    auto* messageBus = GetOwningGraph()->GetMessageBus();
+    if (!messageBus) {
+        NODE_LOG_WARNING("[DeviceNode] Cannot publish metadata - no message bus");
+        return;
+    }
+
+    NODE_LOG_INFO("[DeviceNode] Gathering metadata for all " + std::to_string(availableGPUs.size()) + " detected devices...");
+
+    // Helper lambda to convert Vulkan version to SPIR-V version
+    auto GetMaxSpirvVersion = [](uint32_t apiVersion) -> uint32_t {
+        uint32_t vulkanMajor = VK_VERSION_MAJOR(apiVersion);
+        uint32_t vulkanMinor = VK_VERSION_MINOR(apiVersion);
+
+        uint32_t spirvMajor = 1;
+        uint32_t spirvMinor = 0;
+
+        if (vulkanMajor == 1) {
+            if (vulkanMinor == 0) spirvMinor = 0;       // Vulkan 1.0 -> SPIR-V 1.0
+            else if (vulkanMinor == 1) spirvMinor = 3;  // Vulkan 1.1 -> SPIR-V 1.3
+            else if (vulkanMinor == 2) spirvMinor = 5;  // Vulkan 1.2 -> SPIR-V 1.5
+            else spirvMinor = 6;                         // Vulkan 1.3+ -> SPIR-V 1.6
+        }
+
+        return (spirvMajor << 16) | (spirvMinor << 8);
+    };
+
+    // Collect metadata for ALL available devices
+    std::vector<Vixen::EventBus::DeviceInfo> deviceInfos;
+    deviceInfos.reserve(availableGPUs.size());
+
+    for (uint32_t i = 0; i < availableGPUs.size(); ++i) {
+        VkPhysicalDevice physicalDevice = availableGPUs[i];
+
+        // Query properties for this device
+        VkPhysicalDeviceProperties deviceProps{};
+        VkPhysicalDeviceMemoryProperties memProps{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &deviceProps);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+
+        // Calculate memory totals
+        uint64_t dedicatedMemoryMB = 0;
+        uint64_t sharedMemoryMB = 0;
+
+        for (uint32_t j = 0; j < memProps.memoryHeapCount; ++j) {
+            const auto& heap = memProps.memoryHeaps[j];
+            uint64_t heapSizeMB = heap.size / (1024 * 1024);
+
+            if (heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                dedicatedMemoryMB += heapSizeMB;
+            } else {
+                sharedMemoryMB += heapSizeMB;
+            }
+        }
+
+        // Create DeviceInfo
+        Vixen::EventBus::DeviceInfo info;
+        info.vulkanApiVersion = deviceProps.apiVersion;
+        info.maxSpirvVersion = GetMaxSpirvVersion(deviceProps.apiVersion);
+        info.dedicatedMemoryMB = dedicatedMemoryMB;
+        info.sharedMemoryMB = sharedMemoryMB;
+        info.deviceName = deviceProps.deviceName;
+        info.vendorID = deviceProps.vendorID;
+        info.deviceID = deviceProps.deviceID;
+        info.isDiscreteGPU = (deviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+        info.deviceIndex = i;
+
+        deviceInfos.push_back(info);
+
+        // Log each device
+        uint32_t vulkanMajor = VK_VERSION_MAJOR(deviceProps.apiVersion);
+        uint32_t vulkanMinor = VK_VERSION_MINOR(deviceProps.apiVersion);
+        uint32_t spirvMajor = (info.maxSpirvVersion >> 16) & 0xFF;
+        uint32_t spirvMinor = (info.maxSpirvVersion >> 8) & 0xFF;
+
+        NODE_LOG_INFO("  [" + std::to_string(i) + "] " + std::string(deviceProps.deviceName));
+        NODE_LOG_INFO("      Vulkan: " + std::to_string(vulkanMajor) + "." + std::to_string(vulkanMinor) +
+                      " | SPIR-V: " + std::to_string(spirvMajor) + "." + std::to_string(spirvMinor) +
+                      " | Memory: " + std::to_string(dedicatedMemoryMB) + " MB" +
+                      (info.isDiscreteGPU ? " (Discrete)" : " (Integrated)"));
+    }
+
+    // Create and publish metadata event with ALL devices
+    auto metadataEvent = std::make_unique<Vixen::EventBus::DeviceMetadataEvent>(
+        0,  // System sender
+        std::move(deviceInfos),
+        selectedGPUIndex,
+        vulkanDevice.get()
+    );
+
+    NODE_LOG_INFO("[DeviceNode] Selected device index: " + std::to_string(selectedGPUIndex));
+    NODE_LOG_INFO("[DeviceNode] Publishing metadata for " + std::to_string(metadataEvent->availableDevices.size()) + " devices");
+
+    messageBus->Publish(std::move(metadataEvent));
+
+    NODE_LOG_INFO("[DeviceNode] Device metadata published successfully");
 }
 
 } // namespace Vixen::RenderGraph

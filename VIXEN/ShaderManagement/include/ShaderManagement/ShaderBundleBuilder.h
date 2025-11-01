@@ -168,6 +168,16 @@ public:
     ShaderBundleBuilder& SetSdiConfig(const SdiGeneratorConfig& config);
 
     /**
+     * @brief Set target Vulkan version for all stages
+     */
+    ShaderBundleBuilder& SetTargetVulkanVersion(int version);
+
+    /**
+     * @brief Set target SPIR-V version for all stages
+     */
+    ShaderBundleBuilder& SetTargetSpirvVersion(int version);
+
+    /**
      * @brief Enable/disable SDI generation
      */
     ShaderBundleBuilder& EnableSdiGeneration(bool enable);

@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: Draw_Shader
-// UUID: 2071dff093caf4b3
-// Generated: 2025-11-01 16:43:05
+// UUID: 4e34fbf760c3a28b
+// Generated: 2025-11-01 17:54:28
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "2071dff093caf4b3-SDI.h"
+#include "4e34fbf760c3a28b-SDI.h"
 
 namespace Draw_Shader {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_2071dff093caf4b3;
+namespace SDI = ShaderInterface::_4e34fbf760c3a28b;
 
 // ============================================================================
 // Descriptor Binding Constants

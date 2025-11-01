@@ -1,0 +1,11 @@
+MSBuild version 17.14.23+b0019275e for .NET Framework
+
+  EventBus.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\EventBus\Debug\EventBus.lib
+  Logger.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\Logger.lib
+  ShaderCompiler.cpp
+  ShaderManagement.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\ShaderManagement\Debug\ShaderManagement.lib
+  CashSystem.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\CashSystem\Debug\CashSystem.lib
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\glm-build\glm\Debug\glm.lib
+  VulkanResources.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\VulkanResources.lib
+  RenderGraph.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\RenderGraph.lib
+  7e_ShadersWithSPIRV.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\binaries\7e_ShadersWithSPIRV.exe

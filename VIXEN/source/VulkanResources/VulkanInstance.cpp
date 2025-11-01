@@ -25,7 +25,7 @@ VkResult VulkanInstance::CreateInstance(std::vector<const char*>& layerNames,
 	appInfo.applicationVersion = 1;
 	appInfo.pEngineName = appName;
 	appInfo.engineVersion = 1;
-	appInfo.apiVersion = VK_API_VERSION_1_0;
+	appInfo.apiVersion = VK_API_VERSION_1_3;  // Request Vulkan 1.3 (RTX 3060 supports up to 1.4)
 
 	//define the vulkan instance create info structure
 	VkInstanceCreateInfo instInfo = {};

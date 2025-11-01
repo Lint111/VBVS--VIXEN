@@ -268,6 +268,22 @@ ShaderBundleBuilder& ShaderBundleBuilder::SetSdiConfig(const SdiGeneratorConfig&
     return *this;
 }
 
+ShaderBundleBuilder& ShaderBundleBuilder::SetTargetVulkanVersion(int version)
+{
+    for (auto& stageSource : stages_) {
+        stageSource.options.targetVulkanVersion = version;
+	}
+	return *this;
+}
+
+ShaderBundleBuilder& ShaderBundleBuilder::SetTargetSpirvVersion(int version)
+{
+    for (auto& stageSource : stages_) {
+        stageSource.options.targetSpirvVersion = version;
+    }
+    return *this;
+}
+
 ShaderBundleBuilder& ShaderBundleBuilder::EnableSdiGeneration(bool enable) {
     generateSdi_ = enable;
     return *this;

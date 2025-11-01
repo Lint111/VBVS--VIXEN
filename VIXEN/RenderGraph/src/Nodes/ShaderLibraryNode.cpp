@@ -6,6 +6,9 @@
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/ShaderModuleCacher.h"
 #include <ShaderManagement/ShaderBundleBuilder.h>
+#include <ShaderManagement/ShaderCompiler.h>
+#include "EventBus/Message.h"
+#include "EventBus/MessageBus.h"
 
 namespace Vixen::RenderGraph {
 
@@ -65,6 +68,21 @@ void ShaderLibraryNode::SetupImpl() {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
+    // Subscribe to DeviceMetadataEvent for shader version validation
+    auto* messageBus = GetOwningGraph()->GetMessageBus();
+    if (messageBus) {
+        messageBus->Subscribe(
+            Vixen::EventBus::DeviceMetadataEvent::TYPE,
+            [this](const Vixen::EventBus::BaseEventMessage& msg) {
+                this->OnDeviceMetadata(msg);
+                return true; // Handled
+            }
+        );
+        NODE_LOG_INFO("ShaderLibraryNode: Subscribed to DeviceMetadataEvent");
+    } else {
+        NODE_LOG_WARNING("ShaderLibraryNode: MessageBus not available - cannot subscribe to device metadata");
+    }
+
     std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
 }
 
@@ -115,6 +133,20 @@ void ShaderLibraryNode::CompileImpl() {
 
     std::cout << "[ShaderLibraryNode] Creating ShaderBundleBuilder..." << std::endl;
 
+    // Use device metadata for shader compilation if available
+    int targetVulkan = deviceVulkanVersion;
+    int targetSpirv = deviceSpirvVersion;
+
+    if (hasReceivedDeviceMetadata) {
+        NODE_LOG_INFO("ShaderLibraryNode: Using device metadata for shader compilation");
+        NODE_LOG_INFO("  - Target Vulkan: " + std::to_string(targetVulkan));
+        NODE_LOG_INFO("  - Target SPIR-V: " + std::to_string(targetSpirv));
+    } else {
+        NODE_LOG_WARNING("ShaderLibraryNode: Device metadata not received, using default versions");
+        NODE_LOG_WARNING("  - Default Vulkan: " + std::to_string(targetVulkan));
+        NODE_LOG_WARNING("  - Default SPIR-V: " + std::to_string(targetSpirv));
+    }
+
     // Configure SDI generation to write to binaries/generated/sdi (runtime shaders only)
     ShaderManagement::SdiGeneratorConfig sdiConfig;
     sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
@@ -126,6 +158,8 @@ void ShaderLibraryNode::CompileImpl() {
            // UUID will be auto-generated from content hash (deterministic)
            .SetSdiConfig(sdiConfig)
            .EnableSdiGeneration(true)  // Phase 3: Enable SDI generation
+           .SetTargetVulkanVersion(targetVulkan)  // Use device capability
+           .SetTargetSpirvVersion(targetSpirv)    // Use device capability
            .AddStageFromFile(
                ShaderManagement::ShaderStage::Vertex,
                vertPath,
@@ -276,6 +310,41 @@ void ShaderLibraryNode::CleanupImpl() {
     fragmentShader.reset();
 
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode complete");
+}
+
+void ShaderLibraryNode::OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message) {
+    auto* metadataEvent = static_cast<const Vixen::EventBus::DeviceMetadataEvent*>(&message);
+
+    if (!metadataEvent) {
+        NODE_LOG_WARNING("ShaderLibraryNode: Received invalid DeviceMetadataEvent");
+        return;
+    }
+
+    // Get selected device info
+    const auto& selectedDevice = metadataEvent->GetSelectedDevice();
+
+    // Store device capabilities
+    deviceVulkanVersion = selectedDevice.GetVulkanVersionShorthand();
+    deviceSpirvVersion = selectedDevice.GetSpirvVersionShorthand();
+    hasReceivedDeviceMetadata = true;
+
+    NODE_LOG_INFO("ShaderLibraryNode: Received device metadata from EventBus");
+    NODE_LOG_INFO("  - Total devices detected: " + std::to_string(metadataEvent->availableDevices.size()));
+    NODE_LOG_INFO("  - Selected device index: " + std::to_string(metadataEvent->selectedDeviceIndex));
+    NODE_LOG_INFO("  - Selected device: " + selectedDevice.deviceName);
+    NODE_LOG_INFO("  - Vulkan API version: " + std::to_string(deviceVulkanVersion) + " (shorthand)");
+    NODE_LOG_INFO("  - Max SPIR-V version: " + std::to_string(deviceSpirvVersion) + " (shorthand)");
+    NODE_LOG_INFO("  - Discrete GPU: " + std::string(selectedDevice.isDiscreteGPU ? "Yes" : "No"));
+    NODE_LOG_INFO("  - Dedicated memory: " + std::to_string(selectedDevice.dedicatedMemoryMB) + " MB");
+
+    // Log all available devices
+    NODE_LOG_INFO("ShaderLibraryNode: Available devices:");
+    for (size_t i = 0; i < metadataEvent->availableDevices.size(); ++i) {
+        const auto& dev = metadataEvent->availableDevices[i];
+        NODE_LOG_INFO("  [" + std::to_string(i) + "] " + dev.deviceName +
+                      " (Vulkan " + std::to_string(dev.GetVulkanVersionShorthand()) +
+                      ", SPIR-V " + std::to_string(dev.GetSpirvVersionShorthand()) + ")");
+    }
 }
 
 } // namespace Vixen::RenderGraph

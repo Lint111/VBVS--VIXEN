@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 2071dff093caf4b3
-// Generated: 2025-11-01 16:51:39
+// UUID: 015a298a357354cf
+// Generated: 2025-11-01 16:53:37
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -19,7 +19,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _2071dff093caf4b3 {
+namespace _015a298a357354cf {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -135,7 +135,7 @@ namespace VertexInput {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "Draw_Shader";
-    static constexpr const char* INTERFACE_HASH = "eb24840c4acd8ed9";
+    static constexpr const char* INTERFACE_HASH = "4ffd2e9402d13b20";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 2;

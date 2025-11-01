@@ -658,12 +658,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::VULKAN_DEVICE)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_INDEX)
-         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORE)  // Phase 0.4: Per-image semaphore (wait)
-         .Connect(swapChainNode, SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE_IN)  // Phase 0.4: Per-image semaphore (signal)
          .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
-                  geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE);  // Phase 0.2: Per-flight fence (CPU-GPU sync)
+                  geometryRenderNode, GeometryRenderNodeConfig::IN_FLIGHT_FENCE)  // Phase 0.5: Per-flight fence (CPU-GPU sync)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of all per-image semaphores
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of all per-image semaphores
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

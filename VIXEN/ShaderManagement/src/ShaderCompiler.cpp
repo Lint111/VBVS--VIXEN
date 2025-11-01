@@ -118,7 +118,14 @@ CompilationOutput ShaderCompiler::CompileInternal(
     int vulkanVersion = options.targetVulkanVersion;
     shader.setEnvInput(glslang::EShSourceGlsl, shaderStage, glslang::EShClientVulkan, vulkanVersion);
     shader.setEnvClient(glslang::EShClientVulkan, static_cast<glslang::EShTargetClientVersion>(vulkanVersion));
-    shader.setEnvTarget(glslang::EShTargetSpv, static_cast<glslang::EShTargetLanguageVersion>(options.targetSpirvVersion));
+
+    // Convert shorthand SPIR-V version (e.g., 150 for v1.5) to proper encoding
+    // Format: (major << 16) | (minor << 8)
+    // 100 -> 0x00010000, 110 -> 0x00010100, 150 -> 0x00010500, etc.
+    int spirvMajor = options.targetSpirvVersion / 100;
+    int spirvMinor = (options.targetSpirvVersion % 100) / 10;
+    int spirvVersionEncoded = (spirvMajor << 16) | (spirvMinor << 8);
+    shader.setEnvTarget(glslang::EShTargetSpv, static_cast<glslang::EShTargetLanguageVersion>(spirvVersionEncoded));
 
     // Set resource limits
     TBuiltInResource resources = *GetDefaultResources();

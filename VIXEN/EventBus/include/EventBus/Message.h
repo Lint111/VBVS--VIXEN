@@ -4,6 +4,8 @@
 #include <memory>
 #include <string>
 #include <chrono>
+#include <algorithm>
+#include <vector>
 
 namespace Vixen::EventBus {
 
@@ -304,6 +306,98 @@ struct DeviceInvalidationEvent : public BaseEventMessage {
         , deviceHandle(device)
         , reason(invalidationReason)
         , deviceDescription(desc) {}
+};
+
+/**
+ * @brief Individual device metadata
+ *
+ * Describes capabilities of a single physical device
+ */
+struct DeviceInfo {
+    // Vulkan API and SPIR-V versions
+    uint32_t vulkanApiVersion;      // e.g., VK_API_VERSION_1_3
+    uint32_t maxSpirvVersion;       // Maximum supported SPIR-V version (encoded: (major << 16) | (minor << 8))
+
+    // Memory information
+    uint64_t dedicatedMemoryMB;     // Device-local memory (MB)
+    uint64_t sharedMemoryMB;        // Host-visible memory (MB)
+
+    // Device identification
+    std::string deviceName;         // GPU name (e.g., "NVIDIA GeForce RTX 3060")
+    uint32_t vendorID;              // Vendor ID (0x10DE = NVIDIA, 0x1002 = AMD, 0x8086 = Intel)
+    uint32_t deviceID;              // Device ID
+    bool isDiscreteGPU;             // true if discrete GPU, false if integrated
+
+    // Device index in system
+    uint32_t deviceIndex;           // Index in availableGPUs array
+
+    // Helper to convert to ShaderManagement shorthand versions
+    int GetVulkanVersionShorthand() const {
+        // Extract major.minor from VK_VERSION_MAJOR/MINOR
+        uint32_t major = (vulkanApiVersion >> 22) & 0x3FF;
+        uint32_t minor = (vulkanApiVersion >> 12) & 0x3FF;
+        return static_cast<int>(major * 100 + minor * 10);  // e.g., 1.3 -> 130
+    }
+
+    int GetSpirvVersionShorthand() const {
+        // maxSpirvVersion is already encoded as (major << 16) | (minor << 8)
+        uint32_t major = (maxSpirvVersion >> 16) & 0xFF;
+        uint32_t minor = (maxSpirvVersion >> 8) & 0xFF;
+        return static_cast<int>(major * 100 + minor * 10);  // e.g., 1.6 -> 160
+    }
+};
+
+/**
+ * @brief Device metadata event
+ *
+ * Published after device enumeration with ALL available device capabilities.
+ * Contains metadata for every detected GPU plus which one was selected.
+ *
+ * Subscribers use this to configure their systems appropriately:
+ * - ShaderLibraryNode: Validates/recompiles shaders for selected device capabilities
+ * - Memory allocators: Configure based on memory limits
+ * - Feature systems: Enable/disable features based on device support
+ * - Multi-GPU managers: Know all available GPUs for load balancing
+ */
+struct DeviceMetadataEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = 107;  // Changed from 106 to avoid collision with CleanupRequestedMessage
+    static constexpr EventCategory CATEGORY = EventCategory::System;
+
+    // All detected devices
+    std::vector<DeviceInfo> availableDevices;
+
+    // Index of selected device in availableDevices array
+    uint32_t selectedDeviceIndex;
+
+    // Device handle for the SELECTED device (opaque pointer to VulkanDevice)
+    void* selectedDeviceHandle;     // VulkanDevice* (for systems that need direct access)
+
+    DeviceMetadataEvent(
+        SenderID sender,
+        std::vector<DeviceInfo> devices,
+        uint32_t selectedIndex,
+        void* devHandle
+    )
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , availableDevices(std::move(devices))
+        , selectedDeviceIndex(selectedIndex)
+        , selectedDeviceHandle(devHandle) {}
+
+    // Helper to get selected device info
+    const DeviceInfo& GetSelectedDevice() const {
+        return availableDevices[selectedDeviceIndex];
+    }
+
+    // Helper to count devices by type
+    size_t GetDiscreteGPUCount() const {
+        return std::count_if(availableDevices.begin(), availableDevices.end(),
+            [](const DeviceInfo& d) { return d.isDiscreteGPU; });
+    }
+
+    size_t GetIntegratedGPUCount() const {
+        return std::count_if(availableDevices.begin(), availableDevices.end(),
+            [](const DeviceInfo& d) { return !d.isDiscreteGPU; });
+    }
 };
 
 } // namespace EventBus
