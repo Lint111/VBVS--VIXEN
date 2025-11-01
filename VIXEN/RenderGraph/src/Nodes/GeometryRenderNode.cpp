@@ -137,7 +137,7 @@ void GeometryRenderNode::ExecuteImpl() {
 
     // Phase 0.5: CRITICAL - Index semaphores correctly:
     // - imageAvailable: Indexed by FRAME index (per-flight) - matches SwapChainNode's acquire semaphore
-    // - renderComplete: Indexed by IMAGE index (per-image) - for presentation
+    // - renderComplete: Indexed by IMAGE index (per-image) - each image has its own present semaphore
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
     VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
 

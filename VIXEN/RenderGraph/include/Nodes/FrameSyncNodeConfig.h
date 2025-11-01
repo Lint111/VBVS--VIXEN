@@ -38,7 +38,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 0, false);
 
     // Compile-time constants
-    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;  // CPU-GPU sync (fences)
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;  // CPU-GPU sync (fences) - must be >= MAX_SWAPCHAIN_IMAGES
     static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 3;  // GPU-GPU sync (semaphores, per-image)
 
     // Constructor for runtime descriptor initialization

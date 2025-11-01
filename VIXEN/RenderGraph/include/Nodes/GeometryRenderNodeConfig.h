@@ -105,10 +105,10 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     // Phase 0.5: In-flight fence for CPU-GPU synchronization (from FrameSyncNode)
     CONSTEXPR_INPUT(IN_FLIGHT_FENCE, VkFence, 12, false);
 
-    // Phase 0.5: Array of image available semaphores (indexed by frameIndex)
+    // Phase 0.5: Array of image available semaphores (indexed by frameIndex - per-flight)
     CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 13, false);
 
-    // Phase 0.5: Array of render complete semaphores (indexed by imageIndex)
+    // Phase 0.5: Array of render complete semaphores (indexed by imageIndex - per-image)
     CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 14, false);
 
     // ===== OUTPUTS (2) =====

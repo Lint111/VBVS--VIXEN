@@ -86,11 +86,14 @@ void FrameSyncNode::CompileImpl() {
                       + std::to_string(reinterpret_cast<uint64_t>(frameSyncData[i].inFlightFence)));
     }
 
-    // Phase 0.4: CORRECT per Vulkan validation - per-IMAGE semaphores for renderComplete
+    // Phase 0.5: CORRECT per Vulkan validation
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     //
     // - Acquisition semaphores: Indexed by in-flight frame (per-FLIGHT)
     // - Render complete semaphores: Indexed by swapchain image (per-IMAGE)
+    //
+    // Per-FLIGHT imageAvailable ensures we don't reuse acquire semaphores
+    // Per-IMAGE renderComplete ensures each image has its own present semaphore
 
     imageAvailableSemaphores.resize(flightCount);  // Per-FLIGHT for acquisition
     renderCompleteSemaphores.resize(imageCount);   // Per-IMAGE for present
