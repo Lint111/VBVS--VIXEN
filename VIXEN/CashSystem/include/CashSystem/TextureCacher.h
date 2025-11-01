@@ -130,6 +130,11 @@ public:
         bool generateMipmaps = false
     );
 
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "TextureCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<TextureWrapper> Create(const TextureCreateParams& ci) override;
@@ -137,11 +142,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "TextureCacher"; }
 
 private:
     // Helper methods

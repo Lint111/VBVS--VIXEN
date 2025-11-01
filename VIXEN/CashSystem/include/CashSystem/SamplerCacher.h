@@ -92,6 +92,11 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<SamplerWrapper> GetOrCreate(const SamplerCreateParams& ci);
 
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "SamplerCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<SamplerWrapper> Create(const SamplerCreateParams& ci) override;
@@ -99,11 +104,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "SamplerCacher"; }
 };
 
 } // namespace CashSystem

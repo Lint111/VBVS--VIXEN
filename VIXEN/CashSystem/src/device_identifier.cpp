@@ -1,4 +1,5 @@
 #include "CashSystem/DeviceIdentifier.h"
+#include "CashSystem/MainCacher.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Hash.h"
 #include <sstream>
@@ -135,13 +136,16 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
         return true;  // Not an error - just no caches to load
     }
 
-    // Read cacher registry manifest to pre-register cachers
+    // Read cacher registry manifest to pre-create cachers BEFORE deserialization
+    // Note: Cachers must be registered (via RegisterCacher) before this can succeed
+    // If registration hasn't happened yet, deserialization will be deferred until
+    // first GetCacher() call (lazy deserialization)
     auto manifestPath = directory / "cacher_registry.txt";
     if (std::filesystem::exists(manifestPath)) {
         std::ifstream manifest(manifestPath);
         if (manifest) {
             std::string cacherName;
-            std::cout << "[DeviceRegistry] Pre-registering cachers from manifest..." << std::endl;
+            std::cout << "[DeviceRegistry] Pre-creating cachers from manifest..." << std::endl;
 
             while (std::getline(manifest, cacherName)) {
                 // Trim whitespace
@@ -149,12 +153,22 @@ bool DeviceRegistry::LoadAll(const std::filesystem::path& directory) {
                 cacherName.erase(cacherName.find_last_not_of(" \t\r\n") + 1);
 
                 if (!cacherName.empty()) {
-                    // Pre-register cacher by name through MainCacher's typed API
-                    // This will be handled by MainCacher's GetCacher<T>() which creates if not exists
                     std::cout << "[DeviceRegistry] Found cacher in manifest: " << cacherName << std::endl;
+
+                    // Create cacher instance using MainCacher's factory system
+                    auto& mainCacher = MainCacher::Instance();
+                    auto* createdCacher = mainCacher.CreateCacherByName(cacherName, m_device, *this);
+
+                    if (!createdCacher) {
+                        // Not an error - cacher may not be registered yet
+                        // Deserialization will happen lazily on first GetCacher() call
+                        std::cout << "[DeviceRegistry] Cacher not registered yet (will lazy-load): " << cacherName << std::endl;
+                    }
                 }
             }
             manifest.close();
+
+            std::cout << "[DeviceRegistry] Pre-created " << m_deviceCachers.size() << " cachers from manifest" << std::endl;
         }
     } else {
         std::cout << "[DeviceRegistry] No manifest found (legacy or first run)" << std::endl;

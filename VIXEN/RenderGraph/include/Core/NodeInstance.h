@@ -5,6 +5,7 @@
 #include "Data/ParameterDataTypes.h"
 #include "CleanupStack.h"
 #include "LoopManager.h"
+#include "INodeWiring.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -34,13 +35,15 @@ struct NodeConnection {
 
 /**
  * @brief Node Instance - Concrete instantiation of a NodeType
- * 
+ *
  * Represents a specific usage of a rendering operation in the graph.
  * Multiple instances can be created from the same NodeType.
+ *
+ * **Encapsulation**: Inherits from INodeWiring to provide controlled access
+ * to graph wiring methods without exposing all internals via friend declarations.
  */
-class NodeInstance {
-    // Allow RenderGraph and ConnectionBatch to access protected resource methods for graph wiring
-    friend class RenderGraph;
+class NodeInstance : public INodeWiring {
+    // Allow ConnectionBatch to access protected resource methods for bulk connection operations
     friend class ConnectionBatch;
 
 public:
@@ -214,6 +217,24 @@ public:
      */
     void ResetCleanupFlag() { cleanedUp = false; }
 
+    /**
+     * @brief Check if node was marked for deferred recompilation during execution
+     *
+     * Deferred recompilation occurs when a node is marked dirty (via events)
+     * DURING graph execution. The node will be recompiled on the next frame.
+     *
+     * @return true if deferred recompilation requested
+     */
+    bool HasDeferredRecompile() const { return deferredRecompile; }
+
+    /**
+     * @brief Clear the deferred recompilation flag
+     *
+     * Called by RenderGraph after detecting deferred recompilation
+     * and marking the node for recompilation on next frame.
+     */
+    void ClearDeferredRecompile() { deferredRecompile = false; }
+
     // Phase 0.4: Loop connection API
     /**
      * @brief Connect this node to a loop
@@ -375,13 +396,64 @@ protected:
      */
     virtual void CleanupImpl() {}
 
+public:
+    // ============================================================================
+    // INodeWiring interface implementation (graph wiring methods)
+    // ============================================================================
+
+    /**
+     * @brief Get input resource at slot/array index (INodeWiring implementation)
+     *
+     * **Usage**:
+     * - RenderGraph uses during validation and connection setup
+     * - Node implementations should use In() from TypedNodeInstance instead
+     *
+     * @param slotIndex Slot index (0-based)
+     * @param arrayIndex Array element index (0 for non-array slots)
+     * @return Resource pointer, or nullptr if not connected
+     */
+    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const override;
+
+    /**
+     * @brief Get output resource at slot/array index (INodeWiring implementation)
+     *
+     * **Usage**:
+     * - RenderGraph uses during connection setup
+     * - Node implementations should use Out() from TypedNodeInstance instead
+     *
+     * @param slotIndex Slot index (0-based)
+     * @param arrayIndex Array element index (0 for non-array slots)
+     * @return Resource pointer, or nullptr if not yet created
+     */
+    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const override;
+
+    /**
+     * @brief Set input resource at slot/array index (INodeWiring implementation)
+     *
+     * **Usage**:
+     * - RenderGraph uses during ConnectNodes() to wire inputs
+     * - Node implementations should NOT call this directly
+     *
+     * @param slotIndex Slot index (0-based)
+     * @param arrayIndex Array element index (0 for non-array slots)
+     * @param resource Resource pointer (lifetime managed by graph)
+     */
+    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) override;
+
+    /**
+     * @brief Set output resource at slot/array index (INodeWiring implementation)
+     *
+     * **Usage**:
+     * - RenderGraph uses during ConnectNodes() to allocate outputs
+     * - Node implementations should use Out() from TypedNodeInstance instead
+     *
+     * @param slotIndex Slot index (0-based)
+     * @param arrayIndex Array element index (0 for non-array slots)
+     * @param resource Resource pointer (lifetime managed by graph)
+     */
+    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) override;
+
 protected:
-    // Low-level resource accessors (internal use by RenderGraph and TypedNodeInstance)
-    // Node implementations should use In() and Out() from TypedNodeInstance instead
-    Resource* GetInput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const;
-    void SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
-    void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource);
 
     // Instance identification
     std::string instanceName;

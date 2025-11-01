@@ -93,20 +93,31 @@ public:
     ) {
         static_assert(std::is_base_of_v<TypedCacher<ResourceT, CreateInfoT>, CacherT>,
                       "CacherT must inherit from TypedCacher");
-                      
+
         std::lock_guard lock(m_globalRegistryMutex);
-        
+
         // Check if already registered
         auto existingIt = m_globalFactories.find(typeIndex);
         if (existingIt != m_globalFactories.end()) {
-            throw std::runtime_error("Type already registered: " + std::string(name));
+            return;  // Already registered, skip
         }
-        
-        m_globalFactories[typeIndex] = [this]() -> std::unique_ptr<CacherBase> {
+
+        // Register by type_index
+        m_globalFactories[typeIndex] = []() -> std::unique_ptr<CacherBase> {
             return std::make_unique<CacherT>();
         };
         m_globalNames[typeIndex] = name;
         m_deviceDependency[typeIndex] = isDeviceDependent;
+
+        // ALSO register by name for future deserialization
+        std::string nameStr(name);
+        m_nameToFactory[nameStr] = []() -> std::unique_ptr<CacherBase> {
+            return std::make_unique<CacherT>();
+        };
+        m_nameToDeviceDependency[nameStr] = isDeviceDependent;
+
+        std::cout << "[MainCacher::RegisterCacher] Registered " << name
+                  << (isDeviceDependent ? " (device-dependent)" : " (global)") << std::endl;
     }
 
     /**
@@ -164,6 +175,21 @@ public:
             // Store in device registry
             std::lock_guard deviceLock(m_deviceRegistriesMutex);
             deviceRegistry.m_deviceCachers.emplace_back(std::move(newCacher));
+
+            // Lazy deserialization: Load from disk if cache file exists
+            std::string cacheName(typedCacher->name());
+            std::filesystem::path cacheDir = std::filesystem::path("cache") / "devices" / deviceRegistry.GetDeviceIdentifier().GetDescription();
+            std::filesystem::path cacheFile = cacheDir / (cacheName + ".cache");
+
+            if (std::filesystem::exists(cacheFile)) {
+                std::cout << "[MainCacher] Lazy-loading cache for " << cacheName << " from " << cacheFile << std::endl;
+                bool loaded = typedCacher->DeserializeFromFile(cacheFile, deviceRegistry.GetDevice());
+                if (loaded) {
+                    std::cout << "[MainCacher] Successfully lazy-loaded " << cacheName << std::endl;
+                } else {
+                    std::cout << "[MainCacher] Failed to lazy-load " << cacheName << " (will recreate)" << std::endl;
+                }
+            }
         }
 
         if (typedCacher && !typedCacher->IsInitialized()) {
@@ -544,6 +570,22 @@ public:
     }
 
     /**
+     * @brief Create a cacher instance by name (for manifest-based deserialization)
+     *
+     * @param name Cacher name from manifest file
+     * @param device VulkanDevice pointer (required for device-dependent cachers, ignored otherwise)
+     * @param registry DeviceRegistry reference to add the cacher to (for device-dependent cachers)
+     * @return Pointer to created cacher, or nullptr if name not registered
+     *
+     * @note This enables LoadAll to create cachers before deserializing from disk
+     */
+    CacherBase* CreateCacherByName(
+        const std::string& name,
+        ::Vixen::Vulkan::Resources::VulkanDevice* device,
+        DeviceRegistry& registry
+    );
+
+    /**
      * @brief Get or create a device registry for the specified device
      *
      * This should be called by DeviceNode during Compile() to register the device
@@ -680,6 +722,10 @@ private:
     std::unordered_map<std::type_index, GlobalFactory> m_globalFactories;
     std::unordered_map<std::type_index, std::string_view> m_globalNames;
     std::unordered_map<std::type_index, bool> m_deviceDependency;  // true = device-dependent, false = device-independent
+
+    // Name-based registration (enables manifest-based deserialization)
+    std::unordered_map<std::string, GlobalFactory> m_nameToFactory;
+    std::unordered_map<std::string, bool> m_nameToDeviceDependency;
     
     // Global device-independent caches
     std::unordered_map<std::type_index, std::unique_ptr<CacherBase>> m_globalCachers;

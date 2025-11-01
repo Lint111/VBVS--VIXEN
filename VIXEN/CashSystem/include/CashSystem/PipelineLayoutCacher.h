@@ -54,6 +54,11 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<PipelineLayoutWrapper> GetOrCreate(const PipelineLayoutCreateParams& ci);
 
+    // Serialization (not implemented for layouts)
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "PipelineLayoutCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<PipelineLayoutWrapper> Create(const PipelineLayoutCreateParams& ci) override;
@@ -61,11 +66,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization (not implemented for layouts)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "PipelineLayoutCacher"; }
 };
 
 } // namespace CashSystem

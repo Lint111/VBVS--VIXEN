@@ -117,6 +117,11 @@ public:
         VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL
     );
 
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "PipelineCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<PipelineWrapper> Create(const PipelineCreateParams& ci) override;
@@ -124,11 +129,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "PipelineCacher"; }
 
 private:
     // Helper methods

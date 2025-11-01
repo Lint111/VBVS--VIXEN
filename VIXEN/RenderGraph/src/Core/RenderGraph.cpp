@@ -492,8 +492,8 @@ VkResult RenderGraph::RenderFrame() {
             node->SetState(NodeState::Complete);
 
             // Check if this node was marked for recompilation during execution
-            if (node->deferredRecompile) {
-                node->deferredRecompile = false;
+            if (node->HasDeferredRecompile()) {
+                node->ClearDeferredRecompile();
                 // Find the handle and mark as dirty
                 for (size_t i = 0; i < instances.size(); ++i) {
                     if (instances[i].get() == node) {

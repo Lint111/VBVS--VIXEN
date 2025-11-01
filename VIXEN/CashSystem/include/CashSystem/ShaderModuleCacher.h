@@ -76,6 +76,11 @@ public:
         const std::string& shaderName = ""
     );
 
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "ShaderModuleCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<ShaderModuleWrapper> Create(const ShaderModuleCreateParams& ci) override;
@@ -83,11 +88,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "ShaderModuleCacher"; }
 
 private:
     // Helper methods

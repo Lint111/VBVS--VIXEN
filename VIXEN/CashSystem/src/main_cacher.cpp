@@ -101,16 +101,62 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(const DeviceIdentifier& de
     return newIt->second;
 }
 
-bool MainCacher::SaveGlobalCaches(const std::filesystem::path& directory) const {
-    std::shared_lock lock(m_globalRegistryMutex);
-    // TODO: Implement global cache serialization
-    return true;
-}
+CacherBase* MainCacher::CreateCacherByName(
+    const std::string& name,
+    ::Vixen::Vulkan::Resources::VulkanDevice* device,
+    DeviceRegistry& registry
+) {
+    std::cout << "[MainCacher::CreateCacherByName] Creating cacher: " << name << std::endl;
 
-bool MainCacher::LoadGlobalCaches(const std::filesystem::path& directory) {
     std::lock_guard lock(m_globalRegistryMutex);
-    // TODO: Implement global cache deserialization
-    return true;
+
+    // Debug: print all registered names
+    std::cout << "[MainCacher::CreateCacherByName] Registered cachers: ";
+    for (const auto& [regName, factory] : m_nameToFactory) {
+        std::cout << regName << " ";
+    }
+    std::cout << std::endl;
+
+    // Look up factory by name
+    auto factoryIt = m_nameToFactory.find(name);
+    if (factoryIt == m_nameToFactory.end()) {
+        std::cerr << "[MainCacher::CreateCacherByName] Unknown cacher name: " << name << std::endl;
+        std::cerr << "[MainCacher::CreateCacherByName] Available names: " << m_nameToFactory.size() << std::endl;
+        return nullptr;
+    }
+
+    // Check if device-dependent
+    auto dependencyIt = m_nameToDeviceDependency.find(name);
+    if (dependencyIt == m_nameToDeviceDependency.end()) {
+        std::cerr << "[MainCacher::CreateCacherByName] No dependency info for: " << name << std::endl;
+        return nullptr;
+    }
+
+    bool isDeviceDependent = dependencyIt->second;
+
+    // Verify device availability for device-dependent cachers
+    if (isDeviceDependent && !device) {
+        std::cerr << "[MainCacher::CreateCacherByName] Device-dependent cacher requires device: " << name << std::endl;
+        return nullptr;
+    }
+
+    // Create cacher instance
+    auto newCacher = factoryIt->second();
+    if (!newCacher) {
+        std::cerr << "[MainCacher::CreateCacherByName] Factory returned null for: " << name << std::endl;
+        return nullptr;
+    }
+
+    // Initialize with device (required before DeserializeFromFile)
+    newCacher->Initialize(device);
+    std::cout << "[MainCacher::CreateCacherByName] Initialized cacher: " << name << std::endl;
+
+    // Store in device registry
+    CacherBase* cacherPtr = newCacher.get();
+    registry.m_deviceCachers.emplace_back(std::move(newCacher));
+
+    std::cout << "[MainCacher::CreateCacherByName] Created and registered: " << name << std::endl;
+    return cacherPtr;
 }
 
 } // namespace CashSystem

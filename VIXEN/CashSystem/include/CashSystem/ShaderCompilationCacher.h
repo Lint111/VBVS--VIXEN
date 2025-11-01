@@ -68,19 +68,19 @@ public:
         params.compilerVersion = compilerVersion;
         params.compileFlags = compileFlags;
         params.sourceChecksum = ComputeSourceChecksum(sourcePath);
-        
+
         return GetOrCreate(params);
     }
+
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "ShaderCompilationCacher"; }
 
 protected:
     // TypedCacher implementation
     std::shared_ptr<CompiledShaderWrapper> Create(const ShaderCompilationParams& ci) override;
     std::uint64_t ComputeKey(const ShaderCompilationParams& ci) const override;
-    
-    // Serialization
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "ShaderCompilationCacher"; }
 
 private:
     // Helper methods

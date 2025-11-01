@@ -80,6 +80,11 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<RenderPassWrapper> GetOrCreate(const RenderPassCreateParams& ci);
 
+    // Serialization (render passes are not serializable - driver/GPU specific)
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "RenderPassCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<RenderPassWrapper> Create(const RenderPassCreateParams& ci) override;
@@ -87,11 +92,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization (render passes are not serializable - driver/GPU specific)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "RenderPassCacher"; }
 };
 
 } // namespace CashSystem

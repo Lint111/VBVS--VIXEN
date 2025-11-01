@@ -65,15 +65,15 @@ public:
         uint32_t maxSets = 1
     );
 
-protected:
-    // TypedCacher implementation
-    std::shared_ptr<DescriptorWrapper> Create(const DescriptorCreateParams& ci) override;
-    std::uint64_t ComputeKey(const DescriptorCreateParams& ci) const override;
-
     // Serialization
     bool SerializeToFile(const std::filesystem::path& path) const override;
     bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
     std::string_view name() const noexcept override { return "DescriptorCacher"; }
+
+protected:
+    // TypedCacher implementation
+    std::shared_ptr<DescriptorWrapper> Create(const DescriptorCreateParams& ci) override;
+    std::uint64_t ComputeKey(const DescriptorCreateParams& ci) const override;
 
 private:
     // Helper methods

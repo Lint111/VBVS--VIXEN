@@ -86,6 +86,11 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<DescriptorSetLayoutWrapper> GetOrCreate(const DescriptorSetLayoutCreateParams& ci);
 
+    // Serialization (not implemented for descriptor layouts)
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "DescriptorSetLayoutCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<DescriptorSetLayoutWrapper> Create(const DescriptorSetLayoutCreateParams& ci) override;
@@ -93,11 +98,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization (not implemented for descriptor layouts)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "DescriptorSetLayoutCacher"; }
 
 private:
     /**

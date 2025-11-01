@@ -34,12 +34,37 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Main Render Graph class
- * 
+ *
  * Orchestrates the entire render graph system:
  * - Graph construction
  * - Compilation and optimization
  * - Resource management
  * - Execution
+ *
+ * **THREAD SAFETY**: RenderGraph is **NOT thread-safe**.
+ *
+ * **Threading Model**:
+ * - All RenderGraph methods must be called from the **same thread** (main thread)
+ * - Graph construction (AddNode, ConnectNodes) must complete before execution begins
+ * - Execution (RenderFrame, Execute) must not be called concurrently with graph modification
+ * - LoopManager loops execute **sequentially**, not in parallel (single-threaded execution)
+ *
+ * **Rationale**:
+ * - Vulkan command buffer recording is single-threaded per command buffer
+ * - Node state transitions (Compile → Execute → Cleanup) are not atomic
+ * - Resource lifetime management assumes single-threaded ownership
+ * - EventBus message processing occurs sequentially during RenderFrame()
+ *
+ * **Future Work**:
+ * - Multi-threaded execution could be added via wave-based parallel dispatch (Phase D)
+ * - Requires dependency-based scheduling and per-node synchronization
+ * - Current design prioritizes simplicity and correctness over parallelism
+ *
+ * **Best Practices**:
+ * 1. Construct graph during initialization (single-threaded)
+ * 2. Call RenderFrame() from main thread only
+ * 3. Do NOT modify graph structure during execution (AddNode/ConnectNodes forbidden after first RenderFrame)
+ * 4. Event handlers triggered during execution run synchronously on main thread
  */
 class RenderGraph {
 public:

@@ -109,6 +109,11 @@ public:
     // Override to add cache hit/miss logging
     std::shared_ptr<MeshWrapper> GetOrCreate(const MeshCreateParams& ci);
 
+    // Serialization (mesh data can be serialized)
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "MeshCacher"; }
+
 protected:
     // TypedCacher implementation
     std::shared_ptr<MeshWrapper> Create(const MeshCreateParams& ci) override;
@@ -116,11 +121,6 @@ protected:
 
     // Resource cleanup
     void Cleanup() override;
-
-    // Serialization (mesh data can be serialized)
-    bool SerializeToFile(const std::filesystem::path& path) const override;
-    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
-    std::string_view name() const noexcept override { return "MeshCacher"; }
 
 private:
     // Helper functions

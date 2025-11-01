@@ -338,8 +338,7 @@ std::shared_ptr<TextureWrapper> TextureCacher::GetOrCreateTexture(
 }
 
 bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::cout << "[TextureCacher::SerializeToFile] Serializing " << m_entries.size()
-              << " texture configs to " << path << std::endl;
+    std::cout << "[TextureCacher::SerializeToFile] Serializing texture configs to " << path << std::endl;
 
     std::ofstream ofs(path, std::ios::binary);
     if (!ofs) {
@@ -347,16 +346,26 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
         return false;
     }
 
-    // Write entry count
     std::shared_lock rlock(m_lock);
-    uint32_t count = static_cast<uint32_t>(m_entries.size());
-    ofs.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
-    // Write each entry: key + metadata + pixel data (like ShaderModuleCacher saves SPIR-V)
+    // Count valid entries first
+    uint32_t validCount = 0;
     for (const auto& [key, entry] : m_entries) {
-        if (!entry.resource || entry.resource->pixelData.empty()) {
+        if (entry.resource) {
+            validCount++;
+        }
+    }
+
+    // Write valid entry count
+    ofs.write(reinterpret_cast<const char*>(&validCount), sizeof(validCount));
+
+    // Write each valid entry: key + metadata + pixel data (like ShaderModuleCacher saves SPIR-V)
+    for (const auto& [key, entry] : m_entries) {
+        if (!entry.resource) {
             continue;  // Skip invalid entries
         }
+
+        // NOTE: We serialize even if pixelData is empty - we can recreate from file path
 
         ofs.write(reinterpret_cast<const char*>(&key), sizeof(key));
 
@@ -395,7 +404,7 @@ bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
         ofs.write(reinterpret_cast<const char*>(&sampler->compareOp), sizeof(sampler->compareOp));
     }
 
-    std::cout << "[TextureCacher::SerializeToFile] Serialization complete" << std::endl;
+    std::cout << "[TextureCacher::SerializeToFile] Wrote " << validCount << " valid entries" << std::endl;
     return true;
 }
 

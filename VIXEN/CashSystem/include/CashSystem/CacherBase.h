@@ -6,11 +6,22 @@
 #include <filesystem>
 #include <any>
 
+// Forward declarations (must be outside CashSystem namespace)
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;
+}
+
 namespace CashSystem {
 
 class CacherBase {
 public:
     virtual ~CacherBase() = default;
+
+    // Initialize the cacher with device context (optional - device-independent cachers can ignore)
+    virtual void Initialize(Vixen::Vulkan::Resources::VulkanDevice* device) = 0;
+
+    // Check if the cacher has been initialized
+    virtual bool IsInitialized() const noexcept = 0;
 
     // Return true if an entry exists for key
     virtual bool Has(std::uint64_t key) const noexcept = 0;
