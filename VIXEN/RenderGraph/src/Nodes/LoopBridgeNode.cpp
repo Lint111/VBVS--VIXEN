@@ -9,6 +9,10 @@ static constexpr NodeTypeId LOOP_BRIDGE_NODE_TYPE_ID = 110;
 
 LoopBridgeNodeType::LoopBridgeNodeType(const std::string& typeName)
     : NodeType(typeName) {
+    // Populate schema from config
+    LoopBridgeNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 }
 
 std::unique_ptr<NodeInstance> LoopBridgeNodeType::CreateInstance(
@@ -66,6 +70,15 @@ void LoopBridgeNode::Execute(VkCommandBuffer commandBuffer) {
     // Publish loop state to graph
     Out(LoopBridgeNodeConfig::LOOP_OUT, loopRef);
     Out(LoopBridgeNodeConfig::SHOULD_EXECUTE, loopRef->shouldExecuteThisFrame);
+
+    // Debug logging for initial testing
+    static uint64_t lastLoggedStep = 0;
+    if (loopRef->stepCount != lastLoggedStep && loopRef->shouldExecuteThisFrame) {
+        NODE_LOG_DEBUG("Loop " + std::to_string(loopID) + " executing step " +
+                      std::to_string(loopRef->stepCount) + " (dt=" +
+                      std::to_string(loopRef->deltaTime * 1000.0) + "ms)");
+        lastLoggedStep = loopRef->stepCount;
+    }
 }
 
 void LoopBridgeNode::CleanupImpl() {

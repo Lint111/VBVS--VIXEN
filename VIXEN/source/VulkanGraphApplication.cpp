@@ -425,8 +425,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
+    NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 15 node instances (Phase 0.4: added LoopBridgeNode)");
+    mainLogger->Info("Created 16 node instances (Phase 0.4: added LoopBridgeNode + ConstantNode)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -504,11 +505,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    // Phase 0.4: Loop bridge parameters
-    auto* physicsLoop = static_cast<LoopBridgeNode*>(renderGraph->GetInstance(physicsLoopBridge));
-    physicsLoop->SetParameter("LOOP_ID", physicsLoopID);
+    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode)
+    auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
+    loopIDConst->SetValue<uint32_t>(physicsLoopID);
 
-    mainLogger->Info("Configured all node parameters (including PhysicsLoop bridge)");
+    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID constant)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -673,6 +674,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
 
     // MVP: Shader connection happens in CompileRenderGraph (after device creation)
+
+    // --- Phase 0.4: Loop System Connections ---
+    batch.Connect(physicsLoopIDConstant, ConstantNodeConfig::OUTPUT,
+                  physicsLoopBridge, LoopBridgeNodeConfig::LOOP_ID);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

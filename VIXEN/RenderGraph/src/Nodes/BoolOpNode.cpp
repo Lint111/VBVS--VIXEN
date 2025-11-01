@@ -8,6 +8,10 @@ static constexpr NodeTypeId BOOL_OP_NODE_TYPE_ID = 111;
 
 BoolOpNodeType::BoolOpNodeType(const std::string& typeName)
     : NodeType(typeName) {
+    // Populate schema from config
+    BoolOpNodeConfig config;
+    inputSchema = config.GetInputVector();
+    outputSchema = config.GetOutputVector();
 }
 
 std::unique_ptr<NodeInstance> BoolOpNodeType::CreateInstance(
