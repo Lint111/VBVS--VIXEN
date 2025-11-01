@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/PerFrameResources.h"
 #include "GeometryRenderNodeConfig.h"
 #include <memory>
 #include <vector>
@@ -69,14 +70,19 @@ private:
     // Clear values
     VkClearValue clearColor{};
     VkClearValue clearDepthStencil{};
-    
-    // Command buffer management
-    std::vector<VkCommandBuffer> commandBuffers;
+
+    // Phase 0.1: Per-frame command buffer management
+    // Command buffers are allocated per swapchain image to prevent race conditions.
+    // Recording strategy: Dynamic (re-recorded every frame in Execute())
+    // Note: This is correct but suboptimal. Phase 0.3 will implement conditional
+    // re-recording (only when dirty) for better performance.
+    std::vector<VkCommandBuffer> commandBuffers;  // One per swapchain image
     VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Synchronization (one semaphore per swapchain image)
-    std::vector<VkSemaphore> renderCompleteSemaphores;
+    // Phase 0.1: Per-frame synchronization
+    // One render-complete semaphore per swapchain image for GPU-GPU sync
+    std::vector<VkSemaphore> renderCompleteSemaphores;  // One per swapchain image
 };
 
 } // namespace Vixen::RenderGraph

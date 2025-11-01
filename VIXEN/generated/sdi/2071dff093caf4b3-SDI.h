@@ -3,8 +3,7 @@
 // ============================================================================
 //
 // UUID: 2071dff093caf4b3
-// Program: Draw_Shader
-// Generated: 2025-10-31 15:02:46
+// Generated: 2025-11-01 10:47:01
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -17,9 +16,24 @@
 
 #include <cstdint>
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace 2071dff093caf4b3 {
+namespace _2071dff093caf4b3 {
+
+// ============================================================================
+// Shader Struct Definitions
+// ============================================================================
+
+/**
+ * @brief bufferVals
+ * Size: 64 bytes
+ * Alignment: 16 bytes
+ */
+struct bufferVals {
+    // Offset: 0 bytes
+    glm::mat4 mvp;
+};
 
 // ============================================================================
 // Descriptor Bindings
@@ -39,6 +53,7 @@ namespace Set0 {
         static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_VERTEX_BIT;
+        using DataType = bufferVals;
     };
 
     /**
@@ -62,6 +77,18 @@ namespace Set0 {
 // ============================================================================
 
 /**
+ * @brief colorBlock
+ * Size: 16 bytes
+ * Alignment: 16 bytes
+ */
+struct colorBlock {
+    // Offset: 0 bytes
+    int32_t constColorIndex;
+    // Offset: 4 bytes
+    float mixerValue;
+};
+
+/**
  * @brief pushConstantsColorBlock
  * Offset: 0 bytes
  * Size: 16 bytes
@@ -71,7 +98,7 @@ struct pushConstantsColorBlock {
     static constexpr uint32_t OFFSET = 0;
     static constexpr uint32_t SIZE = 16;
     static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_ALL;
-    using DataType = ;
+    using DataType = colorBlock;
 };
 
 // ============================================================================
@@ -87,7 +114,7 @@ namespace VertexInput {
      */
     struct inUV {
         static constexpr uint32_t LOCATION = 1;
-        using DataType = dvec2;
+        using DataType = glm::dvec2;
     };
 
     /**
@@ -97,7 +124,7 @@ namespace VertexInput {
      */
     struct pos {
         static constexpr uint32_t LOCATION = 0;
-        using DataType = dvec4;
+        using DataType = glm::dvec4;
     };
 
 } // namespace VertexInput

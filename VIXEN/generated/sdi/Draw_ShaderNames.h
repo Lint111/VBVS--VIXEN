@@ -4,7 +4,7 @@
 //
 // Program: Draw_Shader
 // UUID: 2071dff093caf4b3
-// Generated: 2025-10-31 15:02:46
+// Generated: 2025-11-01 10:47:01
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -22,7 +22,7 @@
 namespace Draw_Shader {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::2071dff093caf4b3;
+namespace SDI = ShaderInterface::_2071dff093caf4b3;
 
 // ============================================================================
 // Descriptor Binding Constants
@@ -39,5 +39,11 @@ using tex_t = SDI::Set0::tex;
 constexpr uint32_t tex_SET = tex_t::SET;
 constexpr uint32_t tex_BINDING = tex_t::BINDING;
 constexpr VkDescriptorType tex_TYPE = tex_t::TYPE;
+
+// ============================================================================
+// UBO/SSBO Struct Type Aliases
+// ============================================================================
+
+using bufferVals = SDI::bufferVals;
 
 } // namespace Draw_Shader
