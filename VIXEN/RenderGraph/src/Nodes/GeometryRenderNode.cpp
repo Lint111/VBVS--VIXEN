@@ -135,17 +135,22 @@ void GeometryRenderNode::ExecuteImpl() {
     const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
     VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
 
-    // Phase 0.5: WORKING SOLUTION - Both indexed by FLIGHT
-    // - imageAvailable: Indexed by FRAME index (per-flight)
-    // - renderComplete: Indexed by FRAME index (per-flight)
-    // Per-flight semaphores with MAX_FRAMES_IN_FLIGHT=4 ensures no reuse collisions
+    // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+    //
+    // - imageAvailable: Indexed by FRAME index (per-flight) - tracks CPU-GPU pacing
+    // - renderComplete: Indexed by IMAGE index (per-image) - tracks presentation engine usage
+    //
+    // This prevents "semaphore still in use by swapchain" errors because each image
+    // gets its own renderComplete semaphore that won't be reused until that specific
+    // image is acquired again.
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
-    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[currentFrameIndex];
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
 
     static int logCounter = 0;
     if (logCounter++ < 20) {
         NODE_LOG_INFO("Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex) +
-                      ": using renderComplete[" + std::to_string(currentFrameIndex) + "]");
+                      ": using imageAvailable[" + std::to_string(currentFrameIndex) + "], renderComplete[" + std::to_string(imageIndex) + "]");
     }
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)

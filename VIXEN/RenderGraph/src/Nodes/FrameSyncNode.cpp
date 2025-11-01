@@ -86,16 +86,20 @@ void FrameSyncNode::CompileImpl() {
                       + std::to_string(reinterpret_cast<uint64_t>(frameSyncData[i].inFlightFence)));
     }
 
-    // Phase 0.5: WORKING SOLUTION - Both semaphore types per-FLIGHT
+    // Phase 0.6: CORRECT per Vulkan validation guide
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     //
-    // While the Vulkan guide recommends per-IMAGE renderComplete semaphores, that requires
-    // MAX_FRAMES_IN_FLIGHT > MAX_SWAPCHAIN_IMAGES to avoid reuse collisions.
+    // CRITICAL: renderComplete MUST be per-IMAGE, not per-FLIGHT!
     //
-    // Simpler solution: Use per-FLIGHT for BOTH semaphore types.
-    // The fence already tracks per-flight resource availability, so semaphores match that granularity.
+    // Reason: vkQueuePresentKHR holds the renderComplete semaphore until the presentation
+    // engine finishes displaying the image. This can take longer than GPU rendering.
+    // Fences only track GPU work completion, NOT presentation completion.
+    //
+    // - imageAvailable: per-FLIGHT (tracks frame pacing)
+    // - renderComplete: per-IMAGE (tracks presentation engine usage per swapchain image)
 
     imageAvailableSemaphores.resize(flightCount);  // Per-FLIGHT for acquisition
-    renderCompleteSemaphores.resize(flightCount);  // Per-FLIGHT for presentation (WORKING FIX)
+    renderCompleteSemaphores.resize(imageCount);   // Per-IMAGE for presentation (CORRECT FIX)
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -107,10 +111,10 @@ void FrameSyncNode::CompileImpl() {
         }
     }
 
-    // Create per-FLIGHT render complete semaphores (matching fence granularity)
-    for (uint32_t i = 0; i < flightCount; i++) {
+    // Create per-IMAGE render complete semaphores (one per swapchain image)
+    for (uint32_t i = 0; i < imageCount; i++) {
         if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create renderComplete semaphore for flight " + std::to_string(i));
+            throw std::runtime_error("Failed to create renderComplete semaphore for image " + std::to_string(i));
         }
     }
 
@@ -121,13 +125,13 @@ void FrameSyncNode::CompileImpl() {
     Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
     Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
-    // Output semaphore arrays (both per-FLIGHT)
+    // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
     Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
     Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
 
     NODE_LOG_INFO("Synchronization primitives created successfully");
-    NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores");
-    NODE_LOG_INFO("Created " + std::to_string(renderCompleteSemaphores.size()) + " renderComplete semaphores");
+    NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
+    NODE_LOG_INFO("Created " + std::to_string(renderCompleteSemaphores.size()) + " renderComplete semaphores (per-image)");
 }
 
 void FrameSyncNode::ExecuteImpl() {

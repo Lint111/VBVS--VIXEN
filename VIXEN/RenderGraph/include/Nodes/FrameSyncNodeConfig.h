@@ -17,11 +17,17 @@ namespace FrameSyncNodeCounts {
 /**
  * @brief Pure constexpr resource configuration for FrameSyncNode
  *
- * Phase 0.5: Two-tier synchronization per Vulkan guide
+ * Phase 0.6: CORRECT two-tier synchronization per Vulkan validation guide
+ * https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+ *
  * - Creates MAX_FRAMES_IN_FLIGHT fences for CPU-GPU sync
- * - Creates MAX_FRAMES_IN_FLIGHT imageAvailable semaphores (per-FLIGHT for acquisition)
- * - Creates MAX_SWAPCHAIN_IMAGES renderComplete semaphores (per-IMAGE for presentation)
- * - CRITICAL: Acquisition=per-FLIGHT, Present=per-IMAGE (prevents reuse violations)
+ * - Creates MAX_FRAMES_IN_FLIGHT imageAvailable semaphores (per-FLIGHT)
+ * - Creates MAX_SWAPCHAIN_IMAGES renderComplete semaphores (per-IMAGE)
+ *
+ * CRITICAL INDEXING:
+ * - Acquisition semaphores: Indexed by FRAME (currentFrameIndex)
+ * - Render complete semaphores: Indexed by IMAGE (currentImageIndex)
+ * - Prevents "semaphore still in use by swapchain" errors
  *
  * Inputs: 1 (VULKAN_DEVICE)
  * Outputs: 4 (CURRENT_FRAME_INDEX, IN_FLIGHT_FENCE, IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY)

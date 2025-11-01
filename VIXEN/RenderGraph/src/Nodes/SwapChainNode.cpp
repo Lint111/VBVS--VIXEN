@@ -257,9 +257,13 @@ void SwapChainNode::ExecuteImpl() {
         throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
     }
 
-    // Phase 0.5: Two-tier semaphore indexing (Vulkan guide pattern)
-    // - imageAvailable: Indexed by FRAME INDEX (per-flight)
-    // - renderComplete: Indexed by IMAGE INDEX (per-image) - used later after acquisition
+    // Phase 0.6: CORRECT two-tier semaphore indexing (Vulkan guide pattern)
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+    //
+    // - imageAvailable: Indexed by FRAME INDEX (per-flight) - used for acquisition
+    // - renderComplete: Indexed by IMAGE INDEX (per-image) - used by GeometryRender/Present
+    //
+    // This indexing is done in GeometryRenderNode after we know both frame and image indices.
 
     uint32_t currentFrameIndex = In(SwapChainNodeConfig::CURRENT_FRAME_INDEX);
 
@@ -280,8 +284,8 @@ void SwapChainNode::ExecuteImpl() {
 
     NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
                   + ", frameIdx=" + std::to_string(currentFrameIndex)
-                  + ", acquireSem=0x" + std::to_string(reinterpret_cast<uint64_t>(acquireSemaphore))
-                  + ", renderCompleteSem=0x" + std::to_string(reinterpret_cast<uint64_t>(renderCompleteSemaphores[currentImageIndex])));
+                  + ", acquireSem[" + std::to_string(currentFrameIndex) + "]=0x" + std::to_string(reinterpret_cast<uint64_t>(acquireSemaphore))
+                  + ", renderCompleteSem[" + std::to_string(currentImageIndex) + "]=0x" + std::to_string(reinterpret_cast<uint64_t>(renderCompleteSemaphores[currentImageIndex])));
 
     currentFrame++;
 }
