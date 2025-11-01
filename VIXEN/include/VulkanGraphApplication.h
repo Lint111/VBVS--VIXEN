@@ -126,6 +126,9 @@ private:
     NodeHandle deviceNodeHandle;                     // Cached for pre-compilation
     NodeHandle pipelineNodeHandle;                   // Cached for pipeline access (if needed)
 
+    // ====== Phase 0.4: Loop System ======
+    uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz
+
     // NOTE: Command buffers, semaphores, and all Vulkan resources
     // are managed by the render graph nodes, not the application
 };

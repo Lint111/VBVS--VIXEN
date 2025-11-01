@@ -7,9 +7,7 @@ namespace Vixen::RenderGraph {
 static constexpr NodeTypeId BOOL_OP_NODE_TYPE_ID = 111;
 
 BoolOpNodeType::BoolOpNodeType(const std::string& typeName)
-    : NodeType(BOOL_OP_NODE_TYPE_ID, typeName) {
-    // Set node schema from config
-    SetSchema(BoolOpNodeConfig());
+    : NodeType(typeName) {
 }
 
 std::unique_ptr<NodeInstance> BoolOpNodeType::CreateInstance(
@@ -32,8 +30,8 @@ BoolOpNode::~BoolOpNode() {
 void BoolOpNode::Setup() {
     NODE_LOG_DEBUG("BoolOpNode::Setup()");
 
-    // Read OPERATION parameter
-    operation = GetParameter<BoolOp>("OPERATION");
+    // Read OPERATION from input (connected to ConstantNode)
+    operation = In<BoolOp>(BoolOpNodeConfig::OPERATION);
 }
 
 void BoolOpNode::Compile() {
@@ -59,7 +57,7 @@ void BoolOpNode::Execute(VkCommandBuffer commandBuffer) {
     std::vector<bool> inputs;
     inputs.reserve(inputCount);
     for (size_t i = 0; i < inputCount; ++i) {
-        inputs.push_back(InArray(BoolOpNodeConfig::INPUTS, static_cast<uint32_t>(i), SlotRole::ExecuteOnly));
+        inputs.push_back(In<bool>(BoolOpNodeConfig::INPUTS, static_cast<uint32_t>(i)));
     }
 
     // Perform boolean operation across all inputs

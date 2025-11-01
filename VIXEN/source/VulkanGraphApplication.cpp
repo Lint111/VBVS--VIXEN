@@ -6,6 +6,7 @@
 #include "VulkanShader.h"  // MVP: Direct shader loading
 #include "wrapper.h"  // MVP: File reading utility
 #include "CashSystem/MainCacher.h"  // Cache system initialization
+#include "Core/LoopManager.h"  // Phase 0.4: Loop system
 
 // Global VkInstance for nodes to access (temporary Phase 1 hack)
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
@@ -29,6 +30,8 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
 #include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
 #include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
+#include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
+#include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -126,6 +129,16 @@ void VulkanGraphApplication::Initialize() {
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
+
+    // Phase 0.4: Register loops with the graph
+    // Physics loop at 60Hz with multiple-step catchup
+    physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
+        1.0 / 60.0,  // 60Hz timestep
+        "PhysicsLoop",
+        LoopCatchupMode::MultipleSteps,
+        0.25  // Max 250ms catchup
+    });
+    mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
@@ -363,8 +376,10 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<ShaderConstantNodeType>());  // MVP: VulkanShader* injection
     nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
+    nodeRegistry->RegisterNodeType(std::make_unique<LoopBridgeNodeType>());  // Phase 0.4: Loop system
+    nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
 
-    mainLogger->Info("Successfully registered 17 node types");
+    mainLogger->Info("Successfully registered 19 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -408,7 +423,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
-    mainLogger->Info("Created 14 node instances (Phase 0.2: added FrameSyncNode)");
+    // --- Phase 0.4: Loop System Nodes ---
+    NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
+
+    mainLogger->Info("Created 15 node instances (Phase 0.4: added LoopBridgeNode)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -486,7 +504,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    mainLogger->Info("Configured all node parameters");
+    // Phase 0.4: Loop bridge parameters
+    auto* physicsLoop = static_cast<LoopBridgeNode*>(renderGraph->GetInstance(physicsLoopBridge));
+    physicsLoop->SetParameter("LOOP_ID", physicsLoopID);
+
+    mainLogger->Info("Configured all node parameters (including PhysicsLoop bridge)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API

@@ -8,9 +8,7 @@ namespace Vixen::RenderGraph {
 static constexpr NodeTypeId LOOP_BRIDGE_NODE_TYPE_ID = 110;
 
 LoopBridgeNodeType::LoopBridgeNodeType(const std::string& typeName)
-    : NodeType(LOOP_BRIDGE_NODE_TYPE_ID, typeName) {
-    // Set node schema from config
-    SetSchema(LoopBridgeNodeConfig());
+    : NodeType(typeName) {
 }
 
 std::unique_ptr<NodeInstance> LoopBridgeNodeType::CreateInstance(
@@ -33,14 +31,14 @@ LoopBridgeNode::~LoopBridgeNode() {
 void LoopBridgeNode::Setup() {
     NODE_LOG_DEBUG("LoopBridgeNode::Setup()");
 
-    // Read LOOP_ID parameter
-    loopID = GetParameter<uint32_t>("LOOP_ID");
+    // Read LOOP_ID from input (connected to ConstantNode)
+    loopID = In<uint32_t>(LoopBridgeNodeConfig::LOOP_ID);
 
-    // Access graph-owned LoopManager (no input slot needed)
+    // Access graph-owned LoopManager
     RenderGraph* graph = GetOwningGraph();
     if (graph) {
         loopManager = &graph->GetLoopManager();
-        NODE_LOG_DEBUG("Connected to graph LoopManager");
+        NODE_LOG_DEBUG("Connected to graph LoopManager with LOOP_ID: " + std::to_string(loopID));
     } else {
         NODE_LOG_ERROR("LoopBridgeNode has no owning graph");
     }

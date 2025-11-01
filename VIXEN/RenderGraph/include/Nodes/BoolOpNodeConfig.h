@@ -17,7 +17,7 @@ enum class BoolOp : uint8_t {
 
 // Compile-time slot counts
 namespace BoolOpNodeCounts {
-    static constexpr size_t INPUTS = 1;   // INPUTS (single slot, multiple connections)
+    static constexpr size_t INPUTS = 2;   // OPERATION, INPUTS (array slot with multiple connections)
     static constexpr size_t OUTPUTS = 1;  // OUTPUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -29,34 +29,34 @@ namespace BoolOpNodeCounts {
  * Enables graph-side composition of loop execution logic with N inputs
  *
  * Example: Node executes when ALL loops active (physics AND network AND AI)
- *   physicsLoop.SHOULD_EXECUTE → INPUTS[0]
- *   networkLoop.SHOULD_EXECUTE → INPUTS[1]
- *   aiLoop.SHOULD_EXECUTE → INPUTS[2]
- *   OPERATION = BoolOp::AND
+ *   ConstantNode(BoolOp::AND) → OPERATION
+ *   physicsLoop.SHOULD_EXECUTE → INPUTS (connection 0)
+ *   networkLoop.SHOULD_EXECUTE → INPUTS (connection 1)
+ *   aiLoop.SHOULD_EXECUTE → INPUTS (connection 2)
  *   OUTPUT → customNode.SHOULD_EXECUTE
  *
- * Inputs: 1 array slot (INPUTS: bool[], supports N connections)
+ * Inputs: 2 (OPERATION: BoolOp from ConstantNode, INPUTS: bool[] array slot)
  * Outputs: 1 (OUTPUT: bool)
- * Parameters: OPERATION (BoolOp)
  */
 CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
                       BoolOpNodeCounts::INPUTS,
                       BoolOpNodeCounts::OUTPUTS,
                       BoolOpNodeCounts::ARRAY_MODE) {
-    // Compile-time input slot definition (array slot)
-    CONSTEXPR_INPUT(INPUTS, bool, 0, false);
+    // Compile-time input slot definitions
+    CONSTEXPR_INPUT(OPERATION, BoolOp, 0, false);
+    CONSTEXPR_INPUT(INPUTS, bool, 1, false);  // Array slot - multiple connections
 
     // Compile-time output slot definition
     CONSTEXPR_OUTPUT(OUTPUT, bool, 0, false);
 
-    // Parameter definition
-    PARAM_DEFINITION(OPERATION, BoolOp);
-
     // Constructor for runtime descriptor initialization
     BoolOpNodeConfig() {
-        // Initialize input descriptor (array slot)
+        // Initialize input descriptors
+        HandleDescriptor boolOpDesc{"BoolOp"};
+        INIT_INPUT_DESC(OPERATION, "operation", ResourceLifetime::Transient, boolOpDesc);
+
         HandleDescriptor boolDesc{"bool"};
-        INIT_INPUT_DESC(INPUTS, "inputs", ResourceLifetime::Transient, boolDesc);
+        INIT_INPUT_DESC(INPUTS, "inputs", ResourceLifetime::Transient, boolDesc);  // Array slot
 
         // Initialize output descriptor
         INIT_OUTPUT_DESC(OUTPUT, "output", ResourceLifetime::Transient, boolDesc);
@@ -67,12 +67,15 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
     static_assert(OUTPUT_COUNT == BoolOpNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == BoolOpNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(INPUTS_Slot::index == 0, "INPUTS must be at index 0");
+    static_assert(OPERATION_Slot::index == 0, "OPERATION must be at index 0");
+    static_assert(INPUTS_Slot::index == 1, "INPUTS must be at index 1");
     static_assert(OUTPUT_Slot::index == 0, "OUTPUT must be at index 0");
+    static_assert(!OPERATION_Slot::nullable, "OPERATION is required");
     static_assert(!INPUTS_Slot::nullable, "INPUTS is required");
     static_assert(!OUTPUT_Slot::nullable, "OUTPUT is not nullable");
 
     // Type validations
+    static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOp>);
     static_assert(std::is_same_v<INPUTS_Slot::Type, bool>);
     static_assert(std::is_same_v<OUTPUT_Slot::Type, bool>);
 };
