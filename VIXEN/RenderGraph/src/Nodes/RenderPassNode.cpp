@@ -115,8 +115,23 @@ void RenderPassNode::CompileImpl() {
     cacheParams.srcAccessMask = 0;
     cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+    // Register RenderPassCacher if not already registered
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    if (!mainCacher.IsRegistered(std::type_index(typeid(CashSystem::RenderPassWrapper)))) {
+        NODE_LOG_INFO("Registering RenderPassCacher with MainCacher");
+        mainCacher.RegisterCacher<
+            CashSystem::RenderPassCacher,
+            CashSystem::RenderPassWrapper,
+            CashSystem::RenderPassCreateParams
+        >(
+            std::type_index(typeid(CashSystem::RenderPassWrapper)),
+            "RenderPass",
+            true  // device-dependent
+        );
+    }
+
     // Get or create cached render pass
-    auto* cacher = GetOwningGraph()->GetMainCacher().GetCacher<
+    auto* cacher = mainCacher.GetCacher<
         CashSystem::RenderPassCacher,
         CashSystem::RenderPassWrapper,
         CashSystem::RenderPassCreateParams
