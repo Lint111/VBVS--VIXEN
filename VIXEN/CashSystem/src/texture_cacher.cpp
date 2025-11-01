@@ -201,11 +201,15 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
         // Store Vulkan handles
         wrapper.image = textureData.image;
         wrapper.view = textureData.view;
-        // Note: Sampler is managed by SamplerCacher via samplerWrapper, ignore textureData.sampler
         wrapper.memory = textureData.mem;
         wrapper.width = textureData.textureWidth;
         wrapper.height = textureData.textureHeight;
         wrapper.mipLevels = textureData.minMapLevels;
+
+        // Destroy the sampler created by TextureLoader - we use SamplerCacher's sampler instead
+        if (textureData.sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(devicePtr->device, textureData.sampler, nullptr);
+        }
 
         // Cache decoded pixel data - this is the KEY BENEFIT of TextureCacher
         // For now, we don't have direct access to pixel data from TextureLoader
