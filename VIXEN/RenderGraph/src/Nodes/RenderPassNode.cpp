@@ -52,7 +52,7 @@ RenderPassNode::~RenderPassNode() {
 }
 
 void RenderPassNode::SetupImpl() {
-    VulkanDevicePtr devicePtr = In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "RenderPassNode: VkDevice input is null";
@@ -70,14 +70,14 @@ void RenderPassNode::CompileImpl() {
     NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Get swapchain info bundle and extract format
-    SwapChainPublicVariables* swapchainInfo = In(RenderPassNodeConfig::SWAPCHAIN_INFO);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(RenderPassNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("RenderPassNode: swapchain info bundle is null");
     }
     VkFormat colorFormat = swapchainInfo->Format;
 
     // Get depth format directly
-    VkFormat depthFormat = In(RenderPassNodeConfig::DEPTH_FORMAT);
+    VkFormat depthFormat = ctx.In(RenderPassNodeConfig::DEPTH_FORMAT);
 
     // Get typed enum parameters
     AttachmentLoadOp colorLoadOp = GetParameterValue<AttachmentLoadOp>(
@@ -150,13 +150,13 @@ void RenderPassNode::CompileImpl() {
     renderPass = cachedRenderPassWrapper->renderPass;
 
     // Set typed outputs
-    Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
-    Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(RenderPassNodeConfig::RENDER_PASS, renderPass);
+    ctx.Out(RenderPassNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
-void RenderPassNode::ExecuteImpl(uint32_t taskIndex) {
+void RenderPassNode::ExecuteImpl(TaskContext& ctx) {
     // No-op - render pass is created in Compile phase
 }
 

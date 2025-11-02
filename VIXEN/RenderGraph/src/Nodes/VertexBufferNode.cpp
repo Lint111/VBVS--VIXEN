@@ -51,7 +51,7 @@ VertexBufferNode::~VertexBufferNode() {
 
 void VertexBufferNode::SetupImpl() {
     // Read and validate device input
-    VulkanDevicePtr devicePtr = In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
     }
@@ -147,20 +147,20 @@ void VertexBufferNode::CompileImpl() {
     SetupVertexInputDescription();
 
     // Set outputs
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
     NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
-    Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    ctx.Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
     if (hasIndices) {
         NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
-        Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
+        ctx.Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
     }
-    Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl(uint32_t taskIndex) {
+void VertexBufferNode::ExecuteImpl(TaskContext& ctx) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }

@@ -47,13 +47,13 @@ void BoolOpNode::CompileImpl() {
     }
 }
 
-void BoolOpNode::ExecuteImpl(uint32_t taskIndex) {
+void BoolOpNode::ExecuteImpl(TaskContext& ctx) {
     // Read vector of bools from INPUTS slot
-    std::vector<bool> inputs = In(BoolOpNodeConfig::INPUTS);
+    std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 
     if (inputs.empty()) {
         NODE_LOG_ERROR("BoolOpNode has no inputs");
-        Out(BoolOpNodeConfig::OUTPUT, false);
+        ctx.Out(BoolOpNodeConfig::OUTPUT, false);
         return;
     }
 
@@ -117,7 +117,7 @@ void BoolOpNode::ExecuteImpl(uint32_t taskIndex) {
     }
 
     // Output result
-    Out(BoolOpNodeConfig::OUTPUT, result);
+    ctx.Out(BoolOpNodeConfig::OUTPUT, result);
 }
 
 void BoolOpNode::CleanupImpl() {

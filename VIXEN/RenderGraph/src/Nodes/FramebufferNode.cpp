@@ -165,7 +165,7 @@ void FramebufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }
 
-void FramebufferNode::ExecuteImpl(uint32_t taskIndex) {
+void FramebufferNode::ExecuteImpl(TaskContext& ctx) {
     // No-op - framebuffers are created in Compile phase
 }
 

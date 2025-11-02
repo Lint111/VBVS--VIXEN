@@ -140,7 +140,7 @@ void DeviceNode::CompileImpl() {
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
 
-void DeviceNode::ExecuteImpl(uint32_t taskIndex) {
+void DeviceNode::ExecuteImpl(TaskContext& ctx) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 

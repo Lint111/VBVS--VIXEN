@@ -172,7 +172,7 @@ void GraphicsPipelineNode::CompileImpl() {
     Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl(uint32_t taskIndex) {
+void GraphicsPipelineNode::ExecuteImpl(TaskContext& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }

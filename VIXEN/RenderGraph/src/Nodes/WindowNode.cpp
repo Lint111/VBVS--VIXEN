@@ -158,17 +158,17 @@ void WindowNode::CompileImpl() {
     fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
 
     // Store all outputs in type-safe slots (NEW VARIANT API)
-    Out(WindowNodeConfig::SURFACE, surface);
-    Out(WindowNodeConfig::HWND_OUT, window);
-    Out(WindowNodeConfig::HINSTANCE_OUT, hInstance);
-    Out(WindowNodeConfig::WIDTH_OUT, width);
-    Out(WindowNodeConfig::HEIGHT_OUT, height);
+    ctx.Out(WindowNodeConfig::SURFACE, surface);
+    ctx.Out(WindowNodeConfig::HWND_OUT, window);
+    ctx.Out(WindowNodeConfig::HINSTANCE_OUT, hInstance);
+    ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
+    ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
 
     NODE_LOG_INFO("[WindowNode] Surface created and all window data stored in outputs");
 #endif
 }
 
-void WindowNode::ExecuteImpl(uint32_t taskIndex) {
+void WindowNode::ExecuteImpl(TaskContext& ctx) {
     // Process Windows messages
 #ifdef _WIN32
     MSG msg;
@@ -239,9 +239,9 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 windowNode->height = actualHeight;
 
                 // Update outputs with actual dimensions
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling Out() with: " << actualWidth << "x" << actualHeight << std::endl;
-                windowNode->Out(WindowNodeConfig::WIDTH_OUT, actualWidth);
-                windowNode->Out(WindowNodeConfig::HEIGHT_OUT, actualHeight);
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling ctx.Out() with: " << actualWidth << "x" << actualHeight << std::endl;
+                windowNode->ctx.Out(WindowNodeConfig::WIDTH_OUT, actualWidth);
+                windowNode->ctx.Out(WindowNodeConfig::HEIGHT_OUT, actualHeight);
 
                 // Verify outputs were updated
                 uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
@@ -277,11 +277,11 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     windowNode->wasResized = true;
 
                     // Update outputs with new dimensions so downstream nodes read new values
-                    std::cout << "[WindowNode::WM_SIZE] BEFORE Out() calls - width=" << newWidth
+                    std::cout << "[WindowNode::WM_SIZE] BEFORE ctx.Out() calls - width=" << newWidth
                               << ", height=" << newHeight << std::endl;
-                    windowNode->Out(WindowNodeConfig::WIDTH_OUT, newWidth);
-                    windowNode->Out(WindowNodeConfig::HEIGHT_OUT, newHeight);
-                    std::cout << "[WindowNode::WM_SIZE] AFTER Out() calls - verifying..." << std::endl;
+                    windowNode->ctx.Out(WindowNodeConfig::WIDTH_OUT, newWidth);
+                    windowNode->ctx.Out(WindowNodeConfig::HEIGHT_OUT, newHeight);
+                    std::cout << "[WindowNode::WM_SIZE] AFTER ctx.Out() calls - verifying..." << std::endl;
 
                     // Verify outputs were updated
                     uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
@@ -360,7 +360,7 @@ void WindowNode::CleanupImpl() {
     if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
         extern VkInstance g_VulkanInstance;
         fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
-        Out(WindowNodeConfig::SURFACE, VK_NULL_HANDLE);  // Clear typed storage
+        ctx.Out(WindowNodeConfig::SURFACE, VK_NULL_HANDLE);  // Clear typed storage
     }
 
     // Destroy window

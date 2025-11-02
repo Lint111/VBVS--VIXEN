@@ -36,7 +36,7 @@ void LoopBridgeNode::SetupImpl() {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
-    loopID = In(LoopBridgeNodeConfig::LOOP_ID);
+    loopID = ctx.In(LoopBridgeNodeConfig::LOOP_ID);
 
     // Access graph-owned LoopManager
     RenderGraph* graph = GetOwningGraph();
@@ -68,8 +68,8 @@ void LoopBridgeNode::ExecuteImpl(uint32_t taskIndex) {
     if (!loopRef) return;
 
     // Publish loop state to graph
-    Out(LoopBridgeNodeConfig::LOOP_OUT, loopRef);
-    Out(LoopBridgeNodeConfig::SHOULD_EXECUTE, loopRef->shouldExecuteThisFrame);
+    ctx.Out(LoopBridgeNodeConfig::LOOP_OUT, loopRef);
+    ctx.Out(LoopBridgeNodeConfig::SHOULD_EXECUTE, loopRef->shouldExecuteThisFrame);
 
     // Debug logging for initial testing
     static uint64_t lastLoggedStep = 0;

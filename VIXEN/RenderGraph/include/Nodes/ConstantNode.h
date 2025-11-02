@@ -165,7 +165,7 @@ protected:
         }
     }
 
-    void ExecuteImpl(uint32_t taskIndex) override {
+    void ExecuteImpl(TaskContext& ctx) override {
         // No execution needed - this is a data node
     }
 

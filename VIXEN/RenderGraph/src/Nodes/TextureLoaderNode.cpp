@@ -53,7 +53,7 @@ TextureLoaderNode::~TextureLoaderNode() {
 
 void TextureLoaderNode::SetupImpl() {
     // Read and validate device input
-    VulkanDevicePtr devicePtr = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
     }
@@ -162,13 +162,13 @@ void TextureLoaderNode::CompileImpl() {
     isLoaded = true;
 
     // Set typed outputs
-    Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
-    Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
-    Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
-    Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
+    ctx.Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void TextureLoaderNode::ExecuteImpl(uint32_t taskIndex) {
+void TextureLoaderNode::ExecuteImpl(TaskContext& ctx) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     

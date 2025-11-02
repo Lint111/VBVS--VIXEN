@@ -59,12 +59,12 @@ GeometryRenderNode::~GeometryRenderNode() {
 
 void GeometryRenderNode::SetupImpl() {
     // Get device and command pool from inputs
-    vulkanDevice = In(GeometryRenderNodeConfig::VULKAN_DEVICE);
+    vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
         throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
     }
 
-    commandPool = In(GeometryRenderNodeConfig::COMMAND_POOL);
+    commandPool = ctx.In(GeometryRenderNodeConfig::COMMAND_POOL);
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("GeometryRenderNode: CommandPool input is null");
     }
@@ -91,7 +91,7 @@ void GeometryRenderNode::CompileImpl() {
 
     // Allocate command buffers (one per framebuffer/swapchain image)
     // Get actual image count from swapchain
-    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("GeometryRenderNode: SwapChain info is null during Compile");
     }
@@ -123,17 +123,17 @@ void GeometryRenderNode::CompileImpl() {
     // No need to create per-swapchain-image semaphores anymore
 }
 
-void GeometryRenderNode::ExecuteImpl(uint32_t taskIndex) {
+void GeometryRenderNode::ExecuteImpl(TaskContext& ctx) {
     // Get current image index from SwapChainNode
-    uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
+    uint32_t imageIndex = ctx.In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
     // Phase 0.5: Get current frame-in-flight index from FrameSyncNode
-    uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
+    uint32_t currentFrameIndex = ctx.In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
 
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-    VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
+    const VkSemaphore* imageAvailableSemaphores = ctx.In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    VkFence inFlightFence = ctx.In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
     // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -163,10 +163,10 @@ void GeometryRenderNode::ExecuteImpl(uint32_t taskIndex) {
     }
 
     // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
-    VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
-    VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE);
-    VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+    VkRenderPass currentRenderPass = ctx.In(GeometryRenderNodeConfig::RENDER_PASS);
+    VkPipeline currentPipeline = ctx.In(GeometryRenderNodeConfig::PIPELINE);
+    VkBuffer currentVertexBuffer = ctx.In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
     VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
 
     if (currentRenderPass != lastRenderPass ||
@@ -214,7 +214,7 @@ void GeometryRenderNode::ExecuteImpl(uint32_t taskIndex) {
     }
 
     // Output the same render complete semaphore for PresentNode (pass-through)
-    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+    ctx.Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
 void GeometryRenderNode::CleanupImpl() {
@@ -252,8 +252,8 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     }
     
     // Get inputs via typed config API
-    VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
-    std::vector<VkFramebuffer> framebuffers = In(GeometryRenderNodeConfig::FRAMEBUFFERS);
+    VkRenderPass renderPass = ctx.In(GeometryRenderNodeConfig::RENDER_PASS);
+    std::vector<VkFramebuffer> framebuffers = ctx.In(GeometryRenderNodeConfig::FRAMEBUFFERS);
     if(framebufferIndex >= framebuffers.size()) {
         std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) + " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
         NODE_LOG_ERROR(errorMsg);
@@ -263,10 +263,10 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
 
 
-    VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE);
-    VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
-    VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
+    VkPipeline pipeline = ctx.In(GeometryRenderNodeConfig::PIPELINE);
+    VkPipelineLayout pipelineLayout = ctx.In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
+    VkBuffer vertexBuffer = ctx.In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
     
 
     if (renderPass == VK_NULL_HANDLE) {
@@ -343,7 +343,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     );
 
     // Bind descriptor sets
-    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+    std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
 
     if(descriptorSets.size() == 0) {
         std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
@@ -381,7 +381,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
 
     // Bind index buffer (if using indexed rendering)
     if (useIndexBuffer) {
-        VkBuffer indexBuffer = In(GeometryRenderNodeConfig::INDEX_BUFFER);
+        VkBuffer indexBuffer = ctx.In(GeometryRenderNodeConfig::INDEX_BUFFER);
         if (indexBuffer != VK_NULL_HANDLE) {
             vkCmdBindIndexBuffer(
                 cmdBuffer,

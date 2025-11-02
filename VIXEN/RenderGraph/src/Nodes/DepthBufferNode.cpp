@@ -151,7 +151,7 @@ void DepthBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
-void DepthBufferNode::ExecuteImpl(uint32_t taskIndex) {
+void DepthBufferNode::ExecuteImpl(TaskContext& ctx) {
     // No-op - depth buffer is created in Compile phase
 }
 

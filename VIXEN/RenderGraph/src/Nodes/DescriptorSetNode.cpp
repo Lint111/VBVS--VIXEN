@@ -63,7 +63,7 @@ DescriptorSetNode::~DescriptorSetNode() {
 
 void DescriptorSetNode::SetupImpl() {
     NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
-    VulkanDevicePtr devicePtr = In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("DescriptorSetNode: VulkanDevice input is null");
     }
@@ -78,7 +78,7 @@ void DescriptorSetNode::CompileImpl() {
     NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Phase 2: Read ShaderDataBundle from input
-    auto shaderBundle = In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+    auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     if (!shaderBundle) {
         throw std::runtime_error("DescriptorSetNode: ShaderDataBundle input is null");
     }
@@ -175,7 +175,7 @@ void DescriptorSetNode::CompileImpl() {
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
     // Phase 0.4: Get swapchain image count for per-image resource allocation
-    auto* swapchainPublic = In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
+    auto* swapchainPublic = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainPublic) {
         throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
     }
@@ -265,8 +265,8 @@ void DescriptorSetNode::CompileImpl() {
     // Phase 0.4: Update each descriptor set with its corresponding per-frame UBO
     // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
     // Check if texture inputs are provided
-    VkImageView textureView = In(DescriptorSetNodeConfig::TEXTURE_VIEW);
-    VkSampler textureSampler = In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
+    VkImageView textureView = ctx.In(DescriptorSetNodeConfig::TEXTURE_VIEW);
+    VkSampler textureSampler = ctx.In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
 
     for (uint32_t i = 0; i < imageCount; i++) {
         // UBO descriptor (binding 0)
@@ -322,17 +322,17 @@ void DescriptorSetNode::CompileImpl() {
     // TODO: Properly manage dummy resources
 
     // Set outputs
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL, descriptorPool);
-    Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets); 
-    Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
+    ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_POOL, descriptorPool);
+    ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets); 
+    ctx.Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, device);
 
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
 }
 
-void DescriptorSetNode::ExecuteImpl(uint32_t taskIndex) {
+void DescriptorSetNode::ExecuteImpl(TaskContext& ctx) {
     // Phase 0.4: Get current image index to select correct per-frame buffer
-    uint32_t imageIndex = In(DescriptorSetNodeConfig::IMAGE_INDEX);
+    uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
     if (!perFrameResources.IsInitialized()) {
         std::cout << "[DescriptorSetNode::Execute] WARNING: PerFrameResources not initialized!" << std::endl;

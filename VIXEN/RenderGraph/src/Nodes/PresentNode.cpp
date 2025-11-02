@@ -49,7 +49,7 @@ PresentNode::~PresentNode() {
 
 void PresentNode::SetupImpl() {
     // Read and validate device input
-    VulkanDevicePtr devicePtr = In(PresentNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("PresentNode: Invalid device handle");
     }
@@ -63,7 +63,7 @@ void PresentNode::CompileImpl() {
     waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
     // Validate inputs using typed slot access
-    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
+    VkSwapchainKHR swapchain = ctx.In(PresentNodeConfig::SWAPCHAIN);
     if (swapchain == VK_NULL_HANDLE) {
         throw std::runtime_error("PresentNode: swapchain input not connected or invalid");
     }
@@ -71,7 +71,7 @@ void PresentNode::CompileImpl() {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::ExecuteImpl(uint32_t taskIndex) {
+void PresentNode::ExecuteImpl(TaskContext& ctx) {
     Present();
 }
 
@@ -81,10 +81,10 @@ void PresentNode::CleanupImpl() {
 
 VkResult PresentNode::Present() {
     // Get inputs on-demand via typed slots (SlotRole from config)
-    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
-    uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX);
-    VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
-    VkFenceVector presentFenceArray = In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
+    VkSwapchainKHR swapchain = ctx.In(PresentNodeConfig::SWAPCHAIN);
+    uint32_t imageIndex = ctx.In(PresentNodeConfig::IMAGE_INDEX);
+    VkSemaphore renderCompleteSemaphore = ctx.In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    VkFenceVector presentFenceArray = ctx.In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX) {
@@ -98,7 +98,7 @@ VkResult PresentNode::Present() {
         fpQueuePresent = device->GetPresentFunction();
     } else {
         // Fallback: try to get from input connection
-        fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
+        fpQueuePresent = ctx.In(PresentNodeConfig::PRESENT_FUNCTION);
     }
 
     if (fpQueuePresent == nullptr) {
@@ -145,8 +145,8 @@ VkResult PresentNode::Present() {
     }
 
     // Set outputs
-    Out(PresentNodeConfig::PRESENT_RESULT, &lastResult);
-    Out(PresentNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(PresentNodeConfig::PRESENT_RESULT, &lastResult);
+    ctx.Out(PresentNodeConfig::VULKAN_DEVICE_OUT, device);
 
     return lastResult;
 }
