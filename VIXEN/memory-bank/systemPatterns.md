@@ -448,6 +448,91 @@ std::string uuid = GenerateContentBasedUuid(preprocessedSource);
 - Build-time shaders: `generated/sdi/` (project level, version controlled)
 - Runtime shaders: `binaries/generated/sdi/` (application-specific)
 
+###11. Slot Task Pattern (November 2, 2025 - Phase F)
+**Classes**: `NodeInstance`, `TypedNode<ConfigType>`, `SlotTask`, `ResourceBudgetManager`
+
+**Implementation**:
+```cpp
+// Three-level granularity
+struct SlotTask {
+    size_t taskIndex;              // Task ID within node
+    size_t parameterIndex;         // Index into InstanceLevel input array
+    std::vector<Resource*> inputs; // Task-specific input resources
+    std::vector<Resource*> outputs;// Task-specific output resources
+    AllocationHandle budgetHandle; // Budget reservation for this task
+};
+
+// Three-tier lifecycle
+class NodeInstance {
+protected:
+    std::vector<SlotTask> slotTasks_;
+
+    // Node-level (once)
+    virtual void SetupNode() {}
+    virtual void CleanupNode() {}
+
+    // Task-level (per configuration variant)
+    virtual void CompileTask(size_t taskIdx) {}
+    virtual void CleanupTask(size_t taskIdx) {}
+
+    // Instance-level (per data item)
+    virtual void ExecuteInstance(size_t taskIdx, size_t instanceIdx) {}
+
+public:
+    // FINAL lifecycle (orchestration)
+    void Compile() final {
+        for (auto& task : slotTasks_) {
+            CompileTask(task.taskIndex);
+        }
+    }
+};
+
+// Declarative task generation
+enum class SlotScope : uint8_t {
+    NodeLevel,      // Shared across all tasks (VkDevice)
+    TaskLevel,      // Per-task config (format, compression)
+    InstanceLevel   // Parameterized array - drives task count
+};
+
+// Config with auto-indexing
+struct ImageLoaderConfig : public ResourceConfigBase<2, 1> {
+    AUTO_INPUT(DEVICE, VkDevice,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    AUTO_INPUT(IMAGE_PARAMS, std::vector<ImageLoadConfig>,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::InstanceLevel);  // Task count = array size
+
+    AUTO_OUTPUT(IMAGE_VIEWS, VkImageView,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);
+};
+```
+
+**Purpose**: Enable single node to process multiple configuration variants with budget-based parallelism
+
+**Key Features**:
+1. **Virtual Node Specializations**: Slot tasks = independent config variants (albedo vs normal vs roughness)
+2. **Three-Tier Lifecycle**: Node (shared) → Task (per-config) → Instance (per-data)
+3. **Declarative Task Definition**: Task count = InstanceLevel input array size
+4. **Task-Local Indexing**: Each task's instances write to 0..N, graph maps to global output
+5. **Budget-Based Parallelism**: Hybrid allocation (reserve minimum at compile, scale dynamically at runtime)
+6. **Auto-Indexing**: `__COUNTER__` embedded in `ResourceConfigBase` for automatic slot numbering
+
+**Benefits**:
+- Reduces graph complexity (10 texture loaders → 1 node with 10 tasks)
+- Automatic parallel scaling based on device capabilities
+- Type-safe slot metadata (SlotScope, SlotNullability, SlotMutability)
+- Backwards compatible (single-task nodes work unchanged)
+
+**Location**: `RenderGraph/include/Core/NodeInstance.h`, `RenderGraph/include/Core/ResourceConfig.h`
+
 ## Legacy Design Patterns (Reference)
 
 ### 1. Singleton Pattern
