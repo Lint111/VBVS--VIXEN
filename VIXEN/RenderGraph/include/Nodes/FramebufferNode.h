@@ -26,7 +26,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~FramebufferNode();
+    ~FramebufferNode() override = default;
 
     // Access framebuffers for external use (legacy compatibility)
     const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }

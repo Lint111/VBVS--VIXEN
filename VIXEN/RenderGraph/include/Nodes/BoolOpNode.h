@@ -52,7 +52,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~BoolOpNode();
+    ~BoolOpNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

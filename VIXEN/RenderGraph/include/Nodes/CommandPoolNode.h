@@ -38,7 +38,7 @@ public:
         NodeType* nodeType
     );
 
-    ~CommandPoolNode() override;
+    ~CommandPoolNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

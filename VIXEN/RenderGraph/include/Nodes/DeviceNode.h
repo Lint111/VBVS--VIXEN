@@ -52,7 +52,7 @@ public:
         NodeType* nodeType,
         Vixen::Vulkan::Resources::VulkanDevice* device
     );
-    virtual ~DeviceNode();
+    ~DeviceNode() override = default;
 
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {

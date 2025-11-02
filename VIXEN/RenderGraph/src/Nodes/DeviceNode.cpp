@@ -59,10 +59,6 @@ DeviceNode::DeviceNode(
 {
 }
 
-DeviceNode::~DeviceNode() {
-    Cleanup();
-}
-
 void DeviceNode::SetupImpl(Context& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 

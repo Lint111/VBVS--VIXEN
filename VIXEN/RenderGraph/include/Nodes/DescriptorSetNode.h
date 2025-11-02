@@ -63,7 +63,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~DescriptorSetNode();
+    ~DescriptorSetNode() override = default;
 
     /**
      * @brief Update descriptor set with actual resources

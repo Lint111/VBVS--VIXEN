@@ -43,10 +43,6 @@ CommandPoolNode::CommandPoolNode(
 {
 }
 
-CommandPoolNode::~CommandPoolNode() {
-    Cleanup();
-}
-
 void CommandPoolNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 

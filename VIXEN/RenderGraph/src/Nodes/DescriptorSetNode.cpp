@@ -55,10 +55,6 @@ DescriptorSetNode::DescriptorSetNode(
     // MVP STUB: No descriptor set initialization
 }
 
-DescriptorSetNode::~DescriptorSetNode() {
-    Cleanup();
-}
-
 void DescriptorSetNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
     VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);

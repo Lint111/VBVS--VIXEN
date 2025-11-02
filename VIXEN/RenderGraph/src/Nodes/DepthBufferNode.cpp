@@ -48,10 +48,6 @@ DepthBufferNode::DepthBufferNode(
 {
 }
 
-DepthBufferNode::~DepthBufferNode() {
-    Cleanup();
-}
-
 void DepthBufferNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
     

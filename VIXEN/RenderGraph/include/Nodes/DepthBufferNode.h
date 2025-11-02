@@ -26,7 +26,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~DepthBufferNode();
+    ~DepthBufferNode() override = default;
 
     // Accessor for depth image view
     VkImageView GetDepthImageView() const { return depthImage.view; }

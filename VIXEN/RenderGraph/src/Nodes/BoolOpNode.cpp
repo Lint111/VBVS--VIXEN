@@ -19,10 +19,6 @@ BoolOpNode::BoolOpNode(
     : TypedNode<BoolOpNodeConfig>(instanceName, nodeType) {
 }
 
-BoolOpNode::~BoolOpNode() {
-    Cleanup();
-}
-
 void BoolOpNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 

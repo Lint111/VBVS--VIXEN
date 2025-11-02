@@ -40,10 +40,6 @@ FramebufferNode::FramebufferNode(
 {
 }
 
-FramebufferNode::~FramebufferNode() {
-    Cleanup();
-}
-
 void FramebufferNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
 
