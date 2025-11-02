@@ -4,7 +4,7 @@
 //
 // Program: Draw_Shader
 // UUID: 4e34fbf760c3a28b
-// Generated: 2025-11-02 19:51:46
+// Generated: 2025-11-02 19:57:04
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.

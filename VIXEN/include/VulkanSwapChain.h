@@ -87,6 +87,9 @@ class VulkanSwapChain {
     void CreateSwapChainColorImages(VkDevice device);
     void CreateColorImageView(VkDevice device, const VkCommandBuffer& cmd);
 
+    // Image usage configuration
+    void SetImageUsageFlags(VkImageUsageFlags flags);
+
     private:
 
     public:
@@ -112,6 +115,12 @@ class VulkanSwapChain {
 
     private:
     SwapChainPrivateVariables scPrivateVars;
+
+    // Configurable image usage flags (default for graphics + compute)
+    VkImageUsageFlags imageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                         VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                         VK_IMAGE_USAGE_STORAGE_BIT;
 
     bool supportsScalingExtension = false;
 };

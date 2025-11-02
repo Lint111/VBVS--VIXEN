@@ -39,6 +39,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
                       SwapChainNodeCounts::INPUTS,
                       SwapChainNodeCounts::OUTPUTS,
                       SwapChainNodeCounts::ARRAY_MODE) {
+    // ===== PARAMETER NAMES =====
+    static constexpr const char* IMAGE_USAGE_FLAGS = "imageUsageFlags";
+
     // ===== INPUTS (10) =====
     INPUT_SLOT(HWND, ::HWND, 0,
         SlotNullability::Required,

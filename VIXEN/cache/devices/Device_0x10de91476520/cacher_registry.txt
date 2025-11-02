@@ -1,9 +1,9 @@
 ShaderModuleCacher
-PipelineLayoutCacher
-ComputePipelineCacher
 MeshCacher
 SamplerCacher
 TextureCacher
 DescriptorCacher
+PipelineLayoutCacher
+ComputePipelineCacher
 RenderPassCacher
 PipelineCacher
