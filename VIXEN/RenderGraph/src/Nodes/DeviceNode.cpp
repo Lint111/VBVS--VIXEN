@@ -25,7 +25,7 @@ using namespace Vixen::Vulkan::Resources;
 // ============================================================================
 
 DeviceNodeType::DeviceNodeType()
-    : NodeType("Device")
+    : TypedNodeType<DeviceNodeConfig>("Device")
 {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
@@ -37,10 +37,7 @@ DeviceNodeType::DeviceNodeType()
     workloadMetrics.estimatedBandwidthCost = 0.0f;
     workloadMetrics.canRunInParallel = false;
 
-    // Populate schema from config
-    DeviceNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 }
 
 std::unique_ptr<NodeInstance> DeviceNodeType::CreateInstance(

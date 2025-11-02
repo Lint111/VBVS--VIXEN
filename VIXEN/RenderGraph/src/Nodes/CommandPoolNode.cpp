@@ -9,22 +9,19 @@ namespace Vixen::RenderGraph {
 // ====== CommandPoolNodeType ======
 
 CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
-    : NodeType(typeName)
+    : TypedNodeType<CommandPoolNodeConfig>(typeName)
 {
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited command pools
-
-    // Populate schemas from Config
-    CommandPoolNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024; // Minimal - just pool structure
     workloadMetrics.estimatedComputeCost = 0.1f; // Very cheap to create
     workloadMetrics.estimatedBandwidthCost = 0.0f; // No bandwidth
     workloadMetrics.canRunInParallel = true;
+
+    // Schema population now handled by TypedNodeType base class
 }
 
 std::unique_ptr<NodeInstance> CommandPoolNodeType::CreateInstance(
