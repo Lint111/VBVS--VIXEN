@@ -1,6 +1,5 @@
 #include "CashSystem/ComputePipelineCacher.h"
 #include "CashSystem/PipelineLayoutCacher.h"
-#include "CashSystem/MainCacher.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <iostream>
 #include <sstream>
@@ -8,167 +7,130 @@
 
 namespace CashSystem {
 
-ComputePipelineCacher::ComputePipelineCacher(
-    Vixen::Vulkan::Resources::VulkanDevice* device,
-    VkPipelineCache sharedPipelineCache)
-    : TypedCacher<ComputePipelineWrapper>(device)
-    , device_(device)
-    , pipelineCache_(sharedPipelineCache)
-{
-    std::cout << "[ComputePipelineCacher] Initialized" << std::endl;
-
-    // Use shared cache if provided, otherwise create own (fallback)
-    if (pipelineCache_ != VK_NULL_HANDLE) {
-        std::cout << "[ComputePipelineCacher] Using shared VkPipelineCache: "
-                  << reinterpret_cast<uint64_t>(pipelineCache_) << std::endl;
-        ownsCache_ = false;
-    } else {
-        std::cout << "[ComputePipelineCacher] WARNING: No shared cache provided, creating own VkPipelineCache" << std::endl;
-
-        VkPipelineCacheCreateInfo cacheInfo{};
-        cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-
-        VkResult result = vkCreatePipelineCache(device_->device, &cacheInfo, nullptr, &pipelineCache_);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[ComputePipelineCacher] Failed to create pipeline cache");
-        }
-
-        ownsCache_ = true;
-        std::cout << "[ComputePipelineCacher] Created own VkPipelineCache" << std::endl;
-    }
-}
-
-ComputePipelineCacher::~ComputePipelineCacher() {
-    std::cout << "[ComputePipelineCacher] Destructor called" << std::endl;
-    std::cout << "[ComputePipelineCacher] Cache Stats - Hits: " << cacheHits_
-              << ", Misses: " << cacheMisses_ << std::endl;
-}
-
-void ComputePipelineCacher::Cleanup() {
-    std::cout << "[ComputePipelineCacher::Cleanup] Cleaning up " << m_entries.size()
-              << " cached compute pipelines" << std::endl;
-
-    // Destroy all cached Vulkan resources
-    if (GetDevice()) {
-        for (auto& [key, entry] : m_entries) {
-            if (entry.resource) {
-                if (entry.resource->pipeline != VK_NULL_HANDLE) {
-                    std::cout << "[ComputePipelineCacher::Cleanup] Destroying VkPipeline: "
-                              << reinterpret_cast<uint64_t>(entry.resource->pipeline) << std::endl;
-                    vkDestroyPipeline(GetDevice()->device, entry.resource->pipeline, nullptr);
-                    entry.resource->pipeline = VK_NULL_HANDLE;
-                }
-
-                // Pipeline layout is owned by PipelineLayoutCacher (shared resource)
-                if (entry.resource->pipelineLayoutWrapper) {
-                    std::cout << "[ComputePipelineCacher::Cleanup] Releasing shared pipeline layout wrapper" << std::endl;
-                    entry.resource->pipelineLayoutWrapper.reset();
-                }
-            }
-        }
-
-        // Only destroy cache if we own it (not shared)
-        if (ownsCache_ && pipelineCache_ != VK_NULL_HANDLE) {
-            std::cout << "[ComputePipelineCacher::Cleanup] Destroying owned VkPipelineCache" << std::endl;
-            vkDestroyPipelineCache(GetDevice()->device, pipelineCache_, nullptr);
-            pipelineCache_ = VK_NULL_HANDLE;
-            ownsCache_ = false;
-        } else if (pipelineCache_ != VK_NULL_HANDLE) {
-            std::cout << "[ComputePipelineCacher::Cleanup] Shared VkPipelineCache not destroyed (owned externally)" << std::endl;
-        }
-    }
-
-    // Clear the cache entries after destroying resources
-    Clear();
-
-    std::cout << "[ComputePipelineCacher::Cleanup] Cleanup complete" << std::endl;
-}
+// ============================================================================
+// PUBLIC API
+// ============================================================================
 
 std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::GetOrCreate(
-    const ComputePipelineCreateParams& params)
-{
-    std::string cacheKey = GenerateCacheKey(params);
+    const ComputePipelineCreateParams& ci
+) {
+    // Call base class GetOrCreate (which uses Create() override)
+    return TypedCacher<ComputePipelineWrapper, ComputePipelineCreateParams>::GetOrCreate(ci);
+}
 
-    // Check cache first
-    {
-        std::shared_lock rlock(m_lock);
-        auto it = m_entries.find(std::hash<std::string>{}(cacheKey));
-        if (it != m_entries.end()) {
-            cacheHits_++;
-            std::cout << "[ComputePipelineCacher::GetOrCreate] CACHE HIT for pipeline "
-                      << params.shaderKey << " (key=" << cacheKey << ")" << std::endl;
-            return it->second.resource;
-        }
-    }
+// ============================================================================
+// PROTECTED: TypedCacher Implementation
+// ============================================================================
 
-    cacheMisses_++;
-    std::cout << "[ComputePipelineCacher::GetOrCreate] CACHE MISS for pipeline "
-              << params.shaderKey << " (key=" << cacheKey << "), creating new resource..." << std::endl;
+std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::Create(
+    const ComputePipelineCreateParams& ci
+) {
+    std::cout << "[ComputePipelineCacher::Create] Creating compute pipeline for shader: "
+              << ci.shaderKey << std::endl;
 
-    // Create new pipeline
-    auto wrapper = CreatePipeline(params);
+    auto wrapper = std::make_shared<ComputePipelineWrapper>();
+    wrapper->shaderKey = ci.shaderKey;
+    wrapper->layoutKey = ci.layoutKey;
+    wrapper->workgroupSizeX = ci.workgroupSizeX;
+    wrapper->workgroupSizeY = ci.workgroupSizeY;
+    wrapper->workgroupSizeZ = ci.workgroupSizeZ;
 
-    // Store in cache
-    {
-        std::unique_lock wlock(m_lock);
-        uint64_t keyHash = std::hash<std::string>{}(cacheKey);
-        CacheEntry entry;
-        entry.resource = wrapper;
-        entry.key = keyHash;
-        m_entries[keyHash] = std::move(entry);
-    }
+    // 1. Create or retrieve pipeline layout
+    CreatePipelineLayout(ci, *wrapper);
 
-    std::cout << "[ComputePipelineCacher::GetOrCreate] VkComputePipeline created: "
-              << reinterpret_cast<uint64_t>(wrapper->pipeline) << std::endl;
+    // 2. Create compute pipeline
+    CreateComputePipeline(ci, *wrapper);
 
+    std::cout << "[ComputePipelineCacher::Create] Compute pipeline created successfully" << std::endl;
     return wrapper;
 }
 
-std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::CreatePipeline(
-    const ComputePipelineCreateParams& params)
-{
-    auto wrapper = std::make_shared<ComputePipelineWrapper>();
-    wrapper->shaderKey = params.shaderKey;
-    wrapper->layoutKey = params.layoutKey;
-    wrapper->workgroupSizeX = params.workgroupSizeX;
-    wrapper->workgroupSizeY = params.workgroupSizeY;
-    wrapper->workgroupSizeZ = params.workgroupSizeZ;
-    wrapper->cache = pipelineCache_;
+std::uint64_t ComputePipelineCacher::ComputeKey(const ComputePipelineCreateParams& ci) const {
+    // Hash based on shader key, layout key, and workgroup size
+    size_t hash = std::hash<std::string>{}(ci.shaderKey);
+    hash ^= std::hash<std::string>{}(ci.layoutKey) << 1;
+    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeX) << 2;
+    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeY) << 3;
+    hash ^= std::hash<uint32_t>{}(ci.workgroupSizeZ) << 4;
+    return static_cast<std::uint64_t>(hash);
+}
 
-    // Get or create pipeline layout
-    if (params.pipelineLayoutWrapper) {
-        // Explicit mode: Use provided layout wrapper
-        wrapper->pipelineLayoutWrapper = params.pipelineLayoutWrapper;
-        std::cout << "[ComputePipelineCacher::CreatePipeline] Using provided pipeline layout wrapper" << std::endl;
-    } else {
-        // Convenience mode: Create layout from descriptor set layout
-        auto& layoutCacher = MainCacher::GetInstance().GetOrRegisterCacher<PipelineLayoutCacher>(device_);
+void ComputePipelineCacher::Cleanup() {
+    std::cout << "[ComputePipelineCacher::Cleanup] Cleaning up compute pipelines" << std::endl;
 
-        PipelineLayoutCreateParams layoutParams;
-        layoutParams.descriptorSetLayouts.push_back(params.descriptorSetLayout);
-        layoutParams.pushConstantRanges = params.pushConstantRanges;
-        layoutParams.layoutKey = params.layoutKey;
+    // Destroy all cached pipelines
+    for (auto& [key, entry] : m_entries) {
+        if (entry.resource && entry.resource->pipeline != VK_NULL_HANDLE) {
+            std::cout << "[ComputePipelineCacher::Cleanup] Destroying pipeline: "
+                      << entry.resource->shaderKey << std::endl;
+            vkDestroyPipeline(m_device->device, entry.resource->pipeline, nullptr);
+            entry.resource->pipeline = VK_NULL_HANDLE;
+        }
 
-        wrapper->pipelineLayoutWrapper = layoutCacher.GetOrCreate(layoutParams);
-        std::cout << "[ComputePipelineCacher::CreatePipeline] Created pipeline layout via PipelineLayoutCacher" << std::endl;
+        // Don't destroy pipelineLayout (owned by PipelineLayoutCacher)
+        // Don't destroy cache (shared, owned by PipelineCacher or DeviceNode)
     }
 
-    VkPipelineLayout pipelineLayout = wrapper->pipelineLayoutWrapper->pipelineLayout;
+    // Destroy global cache if we own it (shouldn't happen - should be shared)
+    if (m_globalCache != VK_NULL_HANDLE) {
+        std::cout << "[ComputePipelineCacher::Cleanup] WARNING: Destroying owned pipeline cache (should be shared)" << std::endl;
+        vkDestroyPipelineCache(m_device->device, m_globalCache, nullptr);
+        m_globalCache = VK_NULL_HANDLE;
+    }
+
+    // Clear entries
+    Clear();
+}
+
+// ============================================================================
+// PRIVATE: Helper Methods
+// ============================================================================
+
+void ComputePipelineCacher::CreatePipelineLayout(
+    const ComputePipelineCreateParams& ci,
+    ComputePipelineWrapper& wrapper
+) {
+    // Use explicit pipelineLayoutWrapper if provided
+    if (ci.pipelineLayoutWrapper) {
+        wrapper.pipelineLayoutWrapper = ci.pipelineLayoutWrapper;
+        std::cout << "[ComputePipelineCacher::CreatePipelineLayout] Using provided pipeline layout" << std::endl;
+        return;
+    }
+
+    // Fallback: Create layout from descriptor set layout + push constants
+    // TODO: Implement convenience fallback using PipelineLayoutCacher
+    std::cout << "[ComputePipelineCacher::CreatePipelineLayout] WARNING: No explicit layout provided, using fallback" << std::endl;
+
+    // For now, require explicit layout wrapper
+    throw std::runtime_error("[ComputePipelineCacher::CreatePipelineLayout] Explicit pipelineLayoutWrapper required (convenience fallback not yet implemented)");
+}
+
+void ComputePipelineCacher::CreateComputePipeline(
+    const ComputePipelineCreateParams& ci,
+    ComputePipelineWrapper& wrapper
+) {
+    if (!ci.shaderModule || ci.shaderModule == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Invalid shader module");
+    }
+
+    if (!wrapper.pipelineLayoutWrapper || !wrapper.pipelineLayoutWrapper->layout) {
+        throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Pipeline layout not set");
+    }
 
     // Setup shader stage
     VkPipelineShaderStageCreateInfo shaderStageInfo{};
     shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     shaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    shaderStageInfo.module = params.shaderModule;
-    shaderStageInfo.pName = params.entryPoint;
+    shaderStageInfo.module = ci.shaderModule;
+    shaderStageInfo.pName = ci.entryPoint;
 
     // Setup specialization constants (if provided)
     VkSpecializationInfo specInfo{};
-    if (!params.specMapEntries.empty()) {
-        specInfo.mapEntryCount = static_cast<uint32_t>(params.specMapEntries.size());
-        specInfo.pMapEntries = params.specMapEntries.data();
-        specInfo.dataSize = params.specData.size();
-        specInfo.pData = params.specData.data();
+    if (!ci.specMapEntries.empty() && !ci.specData.empty()) {
+        specInfo.mapEntryCount = static_cast<uint32_t>(ci.specMapEntries.size());
+        specInfo.pMapEntries = ci.specMapEntries.data();
+        specInfo.dataSize = ci.specData.size();
+        specInfo.pData = ci.specData.data();
         shaderStageInfo.pSpecializationInfo = &specInfo;
     }
 
@@ -176,42 +138,44 @@ std::shared_ptr<ComputePipelineWrapper> ComputePipelineCacher::CreatePipeline(
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipelineInfo.stage = shaderStageInfo;
-    pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-    pipelineInfo.basePipelineIndex = -1;
+    pipelineInfo.layout = wrapper.pipelineLayoutWrapper->layout;
+
+    // Use global cache if available (shared with graphics)
+    VkPipelineCache cacheToUse = m_globalCache;
 
     VkResult result = vkCreateComputePipelines(
-        device_->device,
-        pipelineCache_,
+        m_device->device,
+        cacheToUse,
         1,
         &pipelineInfo,
         nullptr,
-        &wrapper->pipeline
+        &wrapper.pipeline
     );
 
     if (result != VK_SUCCESS) {
-        std::ostringstream err;
-        err << "[ComputePipelineCacher::CreatePipeline] Failed to create compute pipeline"
-            << " (VkResult=" << result << ")";
-        throw std::runtime_error(err.str());
+        throw std::runtime_error("[ComputePipelineCacher::CreateComputePipeline] Failed to create compute pipeline: " + std::to_string(result));
     }
 
-    std::cout << "[ComputePipelineCacher::CreatePipeline] Created VkComputePipeline successfully"
-              << " (workgroup: " << params.workgroupSizeX << "x"
-              << params.workgroupSizeY << "x" << params.workgroupSizeZ << ")" << std::endl;
+    wrapper.cache = cacheToUse;
 
-    return wrapper;
+    std::cout << "[ComputePipelineCacher::CreateComputePipeline] Created VkPipeline: "
+              << reinterpret_cast<uint64_t>(wrapper.pipeline) << std::endl;
 }
 
-std::string ComputePipelineCacher::GenerateCacheKey(const ComputePipelineCreateParams& params) const
-{
-    std::ostringstream keyStream;
-    keyStream << params.shaderKey << "|"
-              << params.layoutKey << "|"
-              << params.workgroupSizeX << "x"
-              << params.workgroupSizeY << "x"
-              << params.workgroupSizeZ;
-    return keyStream.str();
+// ============================================================================
+// SERIALIZATION (Stub implementations)
+// ============================================================================
+
+bool ComputePipelineCacher::SerializeToFile(const std::filesystem::path& path) const {
+    // TODO: Implement serialization
+    std::cout << "[ComputePipelineCacher::SerializeToFile] Serialization not yet implemented" << std::endl;
+    return false;
+}
+
+bool ComputePipelineCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
+    // TODO: Implement deserialization
+    std::cout << "[ComputePipelineCacher::DeserializeFromFile] Deserialization not yet implemented" << std::endl;
+    return false;
 }
 
 } // namespace CashSystem

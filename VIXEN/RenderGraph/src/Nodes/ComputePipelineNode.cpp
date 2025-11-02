@@ -1,11 +1,14 @@
 #include "Nodes/ComputePipelineNode.h"
 #include "Nodes/DeviceNode.h"
-#include "Core/GraphBuilder.h"
+#include "Core/RenderGraph.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/ComputePipelineCacher.h"
+#include "CashSystem/PipelineLayoutCacher.h"
 #include "CashSystem/DescriptorSetLayoutCacher.h"
 #include "CashSystem/PipelineCacher.h"
 #include "ShaderManagement/ShaderDataBundle.h"
+#include "ShaderManagement/ShaderProgram.h"
+#include "VulkanResources/VulkanDevice.h"
 #include <stdexcept>
 #include <iostream>
 
@@ -13,16 +16,20 @@ namespace Vixen::RenderGraph {
 
 // ===== NodeType Factory =====
 
-std::unique_ptr<INode> ComputePipelineNodeType::CreateInstance() const {
-    return std::make_unique<ComputePipelineNode>();
+std::unique_ptr<NodeInstance> ComputePipelineNodeType::CreateInstance(
+    const std::string& instanceName
+) const {
+    return std::make_unique<ComputePipelineNode>(instanceName, const_cast<ComputePipelineNodeType*>(this));
 }
 
 // ===== ComputePipelineNode Implementation =====
 
-ComputePipelineNode::ComputePipelineNode()
-    : TypedNode<ComputePipelineNodeConfig>()
+ComputePipelineNode::ComputePipelineNode(
+    const std::string& instanceName,
+    NodeType* nodeType
+) : TypedNode<ComputePipelineNodeConfig>(instanceName, nodeType)
 {
-    std::cout << "[ComputePipelineNode] Constructor called" << std::endl;
+    std::cout << "[ComputePipelineNode] Constructor called for " << instanceName << std::endl;
 }
 
 void ComputePipelineNode::SetupImpl(Context& ctx) {
@@ -44,9 +51,9 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     std::cout << "[ComputePipelineNode::CompileImpl] Compiling compute pipeline..." << std::endl;
 
     // ===== 1. Get Parameters =====
-    uint32_t workgroupX = GetParameter<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_X, 0);
-    uint32_t workgroupY = GetParameter<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Y, 0);
-    uint32_t workgroupZ = GetParameter<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Z, 0);
+    uint32_t workgroupX = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_X, 0);
+    uint32_t workgroupY = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Y, 0);
+    uint32_t workgroupZ = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Z, 0);
 
     std::cout << "[ComputePipelineNode::CompileImpl] Workgroup sizes (params): "
               << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
@@ -62,93 +69,121 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     if (!shaderBundle) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] SHADER_DATA_BUNDLE is null");
     }
-    if (!shaderBundle->shaderModule) {
-        throw std::runtime_error("[ComputePipelineNode::CompileImpl] ShaderDataBundle has null shader module");
+
+    std::cout << "[ComputePipelineNode::CompileImpl] Shader UUID: " << shaderBundle->uuid << std::endl;
+
+    // ===== 3. Create VkShaderModule from SPIRV =====
+    ShaderManagement::ShaderStage computeStage = ShaderManagement::ShaderStage::Compute;
+    const auto& spirv = shaderBundle->GetSpirv(computeStage);
+    if (spirv.empty()) {
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] No compute shader SPIRV in bundle");
     }
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Shader key: " << shaderBundle->shaderKey << std::endl;
+    VkShaderModuleCreateInfo moduleCreateInfo{};
+    moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    moduleCreateInfo.codeSize = spirv.size() * sizeof(uint32_t);
+    moduleCreateInfo.pCode = spirv.data();
 
-    // ===== 3. Extract Workgroup Size from Shader (if not specified) =====
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+    VkResult result = vkCreateShaderModule(devicePtr->device, &moduleCreateInfo, nullptr, &shaderModule);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to create shader module: " + std::to_string(result));
+    }
+
+    std::cout << "[ComputePipelineNode::CompileImpl] Created VkShaderModule: "
+              << reinterpret_cast<uint64_t>(shaderModule) << std::endl;
+
+    // ===== 4. Extract Workgroup Size from Shader (if not specified) =====
+    // Note: SPIRV reflection doesn't expose local_size_x/y/z, so we must use parameters or defaults
     if (workgroupX == 0 || workgroupY == 0 || workgroupZ == 0) {
-        // Use shader reflection data
-        if (shaderBundle->reflectionData.localSizeX > 0) {
-            workgroupX = shaderBundle->reflectionData.localSizeX;
-            workgroupY = shaderBundle->reflectionData.localSizeY;
-            workgroupZ = shaderBundle->reflectionData.localSizeZ;
-            std::cout << "[ComputePipelineNode::CompileImpl] Extracted workgroup size from shader: "
-                      << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
-        } else {
-            // Fallback to default
-            workgroupX = 8;
-            workgroupY = 8;
-            workgroupZ = 1;
-            std::cout << "[ComputePipelineNode::CompileImpl] WARNING: No workgroup size in shader or params, using default: "
-                      << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
-        }
+        // Use default workgroup size
+        workgroupX = 8;
+        workgroupY = 8;
+        workgroupZ = 1;
+        std::cout << "[ComputePipelineNode::CompileImpl] No workgroup size in params, using default: "
+                  << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
     }
 
-    // ===== 4. Auto-Generate Descriptor Set Layout (Phase 4) =====
-    std::shared_ptr<CashSystem::DescriptorSetLayoutWrapper> layoutWrapper;
+    // ===== 5. Get MainCacher =====
+    auto* renderGraph = GetOwningGraph();
+    if (!renderGraph) {
+        vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] Owning graph not available");
+    }
+    auto& mainCacher = renderGraph->GetMainCacher();
+
+    // ===== 6. Auto-Generate Descriptor Set Layout (if needed) =====
+    std::shared_ptr<CashSystem::PipelineLayoutWrapper> pipelineLayoutWrapper;
     std::string layoutKey;
 
-    if (descriptorSetLayout == VK_NULL_HANDLE) {
-        std::cout << "[ComputePipelineNode::CompileImpl] No descriptor layout provided, auto-generating from shader reflection..." << std::endl;
+    if (descriptorSetLayout == VK_NULL_HANDLE && shaderBundle->descriptorLayout) {
+        std::cout << "[ComputePipelineNode::CompileImpl] Auto-generating pipeline layout from shader reflection..." << std::endl;
 
-        // Get DescriptorSetLayoutCacher
-        auto& layoutCacher = CashSystem::MainCacher::GetInstance()
-            .GetOrRegisterCacher<CashSystem::DescriptorSetLayoutCacher>(devicePtr);
+        // Get PipelineLayoutCacher
+        auto* layoutCacher = mainCacher.GetCacher<
+            CashSystem::PipelineLayoutCacher,
+            CashSystem::PipelineLayoutWrapper,
+            CashSystem::PipelineLayoutCreateParams
+        >(typeid(CashSystem::PipelineLayoutWrapper), devicePtr);
 
-        // Build descriptor layout from reflection
-        CashSystem::DescriptorSetLayoutCreateParams layoutParams;
-        layoutParams.bindings = shaderBundle->reflectionData.descriptorBindings;
-        layoutParams.layoutKey = shaderBundle->shaderKey + "_auto_layout";
+        if (!layoutCacher) {
+            vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
+            throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to get PipelineLayoutCacher");
+        }
 
-        layoutWrapper = layoutCacher.GetOrCreate(layoutParams);
-        descriptorSetLayout = layoutWrapper->layout;
+        // Build pipeline layout params (simplified - no descriptor set layout for now)
+        CashSystem::PipelineLayoutCreateParams layoutParams;
+        layoutParams.layoutKey = shaderBundle->uuid + "_auto_layout";
+
+        // Convert push constants from reflection if available
+        if (shaderBundle->reflectionData && !shaderBundle->reflectionData->pushConstants.empty()) {
+            for (const auto& pc : shaderBundle->reflectionData->pushConstants) {
+                VkPushConstantRange range{};
+                range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+                range.offset = pc.offset;
+                range.size = pc.size;
+                layoutParams.pushConstantRanges.push_back(range);
+            }
+            std::cout << "[ComputePipelineNode::CompileImpl] Found " << layoutParams.pushConstantRanges.size()
+                      << " push constant range(s) in shader reflection" << std::endl;
+        }
+
+        pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
         layoutKey = layoutParams.layoutKey;
 
-        std::cout << "[ComputePipelineNode::CompileImpl] Auto-generated descriptor layout: "
-                  << layoutKey << " (bindings: " << layoutParams.bindings.size() << ")" << std::endl;
+        std::cout << "[ComputePipelineNode::CompileImpl] Auto-generated pipeline layout: " << layoutKey << std::endl;
     } else {
-        layoutKey = shaderBundle->shaderKey + "_external_layout";
+        layoutKey = shaderBundle->uuid + "_external_layout";
         std::cout << "[ComputePipelineNode::CompileImpl] Using provided descriptor layout" << std::endl;
     }
 
-    // ===== 5. Extract Push Constants from Shader Reflection (Phase 5) =====
-    std::vector<VkPushConstantRange> pushConstantRanges;
-    if (!shaderBundle->reflectionData.pushConstantRanges.empty()) {
-        pushConstantRanges = shaderBundle->reflectionData.pushConstantRanges;
-        std::cout << "[ComputePipelineNode::CompileImpl] Found " << pushConstantRanges.size()
-                  << " push constant range(s) in shader reflection" << std::endl;
+    // ===== 7. Create Compute Pipeline via ComputePipelineCacher =====
+    auto* computeCacher = mainCacher.GetCacher<
+        CashSystem::ComputePipelineCacher,
+        CashSystem::ComputePipelineWrapper,
+        CashSystem::ComputePipelineCreateParams
+    >(typeid(CashSystem::ComputePipelineWrapper), devicePtr);
+
+    if (!computeCacher) {
+        vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to get ComputePipelineCacher");
     }
 
-    // ===== 6. Get Shared VkPipelineCache =====
-    auto& pipelineCacher = CashSystem::MainCacher::GetInstance()
-        .GetOrRegisterCacher<CashSystem::PipelineCacher>(devicePtr);
-    VkPipelineCache sharedCache = pipelineCacher.GetPipelineCache();
-
-    std::cout << "[ComputePipelineNode::CompileImpl] Using shared VkPipelineCache: "
-              << reinterpret_cast<uint64_t>(sharedCache) << std::endl;
-
-    // ===== 7. Create Compute Pipeline via ComputePipelineCacher =====
-    auto& computeCacher = CashSystem::MainCacher::GetInstance()
-        .GetOrRegisterCacher<CashSystem::ComputePipelineCacher>(devicePtr, sharedCache);
-
     CashSystem::ComputePipelineCreateParams pipelineParams;
-    pipelineParams.shaderModule = shaderBundle->shaderModule;
-    pipelineParams.entryPoint = "main";
-    pipelineParams.descriptorSetLayout = descriptorSetLayout;
-    pipelineParams.pushConstantRanges = pushConstantRanges;
-    pipelineParams.shaderKey = shaderBundle->shaderKey;
+    pipelineParams.shaderModule = shaderModule;
+    pipelineParams.entryPoint = shaderBundle->GetEntryPoint(computeStage).c_str();
+    pipelineParams.pipelineLayoutWrapper = pipelineLayoutWrapper;  // Use explicit wrapper
+    pipelineParams.shaderKey = shaderBundle->uuid;
     pipelineParams.layoutKey = layoutKey;
     pipelineParams.workgroupSizeX = workgroupX;
     pipelineParams.workgroupSizeY = workgroupY;
     pipelineParams.workgroupSizeZ = workgroupZ;
 
-    pipelineWrapper_ = computeCacher.GetOrCreate(pipelineParams);
+    pipelineWrapper_ = computeCacher->GetOrCreate(pipelineParams);
+    shaderModule_ = shaderModule;  // Store for cleanup
 
     pipeline_ = pipelineWrapper_->pipeline;
-    pipelineLayout_ = pipelineWrapper_->pipelineLayoutWrapper->pipelineLayout;
+    pipelineLayout_ = pipelineWrapper_->pipelineLayoutWrapper->layout;
     pipelineCache_ = pipelineWrapper_->cache;
 
     std::cout << "[ComputePipelineNode::CompileImpl] Compute pipeline created successfully" << std::endl;
@@ -156,8 +191,6 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
               << reinterpret_cast<uint64_t>(pipeline_) << std::endl;
     std::cout << "[ComputePipelineNode::CompileImpl]   Layout: "
               << reinterpret_cast<uint64_t>(pipelineLayout_) << std::endl;
-    std::cout << "[ComputePipelineNode::CompileImpl]   Cache: "
-              << reinterpret_cast<uint64_t>(pipelineCache_) << std::endl;
 
     // ===== 8. Set Outputs =====
     Out(ComputePipelineNodeConfig::PIPELINE, pipeline_);
@@ -168,7 +201,7 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     std::cout << "[ComputePipelineNode::CompileImpl] Outputs set" << std::endl;
 }
 
-void ComputePipelineNode::ExecuteImpl(TaskContext& ctx) {
+void ComputePipelineNode::ExecuteImpl(Context& ctx) {
     // No-op: Pipeline is compile-time only resource
     // ComputeDispatchNode will use the pipeline during Execute phase
 }
@@ -176,7 +209,17 @@ void ComputePipelineNode::ExecuteImpl(TaskContext& ctx) {
 void ComputePipelineNode::CleanupImpl() {
     std::cout << "[ComputePipelineNode::CleanupImpl] Cleaning up..." << std::endl;
 
-    // Release shared wrapper (cacher owns the actual Vulkan resources)
+    // Destroy shader module (we own this, not the cacher)
+    if (shaderModule_ != VK_NULL_HANDLE) {
+        VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+        if (devicePtr) {
+            vkDestroyShaderModule(devicePtr->device, shaderModule_, nullptr);
+            std::cout << "[ComputePipelineNode::CleanupImpl] Destroyed shader module" << std::endl;
+        }
+        shaderModule_ = VK_NULL_HANDLE;
+    }
+
+    // Release shared wrapper (cacher owns the actual pipeline)
     pipelineWrapper_.reset();
 
     // Clear cached handles
@@ -184,7 +227,7 @@ void ComputePipelineNode::CleanupImpl() {
     pipelineLayout_ = VK_NULL_HANDLE;
     pipelineCache_ = VK_NULL_HANDLE;
 
-    std::cout << "[ComputePipelineNode::CleanupImpl] Cleanup complete (resources owned by cachers)" << std::endl;
+    std::cout << "[ComputePipelineNode::CleanupImpl] Cleanup complete" << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

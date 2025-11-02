@@ -140,8 +140,7 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(BoolVector,                      HandleDescriptor,       ResourceType::Buffer) \
     RESOURCE_TYPE(bool,                            HandleDescriptor,       ResourceType::Buffer) \
     RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE(VkBufferView,                    HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,       ResourceType::AccelerationStructure)
+    RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,       ResourceType::Buffer)
 
 // NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
 // We don't register separate types since VkImage already exists. The descriptor differentiates usage.

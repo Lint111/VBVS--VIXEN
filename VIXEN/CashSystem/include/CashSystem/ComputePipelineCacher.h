@@ -19,7 +19,7 @@ namespace Vixen::Vulkan::Resources {
 /**
  * @brief Compute pipeline resource wrapper
  *
- * Stores VkComputePipeline and associated metadata.
+ * Stores VkPipeline (compute) and associated metadata.
  * Pipeline layout is shared via PipelineLayoutCacher.
  */
 struct ComputePipelineWrapper {
@@ -72,24 +72,6 @@ struct ComputePipelineCreateParams {
     // Shader specialization constants (if needed)
     std::vector<VkSpecializationMapEntry> specMapEntries;
     std::vector<uint8_t> specData;
-
-    // Equality and hash functions for cache lookup
-    bool operator==(const ComputePipelineCreateParams& other) const {
-        return shaderKey == other.shaderKey &&
-               layoutKey == other.layoutKey &&
-               workgroupSizeX == other.workgroupSizeX &&
-               workgroupSizeY == other.workgroupSizeY &&
-               workgroupSizeZ == other.workgroupSizeZ;
-    }
-
-    size_t Hash() const {
-        size_t hash = std::hash<std::string>{}(shaderKey);
-        hash ^= std::hash<std::string>{}(layoutKey) << 1;
-        hash ^= std::hash<uint32_t>{}(workgroupSizeX) << 2;
-        hash ^= std::hash<uint32_t>{}(workgroupSizeY) << 3;
-        hash ^= std::hash<uint32_t>{}(workgroupSizeZ) << 4;
-        return hash;
-    }
 };
 
 /**
@@ -101,64 +83,37 @@ struct ComputePipelineCreateParams {
  * - Workgroup size (metadata only)
  * - Specialization constants
  */
-class ComputePipelineCacher : public TypedCacher<ComputePipelineWrapper> {
+class ComputePipelineCacher : public TypedCacher<ComputePipelineWrapper, ComputePipelineCreateParams> {
 public:
-    /**
-     * @brief Construct ComputePipelineCacher with shared VkPipelineCache
-     *
-     * @param device VulkanDevice pointer
-     * @param sharedPipelineCache Shared VkPipelineCache (from PipelineCacher or DeviceNode)
-     *                            If VK_NULL_HANDLE, creates own cache (not recommended)
-     */
-    ComputePipelineCacher(
-        Vixen::Vulkan::Resources::VulkanDevice* device,
-        VkPipelineCache sharedPipelineCache = VK_NULL_HANDLE);
-    ~ComputePipelineCacher() override;
+    ComputePipelineCacher() = default;
+    ~ComputePipelineCacher() override = default;
 
-    /**
-     * @brief Get or create a compute pipeline
-     *
-     * @param params Pipeline creation parameters
-     * @return Shared pointer to ComputePipelineWrapper (cached or newly created)
-     */
-    std::shared_ptr<ComputePipelineWrapper> GetOrCreate(
-        const ComputePipelineCreateParams& params);
+    // Override to add cache hit/miss logging
+    std::shared_ptr<ComputePipelineWrapper> GetOrCreate(const ComputePipelineCreateParams& ci);
 
-    /**
-     * @brief Get name for cache file identification
-     */
-    const char* name() const override { return "ComputePipelineCacher"; }
+    // Convenience: Get the global pipeline cache (shared with graphics)
+    VkPipelineCache GetPipelineCache() const { return m_globalCache; }
 
-    /**
-     * @brief Cleanup all cached pipelines (called on device destruction)
-     */
+    // Serialization
+    bool SerializeToFile(const std::filesystem::path& path) const override;
+    bool DeserializeFromFile(const std::filesystem::path& path, void* device) override;
+    std::string_view name() const noexcept override { return "ComputePipelineCacher"; }
+
+protected:
+    // TypedCacher implementation
+    std::shared_ptr<ComputePipelineWrapper> Create(const ComputePipelineCreateParams& ci) override;
+    std::uint64_t ComputeKey(const ComputePipelineCreateParams& ci) const override;
+
+    // Resource cleanup
     void Cleanup() override;
 
 private:
-    /**
-     * @brief Create a new compute pipeline
-     *
-     * @param params Pipeline creation parameters
-     * @return Shared pointer to newly created ComputePipelineWrapper
-     */
-    std::shared_ptr<ComputePipelineWrapper> CreatePipeline(
-        const ComputePipelineCreateParams& params);
+    // Helper methods
+    void CreateComputePipeline(const ComputePipelineCreateParams& ci, ComputePipelineWrapper& wrapper);
+    void CreatePipelineLayout(const ComputePipelineCreateParams& ci, ComputePipelineWrapper& wrapper);
 
-    /**
-     * @brief Generate cache key from parameters
-     *
-     * @param params Pipeline creation parameters
-     * @return Unique cache key string
-     */
-    std::string GenerateCacheKey(const ComputePipelineCreateParams& params) const;
-
-    Vixen::Vulkan::Resources::VulkanDevice* device_;
-    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // Shared cache (not owned)
-    bool ownsCache_ = false;  // True if we created our own cache (fallback)
-
-    // Cache tracking
-    size_t cacheHits_ = 0;
-    size_t cacheMisses_ = 0;
+    // Global pipeline cache (shared with graphics pipelines)
+    VkPipelineCache m_globalCache = VK_NULL_HANDLE;
 };
 
 } // namespace CashSystem

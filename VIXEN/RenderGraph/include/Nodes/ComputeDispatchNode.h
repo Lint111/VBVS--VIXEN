@@ -1,0 +1,69 @@
+#pragma once
+
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
+#include "Nodes/ComputeDispatchNodeConfig.h"
+
+namespace Vixen::RenderGraph {
+
+/**
+ * @brief Node type for generic compute shader dispatch
+ *
+ * Generic dispatcher for ANY compute shader, separating dispatch logic
+ * from pipeline creation (ComputePipelineNode).
+ */
+class ComputeDispatchNodeType : public TypedNodeType<ComputeDispatchNodeConfig> {
+public:
+    ComputeDispatchNodeType(const std::string& typeName = "ComputeDispatch")
+        : TypedNodeType<ComputeDispatchNodeConfig>(typeName) {}
+    virtual ~ComputeDispatchNodeType() = default;
+
+    std::unique_ptr<NodeInstance> CreateInstance(
+        const std::string& instanceName
+    ) const override;
+};
+
+/**
+ * @brief Generic compute shader dispatch node
+ *
+ * Records command buffer with vkCmdDispatch for ANY compute shader.
+ * Separates dispatch logic from pipeline creation (ComputePipelineNode).
+ *
+ * Phase G.3: Generic compute dispatcher for research flexibility
+ *
+ * Node chain:
+ * ShaderLibraryNode -> ComputePipelineNode -> ComputeDispatchNode -> Present
+ *
+ * Responsibilities:
+ * - Allocate command buffer from pool
+ * - Record vkCmdBindPipeline (compute)
+ * - Record vkCmdBindDescriptorSets (if provided)
+ * - Record vkCmdPushConstants (if provided)
+ * - Record vkCmdDispatch
+ * - Output command buffer for submission
+ *
+ * Generic design allows ANY compute shader:
+ * - Ray marching (Phase G)
+ * - Voxel generation
+ * - Post-processing effects
+ * - Algorithm testing (Phase L)
+ */
+class ComputeDispatchNode : public TypedNode<ComputeDispatchNodeConfig> {
+public:
+    ComputeDispatchNode(
+        const std::string& instanceName,
+        NodeType* nodeType
+    );
+    ~ComputeDispatchNode() override = default;
+
+protected:
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
+    void CleanupImpl() override;
+
+private:
+    VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
+};
+
+} // namespace Vixen::RenderGraph

@@ -21,6 +21,7 @@
 
 // Phase G node types
 #include "Nodes/ComputePipelineNode.h"
+#include "Nodes/ComputeDispatchNode.h"
 
 namespace Vixen::RenderGraph {
 
@@ -165,6 +166,7 @@ void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
 
     // Phase G nodes:
     registry.RegisterNodeType(std::make_unique<ComputePipelineNodeType>());
+    registry.RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());
 }
 
 } // namespace Vixen::RenderGraph

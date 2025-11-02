@@ -23,7 +23,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Optional (auto-generated if not provided)
  *
  * Outputs:
- * - PIPELINE (VkComputePipeline) - Compute pipeline handle
+ * - PIPELINE (VkPipeline) - Compute pipeline handle
  * - PIPELINE_LAYOUT (VkPipelineLayout) - Pipeline layout handle
  * - PIPELINE_CACHE (VkPipelineCache) - Pipeline cache for optimization
  * - VULKAN_DEVICE_OUT (VulkanDevicePtr) - Device passthrough
@@ -69,7 +69,7 @@ CONSTEXPR_NODE_CONFIG(ComputePipelineNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (4) =====
-    OUTPUT_SLOT(PIPELINE, VkComputePipeline, 0,
+    OUTPUT_SLOT(PIPELINE, VkPipeline, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -125,7 +125,7 @@ CONSTEXPR_NODE_CONFIG(ComputePipelineNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
-    static_assert(std::is_same_v<PIPELINE_Slot::Type, VkComputePipeline>);
+    static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);

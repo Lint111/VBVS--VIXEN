@@ -5,6 +5,11 @@
 
 using namespace Vixen::RenderGraph;
 
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
+
 // Small test helper: expose protected setters via a derived test instance
 class TestNodeInstance : public NodeInstance {
 public:

@@ -1,19 +1,36 @@
 #pragma once
 
-#include "Core/TypedNode.h"
+#include "Core/TypedNodeInstance.h"
+#include "Core/NodeType.h"
 #include "Nodes/ComputePipelineNodeConfig.h"
-#include "CashSystem/ComputePipelineCacher.h"
+
+// Forward declarations
+namespace CashSystem {
+    class ComputePipelineCacher;
+    struct ComputePipelineWrapper;
+}
+
+namespace ShaderManagement {
+    struct ShaderDataBundle;
+}
 
 namespace Vixen::RenderGraph {
 
 /**
- * @brief Node type for ComputePipelineNode
+ * @brief Node type for compute pipeline creation
+ *
+ * Creates VkComputePipeline from SPIRV shaders using ComputePipelineCacher.
+ * Shares VkPipelineCache with graphics pipelines for optimal performance.
  */
-class ComputePipelineNodeType : public NodeType {
+class ComputePipelineNodeType : public TypedNodeType<ComputePipelineNodeConfig> {
 public:
-    ComputePipelineNodeType() : NodeType("ComputePipelineNode") {}
+    ComputePipelineNodeType(const std::string& typeName = "ComputePipeline")
+        : TypedNodeType<ComputePipelineNodeConfig>(typeName) {}
+    virtual ~ComputePipelineNodeType() = default;
 
-    std::unique_ptr<INode> CreateInstance() const override;
+    std::unique_ptr<NodeInstance> CreateInstance(
+        const std::string& instanceName
+    ) const override;
 };
 
 /**
@@ -34,15 +51,16 @@ public:
  */
 class ComputePipelineNode : public TypedNode<ComputePipelineNodeConfig> {
 public:
-    ComputePipelineNode();
+    ComputePipelineNode(
+        const std::string& instanceName,
+        NodeType* nodeType
+    );
     ~ComputePipelineNode() override = default;
-
-    const char* GetTypeName() const override { return "ComputePipelineNode"; }
 
 protected:
     void SetupImpl(Context& ctx) override;
     void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(TaskContext& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:
@@ -50,6 +68,7 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;
+    VkShaderModule shaderModule_ = VK_NULL_HANDLE;
 
     // Shared wrappers from cachers
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
