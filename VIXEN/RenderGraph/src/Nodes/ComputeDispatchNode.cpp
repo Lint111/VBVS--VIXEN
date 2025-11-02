@@ -1,8 +1,10 @@
 #include "Nodes/ComputeDispatchNode.h"
 #include "Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/ComputePerformanceLogger.h"
 #include <stdexcept>
 #include <iostream>
+#include <chrono>
 
 namespace Vixen::RenderGraph {
 
@@ -41,6 +43,14 @@ void ComputeDispatchNode::SetupImpl(Context& ctx) {
     }
 
     SetDevice(devicePtr);
+
+#if VIXEN_DEBUG_BUILD
+    // Create specialized performance logger and register to node logger
+    perfLogger_ = std::make_unique<ComputePerformanceLogger>(instanceName);
+    if (nodeLogger) {
+        nodeLogger->AddChild(perfLogger_.get());
+    }
+#endif
 }
 
 // ============================================================================
@@ -96,6 +106,10 @@ void ComputeDispatchNode::CompileImpl(Context& ctx) {
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = 0;  // Can be resubmitted without re-recording
 
+#if VIXEN_DEBUG_BUILD
+    auto recordingStart = std::chrono::high_resolution_clock::now();
+#endif
+
     result = vkBeginCommandBuffer(commandBuffer_, &beginInfo);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to begin command buffer: " + std::to_string(result));
@@ -125,6 +139,12 @@ void ComputeDispatchNode::CompileImpl(Context& ctx) {
         );
 
         std::cout << "[ComputeDispatchNode::CompileImpl] Bound " << descriptorSetCount << " descriptor sets" << std::endl;
+
+#if VIXEN_DEBUG_BUILD
+        if (perfLogger_) {
+            perfLogger_->LogDescriptorSets(descriptorSetCount);
+        }
+#endif
     }
 
     // 7. Push constants (if provided)
@@ -133,6 +153,12 @@ void ComputeDispatchNode::CompileImpl(Context& ctx) {
         // For now, assume push constants are provided via mapped buffer
         // In practice, this might need a different input type (raw bytes)
         std::cout << "[ComputeDispatchNode::CompileImpl] WARNING: Push constants not yet implemented" << std::endl;
+
+#if VIXEN_DEBUG_BUILD
+        if (perfLogger_) {
+            perfLogger_->LogPushConstants(pushConstantSize);
+        }
+#endif
     }
 
     // 8. Dispatch compute shader
@@ -140,11 +166,31 @@ void ComputeDispatchNode::CompileImpl(Context& ctx) {
     std::cout << "[ComputeDispatchNode::CompileImpl] Dispatched compute: "
               << dispatchX << "x" << dispatchY << "x" << dispatchZ << std::endl;
 
+#if VIXEN_DEBUG_BUILD
+    // Note: Workgroup size comes from shader/pipeline, not dispatch parameters
+    // Use default values for logging (actual values determined by shader)
+    if (perfLogger_) {
+        perfLogger_->LogDispatch(8, 8, 1, dispatchX, dispatchY, dispatchZ);
+    }
+#endif
+
     // 9. End recording
     result = vkEndCommandBuffer(commandBuffer_);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to end command buffer: " + std::to_string(result));
     }
+
+#if VIXEN_DEBUG_BUILD
+    auto recordingEnd = std::chrono::high_resolution_clock::now();
+    float recordingTimeMs = std::chrono::duration<float, std::milli>(recordingEnd - recordingStart).count();
+
+    if (perfLogger_) {
+        perfLogger_->LogCommandBuffer(
+            reinterpret_cast<uint64_t>(commandBuffer_),
+            recordingTimeMs
+        );
+    }
+#endif
 
     // 10. Set outputs
     Out(ComputeDispatchNodeConfig::COMMAND_BUFFER, commandBuffer_);

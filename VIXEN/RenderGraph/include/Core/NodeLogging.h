@@ -6,13 +6,13 @@
  *
  * In DEBUG builds: Full hierarchical logging with per-node loggers
  * In RELEASE builds: All logging code optimized away (zero overhead)
+ *
+ * VIXEN_DEBUG_BUILD is defined centrally in CMakeLists.txt based on CMAKE_BUILD_TYPE
  */
 
-// Check for debug build: MSVC uses _DEBUG, GCC/Clang use DEBUG or absence of NDEBUG
-#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
-    #define VIXEN_DEBUG_BUILD 1
-#else
-    #define VIXEN_DEBUG_BUILD 0
+// Ensure VIXEN_DEBUG_BUILD is defined (should come from CMake)
+#ifndef VIXEN_DEBUG_BUILD
+    #error "VIXEN_DEBUG_BUILD must be defined by CMake build system"
 #endif
 
 #if VIXEN_DEBUG_BUILD

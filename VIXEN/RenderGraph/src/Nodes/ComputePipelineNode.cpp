@@ -9,8 +9,10 @@
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "ShaderManagement/ShaderProgram.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Core/ComputePerformanceLogger.h"
 #include <stdexcept>
 #include <iostream>
+#include <chrono>
 
 namespace Vixen::RenderGraph {
 
@@ -43,6 +45,14 @@ void ComputePipelineNode::SetupImpl(Context& ctx) {
 
     // Register device for cleanup tracking
     SetDevice(devicePtr);
+
+#if VIXEN_DEBUG_BUILD
+    // Create specialized performance logger and register to node logger
+    perfLogger_ = std::make_unique<ComputePerformanceLogger>(instanceName);
+    if (nodeLogger) {
+        nodeLogger->AddChild(perfLogger_.get());
+    }
+#endif
 
     std::cout << "[ComputePipelineNode::SetupImpl] Setup complete (device registered)" << std::endl;
 }
@@ -92,6 +102,12 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
 
     std::cout << "[ComputePipelineNode::CompileImpl] Created VkShaderModule: "
               << reinterpret_cast<uint64_t>(shaderModule) << std::endl;
+
+#if VIXEN_DEBUG_BUILD
+    if (perfLogger_) {
+        perfLogger_->LogShaderModule(spirv.size() * sizeof(uint32_t), 1);
+    }
+#endif
 
     // ===== 4. Extract Workgroup Size from Shader (if not specified) =====
     // Note: SPIRV reflection doesn't expose local_size_x/y/z, so we must use parameters or defaults
@@ -179,12 +195,29 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     pipelineParams.workgroupSizeY = workgroupY;
     pipelineParams.workgroupSizeZ = workgroupZ;
 
+#if VIXEN_DEBUG_BUILD
+    auto pipelineCreateStart = std::chrono::high_resolution_clock::now();
+#endif
+
     pipelineWrapper_ = computeCacher->GetOrCreate(pipelineParams);
     shaderModule_ = shaderModule;  // Store for cleanup
 
     pipeline_ = pipelineWrapper_->pipeline;
     pipelineLayout_ = pipelineWrapper_->pipelineLayoutWrapper->layout;
     pipelineCache_ = pipelineWrapper_->cache;
+
+#if VIXEN_DEBUG_BUILD
+    auto pipelineCreateEnd = std::chrono::high_resolution_clock::now();
+    float pipelineCreateTimeMs = std::chrono::duration<float, std::milli>(pipelineCreateEnd - pipelineCreateStart).count();
+
+    if (perfLogger_) {
+        perfLogger_->LogPipelineCreation(
+            reinterpret_cast<uint64_t>(pipeline_),
+            shaderBundle->uuid,
+            pipelineCreateTimeMs
+        );
+    }
+#endif
 
     std::cout << "[ComputePipelineNode::CompileImpl] Compute pipeline created successfully" << std::endl;
     std::cout << "[ComputePipelineNode::CompileImpl]   Pipeline: "

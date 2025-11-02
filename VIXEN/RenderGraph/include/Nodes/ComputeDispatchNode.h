@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/NodeLogging.h"
 #include "Nodes/ComputeDispatchNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -64,6 +65,11 @@ protected:
 
 private:
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
+
+#if VIXEN_DEBUG_BUILD
+    // Performance logging (debug only)
+    std::unique_ptr<class ComputePerformanceLogger> perfLogger_;
+#endif
 };
 
 } // namespace Vixen::RenderGraph

@@ -688,7 +688,7 @@ public:
     // Caching
     uint64_t cacheKey = 0;
 
-#ifdef _DEBUG
+#if VIXEN_DEBUG_BUILD
     // Debug-only hierarchical logger (zero overhead in release builds)
     std::unique_ptr<Logger> nodeLogger;
 #endif

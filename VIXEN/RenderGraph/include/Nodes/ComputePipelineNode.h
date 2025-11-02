@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/NodeLogging.h"
 #include "Nodes/ComputePipelineNodeConfig.h"
 
 // Forward declarations
@@ -72,6 +73,11 @@ private:
 
     // Shared wrappers from cachers
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
+
+#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
+    // Performance logging (debug only)
+    std::unique_ptr<class ComputePerformanceLogger> perfLogger_;
+#endif
 };
 
 } // namespace Vixen::RenderGraph

@@ -19,6 +19,14 @@ if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
 endif()
 
+# Centralized debug build macro
+# Automatically defined for Debug builds, can be used consistently across all code
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_CONFIGURATION_TYPES)
+    add_compile_definitions(VIXEN_DEBUG_BUILD=1)
+else()
+    add_compile_definitions(VIXEN_DEBUG_BUILD=0)
+endif()
+
 if(AUTO_LOCATE_VULKAN)
 	message(STATUS "Attempting auto locate Vulkan using CMake......")
 	

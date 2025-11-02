@@ -32,6 +32,8 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
 #include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
+#include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
+#include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -423,11 +425,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
+    // --- Phase G: Compute Pipeline Nodes ---
+    NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
+    NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
+    NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
+
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 16 node instances (Phase 0.4: added LoopBridgeNode + ConstantNode)");
+    mainLogger->Info("Created 19 node instances (Phase G: added compute pipeline nodes)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -509,7 +516,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
 
-    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID constant)");
+    // Phase G: Compute shader library parameters
+    // Note: ShaderLibraryNode currently hardcoded to Draw.vert/frag - will load compute shader via bundle path in future
+    // For now, compute shader loading will be handled manually in CompileRenderGraph
+
+    // Phase G: Compute dispatch parameters
+    auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, width / 8);  // Workgroup size 8x8
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, height / 8);
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
+
+    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID + compute nodes)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -691,6 +708,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase 0.4: Loop System Connections ---
     batch.Connect(physicsLoopIDConstant, ConstantNodeConfig::OUTPUT,
                   physicsLoopBridge, LoopBridgeNodeConfig::LOOP_ID);
+
+    // --- Phase G: Compute Pipeline Connections ---
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  computeDispatch, ComputeDispatchNodeConfig::COMPUTE_PIPELINE)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  computeDispatch, ComputeDispatchNodeConfig::PIPELINE_LAYOUT)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
