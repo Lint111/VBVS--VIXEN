@@ -44,10 +44,6 @@ SwapChainNode::SwapChainNode(
 {
 }
 
-SwapChainNode::~SwapChainNode() {
-    Cleanup();
-}
-
 void SwapChainNode::SetupImpl(Context& ctx) {
     SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
 

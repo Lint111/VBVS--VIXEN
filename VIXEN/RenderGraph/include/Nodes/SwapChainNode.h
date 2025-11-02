@@ -48,7 +48,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~SwapChainNode();
+    ~SwapChainNode() override = default;
 
     // Accessors
     VkSwapchainKHR GetSwapchain() const;

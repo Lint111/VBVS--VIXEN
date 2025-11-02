@@ -41,7 +41,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~WindowNode();
+    ~WindowNode() override = default;
 
     // Accessors
 #ifdef _WIN32

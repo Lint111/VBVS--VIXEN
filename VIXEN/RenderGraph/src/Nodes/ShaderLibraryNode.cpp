@@ -48,10 +48,6 @@ ShaderLibraryNode::ShaderLibraryNode(
     // MVP STUB: No shader library initialized
 }
 
-ShaderLibraryNode::~ShaderLibraryNode() {
-    Cleanup();
-}
-
 void ShaderLibraryNode::SetupImpl(Context& ctx) {
     std::cout << "[ShaderLibraryNode::Setup] Called" << std::endl;
 

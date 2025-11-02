@@ -28,7 +28,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~TextureLoaderNode();
+    ~TextureLoaderNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

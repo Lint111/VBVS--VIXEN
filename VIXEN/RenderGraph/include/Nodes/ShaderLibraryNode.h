@@ -54,7 +54,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~ShaderLibraryNode();
+    ~ShaderLibraryNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

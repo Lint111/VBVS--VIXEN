@@ -32,7 +32,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~RenderPassNode();
+    ~RenderPassNode() override = default;
 
     // Access render pass for pipeline/framebuffer creation
     VkRenderPass GetRenderPass() const { return renderPass; }

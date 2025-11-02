@@ -38,10 +38,6 @@ WindowNode::WindowNode(
 {
 }
 
-WindowNode::~WindowNode() {
-    Cleanup();
-}
-
 void WindowNode::SetupImpl(Context& ctx) {
     NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 

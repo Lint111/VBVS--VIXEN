@@ -42,10 +42,6 @@ VertexBufferNode::VertexBufferNode(
 {
 }
 
-VertexBufferNode::~VertexBufferNode() {
-    Cleanup();
-}
-
 void VertexBufferNode::SetupImpl(Context& ctx) {
     // Read and validate device input
     VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);

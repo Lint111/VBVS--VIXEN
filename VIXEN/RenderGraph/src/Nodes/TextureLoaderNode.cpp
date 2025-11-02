@@ -44,10 +44,6 @@ TextureLoaderNode::TextureLoaderNode(
 {
 }
 
-TextureLoaderNode::~TextureLoaderNode() {
-    Cleanup();
-}
-
 void TextureLoaderNode::SetupImpl(Context& ctx) {
     // Read and validate device input
     VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);

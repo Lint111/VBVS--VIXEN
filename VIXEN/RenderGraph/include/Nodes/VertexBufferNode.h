@@ -52,7 +52,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~VertexBufferNode();
+    ~VertexBufferNode() override = default;
 
     // Accessors for other nodes
     VkBuffer GetVertexBuffer() const { return vertexBuffer; }
