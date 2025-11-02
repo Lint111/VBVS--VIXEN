@@ -432,7 +432,7 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
             // Phase 0.4: Check if node should execute this frame (loop gating)
             if (node->ShouldExecuteThisFrame()) {
                 node->SetState(NodeState::Executing);
-                node->Execute(commandBuffer);
+                node->Execute();
                 node->SetState(NodeState::Complete);
             }
         }
@@ -487,7 +487,7 @@ VkResult RenderGraph::RenderFrame() {
             node->SetState(NodeState::Executing);
 
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-            node->Execute(VK_NULL_HANDLE);
+            node->Execute();
 
             node->SetState(NodeState::Complete);
 

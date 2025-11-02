@@ -298,7 +298,7 @@ public:
      *
      * Derived classes should override SetupImpl(), NOT this method.
      */
-    virtual void Setup() final {
+    virtual void Setup() {
         ResetInputsUsedInCompile();
         SetupImpl();
     }
@@ -312,7 +312,7 @@ public:
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
-    virtual void Compile() final {
+    virtual void Compile() {
         CompileImpl();
         RegisterCleanup();
     }
@@ -329,7 +329,7 @@ public:
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
-    virtual void Execute() final {
+    virtual void Execute() {
         // Analyze slot configuration to determine task generation strategy
         uint32_t taskCount = DetermineTaskCount();
 

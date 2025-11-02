@@ -360,7 +360,7 @@ void WindowNode::CleanupImpl() {
     if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
         extern VkInstance g_VulkanInstance;
         fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
-        ctx.Out(WindowNodeConfig::SURFACE, VK_NULL_HANDLE);  // Clear typed storage
+        SetOutput(WindowNodeConfig::SURFACE, 0, VK_NULL_HANDLE);  // Clear typed storage
     }
 
     // Destroy window

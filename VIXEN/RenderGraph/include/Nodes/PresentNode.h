@@ -40,8 +40,8 @@ public:
     );
     virtual ~PresentNode();
 
-    // Execute presentation
-    VkResult Present();
+    // Execute presentation (helper called from ExecuteImpl)
+    VkResult Present(Context& ctx);
 
 protected:
 	// Template method pattern - override *Impl() methods

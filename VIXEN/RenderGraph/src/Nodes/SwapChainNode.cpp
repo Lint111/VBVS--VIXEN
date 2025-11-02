@@ -319,8 +319,8 @@ void SwapChainNode::CleanupImpl() {
         VkDevice device = VK_NULL_HANDLE;
 
         try {
-            // Cleanup-time access only - config defines this as Dependency
-            instance = ctx.In(SwapChainNodeConfig::INSTANCE);
+            // Cleanup-time access only - use GetInput directly
+            instance = GetInput(SwapChainNodeConfig::INSTANCE, 0);
         } catch (...) {
             // Instance might not be available during shutdown - that's ok
         }

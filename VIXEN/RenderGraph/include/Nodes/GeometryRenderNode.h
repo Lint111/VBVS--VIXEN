@@ -50,7 +50,7 @@ public:
     virtual ~GeometryRenderNode();
 
     // Record draw commands for a specific framebuffer
-    void RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
+    void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
 
 protected:
 	// Template method pattern - override *Impl() methods

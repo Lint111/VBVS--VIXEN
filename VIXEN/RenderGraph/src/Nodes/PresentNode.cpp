@@ -72,14 +72,14 @@ void PresentNode::CompileImpl(Context& ctx) {
 }
 
 void PresentNode::ExecuteImpl(Context& ctx) {
-    Present();
+    Present(ctx);
 }
 
 void PresentNode::CleanupImpl() {
     // No resources to clean up
 }
 
-VkResult PresentNode::Present() {
+VkResult PresentNode::Present(Context& ctx) {
     // Get inputs on-demand via typed slots (SlotRole from config)
     VkSwapchainKHR swapchain = ctx.In(PresentNodeConfig::SWAPCHAIN);
     uint32_t imageIndex = ctx.In(PresentNodeConfig::IMAGE_INDEX);

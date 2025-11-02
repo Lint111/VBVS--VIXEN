@@ -185,7 +185,7 @@ void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     // Phase 0.3: Only re-record if dirty
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
     if (commandBuffers.IsDirty(imageIndex)) {
-        RecordDrawCommands(cmdBuffer, imageIndex);
+        RecordDrawCommands(ctx, cmdBuffer, imageIndex);
         commandBuffers.MarkReady(imageIndex);
     }
 
@@ -239,7 +239,7 @@ void GeometryRenderNode::CleanupImpl() {
     // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
 }
 
-void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
+void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
