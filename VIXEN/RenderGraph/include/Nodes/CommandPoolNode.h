@@ -9,9 +9,10 @@ namespace Vixen::RenderGraph {
 /**
  * @brief CommandPoolNodeType - Defines command pool creation node
  */
-class CommandPoolNodeType : public NodeType {
+class CommandPoolNodeType : public TypedNodeType<CommandPoolNodeConfig> {
 public:
-    CommandPoolNodeType(const std::string& typeName = "CommandPool");
+    CommandPoolNodeType(const std::string& typeName = "CommandPool")
+        : TypedNodeType<CommandPoolNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

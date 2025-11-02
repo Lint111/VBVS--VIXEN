@@ -17,15 +17,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for creating descriptor set layouts, pools, and descriptor sets
- * 
+ *
  * DATA-DRIVEN descriptor set management using DescriptorLayoutSpec.
  * Supports manual layout specification or automatic extraction from SPIRV.
- * 
+ *
  * Type ID: 107
  */
-class DescriptorSetNodeType : public NodeType {
+class DescriptorSetNodeType : public TypedNodeType<DescriptorSetNodeConfig> {
 public:
-    DescriptorSetNodeType(const std::string& typeName = "DescriptorSet");
+    DescriptorSetNodeType(const std::string& typeName = "DescriptorSet")
+        : TypedNodeType<DescriptorSetNodeConfig>(typeName) {}
     virtual ~DescriptorSetNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

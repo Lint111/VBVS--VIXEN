@@ -8,15 +8,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for presenting rendered images to the swapchain
- * 
+ *
  * Queues presentation operations with proper synchronization.
  * This is the final node in the rendering pipeline.
- * 
+ *
  * Type ID: 110
  */
-class PresentNodeType : public NodeType {
+class PresentNodeType : public TypedNodeType<PresentNodeConfig> {
 public:
-    PresentNodeType(const std::string& typeName = "Present");
+    PresentNodeType(const std::string& typeName = "Present")
+        : TypedNodeType<PresentNodeConfig>(typeName) {}
     virtual ~PresentNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

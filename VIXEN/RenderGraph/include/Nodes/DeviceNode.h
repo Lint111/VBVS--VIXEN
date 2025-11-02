@@ -13,9 +13,10 @@ namespace Vixen::RenderGraph {
  * @brief Node type for Vulkan device creation
  * Type ID: 112
  */
-class DeviceNodeType : public NodeType {
+class DeviceNodeType : public TypedNodeType<DeviceNodeConfig> {
 public:
-    DeviceNodeType();
+    DeviceNodeType()
+        : TypedNodeType<DeviceNodeConfig>("Device") {}
     virtual ~DeviceNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

@@ -9,8 +9,16 @@ using namespace Vixen::RenderGraph;
 struct TestConfig {
     static constexpr size_t INPUT_COUNT = 1;
     static constexpr size_t OUTPUT_COUNT = 1;
-    struct INPUT_0_Slot { using Type = uint32_t; static constexpr size_t index = 0; };
-    struct OUTPUT_0_Slot { using Type = uint32_t; static constexpr size_t index = 0; };
+    struct INPUT_0_Slot {
+        using Type = uint32_t;
+        static constexpr size_t index = 0;
+        static constexpr SlotRole role = SlotRole::Dependency;  // Phase F metadata
+    };
+    struct OUTPUT_0_Slot {
+        using Type = uint32_t;
+        static constexpr size_t index = 0;
+        static constexpr SlotRole role = SlotRole::Output;
+    };
 };
 
 // Test typed node that exposes SetInput for test setup

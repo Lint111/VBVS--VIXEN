@@ -65,9 +65,10 @@ private:
 /**
  * @brief Type definition for DepthBufferNode
  */
-class DepthBufferNodeType : public NodeType {
+class DepthBufferNodeType : public TypedNodeType<DepthBufferNodeConfig> {
 public:
-    DepthBufferNodeType(const std::string& typeName = "DepthBuffer");
+    DepthBufferNodeType(const std::string& typeName = "DepthBuffer")
+        : TypedNodeType<DepthBufferNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

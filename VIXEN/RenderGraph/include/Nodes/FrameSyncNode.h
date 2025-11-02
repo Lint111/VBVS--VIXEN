@@ -10,9 +10,10 @@ namespace Vixen::RenderGraph {
 /**
  * @brief FrameSyncNodeType - Defines frame-in-flight synchronization node
  */
-class FrameSyncNodeType : public NodeType {
+class FrameSyncNodeType : public TypedNodeType<FrameSyncNodeConfig> {
 public:
-    FrameSyncNodeType(const std::string& typeName = "FrameSync");
+    FrameSyncNodeType(const std::string& typeName = "FrameSync")
+        : TypedNodeType<FrameSyncNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

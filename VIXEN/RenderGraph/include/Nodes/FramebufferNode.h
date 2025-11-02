@@ -51,9 +51,10 @@ private:
 /**
  * @brief Type definition for FramebufferNode
  */
-class FramebufferNodeType : public NodeType {
+class FramebufferNodeType : public TypedNodeType<FramebufferNodeConfig> {
 public:
-    FramebufferNodeType(const std::string& typeName = "Framebuffer");
+    FramebufferNodeType(const std::string& typeName = "Framebuffer")
+        : TypedNodeType<FramebufferNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };

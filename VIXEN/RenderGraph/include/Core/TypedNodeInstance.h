@@ -250,21 +250,9 @@ public:
         inputs.fill(VK_NULL_HANDLE);
         outputs.fill(VK_NULL_HANDLE);
 
-        // Phase F: Automatically register inputs/outputs from ConfigType metadata
-        // This removes boilerplate from NodeType constructors
-        ConfigType config;
-        auto inputDescs = config.GetInputVector();
-        auto outputDescs = config.GetOutputVector();
-
-        // Register all inputs
-        for (const auto& desc : inputDescs) {
-            NodeInstance::RegisterInput(desc);
-        }
-
-        // Register all outputs
-        for (const auto& desc : outputDescs) {
-            NodeInstance::RegisterOutput(desc);
-        }
+        // Phase F Note: Input/output schemas are registered by NodeType constructor
+        // using ConfigType::GetInputVector() and GetOutputVector()
+        // No need to duplicate registration here
     }
 
     virtual ~TypedNode() = default;
@@ -685,6 +673,41 @@ protected:
     // In a full implementation, use std::tuple<Slot0::Type, Slot1::Type, ...>
     std::array<void*, ConfigType::INPUT_COUNT> inputs{};
     std::array<void*, ConfigType::OUTPUT_COUNT> outputs{};
+};
+
+/**
+ * @brief TypedNodeType - Automatic schema population from config
+ *
+ * Eliminates boilerplate from NodeType constructors by automatically
+ * populating inputSchema and outputSchema from ConfigType.
+ *
+ * Usage:
+ * ```cpp
+ * // OLD: Manual schema population
+ * class BoolOpNodeType : public NodeType {
+ *     BoolOpNodeType() : NodeType("BoolOp") {
+ *         BoolOpNodeConfig config;
+ *         inputSchema = config.GetInputVector();
+ *         outputSchema = config.GetOutputVector();
+ *     }
+ * };
+ *
+ * // NEW: Automatic schema population
+ * class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig> {
+ *     BoolOpNodeType() : TypedNodeType<BoolOpNodeConfig>("BoolOp") {}
+ * };
+ * ```
+ */
+template<typename ConfigType>
+class TypedNodeType : public NodeType {
+public:
+    TypedNodeType(const std::string& typeName)
+        : NodeType(typeName) {
+        // Automatically populate schemas from config
+        ConfigType config;
+        inputSchema = config.GetInputVector();
+        outputSchema = config.GetOutputVector();
+    }
 };
 
 } // namespace Vixen::RenderGraph

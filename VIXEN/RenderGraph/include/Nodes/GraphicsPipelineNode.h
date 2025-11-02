@@ -21,15 +21,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for assembling graphics pipelines
- * 
+ *
  * Combines shaders, render pass, vertex input description, and state configuration
  * to create a complete Vulkan graphics pipeline.
- * 
+ *
  * Type ID: 108
  */
-class GraphicsPipelineNodeType : public NodeType {
+class GraphicsPipelineNodeType : public TypedNodeType<GraphicsPipelineNodeConfig> {
 public:
-    GraphicsPipelineNodeType(const std::string& typeName = "GraphicsPipeline");
+    GraphicsPipelineNodeType(const std::string& typeName = "GraphicsPipeline")
+        : TypedNodeType<GraphicsPipelineNodeConfig>(typeName) {}
     virtual ~GraphicsPipelineNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
