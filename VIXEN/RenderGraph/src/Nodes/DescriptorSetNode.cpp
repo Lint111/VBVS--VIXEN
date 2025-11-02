@@ -153,12 +153,10 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
     // Phase 0.4: Get swapchain image count for per-image resource allocation
+    // Phase G: SWAPCHAIN_PUBLIC is now optional (required for compute, optional for graphics)
     auto* swapchainPublic = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
-    if (!swapchainPublic) {
-        throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
-    }
 
-    uint32_t imageCount = swapchainPublic->swapChainImageCount;
+    uint32_t imageCount = swapchainPublic ? swapchainPublic->swapChainImageCount : 0;
     if (imageCount == 0) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
     }
@@ -240,59 +238,92 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
 
     std::cout << "[DescriptorSetNode::Compile] Created " << imageCount << " per-frame UBOs" << std::endl;
 
-    // Phase 0.4: Update each descriptor set with its corresponding per-frame UBO
+    // Phase 0.4: Update each descriptor set with its corresponding per-frame resources
     // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
-    // Check if texture inputs are provided
+
+    // Phase G: Determine what binding 0 is from shader reflection (data-driven approach)
+    VkDescriptorType binding0Type = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+    if (!descriptorBindings.empty()) {
+        binding0Type = descriptorBindings[0].descriptorType;
+    }
+
+    // Get optional inputs (reuse swapchainPublic from line 156)
     VkImageView textureView = ctx.In(DescriptorSetNodeConfig::TEXTURE_VIEW);
     VkSampler textureSampler = ctx.In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
 
     for (uint32_t i = 0; i < imageCount; i++) {
-        // UBO descriptor (binding 0)
-        VkDescriptorBufferInfo bufferDescInfo{};
-        bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(i);
-        bufferDescInfo.offset = 0;
-        bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+        std::vector<VkWriteDescriptorSet> writes;
 
-        VkWriteDescriptorSet bufferWrite{};
-        bufferWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        bufferWrite.dstSet = descriptorSets[i];
-        bufferWrite.dstBinding = 0;
-        bufferWrite.dstArrayElement = 0;
-        bufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bufferWrite.descriptorCount = 1;
-        bufferWrite.pBufferInfo = &bufferDescInfo;
+        // Update binding 0 based on what the shader reflection says it is
+        if (binding0Type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+            // Compute shader: binding 0 = storage image (from swapchain)
+            if (!swapchainPublic) {
+                throw std::runtime_error("[DescriptorSetNode::Compile] Shader requires storage image at binding 0, but SWAPCHAIN_PUBLIC not provided");
+            }
 
-        if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
-            // Texture descriptor (binding 1)
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textureView;
-            imageInfo.sampler = textureSampler;
+            VkDescriptorImageInfo storageImageInfo{};
+            storageImageInfo.imageView = swapchainPublic->colorBuffers[i].view;
+            storageImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-            VkWriteDescriptorSet textureWrite{};
-            textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            textureWrite.dstSet = descriptorSets[i];
-            textureWrite.dstBinding = 1;
-            textureWrite.dstArrayElement = 0;
-            textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            textureWrite.descriptorCount = 1;
-            textureWrite.pImageInfo = &imageInfo;
+            VkWriteDescriptorSet storageWrite{};
+            storageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            storageWrite.dstSet = descriptorSets[i];
+            storageWrite.dstBinding = 0;
+            storageWrite.dstArrayElement = 0;
+            storageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            storageWrite.descriptorCount = 1;
+            storageWrite.pImageInfo = &storageImageInfo;
+            writes.push_back(storageWrite);
 
-            VkWriteDescriptorSet writes[] = {bufferWrite, textureWrite};
-            vkUpdateDescriptorSets(device->device, 2, writes, 0, nullptr);
-        } else {
-            // UBO only
-            vkUpdateDescriptorSets(device->device, 1, &bufferWrite, 0, nullptr);
+            std::cout << "[DescriptorSetNode::Compile] Updated descriptor set " << i << " with storage image (from shader reflection)" << std::endl;
+        } else if (binding0Type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            // Graphics shader: binding 0 = UBO
+            VkDescriptorBufferInfo bufferDescInfo{};
+            bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(i);
+            bufferDescInfo.offset = 0;
+            bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+
+            VkWriteDescriptorSet bufferWrite{};
+            bufferWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            bufferWrite.dstSet = descriptorSets[i];
+            bufferWrite.dstBinding = 0;
+            bufferWrite.dstArrayElement = 0;
+            bufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            bufferWrite.descriptorCount = 1;
+            bufferWrite.pBufferInfo = &bufferDescInfo;
+            writes.push_back(bufferWrite);
+
+            // Texture descriptor (binding 1) - optional for graphics shaders
+            if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfo.imageView = textureView;
+                imageInfo.sampler = textureSampler;
+
+                VkWriteDescriptorSet textureWrite{};
+                textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                textureWrite.dstSet = descriptorSets[i];
+                textureWrite.dstBinding = 1;
+                textureWrite.dstArrayElement = 0;
+                textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                textureWrite.descriptorCount = 1;
+                textureWrite.pImageInfo = &imageInfo;
+                writes.push_back(textureWrite);
+            }
+
+            std::cout << "[DescriptorSetNode::Compile] Updated descriptor set " << i << " with UBO (from shader reflection)" << std::endl;
         }
 
-        std::cout << "[DescriptorSetNode::Compile] Updated descriptor set " << i << " with UBO" << std::endl;
+        vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
-    if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
-        std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated with texture (view="
-                  << textureView << ", sampler=" << textureSampler << ")" << std::endl;
-    } else {
-        std::cout << "[DescriptorSetNode::Compile] WARNING: No texture inputs provided!" << std::endl;
+    if (binding0Type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+        std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated with swapchain storage images (shader-driven)" << std::endl;
+    } else if (binding0Type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+        std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated with UBOs (shader-driven)" << std::endl;
+        if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
+            std::cout << "[DescriptorSetNode::Compile] Texture also bound at binding 1" << std::endl;
+        }
     }
     
     // Note: We're intentionally NOT storing dummyUBO/dummyUBOMemory for cleanup

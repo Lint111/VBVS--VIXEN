@@ -90,7 +90,9 @@
         "typeindex": "cpp",
         "valarray": "cpp",
         "coroutine": "cpp",
-        "resumable": "cpp"
+        "resumable": "cpp",
+        "codecvt": "cpp",
+        "shared_mutex": "cpp"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "CodeGPT.apiKey": "Ollama"

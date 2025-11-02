@@ -103,7 +103,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6,
-        SlotNullability::Required,
+        SlotNullability::Optional,  // Optional: for compute shaders with storage images
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -204,7 +204,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
 
     static_assert(SWAPCHAIN_PUBLIC_Slot::index == 6, "SWAPCHAIN_PUBLIC must be at index 6");
-    static_assert(!SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC is required");
+    static_assert(SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC is optional");
 
     static_assert(IMAGE_INDEX_Slot::index == 7, "IMAGE_INDEX must be at index 7");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");

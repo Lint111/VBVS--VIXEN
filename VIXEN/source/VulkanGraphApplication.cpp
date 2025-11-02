@@ -383,8 +383,10 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
     nodeRegistry->RegisterNodeType(std::make_unique<LoopBridgeNodeType>());  // Phase 0.4: Loop system
     nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
 
-    mainLogger->Info("Successfully registered 19 node types");
+    mainLogger->Info("Successfully registered 21 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
