@@ -107,7 +107,7 @@ uint64_t ResourceBudgetManager::GetAvailableBytes(BudgetResourceType type) const
     auto usageIt = usage_.find(type);
 
     if (budgetIt == budgets_.end() || budgetIt->second.maxBytes == 0) {
-        return std::numeric_limits<uint64_t>::max(); // Unlimited
+        return (std::numeric_limits<uint64_t>::max)(); // Unlimited
     }
 
     uint64_t current = (usageIt != usage_.end()) ? usageIt->second.currentBytes : 0;
@@ -121,7 +121,7 @@ uint64_t ResourceBudgetManager::GetAvailableBytes(const std::string& customType)
     auto usageIt = customUsage_.find(customType);
 
     if (budgetIt == customBudgets_.end() || budgetIt->second.maxBytes == 0) {
-        return std::numeric_limits<uint64_t>::max(); // Unlimited
+        return (std::numeric_limits<uint64_t>::max)(); // Unlimited
     }
 
     uint64_t current = (usageIt != customUsage_.end()) ? usageIt->second.currentBytes : 0;
@@ -237,7 +237,7 @@ bool ResourceBudgetManager::TryAllocateImpl(const ResourceBudget* budget, Budget
 
 void ResourceBudgetManager::RecordAllocationImpl(BudgetResourceUsage* usage, uint64_t bytes) {
     usage->currentBytes += bytes;
-    usage->peakBytes = std::max(usage->peakBytes, usage->currentBytes);
+    usage->peakBytes = (std::max)(usage->peakBytes, usage->currentBytes);
     usage->allocationCount++;
 }
 
