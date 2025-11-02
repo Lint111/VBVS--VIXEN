@@ -19,6 +19,9 @@ namespace Vixen::RenderGraph {
 // Static counter for unique instance IDs
 static std::atomic<uint64_t> nextInstanceId{1};
 
+// Phase F: Thread-local task index for parallel-safe slot access
+thread_local uint32_t NodeInstance::currentTaskIndex = 0;
+
 NodeInstance::NodeInstance(
     const std::string& instanceName,
     NodeType* nodeType

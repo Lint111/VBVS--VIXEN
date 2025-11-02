@@ -22,7 +22,7 @@ public:
     using NodeInstance::SetInput; // expose for tests
 
 protected:
-    void ExecuteImpl() override {}
+    void ExecuteImpl(uint32_t taskIndex) override {}
 };
 
 // A tiny dummy NodeType so we can construct instances

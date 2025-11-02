@@ -20,7 +20,7 @@ public:
 
 protected:
     // Provide minimal Execute implementation to satisfy abstract base (uses template method pattern)
-    void ExecuteImpl() override {}
+    void ExecuteImpl(uint32_t taskIndex) override {}
 };
 
 class DummyNodeType : public NodeType {

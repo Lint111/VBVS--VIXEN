@@ -323,10 +323,11 @@ public:
      * Automatically handles:
      * - Analyzes slot configuration to determine task count
      * - Generates tasks based on SlotScope and array sizes
-     * - Calls ExecuteImpl(taskIndex) for each task
-     * - Node implementations just handle one task's worth of work
+     * - Sets up task-local In()/Out() context for each task
+     * - Calls ExecuteImpl() for each task with pre-bound slot access
+     * - Node implementations use In()/Out() without knowing about indices
      *
-     * Derived classes should override ExecuteImpl(uint32_t taskIndex), NOT this method.
+     * Derived classes should override ExecuteImpl(), NOT this method.
      */
     virtual void Execute(VkCommandBuffer commandBuffer) final {
         // Analyze slot configuration to determine task generation strategy
@@ -337,9 +338,12 @@ public:
             return;
         }
 
-        // Execute each task
+        // Execute each task with task-local context
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            // Set current task index for In()/Out() binding
             currentTaskIndex = taskIndex;
+
+            // Execute with task-bound slot access
             ExecuteImpl(taskIndex);
         }
 
@@ -671,8 +675,8 @@ public:
     SlotTaskManager taskManager;
     PerformanceStats performanceStats;
 
-    // Phase F: Current task index for context-aware In()/Out()
-    uint32_t currentTaskIndex = 0;
+    // Phase F: Thread-local task index for parallel-safe slot access
+    static thread_local uint32_t currentTaskIndex;
 
     // Caching
     uint64_t cacheKey = 0;

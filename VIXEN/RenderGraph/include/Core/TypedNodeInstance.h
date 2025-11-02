@@ -191,7 +191,7 @@ public:
     template<typename SlotType>
     typename SlotType::Type In(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        // Phase F: Use currentTaskIndex for context-aware slot access
+        // Phase F: Use currentTaskIndex set by Execute() - provides task-local context
         uint32_t arrayIndex = static_cast<uint32_t>(currentTaskIndex);
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
         // If caller requested Dependency semantics (bitwise), mark used-in-compile
