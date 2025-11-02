@@ -6,6 +6,8 @@ VIXEN - Vulkan Interactive eXample Engine
 ## Overview
 A learning-focused Vulkan graphics engine implementing a **graph-based rendering architecture** on Windows. The project has evolved from chapter-based Vulkan fundamentals to a production-quality render graph system with compile-time type safety, resource variant architecture, and event-driven invalidation.
 
+**NEW (November 2025)**: VIXEN is now being extended as a **voxel ray tracing research platform** for comparative pipeline analysis, targeting academic paper publication (May 2026).
+
 ## Current Focus: RenderGraph System
 The core architecture is a **node-based render graph** where rendering operations are modular, composable nodes connected into a directed acyclic graph (DAG).
 
@@ -17,11 +19,23 @@ The core architecture is a **node-based render graph** where rendering operation
 5. **Protected API Enforcement** - Nodes use only high-level typed API, graph manages low-level wiring
 
 ## Goals
+
+### Core Engine Goals
 1. **Production-Quality Architecture** - Industry-standard render graph patterns (comparable to Unity HDRP, Unreal RDG)
 2. **Type Safety First** - Compile-time validation eliminates runtime type errors
 3. **Extensibility** - Adding new node types requires minimal boilerplate
 4. **Performance** - Zero-overhead abstractions, cache-friendly compilation
 5. **Learning Platform** - Document architectural decisions for educational value
+
+### Research Goals (NEW - November 2025)
+6. **Comparative Analysis** - Measure performance differences between 4 ray tracing/marching pipelines
+7. **Academic Contribution** - Publish findings in graphics/rendering conference (May 2026 target)
+8. **Reproducible Results** - Automated testing framework for 180 configuration matrix
+9. **Open Source Research** - All code, data, and analysis tools publicly available
+
+**Research Question**: How do different Vulkan pipeline architectures (compute shader ray marching, fragment shader ray marching, hardware ray tracing, hybrid) affect rendering performance, GPU bandwidth utilization, and scalability for data-driven voxel rendering?
+
+**Bibliography**: 24 research papers compiled in `C:\Users\liory\Docs\Performance comparison on rendering methods for voxel data.pdf` covering voxel rendering, ray tracing, sparse voxel octrees, and GPU optimization techniques.
 
 ## Scope
 ### Completed Systems ✅
