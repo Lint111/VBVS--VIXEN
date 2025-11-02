@@ -54,8 +54,6 @@ using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 using BoolVector = std::vector<bool>;  // Phase 0.4
 using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Per-image semaphore arrays
 using VkFenceVector = std::vector<VkFence>*;  // Phase 0.7: Fence vector pointer (supports empty() check)
-using VkImageStoragePtr = VkImage*;  // Phase G.2: Storage image pointer (with descriptor)
-using VkImage3DPtr = VkImage*;  // Phase G.2: 3D texture pointer (with descriptor)
 
 namespace Vixen::RenderGraph {
 
@@ -138,14 +136,15 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkBufferView,                    HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkImageStoragePtr,               StorageImageDescriptor, ResourceType::Image) \
-    RESOURCE_TYPE(VkImage3DPtr,                    Texture3DDescriptor,   ResourceType::Image) \
-    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
+    RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,       ResourceType::Buffer) \
+    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,       ResourceType::Buffer) \
+    RESOURCE_TYPE(bool,                            HandleDescriptor,       ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,       ResourceType::Buffer) \
+    RESOURCE_TYPE(VkBufferView,                    HandleDescriptor,       ResourceType::Buffer) \
+    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,       ResourceType::AccelerationStructure)
+
+// NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
+// We don't register separate types since VkImage already exists. The descriptor differentiates usage.
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS
