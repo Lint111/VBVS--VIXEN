@@ -43,22 +43,45 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== INPUTS (4) =====
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    AUTO_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);  // Index 0 (auto)
 
     // Render pass from RenderPassNode
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 1, false);
+    AUTO_INPUT(RENDER_PASS, VkRenderPass,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);  // Index 1 (auto)
 
     // Swapchain public variables bundle (contains colorBuffers array)
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 2, false);
+    AUTO_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);  // Index 2 (auto)
 
     // Depth attachment from DepthBufferNode (nullable - may not use depth)
-    CONSTEXPR_INPUT(DEPTH_ATTACHMENT, VkImageView, 3, true);
+    AUTO_INPUT(DEPTH_ATTACHMENT, VkImageView,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);  // Index 3 (auto)
 
 
     // ===== OUTPUTS (2) =====
     // Framebuffer handles (vector containing all swapchain framebuffers)
-    CONSTEXPR_OUTPUT(FRAMEBUFFERS, FramebufferVector, 0, false);
-	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    AUTO_OUTPUT(FRAMEBUFFERS, FramebufferVector,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 0 (auto)
+
+	AUTO_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 1 (auto)
 
     FramebufferNodeConfig() {
         // Initialize input descriptors

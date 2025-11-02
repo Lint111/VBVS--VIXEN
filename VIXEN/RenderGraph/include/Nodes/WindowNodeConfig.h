@@ -26,16 +26,35 @@ namespace WindowNodeCounts {
  *   - HEIGHT (uint32_t) - Window height
  * Parameters: width, height
  */
-CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 
-                      WindowNodeCounts::INPUTS, 
-                      WindowNodeCounts::OUTPUTS, 
+CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
+                      WindowNodeCounts::INPUTS,
+                      WindowNodeCounts::OUTPUTS,
                       WindowNodeCounts::ARRAY_MODE) {
-    // Compile-time output slot definitions
-    CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);
-    CONSTEXPR_OUTPUT(HWND_OUT, ::HWND, 1, false);
-    CONSTEXPR_OUTPUT(HINSTANCE_OUT, ::HINSTANCE, 2, false);
-    CONSTEXPR_OUTPUT(WIDTH_OUT, uint32_t, 3, false);
-    CONSTEXPR_OUTPUT(HEIGHT_OUT, uint32_t, 4, false);
+    // Phase F: Auto-indexed output slots with full metadata
+    AUTO_OUTPUT(SURFACE, VkSurfaceKHR,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 0 (auto)
+
+    AUTO_OUTPUT(HWND_OUT, ::HWND,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 1 (auto)
+
+    AUTO_OUTPUT(HINSTANCE_OUT, ::HINSTANCE,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 2 (auto)
+
+    AUTO_OUTPUT(WIDTH_OUT, uint32_t,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 3 (auto)
+
+    AUTO_OUTPUT(HEIGHT_OUT, uint32_t,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::WriteOnly);  // Index 4 (auto)
 
     // Compile-time parameter names (constexpr strings for type safety)
     static constexpr const char* PARAM_WIDTH = "width";
