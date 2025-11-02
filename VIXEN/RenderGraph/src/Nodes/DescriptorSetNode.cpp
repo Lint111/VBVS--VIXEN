@@ -61,7 +61,7 @@ DescriptorSetNode::~DescriptorSetNode() {
     Cleanup();
 }
 
-void DescriptorSetNode::SetupImpl() {
+void DescriptorSetNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
     VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -74,7 +74,7 @@ void DescriptorSetNode::SetupImpl() {
     NODE_LOG_INFO("Setup: Descriptor set node ready (MVP stub - no descriptors)");
 }
 
-void DescriptorSetNode::CompileImpl() {
+void DescriptorSetNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Phase 2: Read ShaderDataBundle from input
@@ -330,7 +330,7 @@ void DescriptorSetNode::CompileImpl() {
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
 }
 
-void DescriptorSetNode::ExecuteImpl(TaskContext& ctx) {
+void DescriptorSetNode::ExecuteImpl(Context& ctx) {
     // Phase 0.4: Get current image index to select correct per-frame buffer
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 

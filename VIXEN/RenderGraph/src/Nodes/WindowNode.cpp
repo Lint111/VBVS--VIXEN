@@ -45,7 +45,7 @@ WindowNode::~WindowNode() {
     Cleanup();
 }
 
-void WindowNode::SetupImpl() {
+void WindowNode::SetupImpl(Context& ctx) {
     NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 
 #ifdef _WIN32
@@ -79,7 +79,7 @@ void WindowNode::SetupImpl() {
 #endif
 }
 
-void WindowNode::CompileImpl() {
+void WindowNode::CompileImpl(Context& ctx) {
     std::cout << "[WindowNode::Compile] START" << std::endl;
     
     // Get parameters using typed names from config
@@ -168,7 +168,7 @@ void WindowNode::CompileImpl() {
 #endif
 }
 
-void WindowNode::ExecuteImpl(TaskContext& ctx) {
+void WindowNode::ExecuteImpl(Context& ctx) {
     // Process Windows messages
 #ifdef _WIN32
     MSG msg;

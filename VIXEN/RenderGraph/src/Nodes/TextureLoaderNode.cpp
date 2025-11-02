@@ -51,7 +51,7 @@ TextureLoaderNode::~TextureLoaderNode() {
     Cleanup();
 }
 
-void TextureLoaderNode::SetupImpl() {
+void TextureLoaderNode::SetupImpl(Context& ctx) {
     // Read and validate device input
     VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -64,7 +64,7 @@ void TextureLoaderNode::SetupImpl() {
     // Note: TextureCacher handles command pool and texture loading internally
 }
 
-void TextureLoaderNode::CompileImpl() {
+void TextureLoaderNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
@@ -168,7 +168,7 @@ void TextureLoaderNode::CompileImpl() {
     ctx.Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void TextureLoaderNode::ExecuteImpl(TaskContext& ctx) {
+void TextureLoaderNode::ExecuteImpl(Context& ctx) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     

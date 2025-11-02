@@ -50,7 +50,7 @@ FrameSyncNode::~FrameSyncNode() {
     Cleanup();
 }
 
-void FrameSyncNode::SetupImpl() {
+void FrameSyncNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
     if (devicePtr == nullptr) {
@@ -63,7 +63,7 @@ void FrameSyncNode::SetupImpl() {
     SetDevice(devicePtr);
 }
 
-void FrameSyncNode::CompileImpl() {
+void FrameSyncNode::CompileImpl(Context& ctx) {
     // Phase 0.4: Separate concerns - fences for CPU-GPU, semaphores for GPU-GPU
     constexpr uint32_t flightCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
     constexpr uint32_t imageCount = FrameSyncNodeConfig::MAX_SWAPCHAIN_IMAGES;
@@ -150,7 +150,7 @@ void FrameSyncNode::CompileImpl() {
     NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
-void FrameSyncNode::ExecuteImpl(TaskContext& ctx) {
+void FrameSyncNode::ExecuteImpl(Context& ctx) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 

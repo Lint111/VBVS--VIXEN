@@ -57,7 +57,7 @@ GeometryRenderNode::~GeometryRenderNode() {
     Cleanup();
 }
 
-void GeometryRenderNode::SetupImpl() {
+void GeometryRenderNode::SetupImpl(Context& ctx) {
     // Get device and command pool from inputs
     vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
@@ -70,7 +70,7 @@ void GeometryRenderNode::SetupImpl() {
     }
 }
 
-void GeometryRenderNode::CompileImpl() {
+void GeometryRenderNode::CompileImpl(Context& ctx) {
     // Get parameters
     vertexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::VERTEX_COUNT, 0);
     instanceCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INSTANCE_COUNT, 1);
@@ -123,7 +123,7 @@ void GeometryRenderNode::CompileImpl() {
     // No need to create per-swapchain-image semaphores anymore
 }
 
-void GeometryRenderNode::ExecuteImpl(TaskContext& ctx) {
+void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(GeometryRenderNodeConfig::IMAGE_INDEX);
 

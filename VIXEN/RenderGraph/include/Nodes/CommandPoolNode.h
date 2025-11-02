@@ -41,9 +41,9 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl(TaskContext& ctx) override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:

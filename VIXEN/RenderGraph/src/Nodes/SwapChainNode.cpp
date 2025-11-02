@@ -51,7 +51,7 @@ SwapChainNode::~SwapChainNode() {
     Cleanup();
 }
 
-void SwapChainNode::SetupImpl() {
+void SwapChainNode::SetupImpl(Context& ctx) {
     SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
 
     if (GetDevice() == nullptr) {
@@ -83,7 +83,7 @@ void SwapChainNode::SetupImpl() {
     currentFrame = 0;
 }
 
-void SwapChainNode::CompileImpl() {
+void SwapChainNode::CompileImpl(Context& ctx) {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
 
     // Publish render pause starting event
@@ -248,7 +248,7 @@ void SwapChainNode::CompileImpl() {
     }
 }
 
-void SwapChainNode::ExecuteImpl(TaskContext& ctx) {
+void SwapChainNode::ExecuteImpl(Context& ctx) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const VkSemaphore* imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     const VkSemaphore* renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);

@@ -32,7 +32,7 @@ LoopBridgeNode::~LoopBridgeNode() {
     Cleanup();
 }
 
-void LoopBridgeNode::SetupImpl() {
+void LoopBridgeNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
@@ -48,7 +48,7 @@ void LoopBridgeNode::SetupImpl() {
     }
 }
 
-void LoopBridgeNode::CompileImpl() {
+void LoopBridgeNode::CompileImpl(Context& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Verify loop exists

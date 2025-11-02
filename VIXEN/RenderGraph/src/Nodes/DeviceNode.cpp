@@ -66,7 +66,7 @@ DeviceNode::~DeviceNode() {
     Cleanup();
 }
 
-void DeviceNode::SetupImpl() {
+void DeviceNode::SetupImpl(Context& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 
     // Get VkInstance from global (Phase 1 temporary solution)
@@ -87,7 +87,7 @@ void DeviceNode::SetupImpl() {
     NODE_LOG_INFO("[DeviceNode] Setup complete");
 }
 
-void DeviceNode::CompileImpl() {
+void DeviceNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // If device already exists, publish invalidation event before recreation
@@ -140,7 +140,7 @@ void DeviceNode::CompileImpl() {
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
 
-void DeviceNode::ExecuteImpl(TaskContext& ctx) {
+void DeviceNode::ExecuteImpl(Context& ctx) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 

@@ -329,7 +329,7 @@ public:
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
-    virtual void Execute(VkCommandBuffer commandBuffer) final {
+    virtual void Execute() final {
         // Analyze slot configuration to determine task generation strategy
         uint32_t taskCount = DetermineTaskCount();
 

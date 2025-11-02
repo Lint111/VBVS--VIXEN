@@ -31,14 +31,14 @@ BoolOpNode::~BoolOpNode() {
     Cleanup();
 }
 
-void BoolOpNode::SetupImpl() {
+void BoolOpNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 
     // Read OPERATION from input (connected to ConstantNode)
     operation = In(BoolOpNodeConfig::OPERATION);
 }
 
-void BoolOpNode::CompileImpl() {
+void BoolOpNode::CompileImpl(Context& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
 
     // Validate operation type
@@ -47,7 +47,7 @@ void BoolOpNode::CompileImpl() {
     }
 }
 
-void BoolOpNode::ExecuteImpl(TaskContext& ctx) {
+void BoolOpNode::ExecuteImpl(Context& ctx) {
     // Read vector of bools from INPUTS slot
     std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 

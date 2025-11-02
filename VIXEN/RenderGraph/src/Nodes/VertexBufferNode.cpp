@@ -49,7 +49,7 @@ VertexBufferNode::~VertexBufferNode() {
     Cleanup();
 }
 
-void VertexBufferNode::SetupImpl() {
+void VertexBufferNode::SetupImpl(Context& ctx) {
     // Read and validate device input
     VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -62,7 +62,7 @@ void VertexBufferNode::SetupImpl() {
     NODE_LOG_INFO("Setup: Vertex buffer node ready");
 }
 
-void VertexBufferNode::CompileImpl() {
+void VertexBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Get typed parameters
@@ -160,7 +160,7 @@ void VertexBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl(TaskContext& ctx) {
+void VertexBufferNode::ExecuteImpl(Context& ctx) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }

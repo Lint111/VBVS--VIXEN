@@ -47,7 +47,7 @@ PresentNode::~PresentNode() {
     Cleanup();
 }
 
-void PresentNode::SetupImpl() {
+void PresentNode::SetupImpl(Context& ctx) {
     // Read and validate device input
     VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -58,7 +58,7 @@ void PresentNode::SetupImpl() {
     SetDevice(devicePtr);
 }
 
-void PresentNode::CompileImpl() {
+void PresentNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
@@ -71,7 +71,7 @@ void PresentNode::CompileImpl() {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::ExecuteImpl(TaskContext& ctx) {
+void PresentNode::ExecuteImpl(Context& ctx) {
     Present();
 }
 

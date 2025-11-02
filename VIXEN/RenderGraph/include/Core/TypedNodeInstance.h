@@ -106,15 +106,15 @@ namespace Vixen::RenderGraph {
  * Storage is a std::array indexed by the config's slot indices.
  * Type safety is enforced at compile time.
  *
- * **Phase F: TaskContext System**
- * Nodes now receive a TaskContext in ExecuteImpl() instead of a raw index.
+ * **Phase F: Context System**
+ * Nodes now receive a Context in ExecuteImpl() instead of a raw index.
  * The context provides In()/Out() accessors bound to a specific task index,
  * enabling clean parallelization without manual index management.
  *
  * Example:
  * ```cpp
  * class WindowNode : public TypedNode<WindowNodeConfig> {
- *     using Ctx = typename TypedNode<WindowNodeConfig>::TaskContext;
+ *     using Ctx = typename TypedNode<WindowNodeConfig>::Context;
  *
  *     void CompileImpl() override {
  *         CreateSurface();
@@ -133,9 +133,14 @@ template<typename ConfigType>
 class TypedNode : public NodeInstance {
 public:
     /**
-     * @brief Phase F: TaskContext - Bound slot accessors for one task
+     * @brief Phase F: Context - Bound slot accessors for node lifecycle methods
      *
-     * Each task gets its own context with In()/Out() bound to a specific index.
+     * Provides In()/Out() accessors bound to a specific array index (taskIndex).
+     * Used in Setup, Compile, and Execute to provide clean slot access API.
+     *
+     * For Setup/Compile: taskIndex is always 0 (non-task-based operations)
+     * For Execute: taskIndex corresponds to the current task being processed
+     *
      * This enables:
      * - Clean API: no manual index passing
      * - Parallelization: each task has independent context
@@ -143,17 +148,17 @@ public:
      *
      * Usage in ExecuteImpl:
      * ```cpp
-     * void ExecuteImpl(TaskContext& ctx) override {
+     * void ExecuteImpl(Context& ctx) override {
      *     auto input = ctx.In(MyConfig::INPUT_SLOT);
      *     ctx.Out(MyConfig::OUTPUT_SLOT, result);
      * }
      * ```
      */
-    struct TaskContext {
+    struct Context {
         TypedNode<ConfigType>* node;
         uint32_t taskIndex;
 
-        TaskContext(TypedNode<ConfigType>* n, uint32_t idx)
+        Context(TypedNode<ConfigType>* n, uint32_t idx)
             : node(n), taskIndex(idx) {}
 
         /**
@@ -248,20 +253,38 @@ public:
 
     virtual ~TypedNode() = default;
 
-    // ===== PHASE F: TASKCONTEXT EXECUTION =====
+    // ===== PHASE F: CONTEXT SYSTEM =====
 
     /**
-     * @brief Execute override - creates TaskContext for each task
+     * @brief Setup override - creates Context for setup phase
+     */
+    void Setup() override final {
+        ResetInputsUsedInCompile();
+        Context ctx(this, 0);  // Setup uses index 0
+        SetupImpl(ctx);
+    }
+
+    /**
+     * @brief Compile override - creates Context for compile phase
+     */
+    void Compile() override final {
+        Context ctx(this, 0);  // Compile uses index 0
+        CompileImpl(ctx);
+        RegisterCleanup();
+    }
+
+    /**
+     * @brief Execute override - creates Context for each task
      *
-     * Intercepts NodeInstance::Execute() to create typed TaskContext
+     * Intercepts NodeInstance::Execute() to create typed Context
      * objects instead of passing raw indices to ExecuteImpl().
      *
      * This enables:
      * - Clean node API: ctx.In(slot) instead of In(slot, index)
      * - Parallelization: each task gets independent context
-     * - Type safety: TaskContext is templated on ConfigType
+     * - Type safety: Context is templated on ConfigType
      */
-    void Execute() final {
+    void Execute() override final {
         // Analyze slot configuration to determine task count
         uint32_t taskCount = DetermineTaskCount();
 
@@ -270,10 +293,10 @@ public:
             return;
         }
 
-        // Execute each task with its own TaskContext
+        // Execute each task with its own Context
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             // Create context bound to this task's index
-            TaskContext ctx(this, taskIndex);
+            Context ctx(this, taskIndex);
 
             // Set currentTaskIndex for backward compatibility with legacy In()/Out()
             currentTaskIndex = taskIndex;
@@ -288,16 +311,36 @@ public:
 
 protected:
     /**
-     * @brief ExecuteImpl with TaskContext - override this in derived classes
+     * @brief SetupImpl with Context - override this in derived classes
+     *
+     * Called during Setup phase. Context provides clean In() access.
+     * Context uses index 0 (non-task-based).
+     *
+     * @param ctx Setup context with bound slot accessors
+     */
+    virtual void SetupImpl(Context& ctx) {}
+
+    /**
+     * @brief CompileImpl with Context - override this in derived classes
+     *
+     * Called during Compile phase. Context provides clean In()/Out() access.
+     * Context uses index 0 (non-task-based).
+     *
+     * @param ctx Compile context with bound slot accessors
+     */
+    virtual void CompileImpl(Context& ctx) {}
+
+    /**
+     * @brief ExecuteImpl with Context - override this in derived classes
      *
      * **Phase F: New signature for task-based execution.**
      *
      * Derived classes override this method instead of ExecuteImpl(uint32_t).
-     * The TaskContext provides bound In()/Out() accessors for clean slot access.
+     * The Context provides bound In()/Out() accessors for clean slot access.
      *
      * Example:
      * ```cpp
-     * void MyNode::ExecuteImpl(TaskContext& ctx) override {
+     * void MyNode::ExecuteImpl(Context& ctx) override {
      *     auto device = ctx.In(MyConfig::DEVICE);
      *     auto input = ctx.In(MyConfig::INPUT_DATA);
      *     auto result = Process(device, input);
@@ -307,17 +350,31 @@ protected:
      *
      * @param ctx Task context with bound slot accessors
      */
-    virtual void ExecuteImpl(TaskContext& ctx) = 0;
+    virtual void ExecuteImpl(Context& ctx) = 0;
+
+    /**
+     * @brief Hide base class SetupImpl() - not used in TypedNode
+     */
+    void SetupImpl() final override {
+        // Should never be called - Setup() above creates Context instead
+    }
+
+    /**
+     * @brief Hide base class CompileImpl() - not used in TypedNode
+     */
+    void CompileImpl() final override {
+        // Should never be called - Compile() above creates Context instead
+    }
 
     /**
      * @brief Hide base class ExecuteImpl(uint32_t) - not used in TypedNode
      *
-     * TypedNode intercepts Execute() to create TaskContext, so this
+     * TypedNode intercepts Execute() to create Context, so this
      * base class method should never be called. Mark as final to prevent
      * derived classes from accidentally overriding it.
      */
     void ExecuteImpl(uint32_t taskIndex) final override {
-        // Should never be called - Execute() above creates TaskContext instead
+        // Should never be called - Execute() above creates Context instead
         // This is here only to satisfy NodeInstance pure virtual requirement
     }
 

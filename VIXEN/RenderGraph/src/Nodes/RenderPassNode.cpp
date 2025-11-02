@@ -51,7 +51,7 @@ RenderPassNode::~RenderPassNode() {
     Cleanup();
 }
 
-void RenderPassNode::SetupImpl() {
+void RenderPassNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -66,7 +66,7 @@ void RenderPassNode::SetupImpl() {
     NODE_LOG_INFO("Setup: Render pass node ready");
 }
 
-void RenderPassNode::CompileImpl() {
+void RenderPassNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Get swapchain info bundle and extract format
@@ -156,7 +156,7 @@ void RenderPassNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
-void RenderPassNode::ExecuteImpl(TaskContext& ctx) {
+void RenderPassNode::ExecuteImpl(Context& ctx) {
     // No-op - render pass is created in Compile phase
 }
 

@@ -55,7 +55,7 @@ DepthBufferNode::~DepthBufferNode() {
     Cleanup();
 }
 
-void DepthBufferNode::SetupImpl() {
+void DepthBufferNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
     
     vulkanDevice = In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -70,7 +70,7 @@ void DepthBufferNode::SetupImpl() {
     NODE_LOG_INFO("Setup complete");
 }
 
-void DepthBufferNode::CompileImpl() {
+void DepthBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Helper macro for VkDevice
@@ -151,7 +151,7 @@ void DepthBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
-void DepthBufferNode::ExecuteImpl(TaskContext& ctx) {
+void DepthBufferNode::ExecuteImpl(Context& ctx) {
     // No-op - depth buffer is created in Compile phase
 }
 
