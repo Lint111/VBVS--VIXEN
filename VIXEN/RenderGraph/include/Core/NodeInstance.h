@@ -92,9 +92,8 @@ public:
     bool AllowsInputArrays() const { return allowInputArrays; }
     void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
 
-    // Resources (slot-based access)
-    const std::vector<std::vector<Resource*>>& GetInputs() const { return inputs; }
-    const std::vector<std::vector<Resource*>>& GetOutputs() const { return outputs; }
+    // Phase F: Bundle access (for graph-level operations)
+    const std::vector<Bundle>& GetBundles() const { return bundles; }
 
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
@@ -595,9 +594,16 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
-    // Resources (each slot is a vector: scalar = size 1, array = size N)
-    std::vector<std::vector<Resource*>> inputs;
-    std::vector<std::vector<Resource*>> outputs;
+    // Phase F: Bundle structure - ensures inputs/outputs stay aligned
+    // Each bundle represents one task/array index with all its slots
+    struct Bundle {
+        std::vector<Resource*> inputs;   // One entry per input slot
+        std::vector<Resource*> outputs;  // One entry per output slot
+    };
+
+    // Resources organized as bundles (one bundle per task/array index)
+    // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
+    std::vector<Bundle> bundles;
 
     // Runtime tracking: which input slots were used during the last Compile() call.
     // This is transient runtime state (not serialized). It is mutable so that

@@ -31,20 +31,10 @@ NodeInstance::NodeInstance(
     , nodeType(nodeType)
     , device(nullptr)
 {
-    // Allocate space for inputs and outputs based on schema
-    // Each slot is a vector (size 1 for scalar, size N for array)
+    // Phase F: Bundles start empty - they grow as inputs/outputs are connected
+    // Each bundle will be sized to hold all slots when first accessed via SetInput/SetOutput
+
     if (nodeType) {
-        inputs.resize(nodeType->GetInputCount());
-        outputs.resize(nodeType->GetOutputCount());
-
-        // Initialize each slot with empty vector (will be populated during connection/execution)
-        for (auto& slot : inputs) {
-            slot = {};
-        }
-        for (auto& slot : outputs) {
-            slot = {};
-        }
-
         // Initialize node-level behavior flags from type
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
@@ -86,49 +76,69 @@ bool NodeInstance::HasTag(const std::string& tag) const {
 }
 
 Resource* NodeInstance::GetInput(uint32_t slotIndex, uint32_t arrayIndex) const {
-    if (slotIndex < inputs.size() && arrayIndex < inputs[slotIndex].size()) {
-        return inputs[slotIndex][arrayIndex];
+    // Phase F: Bundle-first organization
+    if (arrayIndex < bundles.size() && slotIndex < bundles[arrayIndex].inputs.size()) {
+        return bundles[arrayIndex].inputs[slotIndex];
     }
     return nullptr;
 }
 
 Resource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const {
-    if (slotIndex < outputs.size() && arrayIndex < outputs[slotIndex].size()) {
-        return outputs[slotIndex][arrayIndex];
+    // Phase F: Bundle-first organization
+    if (arrayIndex < bundles.size() && slotIndex < bundles[arrayIndex].outputs.size()) {
+        return bundles[arrayIndex].outputs[slotIndex];
     }
     return nullptr;
 }
 
 void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
-    if (slotIndex < inputs.size()) {
-        if (arrayIndex >= inputs[slotIndex].size()) {
-            inputs[slotIndex].resize(arrayIndex + 1, nullptr);
-        }
-        inputs[slotIndex][arrayIndex] = resource;
+    // Phase F: Bundle-first organization - ensure bundle exists
+    if (arrayIndex >= bundles.size()) {
+        bundles.resize(arrayIndex + 1);
     }
+
+    // Ensure slot exists in this bundle's inputs
+    if (slotIndex >= bundles[arrayIndex].inputs.size()) {
+        bundles[arrayIndex].inputs.resize(slotIndex + 1, nullptr);
+    }
+
+    bundles[arrayIndex].inputs[slotIndex] = resource;
 }
 
 void NodeInstance::SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
-    if (slotIndex < outputs.size()) {
-        if (arrayIndex >= outputs[slotIndex].size()) {
-            outputs[slotIndex].resize(arrayIndex + 1, nullptr);
-        }
-        outputs[slotIndex][arrayIndex] = resource;
+    // Phase F: Bundle-first organization - ensure bundle exists
+    if (arrayIndex >= bundles.size()) {
+        bundles.resize(arrayIndex + 1);
     }
+
+    // Ensure slot exists in this bundle's outputs
+    if (slotIndex >= bundles[arrayIndex].outputs.size()) {
+        bundles[arrayIndex].outputs.resize(slotIndex + 1, nullptr);
+    }
+
+    bundles[arrayIndex].outputs[slotIndex] = resource;
 }
 
 size_t NodeInstance::GetInputCount(uint32_t slotIndex) const {
-    if (slotIndex < inputs.size()) {
-        return inputs[slotIndex].size();
+    // Phase F: Count how many bundles have this input slot populated
+    size_t count = 0;
+    for (const auto& bundle : bundles) {
+        if (slotIndex < bundle.inputs.size() && bundle.inputs[slotIndex] != nullptr) {
+            count++;
+        }
     }
-    return 0;
+    return count;
 }
 
 size_t NodeInstance::GetOutputCount(uint32_t slotIndex) const {
-    if (slotIndex < outputs.size()) {
-        return outputs[slotIndex].size();
+    // Phase F: Count how many bundles have this output slot populated
+    size_t count = 0;
+    for (const auto& bundle : bundles) {
+        if (slotIndex < bundle.outputs.size() && bundle.outputs[slotIndex] != nullptr) {
+            count++;
+        }
     }
-    return 0;
+    return count;
 }
 
 void NodeInstance::SetParameter(const std::string& name, const ParamTypeValue& value) {
@@ -204,9 +214,9 @@ uint64_t NodeInstance::ComputeCacheKey() const {
         }, value);
     }
     
-    // Hash input resource descriptors (iterate through 2D vector)
-    for (const auto& inputSlot : inputs) {
-        for (const auto* input : inputSlot) {
+    // Phase F: Hash input resource descriptors from bundles
+    for (const auto& bundle : bundles) {
+        for (const auto* input : bundle.inputs) {
             if (input) {
                 // Try to get image descriptor for hashing
                 if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
@@ -256,10 +266,10 @@ void NodeInstance::RegisterCleanup() {
 }
 
 void NodeInstance::AllocateResources() {
-    // Calculate input memory footprint from descriptors
+    // Phase F: Calculate input memory footprint from bundle descriptors
     inputMemoryFootprint = 0;
-    for (const auto& inputSlot : inputs) {
-        for (const auto* input : inputSlot) {
+    for (const auto& bundle : bundles) {
+        for (const auto* input : bundle.inputs) {
             if (input) {
                 // Calculate memory from image descriptor
                 if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
@@ -400,15 +410,9 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 // ============================================================================
 
 uint32_t NodeInstance::DetermineTaskCount() const {
-    // For now, simple implementation: default to 1 task for all nodes
-    // In future, this will analyze slot configuration:
-    // - If all slots are NodeLevel: return 1
-    // - If there are TaskLevel/ParameterizedInput slots: return array length
-    // - If there are InstanceLevel slots: return instance count (async parallelism)
-
-    // TODO: Query node type's slot metadata to detect TaskLevel/ParameterizedInput slots
-    // For Phase F, all current nodes use NodeLevel, so return 1
-    return 1;
+    // Phase F: Task count = number of bundles
+    // Each bundle represents one task with aligned inputs/outputs
+    return bundles.empty() ? 1 : static_cast<uint32_t>(bundles.size());
 }
 
 uint32_t NodeInstance::ExecuteTasks(

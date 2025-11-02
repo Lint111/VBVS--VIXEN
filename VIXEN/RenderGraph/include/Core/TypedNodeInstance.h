@@ -3,6 +3,8 @@
 #include "NodeInstance.h"
 #include "ResourceConfig.h"
 #include "ResourceVariant.h"
+#include <future>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -261,31 +263,51 @@ public:
 
     /**
      * @brief Setup override - creates Context for setup phase
+     *
+     * Phase F: Executes setup for each task based on input array sizes
      */
     void Setup() override final {
         ResetInputsUsedInCompile();
-        Context ctx(this, 0);  // Setup uses index 0
-        SetupImpl(ctx);
+
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            SetupImpl(ctx);
+        }
     }
 
     /**
      * @brief Compile override - creates Context for compile phase
+     *
+     * Phase F: Executes compile for each task based on input array sizes
      */
     void Compile() override final {
-        Context ctx(this, 0);  // Compile uses index 0
-        CompileImpl(ctx);
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            CompileImpl(ctx);
+        }
+
         RegisterCleanup();
     }
 
     /**
      * @brief Execute override - creates Context for each task
      *
-     * Intercepts NodeInstance::Execute() to create typed Context
-     * objects instead of passing raw indices to ExecuteImpl().
+     * Phase F: Executes tasks in parallel based on input array sizes.
+     * Each task processes one array element independently.
      *
      * This enables:
      * - Clean node API: ctx.In(slot) instead of In(slot, index)
-     * - Parallelization: each task gets independent context
+     * - Parallelization: each task runs concurrently
      * - Type safety: Context is templated on ConfigType
      */
     void Execute() override final {
@@ -297,16 +319,29 @@ public:
             return;
         }
 
-        // Execute each task with its own Context
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            // Create context bound to this task's index
-            Context ctx(this, taskIndex);
-
-            // Set currentTaskIndex for backward compatibility with legacy In()/Out()
-            currentTaskIndex = taskIndex;
-
-            // Execute with task-bound context
+        if (taskCount == 1) {
+            // Single task - execute directly without threading overhead
+            Context ctx(this, 0);
+            currentTaskIndex = 0;
             ExecuteImpl(ctx);
+            return;
+        }
+
+        // Multiple tasks - execute in parallel
+        std::vector<std::future<void>> futures;
+        futures.reserve(taskCount);
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            futures.push_back(std::async(std::launch::async, [this, taskIndex]() {
+                Context ctx(this, taskIndex);
+                currentTaskIndex = taskIndex;
+                ExecuteImpl(ctx);
+            }));
+        }
+
+        // Wait for all tasks to complete
+        for (auto& future : futures) {
+            future.get();
         }
 
         // Reset task index after execution
