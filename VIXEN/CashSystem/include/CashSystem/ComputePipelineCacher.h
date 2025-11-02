@@ -103,7 +103,16 @@ struct ComputePipelineCreateParams {
  */
 class ComputePipelineCacher : public TypedCacher<ComputePipelineWrapper> {
 public:
-    ComputePipelineCacher(Vixen::Vulkan::Resources::VulkanDevice* device);
+    /**
+     * @brief Construct ComputePipelineCacher with shared VkPipelineCache
+     *
+     * @param device VulkanDevice pointer
+     * @param sharedPipelineCache Shared VkPipelineCache (from PipelineCacher or DeviceNode)
+     *                            If VK_NULL_HANDLE, creates own cache (not recommended)
+     */
+    ComputePipelineCacher(
+        Vixen::Vulkan::Resources::VulkanDevice* device,
+        VkPipelineCache sharedPipelineCache = VK_NULL_HANDLE);
     ~ComputePipelineCacher() override;
 
     /**
@@ -144,7 +153,8 @@ private:
     std::string GenerateCacheKey(const ComputePipelineCreateParams& params) const;
 
     Vixen::Vulkan::Resources::VulkanDevice* device_;
-    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;  // Shared cache (not owned)
+    bool ownsCache_ = false;  // True if we created our own cache (fallback)
 
     // Cache tracking
     size_t cacheHits_ = 0;

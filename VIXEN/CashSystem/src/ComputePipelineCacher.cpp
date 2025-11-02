@@ -8,22 +8,34 @@
 
 namespace CashSystem {
 
-ComputePipelineCacher::ComputePipelineCacher(Vixen::Vulkan::Resources::VulkanDevice* device)
+ComputePipelineCacher::ComputePipelineCacher(
+    Vixen::Vulkan::Resources::VulkanDevice* device,
+    VkPipelineCache sharedPipelineCache)
     : TypedCacher<ComputePipelineWrapper>(device)
     , device_(device)
+    , pipelineCache_(sharedPipelineCache)
 {
     std::cout << "[ComputePipelineCacher] Initialized" << std::endl;
 
-    // Create global pipeline cache
-    VkPipelineCacheCreateInfo cacheInfo{};
-    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    // Use shared cache if provided, otherwise create own (fallback)
+    if (pipelineCache_ != VK_NULL_HANDLE) {
+        std::cout << "[ComputePipelineCacher] Using shared VkPipelineCache: "
+                  << reinterpret_cast<uint64_t>(pipelineCache_) << std::endl;
+        ownsCache_ = false;
+    } else {
+        std::cout << "[ComputePipelineCacher] WARNING: No shared cache provided, creating own VkPipelineCache" << std::endl;
 
-    VkResult result = vkCreatePipelineCache(device_->device, &cacheInfo, nullptr, &pipelineCache_);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputePipelineCacher] Failed to create pipeline cache");
+        VkPipelineCacheCreateInfo cacheInfo{};
+        cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+        VkResult result = vkCreatePipelineCache(device_->device, &cacheInfo, nullptr, &pipelineCache_);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[ComputePipelineCacher] Failed to create pipeline cache");
+        }
+
+        ownsCache_ = true;
+        std::cout << "[ComputePipelineCacher] Created own VkPipelineCache" << std::endl;
     }
-
-    std::cout << "[ComputePipelineCacher] Created global pipeline cache" << std::endl;
 }
 
 ComputePipelineCacher::~ComputePipelineCacher() {
@@ -55,11 +67,14 @@ void ComputePipelineCacher::Cleanup() {
             }
         }
 
-        // Destroy global pipeline cache
-        if (pipelineCache_ != VK_NULL_HANDLE) {
-            std::cout << "[ComputePipelineCacher::Cleanup] Destroying global pipeline cache" << std::endl;
+        // Only destroy cache if we own it (not shared)
+        if (ownsCache_ && pipelineCache_ != VK_NULL_HANDLE) {
+            std::cout << "[ComputePipelineCacher::Cleanup] Destroying owned VkPipelineCache" << std::endl;
             vkDestroyPipelineCache(GetDevice()->device, pipelineCache_, nullptr);
             pipelineCache_ = VK_NULL_HANDLE;
+            ownsCache_ = false;
+        } else if (pipelineCache_ != VK_NULL_HANDLE) {
+            std::cout << "[ComputePipelineCacher::Cleanup] Shared VkPipelineCache not destroyed (owned externally)" << std::endl;
         }
     }
 
