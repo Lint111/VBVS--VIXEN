@@ -685,21 +685,27 @@ public:
 
 private:
     /**
-     * @brief Ensure output slot has space for arrayIndex
+     * @brief Ensure output slot has space for arrayIndex (Phase F: bundle-first)
      */
     void EnsureOutputSlot(uint32_t slotIndex, size_t arrayIndex) {
-        auto& slot = NodeInstance::outputs[slotIndex];
-        if (slot.size() <= arrayIndex) {
-            slot.resize(arrayIndex + 1, nullptr);
+        // Phase F: Ensure bundle exists for this array index
+        if (arrayIndex >= NodeInstance::bundles.size()) {
+            NodeInstance::bundles.resize(arrayIndex + 1);
         }
-        
+
+        // Ensure the outputs vector in this bundle has room for this slot
+        auto& outputs = NodeInstance::bundles[arrayIndex].outputs;
+        if (slotIndex >= outputs.size()) {
+            outputs.resize(slotIndex + 1, nullptr);
+        }
+
         // If the resource pointer is null, create a temporary Resource for this output
         // This happens when a node wants to write to an output that wasn't connected
-        // TODO: Ideally the graph should manage all Resources, but for now we create locally
-        if (slot[arrayIndex] == nullptr) {
+        // TODO: Ideally the graph should manage all Resource<HandleType> instances, but for now we create locally
+        if (outputs[slotIndex] == nullptr) {
             // HACK: Create Resource inline - this should be managed by RenderGraph
             // For now, just allocate it here. This is a memory leak if not cleaned up!
-            slot[arrayIndex] = new Resource();
+            outputs[slotIndex] = new Resource();
         }
     }
 

@@ -49,6 +49,14 @@ class NodeInstance : public INodeWiring {
     friend class ConnectionBatch;
 
 public:
+    // Phase F: Bundle structure - ensures inputs/outputs stay aligned
+    // Each bundle represents one task/array index with all its slots
+    struct Bundle {
+        std::vector<Resource*> inputs;   // One entry per input slot
+        std::vector<Resource*> outputs;  // One entry per output slot
+    };
+
+public:
     // Phase 0.4: Auto-generated loop slots (reserved slot indices)
     // These slots are automatically available on all nodes for loop connections
     static constexpr uint32_t AUTO_LOOP_IN_SLOT = UINT32_MAX - 1;
@@ -594,14 +602,7 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
-    // Phase F: Bundle structure - ensures inputs/outputs stay aligned
-    // Each bundle represents one task/array index with all its slots
-    struct Bundle {
-        std::vector<Resource*> inputs;   // One entry per input slot
-        std::vector<Resource*> outputs;  // One entry per output slot
-    };
-
-    // Resources organized as bundles (one bundle per task/array index)
+    // Phase F: Resources organized as bundles (one bundle per task/array index)
     // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
     std::vector<Bundle> bundles;
 
