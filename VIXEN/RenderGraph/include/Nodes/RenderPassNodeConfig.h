@@ -53,21 +53,32 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     static constexpr const char* PARAM_SAMPLES = "samples";
 
     // ===== INPUTS (3) =====
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Swapchain public variables (contains format, extent, etc.)
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 1, false);
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Depth format from depth buffer (nullable - may not have depth)
-    CONSTEXPR_INPUT(DEPTH_FORMAT, VkFormat, 2, true);
+    INPUT_SLOT(DEPTH_FORMAT, VkFormat, 2,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    // Render pass handle
-    CONSTEXPR_OUTPUT(RENDER_PASS, VkRenderPass, 0, false);
-    
-    // Device output
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    OUTPUT_SLOT(RENDER_PASS, VkRenderPass, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     RenderPassNodeConfig() {
         // Initialize input descriptors

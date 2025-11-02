@@ -1,743 +1,421 @@
 # Architectural Phases Implementation Checkpoint
 
-**Project**: VIXEN RenderGraph Architecture Overhaul
+**Project**: VIXEN RenderGraph Architecture → Voxel Ray Tracing Research Platform
 **Started**: October 31, 2025
-**Updated**: November 2, 2025 (Phases 0, A, B, C COMPLETE - Starting Phase F)
+**Updated**: November 2, 2025 (Phase F IN PROGRESS - Research roadmap added)
 **Status**: Phase F (Array Processing) - Planning Complete
-**Total Scope**: 90-130 hours across 8 phases (0, A-G)
+**Research Timeline**: 28-31 weeks post-Phase F completion
 
 ---
 
-## STATUS UPDATE: Phase 0 and Phase A COMPLETE ✅
+## MAJOR DIRECTION SHIFT: Research Integration 🎯
 
-**All Phase 0 correctness issues RESOLVED** (November 1, 2025):
-1. ✅ **Per-frame resource management** - PerFrameResources pattern implemented (Phase 0.1)
-2. ✅ **Frame-in-flight synchronization** - FrameSyncNode with MAX_FRAMES_IN_FLIGHT=4 (Phase 0.2)
-3. ✅ **Command buffer recording strategy** - StatefulContainer with conditional recording (Phase 0.3)
-4. ✅ **Multi-rate update loop** - LoopManager with fixed-timestep accumulator (Phase 0.4)
-5. ✅ **Template method pattern** - Already implemented (Setup/Compile/Execute/Cleanup use *Impl())
-6. ✅ **Two-tier synchronization** - Separate CPU-GPU fences and GPU-GPU semaphores (Phase 0.5)
-7. ✅ **Per-image semaphore indexing** - imageAvailable by FRAME, renderComplete by IMAGE (Phase 0.6)
-8. ✅ **Present fences + auto message types** - VK_EXT_swapchain_maintenance1, AUTO_MESSAGE_TYPE() (Phase 0.7)
+**New Primary Goal**: Transform VIXEN into a voxel ray tracing research platform for comparative pipeline analysis.
 
-**Phase A (Persistent Cache) COMPLETE** ✅:
-- Lazy deserialization on cacher registration (no manifest dependency)
-- CACHE HIT verified for SamplerCacher and ShaderModuleCacher
-- 9 cachers implemented with async save/load
-- Stable device IDs (hash-based identification)
+**Research Question**: How do different Vulkan ray tracing/marching pipeline architectures affect rendering performance, GPU bandwidth utilization, and scalability for data-driven voxel rendering?
 
-**System is production-ready** for advanced features.
+**Test Scope**: 180 configurations (4 pipelines × 5 resolutions × 3 densities × 3 algorithms)
+
+**Target Timeline**: Complete by May 2026 (research paper submission)
 
 ---
 
-## Implementation Path
+## Implementation Path UPDATE
 
-**Completed Path**: **0 → A** ✅
+### Completed Infrastructure ✅
+**Phase 0**: Execution Model Correctness ✅
+- 0.1-0.7: Synchronization, loops, present fences, auto message types
+- Multi-rate loop system (LoopManager with fixed-timestep)
+- Frame-in-flight synchronization (MAX_FRAMES_IN_FLIGHT=4)
+- Command buffer recording strategy (StatefulContainer)
 
-**Next Path**: **B → C → F → D → E → G**
+**Phase A**: Persistent Cache Infrastructure ✅
+- Lazy deserialization pattern
+- 9 cachers implemented (CACHE HIT verified)
+- Stable device IDs (hash-based)
+- Async save/load
 
-Completed:
-1. ✅ **Correctness** (0): All P0 bugs fixed in execution model
-2. ✅ **Foundation** (A): Cache infrastructure complete
+**Phase B**: Encapsulation + Thread Safety ✅
+- INodeWiring interface (removed friend declarations)
+- Thread safety documentation (single-threaded model)
 
-Remaining:
-3. ⏳ **Encapsulation** (B): INodeWiring interface, thread safety docs
-4. ⏳ **Validation** (C): Event processing API, slot lifetime validation
-5. ⏳ **Performance** (F): Array processing, data-parallel workloads
-6. ⏳ **Scalability** (D): Execution waves for 500+ nodes
-7. ⏳ **Polish** (E): Hot reload infrastructure
-8. ⏳ **Tooling** (G): Visual editor
+**Phase C**: Event Processing + Validation ✅
+- Event processing sequencing verified
+- SlotRole enum for slot lifetime semantics
+- Render pass compatibility validation infrastructure
 
----
+### Current Work 🔄
+**Phase F**: Array Processing & Slot Tasks (IN PROGRESS)
+- Slot metadata consolidation (SlotScope, SlotNullability, SlotMutability)
+- Resource budget manager (device capability tracking)
+- Three-tier lifecycle (Node → Task → Instance)
+- Budget-based parallelism (hybrid allocation)
+- **Time**: 16-21 hours remaining
+- **Status**: Planning complete, ready for F.0 implementation
 
-## Phase Status Overview
+### Research Phases (Post-Phase F) 🔬
 
-| Phase | Priority | Time Est | Status | Completion |
-|-------|----------|----------|--------|------------|
-| **0: Execution Model Correctness** | 🔴 CRITICAL | 6-10 days | ✅ COMPLETE | 100% |
-| **A: Persistent Cache** | ⭐⭐⭐ HIGH | 5-8h | ✅ COMPLETE | 100% |
-| **B: Encapsulation + Thread Safety** | ⭐⭐⭐ HIGH | 5-7h | ✅ COMPLETE | 100% |
-| **C: Event Processing + Validation** | ⭐⭐⭐ HIGH | 2-3h | ✅ COMPLETE | 100% |
-| **F: Array Processing** | ⭐⭐⭐ HIGH | 16-21h | 🔄 IN PROGRESS | 0% |
-| **D: Execution Waves** | ⭐⭐ MEDIUM | 8-12h | ⏳ PENDING | 0% |
-| **E: Hot Reload** | ⭐ LOW | 17-22h | ⏳ PENDING | 0% |
-| **G: Visual Editor** | ⭐⭐ MED-HIGH | 40-60h | ⏳ PENDING | 0% |
+**Phase G**: Compute Shader Pipeline (HIGHEST PRIORITY)
+- **Duration**: 2-3 weeks
+- **Goal**: Simplest ray marching implementation
+- **Why First**: Validates profiling methodology before RT complexity
+- **Deliverables**: ComputePipelineNode, storage resources, timestamp queries, basic ray marching shader
 
-**Total Progress**: ~63 hours / 90-130 hours (48% - Phases 0, A, B, and C complete)
+**Phase H**: Voxel Data Infrastructure
+- **Duration**: 3-4 weeks
+- **Goal**: Sparse voxel octree (SVO) data structure
+- **Deliverables**: Octree storage, procedural generation, GPU buffer upload, traversal utilities
 
----
+**Phase I**: Performance Profiling System
+- **Duration**: 2-3 weeks
+- **Goal**: Automated metrics collection and export
+- **Deliverables**: PerformanceProfiler, GPU performance counters, CSV export, benchmark configuration
 
-## Phase 0: Execution Model Correctness ✅
+**Phase J**: Fragment Shader Ray Marching
+- **Duration**: 1-2 weeks
+- **Goal**: Traditional rasterization-based ray marching
+- **Deliverables**: Fragment shader pipeline, 3D texture support
 
-**Priority**: 🔴 CRITICAL (Blocked all other work - correctness bugs)
-**Time Estimate**: 6-10 days (48-80 hours)
-**Status**: ✅ COMPLETE (November 1, 2025)
-**Prerequisites**: None - was done FIRST
+**Phase K**: Hardware Ray Tracing Pipeline
+- **Duration**: 4-5 weeks
+- **Goal**: VK_KHR_ray_tracing_pipeline implementation
+- **Deliverables**: BLAS/TLAS acceleration structures, custom AABB intersection, ray tracing dispatch
 
-### Goal
+**Phase L**: Pipeline Variants & Optimization
+- **Duration**: 3-4 weeks
+- **Goal**: Traversal optimizations + hybrid pipeline
+- **Deliverables**: Empty space skipping, BlockWalk traversal, dynamic scene updates, hybrid compute+RT
 
-Fixed all critical correctness bugs in execution model. All identified issues resolved using industry-standard patterns from Unity, Unreal, and Frostbite.
+**Phase M**: Automated Testing Framework
+- **Duration**: 3-4 weeks
+- **Goal**: 180-configuration test execution
+- **Deliverables**: Benchmark runner, headless mode, camera paths, result aggregator
 
-### Critical Issues Identified
-
-**Correctness Bugs** (cause validation errors, crashes, flickering):
-1. Per-frame resource management missing (UBO race conditions)
-2. Frame-in-flight synchronization missing (CPU-GPU sync)
-3. Command buffer recording strategy undefined (static vs dynamic)
-
-**Fundamental Gaps** (block gameplay features):
-4. Multi-rate update loop missing (physics, logic, render separation)
-5. Template method pattern missing (boilerplate across 15+ nodes)
-
-### Implementation Plan
-
-#### **0.1: Per-Frame Resource Pattern** (2-3 days)
-
-**Problem**:
-```cpp
-// DescriptorSetNode::Execute() - BUGGY: Single UBO for all frames
-void DescriptorSetNode::Execute() {
-    Draw_Shader::BufferVals ubo;
-    ubo.mvp = projection * view * model;
-    memcpy(uniformBufferMemory, &ubo, sizeof(ubo));  // ❌ Race condition!
-}
-```
-
-**Issue**: GPU reading frame N's UBO while CPU overwrites it for frame N+1.
-
-**Solution**:
-```cpp
-// Per-frame resources pattern
-struct PerFrameData {
-    VkBuffer uniformBuffer;
-    VkDeviceMemory uniformMemory;
-    void* mappedMemory;
-    VkDescriptorSet descriptorSet;
-};
-
-class DescriptorSetNode {
-    std::vector<PerFrameData> perFrameData;  // One per swapchain image
-
-    void Compile() {
-        uint32_t imageCount = swapchainInfo->swapChainImageCount;
-        perFrameData.resize(imageCount);
-
-        for (auto& frame : perFrameData) {
-            // Allocate per-frame uniform buffer
-            CreateBuffer(device, sizeof(UBO), &frame.uniformBuffer, &frame.uniformMemory);
-            vkMapMemory(device, frame.uniformMemory, 0, sizeof(UBO), 0, &frame.mappedMemory);
-        }
-    }
-
-    void Execute() {
-        uint32_t imageIndex = In(IMAGE_INDEX);
-        auto& frame = perFrameData[imageIndex];  // ✅ Use correct frame buffer
-        memcpy(frame.mappedMemory, &ubo, sizeof(ubo));
-    }
-
-    void Cleanup() {
-        for (auto& frame : perFrameData) {
-            vkDestroyBuffer(device, frame.uniformBuffer, nullptr);
-            vkFreeMemory(device, frame.uniformMemory, nullptr);
-        }
-    }
-};
-```
-
-**Tasks**:
-1. Create `PerFrameResources` helper class (1 day)
-2. Refactor `DescriptorSetNode` to use per-frame UBOs (0.5 days)
-3. Refactor `GeometryRenderNode` to use per-frame command buffers (0.5 days)
-4. Document per-frame resource ownership rules (0.5 days)
-
-**Files to Modify**:
-- NEW: `RenderGraph/include/Core/PerFrameResources.h`
-- EDIT: `RenderGraph/src/Nodes/DescriptorSetNode.cpp`
-- EDIT: `RenderGraph/src/Nodes/GeometryRenderNode.cpp`
-
-**Success Criteria**:
-- [x] PerFrameResources abstraction created
-- [x] DescriptorSetNode uses per-frame UBOs
-- [x] GeometryRenderNode uses per-frame command buffers
-- [x] Zero validation errors under stress test (1000+ frames)
+**Phase N**: Research Execution & Analysis
+- **Duration**: 2-3 weeks
+- **Goal**: Execute tests, analyze results, generate visualizations
+- **Deliverables**: Full test matrix results, statistical analysis, performance visualizations
 
 ---
 
-#### **0.2: Frame-in-Flight Synchronization** (1-2 days)
+## Updated Phase Priority Table
 
-**Problem**:
-```cpp
-// VulkanGraphApplication::Render() - BUGGY: No frame throttling
-bool Render() {
-    renderGraph->RenderFrame();  // ❌ No wait for GPU
-    currentFrame++;              // ❌ Infinite acceleration
-    return true;
-}
-```
+| Phase | Priority | Time Est | Status | Purpose |
+|-------|----------|----------|--------|---------|
+| **0** | 🔴 CRITICAL | 60h | ✅ COMPLETE | Execution correctness |
+| **A** | ⭐⭐⭐ HIGH | 5-8h | ✅ COMPLETE | Cache infrastructure |
+| **B** | ⭐⭐⭐ HIGH | 2h | ✅ COMPLETE | Encapsulation |
+| **C** | ⭐⭐⭐ HIGH | 45m | ✅ COMPLETE | Validation |
+| **F** | ⭐⭐⭐ HIGH | 16-21h | 🔄 IN PROGRESS | Array processing |
+| **G** | 🎯 RESEARCH | 2-3 weeks | ⏳ NEXT | Compute ray march |
+| **H** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Voxel data |
+| **I** | 🎯 RESEARCH | 2-3 weeks | ⏳ PENDING | Profiling system |
+| **J** | 🎯 RESEARCH | 1-2 weeks | ⏳ PENDING | Fragment shader |
+| **K** | 🎯 RESEARCH | 4-5 weeks | ⏳ PENDING | Hardware RT |
+| **L** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Optimizations |
+| **M** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Automation |
+| **N** | 🎯 RESEARCH | 2-3 weeks | ⏳ PENDING | Research execution |
+| **D** | ⭐⭐ MEDIUM | 8-12h | ⏸️ DEFERRED | Execution waves |
+| **E** | ⭐ LOW | 17-22h | ⏸️ DEFERRED | Hot reload |
+| **G-OLD** | ⭐⭐ MEDIUM | 40-60h | ❌ CANCELLED | Visual editor |
 
-**Issue**: CPU can submit frames infinitely faster than GPU can consume.
-
-**Solution**:
-```cpp
-const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-
-struct FrameSyncData {
-    VkFence inFlightFence;
-    VkSemaphore imageAvailable;
-    VkSemaphore renderComplete;
-};
-
-class RenderGraph {
-    std::vector<FrameSyncData> frameSyncData;  // Size = MAX_FRAMES_IN_FLIGHT
-    uint32_t currentFrameIndex = 0;
-
-    void RenderFrame() {
-        auto& sync = frameSyncData[currentFrameIndex];
-
-        // ✅ Wait for GPU to finish frame N-2
-        vkWaitForFences(device, 1, &sync.inFlightFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &sync.inFlightFence);
-
-        // Acquire image
-        vkAcquireNextImageKHR(..., sync.imageAvailable, ...);
-
-        // Submit with fence
-        VkSubmitInfo submitInfo = {
-            .pWaitSemaphores = &sync.imageAvailable,
-            .pSignalSemaphores = &sync.renderComplete,
-        };
-        vkQueueSubmit(..., sync.inFlightFence);  // ✅ Signal fence
-
-        // Present
-        vkQueuePresentKHR(..., &sync.renderComplete);
-
-        currentFrameIndex = (currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
-    }
-};
-```
-
-**Tasks**:
-1. Add `FrameSyncData` struct to RenderGraph (0.5 days)
-2. Implement fence-based waiting in RenderFrame() (0.5 days)
-3. Update SwapChainNode to use per-flight semaphores (0.5 days)
-4. Test under high load (verify no GPU stalls) (0.5 days)
-
-**Files to Modify**:
-- EDIT: `RenderGraph/include/Core/RenderGraph.h`
-- EDIT: `RenderGraph/src/Core/RenderGraph.cpp`
-- EDIT: `RenderGraph/src/Nodes/SwapChainNode.cpp`
-
-**Success Criteria**:
-- [x] MAX_FRAMES_IN_FLIGHT = 4 enforced (updated from 2)
-- [x] Fence-based CPU-GPU sync working
-- [x] Per-flight semaphores created
-- [x] CPU never runs more than 4 frames ahead of GPU
+**Total Research Timeline**: 28-31 weeks (7 months)
 
 ---
 
-#### **0.3: Command Buffer Recording Strategy** (1 day)
+## Explicitly Deferred Features ❌
 
-**Problem**: Unclear when/how command buffers are recorded (once? every frame? when dirty?).
+These features are NOT required for research and are postponed indefinitely:
 
-**Solution**:
-```cpp
-enum class CommandBufferStrategy {
-    Static,       // Record once in Compile(), reuse
-    Dynamic,      // Re-record every Execute()
-    Conditional   // Re-record when dirty flag set
-};
+### ❌ Visual Graph Editor
+- Drag-and-drop node editing
+- Real-time graph visualization
+- Connection editing UI
+**Rationale**: Research uses programmatic graph construction only.
 
-class NodeInstance {
-    virtual CommandBufferStrategy GetRecordingStrategy() const {
-        return CommandBufferStrategy::Conditional;  // Default
-    }
+### ❌ Material System
+- PBR material editor
+- Texture streaming
+- Material variants
+**Rationale**: Voxel rendering uses simple solid colors/procedural generation.
 
-    void Execute(VkCommandBuffer cmd) final {
-        auto strategy = GetRecordingStrategy();
+### ❌ Advanced UI (ImGui Beyond Profiler)
+- Scene inspection tools
+- Real-time parameter tweaking
+- Debug visualization toggles
+**Rationale**: Automated tests use fixed parameters. Minimal profiler overlay only.
 
-        if (strategy == CommandBufferStrategy::Dynamic ||
-            (strategy == CommandBufferStrategy::Conditional && isDirty)) {
-            RecordCommandBuffer(cmd);
-            isDirty = false;
-        } else if (strategy == CommandBufferStrategy::Static) {
-            // Use pre-recorded command buffer
-        }
+### ❌ Asset Pipeline
+- GLTF/OBJ model importers
+- Texture compression pipeline
+- Asset hot-reload
+**Rationale**: Procedural voxel generation only - no external assets.
 
-        ExecuteImpl(cmd);
-    }
+### ❌ Advanced Lighting
+- Shadow mapping (except as optional secondary rays)
+- Screen-space ambient occlusion
+- Global illumination
+**Rationale**: Research focuses on primary ray throughput and traversal performance.
 
-protected:
-    virtual void RecordCommandBuffer(VkCommandBuffer cmd) {}
-};
-```
+### ❌ Phase D: Execution Waves
+- Wave-based parallel execution
+- Multi-threaded node dispatch
+**Rationale**: Single-threaded deterministic execution required for reproducible research results.
 
-**Tasks**:
-1. Add `CommandBufferStrategy` enum (0.25 days)
-2. Implement conditional recording in NodeInstance (0.5 days)
-3. Document strategy per node type (0.25 days)
-
-**Files to Modify**:
-- EDIT: `RenderGraph/include/Core/NodeInstance.h`
-- EDIT: `RenderGraph/src/Core/NodeInstance.cpp`
-- EDIT: `documentation/CommandBufferStrategies.md` (NEW)
-
-**Success Criteria**:
-- [x] StatefulContainer<T> abstraction created (generic state tracking)
-- [x] Conditional recording implemented (Dirty/Ready/Stale/Invalid states)
-- [x] Automatic dirty detection when inputs change
+### ❌ Phase E: Hot Reload
+- Runtime shader hot-reload
+- Dynamic pipeline replacement
+**Rationale**: Automated tests use fixed shader variants. No interactive development needed.
 
 ---
 
-#### **0.4: Multi-Rate Update Loop (LoopManager)** (2-3 days)
+## Research Phase Ordering Rationale
 
-**Problem**: Single execution loop, no support for multi-rate updates (physics at 90Hz, render at vsync).
+### Why Compute First (Phase G)?
+1. **Simplest pipeline** - No RT extensions, validates profiling methodology
+2. **Immediate visual output** - Confirms correctness early
+3. **Foundation for hybrid** - Reusable code for Phase L
+4. **Low risk** - Compute shaders are well-documented
 
-**Solution**:
-```cpp
-class LoopManager {
-public:
-    enum class UpdateRate {
-        Asap,           // Uncapped (logic updates)
-        AsapVsync,      // Vsync-capped (rendering)
-        Fixed60Hz,      // 16.67ms
-        Fixed90Hz,      // 11.11ms (physics)
-        Fixed120Hz,     // 8.33ms (simulation)
-    };
+### Why Voxel Data Early (Phase H)?
+1. **Critical path dependency** - All pipelines require voxel data
+2. **Octree complexity** - Time-consuming, benefits from early start
+3. **Testing foundation** - Enables pipeline validation
 
-    void RegisterLoop(std::string name, UpdateRate rate,
-                     std::function<void(float)> callback,
-                     uint32_t priority);
+### Why Hardware RT Late (Phase K)?
+1. **Most complex** - BLAS/TLAS, SBT, custom intersection shaders
+2. **High learning curve** - Ray tracing extensions are advanced
+3. **Not on critical path** - Compute/fragment can proceed in parallel
 
-    void Tick(float realDelta);  // Main frame tick
-
-private:
-    struct Loop {
-        std::string name;
-        std::function<void(float)> callback;
-        UpdateRate rate;
-        float accumulator = 0.0f;
-        uint32_t priority = 0;
-    };
-    std::vector<Loop> loops;
-};
-
-// Fixed-timestep accumulator
-void LoopManager::Tick(float realDelta) {
-    for (auto& loop : loops) {
-        if (loop.rate.isFixed) {
-            loop.accumulator += realDelta;
-            while (loop.accumulator >= loop.rate.targetDelta) {
-                loop.callback(loop.rate.targetDelta);  // Fixed delta
-                loop.accumulator -= loop.rate.targetDelta;
-            }
-        } else {
-            loop.callback(realDelta);  // Variable delta
-        }
-    }
-}
-```
-
-**Integration with RenderGraph**:
-```cpp
-class RenderGraph {
-    LoopManager loopManager;
-
-    void InitializeLoops() {
-        loopManager.RegisterLoop("Input", UpdateRate::Asap,
-            [this](float dt) { ProcessInput(dt); }, 0);
-
-        loopManager.RegisterLoop("Physics", UpdateRate::Fixed90Hz,
-            [this](float dt) { UpdatePhysics(dt); }, 100);
-
-        loopManager.RegisterLoop("Update", UpdateRate::Asap,
-            [this](float dt) { UpdateNodes(dt); }, 300);
-
-        loopManager.RegisterLoop("Render", UpdateRate::AsapVsync,
-            [this](float dt) { RenderFrame(); }, 400);
-    }
-
-    void RunFrame() {
-        float deltaTime = time.GetDeltaTime();
-        loopManager.Tick(deltaTime);
-    }
-};
-```
-
-**Node Update Support**:
-```cpp
-class NodeInstance {
-public:
-    void Update(float deltaTime) final {
-        UpdateImpl(deltaTime);
-    }
-
-protected:
-    virtual void UpdateImpl(float deltaTime) {}  // Override in subclasses
-};
-```
-
-**Tasks**:
-1. Implement LoopManager class (1 day)
-2. Add Update(float) to NodeInstance (0.5 days)
-3. Integrate with RenderGraph::RunFrame() (0.5 days)
-4. Update VulkanGraphApplication to use RunFrame() (0.5 days)
-5. Test multi-rate loops (physics at 90Hz, render at 60Hz) (0.5 days)
-
-**Files to Modify**:
-- NEW: `RenderGraph/include/Core/LoopManager.h`
-- NEW: `RenderGraph/src/Core/LoopManager.cpp`
-- EDIT: `RenderGraph/include/Core/NodeInstance.h`
-- EDIT: `RenderGraph/include/Core/RenderGraph.h`
-- EDIT: `RenderGraph/src/Core/RenderGraph.cpp`
-- EDIT: `source/VulkanGraphApplication.cpp`
-
-**Success Criteria**:
-- [x] LoopManager implemented with Timer class
-- [x] Fixed-timestep accumulator working (Gaffer on Games pattern)
-- [x] Priority-based execution order
-- [x] LoopBridgeNode and BoolOpNode for graph integration
-- [x] AUTO_LOOP slots on all nodes for automatic loop propagation
+### Why Automation Last (Phase M)?
+1. **All pipelines must work first** - Can't automate broken implementations
+2. **Requires stable APIs** - Avoids costly rework
+3. **Research depends on it** - But can develop pipelines without it
 
 ---
 
-#### **0.5: Template Method Pattern Refactor** (1-2 days)
+## Phase F: Array Processing & Slot Tasks 🔄
 
-**Problem**: Every node manually calls boilerplate (RegisterCleanup, etc.). Easy to forget.
+**Status**: IN PROGRESS (Planning complete, ready for implementation)
+**Time Estimate**: 16-21 hours
+**Relevance to Research**: Enables parallel voxel loading/processing with automatic resource scaling
 
-**Solution**:
+### Core Innovation
+
+**Slot Tasks = Virtual Node Specializations**
+
+Instead of creating separate nodes for similar workloads (AlbedoLoader, NormalLoader, RoughnessLoader), a single node can have multiple slot tasks, each representing a configuration variant.
+
+**Example**:
 ```cpp
-class NodeInstance {
-public:
-    // Public interface (final - cannot override)
-    void Setup() final {
-        LOG_DEBUG("Setting up: " + instanceName);
-        SetupImpl();
-        SubscribeToEvents();  // ✅ Automatic
-    }
-
-    void Compile() final {
-        LOG_DEBUG("Compiling: " + instanceName);
-        CompileImpl();
-        RegisterCleanup();  // ✅ Automatic
-    }
-
-    void Execute(VkCommandBuffer cmd) final {
-        PROFILE_SCOPE(instanceName);
-        ExecuteImpl(cmd);
-    }
-
-    void Cleanup() final {
-        LOG_DEBUG("Cleaning up: " + instanceName);
-        CleanupImpl();
-        UnregisterFromCleanupStack();  // ✅ Automatic
-        ResetCleanupFlag();  // ✅ Automatic
-    }
-
-    void Update(float deltaTime) final {
-        UpdateImpl(deltaTime);
-    }
-
-protected:
-    // Implementation interface (override in subclasses)
-    virtual void SetupImpl() {}
-    virtual void CompileImpl() = 0;  // Pure virtual - must implement
-    virtual void ExecuteImpl(VkCommandBuffer cmd) {}
-    virtual void CleanupImpl() {}
-    virtual void UpdateImpl(float deltaTime) {}
-};
+// Single ImageLoaderNode with 3 slot tasks
+Task 0: Load albedo maps  (sRGB, BC1, gamma correction)
+Task 1: Load normal maps  (Linear, BC5, no gamma)
+Task 2: Load roughness    (Linear, BC4, single channel)
 ```
 
-**Migration Example**:
+### Three-Tier Lifecycle
 ```cpp
-// Before
-void MyNode::Compile() override {
-    // do work
-    RegisterCleanup();  // ❌ Manual
-}
-
-// After
-void MyNode::CompileImpl() override {
-    // do work
-    // RegisterCleanup() automatic!
-}
+Node Level (shared)    → SetupNode(), CleanupNode()
+Task Level (per-config) → CompileTask(taskIdx), CleanupTask(taskIdx)
+Instance Level (per-data) → ExecuteInstance(taskIdx, instanceIdx)
 ```
 
-**Tasks**:
-1. Add *Impl() virtual methods to NodeInstance (0.5 days)
-2. Migrate all 15+ nodes to use *Impl() pattern (1 day)
-3. Remove manual RegisterCleanup() calls (0.5 days)
+### Implementation Phases
 
-**Files to Modify**:
-- EDIT: `RenderGraph/include/Core/NodeInstance.h`
-- EDIT: `RenderGraph/src/Core/NodeInstance.cpp`
-- EDIT: All 15+ node implementations (*.cpp in RenderGraph/src/Nodes/)
+**F.0**: Slot Metadata Consolidation (2-3h)
+- SlotScope, SlotNullability, SlotMutability enums
+- AUTO_INPUT/AUTO_OUTPUT macros with embedded counter
 
-**Success Criteria**:
-- [x] Template method pattern already implemented (discovered during Phase 0)
-- [x] All lifecycle methods use Setup/Compile/Execute/Cleanup final methods
-- [x] Subclasses override *Impl() virtual methods
-- [x] Automatic registration handled by base class
+**F.1**: Resource Budget Manager (3-4h)
+- Device capability tracking (VkPhysicalDeviceLimits)
+- Static reservation + dynamic query API
 
----
+**F.2**: Slot Task Infrastructure (5-6h)
+- SlotTask struct, AutoGenerateSlotTasks()
+- Task-local indexing with OutLocal() helper
 
-### Phase 0 Summary
+**F.3**: Budget-Based Parallelism (4-5h)
+- Thread pool for CPU-parallel tasks
+- Vulkan batch submission for GPU tasks
 
-**Actual Time**: ~60 hours (6-10 days estimate was accurate)
-
-**Completed**:
-- 0.1: Per-Frame Resources ✅
-- 0.2: Frame-in-Flight Sync ✅
-- 0.3: Command Buffer Strategy ✅
-- 0.4: Multi-Rate Update Loop ✅
-- 0.5: Template Method (already existed) ✅
-- 0.6: Per-Image Semaphore Indexing ✅ (additional phase)
-- 0.7: Present Fences + Auto Message Types ✅ (additional phase)
-
-**Impact**: Fixed all P0 correctness bugs, enabled gameplay features, production-ready synchronization.
-
-**Result**: Phase A (Persistent Cache) completed after Phase 0.
-
----
-
-## Phase A: Persistent Cache Infrastructure ✅
-
-**Priority**: ⭐⭐⭐ HIGH (Critical for production)
-**Time Estimate**: 5-8 hours
-**Status**: ✅ COMPLETE (November 1, 2025)
-**Prerequisites**: Phase 0 complete ✅
-
-### Completion Summary
-
-Persistent cache infrastructure complete with lazy deserialization pattern. All cachers load from disk on first registration, eliminating manifest dependency.
-
-### Completed Work ✅
-
-**1. Lazy Deserialization Pattern** ✅
-- Cachers automatically load from disk when first registered
-- No manifest file required (eliminated chicken-and-egg problem)
-- Async background loading while returning newly created object
-
-**2. All Cachers Implemented** ✅
-- SamplerCacher (CACHE HIT verified)
-- ShaderModuleCacher (CACHE HIT verified - 4 modules)
-- TextureCacher
-- MeshCacher
-- RenderPassCacher
-- PipelineCacher
-- PipelineLayoutCacher
-- DescriptorSetLayoutCacher
-- DescriptorCacher
-
-**3. Stable Device IDs** ✅
-- Hash-based identification (vendorID + deviceID + driverVersion)
-- Cache directory: `cache/devices/Device_0x10de91476520/`
-
-**4. Public API Access** ✅
-- Moved `name()` and `DeserializeFromFile()` to public section
-- Enables lazy loading infrastructure
-
-**5. Test Results** ✅
-- First run: CACHE MISS → creates cache files
-- Second run: CACHE HIT for SamplerCacher and ShaderModuleCacher
-- 6 cache files created successfully
-- Zero validation errors
-
----
-
-## Phase B: Encapsulation + Thread Safety ✅
-
-**Priority**: ⭐⭐⭐ HIGH (Architectural debt + threading support)
-**Time Estimate**: 5-7 hours (expanded from 3-4h to include thread safety)
-**Status**: ✅ COMPLETE (November 1, 2025)
-**Actual Time**: ~2 hours
-**Prerequisites**: Phase 0 complete ✅
-
-### Original Goal (INodeWiring)
-
-Replace `friend class RenderGraph` with narrow `INodeWiring` interface. Fixes encapsulation violation.
-
-### NEW: Thread Safety Documentation/Implementation
-
-**Option 1: Document "Not Thread-Safe"** (1 hour)
-```cpp
-/**
- * @brief RenderGraph execution model
- *
- * THREAD SAFETY: RenderGraph is **not thread-safe**.
- * - All methods must be called from the same thread.
- * - LoopManager loops execute sequentially, not in parallel.
- */
-class RenderGraph { ... };
-```
-
-**Option 2: Add Thread Safety** (2-3 hours)
-```cpp
-class RenderGraph {
-    std::mutex graphMutex;
-
-    void UpdateNodes(float dt) {
-        std::lock_guard<std::mutex> lock(graphMutex);
-        // ... update logic
-    }
-
-    void Execute(VkCommandBuffer cmd) {
-        std::lock_guard<std::mutex> lock(graphMutex);
-        // ... execute logic
-    }
-};
-```
-
-**Recommendation**: Start with Option 1 (documentation), add Option 2 if parallel loops needed later.
-
-### Completion Summary
-
-**B.1: INodeWiring Interface** ✅
-- Created `INodeWiring.h` - Narrow interface for graph wiring (GetInput/SetInput/GetOutput/SetOutput)
-- NodeInstance inherits from INodeWiring instead of friend declarations
-- Removed `friend class RenderGraph` (Interface Segregation Principle)
-- Added `HasDeferredRecompile()` and `ClearDeferredRecompile()` public accessors
-- Build successful - zero errors
-
-**B.2: Thread Safety Documentation** ✅
-- Added comprehensive thread safety documentation to RenderGraph class header
-- Documented single-threaded execution model (NOT thread-safe by design)
-- Explained rationale: Vulkan constraints, state transitions, resource lifetime
-- Provided best practices: construct on main thread, no concurrent modification
-- Noted future work: Phase D wave-based parallel dispatch
-
-**Files Modified**:
-- NEW: `RenderGraph/include/Core/INodeWiring.h`
-- EDIT: `RenderGraph/include/Core/NodeInstance.h`
-- EDIT: `RenderGraph/src/Core/RenderGraph.cpp`
-- EDIT: `RenderGraph/include/Core/RenderGraph.h`
-
-**Actual Time**: ~2 hours (significantly faster than estimated 5-7h)
-
----
-
-## Phase C: Event Processing + Validation ✅
-
-**Priority**: ⭐⭐⭐ HIGH (API usability + correctness)
-**Time Estimate**: 2-3 hours (expanded from 1-2h to include validation)
-**Status**: ✅ COMPLETE (November 1, 2025)
-**Prerequisites**: Phase 0 complete ✅
-**Actual Time**: ~45 minutes
-
-### Goal
-
-Verify event processing sequencing and add validation infrastructure for slot lifetimes and render pass compatibility.
-
-### Implementation Summary
-
-**C.1: Event Processing API Verification** ✅
-- Verified RenderFrame() calls ProcessEvents() → RecompileDirtyNodes() correctly
-- Event processing happens in Update() phase (VulkanGraphApplication.cpp:244-245)
-- Proper separation: Update phase handles events, Render phase executes graph
-- **Result**: Already correctly implemented - no changes needed
-
-**C.2: Slot Lifetime Validation** ✅
-- Already implemented via `NodeInstance::SlotRole` enum (NodeInstance.h:497-501)
-- Three roles: `Dependency` (compile-time, triggers recompile), `ExecuteOnly` (runtime-only), `CleanupOnly` (cleanup-phase)
-- SlotRole flags used throughout codebase (GeometryRenderNode, SwapChainNode, PresentNode)
-- **Result**: Already fully implemented - documented as existing feature
-
-**C.3: Render Pass Compatibility Validation** ✅
-- Added validation check in `RenderGraph::Validate()` (RenderGraph.cpp:577-602)
-- Validates GeometryRenderNode has compatible render pass and framebuffer resources
-- Placeholder for future comprehensive validation (format/attachment/subpass rules)
-- **Result**: Basic infrastructure added, extensible for future enhancements
-
-### Files Modified
-
-- `RenderGraph/src/Core/RenderGraph.cpp` - Added render pass validation in Validate() method (lines 577-602)
+**F.4**: InstanceGroup Migration (2-3h)
+- Deprecate old InstanceGroup class
+- Migration guide for existing multi-instance nodes
 
 ### Success Criteria
+- ✅ Single ImageLoaderNode handles 3+ texture types
+- ✅ Parallel instance spawning (4+ threads)
+- ✅ Budget manager prevents exhaustion (1000+ tasks)
+- ✅ Zero regressions in single-task nodes
 
-- [x] RenderFrame() sequencing verified (C.1)
-- [x] Slot lifetime semantics documented (C.2 - SlotRole enum exists)
-- [x] Render pass compatibility infrastructure added (C.3)
-- [x] Build successful with zero errors
-
-### Time Breakdown
-
-- C.1 Verification: ~10 minutes
-- C.2 Discovery: ~10 minutes
-- C.3 Implementation: ~25 minutes
-- **Total**: ~45 minutes (much faster than estimated 2-3h due to existing implementations)
+**DO NOT INTERRUPT** - Complete Phase F before starting Phase G.
 
 ---
 
-## Phases D-G: Continue As Planned
+## Key Research Requirements
 
-**Phase D**: Execution Waves (8-12h)
-**Phase E**: Hot Reload (17-22h)
-**Phase F**: Array Processing (10-14h)
-**Phase G**: Visual Editor (40-60h)
+### Test Matrix Configuration
+```json
+{
+  "pipelines": ["compute", "fragment", "hardware_rt", "hybrid"],
+  "resolutions": [32, 64, 128, 256, 512],
+  "densities": [0.2, 0.5, 0.8],
+  "algorithms": ["baseline", "empty_skip", "blockwalk"],
+  "scenes": ["sphere", "terrain", "architectural"],
+  "frames": { "warmup": 60, "measurement": 300 }
+}
+```
 
-**No changes to these phases** - proceed as originally planned after Phases 0-C complete.
+**Total Configurations**: 4 × 5 × 3 × 3 = 180 tests
+
+### Required Metrics (Per Frame)
+- **Primary**: Frame time (ms), GPU time (ms), ray throughput (Mrays/s)
+- **Bandwidth**: Read (GB/s), write (GB/s)
+- **Memory**: VRAM usage (MB), bandwidth efficiency (rays/GB)
+- **Traversal**: Average voxels tested per ray
+- **Statistics**: Min, max, mean, stddev, percentiles (1st, 50th, 99th)
+
+### Output Format
+```csv
+frame,timestamp_ms,frame_time_ms,gpu_time_ms,bandwidth_read_gb,bandwidth_write_gb,vram_mb,rays_per_sec,voxels_per_ray
+0,0.0,16.7,14.2,23.4,8.1,2847,124000000,23.4
+```
 
 ---
 
-## Key Decisions Made
+## Risk Mitigation Strategies
 
-**November 1, 2025**:
-1. ✅ **Phase 0 added as CRITICAL prerequisite** - must fix correctness bugs first
-2. ✅ **Phase A paused** - resume after Phase 0.2 (frame-in-flight sync)
-3. ✅ **Phase B expanded** - added thread safety documentation/implementation
-4. ✅ **Phase C expanded** - added validation systems
-5. ✅ **Revised timeline** - 90-130 hours total (was 74-108h)
+### Risk: Phase F Takes Longer Than Expected
+**Mitigation**: Phase F bounded at 21h max. If exceeded by >20%, reassess slot task scope (simplify budget system).
 
-**October 31, 2025**:
-1. Complete Architecture Path selected: 0 → A → B → C → F → D → E → G
-2. ShaderModuleCacher format: Binary with versioning
-3. PipelineCacher strategy: Vulkan's built-in serialization
-4. Cache directory: `binaries/cache/`
+### Risk: Hardware RT Extension Unavailable
+**Mitigation**: Research proceeds with compute + fragment only (fallback plan in research proposal).
+
+### Risk: Bandwidth Metrics Inaccurate
+**Mitigation**: Early validation in Phase I against NVIDIA Nsight Graphics baseline.
+
+### Risk: Test Execution Time Too Long
+**Mitigation**: Reduce frame count (300→150), parallelize on multiple GPUs, or reduce resolution levels.
+
+### Risk: VRAM Exhaustion at 512³
+**Mitigation**: Octree compression (SVO sparse representation), reduce max resolution to 256³.
+
+### Risk: Timeline Overrun
+**Mitigation**: Scope reduction options:
+- Skip hybrid pipeline (saves 2-3 weeks)
+- Reduce to 3 resolution levels (128³, 256³, 512³)
+- Reduce densities to 2 levels (sparse, dense)
 
 ---
 
-## Next Session Checklist
+## Success Metrics
 
-**Phase B: Encapsulation + Thread Safety** (Start Here)
-- [ ] Create `INodeWiring` interface
-- [ ] Remove `friend class RenderGraph` declarations
-- [ ] Document thread safety model (single-threaded vs multi-threaded)
-- [ ] Add thread safety notes to public methods
+### Technical Milestones
+- ✅ Phase F complete → Slot task system working with parallel instances
+- ✅ Phase G complete → Compute ray marching renders voxel cube
+- ✅ Phase H complete → 256³ octree loads in <100ms
+- ✅ Phase I complete → Profiler collects 60fps metrics with <1% overhead
+- ✅ Phase K complete → Hardware RT renders same scene as compute
+- ✅ Phase M complete → Automated test runs 180 configs unattended
 
-**Phase C: Event Processing + Validation**
-- [ ] Verify `RenderFrame()` sequencing
-- [ ] Add slot lifetime validation (Static/Dynamic/Mutable)
-- [ ] Add render pass compatibility validation
+### Research Milestones
+- ✅ All 180 configurations tested successfully
+- ✅ Bandwidth measurements validated (±5% vs Nsight)
+- ✅ Performance trends identified (support/refute hypotheses)
+- ✅ Results publishable (conference paper quality)
 
-**Phase F: Array Processing**
-- [ ] Design array slot API
-- [ ] Implement array resource handling
-- [ ] Add array processing examples
+---
+
+## Timeline Summary
+
+| Milestone | Completion Date | Status |
+|-----------|----------------|--------|
+| Phase F | Week of Nov 10, 2025 | 🔄 IN PROGRESS |
+| Phase G | Week of Nov 24, 2025 | ⏳ PLANNED |
+| Phase H | Week of Dec 22, 2025 | ⏳ PLANNED |
+| Phase I | Week of Jan 12, 2026 | ⏳ PLANNED |
+| Phases J-K | Week of Mar 2, 2026 | ⏳ PLANNED |
+| Phase L | Week of Mar 30, 2026 | ⏳ PLANNED |
+| Phase M | Week of Apr 27, 2026 | ⏳ PLANNED |
+| Phase N | Week of May 18, 2026 | ⏳ PLANNED |
+
+**Research Paper Submission**: May 31, 2026 (target)
+
+---
+
+## Documentation Updates
+
+### New Documents Created
+- ✅ `documentation/VoxelRayTracingResearch-TechnicalRoadmap.md` - Complete research implementation plan
+- ✅ `documentation/ArchitecturalReview-2025-11-02-PhaseF.md` - Slot task system architecture
+
+### Memory Bank Updates (Pending)
+- ⏳ `memory-bank/activeContext.md` - Add research focus
+- ⏳ `memory-bank/progress.md` - Update phase priorities
+- ⏳ `memory-bank/projectbrief.md` - Add research goals
+
+### Research Documents (To Create)
+- ⏳ `research/TestMatrix.md` - Detailed configuration specification
+- ⏳ `research/Hypotheses.md` - Expected outcomes per hypothesis
+- ⏳ `research/ResultsAnalysis.md` - Post-execution findings
+
+---
+
+## Current Session Next Steps
+
+1. ✅ **Complete Phase F implementation** (16-21h)
+   - F.0: Slot metadata consolidation
+   - F.1: Resource budget manager
+   - F.2: Slot task infrastructure
+   - F.3: Budget-based parallelism
+   - F.4: InstanceGroup migration
+
+2. ⏳ **Review Phase G specification** (`VoxelRayTracingResearch-TechnicalRoadmap.md`)
+   - Understand compute pipeline requirements
+   - Plan storage resource types
+   - Design timestamp query integration
+
+3. ⏳ **Begin Phase G.1** (ComputePipelineNode)
+   - Create ComputePipelineCacher
+   - Implement pipeline creation and caching
+   - Test with simple compute shader
 
 ---
 
 ## Reference Documents
 
-- **NEW: Architectural Review 2025-11-01**: `documentation/ArchitecturalReview-2025-11-01.md` - Comprehensive blind spot analysis
-- **Active Context**: `memory-bank/activeContext.md` - Detailed phase architectures
-- **Progress**: `memory-bank/progress.md` - Overall project status
-- **System Patterns**: `memory-bank/systemPatterns.md` - Design patterns
+**Research Planning**:
+- `documentation/VoxelRayTracingResearch-TechnicalRoadmap.md` - 9-phase research implementation plan
+- `Research Question Proposal.md` (external) - Original research proposal with test matrix
+
+**Architecture Reviews**:
+- `documentation/ArchitecturalReview-2025-11-02-PhaseF.md` - Slot task system detailed design
+- `documentation/ArchitecturalReview-2025-11-01.md` - Phase B and C completion
+- `documentation/ArchitecturalReview-2025-10-31.md` - Phase A completion
+- `documentation/ArchitecturalReview-2025-10.md` - Original blind spot analysis
+
+**Memory Bank**:
+- `memory-bank/activeContext.md` - Current focus (Phase F)
+- `memory-bank/progress.md` - Completed systems inventory
+- `memory-bank/systemPatterns.md` - Design pattern catalog
+
+**Phase Plans**:
+- `documentation/Phase-B-Plan.md` - Advanced rendering features (DEFERRED)
+- `documentation/Phase0.4-MultiRateLoop-Plan.md` - LoopManager implementation (COMPLETE)
 
 ---
 
 ## Notes
 
-**Phase 0 and Phase A COMPLETE** ✅:
-- All correctness bugs resolved (per-frame resources, frame-in-flight sync, command buffer strategy)
-- Multi-rate update loop implemented (LoopManager with fixed-timestep accumulator)
-- Persistent cache working (lazy deserialization, CACHE HIT verified)
-- Production-ready synchronization infrastructure
+**Architecture Status**: Production-ready foundation (Phases 0, A, B, C complete)
 
-**System Status**: Ready for advanced features (Phases B-G)
+**Current Focus**: Phase F (Array Processing) - 16-21h remaining
 
-**Remaining Work**: ~30-70 hours (Phases B-G)
-- Phase B: Encapsulation + Thread Safety (5-7h)
-- Phase C: Event Processing + Validation (2-3h)
-- Phase F: Array Processing (10-14h)
-- Phase D: Execution Waves (8-12h)
-- Phase E: Hot Reload (17-22h) - Optional
-- Phase G: Visual Editor (40-60h) - Optional
+**Research Timeline**: 28-31 weeks from Phase F completion
+
+**Major Pivot**: Shifted from general rendering engine to specialized voxel ray tracing research platform. Visual editor, material system, and advanced UI features deferred indefinitely.
+
+**Critical Path**: F → G → H → I → (J, K, L parallel) → M → N
+
+**Confidence Level**: HIGH - All prerequisites complete, clear implementation roadmap, realistic timeline with scope reduction options.

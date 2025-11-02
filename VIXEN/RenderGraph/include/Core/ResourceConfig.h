@@ -60,6 +60,7 @@ enum class SlotNullability : uint8_t {
  * Used for dependency tracking and compile-time validation.
  */
 enum class SlotRole : uint8_t {
+    Output       = 0,        // Output slot (role only applies to inputs)
     Dependency   = 1u << 0,  // Accessed during Compile (creates dependency)
     ExecuteOnly  = 1u << 1,  // Only accessed during Execute (no dependency)
     CleanupOnly  = 1u << 2   // Only accessed during Cleanup
@@ -209,11 +210,13 @@ public:
     constexpr explicit ResourceAccessor(NodeInstance* node) : nodeInstance(node) {}
 
     /**
-     * @brief Get resource using compile-time slot
+     * @brief Get resource using compile-time slot (Phase F: Mutability enforcement)
      *
      * Template magic: SlotType contains all compile-time info.
      * Compiler resolves typename SlotType::Type at compile time.
      * Runtime code is just: return GetImpl<VkImage>(0);
+     *
+     * **Compile-time enforced**: Cannot Get() from WriteOnly slots.
      */
     template<typename SlotType>
     [[nodiscard]] constexpr typename SlotType::Type Get(SlotType /*slot*/) const {
@@ -221,12 +224,18 @@ public:
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT,
             "Output slot index out of bounds");
 
+        // Phase F: Enforce mutability at compile-time
+        static_assert(SlotType::mutability != SlotMutability::WriteOnly,
+            "Cannot Get() from a WriteOnly slot. Use Set() instead.");
+
         // Runtime: just direct array access
         return GetOutputImpl<typename SlotType::Type>(SlotType::index);
     }
 
     /**
-     * @brief Set resource using compile-time slot
+     * @brief Set resource using compile-time slot (Phase F: Mutability enforcement)
+     *
+     * **Compile-time enforced**: Cannot Set() to ReadOnly slots.
      */
     template<typename SlotType>
     constexpr void Set(SlotType /*slot*/, typename SlotType::Type value) {
@@ -234,28 +243,44 @@ public:
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT,
             "Output slot index out of bounds");
 
+        // Phase F: Enforce mutability at compile-time
+        static_assert(SlotType::mutability != SlotMutability::ReadOnly,
+            "Cannot Set() a ReadOnly slot. Slot is read-only.");
+
         // Runtime: just direct array write
         SetOutputImpl<typename SlotType::Type>(SlotType::index, value);
     }
 
     /**
-     * @brief Get input using compile-time slot
+     * @brief Get input using compile-time slot (Phase F: Mutability enforcement)
+     *
+     * **Compile-time enforced**: Cannot GetInput() from WriteOnly slots.
      */
     template<typename SlotType>
     [[nodiscard]] constexpr typename SlotType::Type GetInput(SlotType /*slot*/) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT,
             "Input slot index out of bounds");
 
+        // Phase F: Enforce mutability at compile-time
+        static_assert(SlotType::mutability != SlotMutability::WriteOnly,
+            "Cannot GetInput() from a WriteOnly slot. Use SetInput() instead.");
+
         return GetInputImpl<typename SlotType::Type>(SlotType::index);
     }
 
     /**
-     * @brief Set input using compile-time slot
+     * @brief Set input using compile-time slot (Phase F: Mutability enforcement)
+     *
+     * **Compile-time enforced**: Cannot SetInput() to ReadOnly slots.
      */
     template<typename SlotType>
     constexpr void SetInput(SlotType /*slot*/, typename SlotType::Type value) {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT,
             "Input slot index out of bounds");
+
+        // Phase F: Enforce mutability at compile-time
+        static_assert(SlotType::mutability != SlotMutability::ReadOnly,
+            "Cannot SetInput() to a ReadOnly slot. Input slot is read-only.");
 
         SetInputImpl<typename SlotType::Type>(SlotType::index, value);
     }
@@ -335,10 +360,6 @@ ResourceDescriptor MakeDescriptor(
  * ```
  */
 #define CONSTEXPR_NODE_CONFIG(ConfigName, NumInputs, NumOutputs, ArrayMode) \
-    struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs, ArrayMode> { \
-        static constexpr uint32_t INPUT_COUNTER_BASE = __COUNTER__; \
-        static constexpr uint32_t OUTPUT_COUNTER_BASE = __COUNTER__; \
-    }; \
     struct ConfigName : public ::Vixen::RenderGraph::ResourceConfigBase<NumInputs, NumOutputs, ArrayMode>
 
 /**
@@ -388,68 +409,20 @@ ResourceDescriptor MakeDescriptor(
 
 /**
  * @brief Define output slot with full Phase F metadata (manual index)
+ *
+ * Note: Outputs use SlotRole::Output - role is for inputs only (determines when consumer accesses the resource)
  */
-#define CONSTEXPR_OUTPUT_FULL(SlotName, SlotType, Index, Nullability, Role, Mutability) \
+#define CONSTEXPR_OUTPUT_FULL(SlotName, SlotType, Index, Nullability, Mutability) \
     using SlotName##_Slot = ::Vixen::RenderGraph::ResourceSlot< \
         SlotType, \
         Index, \
         Nullability, \
-        Role, \
+        ::Vixen::RenderGraph::SlotRole::Output, \
         Mutability, \
         ::Vixen::RenderGraph::SlotScope::NodeLevel \
     >; \
     static constexpr SlotName##_Slot SlotName{}
 
-/**
- * @brief Auto-indexed input slot (Phase F: Per-config __COUNTER__)
- *
- * Uses __COUNTER__ with per-config base for automatic indexing (0, 1, 2...).
- * Each config has independent INPUT_COUNTER_BASE/OUTPUT_COUNTER_BASE from
- * CONSTEXPR_NODE_CONFIG macro expansion.
- *
- * Usage:
- * ```cpp
- * CONSTEXPR_NODE_CONFIG(MyConfig, 3, 1, SlotArrayMode::Single) {
- *     AUTO_INPUT(DEVICE, VkDevice,
- *         SlotNullability::Required,
- *         SlotRole::Dependency,
- *         SlotMutability::ReadOnly,
- *         SlotScope::NodeLevel);  // Index 0 (auto)
- *
- *     AUTO_INPUT(BUFFER, VkBuffer,
- *         SlotNullability::Optional,
- *         SlotRole::ExecuteOnly,
- *         SlotMutability::ReadWrite,
- *         SlotScope::TaskLevel);  // Index 1 (auto)
- * };
- * ```
- */
-#define AUTO_INPUT(SlotName, SlotType, Nullability, Role, Mutability, Scope) \
-    CONSTEXPR_INPUT_FULL( \
-        SlotName, \
-        SlotType, \
-        (__COUNTER__ - INPUT_COUNTER_BASE - 1), \
-        Nullability, \
-        Role, \
-        Mutability, \
-        Scope \
-    )
-
-/**
- * @brief Auto-indexed output slot (Phase F: Per-config __COUNTER__)
- *
- * Uses __COUNTER__ with per-config base for automatic indexing.
- * Outputs default to NodeLevel scope.
- */
-#define AUTO_OUTPUT(SlotName, SlotType, Nullability, Role, Mutability) \
-    CONSTEXPR_OUTPUT_FULL( \
-        SlotName, \
-        SlotType, \
-        (__COUNTER__ - OUTPUT_COUNTER_BASE - 1), \
-        Nullability, \
-        Role, \
-        Mutability \
-    )
 
 /**
  * @brief Input slot with Phase F metadata (manual index)
@@ -471,14 +444,14 @@ ResourceDescriptor MakeDescriptor(
  * @brief Output slot with Phase F metadata (manual index)
  *
  * Use when you need explicit control over slot indices.
+ * Note: Outputs don't have SlotRole parameter - only inputs need role.
  */
-#define OUTPUT_SLOT(SlotName, SlotType, Index, Nullability, Role, Mutability) \
+#define OUTPUT_SLOT(SlotName, SlotType, Index, Nullability, Mutability) \
     CONSTEXPR_OUTPUT_FULL( \
         SlotName, \
         SlotType, \
         Index, \
         Nullability, \
-        Role, \
         Mutability \
     )
 

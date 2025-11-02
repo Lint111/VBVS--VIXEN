@@ -319,8 +319,8 @@ void SwapChainNode::CleanupImpl() {
         VkDevice device = VK_NULL_HANDLE;
 
         try {
-            // Cleanup-time access only - mark as ExecuteOnly so it does not count as a compile-time dependency
-                instance = In(SwapChainNodeConfig::INSTANCE, NodeInstance::SlotRole::ExecuteOnly);
+            // Cleanup-time access only - config defines this as Dependency
+            instance = In(SwapChainNodeConfig::INSTANCE);
         } catch (...) {
             // Instance might not be available during shutdown - that's ok
         }

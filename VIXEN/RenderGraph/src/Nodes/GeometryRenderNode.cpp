@@ -125,15 +125,15 @@ void GeometryRenderNode::CompileImpl() {
 
 void GeometryRenderNode::ExecuteImpl() {
     // Get current image index from SwapChainNode
-    uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
+    uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
     // Phase 0.5: Get current frame-in-flight index from FrameSyncNode
-    uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX, NodeInstance::SlotRole::ExecuteOnly);
+    uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
 
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
-    const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
-    VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE, NodeInstance::SlotRole::ExecuteOnly);
+    const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
     // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -163,10 +163,10 @@ void GeometryRenderNode::ExecuteImpl() {
     }
 
     // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
-    VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS, NodeInstance::SlotRole::ExecuteOnly);
-    VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE, NodeInstance::SlotRole::ExecuteOnly);
-    VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER, NodeInstance::SlotRole::ExecuteOnly);
-    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, NodeInstance::SlotRole::ExecuteOnly);
+    VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
+    VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE);
+    VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
     VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
 
     if (currentRenderPass != lastRenderPass ||
@@ -252,8 +252,8 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     }
     
     // Get inputs via typed config API
-    VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS, NodeInstance::SlotRole::ExecuteOnly);
-    std::vector<VkFramebuffer> framebuffers = In(GeometryRenderNodeConfig::FRAMEBUFFERS, NodeInstance::SlotRole::ExecuteOnly);
+    VkRenderPass renderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
+    std::vector<VkFramebuffer> framebuffers = In(GeometryRenderNodeConfig::FRAMEBUFFERS);
     if(framebufferIndex >= framebuffers.size()) {
         std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) + " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
         NODE_LOG_ERROR(errorMsg);
@@ -263,10 +263,10 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
 
 
-    VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE, NodeInstance::SlotRole::ExecuteOnly);
-    VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT, NodeInstance::SlotRole::ExecuteOnly);
-    VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER, NodeInstance::SlotRole::ExecuteOnly);
-    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO, NodeInstance::SlotRole::ExecuteOnly);
+    VkPipeline pipeline = In(GeometryRenderNodeConfig::PIPELINE);
+    VkPipelineLayout pipelineLayout = In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
+    VkBuffer vertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    SwapChainPublicVariables* swapchainInfo = In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
     
 
     if (renderPass == VK_NULL_HANDLE) {
@@ -343,7 +343,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
     );
 
     // Bind descriptor sets
-    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS, NodeInstance::SlotRole::ExecuteOnly);
+    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
 
     if(descriptorSets.size() == 0) {
         std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
@@ -381,7 +381,7 @@ void GeometryRenderNode::RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t 
 
     // Bind index buffer (if using indexed rendering)
     if (useIndexBuffer) {
-    VkBuffer indexBuffer = In(GeometryRenderNodeConfig::INDEX_BUFFER, NodeInstance::SlotRole::ExecuteOnly);
+        VkBuffer indexBuffer = In(GeometryRenderNodeConfig::INDEX_BUFFER);
         if (indexBuffer != VK_NULL_HANDLE) {
             vkCmdBindIndexBuffer(
                 cmdBuffer,

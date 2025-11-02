@@ -24,12 +24,21 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
                       LoopBridgeNodeCounts::INPUTS,
                       LoopBridgeNodeCounts::OUTPUTS,
                       LoopBridgeNodeCounts::ARRAY_MODE) {
-    // Compile-time input slot definition
-    CONSTEXPR_INPUT(LOOP_ID, uint32_t, 0, false);
+    // ===== INPUTS (1) =====
+    INPUT_SLOT(LOOP_ID, uint32_t, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Compile-time output slot definitions
-    CONSTEXPR_OUTPUT(LOOP_OUT, LoopReferencePtr, 0, false);
-    CONSTEXPR_OUTPUT(SHOULD_EXECUTE, bool, 1, false);
+    // ===== OUTPUTS (2) =====
+    OUTPUT_SLOT(LOOP_OUT, LoopReferencePtr, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(SHOULD_EXECUTE, bool, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     // Constructor for runtime descriptor initialization
     LoopBridgeNodeConfig() {

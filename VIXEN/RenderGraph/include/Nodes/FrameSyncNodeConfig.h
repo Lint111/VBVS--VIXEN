@@ -35,15 +35,33 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
                       FrameSyncNodeCounts::INPUTS,
                       FrameSyncNodeCounts::OUTPUTS,
                       FrameSyncNodeCounts::ARRAY_MODE) {
-    // Compile-time output slot definitions
-    CONSTEXPR_OUTPUT(CURRENT_FRAME_INDEX, uint32_t, 0, false);
-    CONSTEXPR_OUTPUT(IN_FLIGHT_FENCE, VkFence, 1, false);
-    CONSTEXPR_OUTPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2, false);  // Per-FLIGHT semaphores
-    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3, false);  // Per-IMAGE semaphores
-    CONSTEXPR_OUTPUT(PRESENT_FENCES_ARRAY, VkFenceVector, 4, false);  // Per-IMAGE fences (VK_KHR_swapchain_maintenance1)
+    // ===== INPUTS (1) =====
+    INPUT_SLOT(VULKAN_DEVICE, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Input: VulkanDevice pointer only
-    CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 0, false);
+    // ===== OUTPUTS (5) =====
+    OUTPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, VkFenceVector, 4,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     // Compile-time constants
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + both semaphore types

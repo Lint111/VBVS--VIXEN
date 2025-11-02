@@ -41,31 +41,51 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* WAIT_FOR_IDLE = "waitForIdle";
 
-    // ===== INPUTS (5) =====
-    // VulkanDevice pointer (contains device, queue, gpu, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    // ===== INPUTS (6) =====
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Swapchain from SwapChainNode
-    CONSTEXPR_INPUT(SWAPCHAIN, VkSwapchainKHR, 1, false);
+    INPUT_SLOT(SWAPCHAIN, VkSwapchainKHR, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Index of swapchain image to present
-    CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 2, false);
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Semaphore to wait on before presenting (from rendering completion)
-    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 3, false);
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 3,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Function pointer to vkQueuePresentKHR (from device extension) - OPTIONAL (fallback to direct call)
-    CONSTEXPR_INPUT(PRESENT_FUNCTION, PFN_vkQueuePresentKHR, 4, true);
+    INPUT_SLOT(PRESENT_FUNCTION, PFN_vkQueuePresentKHR, 4,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Swapchain present fence info (optional for backwards compatibility)
-    CONSTEXPR_INPUT(PRESENT_FENCE_ARRAY, VkFenceVector, 5, true);
+    INPUT_SLOT(PRESENT_FENCE_ARRAY, VkFenceVector, 5,
+        SlotNullability::Optional,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    // Result of the present operation (pointer to VkResult)
-    CONSTEXPR_OUTPUT(PRESENT_RESULT, VkResultPtr, 0, false);
+    OUTPUT_SLOT(PRESENT_RESULT, VkResultPtr, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Device output for chaining
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     PresentNodeConfig() {
         // Initialize input descriptors

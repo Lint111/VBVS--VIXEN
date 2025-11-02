@@ -82,11 +82,11 @@ void PresentNode::CleanupImpl() {
 }
 
 VkResult PresentNode::Present() {
-    // Get inputs on-demand via typed slots
-    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN, NodeInstance::SlotRole::ExecuteOnly);
-    uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX, NodeInstance::SlotRole::ExecuteOnly);
-    VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE, NodeInstance::SlotRole::ExecuteOnly);
-    VkFenceVector presentFenceArray = In(PresentNodeConfig::PRESENT_FENCE_ARRAY, NodeInstance::SlotRole::ExecuteOnly);
+    // Get inputs on-demand via typed slots (SlotRole from config)
+    VkSwapchainKHR swapchain = In(PresentNodeConfig::SWAPCHAIN);
+    uint32_t imageIndex = In(PresentNodeConfig::IMAGE_INDEX);
+    VkSemaphore renderCompleteSemaphore = In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    VkFenceVector presentFenceArray = In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX) {
@@ -100,7 +100,7 @@ VkResult PresentNode::Present() {
         fpQueuePresent = device->GetPresentFunction();
     } else {
         // Fallback: try to get from input connection
-    fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION, NodeInstance::SlotRole::ExecuteOnly);
+        fpQueuePresent = In(PresentNodeConfig::PRESENT_FUNCTION);
     }
 
     if (fpQueuePresent == nullptr) {

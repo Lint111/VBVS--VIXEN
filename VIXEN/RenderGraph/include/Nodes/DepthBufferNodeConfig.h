@@ -41,25 +41,37 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
                       DepthBufferNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
-    // ===== INPUTS (4) =====
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    // ===== INPUTS (3) =====
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Width and height from SwapChainNode
-    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariablesPtr, 1, false);
+    INPUT_SLOT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariablesPtr, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Command pool for layout transition
-    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 2, false);
+    INPUT_SLOT(COMMAND_POOL, VkCommandPool, 2,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (3) =====
-    // Depth image
-    CONSTEXPR_OUTPUT(DEPTH_IMAGE, VkImage, 0, false);
+    OUTPUT_SLOT(DEPTH_IMAGE, VkImage, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Depth image view (for framebuffer attachment)
-    CONSTEXPR_OUTPUT(DEPTH_IMAGE_VIEW, VkImageView, 1, false);
+    OUTPUT_SLOT(DEPTH_IMAGE_VIEW, VkImageView, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Depth format (for render pass creation)
-    CONSTEXPR_OUTPUT(DEPTH_FORMAT, VkFormat, 2, false);
+    OUTPUT_SLOT(DEPTH_FORMAT, VkFormat, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     DepthBufferNodeConfig() {
         // Initialize input descriptors

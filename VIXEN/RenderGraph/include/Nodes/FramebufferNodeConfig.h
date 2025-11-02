@@ -43,45 +43,43 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== INPUTS (4) =====
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    AUTO_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);  // Index 0 (auto)
+        SlotScope::NodeLevel);
 
     // Render pass from RenderPassNode
-    AUTO_INPUT(RENDER_PASS, VkRenderPass,
+    INPUT_SLOT(RENDER_PASS, VkRenderPass, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);  // Index 1 (auto)
+        SlotScope::NodeLevel);
 
     // Swapchain public variables bundle (contains colorBuffers array)
-    AUTO_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr,
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);  // Index 2 (auto)
+        SlotScope::NodeLevel);
 
     // Depth attachment from DepthBufferNode (nullable - may not use depth)
-    AUTO_INPUT(DEPTH_ATTACHMENT, VkImageView,
+    INPUT_SLOT(DEPTH_ATTACHMENT, VkImageView, 3,
         SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);  // Index 3 (auto)
+        SlotScope::NodeLevel);
 
 
     // ===== OUTPUTS (2) =====
     // Framebuffer handles (vector containing all swapchain framebuffers)
-    AUTO_OUTPUT(FRAMEBUFFERS, FramebufferVector,
+    OUTPUT_SLOT(FRAMEBUFFERS, FramebufferVector, 0,
         SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::WriteOnly);  // Index 0 (auto)
+        SlotMutability::WriteOnly);
 
-	AUTO_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr,
+	OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
         SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::WriteOnly);  // Index 1 (auto)
+        SlotMutability::WriteOnly);
 
     FramebufferNodeConfig() {
         // Initialize input descriptors

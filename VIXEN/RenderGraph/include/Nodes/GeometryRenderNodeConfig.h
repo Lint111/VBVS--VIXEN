@@ -65,58 +65,105 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static constexpr const char* CLEAR_DEPTH = "clearDepth";
     static constexpr const char* CLEAR_STENCIL = "clearStencil";
 
-    // ===== INPUTS (11) =====
-    // Render pass from RenderPassNode
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 0, false);
+    // ===== INPUTS (15) =====
+    INPUT_SLOT(RENDER_PASS, VkRenderPass, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Framebuffers from FramebufferNode (array - one per swapchain image)
-    CONSTEXPR_INPUT(FRAMEBUFFERS, FramebufferVector, 1, false);
+    INPUT_SLOT(FRAMEBUFFERS, FramebufferVector, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Graphics pipeline from GraphicsPipelineNode
-    CONSTEXPR_INPUT(PIPELINE, VkPipeline, 2, false);
+    INPUT_SLOT(PIPELINE, VkPipeline, 2,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Pipeline layout from GraphicsPipelineNode
-    CONSTEXPR_INPUT(PIPELINE_LAYOUT, VkPipelineLayout, 3, false);
+    INPUT_SLOT(PIPELINE_LAYOUT, VkPipelineLayout, 3,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Descriptor sets from DescriptorSetNode (array)
-    CONSTEXPR_INPUT(DESCRIPTOR_SETS, DescriptorSetVector, 4, false);
+    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 4,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Vertex buffer from VertexBufferNode
-    CONSTEXPR_INPUT(VERTEX_BUFFER, VkBuffer, 5, false);
+    INPUT_SLOT(VERTEX_BUFFER, VkBuffer, 5,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Index buffer from VertexBufferNode (nullable - may not use indexed rendering)
-    CONSTEXPR_INPUT(INDEX_BUFFER, VkBuffer, 6, true);
+    INPUT_SLOT(INDEX_BUFFER, VkBuffer, 6,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Swapchain info for viewport/scissor/render area
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 7, false);
-    
-    // Command pool for allocating command buffers
-    CONSTEXPR_INPUT(COMMAND_POOL, VkCommandPool, 8, false);
-    
-    // VulkanDevice (for queue submission)
-    CONSTEXPR_INPUT(VULKAN_DEVICE, VulkanDevicePtr, 9, false);
-    
-    // Current image index from SwapChainNode
-    CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 10, false);
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 7,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.5: Current frame-in-flight index (for imageAvailable semaphore indexing)
-    CONSTEXPR_INPUT(CURRENT_FRAME_INDEX, uint32_t, 11, false);
+    INPUT_SLOT(COMMAND_POOL, VkCommandPool, 8,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.5: In-flight fence for CPU-GPU synchronization (from FrameSyncNode)
-    CONSTEXPR_INPUT(IN_FLIGHT_FENCE, VkFence, 12, false);
+    INPUT_SLOT(VULKAN_DEVICE, VulkanDevicePtr, 9,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.5: Array of image available semaphores (indexed by frameIndex - per-flight)
-    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 13, false);
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 10,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.5: Array of render complete semaphores (indexed by imageIndex - per-image)
-    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 14, false);
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 11,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 12,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 13,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 14,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    // Recorded command buffers (array - one per framebuffer)
-    CONSTEXPR_OUTPUT(COMMAND_BUFFERS, VkCommandBuffer, 0, false);
-    
-    // Render complete semaphore (signaled when rendering finishes, for presentation wait)
-    CONSTEXPR_OUTPUT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 1, false);
+    OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     GeometryRenderNodeConfig() {
         // Initialize input descriptors

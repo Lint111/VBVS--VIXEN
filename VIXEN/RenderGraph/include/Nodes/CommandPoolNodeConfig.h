@@ -28,12 +28,21 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
                       CommandPoolNodeCounts::INPUTS, 
                       CommandPoolNodeCounts::OUTPUTS, 
                       CommandPoolNodeCounts::ARRAY_MODE) {
-    // Compile-time output slot definition
-    CONSTEXPR_OUTPUT(COMMAND_POOL, VkCommandPool, 0, false);
-	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    // ===== INPUTS (1) =====
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Input: VulkanDevice pointer (contains device, gpu, queue families, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    // ===== OUTPUTS (2) =====
+    OUTPUT_SLOT(COMMAND_POOL, VkCommandPool, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
 
 

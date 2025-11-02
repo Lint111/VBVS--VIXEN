@@ -36,16 +36,14 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
                       DeviceNodeCounts::INPUTS,
                       DeviceNodeCounts::OUTPUTS,
                       DeviceNodeCounts::ARRAY_MODE) {
-    // Phase F: Auto-indexed output slots with full metadata
-    AUTO_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr,
+    // Phase F: Output slots with full metadata
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0,
         SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::WriteOnly);  // Index 0 (auto)
+        SlotMutability::WriteOnly);
 
-    AUTO_OUTPUT(INSTANCE, VkInstance,
+    OUTPUT_SLOT(INSTANCE, VkInstance, 1,
         SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::WriteOnly);  // Index 1 (auto)
+        SlotMutability::WriteOnly);
 
     // Compile-time parameter names
     static constexpr const char* PARAM_GPU_INDEX = "gpu_index";
