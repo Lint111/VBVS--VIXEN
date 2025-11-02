@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 /**
  * @brief Resource type categories for budget tracking
  */
-enum class ResourceType : uint8_t {
+enum class BudgetResourceType : uint8_t {
     HostMemory,      // System RAM
     DeviceMemory,    // GPU VRAM
     CommandBuffers,  // Vulkan command buffers
@@ -34,7 +34,7 @@ struct ResourceBudget {
 /**
  * @brief Current resource usage statistics
  */
-struct ResourceUsage {
+struct BudgetResourceUsage {
     uint64_t currentBytes = 0;    // Currently allocated
     uint64_t peakBytes = 0;       // Peak allocation
     uint32_t allocationCount = 0; // Number of active allocations
@@ -68,33 +68,33 @@ public:
     ~ResourceBudgetManager() = default;
 
     // Budget configuration
-    void SetBudget(ResourceType type, const ResourceBudget& budget);
+    void SetBudget(BudgetResourceType type, const ResourceBudget& budget);
     void SetBudget(const std::string& customType, const ResourceBudget& budget);
 
-    std::optional<ResourceBudget> GetBudget(ResourceType type) const;
+    std::optional<ResourceBudget> GetBudget(BudgetResourceType type) const;
     std::optional<ResourceBudget> GetBudget(const std::string& customType) const;
 
     // Usage tracking
-    bool TryAllocate(ResourceType type, uint64_t bytes);
+    bool TryAllocate(BudgetResourceType type, uint64_t bytes);
     bool TryAllocate(const std::string& customType, uint64_t bytes);
 
-    void RecordAllocation(ResourceType type, uint64_t bytes);
+    void RecordAllocation(BudgetResourceType type, uint64_t bytes);
     void RecordAllocation(const std::string& customType, uint64_t bytes);
 
-    void RecordDeallocation(ResourceType type, uint64_t bytes);
+    void RecordDeallocation(BudgetResourceType type, uint64_t bytes);
     void RecordDeallocation(const std::string& customType, uint64_t bytes);
 
     // Query current state
-    ResourceUsage GetUsage(ResourceType type) const;
-    ResourceUsage GetUsage(const std::string& customType) const;
+    BudgetResourceUsage GetUsage(BudgetResourceType type) const;
+    BudgetResourceUsage GetUsage(const std::string& customType) const;
 
-    uint64_t GetAvailableBytes(ResourceType type) const;
+    uint64_t GetAvailableBytes(BudgetResourceType type) const;
     uint64_t GetAvailableBytes(const std::string& customType) const;
 
-    bool IsOverBudget(ResourceType type) const;
+    bool IsOverBudget(BudgetResourceType type) const;
     bool IsOverBudget(const std::string& customType) const;
 
-    bool IsNearWarningThreshold(ResourceType type) const;
+    bool IsNearWarningThreshold(BudgetResourceType type) const;
     bool IsNearWarningThreshold(const std::string& customType) const;
 
     // System memory detection
@@ -103,22 +103,22 @@ public:
 
     // Utilities
     void Reset();
-    void ResetUsage(ResourceType type);
+    void ResetUsage(BudgetResourceType type);
     void ResetUsage(const std::string& customType);
 
 private:
     // Standard resource type budgets
-    std::unordered_map<ResourceType, ResourceBudget> budgets_;
-    std::unordered_map<ResourceType, ResourceUsage> usage_;
+    std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
+    std::unordered_map<BudgetResourceType, BudgetResourceUsage> usage_;
 
     // Custom/user-defined resource budgets
     std::unordered_map<std::string, ResourceBudget> customBudgets_;
-    std::unordered_map<std::string, ResourceUsage> customUsage_;
+    std::unordered_map<std::string, BudgetResourceUsage> customUsage_;
 
     // Internal helpers
-    bool TryAllocateImpl(const ResourceBudget* budget, ResourceUsage* usage, uint64_t bytes);
-    void RecordAllocationImpl(ResourceUsage* usage, uint64_t bytes);
-    void RecordDeallocationImpl(ResourceUsage* usage, uint64_t bytes);
+    bool TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes);
+    void RecordAllocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
+    void RecordDeallocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
 };
 
 } // namespace Vixen::RenderGraph

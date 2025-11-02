@@ -6,6 +6,8 @@
 #include "CleanupStack.h"
 #include "LoopManager.h"
 #include "INodeWiring.h"
+#include "SlotTask.h"
+#include "ResourceBudgetManager.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -396,6 +398,73 @@ protected:
      */
     virtual void CleanupImpl() {}
 
+    // ============================================================================
+    // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
+    // ============================================================================
+
+    /**
+     * @brief Execute tasks for array-based slot processing
+     *
+     * Generates tasks from an array input slot and executes them with optional
+     * budget-aware parallelism. Nodes can use this to process array elements
+     * independently without manually writing loop code.
+     *
+     * Example usage in a TextureLoader node:
+     * @code
+     * // Slot config with SlotScope::TaskLevel for per-element processing
+     * INPUT_SLOT(FILE_PATHS, std::vector<std::string>, 0,
+     *            SlotNullability::Required, SlotRole::Dependency,
+     *            SlotMutability::ReadOnly, SlotScope::TaskLevel);
+     *
+     * void CompileImpl() override {
+     *     // Define task function for loading one texture
+     *     auto loadTexture = [this](SlotTaskContext& ctx) -> bool {
+     *         uint32_t index = ctx.GetElementIndex();
+     *         std::string path = filePaths[index];
+     *         // Load texture, create VkImage, store in outputs[index]
+     *         return true;
+     *     };
+     *
+     *     // Execute tasks (automatically determines sequential vs parallel)
+     *     uint32_t successCount = ExecuteTasks(FILE_PATHS_SLOT_INDEX, loadTexture);
+     *     LogInfo("Loaded " + std::to_string(successCount) + " textures");
+     * }
+     * @endcode
+     *
+     * @param slotIndex Input slot containing array data
+     * @param taskFunction Function to execute per array element
+     * @param budgetManager Optional budget manager for parallelism calculation
+     * @param forceSequential If true, always execute sequentially (default: auto-detect)
+     * @return Number of successful tasks
+     */
+    uint32_t ExecuteTasks(
+        uint32_t slotIndex,
+        const SlotTaskFunction& taskFunction,
+        ResourceBudgetManager* budgetManager = nullptr,
+        bool forceSequential = false
+    );
+
+    /**
+     * @brief Get ResourceBudgetManager from owning graph
+     *
+     * Retrieves the budget manager for use with task execution.
+     * Returns nullptr if graph doesn't have a budget manager configured.
+     *
+     * @return Pointer to ResourceBudgetManager, or nullptr
+     */
+    ResourceBudgetManager* GetBudgetManager() const;
+
+    /**
+     * @brief Get SlotScope for an input slot
+     *
+     * Queries the node's config to determine the resource scope for a slot.
+     * Used internally by ExecuteTasks() to decide task granularity.
+     *
+     * @param slotIndex Input slot index
+     * @return SlotScope enum value (defaults to NodeLevel if not found)
+     */
+    SlotScope GetSlotScope(uint32_t slotIndex) const;
+
 public:
     // ============================================================================
     // INodeWiring interface implementation (graph wiring methods)
@@ -557,6 +626,9 @@ public:
 
     // Metrics
     size_t inputMemoryFootprint = 0;
+
+    // Phase F: Task manager for array processing
+    SlotTaskManager taskManager;
     PerformanceStats performanceStats;
 
     // Caching

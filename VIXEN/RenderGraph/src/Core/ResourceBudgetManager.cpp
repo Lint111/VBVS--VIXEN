@@ -12,7 +12,7 @@
 namespace Vixen::RenderGraph {
 
 // Budget configuration
-void ResourceBudgetManager::SetBudget(ResourceType type, const ResourceBudget& budget) {
+void ResourceBudgetManager::SetBudget(BudgetResourceType type, const ResourceBudget& budget) {
     budgets_[type] = budget;
 }
 
@@ -20,7 +20,7 @@ void ResourceBudgetManager::SetBudget(const std::string& customType, const Resou
     customBudgets_[customType] = budget;
 }
 
-std::optional<ResourceBudget> ResourceBudgetManager::GetBudget(ResourceType type) const {
+std::optional<ResourceBudget> ResourceBudgetManager::GetBudget(BudgetResourceType type) const {
     auto it = budgets_.find(type);
     if (it != budgets_.end()) {
         return it->second;
@@ -37,12 +37,12 @@ std::optional<ResourceBudget> ResourceBudgetManager::GetBudget(const std::string
 }
 
 // Allocation attempts (check if allocation would succeed)
-bool ResourceBudgetManager::TryAllocate(ResourceType type, uint64_t bytes) {
+bool ResourceBudgetManager::TryAllocate(BudgetResourceType type, uint64_t bytes) {
     auto budgetIt = budgets_.find(type);
     auto usageIt = usage_.find(type);
 
     const ResourceBudget* budget = (budgetIt != budgets_.end()) ? &budgetIt->second : nullptr;
-    ResourceUsage* usage = (usageIt != usage_.end()) ? &usageIt->second : nullptr;
+    BudgetResourceUsage* usage = (usageIt != usage_.end()) ? &usageIt->second : nullptr;
 
     // Create usage entry if doesn't exist
     if (!usage) {
@@ -57,7 +57,7 @@ bool ResourceBudgetManager::TryAllocate(const std::string& customType, uint64_t 
     auto usageIt = customUsage_.find(customType);
 
     const ResourceBudget* budget = (budgetIt != customBudgets_.end()) ? &budgetIt->second : nullptr;
-    ResourceUsage* usage = (usageIt != customUsage_.end()) ? &usageIt->second : nullptr;
+    BudgetResourceUsage* usage = (usageIt != customUsage_.end()) ? &usageIt->second : nullptr;
 
     // Create usage entry if doesn't exist
     if (!usage) {
@@ -68,7 +68,7 @@ bool ResourceBudgetManager::TryAllocate(const std::string& customType, uint64_t 
 }
 
 // Record actual allocations
-void ResourceBudgetManager::RecordAllocation(ResourceType type, uint64_t bytes) {
+void ResourceBudgetManager::RecordAllocation(BudgetResourceType type, uint64_t bytes) {
     RecordAllocationImpl(&usage_[type], bytes);
 }
 
@@ -77,7 +77,7 @@ void ResourceBudgetManager::RecordAllocation(const std::string& customType, uint
 }
 
 // Record deallocations
-void ResourceBudgetManager::RecordDeallocation(ResourceType type, uint64_t bytes) {
+void ResourceBudgetManager::RecordDeallocation(BudgetResourceType type, uint64_t bytes) {
     auto it = usage_.find(type);
     if (it != usage_.end()) {
         RecordDeallocationImpl(&it->second, bytes);
@@ -92,17 +92,17 @@ void ResourceBudgetManager::RecordDeallocation(const std::string& customType, ui
 }
 
 // Query current state
-ResourceUsage ResourceBudgetManager::GetUsage(ResourceType type) const {
+BudgetResourceUsage ResourceBudgetManager::GetUsage(BudgetResourceType type) const {
     auto it = usage_.find(type);
-    return (it != usage_.end()) ? it->second : ResourceUsage{};
+    return (it != usage_.end()) ? it->second : BudgetResourceUsage{};
 }
 
-ResourceUsage ResourceBudgetManager::GetUsage(const std::string& customType) const {
+BudgetResourceUsage ResourceBudgetManager::GetUsage(const std::string& customType) const {
     auto it = customUsage_.find(customType);
-    return (it != customUsage_.end()) ? it->second : ResourceUsage{};
+    return (it != customUsage_.end()) ? it->second : BudgetResourceUsage{};
 }
 
-uint64_t ResourceBudgetManager::GetAvailableBytes(ResourceType type) const {
+uint64_t ResourceBudgetManager::GetAvailableBytes(BudgetResourceType type) const {
     auto budgetIt = budgets_.find(type);
     auto usageIt = usage_.find(type);
 
@@ -130,7 +130,7 @@ uint64_t ResourceBudgetManager::GetAvailableBytes(const std::string& customType)
     return (current < max) ? (max - current) : 0;
 }
 
-bool ResourceBudgetManager::IsOverBudget(ResourceType type) const {
+bool ResourceBudgetManager::IsOverBudget(BudgetResourceType type) const {
     return GetAvailableBytes(type) == 0;
 }
 
@@ -138,7 +138,7 @@ bool ResourceBudgetManager::IsOverBudget(const std::string& customType) const {
     return GetAvailableBytes(customType) == 0;
 }
 
-bool ResourceBudgetManager::IsNearWarningThreshold(ResourceType type) const {
+bool ResourceBudgetManager::IsNearWarningThreshold(BudgetResourceType type) const {
     auto budgetIt = budgets_.find(type);
     auto usageIt = usage_.find(type);
 
@@ -206,7 +206,7 @@ void ResourceBudgetManager::Reset() {
     customUsage_.clear();
 }
 
-void ResourceBudgetManager::ResetUsage(ResourceType type) {
+void ResourceBudgetManager::ResetUsage(BudgetResourceType type) {
     auto it = usage_.find(type);
     if (it != usage_.end()) {
         it->second.Reset();
@@ -221,7 +221,7 @@ void ResourceBudgetManager::ResetUsage(const std::string& customType) {
 }
 
 // Internal helpers
-bool ResourceBudgetManager::TryAllocateImpl(const ResourceBudget* budget, ResourceUsage* usage, uint64_t bytes) {
+bool ResourceBudgetManager::TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes) {
     if (!budget || budget->maxBytes == 0) {
         return true; // No budget limit - allow
     }
@@ -235,13 +235,13 @@ bool ResourceBudgetManager::TryAllocateImpl(const ResourceBudget* budget, Resour
     return true; // Allow allocation (may exceed budget if not strict)
 }
 
-void ResourceBudgetManager::RecordAllocationImpl(ResourceUsage* usage, uint64_t bytes) {
+void ResourceBudgetManager::RecordAllocationImpl(BudgetResourceUsage* usage, uint64_t bytes) {
     usage->currentBytes += bytes;
     usage->peakBytes = std::max(usage->peakBytes, usage->currentBytes);
     usage->allocationCount++;
 }
 
-void ResourceBudgetManager::RecordDeallocationImpl(ResourceUsage* usage, uint64_t bytes) {
+void ResourceBudgetManager::RecordDeallocationImpl(BudgetResourceUsage* usage, uint64_t bytes) {
     if (usage->currentBytes >= bytes) {
         usage->currentBytes -= bytes;
     } else {

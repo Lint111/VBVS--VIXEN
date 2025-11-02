@@ -392,4 +392,53 @@ uint64_t NodeInstance::GetLoopStepCount() const {
     return 0;
 }
 
+// ============================================================================
+// PHASE F: SLOT TASK SYSTEM IMPLEMENTATION
+// ============================================================================
+
+uint32_t NodeInstance::ExecuteTasks(
+    uint32_t slotIndex,
+    const SlotTaskFunction& taskFunction,
+    ResourceBudgetManager* budgetManager,
+    bool forceSequential
+) {
+    // Get SlotScope from config to determine task granularity
+    SlotScope scope = GetSlotScope(slotIndex);
+
+    // Generate tasks based on array size and scope
+    auto tasks = taskManager.GenerateTasks(this, slotIndex, scope);
+
+    if (tasks.empty()) {
+        return 0;
+    }
+
+    // Use provided budget manager or get from graph
+    ResourceBudgetManager* budget = budgetManager ? budgetManager : GetBudgetManager();
+
+    // Execute sequentially or in parallel based on flags and budget
+    if (forceSequential || !budget) {
+        return taskManager.ExecuteSequential(tasks, taskFunction);
+    } else {
+        return taskManager.ExecuteParallel(tasks, taskFunction, budget);
+    }
+}
+
+ResourceBudgetManager* NodeInstance::GetBudgetManager() const {
+    if (owningGraph) {
+        return owningGraph->GetBudgetManager();
+    }
+    return nullptr;
+}
+
+SlotScope NodeInstance::GetSlotScope(uint32_t slotIndex) const {
+    if (!nodeType) {
+        return SlotScope::NodeLevel;
+    }
+
+    // Query NodeType for slot metadata
+    // For now, default to TaskLevel for array processing
+    // TODO: Extend NodeType to store SlotScope metadata from configs
+    return SlotScope::TaskLevel;
+}
+
 } // namespace Vixen::RenderGraph

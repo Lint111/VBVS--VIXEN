@@ -221,7 +221,7 @@ uint32_t SlotTaskManager::CalculateOptimalParallelism(
     uint64_t avgMemoryPerTask = totalEstimatedMemory / tasksWithEstimates;
 
     // Get available host memory
-    uint64_t availableMemory = budgetManager->GetAvailableBytes(ResourceType::HostMemory);
+    uint64_t availableMemory = budgetManager->GetAvailableBytes(BudgetResourceType::HostMemory);
 
     if (availableMemory == std::numeric_limits<uint64_t>::max()) {
         // Unlimited budget - use hardware concurrency
