@@ -34,6 +34,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
 #include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
 #include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
+#include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -522,9 +523,68 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
 
-    // Phase G: Compute shader library parameters
-    // Note: ShaderLibraryNode currently hardcoded to Draw.vert/frag - will load compute shader via bundle path in future
-    // For now, compute shader loading will be handled manually in CompileRenderGraph
+    // Phase G: Configure shader libraries with builder functions
+
+    // Graphics shader library (Draw.vert + Draw.frag)
+    auto* graphicsShaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
+    graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find shader paths
+        std::vector<std::filesystem::path> possiblePaths = {
+            "Draw.vert", "Shaders/Draw.vert", "../Shaders/Draw.vert", "binaries/Draw.vert"
+        };
+        std::filesystem::path vertPath, fragPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                vertPath = path;
+                fragPath = path.parent_path() / "Draw.frag";
+                break;
+            }
+        }
+
+        // Configure SDI generation
+        ShaderManagement::SdiGeneratorConfig sdiConfig;
+        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
+        sdiConfig.namespacePrefix = "ShaderInterface";
+        sdiConfig.generateComments = true;
+
+        builder.SetProgramName("Draw_Shader")
+               .SetSdiConfig(sdiConfig)
+               .EnableSdiGeneration(true)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
+
+        return builder;
+    });
+
+    // Compute shader library (ComputeTest.comp)
+    auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
+    computeShaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find compute shader path
+        std::vector<std::filesystem::path> possiblePaths = {
+            "ComputeTest.comp", "Shaders/ComputeTest.comp", "../Shaders/ComputeTest.comp", "binaries/ComputeTest.comp"
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                compPath = path;
+                break;
+            }
+        }
+
+        builder.SetProgramName("ComputeTest")
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+
+        return builder;
+    });
 
     // Phase G: Compute dispatch parameters
     auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
@@ -727,6 +787,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  computePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDispatch, ComputeDispatchNodeConfig::VULKAN_DEVICE_IN)
          .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE,
                   computeDispatch, ComputeDispatchNodeConfig::COMPUTE_PIPELINE)
          .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,

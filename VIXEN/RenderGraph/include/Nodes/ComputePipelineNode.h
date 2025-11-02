@@ -71,6 +71,9 @@ private:
     VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;
     VkShaderModule shaderModule_ = VK_NULL_HANDLE;
 
+    // Entry point name storage (must outlive GetOrCreate call)
+    std::string entryPointName_;
+
     // Shared wrappers from cachers
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
 

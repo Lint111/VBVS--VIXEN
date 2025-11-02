@@ -128,52 +128,80 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     }
     auto& mainCacher = renderGraph->GetMainCacher();
 
-    // ===== 6. Auto-Generate Descriptor Set Layout (if needed) =====
+    // ===== 6. Create Pipeline Layout =====
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> pipelineLayoutWrapper;
     std::string layoutKey;
 
-    if (descriptorSetLayout == VK_NULL_HANDLE && shaderBundle->descriptorLayout) {
-        std::cout << "[ComputePipelineNode::CompileImpl] Auto-generating pipeline layout from shader reflection..." << std::endl;
-
-        // Get PipelineLayoutCacher
-        auto* layoutCacher = mainCacher.GetCacher<
+    // Register PipelineLayoutCacher if not already registered
+    if (!mainCacher.IsRegistered(typeid(CashSystem::PipelineLayoutWrapper))) {
+        std::cout << "[ComputePipelineNode::CompileImpl] Registering PipelineLayoutCacher..." << std::endl;
+        mainCacher.RegisterCacher<
             CashSystem::PipelineLayoutCacher,
             CashSystem::PipelineLayoutWrapper,
             CashSystem::PipelineLayoutCreateParams
-        >(typeid(CashSystem::PipelineLayoutWrapper), devicePtr);
-
-        if (!layoutCacher) {
-            vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
-            throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to get PipelineLayoutCacher");
-        }
-
-        // Build pipeline layout params (simplified - no descriptor set layout for now)
-        CashSystem::PipelineLayoutCreateParams layoutParams;
-        layoutParams.layoutKey = shaderBundle->uuid + "_auto_layout";
-
-        // Convert push constants from reflection if available
-        if (shaderBundle->reflectionData && !shaderBundle->reflectionData->pushConstants.empty()) {
-            for (const auto& pc : shaderBundle->reflectionData->pushConstants) {
-                VkPushConstantRange range{};
-                range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-                range.offset = pc.offset;
-                range.size = pc.size;
-                layoutParams.pushConstantRanges.push_back(range);
-            }
-            std::cout << "[ComputePipelineNode::CompileImpl] Found " << layoutParams.pushConstantRanges.size()
-                      << " push constant range(s) in shader reflection" << std::endl;
-        }
-
-        pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
-        layoutKey = layoutParams.layoutKey;
-
-        std::cout << "[ComputePipelineNode::CompileImpl] Auto-generated pipeline layout: " << layoutKey << std::endl;
-    } else {
-        layoutKey = shaderBundle->uuid + "_external_layout";
-        std::cout << "[ComputePipelineNode::CompileImpl] Using provided descriptor layout" << std::endl;
+        >(
+            typeid(CashSystem::PipelineLayoutWrapper),
+            "PipelineLayout",
+            true  // device-dependent
+        );
     }
 
+    // Get PipelineLayoutCacher
+    auto* layoutCacher = mainCacher.GetCacher<
+        CashSystem::PipelineLayoutCacher,
+        CashSystem::PipelineLayoutWrapper,
+        CashSystem::PipelineLayoutCreateParams
+    >(typeid(CashSystem::PipelineLayoutWrapper), devicePtr);
+
+    if (!layoutCacher) {
+        vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to get PipelineLayoutCacher");
+    }
+
+    // Build pipeline layout params
+    CashSystem::PipelineLayoutCreateParams layoutParams;
+    layoutParams.layoutKey = shaderBundle->uuid + "_pipeline_layout";
+
+    // Add descriptor set layout if provided
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
+        layoutParams.descriptorSetLayout = descriptorSetLayout;
+        std::cout << "[ComputePipelineNode::CompileImpl] Using provided descriptor set layout" << std::endl;
+    }
+
+    // Convert push constants from reflection if available
+    if (shaderBundle->reflectionData && !shaderBundle->reflectionData->pushConstants.empty()) {
+        for (const auto& pc : shaderBundle->reflectionData->pushConstants) {
+            VkPushConstantRange range{};
+            range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            range.offset = pc.offset;
+            range.size = pc.size;
+            layoutParams.pushConstantRanges.push_back(range);
+        }
+        std::cout << "[ComputePipelineNode::CompileImpl] Found " << layoutParams.pushConstantRanges.size()
+                  << " push constant range(s) in shader reflection" << std::endl;
+    }
+
+    pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
+    layoutKey = layoutParams.layoutKey;
+
+    std::cout << "[ComputePipelineNode::CompileImpl] Created pipeline layout: " << layoutKey << std::endl;
+
     // ===== 7. Create Compute Pipeline via ComputePipelineCacher =====
+
+    // Register ComputePipelineCacher if not already registered
+    if (!mainCacher.IsRegistered(typeid(CashSystem::ComputePipelineWrapper))) {
+        std::cout << "[ComputePipelineNode::CompileImpl] Registering ComputePipelineCacher..." << std::endl;
+        mainCacher.RegisterCacher<
+            CashSystem::ComputePipelineCacher,
+            CashSystem::ComputePipelineWrapper,
+            CashSystem::ComputePipelineCreateParams
+        >(
+            typeid(CashSystem::ComputePipelineWrapper),
+            "ComputePipeline",
+            true  // device-dependent
+        );
+    }
+
     auto* computeCacher = mainCacher.GetCacher<
         CashSystem::ComputePipelineCacher,
         CashSystem::ComputePipelineWrapper,
@@ -187,7 +215,8 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
 
     CashSystem::ComputePipelineCreateParams pipelineParams;
     pipelineParams.shaderModule = shaderModule;
-    pipelineParams.entryPoint = shaderBundle->GetEntryPoint(computeStage).c_str();
+    entryPointName_ = shaderBundle->GetEntryPoint(computeStage);
+    pipelineParams.entryPoint = entryPointName_.c_str();
     pipelineParams.pipelineLayoutWrapper = pipelineLayoutWrapper;  // Use explicit wrapper
     pipelineParams.shaderKey = shaderBundle->uuid;
     pipelineParams.layoutKey = layoutKey;

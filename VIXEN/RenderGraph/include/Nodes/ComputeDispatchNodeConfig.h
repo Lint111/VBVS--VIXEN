@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 12;  // Added swapchain + sync inputs
+    static constexpr size_t INPUTS = 11;  // Added swapchain + sync inputs (descriptor sets moved to index 4)
     static constexpr size_t OUTPUTS = 3;  // Added RENDER_COMPLETE_SEMAPHORE output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -83,10 +83,10 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel);
 
     /**
-     * @brief Push constant data (raw byte array)
+     * @brief Descriptor sets (from DescriptorSetNode)
      */
-    INPUT_SLOT(PUSH_CONSTANTS, VkBuffer, 4,
-        SlotNullability::Optional,  // Not all shaders use push constants
+    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 4,
+        SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -137,18 +137,9 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel);
 
     /**
-     * @brief Descriptor sets from DescriptorSetNode (per-image sets for storage image output)
-     */
-    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 10,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    /**
      * @brief Render complete semaphore array (indexed by IMAGE_INDEX)
      */
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 11,
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 10,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
