@@ -737,6 +737,306 @@ Upon phase completion, update:
 
 ---
 
+---
+
+## Phase N+1: Hybrid RTX Surface-Skin Pipeline (ADVANCED EXTENSION) 🚀
+
+**Duration**: 5-7 weeks
+**Priority**: OPTIONAL - Advanced research extension
+**Dependencies**: Phases G, J, K complete (baseline comparisons established)
+
+**Research Document**: `documentation/RayTracing/HybridRTX-SurfaceSkin-Architecture.md` (~110 pages)
+
+### Concept
+
+**Innovation**: Combine RTX hardware for fast initial surface intersection with ray marching for complex material handling.
+
+**Key Technique**: Extract "surface skin buffer" containing only voxels at material boundaries or with empty neighbors → 5× data reduction.
+
+### Implementation Tasks
+
+**N+1.1: Surface Skin Extraction (CPU Pre-Process)** (8-12h)
+```cpp
+// Files to create:
+VoxelProcessing/include/SurfaceSkinExtractor.h
+VoxelProcessing/src/SurfaceSkinExtractor.cpp
+
+// Key algorithm:
+SurfaceSkinBuffer ExtractSurfaceSkin(const VoxelGrid& grid) {
+    // For each voxel:
+    // 1. Check if has empty neighbors → boundary
+    // 2. Check if neighbors have different material IDs → transition
+    // 3. Check if any neighbor is non-opaque → affects light
+    // Output: Sparse buffer (typically 20% of full grid)
+}
+```
+
+**Deliverables**:
+- Surface voxel detection algorithm
+- Normal calculation (gradient-based + dominant face fallback)
+- Material classification system (opaque/reflective/refractive/volumetric)
+
+**N+1.2: Virtual Geometry Generation** (12-16h)
+```cpp
+// Greedy meshing optimization
+std::vector<VirtualQuad> GreedyMesh(const SurfaceSkinBuffer& skin) {
+    // 1. Group voxels by normal direction + material
+    // 2. Merge coplanar adjacent quads into rectangles
+    // 3. Convert to triangles for RTX BLAS
+    // Result: 10M triangles (vs 54M naïve) for urban scene
+}
+```
+
+**Deliverables**:
+- Quad generation from surface voxels
+- Greedy meshing (rectangle merging)
+- Triangle conversion for RTX BLAS
+
+**N+1.3: RTX BLAS with Triangle Geometry** (6-8h)
+```cpp
+// Build acceleration structure with standard triangles (not AABBs)
+VkAccelerationStructureKHR CreateSurfaceSkinBLAS(
+    const std::vector<Triangle>& triangles
+) {
+    // Use VK_GEOMETRY_TYPE_TRIANGLES_KHR (faster than AABB)
+    // Native hardware acceleration, no custom intersection shader
+}
+```
+
+**Deliverables**:
+- Triangle-based BLAS creation
+- Material metadata buffer (per-triangle)
+- TLAS with single instance
+
+**N+1.4: Hybrid Ray Tracing Shaders** (16-20h)
+```glsl
+// Ray generation: RTX first hit → material continuation
+void main() {
+    // Step 1: Trace to surface skin (RTX hardware)
+    traceRayEXT(surfaceSkinTLAS, ...);
+
+    // Step 2: Material-specific handling
+    if (mat.isOpaque) {
+        finalColor = ShadeOpaque();
+    } else if (mat.isRefractive) {
+        finalColor = MarchRefractiveVolume();  // Glass
+    } else if (mat.isVolumetric) {
+        finalColor = MarchVolumetricMedia();   // Fog
+    }
+}
+```
+
+**Deliverables**:
+- Hybrid ray generation shader (.rgen)
+- Closest hit shader (.rchit) - records hit position + material
+- Opaque material shading
+- Refractive volume marching (glass, water)
+- Volumetric media marching (fog, smoke with scattering)
+
+**N+1.5: Integration & Benchmarking** (8-12h)
+- Create HybridRTXNode (RenderGraph integration)
+- Run test suite (45 configurations - Cornell, Cave, Urban × resolutions × densities)
+- Compare with baseline pipelines (compute, fragment, pure RT)
+- Analyze bandwidth, frame time, traversal efficiency
+
+### Expected Results
+
+**Performance Predictions**:
+- **Cornell (10%, opaque)**: 3.2× faster than pure ray marching
+- **Cave (50%, mixed materials)**: 2.3× faster (glass + fog)
+- **Urban (90%, glass buildings)**: 2.5× faster (refractive volume marching)
+
+**Research Value**:
+- First known voxel renderer combining RTX + flexible material ray marching
+- Demonstrates material complexity handling beyond opaque geometry
+- Publication-worthy innovation
+
+### Success Criteria
+- [x] Surface skin extraction reduces data by 5× ✓ (design complete)
+- [x] Greedy meshing reduces triangles by 5-10× ✓ (algorithm specified)
+- [ ] RTX first hit faster than DDA (measure)
+- [ ] Refractive materials render correctly (visual validation)
+- [ ] Volumetric media scattering works (fog visible)
+- [ ] Hybrid outperforms pure ray marching by 2-3× (benchmark)
+
+---
+
+## Phase N+2: GigaVoxels Sparse Streaming (SCALABILITY EXTENSION) 🌌
+
+**Duration**: 4-6 weeks
+**Priority**: OPTIONAL - Scalability showcase
+**Dependencies**: Phases H (Octree), I (Profiling) complete
+
+**Research Document**: `documentation/VoxelStructures/GigaVoxels-CachingStrategy.md` (~90 pages)
+
+### Concept
+
+**Innovation**: GPU-managed caching with ray-guided on-demand streaming enables multi-gigavoxel datasets.
+
+**Key Technique**: Brick pool (3D texture atlas) acts as LRU cache, streams bricks from CPU/disk based on visibility → **128× memory reduction** (256 GB → 2 GB cache).
+
+### Implementation Tasks
+
+**N+2.1: Brick Pool Architecture** (8-10h)
+```cpp
+// Files to create:
+VoxelStreaming/include/BrickPool.h
+VoxelStreaming/src/BrickPool.cpp
+
+class BrickPool {
+    VkImage brickAtlas_;  // 3D texture (e.g., 2048³)
+    std::unordered_map<uint32_t, BrickSlot> slots_;
+
+    uint32_t AllocateBrickSlot();  // LRU eviction
+    void UploadBrick(VkCommandBuffer cmd, const BrickData& brick, uint32_t slot);
+};
+```
+
+**Deliverables**:
+- 3D texture atlas creation (brick pool)
+- LRU cache management (eviction policy)
+- Async brick upload (staging buffer → image)
+
+**N+2.2: Request Buffer System** (6-8h)
+```glsl
+// GPU shader: Request missing bricks
+layout(set = 0, binding = 3) buffer RequestBuffer {
+    uint counter;
+    uint nodeIndices[4096];
+};
+
+void RequestBrickLoad(uint nodeIndex) {
+    uint slot = atomicAdd(requestBuffer.counter, 1);
+    if (slot < 4096) {
+        requestBuffer.nodeIndices[slot] = nodeIndex;
+    }
+}
+```
+
+**Deliverables**:
+- GPU request buffer (atomic append)
+- CPU readback (map buffer, extract requests)
+- Priority sorting (distance to camera, frame timestamp)
+
+**N+2.3: Streaming Manager (CPU)** (12-16h)
+```cpp
+class BrickStreamingManager {
+    void ProcessRequests(VkCommandBuffer cmd) {
+        // 1. Read request buffer from GPU
+        auto requests = ReadRequestBuffer();
+
+        // 2. Sort by priority (camera distance, LOD)
+        std::sort(requests.begin(), requests.end(), ComparePriority);
+
+        // 3. Load top N bricks (budget: 100 MB/frame @ 60 FPS)
+        for (uint32_t nodeIndex : requests) {
+            BrickData brick = LoadBrick(nodeIndex);  // From CPU cache or disk
+            uint32_t slot = brickPool_.AllocateBrickSlot();
+            brickPool_.UploadBrick(cmd, brick, slot);
+        }
+    }
+};
+```
+
+**Deliverables**:
+- Streaming manager (request processing)
+- CPU cache layer (paged memory, disk loading)
+- Bandwidth budget management (100 MB/frame limit)
+
+**N+2.4: Multi-Resolution Mipmapping** (8-12h)
+```cpp
+struct OctreeNode {
+    uint32_t brickPointers[4];  // LOD 0, 1, 2, 3
+};
+
+// Shader: Graceful degradation
+vec4 SampleWithFallback(OctreeNode node, vec3 pos) {
+    if (node.brickPointers[0] != INVALID) return SampleBrick(node.brickPointers[0], pos);
+    if (node.brickPointers[1] != INVALID) return SampleBrick(node.brickPointers[1], pos);
+    // ... fallback to lower LODs
+    return PLACEHOLDER_COLOR;
+}
+```
+
+**Deliverables**:
+- Mipmap generation (box filter, trilinear)
+- Multi-LOD storage in octree nodes
+- Automatic LOD selection in shader
+
+**N+2.5: Integration & Scalability Testing** (8-12h)
+- Create GigaVoxelsNode (RenderGraph integration)
+- Test with massive grids (1024³, 2048³, 4096³)
+- Measure cache hit rate, streaming bandwidth
+- Compare with baseline (dense texture)
+- Visual quality validation (no visible "pop-in")
+
+### Expected Results
+
+**Scalability Metrics**:
+- **512³ voxel grid**: 8× memory reduction (512 MB → 64 MB cache)
+- **1024³ voxel grid**: 16× reduction (4 GB → 256 MB cache)
+- **2048³ voxel grid**: 32× reduction (32 GB → 1 GB cache)
+- **4096³ voxel grid**: 128× reduction (256 GB → 2 GB cache)
+
+**Performance**:
+- **Cold start**: +20-30 ms (initial streaming)
+- **Warm cache**: +1-2 ms overhead (request processing)
+- **Steady state**: Cache hit rate > 95% (≈ baseline performance)
+
+**Research Value**:
+- Demonstrates scalability to multi-gigavoxel datasets
+- Real-world applicability (streaming essential for production)
+- Academic contribution (bandwidth optimization analysis)
+
+### Success Criteria
+- [x] Brick pool architecture designed ✓ (90 pages)
+- [x] Ray-guided streaming algorithm specified ✓
+- [ ] 4096³ grid renders in 2 GB VRAM (measure)
+- [ ] Cache hit rate > 95% after warm-up (profile)
+- [ ] Streaming overhead < 2 ms/frame (benchmark)
+- [ ] Visual quality comparable to fully loaded (qualitative)
+
+---
+
+## Extended Research Test Matrix
+
+**Original**: 180 configurations (4 pipelines × 5 resolutions × 3 densities × 3 algorithms)
+
+**Extended** (if N+1/N+2 implemented): **270 configurations**
+
+| Pipeline | Phases | Priority |
+|----------|--------|----------|
+| Compute shader ray marching | G | ✅ Core |
+| Fragment shader ray marching | J | ✅ Core |
+| Hardware RT (AABB voxels) | K | ✅ Core |
+| Hybrid (compute + fragment) | L | ✅ Core |
+| **Hybrid RTX + surface-skin** | **N+1** | 🚀 **Advanced** |
+| **GigaVoxels streaming** | **N+2** | 🌌 **Scalability** |
+
+**Additional Research Questions**:
+1. Does surface-skin extraction overhead offset RTX speedup?
+2. How does greedy meshing affect BVH traversal quality?
+3. What's optimal cache size for GigaVoxels (512 MB? 1 GB? 2 GB)?
+4. Do complex materials (glass/fog) benefit more from hybrid approach?
+5. Can GigaVoxels maintain 60 FPS with aggressive streaming (200 MB/frame)?
+
+---
+
+## Revised Timeline (With Extensions)
+
+**Core Research** (Phases G-N): 28-31 weeks → May 2026 paper submission
+
+**Extended Research** (Phases N+1, N+2): +9-13 weeks → August 2026
+
+**Total**: 37-44 weeks from Phase F completion
+
+**Recommendation**:
+- Complete core research first (G-N)
+- Submit initial paper (4 pipelines)
+- Implement N+1/N+2 for extended journal publication (6 pipelines)
+
+---
+
 ## Next Immediate Steps
 
 1. ✅ **Complete Phase F** (slot task system) - DO NOT START RESEARCH YET

@@ -700,54 +700,252 @@ profiler.ExportToCSV("results/compute_128_sparse.csv");
 
 ## Next Research Activities (Awaiting Phase F Completion)
 
-### Option A: Extended Preparation (Additional 2-3 weeks)
+### Extended Preparation - Weeks 4-6 (COMPLETE ✅)
 
-Continue non-conflicting preparation work while Phase F completes:
+**Status**: All extended preparation work finished (November 2, 2025)
 
-#### Week 4: Fragment Shader Ray Marching (Phase J Prep)
-**Goal**: Write fragment shader variant for comparison
-**Output**: `Shaders/VoxelRayMarch.frag` + integration guide
-**Conflicts**: NONE
+---
+
+## Week 4: Fragment Shader Ray Marching (Phase J Prep) ✅
+
 **Duration**: 6-8 hours
+**Status**: COMPLETE (November 2, 2025)
+**Goal**: Write fragment shader variant for comparison
+**Conflicts**: NONE
 
-**Why**: Fragment shader pipeline is 2nd test case (different architecture, same algorithm)
+### Deliverables
+
+**Fragment Shader**: `Shaders/VoxelRayMarch.frag` (170 lines, validated)
+- Full ray marching implementation
+- DDA voxel traversal (identical to compute shader)
+- Ray-AABB intersection test
+- Voxel normal calculation
+- Simple diffuse shading
+
+**Vertex Shader**: `Shaders/Fullscreen.vert` (30 lines, validated)
+- Fullscreen triangle technique (3 vertices, no vertex buffer)
+- Hardcoded positions and UVs
+- Single primitive covering entire screen
+
+**Integration Guide**: `documentation/Shaders/FragmentRayMarch-Integration-Guide.md` (~80 pages)
+- Graphics pipeline setup (vertex + fragment shaders)
+- Render pass configuration
+- Descriptor set layout (camera + voxel grid)
+- Command buffer recording
+- Performance comparison predictions vs compute shader
+
+### Validation
+
+- [x] `Fullscreen.vert` compiled to SPIRV ✅
+- [x] `VoxelRayMarch.frag` compiled to SPIRV ✅
+- [x] Both shaders pass spirv-val ✅
+- [x] DDA algorithm identical to compute version ✅
+- [x] Descriptor bindings match compute shader ✅
+
+### Key Architectural Differences
+
+| Aspect | Fragment Shader | Compute Shader |
+|--------|----------------|----------------|
+| Pipeline | Graphics (rasterization) | Compute (general-purpose) |
+| Invocation | Per-pixel (rasterizer) | Per-workgroup |
+| Memory Write | Framebuffer attachment | Storage image |
+| Render Pass | Required | Not required |
+| Shared Memory | Not available | Available (16-32 KB) |
+
+**Research Value**: Different GPU utilization patterns, bandwidth characteristics for comparative analysis.
 
 ---
 
-#### Week 5: Test Scene Design (Phase M Prep)
-**Goal**: Design test voxel scenes for benchmark
-**Output**: `documentation/Testing/TestScenes.md` + scene data specs
-**Conflicts**: NONE
+## Week 5: Test Scene Design (Phase M Prep) ✅
+
 **Duration**: 4-6 hours
-
-**Scenes to design**:
-1. **Sparse Scene** (10% density) - architectural structure
-2. **Medium Scene** (50% density) - terrain with caves
-3. **Dense Scene** (90% density) - solid blocks with few gaps
-
-**Specification**:
-- Voxel placement algorithms
-- Material distribution
-- Expected traversal patterns
-- Reference images/diagrams
-
----
-
-#### Week 6: Hardware Ray Tracing Research (Phase K Prep)
-**Goal**: Research VK_KHR_ray_tracing_pipeline API
-**Output**: `documentation/RayTracing/HardwareRTDesign.md`
+**Status**: COMPLETE (November 2, 2025)
+**Goal**: Design test voxel scenes for benchmark
 **Conflicts**: NONE
-**Duration**: 5-7 hours
 
-**Topics to cover**:
-- BLAS/TLAS acceleration structure design for voxels
-- Ray tracing shader stages (raygen, closest hit, miss)
-- AABB geometry vs triangle geometry for voxels
-- Memory layout for hardware RT
+### Deliverables
+
+**Design Document**: `documentation/Testing/TestScenes.md` (~120 pages)
+
+**Three Test Scenes Specified**:
+
+1. **Cornell Box (10% Density - Sparse)**
+   - Classic Cornell box with 1-voxel thick walls
+   - Two cubes (one rotated 15°)
+   - Checkered floor pattern
+   - Ceiling light (16×16 emissive patch)
+   - **Purpose**: Sparse traversal, empty space skipping advantage
+
+2. **Cave System (50% Density - Medium)**
+   - Perlin noise-based procedural tunnels
+   - Multiple chambers with narrow passages
+   - Stalactites/stalagmites (vertical pillars)
+   - Ore veins (iron, gold, diamond clusters)
+   - **Purpose**: Medium traversal, coherent structures, varied ray lengths
+
+3. **Urban Grid (90% Density - Dense)**
+   - Procedural city grid with buildings (varying heights)
+   - 2-voxel wide streets between buildings
+   - Windows (periodic empty voxels on faces)
+   - Rooftops with antennas/details
+   - **Purpose**: Dense traversal, regular patterns (optimal for BlockWalk)
+
+### Procedural Generation Algorithms
+
+- **VoxelGrid class**: Complete implementation with Set/Get/IsEmpty/CalculateDensity
+- **PerlinNoise3D class**: Ken Perlin's improved noise (cave generation)
+- **Scene generators**: CornellBoxScene, CaveScene, UrbanScene
+- **Density validation**: Automated checks that scenes match target densities (±5%)
+
+### Test Configuration Matrix
+
+| Parameter | Values | Count |
+|-----------|--------|-------|
+| **Scene** | Cornell, Cave, Urban | 3 |
+| **Resolution** | 32³, 64³, 128³, 256³, 512³ | 5 |
+| **Algorithm** | Baseline, Empty Skip, BlockWalk | 3 |
+| **Pipeline** | Compute, Fragment, HW RT, Hybrid | 4 |
+
+**Total Configurations**: 3 × 5 × 3 × 4 = **180 tests**
 
 ---
 
-### Option B: Wait for Phase F (Recommended)
+## Week 6: Hardware Ray Tracing Research (Phase K Prep) ✅
+
+**Duration**: 5-7 hours
+**Status**: COMPLETE (November 2, 2025)
+**Goal**: Research VK_KHR_ray_tracing_pipeline API
+**Conflicts**: NONE
+
+### Deliverables
+
+**Design Document**: `documentation/RayTracing/HardwareRTDesign.md` (~150 pages)
+
+### Key Topics Covered
+
+**1. Vulkan RTX Extensions**
+- VK_KHR_acceleration_structure
+- VK_KHR_ray_tracing_pipeline
+- VK_KHR_deferred_host_operations
+- Extension availability check + feature validation
+
+**2. Acceleration Structure Design**
+- **BLAS**: AABB geometry for voxels (not triangles)
+- **TLAS**: Single instance with identity transform
+- AABB primitive creation from voxel grid
+- Build flags (prefer fast-trace vs fast-build)
+
+**3. Ray Tracing Shader Stages**
+- **Ray Generation (.rgen)**: Screen-space ray generation, trace rays
+- **Intersection (.rint)**: Custom AABB intersection test
+- **Closest Hit (.rchit)**: Voxel shading at hit point
+- **Miss (.rmiss)**: Background color when ray misses
+
+**4. Shader Binding Table (SBT)**
+- Handle extraction from pipeline
+- Memory layout (raygen, miss, hit regions)
+- Device address calculations
+
+**5. Performance Considerations**
+- **Advantages**: Dedicated RT cores, hardware BVH traversal, efficient empty space skipping
+- **Disadvantages**: BLAS build overhead, memory overhead (2-3×), AABB intersection cost
+- **Predictions**: Faster for sparse scenes, comparable for dense scenes
+
+### BLAS Optimization Strategies
+
+**Adaptive Granularity**: Group voxels into larger AABBs
+- 1 AABB/voxel → Most accurate, slowest build
+- 4³ AABBs → 64 voxels/AABB → Fewer primitives, faster build, more false positives
+- **Phase L**: Test granularities of 1, 2, 4, 8
+
+---
+
+## Bibliography Optimization Research ✅
+
+**Duration**: 3-4 hours
+**Status**: COMPLETE (November 2, 2025)
+**Goal**: Extract optimization techniques from research papers
+**Conflicts**: NONE
+
+### Deliverable
+
+**Document**: `documentation/Optimizations/BibliographyOptimizationTechniques.md` (~110 pages)
+
+### Optimization Categories Analyzed
+
+**1. Traversal Algorithm Optimizations**
+- **Empty Space Skipping**: Hierarchical bitmask, octree pruning (+30-50% sparse scenes)
+- **BlockWalk Algorithm**: Tile-based with shared memory cache (+25-35% dense scenes)
+- **Beam/Frustum Traversal**: Cone tracing variants (+10-20%)
+
+**2. Data Structure Optimizations**
+- **SVO Variants**: Brick map, contour data (distance fields)
+- **Morton Code Indexing**: Z-order curve for cache locality (+5-10%)
+
+**3. GPU Hardware Optimizations**
+- **Wavefront Coherence**: Ray reordering, tile-based rendering
+- **Texture Cache**: Swizzled layouts, mipmapping for LOD (+15-25%)
+- **Bandwidth Reduction**: Quantization, block compression (+10-30%)
+
+**4. Hardware RT Optimizations**
+- **BLAS Granularity Tuning**: Adaptive primitive grouping
+- **Build Flags**: Fast-trace vs fast-build comparison
+- **Intersection Shader**: Early exit optimization
+
+**5. Hybrid Pipeline Strategies**
+- Compute + Fragment (decouple traversal from shading)
+- Compute + Hardware RT (primary + secondary rays)
+
+### Phase L Implementation Priorities
+
+**Priority 1**: Algorithm variants (Empty Skip, BlockWalk)
+**Priority 2**: Hardware RT variants (BLAS granularity)
+**Priority 3**: Data structure variants (dense texture vs octree)
+**Priority 4**: Optional (hybrid pipelines, compression)
+
+### Performance Prediction Matrix
+
+Detailed predictions for all scene/algorithm combinations with expected speedup multipliers.
+
+---
+
+## Extended Preparation Summary
+
+**Total Time**: 18-25 hours (Weeks 4-6)
+**Status**: ALL COMPLETE ✅ (November 2, 2025)
+
+### All Deliverables
+
+**Shaders**:
+1. `Shaders/VoxelRayMarch.frag` (170 lines) ✅
+2. `Shaders/Fullscreen.vert` (30 lines) ✅
+
+**Documentation** (~460 pages total):
+1. `documentation/Shaders/FragmentRayMarch-Integration-Guide.md` (~80 pages) ✅
+2. `documentation/Testing/TestScenes.md` (~120 pages) ✅
+3. `documentation/RayTracing/HardwareRTDesign.md` (~150 pages) ✅
+4. `documentation/Optimizations/BibliographyOptimizationTechniques.md` (~110 pages) ✅
+
+### Timeline Impact
+
+**Combined Preparation** (Weeks 1-6): 33-47 hours of non-conflicting design work
+
+**Estimated Time Saved**: 3-4 weeks during Phases G/H/I/J/K/L implementation
+- No design iteration needed (already complete)
+- Validated shader code ready to integrate
+- Complete optimization roadmap for Phase L
+
+**Safe Parallelism**: Zero file conflicts - all shaders, design documents, and research analysis
+
+---
+
+## Final Status: All Preparation Complete
+
+**Next**: Await Phase F completion, then begin Phase G (Compute Pipeline) implementation with all designs ready
+
+---
+
+### Option B: Additional Research (Optional)
 
 **Rationale**: 3 weeks of prep is sufficient. Additional prep yields diminishing returns without implementation feedback.
 
