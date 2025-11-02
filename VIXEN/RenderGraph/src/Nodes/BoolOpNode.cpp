@@ -6,14 +6,6 @@ namespace Vixen::RenderGraph {
 // Type ID: 111
 static constexpr NodeTypeId BOOL_OP_NODE_TYPE_ID = 111;
 
-BoolOpNodeType::BoolOpNodeType(const std::string& typeName)
-    : NodeType(typeName) {
-    // Populate schema from config
-    BoolOpNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-}
-
 std::unique_ptr<NodeInstance> BoolOpNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -27,18 +19,14 @@ BoolOpNode::BoolOpNode(
     : TypedNode<BoolOpNodeConfig>(instanceName, nodeType) {
 }
 
-BoolOpNode::~BoolOpNode() {
-    Cleanup();
-}
-
-void BoolOpNode::SetupImpl() {
+void BoolOpNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 
     // Read OPERATION from input (connected to ConstantNode)
     operation = In(BoolOpNodeConfig::OPERATION);
 }
 
-void BoolOpNode::CompileImpl() {
+void BoolOpNode::CompileImpl(Context& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
 
     // Validate operation type
@@ -47,81 +35,77 @@ void BoolOpNode::CompileImpl() {
     }
 }
 
-void BoolOpNode::ExecuteImpl() {
+void BoolOpNode::ExecuteImpl(Context& ctx) {
     // Read vector of bools from INPUTS slot
-    std::vector<bool> inputs = In(BoolOpNodeConfig::INPUTS);
+    std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 
     if (inputs.empty()) {
         NODE_LOG_ERROR("BoolOpNode has no inputs");
-        Out(BoolOpNodeConfig::OUTPUT, false);
+        ctx.Out(BoolOpNodeConfig::OUTPUT, false);
         return;
     }
 
-    // Perform boolean operation across all inputs
+    // Accumulator for boolean operations
     bool result = false;
+    int trueCount = 0;  // For XOR operation
+
+    // Initialize accumulator based on operation
     switch (operation) {
-        case BoolOp::AND: {
-            // All inputs must be true
-            result = true;
-            for (bool input : inputs) {
-                result = result && input;
-            }
+        case BoolOp::AND:
+        case BoolOp::NAND:
+            result = true;  // AND starts with true
             break;
-        }
-
-        case BoolOp::OR: {
-            // At least one input must be true
+        case BoolOp::OR:
+        case BoolOp::NOR:
+        case BoolOp::XOR:
+        case BoolOp::NOT:
+        default:
             result = false;
-            for (bool input : inputs) {
-                result = result || input;
-            }
             break;
-        }
+    }
 
-        case BoolOp::XOR: {
-            // Exactly one input must be true
-            int trueCount = 0;
-            for (bool input : inputs) {
-                if (input) trueCount++;
-            }
+    // Process each input
+    for (size_t index = 0; index < inputs.size(); index++) {
+        bool inputValue = inputs[index];
+
+        switch (operation) {
+            case BoolOp::AND:
+            case BoolOp::NAND:
+                result = result && inputValue;
+                break;
+            case BoolOp::OR:
+            case BoolOp::NOR:
+                result = result || inputValue;
+                break;
+            case BoolOp::XOR:
+                if (inputValue) trueCount++;
+                break;
+            case BoolOp::NOT:
+                // Only process first input
+                if (index == 0) result = !inputValue;
+                break;
+        }
+    }
+
+    // Finalize result based on operation
+    switch (operation) {
+        case BoolOp::XOR:
             result = (trueCount == 1);
             break;
-        }
-
-        case BoolOp::NOT: {
-            // Invert first input (ignore others)
-            result = !inputs[0];
-            break;
-        }
-
-        case BoolOp::NAND: {
-            // Not all inputs true
-            result = true;
-            for (bool input : inputs) {
-                result = result && input;
-            }
+        case BoolOp::NAND:
+        case BoolOp::NOR:
             result = !result;
             break;
-        }
-
-        case BoolOp::NOR: {
-            // No inputs true
-            result = false;
-            for (bool input : inputs) {
-                result = result || input;
-            }
-            result = !result;
-            break;
-        }
-
+        case BoolOp::AND:
+        case BoolOp::OR:
+        case BoolOp::NOT:
         default:
-            NODE_LOG_ERROR("Unknown BoolOp operation");
-            result = false;
+            // Result already computed
             break;
     }
 
     // Output result
-    Out(BoolOpNodeConfig::OUTPUT, result);
+    ctx.Out(BoolOpNodeConfig::OUTPUT, result);
 }
 
 void BoolOpNode::CleanupImpl() {

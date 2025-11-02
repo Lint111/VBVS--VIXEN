@@ -12,26 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-DepthBufferNodeType::DepthBufferNodeType(const std::string& typeName)
-    : NodeType(typeName)
-{
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0;
-
-    // Populate schemas from Config
-    DepthBufferNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1920 * 1080 * 4; // ~8MB for D32
-    workloadMetrics.estimatedComputeCost = 0.1f; // Just allocation
-    workloadMetrics.estimatedBandwidthCost = 0.1f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -51,11 +31,7 @@ DepthBufferNode::DepthBufferNode(
 {
 }
 
-DepthBufferNode::~DepthBufferNode() {
-    Cleanup();
-}
-
-void DepthBufferNode::SetupImpl() {
+void DepthBufferNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
     
     vulkanDevice = In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -70,7 +46,7 @@ void DepthBufferNode::SetupImpl() {
     NODE_LOG_INFO("Setup complete");
 }
 
-void DepthBufferNode::CompileImpl() {
+void DepthBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Helper macro for VkDevice
@@ -151,7 +127,7 @@ void DepthBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
-void DepthBufferNode::ExecuteImpl() {
+void DepthBufferNode::ExecuteImpl(Context& ctx) {
     // No-op - depth buffer is created in Compile phase
 }
 

@@ -7,14 +7,6 @@ namespace Vixen::RenderGraph {
 // Type ID: 110
 static constexpr NodeTypeId LOOP_BRIDGE_NODE_TYPE_ID = 110;
 
-LoopBridgeNodeType::LoopBridgeNodeType(const std::string& typeName)
-    : NodeType(typeName) {
-    // Populate schema from config
-    LoopBridgeNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-}
-
 std::unique_ptr<NodeInstance> LoopBridgeNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -28,15 +20,11 @@ LoopBridgeNode::LoopBridgeNode(
     : TypedNode<LoopBridgeNodeConfig>(instanceName, nodeType) {
 }
 
-LoopBridgeNode::~LoopBridgeNode() {
-    Cleanup();
-}
-
-void LoopBridgeNode::SetupImpl() {
+void LoopBridgeNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
-    loopID = In(LoopBridgeNodeConfig::LOOP_ID);
+    loopID = ctx.In(LoopBridgeNodeConfig::LOOP_ID);
 
     // Access graph-owned LoopManager
     RenderGraph* graph = GetOwningGraph();
@@ -48,7 +36,7 @@ void LoopBridgeNode::SetupImpl() {
     }
 }
 
-void LoopBridgeNode::CompileImpl() {
+void LoopBridgeNode::CompileImpl(Context& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Verify loop exists
@@ -60,7 +48,7 @@ void LoopBridgeNode::CompileImpl() {
     }
 }
 
-void LoopBridgeNode::ExecuteImpl() {
+void LoopBridgeNode::ExecuteImpl(Context& ctx) {
     if (!loopManager) return;
 
     // Get current loop state
@@ -68,8 +56,8 @@ void LoopBridgeNode::ExecuteImpl() {
     if (!loopRef) return;
 
     // Publish loop state to graph
-    Out(LoopBridgeNodeConfig::LOOP_OUT, loopRef);
-    Out(LoopBridgeNodeConfig::SHOULD_EXECUTE, loopRef->shouldExecuteThisFrame);
+    ctx.Out(LoopBridgeNodeConfig::LOOP_OUT, loopRef);
+    ctx.Out(LoopBridgeNodeConfig::SHOULD_EXECUTE, loopRef->shouldExecuteThisFrame);
 
     // Debug logging for initial testing
     static uint64_t lastLoggedStep = 0;

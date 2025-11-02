@@ -34,22 +34,22 @@ std::vector<NodeInstance*> ResourceDependencyTracker::GetDependenciesForNode(
     }
 
     std::vector<NodeInstance*> dependencies;
-    const auto& inputs = consumer->GetInputs();
+    const auto& bundles = consumer->GetBundles();
 
-    // Iterate through all input slots
-    for (size_t slotIndex = 0; slotIndex < inputs.size(); ++slotIndex) {
-        const auto& slotArray = inputs[slotIndex];
+    // Phase F: Iterate through bundles (bundle-first organization)
+    for (size_t bundleIndex = 0; bundleIndex < bundles.size(); ++bundleIndex) {
+        const auto& bundle = bundles[bundleIndex];
 
-        // Iterate through all resources in this slot (handles arrays)
-        for (size_t arrayIndex = 0; arrayIndex < slotArray.size(); ++arrayIndex) {
-            Resource* resource = slotArray[arrayIndex];
+        // Iterate through all input slots in this bundle
+        for (size_t slotIndex = 0; slotIndex < bundle.inputs.size(); ++slotIndex) {
+            Resource* resource = bundle.inputs[slotIndex];
             if (!resource) continue;
 
             // Only consider this input for compile-time dependencies if the
             // consumer marked it as used during the last Compile() call. This
             // allows ExecuteOnly/CleanupOnly accesses to be ignored for
             // compile-order dependency construction.
-            if (!consumer->IsInputUsedInCompile(static_cast<uint32_t>(slotIndex), static_cast<uint32_t>(arrayIndex))) {
+            if (!consumer->IsInputUsedInCompile(static_cast<uint32_t>(slotIndex), static_cast<uint32_t>(bundleIndex))) {
                 continue;
             }
 
@@ -70,14 +70,13 @@ std::vector<NodeHandle> ResourceDependencyTracker::BuildCleanupDependencies(
     NodeInstance* consumer) const
 {
     std::vector<NodeHandle> cleanupHandles;
-    const auto& inputs = consumer->GetInputs();
+    const auto& bundles = consumer->GetBundles();
 
-    // For cleanup we want to depend on any producer that provides a resource
+    // Phase F: For cleanup we want to depend on any producer that provides a resource
     // to this consumer, regardless of whether the consumer used it during
-    // Compile(). Iterate all input slots and collect unique producers.
-    for (size_t slotIndex = 0; slotIndex < inputs.size(); ++slotIndex) {
-        const auto& slotArray = inputs[slotIndex];
-        for (Resource* resource : slotArray) {
+    // Compile(). Iterate all bundles and input slots and collect unique producers.
+    for (const auto& bundle : bundles) {
+        for (Resource* resource : bundle.inputs) {
             if (!resource) continue;
             NodeInstance* producer = GetProducer(resource);
             if (!producer) continue;

@@ -32,7 +32,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~RenderPassNode();
+    ~RenderPassNode() override = default;
 
     // Access render pass for pipeline/framebuffer creation
     VkRenderPass GetRenderPass() const { return renderPass; }
@@ -40,9 +40,9 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:
@@ -62,9 +62,10 @@ private:
 /**
  * @brief Type definition for RenderPassNode
  */
-class RenderPassNodeType : public NodeType {
+class RenderPassNodeType : public TypedNodeType<RenderPassNodeConfig> {
 public:
-    RenderPassNodeType(const std::string& typeName = "RenderPass");
+    RenderPassNodeType(const std::string& typeName = "RenderPass")
+        : TypedNodeType<RenderPassNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

@@ -43,12 +43,23 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
                       BoolOpNodeCounts::INPUTS,
                       BoolOpNodeCounts::OUTPUTS,
                       BoolOpNodeCounts::ARRAY_MODE) {
-    // Compile-time input slot definitions
-    CONSTEXPR_INPUT(OPERATION, BoolOpEnum, 0, false);
-    CONSTEXPR_INPUT(INPUTS, BoolVector, 1, false);  // Vector of bools
+    // ===== INPUTS (2) =====
+    INPUT_SLOT(OPERATION, BoolOpEnum, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Compile-time output slot definition
-    CONSTEXPR_OUTPUT(OUTPUT, bool, 0, false);
+    INPUT_SLOT(INPUTS, BoolVector, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // ===== OUTPUTS (1) =====
+    OUTPUT_SLOT(OUTPUT, bool, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     // Constructor for runtime descriptor initialization
     BoolOpNodeConfig() {

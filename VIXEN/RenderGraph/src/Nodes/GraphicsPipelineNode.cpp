@@ -16,24 +16,6 @@ namespace Vixen::RenderGraph {
 
 // ====== GraphicsPipelineNodeType ======
 
-GraphicsPipelineNodeType::GraphicsPipelineNodeType(const std::string& typeName) : NodeType(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Populate schemas from Config
-    GraphicsPipelineNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 8192; // Pipeline state
-    workloadMetrics.estimatedComputeCost = 0.5f; // Pipeline compilation
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> GraphicsPipelineNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -53,11 +35,7 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-GraphicsPipelineNode::~GraphicsPipelineNode() {
-    Cleanup();
-}
-
-void GraphicsPipelineNode::SetupImpl() {
+void GraphicsPipelineNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
 
     VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
@@ -74,7 +52,7 @@ void GraphicsPipelineNode::SetupImpl() {
     // Pipeline cache will be created by PipelineCacher during Compile()
 }
 
-void GraphicsPipelineNode::CompileImpl() {
+void GraphicsPipelineNode::CompileImpl(Context& ctx) {
     // Get parameters using typed config constants
     enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
     enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
@@ -172,7 +150,7 @@ void GraphicsPipelineNode::CompileImpl() {
     Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl() {
+void GraphicsPipelineNode::ExecuteImpl(Context& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }

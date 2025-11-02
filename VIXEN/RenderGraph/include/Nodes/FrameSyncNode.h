@@ -10,9 +10,10 @@ namespace Vixen::RenderGraph {
 /**
  * @brief FrameSyncNodeType - Defines frame-in-flight synchronization node
  */
-class FrameSyncNodeType : public NodeType {
+class FrameSyncNodeType : public TypedNodeType<FrameSyncNodeConfig> {
 public:
-    FrameSyncNodeType(const std::string& typeName = "FrameSync");
+    FrameSyncNodeType(const std::string& typeName = "FrameSync")
+        : TypedNodeType<FrameSyncNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName
@@ -49,13 +50,13 @@ public:
         NodeType* nodeType
     );
 
-    ~FrameSyncNode() override;
+    ~FrameSyncNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:

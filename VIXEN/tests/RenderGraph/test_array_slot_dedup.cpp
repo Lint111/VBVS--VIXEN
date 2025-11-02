@@ -13,7 +13,7 @@ public:
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
 protected:
-    void ExecuteImpl() override {}
+    void ExecuteImpl(uint32_t taskIndex) override {}
 };
 
 class DummyNodeType : public NodeType {

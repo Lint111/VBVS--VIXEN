@@ -274,6 +274,17 @@ public:
     const LoopManager& GetLoopManager() const { return loopManager; }
 
     /**
+     * @brief Get resource budget manager for task execution
+     *
+     * Returns nullptr if no budget manager has been configured.
+     * Nodes use this via ExecuteTasks() for budget-aware parallelism.
+     *
+     * @return Pointer to ResourceBudgetManager, or nullptr
+     */
+    ResourceBudgetManager* GetBudgetManager() { return budgetManager.get(); }
+    const ResourceBudgetManager* GetBudgetManager() const { return budgetManager.get(); }
+
+    /**
      * @brief Process pending events from the message bus
      * 
      * Should be called once per frame, typically before RenderFrame().
@@ -430,6 +441,9 @@ private:
     LoopManager loopManager;
     Timer frameTimer;
     uint64_t globalFrameIndex = 0;
+
+    // Phase F: Resource budget manager (optional)
+    std::unique_ptr<ResourceBudgetManager> budgetManager;
 
     // Compilation phases
     void AnalyzeDependencies();

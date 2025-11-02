@@ -24,25 +24,6 @@ using namespace Vixen::Vulkan::Resources;
 // DeviceNodeType
 // ============================================================================
 
-DeviceNodeType::DeviceNodeType()
-    : NodeType("Device")
-{
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = false;
-    maxInstances = 1;
-
-    workloadMetrics.estimatedMemoryFootprint = 1024;
-    workloadMetrics.estimatedComputeCost = 0.0f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = false;
-
-    // Populate schema from config
-    DeviceNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-}
-
 std::unique_ptr<NodeInstance> DeviceNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -62,11 +43,7 @@ DeviceNode::DeviceNode(
 {
 }
 
-DeviceNode::~DeviceNode() {
-    Cleanup();
-}
-
-void DeviceNode::SetupImpl() {
+void DeviceNode::SetupImpl(Context& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 
     // Get VkInstance from global (Phase 1 temporary solution)
@@ -87,7 +64,7 @@ void DeviceNode::SetupImpl() {
     NODE_LOG_INFO("[DeviceNode] Setup complete");
 }
 
-void DeviceNode::CompileImpl() {
+void DeviceNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // If device already exists, publish invalidation event before recreation
@@ -140,7 +117,7 @@ void DeviceNode::CompileImpl() {
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
 
-void DeviceNode::ExecuteImpl() {
+void DeviceNode::ExecuteImpl(Context& ctx) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 

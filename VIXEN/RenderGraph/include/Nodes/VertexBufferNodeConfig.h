@@ -43,18 +43,24 @@ CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig,
     static constexpr const char* PARAM_INDEX_COUNT = "indexCount";
 
     // ===== INPUTS (1) =====
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (3) =====
-    // Vertex buffer handle
-    CONSTEXPR_OUTPUT(VERTEX_BUFFER, VkBuffer, 0, false);
+    OUTPUT_SLOT(VERTEX_BUFFER, VkBuffer, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Index buffer handle (nullable - may not use indexed rendering)
-    CONSTEXPR_OUTPUT(INDEX_BUFFER, VkBuffer, 1, true);
+    OUTPUT_SLOT(INDEX_BUFFER, VkBuffer, 1,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
 
-    // Device output for chaining
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 2, false);
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     VertexBufferNodeConfig() {
         // Initialize input descriptors

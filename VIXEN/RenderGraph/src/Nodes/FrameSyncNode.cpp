@@ -8,25 +8,6 @@ namespace Vixen::RenderGraph {
 
 // ====== FrameSyncNodeType ======
 
-FrameSyncNodeType::FrameSyncNodeType(const std::string& typeName)
-    : NodeType(typeName)
-{
-    requiredCapabilities = DeviceCapability::None;
-    supportsInstancing = false;  // Only one frame sync manager per device
-    maxInstances = 1;
-
-    // Populate schemas from Config
-    FrameSyncNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 512;  // Small - just sync primitives
-    workloadMetrics.estimatedComputeCost = 0.1f;     // Very cheap to create
-    workloadMetrics.estimatedBandwidthCost = 0.0f;   // No bandwidth
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> FrameSyncNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -46,12 +27,8 @@ FrameSyncNode::FrameSyncNode(
 {
 }
 
-FrameSyncNode::~FrameSyncNode() {
-    Cleanup();
-}
-
-void FrameSyncNode::SetupImpl() {
-    VulkanDevicePtr devicePtr = In(FrameSyncNodeConfig::VULKAN_DEVICE);
+void FrameSyncNode::SetupImpl(Context& ctx) {
+    VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "FrameSyncNode: VulkanDevice input is null";
@@ -63,7 +40,7 @@ void FrameSyncNode::SetupImpl() {
     SetDevice(devicePtr);
 }
 
-void FrameSyncNode::CompileImpl() {
+void FrameSyncNode::CompileImpl(Context& ctx) {
     // Phase 0.4: Separate concerns - fences for CPU-GPU, semaphores for GPU-GPU
     constexpr uint32_t flightCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
     constexpr uint32_t imageCount = FrameSyncNodeConfig::MAX_SWAPCHAIN_IMAGES;
@@ -136,13 +113,13 @@ void FrameSyncNode::CompileImpl() {
     currentFrameIndex = 0;
 
     // Set initial outputs (flight 0)
-    Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
-    Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
+    ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
+    ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
-    Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
-    Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
-    Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, &presentFences);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, &presentFences);
 
     NODE_LOG_INFO("Synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
@@ -150,7 +127,7 @@ void FrameSyncNode::CompileImpl() {
     NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
-void FrameSyncNode::ExecuteImpl() {
+void FrameSyncNode::ExecuteImpl(Context& ctx) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
@@ -163,8 +140,8 @@ void FrameSyncNode::ExecuteImpl() {
     // Note: Fence will be reset by GeometryRenderNode before submission
 
     // Update outputs with current frame's fence
-    Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
-    Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, currentFence);
+    ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
+    ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, currentFence);
 
     // Semaphore arrays remain constant (no need to update every frame)
     // SwapChainNode will index into these arrays using the current frame index

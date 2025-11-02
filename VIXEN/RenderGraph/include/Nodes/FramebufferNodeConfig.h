@@ -43,22 +43,43 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== INPUTS (4) =====
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // Render pass from RenderPassNode
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 1, false);
+    INPUT_SLOT(RENDER_PASS, VkRenderPass, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // Swapchain public variables bundle (contains colorBuffers array)
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 2, false);
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 2,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // Depth attachment from DepthBufferNode (nullable - may not use depth)
-    CONSTEXPR_INPUT(DEPTH_ATTACHMENT, VkImageView, 3, true);
+    INPUT_SLOT(DEPTH_ATTACHMENT, VkImageView, 3,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
 
     // ===== OUTPUTS (2) =====
     // Framebuffer handles (vector containing all swapchain framebuffers)
-    CONSTEXPR_OUTPUT(FRAMEBUFFERS, FramebufferVector, 0, false);
-	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1, false);
+    OUTPUT_SLOT(FRAMEBUFFERS, FramebufferVector, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+	OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     FramebufferNodeConfig() {
         // Initialize input descriptors

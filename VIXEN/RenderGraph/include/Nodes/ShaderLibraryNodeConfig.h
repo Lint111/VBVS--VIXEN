@@ -56,12 +56,20 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
                       ShaderLibraryNodeCounts::OUTPUTS, 
                       ShaderLibraryNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0, false);
-    CONSTEXPR_OUTPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1, false);
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     ShaderLibraryNodeConfig() {
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};

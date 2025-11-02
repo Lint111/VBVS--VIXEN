@@ -11,15 +11,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for managing swapchain lifecycle
- * 
+ *
  * Handles swapchain creation, image acquisition, and recreation on resize.
  * This is a stateful node that maintains the presentation surface.
- * 
+ *
  * Type ID: 102
  */
-class SwapChainNodeType : public NodeType {
+class SwapChainNodeType : public TypedNodeType<SwapChainNodeConfig> {
 public:
-    SwapChainNodeType(const std::string& typeName = "SwapChain");
+    SwapChainNodeType(const std::string& typeName = "SwapChain")
+        : TypedNodeType<SwapChainNodeConfig>(typeName) {}
     virtual ~SwapChainNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -47,7 +48,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~SwapChainNode();
+    ~SwapChainNode() override = default;
 
     // Accessors
     VkSwapchainKHR GetSwapchain() const;
@@ -69,9 +70,9 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 

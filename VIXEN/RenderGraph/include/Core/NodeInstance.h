@@ -6,6 +6,8 @@
 #include "CleanupStack.h"
 #include "LoopManager.h"
 #include "INodeWiring.h"
+#include "SlotTask.h"
+#include "ResourceBudgetManager.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -45,6 +47,14 @@ struct NodeConnection {
 class NodeInstance : public INodeWiring {
     // Allow ConnectionBatch to access protected resource methods for bulk connection operations
     friend class ConnectionBatch;
+
+public:
+    // Phase F: Bundle structure - ensures inputs/outputs stay aligned
+    // Each bundle represents one task/array index with all its slots
+    struct Bundle {
+        std::vector<Resource*> inputs;   // One entry per input slot
+        std::vector<Resource*> outputs;  // One entry per output slot
+    };
 
 public:
     // Phase 0.4: Auto-generated loop slots (reserved slot indices)
@@ -90,9 +100,8 @@ public:
     bool AllowsInputArrays() const { return allowInputArrays; }
     void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
 
-    // Resources (slot-based access)
-    const std::vector<std::vector<Resource*>>& GetInputs() const { return inputs; }
-    const std::vector<std::vector<Resource*>>& GetOutputs() const { return outputs; }
+    // Phase F: Bundle access (for graph-level operations)
+    const std::vector<Bundle>& GetBundles() const { return bundles; }
 
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
@@ -296,7 +305,7 @@ public:
      *
      * Derived classes should override SetupImpl(), NOT this method.
      */
-    virtual void Setup() final {
+    virtual void Setup() {
         ResetInputsUsedInCompile();
         SetupImpl();
     }
@@ -310,20 +319,43 @@ public:
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
-    virtual void Compile() final {
+    virtual void Compile() {
         CompileImpl();
         RegisterCleanup();
     }
 
     /**
-     * @brief Execute lifecycle method (abstract - must be implemented)
+     * @brief Execute lifecycle method with automatic task orchestration
      *
-     * Calls ExecuteImpl() for derived class logic.
+     * Automatically handles:
+     * - Analyzes slot configuration to determine task count
+     * - Generates tasks based on SlotScope and array sizes
+     * - Sets up task-local In()/Out() context for each task
+     * - Calls ExecuteImpl() for each task with pre-bound slot access
+     * - Node implementations use In()/Out() without knowing about indices
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
-    virtual void Execute(VkCommandBuffer commandBuffer) final {
-        ExecuteImpl();
+    virtual void Execute() {
+        // Analyze slot configuration to determine task generation strategy
+        uint32_t taskCount = DetermineTaskCount();
+
+        if (taskCount == 0) {
+            // No tasks to execute (e.g., no inputs connected)
+            return;
+        }
+
+        // Execute each task with task-local context
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            // Set current task index for In()/Out() binding
+            currentTaskIndex = taskIndex;
+
+            // Execute with task-bound slot access
+            ExecuteImpl(taskIndex);
+        }
+
+        // Reset task index after execution
+        currentTaskIndex = 0;
     }
 
     /**
@@ -371,16 +403,26 @@ protected:
     virtual void CompileImpl() {}
 
     /**
-     * @brief Execute implementation for derived classes
+     * @brief Execute implementation for derived classes (task-aware)
      *
-     * Override this to implement execution logic (recording commands, updating state, etc.).
-     * Called automatically by Execute().
+     * Override this to implement execution logic for ONE task's worth of work.
+     * Called automatically by Execute() for each generated task.
+     *
+     * @param taskIndex The index of the current task being executed (0-based)
      *
      * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
      *
+     * Phase F: Execute() automatically determines task count based on slot configuration.
+     * Node implementations just handle one task. Use In()/Out() normally - they are
+     * context-aware of currentTaskIndex.
+     *
+     * For most nodes with NodeLevel slots, taskIndex will always be 0 (single task).
+     * For nodes with TaskLevel/ParameterizedInput slots, taskIndex indicates which
+     * element/task to process.
+     *
      * Note: Nodes that need VkCommandBuffer should read it from their input slots.
      */
-    virtual void ExecuteImpl() = 0;
+    virtual void ExecuteImpl(uint32_t taskIndex) = 0;
 
     /**
      * @brief Cleanup implementation for derived classes
@@ -395,6 +437,84 @@ protected:
      * Default: No-op (some nodes don't allocate resources).
      */
     virtual void CleanupImpl() {}
+
+    // ============================================================================
+    // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
+    // ============================================================================
+
+    /**
+     * @brief Execute tasks for array-based slot processing
+     *
+     * Generates tasks from an array input slot and executes them with optional
+     * budget-aware parallelism. Nodes can use this to process array elements
+     * independently without manually writing loop code.
+     *
+     * Example usage in a TextureLoader node:
+     * @code
+     * // Slot config with SlotScope::TaskLevel for per-element processing
+     * INPUT_SLOT(FILE_PATHS, std::vector<std::string>, 0,
+     *            SlotNullability::Required, SlotRole::Dependency,
+     *            SlotMutability::ReadOnly, SlotScope::TaskLevel);
+     *
+     * void CompileImpl() override {
+     *     // Define task function for loading one texture
+     *     auto loadTexture = [this](SlotTaskContext& ctx) -> bool {
+     *         uint32_t index = ctx.GetElementIndex();
+     *         std::string path = filePaths[index];
+     *         // Load texture, create VkImage, store in outputs[index]
+     *         return true;
+     *     };
+     *
+     *     // Execute tasks (automatically determines sequential vs parallel)
+     *     uint32_t successCount = ExecuteTasks(FILE_PATHS_SLOT_INDEX, loadTexture);
+     *     LogInfo("Loaded " + std::to_string(successCount) + " textures");
+     * }
+     * @endcode
+     *
+     * @param slotIndex Input slot containing array data
+     * @param taskFunction Function to execute per array element
+     * @param budgetManager Optional budget manager for parallelism calculation
+     * @param forceSequential If true, always execute sequentially (default: auto-detect)
+     * @return Number of successful tasks
+     */
+    uint32_t ExecuteTasks(
+        uint32_t slotIndex,
+        const SlotTaskFunction& taskFunction,
+        ResourceBudgetManager* budgetManager = nullptr,
+        bool forceSequential = false
+    );
+
+    /**
+     * @brief Determine task count based on slot configuration
+     *
+     * Analyzes all input slots to determine how many tasks should be generated:
+     * - NodeLevel only: 1 task (all inputs processed together)
+     * - TaskLevel/ParameterizedInput: N tasks (one per element in parameterized slot)
+     *
+     * @return Number of tasks to execute (0 if no inputs connected)
+     */
+    uint32_t DetermineTaskCount() const;
+
+    /**
+     * @brief Get ResourceBudgetManager from owning graph
+     *
+     * Retrieves the budget manager for use with task execution.
+     * Returns nullptr if graph doesn't have a budget manager configured.
+     *
+     * @return Pointer to ResourceBudgetManager, or nullptr
+     */
+    ResourceBudgetManager* GetBudgetManager() const;
+
+    /**
+     * @brief Get SlotScope for an input slot
+     *
+     * Queries the node's config to determine the resource scope for a slot.
+     * Used internally by ExecuteTasks() to decide task granularity.
+     *
+     * @param slotIndex Input slot index
+     * @return SlotScope enum value (defaults to NodeLevel if not found)
+     */
+    SlotScope GetSlotScope(uint32_t slotIndex) const;
 
 public:
     // ============================================================================
@@ -482,9 +602,9 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
-    // Resources (each slot is a vector: scalar = size 1, array = size N)
-    std::vector<std::vector<Resource*>> inputs;
-    std::vector<std::vector<Resource*>> outputs;
+    // Phase F: Resources organized as bundles (one bundle per task/array index)
+    // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
+    std::vector<Bundle> bundles;
 
     // Runtime tracking: which input slots were used during the last Compile() call.
     // This is transient runtime state (not serialized). It is mutable so that
@@ -557,7 +677,13 @@ public:
 
     // Metrics
     size_t inputMemoryFootprint = 0;
+
+    // Phase F: Task manager for array processing
+    SlotTaskManager taskManager;
     PerformanceStats performanceStats;
+
+    // Phase F: Thread-local task index for parallel-safe slot access
+    static thread_local uint32_t currentTaskIndex;
 
     // Caching
     uint64_t cacheKey = 0;

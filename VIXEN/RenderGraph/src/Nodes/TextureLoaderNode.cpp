@@ -10,24 +10,6 @@ namespace Vixen::RenderGraph {
 
 // ====== TextureLoaderNodeType ======
 
-TextureLoaderNodeType::TextureLoaderNodeType(const std::string& typeName) : NodeType(typeName) {
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Transfer;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Populate schemas from Config
-    TextureLoaderNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024 * 1024 * 4; // ~4MB for 1K texture
-    workloadMetrics.estimatedComputeCost = 0.5f; // Loading is mostly I/O
-    workloadMetrics.estimatedBandwidthCost = 2.0f; // High bandwidth for upload
-    workloadMetrics.canRunInParallel = true; // Can load multiple textures in parallel
-}
-
 std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -47,13 +29,9 @@ TextureLoaderNode::TextureLoaderNode(
 {
 }
 
-TextureLoaderNode::~TextureLoaderNode() {
-    Cleanup();
-}
-
-void TextureLoaderNode::SetupImpl() {
+void TextureLoaderNode::SetupImpl(Context& ctx) {
     // Read and validate device input
-    VulkanDevicePtr devicePtr = In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
     }
@@ -64,7 +42,7 @@ void TextureLoaderNode::SetupImpl() {
     // Note: TextureCacher handles command pool and texture loading internally
 }
 
-void TextureLoaderNode::CompileImpl() {
+void TextureLoaderNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
@@ -162,13 +140,13 @@ void TextureLoaderNode::CompileImpl() {
     isLoaded = true;
 
     // Set typed outputs
-    Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
-    Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
-    Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
-    Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_VIEW, textureView);
+    ctx.Out(TextureLoaderNodeConfig::TEXTURE_SAMPLER, textureSampler);
+    ctx.Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void TextureLoaderNode::ExecuteImpl() {
+void TextureLoaderNode::ExecuteImpl(Context& ctx) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     

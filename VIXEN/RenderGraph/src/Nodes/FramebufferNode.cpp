@@ -9,24 +9,6 @@ namespace Vixen::RenderGraph {
 
 // ====== FramebufferNodeType ======
 
-FramebufferNodeType::FramebufferNodeType(const std::string& typeName) : NodeType(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Populate schemas from Config
-    FramebufferNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 2048; // Minimal metadata
-    workloadMetrics.estimatedComputeCost = 0.1f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> FramebufferNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -43,11 +25,7 @@ FramebufferNode::FramebufferNode(
 {
 }
 
-FramebufferNode::~FramebufferNode() {
-    Cleanup();
-}
-
-void FramebufferNode::SetupImpl() {
+void FramebufferNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
 
     VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
@@ -64,7 +42,7 @@ void FramebufferNode::SetupImpl() {
     NODE_LOG_INFO("Setup: Framebuffer node ready");
 }
 
-void FramebufferNode::CompileImpl() {
+void FramebufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Get typed inputs
@@ -165,7 +143,7 @@ void FramebufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }
 
-void FramebufferNode::ExecuteImpl() {
+void FramebufferNode::ExecuteImpl(Context& ctx) {
     // No-op - framebuffers are created in Compile phase
 }
 

@@ -13,9 +13,10 @@ namespace Vixen::RenderGraph {
  * @brief Node type for Vulkan device creation
  * Type ID: 112
  */
-class DeviceNodeType : public NodeType {
+class DeviceNodeType : public TypedNodeType<DeviceNodeConfig> {
 public:
-    DeviceNodeType();
+    DeviceNodeType()
+        : TypedNodeType<DeviceNodeConfig>("Device") {}
     virtual ~DeviceNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -51,7 +52,7 @@ public:
         NodeType* nodeType,
         Vixen::Vulkan::Resources::VulkanDevice* device
     );
-    virtual ~DeviceNode();
+    ~DeviceNode() override = default;
 
     // Accessor for VulkanDevice wrapper
     Vixen::Vulkan::Resources::VulkanDevice* GetVulkanDevice() const {
@@ -60,9 +61,9 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:

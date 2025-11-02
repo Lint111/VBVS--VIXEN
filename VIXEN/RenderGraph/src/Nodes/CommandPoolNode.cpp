@@ -9,22 +9,19 @@ namespace Vixen::RenderGraph {
 // ====== CommandPoolNodeType ======
 
 CommandPoolNodeType::CommandPoolNodeType(const std::string& typeName)
-    : NodeType(typeName)
+    : TypedNodeType<CommandPoolNodeConfig>(typeName)
 {
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited command pools
-
-    // Populate schemas from Config
-    CommandPoolNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024; // Minimal - just pool structure
     workloadMetrics.estimatedComputeCost = 0.1f; // Very cheap to create
     workloadMetrics.estimatedBandwidthCost = 0.0f; // No bandwidth
     workloadMetrics.canRunInParallel = true;
+
+    // Schema population now handled by TypedNodeType base class
 }
 
 std::unique_ptr<NodeInstance> CommandPoolNodeType::CreateInstance(
@@ -46,11 +43,7 @@ CommandPoolNode::CommandPoolNode(
 {
 }
 
-CommandPoolNode::~CommandPoolNode() {
-    Cleanup();
-}
-
-void CommandPoolNode::SetupImpl() {
+void CommandPoolNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -63,7 +56,7 @@ void CommandPoolNode::SetupImpl() {
     SetDevice(devicePtr);
 }
 
-void CommandPoolNode::CompileImpl() {
+void CommandPoolNode::CompileImpl(Context& ctx) {
 
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
@@ -94,7 +87,7 @@ void CommandPoolNode::CompileImpl() {
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }
 
-void CommandPoolNode::ExecuteImpl() {
+void CommandPoolNode::ExecuteImpl(Context& ctx) {
     // Command pool creation happens in Compile phase
     // Execute is a no-op
 }

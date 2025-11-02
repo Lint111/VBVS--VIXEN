@@ -14,9 +14,10 @@ namespace Vixen::RenderGraph {
  * @brief Node type for window management
  * Type ID: 111
  */
-class WindowNodeType : public NodeType {
+class WindowNodeType : public TypedNodeType<WindowNodeConfig> {
 public:
-    WindowNodeType(const std::string& typeName = "Window");
+    WindowNodeType(const std::string& typeName = "Window")
+        : TypedNodeType<WindowNodeConfig>(typeName) {}
     virtual ~WindowNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
@@ -40,7 +41,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~WindowNode();
+    ~WindowNode() override = default;
 
     // Accessors
 #ifdef _WIN32
@@ -59,9 +60,9 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:
@@ -83,6 +84,9 @@ private:
     bool shouldClose = false;
     bool isResizing = false;
     bool wasResized = false;
+
+    // Phase F: Slot index this window corresponds to (for multi-window support)
+    uint32_t slotIndex = 0;
 };
 
 } // namespace Vixen::RenderGraph

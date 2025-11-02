@@ -12,25 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== VertexBufferNodeType ======
 
-VertexBufferNodeType::VertexBufferNodeType(const std::string& typeName) : NodeType(typeName) {
-    typeId = 103; // Unique ID
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Transfer;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Initialize config and extract schema
-    VertexBufferNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024 * 1024; // ~1MB
-    workloadMetrics.estimatedComputeCost = 0.3f;
-    workloadMetrics.estimatedBandwidthCost = 1.5f; // Upload cost
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> VertexBufferNodeType::CreateInstance(const std::string& instanceName) const {
     return std::make_unique<VertexBufferNode>(instanceName, const_cast<VertexBufferNodeType*>(this));
 }
@@ -45,13 +26,9 @@ VertexBufferNode::VertexBufferNode(
 {
 }
 
-VertexBufferNode::~VertexBufferNode() {
-    Cleanup();
-}
-
-void VertexBufferNode::SetupImpl() {
+void VertexBufferNode::SetupImpl(Context& ctx) {
     // Read and validate device input
-    VulkanDevicePtr devicePtr = In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
     }
@@ -62,7 +39,7 @@ void VertexBufferNode::SetupImpl() {
     NODE_LOG_INFO("Setup: Vertex buffer node ready");
 }
 
-void VertexBufferNode::CompileImpl() {
+void VertexBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Get typed parameters
@@ -147,20 +124,20 @@ void VertexBufferNode::CompileImpl() {
     SetupVertexInputDescription();
 
     // Set outputs
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
     NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
-    Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    ctx.Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
+    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
     if (hasIndices) {
         NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
-        Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
+        ctx.Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
     }
-    Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl() {
+void VertexBufferNode::ExecuteImpl(Context& ctx) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }

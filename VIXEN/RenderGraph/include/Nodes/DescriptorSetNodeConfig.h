@@ -36,7 +36,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * Parameters:
  * - NONE (layout spec is set via SetLayoutSpec() method, not parameters)
  *
- * IMPORTANT: 
+ * IMPORTANT:
  * - The DescriptorLayoutSpec must remain valid for the node's lifetime
  * - Descriptor set updates are done via UpdateDescriptorSet() method with actual resources
  * - No automatic resource creation (uniform buffers, etc.) - user provides resources
@@ -61,41 +61,75 @@ namespace DescriptorSetNodeCounts {
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
-CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig, 
-                      DescriptorSetNodeCounts::INPUTS, 
-                      DescriptorSetNodeCounts::OUTPUTS, 
+CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
+                      DescriptorSetNodeCounts::INPUTS,
+                      DescriptorSetNodeCounts::OUTPUTS,
                       DescriptorSetNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (6) =====
-    // Shader program for automatic descriptor reflection (future feature)
-    CONSTEXPR_INPUT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0, true);
+    // ===== INPUTS (8) =====
+    INPUT_SLOT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Texture resources (MVP: for descriptor binding 1)
-    CONSTEXPR_INPUT(TEXTURE_IMAGE, VkImage, 2, true);
-    CONSTEXPR_INPUT(TEXTURE_VIEW, VkImageView, 3, true);
-    CONSTEXPR_INPUT(TEXTURE_SAMPLER, VkSampler, 4, true);
+    INPUT_SLOT(TEXTURE_IMAGE, VkImage, 2,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // ShaderDataBundle with reflection data (Phase 2 descriptor automation)
-    CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5, false);
+    INPUT_SLOT(TEXTURE_VIEW, VkImageView, 3,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Per-frame resource management (Phase 0.1)
-    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6, false);
-    CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 7, false);
+    INPUT_SLOT(TEXTURE_SAMPLER, VkSampler, 4,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 7,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (4) =====
-    // Descriptor set layout
-    CONSTEXPR_OUTPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0, false);
+    OUTPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Descriptor pool
-    CONSTEXPR_OUTPUT(DESCRIPTOR_POOL, VkDescriptorPool, 1, false);
+    OUTPUT_SLOT(DESCRIPTOR_POOL, VkDescriptorPool, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Descriptor sets (array output - allocated based on layoutSpec.maxSets)
-    CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, DescriptorSetVector, 2, false);
+    OUTPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // VulkanDevice pass-through output
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     DescriptorSetNodeConfig() {
         // Initialize input descriptors
@@ -112,12 +146,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
             ResourceLifetime::Persistent,
             ImageDescription{}
         );
-        
+
         INIT_INPUT_DESC(TEXTURE_VIEW, "texture_view",
             ResourceLifetime::Persistent,
             ImageDescription{}
         );
-        
+
         INIT_INPUT_DESC(TEXTURE_SAMPLER, "texture_sampler",
             ResourceLifetime::Persistent,
             BufferDescription{}
@@ -192,11 +226,11 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
     static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, DescriptorSetVector>);
-    
+
     //-------------------------------------------------------------------------
     // Parameters
     //-------------------------------------------------------------------------
-    
+
     /**
      * @brief Descriptor layout specification parameter
      */

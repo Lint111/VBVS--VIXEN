@@ -26,7 +26,7 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~FramebufferNode();
+    ~FramebufferNode() override = default;
 
     // Access framebuffers for external use (legacy compatibility)
     const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }
@@ -37,9 +37,9 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:
@@ -51,9 +51,10 @@ private:
 /**
  * @brief Type definition for FramebufferNode
  */
-class FramebufferNodeType : public NodeType {
+class FramebufferNodeType : public TypedNodeType<FramebufferNodeConfig> {
 public:
-    FramebufferNodeType(const std::string& typeName = "Framebuffer");
+    FramebufferNodeType(const std::string& typeName = "Framebuffer")
+        : TypedNodeType<FramebufferNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };

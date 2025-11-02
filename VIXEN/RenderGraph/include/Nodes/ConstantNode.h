@@ -111,11 +111,11 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override {
+    void SetupImpl(Context& ctx) override {
         // No setup needed - graph will allocate output Resource
     }
 
-    void CompileImpl() override {
+    void CompileImpl(Context& ctx) override {
         std::cout << "[ConstantNode::Compile] START for node: " << GetInstanceName() << std::endl;
 
         // Ensure value has been set
@@ -165,7 +165,7 @@ protected:
         }
     }
 
-    void ExecuteImpl() override {
+    void ExecuteImpl(Context& ctx) override {
         // No execution needed - this is a data node
     }
 

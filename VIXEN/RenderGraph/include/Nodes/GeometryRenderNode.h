@@ -11,7 +11,7 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for recording geometry rendering commands
- * 
+ *
  * Records draw commands into command buffers including:
  * - Begin render pass
  * - Bind pipeline
@@ -20,12 +20,13 @@ namespace Vixen::RenderGraph {
  * - Set viewport and scissor
  * - Draw commands
  * - End render pass
- * 
+ *
  * Type ID: 109
  */
-class GeometryRenderNodeType : public NodeType {
+class GeometryRenderNodeType : public TypedNodeType<GeometryRenderNodeConfig> {
 public:
-    GeometryRenderNodeType(const std::string& typeName = "GeometryRender");
+    GeometryRenderNodeType(const std::string& typeName = "GeometryRender")
+        : TypedNodeType<GeometryRenderNodeConfig>(typeName) {}
     virtual ~GeometryRenderNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -47,16 +48,16 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~GeometryRenderNode();
+    ~GeometryRenderNode() override = default;
 
     // Record draw commands for a specific framebuffer
-    void RecordDrawCommands(VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
+    void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:

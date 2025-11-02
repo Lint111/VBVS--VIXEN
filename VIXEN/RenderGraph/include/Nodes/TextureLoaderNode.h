@@ -28,13 +28,13 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~TextureLoaderNode();
+    ~TextureLoaderNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:
@@ -54,9 +54,10 @@ private:
 /**
  * @brief Type definition for TextureLoaderNode
  */
-class TextureLoaderNodeType : public NodeType {
+class TextureLoaderNodeType : public TypedNodeType<TextureLoaderNodeConfig> {
 public:
-    TextureLoaderNodeType( const std::string& typeName = "TextureLoader");
+    TextureLoaderNodeType(const std::string& typeName = "TextureLoader")
+        : TypedNodeType<TextureLoaderNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };

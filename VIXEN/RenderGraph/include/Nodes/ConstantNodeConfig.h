@@ -31,7 +31,9 @@ CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
     // ===== OUTPUTS (1) =====
     // Generic output - actual type determined by SetValue<T>() call
     // Using VulkanShaderPtr as the concrete type for now (can be cast to other types)
-    CONSTEXPR_OUTPUT(OUTPUT, VulkanShaderPtr, 0, false);
+    OUTPUT_SLOT(OUTPUT, VulkanShaderPtr, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     ConstantNodeConfig() {
         // Initialize output descriptor as generic handle

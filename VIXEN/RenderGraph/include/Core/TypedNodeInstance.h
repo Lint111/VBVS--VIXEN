@@ -3,6 +3,8 @@
 #include "NodeInstance.h"
 #include "ResourceConfig.h"
 #include "ResourceVariant.h"
+#include <future>
+#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -106,17 +108,25 @@ namespace Vixen::RenderGraph {
  * Storage is a std::array indexed by the config's slot indices.
  * Type safety is enforced at compile time.
  *
+ * **Phase F: Context System**
+ * Nodes now receive a Context in ExecuteImpl() instead of a raw index.
+ * The context provides In()/Out() accessors bound to a specific task index,
+ * enabling clean parallelization without manual index management.
+ *
  * Example:
  * ```cpp
  * class WindowNode : public TypedNode<WindowNodeConfig> {
- *     void Compile() override {
+ *     using Ctx = typename TypedNode<WindowNodeConfig>::Context;
+ *
+ *     void CompileImpl() override {
  *         CreateSurface();
- *
- *         // Type-safe: compiler knows Out<0>() returns VkSurfaceKHR&
- *         Out<0>() = surface;
- *
- *         // Or use named slot:
  *         Out(WindowNodeConfig::SURFACE) = surface;
+ *     }
+ *
+ *     void ExecuteImpl(Ctx& ctx) override {
+ *         auto device = ctx.In(WindowNodeConfig::DEVICE);
+ *         auto surface = ctx.In(WindowNodeConfig::SURFACE);
+ *         // ctx.In/Out are bound to this task's index automatically
  *     }
  * };
  * ```
@@ -124,6 +134,116 @@ namespace Vixen::RenderGraph {
 template<typename ConfigType>
 class TypedNode : public NodeInstance {
 public:
+    /**
+     * @brief Phase F: Context - Bound slot accessors for node lifecycle methods
+     *
+     * Provides In()/Out() accessors bound to a specific array index (taskIndex).
+     * Used in Setup, Compile, and Execute to provide clean slot access API.
+     *
+     * For Setup/Compile: taskIndex is always 0 (non-task-based operations)
+     * For Execute: taskIndex corresponds to the current task being processed
+     *
+     * This enables:
+     * - Clean API: no manual index passing
+     * - Parallelization: each task has independent context
+     * - Type safety: leverages ConfigType's slot definitions
+     *
+     * Usage in ExecuteImpl:
+     * ```cpp
+     * void ExecuteImpl(Context& ctx) override {
+     *     auto input = ctx.In(MyConfig::INPUT_SLOT);
+     *     ctx.Out(MyConfig::OUTPUT_SLOT, result);
+     * }
+     * ```
+     */
+    struct Context {
+        TypedNode<ConfigType>* node;
+        uint32_t taskIndex;
+
+        Context(TypedNode<ConfigType>* n, uint32_t idx)
+            : node(n), taskIndex(idx) {}
+
+        /**
+         * @brief Get input value bound to this task's index
+         *
+         * Automatically uses taskIndex for array slot access.
+         * Type is deduced from SlotType::Type.
+         *
+         * @param slot Slot definition from config
+         * @return Typed handle value
+         */
+        template<typename SlotType>
+        typename SlotType::Type In(SlotType slot) const {
+            static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+            Resource* res = node->NodeInstance::GetInput(SlotType::index, taskIndex);
+            if (!res) return typename SlotType::Type{};
+            return res->GetHandle<typename SlotType::Type>();
+        }
+
+        /**
+         * @brief Set output value bound to this task's index
+         *
+         * Automatically uses taskIndex for array slot access.
+         * Type is validated against SlotType::Type at compile time.
+         *
+         * @param slot Slot definition from config
+         * @param value Typed handle value
+         */
+        template<typename SlotType>
+        void Out(SlotType slot, typename SlotType::Type value) {
+            static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
+            node->EnsureOutputSlot(SlotType::index, taskIndex);
+            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            res->SetHandle<typename SlotType::Type>(value);
+        }
+
+        /**
+         * @brief Get input descriptor bound to this task's index
+         *
+         * @param slot Slot definition from config
+         * @return Descriptor pointer (auto-deduced type)
+         */
+        template<typename SlotType>
+        const auto* InDesc(SlotType slot) const {
+            using HandleType = typename SlotType::Type;
+            using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+            Resource* res = node->NodeInstance::GetInput(SlotType::index, taskIndex);
+            if (!res) return static_cast<const DescriptorType*>(nullptr);
+            return res->GetDescriptor<DescriptorType>();
+        }
+
+        /**
+         * @brief Get mutable output descriptor bound to this task's index
+         *
+         * @param slot Slot definition from config
+         * @return Mutable descriptor pointer (auto-deduced type)
+         */
+        template<typename SlotType>
+        auto* OutDescMut(SlotType slot) {
+            using HandleType = typename SlotType::Type;
+            using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+            node->EnsureOutputSlot(SlotType::index, taskIndex);
+            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            if (!res) return static_cast<DescriptorType*>(nullptr);
+            return res->GetDescriptorMutable<DescriptorType>();
+        }
+
+        /**
+         * @brief Get const output descriptor bound to this task's index
+         *
+         * @param slot Slot definition from config
+         * @return Const descriptor pointer (auto-deduced type)
+         */
+        template<typename SlotType>
+        const auto* OutDesc(SlotType slot) const {
+            using HandleType = typename SlotType::Type;
+            using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
+            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            if (!res) return static_cast<const DescriptorType*>(nullptr);
+            return res->GetDescriptor<DescriptorType>();
+        }
+    };
+
     TypedNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -131,10 +251,173 @@ public:
         // Initialize arrays
         inputs.fill(VK_NULL_HANDLE);
         outputs.fill(VK_NULL_HANDLE);
+
+        // Phase F Note: Input/output schemas are registered by NodeType constructor
+        // using ConfigType::GetInputVector() and GetOutputVector()
+        // No need to duplicate registration here
     }
 
     virtual ~TypedNode() = default;
 
+    // ===== PHASE F: CONTEXT SYSTEM =====
+
+    /**
+     * @brief Setup override - creates Context for setup phase
+     *
+     * Phase F: Executes setup for each task based on input array sizes
+     */
+    void Setup() override final {
+        ResetInputsUsedInCompile();
+
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            SetupImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Compile override - creates Context for compile phase
+     *
+     * Phase F: Executes compile for each task based on input array sizes
+     */
+    void Compile() override final {
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            CompileImpl(ctx);
+        }
+
+        RegisterCleanup();
+    }
+
+    /**
+     * @brief Execute override - creates Context for each task
+     *
+     * Phase F: Executes tasks in parallel based on input array sizes.
+     * Each task processes one array element independently.
+     *
+     * This enables:
+     * - Clean node API: ctx.In(slot) instead of In(slot, index)
+     * - Parallelization: each task runs concurrently
+     * - Type safety: Context is templated on ConfigType
+     */
+    void Execute() override final {
+        // Analyze slot configuration to determine task count
+        uint32_t taskCount = DetermineTaskCount();
+
+        if (taskCount == 0) {
+            // No tasks to execute (e.g., no inputs connected)
+            return;
+        }
+
+        if (taskCount == 1) {
+            // Single task - execute directly without threading overhead
+            Context ctx(this, 0);
+            currentTaskIndex = 0;
+            ExecuteImpl(ctx);
+            return;
+        }
+
+        // Multiple tasks - execute in parallel
+        std::vector<std::future<void>> futures;
+        futures.reserve(taskCount);
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            futures.push_back(std::async(std::launch::async, [this, taskIndex]() {
+                Context ctx(this, taskIndex);
+                currentTaskIndex = taskIndex;
+                ExecuteImpl(ctx);
+            }));
+        }
+
+        // Wait for all tasks to complete
+        for (auto& future : futures) {
+            future.get();
+        }
+
+        // Reset task index after execution
+        currentTaskIndex = 0;
+    }
+
+protected:
+    /**
+     * @brief SetupImpl with Context - override this in derived classes
+     *
+     * Called during Setup phase. Context provides clean In() access.
+     * Context uses index 0 (non-task-based).
+     *
+     * @param ctx Setup context with bound slot accessors
+     */
+    virtual void SetupImpl(Context& ctx) {}
+
+    /**
+     * @brief CompileImpl with Context - override this in derived classes
+     *
+     * Called during Compile phase. Context provides clean In()/Out() access.
+     * Context uses index 0 (non-task-based).
+     *
+     * @param ctx Compile context with bound slot accessors
+     */
+    virtual void CompileImpl(Context& ctx) {}
+
+    /**
+     * @brief ExecuteImpl with Context - override this in derived classes
+     *
+     * **Phase F: New signature for task-based execution.**
+     *
+     * Derived classes override this method instead of ExecuteImpl(uint32_t).
+     * The Context provides bound In()/Out() accessors for clean slot access.
+     *
+     * Example:
+     * ```cpp
+     * void MyNode::ExecuteImpl(Context& ctx) override {
+     *     auto device = ctx.In(MyConfig::DEVICE);
+     *     auto input = ctx.In(MyConfig::INPUT_DATA);
+     *     auto result = Process(device, input);
+     *     ctx.Out(MyConfig::OUTPUT_DATA, result);
+     * }
+     * ```
+     *
+     * @param ctx Task context with bound slot accessors
+     */
+    virtual void ExecuteImpl(Context& ctx) = 0;
+
+    /**
+     * @brief Hide base class SetupImpl() - not used in TypedNode
+     */
+    void SetupImpl() final override {
+        // Should never be called - Setup() above creates Context instead
+    }
+
+    /**
+     * @brief Hide base class CompileImpl() - not used in TypedNode
+     */
+    void CompileImpl() final override {
+        // Should never be called - Compile() above creates Context instead
+    }
+
+    /**
+     * @brief Hide base class ExecuteImpl(uint32_t) - not used in TypedNode
+     *
+     * TypedNode intercepts Execute() to create Context, so this
+     * base class method should never be called. Mark as final to prevent
+     * derived classes from accidentally overriding it.
+     */
+    void ExecuteImpl(uint32_t taskIndex) final override {
+        // Should never be called - Execute() above creates Context instead
+        // This is here only to satisfy NodeInstance pure virtual requirement
+    }
+
+public:
     // ===== INDEX-BASED ACCESS =====
 
     /**
@@ -189,16 +472,19 @@ public:
      *   VkImage img = In(MyConfig::TEXTURES, 2);  // Get index 2
      */
     template<typename SlotType>
-    typename SlotType::Type In(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
+    typename SlotType::Type In(SlotType slot) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        uint32_t arrayIndex = static_cast<uint32_t>(GetActiveBundleIndex());
+        // Phase F: Use currentTaskIndex set by Execute() - provides task-local context
+        uint32_t arrayIndex = static_cast<uint32_t>(currentTaskIndex);
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
-        // If caller requested Dependency semantics (bitwise), mark used-in-compile
-        if ((static_cast<uint8_t>(roles) & static_cast<uint8_t>(NodeInstance::SlotRole::Dependency)) != 0) {
+
+        // Phase F: Use slot's metadata for dependency tracking (not parameter)
+        // Mark used-in-compile if slot has Dependency role
+        if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
             NodeInstance::MarkInputUsedInCompile(SlotType::index);
         }
         if (!res) return typename SlotType::Type{};  // Return null handle
-        
+
         // Automatic type extraction from variant using slot's type info!
         return res->GetHandle<typename SlotType::Type>();
     }
@@ -332,16 +618,18 @@ public:
      *   if (desc) { use desc->width, desc->height, etc. }
      */
     template<typename SlotType>
-    const auto* InDesc(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
+    const auto* InDesc(SlotType slot) const {
         using HandleType = typename SlotType::Type;
         using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
         uint32_t arrayIndex = static_cast<uint32_t>(GetActiveBundleIndex());
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
-        if ((static_cast<uint8_t>(roles) & static_cast<uint8_t>(NodeInstance::SlotRole::Dependency)) != 0) {
+
+        // Phase F: Use slot's metadata for dependency tracking (not parameter)
+        if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
             NodeInstance::MarkInputUsedInCompile(SlotType::index);
         }
         if (!res) return static_cast<const DescriptorType*>(nullptr);
-        
+
         return res->GetDescriptor<DescriptorType>();
     }
 
@@ -351,7 +639,8 @@ public:
     template<typename SlotType>
     void Out(SlotType slot, typename SlotType::Type value) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        size_t arrayIndex = GetActiveBundleIndex();
+        // Phase F: Use currentTaskIndex for context-aware slot access
+        size_t arrayIndex = currentTaskIndex;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
         res->SetHandle<typename SlotType::Type>(value);
@@ -396,21 +685,27 @@ public:
 
 private:
     /**
-     * @brief Ensure output slot has space for arrayIndex
+     * @brief Ensure output slot has space for arrayIndex (Phase F: bundle-first)
      */
     void EnsureOutputSlot(uint32_t slotIndex, size_t arrayIndex) {
-        auto& slot = NodeInstance::outputs[slotIndex];
-        if (slot.size() <= arrayIndex) {
-            slot.resize(arrayIndex + 1, nullptr);
+        // Phase F: Ensure bundle exists for this array index
+        if (arrayIndex >= NodeInstance::bundles.size()) {
+            NodeInstance::bundles.resize(arrayIndex + 1);
         }
-        
+
+        // Ensure the outputs vector in this bundle has room for this slot
+        auto& outputs = NodeInstance::bundles[arrayIndex].outputs;
+        if (slotIndex >= outputs.size()) {
+            outputs.resize(slotIndex + 1, nullptr);
+        }
+
         // If the resource pointer is null, create a temporary Resource for this output
         // This happens when a node wants to write to an output that wasn't connected
-        // TODO: Ideally the graph should manage all Resources, but for now we create locally
-        if (slot[arrayIndex] == nullptr) {
+        // TODO: Ideally the graph should manage all Resource<HandleType> instances, but for now we create locally
+        if (outputs[slotIndex] == nullptr) {
             // HACK: Create Resource inline - this should be managed by RenderGraph
             // For now, just allocate it here. This is a memory leak if not cleaned up!
-            slot[arrayIndex] = new Resource();
+            outputs[slotIndex] = new Resource();
         }
     }
 
@@ -419,6 +714,41 @@ protected:
     // In a full implementation, use std::tuple<Slot0::Type, Slot1::Type, ...>
     std::array<void*, ConfigType::INPUT_COUNT> inputs{};
     std::array<void*, ConfigType::OUTPUT_COUNT> outputs{};
+};
+
+/**
+ * @brief TypedNodeType - Automatic schema population from config
+ *
+ * Eliminates boilerplate from NodeType constructors by automatically
+ * populating inputSchema and outputSchema from ConfigType.
+ *
+ * Usage:
+ * ```cpp
+ * // OLD: Manual schema population
+ * class BoolOpNodeType : public NodeType {
+ *     BoolOpNodeType() : NodeType("BoolOp") {
+ *         BoolOpNodeConfig config;
+ *         inputSchema = config.GetInputVector();
+ *         outputSchema = config.GetOutputVector();
+ *     }
+ * };
+ *
+ * // NEW: Automatic schema population
+ * class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig> {
+ *     BoolOpNodeType() : TypedNodeType<BoolOpNodeConfig>("BoolOp") {}
+ * };
+ * ```
+ */
+template<typename ConfigType>
+class TypedNodeType : public NodeType {
+public:
+    TypedNodeType(const std::string& typeName)
+        : NodeType(typeName) {
+        // Automatically populate schemas from config
+        ConfigType config;
+        inputSchema = config.GetInputVector();
+        outputSchema = config.GetOutputVector();
+    }
 };
 
 } // namespace Vixen::RenderGraph

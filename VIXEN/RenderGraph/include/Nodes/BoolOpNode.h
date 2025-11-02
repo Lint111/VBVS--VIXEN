@@ -14,9 +14,10 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 111
  */
-class BoolOpNodeType : public NodeType {
+class BoolOpNodeType : public TypedNodeType<BoolOpNodeConfig> {
 public:
-    BoolOpNodeType(const std::string& typeName = "BoolOp");
+    BoolOpNodeType(const std::string& typeName = "BoolOp")
+        : TypedNodeType<BoolOpNodeConfig>(typeName) {}
     virtual ~BoolOpNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -51,13 +52,13 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~BoolOpNode();
+    ~BoolOpNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:

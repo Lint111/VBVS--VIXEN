@@ -14,22 +14,6 @@ namespace Vixen::RenderGraph {
 
 // ====== ShaderLibraryNodeType ======
 
-ShaderLibraryNodeType::ShaderLibraryNodeType(const std::string& typeName) : NodeType(typeName) {
-    pipelineType = PipelineType::None;
-    requiredCapabilities = DeviceCapability::None;
-    supportsInstancing = false;
-    maxInstances = 1;
-
-    ShaderLibraryNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    workloadMetrics.estimatedMemoryFootprint = 0;
-    workloadMetrics.estimatedComputeCost = 0.0f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = false;
-}
-
 std::unique_ptr<NodeInstance> ShaderLibraryNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -50,11 +34,7 @@ ShaderLibraryNode::ShaderLibraryNode(
     // MVP STUB: No shader library initialized
 }
 
-ShaderLibraryNode::~ShaderLibraryNode() {
-    Cleanup();
-}
-
-void ShaderLibraryNode::SetupImpl() {
+void ShaderLibraryNode::SetupImpl(Context& ctx) {
     std::cout << "[ShaderLibraryNode::Setup] Called" << std::endl;
 
     VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
@@ -86,7 +66,7 @@ void ShaderLibraryNode::SetupImpl() {
     std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
 }
 
-void ShaderLibraryNode::CompileImpl() {
+void ShaderLibraryNode::CompileImpl(Context& ctx) {
     std::cout << "[ShaderLibraryNode::Compile] START - Phase 1 integration" << std::endl;
 
     // Step 1: Build shader bundle from GLSL source using ShaderManagement
@@ -297,7 +277,7 @@ void ShaderLibraryNode::CompileImpl() {
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
 
-void ShaderLibraryNode::ExecuteImpl() {
+void ShaderLibraryNode::ExecuteImpl(Context& ctx) {
     // MVP STUB: No-op - shaders loaded directly in application
 }
 

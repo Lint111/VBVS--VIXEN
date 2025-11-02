@@ -39,37 +39,79 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
                       SwapChainNodeCounts::INPUTS,
                       SwapChainNodeCounts::OUTPUTS,
                       SwapChainNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (9) =====
-    // Required window handles from WindowNode
-    CONSTEXPR_INPUT(HWND, ::HWND, 0, false);
-    CONSTEXPR_INPUT(HINSTANCE, ::HINSTANCE, 1, false);
+    // ===== INPUTS (10) =====
+    INPUT_SLOT(HWND, ::HWND, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Required width and height parameters from WindowNode
-    CONSTEXPR_INPUT(WIDTH, uint32_t, 2, false);
-    CONSTEXPR_INPUT(HEIGHT, uint32_t, 3, false);
+    INPUT_SLOT(HINSTANCE, ::HINSTANCE, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Required Vulkan instance from InstanceNode
-    CONSTEXPR_INPUT(INSTANCE, VkInstance, 4, false);
+    INPUT_SLOT(WIDTH, uint32_t, 2,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5, false);
+    INPUT_SLOT(HEIGHT, uint32_t, 3,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.4: Per-flight semaphore arrays and current frame index from FrameSyncNode
-    CONSTEXPR_INPUT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 6, false);
-    CONSTEXPR_INPUT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 7, false);
-    CONSTEXPR_INPUT(CURRENT_FRAME_INDEX, uint32_t, 8, false);
+    INPUT_SLOT(INSTANCE, VkInstance, 4,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Phase 0.7: Present fences array (VK_EXT_swapchain_maintenance1)
-    CONSTEXPR_INPUT(PRESENT_FENCES_ARRAY, VkFenceVector, 9, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 6,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 7,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 8,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(PRESENT_FENCES_ARRAY, VkFenceVector, 9,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (3) =====
+    OUTPUT_SLOT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
-    // Swapchain handle and public variables
-    CONSTEXPR_OUTPUT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 0, false);
-    CONSTEXPR_OUTPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 1, true);
+    OUTPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 1,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
 
-    // Current frame image index (updated per frame in Execute())
-    CONSTEXPR_OUTPUT(IMAGE_INDEX, uint32_t, 2, false);
+    OUTPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
 
     SwapChainNodeConfig() {

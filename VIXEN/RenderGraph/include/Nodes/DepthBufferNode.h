@@ -26,16 +26,16 @@ public:
         NodeType* nodeType
     );
 
-    virtual ~DepthBufferNode();
+    ~DepthBufferNode() override = default;
 
     // Accessor for depth image view
     VkImageView GetDepthImageView() const { return depthImage.view; }
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:
@@ -65,9 +65,10 @@ private:
 /**
  * @brief Type definition for DepthBufferNode
  */
-class DepthBufferNodeType : public NodeType {
+class DepthBufferNodeType : public TypedNodeType<DepthBufferNodeConfig> {
 public:
-    DepthBufferNodeType(const std::string& typeName = "DepthBuffer");
+    DepthBufferNodeType(const std::string& typeName = "DepthBuffer")
+        : TypedNodeType<DepthBufferNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName

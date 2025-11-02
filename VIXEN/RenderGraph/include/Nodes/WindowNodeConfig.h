@@ -26,16 +26,30 @@ namespace WindowNodeCounts {
  *   - HEIGHT (uint32_t) - Window height
  * Parameters: width, height
  */
-CONSTEXPR_NODE_CONFIG(WindowNodeConfig, 
-                      WindowNodeCounts::INPUTS, 
-                      WindowNodeCounts::OUTPUTS, 
+CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
+                      WindowNodeCounts::INPUTS,
+                      WindowNodeCounts::OUTPUTS,
                       WindowNodeCounts::ARRAY_MODE) {
-    // Compile-time output slot definitions
-    CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);
-    CONSTEXPR_OUTPUT(HWND_OUT, ::HWND, 1, false);
-    CONSTEXPR_OUTPUT(HINSTANCE_OUT, ::HINSTANCE, 2, false);
-    CONSTEXPR_OUTPUT(WIDTH_OUT, uint32_t, 3, false);
-    CONSTEXPR_OUTPUT(HEIGHT_OUT, uint32_t, 4, false);
+    // Phase F: Output slots with full metadata
+    OUTPUT_SLOT(SURFACE, VkSurfaceKHR, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(HWND_OUT, ::HWND, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(HINSTANCE_OUT, ::HINSTANCE, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(WIDTH_OUT, uint32_t, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(HEIGHT_OUT, uint32_t, 4,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     // Compile-time parameter names (constexpr strings for type safety)
     static constexpr const char* PARAM_WIDTH = "width";

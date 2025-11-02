@@ -21,15 +21,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for assembling graphics pipelines
- * 
+ *
  * Combines shaders, render pass, vertex input description, and state configuration
  * to create a complete Vulkan graphics pipeline.
- * 
+ *
  * Type ID: 108
  */
-class GraphicsPipelineNodeType : public NodeType {
+class GraphicsPipelineNodeType : public TypedNodeType<GraphicsPipelineNodeConfig> {
 public:
-    GraphicsPipelineNodeType(const std::string& typeName = "GraphicsPipeline");
+    GraphicsPipelineNodeType(const std::string& typeName = "GraphicsPipeline")
+        : TypedNodeType<GraphicsPipelineNodeConfig>(typeName) {}
     virtual ~GraphicsPipelineNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -51,13 +52,13 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~GraphicsPipelineNode();
+    ~GraphicsPipelineNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:

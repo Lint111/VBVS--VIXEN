@@ -40,8 +40,11 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
                       TextureLoaderNodeCounts::OUTPUTS,
                       TextureLoaderNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // ===== PARAMETER NAMES =====
     static constexpr const char* FILE_PATH = "filePath";
@@ -51,10 +54,21 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
     static constexpr const char* SAMPLER_ADDRESS_MODE = "samplerAddressMode";
 
     // ===== OUTPUTS (4) =====
-    CONSTEXPR_OUTPUT(TEXTURE_IMAGE, VkImage, 0, false);
-    CONSTEXPR_OUTPUT(TEXTURE_VIEW, VkImageView, 1, false);
-    CONSTEXPR_OUTPUT(TEXTURE_SAMPLER, VkSampler, 2, false);
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+    OUTPUT_SLOT(TEXTURE_IMAGE, VkImage, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(TEXTURE_VIEW, VkImageView, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(TEXTURE_SAMPLER, VkSampler, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     TextureLoaderNodeConfig() {
         // Initialize input descriptors

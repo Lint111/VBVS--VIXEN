@@ -8,15 +8,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for presenting rendered images to the swapchain
- * 
+ *
  * Queues presentation operations with proper synchronization.
  * This is the final node in the rendering pipeline.
- * 
+ *
  * Type ID: 110
  */
-class PresentNodeType : public NodeType {
+class PresentNodeType : public TypedNodeType<PresentNodeConfig> {
 public:
-    PresentNodeType(const std::string& typeName = "Present");
+    PresentNodeType(const std::string& typeName = "Present")
+        : TypedNodeType<PresentNodeConfig>(typeName) {}
     virtual ~PresentNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -38,16 +39,16 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~PresentNode();
+    ~PresentNode() override = default;
 
-    // Execute presentation
-    VkResult Present();
+    // Execute presentation (helper called from ExecuteImpl)
+    VkResult Present(Context& ctx);
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl() override;
-	void CompileImpl() override;
-	void ExecuteImpl() override;
+	void SetupImpl(Context& ctx) override;
+	void CompileImpl(Context& ctx) override;
+	void ExecuteImpl(Context& ctx) override;
 	void CleanupImpl() override;
 
 private:

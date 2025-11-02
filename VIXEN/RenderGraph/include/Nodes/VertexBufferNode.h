@@ -20,9 +20,10 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 103
  */
-class VertexBufferNodeType : public NodeType {
+class VertexBufferNodeType : public TypedNodeType<VertexBufferNodeConfig> {
 public:
-    VertexBufferNodeType(const std::string& typeName = "VertexBuffer");
+    VertexBufferNodeType(const std::string& typeName = "VertexBuffer")
+        : TypedNodeType<VertexBufferNodeConfig>(typeName) {}
     virtual ~VertexBufferNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
@@ -51,7 +52,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~VertexBufferNode();
+    ~VertexBufferNode() override = default;
 
     // Accessors for other nodes
     VkBuffer GetVertexBuffer() const { return vertexBuffer; }
@@ -64,9 +65,9 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:

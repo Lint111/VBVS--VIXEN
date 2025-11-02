@@ -60,23 +60,52 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* FRONT_FACE = "frontFace";
 
     // ===== INPUTS (5) =====
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0, false);
-    CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1, false);
-    CONSTEXPR_INPUT(RENDER_PASS, VkRenderPass, 2, false);
-    CONSTEXPR_INPUT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3, false);
-    CONSTEXPR_INPUT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 4, false);
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (3) =====
-    // Graphics pipeline handle
-    CONSTEXPR_OUTPUT(PIPELINE, VkPipeline, 0, false);
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Pipeline layout handle
-    CONSTEXPR_OUTPUT(PIPELINE_LAYOUT, VkPipelineLayout, 1, false);
+    INPUT_SLOT(RENDER_PASS, VkRenderPass, 2,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-    // Pipeline cache for optimization
-    CONSTEXPR_OUTPUT(PIPELINE_CACHE, VkPipelineCache, 2, false);
+    INPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
-	CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 4,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // ===== OUTPUTS (4) =====
+    OUTPUT_SLOT(PIPELINE, VkPipeline, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(PIPELINE_LAYOUT, VkPipelineLayout, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(PIPELINE_CACHE, VkPipelineCache, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
 
     GraphicsPipelineNodeConfig() {
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};

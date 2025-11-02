@@ -23,9 +23,10 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 110
  */
-class ShaderLibraryNodeType : public NodeType {
+class ShaderLibraryNodeType : public TypedNodeType<ShaderLibraryNodeConfig> {
 public:
-    ShaderLibraryNodeType(const std::string& typeName = "ShaderLibrary");
+    ShaderLibraryNodeType(const std::string& typeName = "ShaderLibrary")
+        : TypedNodeType<ShaderLibraryNodeConfig>(typeName) {}
     virtual ~ShaderLibraryNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
@@ -53,13 +54,13 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~ShaderLibraryNode();
+    ~ShaderLibraryNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
     // ===== Program Management API (MVP STUBS - NOT IMPLEMENTED) =====

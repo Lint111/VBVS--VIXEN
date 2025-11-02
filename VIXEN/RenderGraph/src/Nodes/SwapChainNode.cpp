@@ -10,24 +10,6 @@ namespace Vixen::RenderGraph {
 
 // ====== SwapChainNodeType ======
 
-SwapChainNodeType::SwapChainNodeType(const std::string& typeName) : NodeType(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
-    supportsInstancing = false; // Only one swapchain per render graph
-    maxInstances = 1;
-
-    // Populate schema from config
-    SwapChainNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 32 * 1024 * 1024; // ~32MB for swapchain images
-    workloadMetrics.estimatedComputeCost = 0.2f;
-    workloadMetrics.estimatedBandwidthCost = 0.1f;
-    workloadMetrics.canRunInParallel = false; // Swapchain operations are sequential
-}
-
 std::unique_ptr<NodeInstance> SwapChainNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
@@ -47,12 +29,8 @@ SwapChainNode::SwapChainNode(
 {
 }
 
-SwapChainNode::~SwapChainNode() {
-    Cleanup();
-}
-
-void SwapChainNode::SetupImpl() {
-    SetDevice(In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
+void SwapChainNode::SetupImpl(Context& ctx) {
+    SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
 
     if (GetDevice() == nullptr) {
         std::string errorMsg = "SwapChainNode: VulkanDevice input is null";
@@ -83,7 +61,7 @@ void SwapChainNode::SetupImpl() {
     currentFrame = 0;
 }
 
-void SwapChainNode::CompileImpl() {
+void SwapChainNode::CompileImpl(Context& ctx) {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
 
     // Publish render pause starting event
@@ -99,17 +77,17 @@ void SwapChainNode::CompileImpl() {
 
     // Get input resources from connected nodes
     std::cout << "[SwapChainNode::Compile] Reading HWND..." << std::endl;
-    HWND hwnd = In(SwapChainNodeConfig::HWND);
+    HWND hwnd = ctx.In(SwapChainNodeConfig::HWND);
     std::cout << "[SwapChainNode::Compile] Reading HINSTANCE..." << std::endl;
-    HINSTANCE hinstance = In(SwapChainNodeConfig::HINSTANCE);
+    HINSTANCE hinstance = ctx.In(SwapChainNodeConfig::HINSTANCE);
     std::cout << "[SwapChainNode::Compile] Reading WIDTH..." << std::endl;
-    width = In(SwapChainNodeConfig::WIDTH);
+    width = ctx.In(SwapChainNodeConfig::WIDTH);
     std::cout << "[SwapChainNode::Compile] WIDTH = " << width << std::endl;
     std::cout << "[SwapChainNode::Compile] Reading HEIGHT..." << std::endl;
-    height = In(SwapChainNodeConfig::HEIGHT);
+    height = ctx.In(SwapChainNodeConfig::HEIGHT);
     std::cout << "[SwapChainNode::Compile] HEIGHT = " << height << std::endl;
     std::cout << "[SwapChainNode::Compile] Reading INSTANCE..." << std::endl;
-    VkInstance instance = In(SwapChainNodeConfig::INSTANCE);
+    VkInstance instance = ctx.In(SwapChainNodeConfig::INSTANCE);
 
     VkResult result = VK_SUCCESS;  // Declare result variable for error checking
 
@@ -227,10 +205,10 @@ void SwapChainNode::CompileImpl() {
     // === SET ALL OUTPUTS ===
 
     // Output 1: Swapchain handle (NEW VARIANT API)
-    Out(SwapChainNodeConfig::SWAPCHAIN_HANDLE, swapChainWrapper->scPublicVars.swapChain);
+    ctx.Out(SwapChainNodeConfig::SWAPCHAIN_HANDLE, swapChainWrapper->scPublicVars.swapChain);
 
     // Output 2: Pointer to public swapchain variables (NEW VARIANT API)
-    Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
+    ctx.Out(SwapChainNodeConfig::SWAPCHAIN_PUBLIC, &swapChainWrapper->scPublicVars);
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
     // No need to create per-swapchain-image semaphores anymore
@@ -248,17 +226,17 @@ void SwapChainNode::CompileImpl() {
     }
 }
 
-void SwapChainNode::ExecuteImpl() {
+void SwapChainNode::ExecuteImpl(Context& ctx) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const VkSemaphore* renderCompleteSemaphores = In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const VkSemaphore* imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
     if (!imageAvailableSemaphores || !renderCompleteSemaphores) {
         throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
     }
 
     // Phase 0.7: Get present fences array (VK_EXT_swapchain_maintenance1)
-    VkFenceVector presentFencesArray = In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    VkFenceVector presentFencesArray = ctx.In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
 
     // Phase 0.6: CORRECT two-tier semaphore indexing (Vulkan guide pattern)
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -268,7 +246,7 @@ void SwapChainNode::ExecuteImpl() {
     //
     // This indexing is done in GeometryRenderNode after we know both frame and image indices.
 
-    uint32_t currentFrameIndex = In(SwapChainNodeConfig::CURRENT_FRAME_INDEX);
+    uint32_t currentFrameIndex = ctx.In(SwapChainNodeConfig::CURRENT_FRAME_INDEX);
 
     // Acquisition semaphore indexed by flight
     VkSemaphore acquireSemaphore = imageAvailableSemaphores[currentFrameIndex];
@@ -297,7 +275,7 @@ void SwapChainNode::ExecuteImpl() {
     }
 
     // Output the acquired image index
-    Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
+    ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
 
     NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
                   + ", frameIdx=" + std::to_string(currentFrameIndex)
@@ -319,8 +297,8 @@ void SwapChainNode::CleanupImpl() {
         VkDevice device = VK_NULL_HANDLE;
 
         try {
-            // Cleanup-time access only - mark as ExecuteOnly so it does not count as a compile-time dependency
-                instance = In(SwapChainNodeConfig::INSTANCE, NodeInstance::SlotRole::ExecuteOnly);
+            // Cleanup-time access only - use GetInput directly
+            instance = GetInput(SwapChainNodeConfig::INSTANCE, 0);
         } catch (...) {
             // Instance might not be available during shutdown - that's ok
         }

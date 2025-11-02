@@ -9,7 +9,7 @@ namespace Vixen::RenderGraph {
 /**
  * @brief CommandPoolNodeType - Defines command pool creation node
  */
-class CommandPoolNodeType : public NodeType {
+class CommandPoolNodeType : public TypedNodeType<CommandPoolNodeConfig> {
 public:
     CommandPoolNodeType(const std::string& typeName = "CommandPool");
 
@@ -37,13 +37,13 @@ public:
         NodeType* nodeType
     );
 
-    ~CommandPoolNode() override;
+    ~CommandPoolNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl() override;
-    void CompileImpl() override;
-    void ExecuteImpl() override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
 
 private:
