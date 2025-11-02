@@ -432,7 +432,7 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
             // Phase 0.4: Check if node should execute this frame (loop gating)
             if (node->ShouldExecuteThisFrame()) {
                 node->SetState(NodeState::Executing);
-                node->Execute(commandBuffer);
+                node->Execute();
                 node->SetState(NodeState::Complete);
             }
         }
@@ -487,7 +487,7 @@ VkResult RenderGraph::RenderFrame() {
             node->SetState(NodeState::Executing);
 
             // Pass VK_NULL_HANDLE - nodes manage their own command buffers
-            node->Execute(VK_NULL_HANDLE);
+            node->Execute();
 
             node->SetState(NodeState::Complete);
 
@@ -570,6 +570,33 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
                 errorMessage = "Node " + instance->GetInstanceName() +
                              " missing required input at index " + std::to_string(i);
                 return false;
+            }
+        }
+    }
+
+    // Phase C.3: Validate render pass compatibility between pipelines and framebuffers
+    // Check GeometryRenderNode instances for compatible render passes
+    for (const auto& instance : instances) {
+        NodeType* type = instance->GetNodeType();
+        if (type->GetTypeName() == "GeometryRender") {
+            // GeometryRenderNode uses RENDER_PASS (from PipelineNode) and FRAMEBUFFERS (from FramebufferNode)
+            // Pipeline's render pass must be compatible with framebuffer's render pass
+
+            // Try to get render pass from input (may be null if not connected)
+            Resource* renderPassRes = instance->GetInput(0, 0);  // RENDER_PASS is input 0
+            Resource* framebufferRes = instance->GetInput(2, 0);  // FRAMEBUFFERS is input 2
+
+            if (renderPassRes && framebufferRes) {
+                // Both resources exist - validate compatibility
+                // Note: Vulkan render pass compatibility is complex (attachment counts, formats, etc.)
+                // For now, we just ensure both exist. Full validation would require:
+                // 1. Extracting VkRenderPass from pipeline
+                // 2. Extracting VkRenderPass from framebuffer
+                // 3. Checking compatibility via format/attachment/subpass rules
+                // This is a placeholder for future comprehensive validation
+
+                // Placeholder: Just ensure resources are not null
+                // Full implementation would call vkGetRenderPassCreateInfo equivalents
             }
         }
     }
