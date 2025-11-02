@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: ComputeTest
-// UUID: 7a57264d155fdf74
-// Generated: 2025-11-02 19:57:04
+// UUID: 3e331666c418cc79
+// Generated: 2025-11-02 20:40:08
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "7a57264d155fdf74-SDI.h"
+#include "3e331666c418cc79-SDI.h"
 
 namespace ComputeTest {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_7a57264d155fdf74;
+namespace SDI = ShaderInterface::_3e331666c418cc79;
 
 // ============================================================================
 // Descriptor Binding Constants

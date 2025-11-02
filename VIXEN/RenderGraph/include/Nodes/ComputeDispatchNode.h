@@ -65,7 +65,7 @@ protected:
     void CleanupImpl() override;
 
 private:
-    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex);
+    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, const void* pushConstantData);
 
     // Device and command pool references
     VulkanDevicePtr vulkanDevice = nullptr;

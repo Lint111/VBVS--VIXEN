@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 7a57264d155fdf74
-// Generated: 2025-11-02 20:13:19
+// UUID: 3e331666c418cc79
+// Generated: 2025-11-02 20:40:08
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -19,7 +19,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _7a57264d155fdf74 {
+namespace _3e331666c418cc79 {
 
 // ============================================================================
 // Descriptor Bindings
@@ -78,7 +78,7 @@ struct pc {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "ComputeTest";
-    static constexpr const char* INTERFACE_HASH = "42af49e0dcb1c095";
+    static constexpr const char* INTERFACE_HASH = "3aeddafbb24aadd6";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

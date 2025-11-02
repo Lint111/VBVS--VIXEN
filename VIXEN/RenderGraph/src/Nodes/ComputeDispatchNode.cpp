@@ -122,7 +122,7 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
         NODE_LOG_INFO("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
     }
 
-    // Reset fence before submitting
+    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);
 
     // Guard against invalid image index
@@ -147,11 +147,30 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
         lastDescriptorSets = currentDescriptorSets;
     }
 
+    // Calculate push constants (time updates every frame)
+    struct PushConstants {
+        float time;
+        uint32_t frame;
+        uint32_t padding[2];
+    } pushConstants;
+
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float elapsedTime = std::chrono::duration<float>(currentTime - startTime).count();
+
+    pushConstants.time = elapsedTime;
+    pushConstants.frame = static_cast<uint32_t>(elapsedTime * 60.0f);
+
     // Only re-record if dirty
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
     if (commandBuffers.IsDirty(imageIndex)) {
-        RecordComputeCommands(ctx, cmdBuffer, imageIndex);
+        RecordComputeCommands(ctx, cmdBuffer, imageIndex, &pushConstants);
         commandBuffers.MarkReady(imageIndex);
+    } else {
+        // Command buffer already recorded, just update push constants
+        VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
+        vkCmdPushConstants(cmdBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                          sizeof(float) + sizeof(uint32_t), &pushConstants);
     }
 
     // Submit command buffer to compute queue
@@ -186,7 +205,7 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
 // RECORD COMPUTE COMMANDS
 // ============================================================================
 
-void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex) {
+void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, const void* pushConstantData) {
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -203,10 +222,16 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     DescriptorSetVector descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
     SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
-    // Get dispatch dimensions
-    uint32_t dispatchX = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_X, 1);
-    uint32_t dispatchY = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Y, 1);
-    uint32_t dispatchZ = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Z, 1);
+    // Get dispatch dimensions from swapchain extent (8x8 workgroup size)
+    uint32_t dispatchX = (swapchainInfo->Extent.width + 7) / 8;
+    uint32_t dispatchY = (swapchainInfo->Extent.height + 7) / 8;
+    uint32_t dispatchZ = 1;
+
+    static int logCount = 0;
+    if (logCount++ < 3) {
+        std::cout << "[ComputeDispatchNode] Dispatch: " << dispatchX << "x" << dispatchY << "x" << dispatchZ
+                  << " for swapchain " << swapchainInfo->Extent.width << "x" << swapchainInfo->Extent.height << std::endl;
+    }
 
     // Validate descriptor sets
     if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
@@ -253,6 +278,16 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         &descriptorSet,
         0,
         nullptr
+    );
+
+    // Set push constants from caller (updated every frame in ExecuteImpl)
+    vkCmdPushConstants(
+        cmdBuffer,
+        pipelineLayout,
+        VK_SHADER_STAGE_COMPUTE_BIT,
+        0,  // offset
+        sizeof(float) + sizeof(uint32_t),  // size (8 bytes: float + uint)
+        pushConstantData
     );
 
     // Dispatch compute shader

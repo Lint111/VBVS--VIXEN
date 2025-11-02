@@ -412,6 +412,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
     // --- Resource Nodes ---
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
+    /*
     NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
     NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
@@ -423,12 +425,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
     pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
-    
+
     // Phase 1: ShaderLibraryNode replaces manual shader loading
     // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
 
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
+    */
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
 
     // --- Phase G: Compute Pipeline Nodes ---
@@ -456,6 +459,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
+    /*
     // Vertex buffer parameters (simple triangle)
     auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
@@ -515,14 +520,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
 
-    // Present parameters
-    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
-    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
-
-    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode)
-    auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
-    loopIDConst->SetValue<uint32_t>(physicsLoopID);
-
     // Phase G: Configure shader libraries with builder functions
 
     // Graphics shader library (Draw.vert + Draw.frag)
@@ -559,6 +556,16 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         return builder;
     });
+    */
+
+    // Present parameters (needed for both graphics and compute)
+    auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
+    present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
+
+    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
+    auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
+    loopIDConst->SetValue<uint32_t>(physicsLoopID);
+    std::cout << "[BuildRenderGraph] Loop ID set, moving to shader library..." << std::endl;
 
     // Compute shader library (ComputeTest.comp)
     auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
@@ -588,8 +595,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Phase G: Compute dispatch parameters
     auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
-    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, width / 8);  // Workgroup size 8x8
-    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, height / 8);
+    uint32_t dispatchX = width / 8;
+    uint32_t dispatchY = height / 8;
+    std::cout << "[BuildRenderGraph] Setting dispatch dims: " << dispatchX << "x" << dispatchY << "x1 (from window " << width << "x" << height << ")" << std::endl;
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
 
     mainLogger->Info("Configured all node parameters (including PhysicsLoop ID + compute nodes)");
@@ -641,6 +651,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline connections
+    /*
     // --- Device → DepthBuffer device connection (for Vulkan operations) ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -676,7 +688,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
             framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
-         
+
 
     // --- Device → ShaderLibrary device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -752,18 +764,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of per-flight semaphores (indexed by frameIndex)
          .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of per-image semaphores (indexed by imageIndex)
+    */
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain + GeometryRender → Present connections (Phase 0.2) ---
+    // --- SwapChain → Present connections (for compute-only rendering) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
+         .Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Wait on ComputeDispatch's output
 
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,

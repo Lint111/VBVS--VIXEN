@@ -1,9 +1,4 @@
 ShaderModuleCacher
-MeshCacher
-SamplerCacher
-TextureCacher
 DescriptorCacher
 PipelineLayoutCacher
 ComputePipelineCacher
-RenderPassCacher
-PipelineCacher
