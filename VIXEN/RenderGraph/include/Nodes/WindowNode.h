@@ -14,9 +14,10 @@ namespace Vixen::RenderGraph {
  * @brief Node type for window management
  * Type ID: 111
  */
-class WindowNodeType : public NodeType {
+class WindowNodeType : public TypedNodeType<WindowNodeConfig> {
 public:
-    WindowNodeType(const std::string& typeName = "Window");
+    WindowNodeType(const std::string& typeName = "Window")
+        : TypedNodeType<WindowNodeConfig>(typeName) {}
     virtual ~WindowNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;

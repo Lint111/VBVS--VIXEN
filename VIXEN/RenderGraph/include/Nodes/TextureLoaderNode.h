@@ -54,9 +54,10 @@ private:
 /**
  * @brief Type definition for TextureLoaderNode
  */
-class TextureLoaderNodeType : public NodeType {
+class TextureLoaderNodeType : public TypedNodeType<TextureLoaderNodeConfig> {
 public:
-    TextureLoaderNodeType( const std::string& typeName = "TextureLoader");
+    TextureLoaderNodeType(const std::string& typeName = "TextureLoader")
+        : TypedNodeType<TextureLoaderNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };

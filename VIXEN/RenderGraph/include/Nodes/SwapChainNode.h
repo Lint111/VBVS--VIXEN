@@ -11,15 +11,16 @@ namespace Vixen::RenderGraph {
 
 /**
  * @brief Node type for managing swapchain lifecycle
- * 
+ *
  * Handles swapchain creation, image acquisition, and recreation on resize.
  * This is a stateful node that maintains the presentation surface.
- * 
+ *
  * Type ID: 102
  */
-class SwapChainNodeType : public NodeType {
+class SwapChainNodeType : public TypedNodeType<SwapChainNodeConfig> {
 public:
-    SwapChainNodeType(const std::string& typeName = "SwapChain");
+    SwapChainNodeType(const std::string& typeName = "SwapChain")
+        : TypedNodeType<SwapChainNodeConfig>(typeName) {}
     virtual ~SwapChainNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

@@ -23,9 +23,10 @@ namespace Vixen::RenderGraph {
  *
  * Type ID: 110
  */
-class ShaderLibraryNodeType : public NodeType {
+class ShaderLibraryNodeType : public TypedNodeType<ShaderLibraryNodeConfig> {
 public:
-    ShaderLibraryNodeType(const std::string& typeName = "ShaderLibrary");
+    ShaderLibraryNodeType(const std::string& typeName = "ShaderLibrary")
+        : TypedNodeType<ShaderLibraryNodeConfig>(typeName) {}
     virtual ~ShaderLibraryNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(

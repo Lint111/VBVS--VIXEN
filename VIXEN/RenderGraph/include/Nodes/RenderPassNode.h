@@ -62,9 +62,10 @@ private:
 /**
  * @brief Type definition for RenderPassNode
  */
-class RenderPassNodeType : public NodeType {
+class RenderPassNodeType : public TypedNodeType<RenderPassNodeConfig> {
 public:
-    RenderPassNodeType(const std::string& typeName = "RenderPass");
+    RenderPassNodeType(const std::string& typeName = "RenderPass")
+        : TypedNodeType<RenderPassNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName
