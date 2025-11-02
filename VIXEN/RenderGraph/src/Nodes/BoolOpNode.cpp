@@ -47,7 +47,7 @@ void BoolOpNode::CompileImpl() {
     }
 }
 
-void BoolOpNode::ExecuteImpl() {
+void BoolOpNode::ExecuteImpl(uint32_t taskIndex) {
     // Read vector of bools from INPUTS slot
     std::vector<bool> inputs = In(BoolOpNodeConfig::INPUTS);
 
@@ -57,68 +57,56 @@ void BoolOpNode::ExecuteImpl() {
         return;
     }
 
-    // Accumulator for boolean operations (using ExecuteTasks API)
-    struct BoolAccumulator {
-        bool result = false;
-        int trueCount = 0;  // For XOR operation
-        BoolOp op;
-    };
-
-    BoolAccumulator acc;
-    acc.op = operation;
+    // Accumulator for boolean operations
+    bool result = false;
+    int trueCount = 0;  // For XOR operation
 
     // Initialize accumulator based on operation
     switch (operation) {
         case BoolOp::AND:
         case BoolOp::NAND:
-            acc.result = true;  // AND starts with true
+            result = true;  // AND starts with true
             break;
         case BoolOp::OR:
         case BoolOp::NOR:
         case BoolOp::XOR:
         case BoolOp::NOT:
         default:
-            acc.result = false;
+            result = false;
             break;
     }
 
-    // Process each input using ExecuteTasks (works for 1 or N inputs)
-    auto processInput = [&acc, &inputs](SlotTaskContext& ctx) -> bool {
-        uint32_t index = ctx.GetElementIndex();
+    // Process each input
+    for (size_t index = 0; index < inputs.size(); index++) {
         bool inputValue = inputs[index];
 
-        switch (acc.op) {
+        switch (operation) {
             case BoolOp::AND:
             case BoolOp::NAND:
-                acc.result = acc.result && inputValue;
+                result = result && inputValue;
                 break;
             case BoolOp::OR:
             case BoolOp::NOR:
-                acc.result = acc.result || inputValue;
+                result = result || inputValue;
                 break;
             case BoolOp::XOR:
-                if (inputValue) acc.trueCount++;
+                if (inputValue) trueCount++;
                 break;
             case BoolOp::NOT:
                 // Only process first input
-                if (index == 0) acc.result = !inputValue;
+                if (index == 0) result = !inputValue;
                 break;
         }
-        return true;
-    };
-
-    // Execute tasks (automatically handles 1 or N inputs)
-    ExecuteTasks(BoolOpNodeConfig::INPUTS_Slot::index, processInput, nullptr, true);
+    }
 
     // Finalize result based on operation
-    bool result = acc.result;
     switch (operation) {
         case BoolOp::XOR:
-            result = (acc.trueCount == 1);
+            result = (trueCount == 1);
             break;
         case BoolOp::NAND:
         case BoolOp::NOR:
-            result = !acc.result;
+            result = !result;
             break;
         case BoolOp::AND:
         case BoolOp::OR:

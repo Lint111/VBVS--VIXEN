@@ -160,7 +160,7 @@ void VertexBufferNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl() {
+void VertexBufferNode::ExecuteImpl(uint32_t taskIndex) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }

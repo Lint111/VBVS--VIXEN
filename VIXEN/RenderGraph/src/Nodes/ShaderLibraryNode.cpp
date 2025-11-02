@@ -297,7 +297,7 @@ void ShaderLibraryNode::CompileImpl() {
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
 
-void ShaderLibraryNode::ExecuteImpl() {
+void ShaderLibraryNode::ExecuteImpl(uint32_t taskIndex) {
     // MVP STUB: No-op - shaders loaded directly in application
 }
 

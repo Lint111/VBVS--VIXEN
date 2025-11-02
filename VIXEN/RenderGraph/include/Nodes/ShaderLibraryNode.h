@@ -59,7 +59,7 @@ protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl() override;
     void CompileImpl() override;
-    void ExecuteImpl() override;
+    void ExecuteImpl(uint32_t taskIndex) override;
     void CleanupImpl() override;
 
     // ===== Program Management API (MVP STUBS - NOT IMPLEMENTED) =====

@@ -168,7 +168,7 @@ void WindowNode::CompileImpl() {
 #endif
 }
 
-void WindowNode::ExecuteImpl() {
+void WindowNode::ExecuteImpl(uint32_t taskIndex) {
     // Process Windows messages
 #ifdef _WIN32
     MSG msg;

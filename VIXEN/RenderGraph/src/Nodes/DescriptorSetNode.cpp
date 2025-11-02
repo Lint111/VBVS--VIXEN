@@ -330,7 +330,7 @@ void DescriptorSetNode::CompileImpl() {
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
 }
 
-void DescriptorSetNode::ExecuteImpl() {
+void DescriptorSetNode::ExecuteImpl(uint32_t taskIndex) {
     // Phase 0.4: Get current image index to select correct per-frame buffer
     uint32_t imageIndex = In(DescriptorSetNodeConfig::IMAGE_INDEX);
 

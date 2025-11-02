@@ -60,7 +60,7 @@ void LoopBridgeNode::CompileImpl() {
     }
 }
 
-void LoopBridgeNode::ExecuteImpl() {
+void LoopBridgeNode::ExecuteImpl(uint32_t taskIndex) {
     if (!loopManager) return;
 
     // Get current loop state

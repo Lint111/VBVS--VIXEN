@@ -318,14 +318,33 @@ public:
     }
 
     /**
-     * @brief Execute lifecycle method (abstract - must be implemented)
+     * @brief Execute lifecycle method with automatic task orchestration
      *
-     * Calls ExecuteImpl() for derived class logic.
+     * Automatically handles:
+     * - Analyzes slot configuration to determine task count
+     * - Generates tasks based on SlotScope and array sizes
+     * - Calls ExecuteImpl(taskIndex) for each task
+     * - Node implementations just handle one task's worth of work
      *
-     * Derived classes should override ExecuteImpl(), NOT this method.
+     * Derived classes should override ExecuteImpl(uint32_t taskIndex), NOT this method.
      */
     virtual void Execute(VkCommandBuffer commandBuffer) final {
-        ExecuteImpl();
+        // Analyze slot configuration to determine task generation strategy
+        uint32_t taskCount = DetermineTaskCount();
+
+        if (taskCount == 0) {
+            // No tasks to execute (e.g., no inputs connected)
+            return;
+        }
+
+        // Execute each task
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            currentTaskIndex = taskIndex;
+            ExecuteImpl(taskIndex);
+        }
+
+        // Reset task index after execution
+        currentTaskIndex = 0;
     }
 
     /**
@@ -373,16 +392,26 @@ protected:
     virtual void CompileImpl() {}
 
     /**
-     * @brief Execute implementation for derived classes
+     * @brief Execute implementation for derived classes (task-aware)
      *
-     * Override this to implement execution logic (recording commands, updating state, etc.).
-     * Called automatically by Execute().
+     * Override this to implement execution logic for ONE task's worth of work.
+     * Called automatically by Execute() for each generated task.
+     *
+     * @param taskIndex The index of the current task being executed (0-based)
      *
      * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
      *
+     * Phase F: Execute() automatically determines task count based on slot configuration.
+     * Node implementations just handle one task. Use In()/Out() normally - they are
+     * context-aware of currentTaskIndex.
+     *
+     * For most nodes with NodeLevel slots, taskIndex will always be 0 (single task).
+     * For nodes with TaskLevel/ParameterizedInput slots, taskIndex indicates which
+     * element/task to process.
+     *
      * Note: Nodes that need VkCommandBuffer should read it from their input slots.
      */
-    virtual void ExecuteImpl() = 0;
+    virtual void ExecuteImpl(uint32_t taskIndex) = 0;
 
     /**
      * @brief Cleanup implementation for derived classes
@@ -443,6 +472,17 @@ protected:
         ResourceBudgetManager* budgetManager = nullptr,
         bool forceSequential = false
     );
+
+    /**
+     * @brief Determine task count based on slot configuration
+     *
+     * Analyzes all input slots to determine how many tasks should be generated:
+     * - NodeLevel only: 1 task (all inputs processed together)
+     * - TaskLevel/ParameterizedInput: N tasks (one per element in parameterized slot)
+     *
+     * @return Number of tasks to execute (0 if no inputs connected)
+     */
+    uint32_t DetermineTaskCount() const;
 
     /**
      * @brief Get ResourceBudgetManager from owning graph
@@ -630,6 +670,9 @@ public:
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
     PerformanceStats performanceStats;
+
+    // Phase F: Current task index for context-aware In()/Out()
+    uint32_t currentTaskIndex = 0;
 
     // Caching
     uint64_t cacheKey = 0;

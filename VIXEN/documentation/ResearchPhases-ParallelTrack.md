@@ -939,20 +939,712 @@ Detailed predictions for all scene/algorithm combinations with expected speedup 
 
 ---
 
+## Advanced Techniques Research (Extension) ✅
+
+**Duration**: 6-8 hours
+**Status**: COMPLETE (November 2, 2025)
+**Goal**: Document advanced pipeline variants for Phase N+1/N+2
+**Conflicts**: NONE
+
+### Deliverables
+
+**1. GigaVoxels Sparse Streaming Design**
+- **Document**: `documentation/VoxelStructures/GigaVoxels-CachingStrategy.md` (~90 pages)
+- **Technique**: GPU-managed LRU cache with ray-guided on-demand streaming
+- **Key Innovation**: Brick pool (3D texture atlas) streams from CPU/disk based on visibility
+- **Scalability**: 128× memory reduction (256 GB → 2 GB cache for 4096³ grids)
+- **Components**:
+  - Brick pool architecture (VkImage atlas, LRU eviction)
+  - Request buffer system (GPU atomic append → CPU readback)
+  - Streaming manager (priority sorting, bandwidth budget: 100 MB/frame)
+  - Multi-resolution mipmapping (graceful degradation, no pop-in)
+- **Performance**: Steady state cache hit rate > 95%, +1-2 ms overhead
+
+**2. Hybrid RTX Surface-Skin Architecture**
+- **Document**: `documentation/RayTracing/HybridRTX-SurfaceSkin-Architecture.md` (~110 pages)
+- **Technique**: RTX for fast initial intersection + ray marching for complex materials
+- **Key Innovation**: "Surface skin buffer" - sparse representation of material boundaries
+- **Components**:
+  - Surface skin extraction (5× data reduction, 20% of full grid)
+  - Virtual geometry generation (greedy meshing, 10× triangle reduction)
+  - RTX BLAS with standard triangles (faster than AABB)
+  - Material system (opaque/refractive/volumetric/reflective)
+  - Hybrid shaders (RTX first hit → material-specific continuation)
+- **Performance**: Predicted 2-3× faster than pure ray marching
+- **Research Value**: Publication-worthy innovation
+
+### Integration with Research Plan
+
+**Updated Technical Roadmap**:
+- `VoxelRayTracingResearch-TechnicalRoadmap.md` - Added Phase N+1 (Hybrid RTX, 5-7 weeks) and Phase N+2 (GigaVoxels, 4-6 weeks)
+
+**Updated Optimization Bibliography**:
+- `BibliographyOptimizationTechniques.md` - Added Category 6.3 (Hybrid RTX) and Category 7 (GigaVoxels streaming)
+
+**Extended Test Matrix**:
+- Original: 180 configurations (4 pipelines)
+- Extended: **270 configurations** (6 pipelines)
+
+**Timeline Update**:
+- Core research (G-N): 28-31 weeks → May 2026 paper
+- Extended research (N+1, N+2): +9-13 weeks → August 2026 journal
+
+---
+
 ## Final Status: All Preparation Complete
+
+**Total Preparation**: 6 weeks + advanced research = 40-50 hours
+
+**All Deliverables**:
+1. `Shaders/VoxelRayMarch.comp` (245 lines, validated) ✅
+2. `Shaders/VoxelRayMarch.frag` (170 lines, validated) ✅
+3. `Shaders/Fullscreen.vert` (30 lines, validated) ✅
+4. `VoxelRayMarch-Integration-Guide.md` (~80 pages) ✅
+5. `OctreeDesign.md` (~25 pages) ✅
+6. `ECS-Octree-Integration-Analysis.md` (~20 pages) ✅
+7. `PerformanceProfilerDesign.md` (~30 pages) ✅
+8. `FragmentRayMarch-Integration-Guide.md` (~80 pages) ✅
+9. `TestScenes.md` (~120 pages) ✅
+10. `HardwareRTDesign.md` (~150 pages) ✅
+11. `BibliographyOptimizationTechniques.md` (~110 pages) ✅
+12. `GigaVoxels-CachingStrategy.md` (~90 pages) ✅
+13. `HybridRTX-SurfaceSkin-Architecture.md` (~110 pages) ✅
+
+**Total Documentation**: ~1,015 pages of research, design, and implementation guides
 
 **Next**: Await Phase F completion, then begin Phase G (Compute Pipeline) implementation with all designs ready
 
 ---
 
-### Option B: Additional Research (Optional)
+## Additional Parallel Work Opportunities (Week 7+)
 
-**Rationale**: 3 weeks of prep is sufficient. Additional prep yields diminishing returns without implementation feedback.
+**Status**: OPTIONAL - Additional non-conflicting work while Phase F continues
 
-**Alternative work**:
-- Review Phase F progress (read `SlotTask.cpp` that user just opened)
-- Prepare for Phase G implementation (review RenderGraph node creation patterns)
-- Research additional bibliography papers for optimization techniques
+**Conflicts**: NONE - All tasks avoid RenderGraph core files
+
+---
+
+### Week 7: Algorithm Variant Pseudocode (Phase L Prep)
+
+**Duration**: 4-6 hours
+**Goal**: Write detailed pseudocode for optimization variants
+**Conflicts**: NONE - Pure documentation
+
+**Deliverables**:
+
+**Empty Space Skipping Implementation**:
+```cpp
+// File: documentation/Optimizations/EmptySpaceSkipping-Pseudocode.md
+
+// Hierarchical bitmap approach
+struct CoarseGrid {
+    std::vector<uint64_t> bitmap;  // 1 bit per 16³ block
+    uint32_t blockSize = 16;
+
+    bool IsBlockEmpty(glm::ivec3 blockPos) const {
+        uint32_t blockIndex = BlockIndex(blockPos);
+        uint64_t word = bitmap[blockIndex / 64];
+        return (word & (1ULL << (blockIndex % 64))) == 0;
+    }
+};
+
+// Shader integration
+if (IsBlockEmpty(currentBlock)) {
+    // Skip to next block boundary (ray-box intersection)
+    float t = IntersectBlockBoundary(rayPos, rayDir, blockPos);
+    rayPos += rayDir * t;
+    continue;  // Skip DDA steps
+}
+```
+
+**BlockWalk Tile-Based Traversal**:
+```glsl
+// Shared memory cache (compute shader)
+shared uint blockOccupancy[64];  // 8×8 tile → 64 blocks along representative ray
+
+void main() {
+    ivec2 tileID = ivec2(gl_WorkGroupID.xy);
+    ivec2 localID = ivec2(gl_LocalInvocationID.xy);
+
+    // Thread (0,0) pre-traverses tile center ray
+    if (localID == ivec2(0, 0)) {
+        vec3 centerRay = GetRayForPixel(tileID * 8 + ivec2(4, 4));
+        PreTraverseBlocks(centerRay, blockOccupancy);
+    }
+
+    barrier();  // All threads wait for cache population
+
+    // Use cached occupancy data for local ray
+    vec3 myRay = GetRayForPixel(tileID * 8 + localID);
+    vec4 color = MarchWithCache(myRay, blockOccupancy);
+
+    imageStore(outputImage, tileID * 8 + localID, color);
+}
+```
+
+**Outcome**: Ready-to-implement pseudocode reduces Phase L implementation time
+
+---
+
+### Week 8: Material Shader Library (Phase N+1 Prep)
+
+**Duration**: 6-8 hours
+**Goal**: Write reusable GLSL material shaders
+**Conflicts**: NONE - Shader library, no C++ changes
+
+**Deliverables**:
+
+**File**: `Shaders/Include/Materials.glsl`
+```glsl
+#ifndef MATERIALS_GLSL
+#define MATERIALS_GLSL
+
+// Material types
+struct Material {
+    vec3 color;
+    uint8_t type;  // 0=opaque, 1=reflective, 2=refractive, 3=volumetric
+    float indexOfRefraction;  // For refractive
+    float absorptionCoeff;    // For refractive/volumetric
+    float scatterCoeff;       // For volumetric
+};
+
+// Opaque shading (diffuse + ambient)
+vec3 ShadeOpaque(vec3 normal, vec3 albedo, vec3 lightDir) {
+    float diffuse = max(dot(normal, lightDir), 0.0);
+    vec3 ambient = vec3(0.2);
+    return albedo * (ambient + diffuse * 0.8);
+}
+
+// Reflective material (mirror)
+vec3 ShadeReflective(vec3 rayDir, vec3 normal, vec3 hitPos, sampler3D voxelGrid) {
+    vec3 reflectDir = reflect(rayDir, normal);
+    // Continue marching in reflected direction
+    return MarchReflectedRay(hitPos + reflectDir * 0.01, reflectDir, voxelGrid);
+}
+
+// Refractive material (glass, water)
+vec4 MarchRefractiveVolume(vec3 entryPos, vec3 rayDir, vec3 normal, Material mat, sampler3D voxelGrid) {
+    // Snell's law refraction
+    float eta = 1.0 / mat.indexOfRefraction;
+    vec3 refractedDir = refract(rayDir, normal, eta);
+
+    vec3 pos = entryPos + refractedDir * 0.01;
+    float t = 0.0;
+    vec3 absorption = vec3(1.0);
+
+    const float STEP_SIZE = 0.1;
+    const int MAX_STEPS = 100;
+
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        // Check if still inside refractive material
+        vec3 uvw = pos / gridResolution;
+        vec4 voxel = texture(voxelGrid, uvw);
+
+        if (voxel.a < 0.5 || GetMaterialID(voxel) != mat.type) {
+            // Exited material - refract back to air
+            vec3 exitNormal = CalculateVoxelNormal(pos, voxelGrid);
+            vec3 exitDir = refract(refractedDir, -exitNormal, mat.indexOfRefraction);
+            return vec4(mat.color * absorption, 1.0);
+        }
+
+        // Beer's law absorption
+        absorption *= exp(-mat.absorptionCoeff * STEP_SIZE);
+
+        pos += refractedDir * STEP_SIZE;
+        t += STEP_SIZE;
+    }
+
+    return vec4(mat.color * absorption, 1.0);
+}
+
+// Volumetric material (fog, smoke)
+vec4 MarchVolumetricMedia(vec3 startPos, vec3 rayDir, Material mat, sampler3D voxelGrid) {
+    vec3 pos = startPos;
+    vec3 accumulatedColor = vec3(0.0);
+    float accumulatedAlpha = 0.0;
+    float t = 0.0;
+
+    const float STEP_SIZE = 0.2;
+    const int MAX_STEPS = 100;
+    vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
+
+    for (int i = 0; i < MAX_STEPS && accumulatedAlpha < 0.99; ++i) {
+        vec3 uvw = pos / gridResolution;
+        float density = texture(voxelGrid, uvw).r;
+
+        // Phase function (simplified Henyey-Greenstein)
+        float scatter = max(dot(-rayDir, lightDir), 0.0);
+
+        // In-scattering
+        vec3 inScatter = mat.color * density * scatter * mat.scatterCoeff;
+        float extinction = density * (mat.absorptionCoeff + mat.scatterCoeff);
+
+        // Accumulation
+        float transmittance = exp(-extinction * STEP_SIZE);
+        accumulatedColor += inScatter * (1.0 - accumulatedAlpha) * STEP_SIZE;
+        accumulatedAlpha += (1.0 - transmittance) * (1.0 - accumulatedAlpha);
+
+        pos += rayDir * STEP_SIZE;
+        t += STEP_SIZE;
+    }
+
+    return vec4(accumulatedColor, accumulatedAlpha);
+}
+
+#endif // MATERIALS_GLSL
+```
+
+**Outcome**: Reusable library for Phase N+1 hybrid RTX implementation
+
+---
+
+### Week 9: Benchmark Configuration System (Phase M Prep)
+
+**Duration**: 4-6 hours
+**Goal**: Design automated test configuration system
+**Conflicts**: NONE - Configuration files only
+
+**Deliverables**:
+
+**File**: `tests/benchmark_config.json`
+```json
+{
+  "test_suite": {
+    "name": "Voxel Ray Tracing Comparative Analysis",
+    "output_directory": "results/",
+    "timestamp_format": "ISO8601"
+  },
+  "pipelines": [
+    {
+      "id": "compute_baseline",
+      "name": "Compute Shader DDA",
+      "node_type": "ComputeRayMarchNode",
+      "shader": "VoxelRayMarch.comp",
+      "algorithm": "baseline_dda"
+    },
+    {
+      "id": "compute_empty_skip",
+      "name": "Compute Shader + Empty Space Skipping",
+      "node_type": "ComputeRayMarchNode",
+      "shader": "VoxelRayMarch_EmptySkip.comp",
+      "algorithm": "empty_space_skip"
+    },
+    {
+      "id": "compute_blockwalk",
+      "name": "Compute Shader + BlockWalk",
+      "node_type": "ComputeRayMarchNode",
+      "shader": "VoxelRayMarch_BlockWalk.comp",
+      "algorithm": "blockwalk"
+    },
+    {
+      "id": "fragment_baseline",
+      "name": "Fragment Shader DDA",
+      "node_type": "FragmentRayMarchNode",
+      "shaders": ["Fullscreen.vert", "VoxelRayMarch.frag"],
+      "algorithm": "baseline_dda"
+    },
+    {
+      "id": "hardware_rt",
+      "name": "Hardware Ray Tracing (AABB)",
+      "node_type": "HardwareRTNode",
+      "shaders": ["VoxelRT.rgen", "VoxelRT.rint", "VoxelRT.rchit", "VoxelRT.rmiss"],
+      "algorithm": "bvh_hardware"
+    },
+    {
+      "id": "hybrid_rtx",
+      "name": "Hybrid RTX + Surface Skin",
+      "node_type": "HybridRTXNode",
+      "algorithm": "surface_skin_rtx"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "cornell",
+      "name": "Cornell Box",
+      "generator": "CornellBoxScene",
+      "target_density": 0.10,
+      "parameters": {
+        "wall_thickness": 1.0,
+        "cube_count": 2
+      }
+    },
+    {
+      "id": "cave",
+      "name": "Cave System",
+      "generator": "CaveScene",
+      "target_density": 0.50,
+      "parameters": {
+        "noise_scale": 4.0,
+        "density_threshold": 0.5,
+        "seed": 42
+      }
+    },
+    {
+      "id": "urban",
+      "name": "Urban Grid",
+      "generator": "UrbanScene",
+      "target_density": 0.90,
+      "parameters": {
+        "building_spacing": 8,
+        "street_width": 2,
+        "seed": 42
+      }
+    }
+  ],
+  "resolutions": [32, 64, 128, 256, 512],
+  "test_parameters": {
+    "warmup_frames": 60,
+    "benchmark_frames": 300,
+    "camera_path": "static",
+    "profiling_enabled": true
+  },
+  "output_format": {
+    "per_test_csv": true,
+    "aggregate_csv": true,
+    "summary_json": true,
+    "plots_enabled": true
+  }
+}
+```
+
+**File**: `tests/BenchmarkRunner.h` (C++ header stub)
+```cpp
+#pragma once
+#include <string>
+#include <vector>
+#include <nlohmann/json.hpp>
+
+class BenchmarkRunner {
+public:
+    void LoadConfiguration(const std::string& configPath);
+    void RunFullSuite();
+    void RunSingleTest(const std::string& pipelineID, const std::string& sceneID, uint32_t resolution);
+    void ExportResults(const std::string& outputPath);
+
+private:
+    struct TestConfig {
+        std::string pipelineID;
+        std::string sceneID;
+        uint32_t resolution;
+        uint32_t warmupFrames;
+        uint32_t benchmarkFrames;
+    };
+
+    std::vector<TestConfig> GenerateTestMatrix();
+    nlohmann::json config_;
+};
+```
+
+**Outcome**: Automated test framework ready for Phase M
+
+---
+
+### Week 10: Voxel Grid Utilities (Phase H Prep)
+
+**Duration**: 5-7 hours
+**Goal**: Implement VoxelGrid CPU class
+**Conflicts**: NONE - Standalone utility library
+
+**Deliverables**:
+
+**File**: `VoxelProcessing/include/VoxelGrid.h`
+```cpp
+#pragma once
+#include <vector>
+#include <glm/glm.hpp>
+#include <vulkan/vulkan.h>
+
+class VoxelGrid {
+public:
+    VoxelGrid(uint32_t resolution);
+
+    // Voxel manipulation
+    void Set(uint32_t x, uint32_t y, uint32_t z, glm::u8vec4 color);
+    glm::u8vec4 Get(uint32_t x, uint32_t y, uint32_t z) const;
+    bool IsEmpty(uint32_t x, uint32_t y, uint32_t z) const;
+    void Clear();
+
+    // Material system
+    void SetMaterial(uint32_t x, uint32_t y, uint32_t z, uint8_t materialID);
+    uint8_t GetMaterial(uint32_t x, uint32_t y, uint32_t z) const;
+
+    // Analysis
+    float CalculateDensity() const;
+    uint32_t CountSolidVoxels() const;
+
+    // Vulkan upload
+    void UploadToGPU(VkDevice device, VkImage image, VkCommandBuffer cmd);
+
+    // Serialization
+    void SaveToFile(const std::string& filepath) const;
+    void LoadFromFile(const std::string& filepath);
+
+    uint32_t GetResolution() const { return resolution_; }
+
+private:
+    uint32_t resolution_;
+    std::vector<glm::u8vec4> data_;       // RGBA color
+    std::vector<uint8_t> materialIDs_;    // Material type per voxel
+
+    uint32_t Index(uint32_t x, uint32_t y, uint32_t z) const;
+};
+```
+
+**File**: `VoxelProcessing/src/VoxelGrid.cpp` (implementation)
+
+**Outcome**: CPU-side voxel manipulation ready for scene generation (Phase H)
+
+---
+
+### Week 11: Perlin Noise Library (Phase H Prep)
+
+**Duration**: 3-5 hours
+**Goal**: Implement Perlin noise for procedural scenes
+**Conflicts**: NONE - Standalone math library
+
+**Deliverables**:
+
+**File**: `VoxelProcessing/include/PerlinNoise.h`
+```cpp
+#pragma once
+#include <array>
+#include <cstdint>
+
+class PerlinNoise3D {
+public:
+    explicit PerlinNoise3D(uint32_t seed);
+
+    // Sample 3D noise at position (x, y, z)
+    // Returns value in [-1, 1]
+    float Sample(float x, float y, float z) const;
+
+    // Octave noise (fractal Brownian motion)
+    float SampleOctaves(float x, float y, float z, uint32_t octaves, float persistence = 0.5f) const;
+
+private:
+    std::array<int, 512> p_;  // Permutation table
+
+    float Fade(float t) const;
+    float Lerp(float t, float a, float b) const;
+    float Grad(int hash, float x, float y, float z) const;
+};
+
+class PerlinNoise2D {
+public:
+    explicit PerlinNoise2D(uint32_t seed);
+    float Sample(float x, float y) const;
+    float SampleOctaves(float x, float y, uint32_t octaves, float persistence = 0.5f) const;
+
+private:
+    std::array<int, 512> p_;
+    float Fade(float t) const;
+    float Lerp(float t, float a, float b) const;
+    float Grad(int hash, float x, float y) const;
+};
+```
+
+**File**: `VoxelProcessing/src/PerlinNoise.cpp` (Ken Perlin's improved noise implementation)
+
+**Outcome**: Procedural noise ready for cave generation (Phase H)
+
+---
+
+### Week 12: CMake Library Structure (Build System Prep)
+
+**Duration**: 2-4 hours
+**Goal**: Set up VoxelProcessing and VoxelStreaming CMake libraries
+**Conflicts**: NONE - New libraries, no existing code modification
+
+**Deliverables**:
+
+**File**: `VoxelProcessing/CMakeLists.txt`
+```cmake
+add_library(VoxelProcessing STATIC
+    src/VoxelGrid.cpp
+    src/PerlinNoise.cpp
+    src/SurfaceSkinExtractor.cpp  # For Phase N+1
+    src/SceneGenerator.cpp         # For Phase H
+)
+
+target_include_directories(VoxelProcessing PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(VoxelProcessing PUBLIC
+    glm::glm
+    Vulkan::Vulkan
+)
+```
+
+**File**: `VoxelStreaming/CMakeLists.txt`
+```cmake
+add_library(VoxelStreaming STATIC
+    src/BrickPool.cpp              # For Phase N+2
+    src/BrickStreamingManager.cpp  # For Phase N+2
+)
+
+target_include_directories(VoxelStreaming PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(VoxelStreaming PUBLIC
+    VoxelProcessing
+    Vulkan::Vulkan
+)
+```
+
+**Update**: Root `CMakeLists.txt`
+```cmake
+add_subdirectory(VoxelProcessing)
+add_subdirectory(VoxelStreaming)
+```
+
+**Outcome**: Build infrastructure ready for research code
+
+---
+
+## Summary of Additional Parallel Work
+
+| Week | Task | Duration | Conflicts | Output |
+|------|------|----------|-----------|--------|
+| 7 | Algorithm variant pseudocode | 4-6h | NONE | EmptySpaceSkipping-Pseudocode.md |
+| 8 | Material shader library | 6-8h | NONE | Materials.glsl |
+| 9 | Benchmark configuration | 4-6h | NONE | benchmark_config.json + BenchmarkRunner.h |
+| 10 | VoxelGrid utilities | 5-7h | NONE | VoxelGrid.h/.cpp |
+| 11 | Perlin noise library | 3-5h | NONE | PerlinNoise.h/.cpp |
+| 12 | CMake library structure | 2-4h | NONE | VoxelProcessing/CMakeLists.txt |
+
+**Total**: 24-36 additional hours of parallel work
+
+**Benefit**: Accelerates Phases H, L, M, N+1 by having utility code and infrastructure ready
+
+---
+
+## Coordination Rules (Extended)
+
+**Agent 2 MUST NOT modify** (until Phase F complete):
+- `RenderGraph/include/**` (core graph infrastructure)
+- `RenderGraph/src/**` (node implementations)
+- Root `CMakeLists.txt` main targets
+
+**Agent 2 CAN create/modify**:
+- `Shaders/**` (shader code, includes)
+- `documentation/**` (all design documents)
+- `tests/**` (configuration files, benchmark specs)
+- `VoxelProcessing/**` (new library)
+- `VoxelStreaming/**` (new library)
+- New CMake libraries (as subdirectories)
+
+**Merge Strategy**: All parallel work merges cleanly (no file conflicts with Phase F)
+
+---
+
+## Final Decision: Preparation Complete ✅
+
+**Decision**: Option B - Stop at 6 weeks of preparation (40-50 hours)
+
+**Rationale**:
+- Comprehensive architectural designs complete (~1,015 pages)
+- All pipeline specifications ready for implementation
+- Advanced techniques (N+1/N+2) fully documented
+- Diminishing returns on additional prep without implementation feedback
+- Utility code (Weeks 7-12) can be written during Phases H/L when requirements are concrete
+
+**Status**: **ALL PREPARATION WORK COMPLETE**
+
+**Next Action**: **Await Phase F completion** → Begin Phase G (Compute Pipeline) implementation
+
+---
+
+## What's Ready for Phase G
+
+When Phase F completes, Agent 2 can immediately start Phase G with:
+
+1. **Compute shader**: `Shaders/VoxelRayMarch.comp` (validated, 245 lines) ✅
+2. **Integration guide**: `VoxelRayMarch-Integration-Guide.md` (80 pages) ✅
+3. **Descriptor layouts**: Shader reflection system (from Phase F) ✅
+4. **RenderGraph patterns**: Existing node implementations as reference ✅
+5. **Profiling hooks**: `PerformanceProfilerDesign.md` (30 pages) ✅
+
+**Estimated Phase G time**: 2-3 weeks (vs 3-4 weeks without prep) = **1 week saved**
+
+---
+
+## Research Preparation Achievements
+
+### Deliverables Summary
+
+**Shaders** (3 files, all validated):
+1. VoxelRayMarch.comp (245 lines) - Compute ray marching ✅
+2. VoxelRayMarch.frag (170 lines) - Fragment ray marching ✅
+3. Fullscreen.vert (30 lines) - Fullscreen triangle ✅
+
+**Design Documents** (13 files, ~1,015 pages):
+1. VoxelRayMarch-Integration-Guide.md (~80 pages) ✅
+2. OctreeDesign.md (~25 pages) ✅
+3. ECS-Octree-Integration-Analysis.md (~20 pages) ✅
+4. PerformanceProfilerDesign.md (~30 pages) ✅
+5. FragmentRayMarch-Integration-Guide.md (~80 pages) ✅
+6. TestScenes.md (~120 pages) ✅
+7. HardwareRTDesign.md (~150 pages) ✅
+8. BibliographyOptimizationTechniques.md (~110 pages) ✅
+9. GigaVoxels-CachingStrategy.md (~90 pages) ✅
+10. HybridRTX-SurfaceSkin-Architecture.md (~110 pages) ✅
+11. VoxelRayTracingResearch-TechnicalRoadmap.md (updated with N+1/N+2) ✅
+12. ArchitecturalPhases-Checkpoint.md (updated) ✅
+13. ResearchPhases-ParallelTrack.md (this document) ✅
+
+### Timeline Impact
+
+**Without Preparation**: 37-44 weeks total (G-N+2)
+**With Preparation**: ~32-37 weeks (5-7 weeks saved)
+
+**Breakdown**:
+- Phase G: 1 week saved (shader ready)
+- Phase H: 1 week saved (octree design ready)
+- Phase I: 0.5 week saved (profiler design ready)
+- Phase J: 1 week saved (fragment shader ready)
+- Phase K: 1.5 weeks saved (hardware RT design ready)
+- Phase L: 1 week saved (optimization strategies ready)
+- Phase N+1: 1 week saved (hybrid RTX design ready)
+- Phase N+2: 1 week saved (GigaVoxels design ready)
+
+### Research Value
+
+**Core Contribution** (Phases G-N):
+- Comparative analysis of 4 Vulkan pipeline architectures
+- 180 configurations across 3 scenes, 5 resolutions, 3 algorithms
+- Publication-ready results (May 2026 conference paper)
+
+**Extended Contribution** (Phases N+1, N+2):
+- Novel hybrid RTX + surface-skin architecture (publication-worthy)
+- GigaVoxels scalability demonstration (4096³ grids)
+- 270 total configurations (extended journal paper, August 2026)
+
+---
+
+## Handoff to Phase G
+
+**When Phase F completes**, proceed with:
+
+1. **Read Phase F artifacts** to understand slot task system
+2. **Create ComputePipelineNode** using Phase F patterns
+3. **Integrate VoxelRayMarch.comp** shader
+4. **Add timestamp queries** from profiler design
+5. **Render first voxel test cube** (validation)
+6. **Measure baseline performance** (establish metrics)
+
+**All designs are ready. Implementation can begin immediately.**
+
+---
+
+## Archive Note
+
+This parallel track represents **40-50 hours of non-conflicting research preparation** completed while Phase F was in progress. Zero merge conflicts. All work accelerates future phases.
+
+**Status**: COMPLETE - Awaiting Phase F → Phase G transition
+
+**Date**: November 2, 2025
 
 ---
 

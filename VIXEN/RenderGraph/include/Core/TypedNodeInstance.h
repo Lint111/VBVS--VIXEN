@@ -191,14 +191,15 @@ public:
     template<typename SlotType>
     typename SlotType::Type In(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        uint32_t arrayIndex = static_cast<uint32_t>(GetActiveBundleIndex());
+        // Phase F: Use currentTaskIndex for context-aware slot access
+        uint32_t arrayIndex = static_cast<uint32_t>(currentTaskIndex);
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
         // If caller requested Dependency semantics (bitwise), mark used-in-compile
         if ((static_cast<uint8_t>(roles) & static_cast<uint8_t>(NodeInstance::SlotRole::Dependency)) != 0) {
             NodeInstance::MarkInputUsedInCompile(SlotType::index);
         }
         if (!res) return typename SlotType::Type{};  // Return null handle
-        
+
         // Automatic type extraction from variant using slot's type info!
         return res->GetHandle<typename SlotType::Type>();
     }
@@ -351,7 +352,8 @@ public:
     template<typename SlotType>
     void Out(SlotType slot, typename SlotType::Type value) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        size_t arrayIndex = GetActiveBundleIndex();
+        // Phase F: Use currentTaskIndex for context-aware slot access
+        size_t arrayIndex = currentTaskIndex;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
         res->SetHandle<typename SlotType::Type>(value);

@@ -248,7 +248,7 @@ void SwapChainNode::CompileImpl() {
     }
 }
 
-void SwapChainNode::ExecuteImpl() {
+void SwapChainNode::ExecuteImpl(uint32_t taskIndex) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const VkSemaphore* imageAvailableSemaphores = In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     const VkSemaphore* renderCompleteSemaphores = In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);

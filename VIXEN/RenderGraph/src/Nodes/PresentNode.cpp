@@ -71,9 +71,7 @@ void PresentNode::CompileImpl() {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::ExecuteImpl() {
-    // Call Present() during graph execution
-    // Swapchain and imageIndex must be set before this is called
+void PresentNode::ExecuteImpl(uint32_t taskIndex) {
     Present();
 }
 

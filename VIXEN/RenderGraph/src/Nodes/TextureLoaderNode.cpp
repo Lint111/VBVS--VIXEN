@@ -168,7 +168,7 @@ void TextureLoaderNode::CompileImpl() {
     Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void TextureLoaderNode::ExecuteImpl() {
+void TextureLoaderNode::ExecuteImpl(uint32_t taskIndex) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     

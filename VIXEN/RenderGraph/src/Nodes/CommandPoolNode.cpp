@@ -94,7 +94,7 @@ void CommandPoolNode::CompileImpl() {
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }
 
-void CommandPoolNode::ExecuteImpl() {
+void CommandPoolNode::ExecuteImpl(uint32_t taskIndex) {
     // Command pool creation happens in Compile phase
     // Execute is a no-op
 }

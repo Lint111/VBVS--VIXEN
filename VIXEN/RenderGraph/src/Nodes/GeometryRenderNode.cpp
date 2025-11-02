@@ -123,107 +123,98 @@ void GeometryRenderNode::CompileImpl() {
     // No need to create per-swapchain-image semaphores anymore
 }
 
-void GeometryRenderNode::ExecuteImpl() {
-    // Phase F: Single-task execution using unified ExecuteTasks API
-    // All inputs treated as one slot bundle (NodeLevel scope)
-    auto executeTask = [this](SlotTaskContext& ctx) -> bool {
-        // Get current image index from SwapChainNode
-        uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
+void GeometryRenderNode::ExecuteImpl(uint32_t taskIndex) {
+    // Get current image index from SwapChainNode
+    uint32_t imageIndex = In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
-        // Phase 0.5: Get current frame-in-flight index from FrameSyncNode
-        uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
+    // Phase 0.5: Get current frame-in-flight index from FrameSyncNode
+    uint32_t currentFrameIndex = In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
 
-        // Phase 0.5: Get semaphore arrays from FrameSyncNode
-        const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-        const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
-        VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
+    // Phase 0.5: Get semaphore arrays from FrameSyncNode
+    const VkSemaphore* imageAvailableSemaphores = In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    VkFence inFlightFence = In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
-        // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
-        // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
-        //
-        // - imageAvailable: Indexed by FRAME index (per-flight) - tracks CPU-GPU pacing
-        // - renderComplete: Indexed by IMAGE index (per-image) - tracks presentation engine usage
-        //
-        // This prevents "semaphore still in use by swapchain" errors because each image
-        // gets its own renderComplete semaphore that won't be reused until that specific
-        // image is acquired again.
-        VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
-        VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+    // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+    //
+    // - imageAvailable: Indexed by FRAME index (per-flight) - tracks CPU-GPU pacing
+    // - renderComplete: Indexed by IMAGE index (per-image) - tracks presentation engine usage
+    //
+    // This prevents "semaphore still in use by swapchain" errors because each image
+    // gets its own renderComplete semaphore that won't be reused until that specific
+    // image is acquired again.
+    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
 
-        static int logCounter = 0;
-        if (logCounter++ < 20) {
-            NODE_LOG_INFO("Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex) +
-                          ": using imageAvailable[" + std::to_string(currentFrameIndex) + "], renderComplete[" + std::to_string(imageIndex) + "]");
-        }
+    static int logCounter = 0;
+    if (logCounter++ < 20) {
+        NODE_LOG_INFO("Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex) +
+                      ": using imageAvailable[" + std::to_string(currentFrameIndex) + "], renderComplete[" + std::to_string(imageIndex) + "]");
+    }
 
-        // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
-        vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+    // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
+    vkResetFences(vulkanDevice->device, 1, &inFlightFence);
 
-        // Guard against invalid image index (swapchain out of date)
-        if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
-            NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
-            return false;
-        }
+    // Guard against invalid image index (swapchain out of date)
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("GeometryRenderNode: Invalid image index - skipping frame");
+        return;
+    }
 
-        // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
-        VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
-        VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE);
-        VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-        std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
-        VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
+    // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
+    VkRenderPass currentRenderPass = In(GeometryRenderNodeConfig::RENDER_PASS);
+    VkPipeline currentPipeline = In(GeometryRenderNodeConfig::PIPELINE);
+    VkBuffer currentVertexBuffer = In(GeometryRenderNodeConfig::VERTEX_BUFFER);
+    std::vector<VkDescriptorSet> descriptorSets = In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+    VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
 
-        if (currentRenderPass != lastRenderPass ||
-            currentPipeline != lastPipeline ||
-            currentVertexBuffer != lastVertexBuffer ||
-            currentDescriptorSet != lastDescriptorSet) {
-            // Inputs changed - mark all command buffers dirty
-            commandBuffers.MarkAllDirty();
+    if (currentRenderPass != lastRenderPass ||
+        currentPipeline != lastPipeline ||
+        currentVertexBuffer != lastVertexBuffer ||
+        currentDescriptorSet != lastDescriptorSet) {
+        // Inputs changed - mark all command buffers dirty
+        commandBuffers.MarkAllDirty();
 
-            lastRenderPass = currentRenderPass;
-            lastPipeline = currentPipeline;
-            lastVertexBuffer = currentVertexBuffer;
-            lastDescriptorSet = currentDescriptorSet;
-        }
+        lastRenderPass = currentRenderPass;
+        lastPipeline = currentPipeline;
+        lastVertexBuffer = currentVertexBuffer;
+        lastDescriptorSet = currentDescriptorSet;
+    }
 
-        // Phase 0.3: Only re-record if dirty
-        VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-        if (commandBuffers.IsDirty(imageIndex)) {
-            RecordDrawCommands(cmdBuffer, imageIndex);
-            commandBuffers.MarkReady(imageIndex);
-        }
+    // Phase 0.3: Only re-record if dirty
+    VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
+    if (commandBuffers.IsDirty(imageIndex)) {
+        RecordDrawCommands(cmdBuffer, imageIndex);
+        commandBuffers.MarkReady(imageIndex);
+    }
 
-        // Submit command buffer to graphics queue
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // Submit command buffer to graphics queue
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        // Wait for image to be available before writing to it
-        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
-        submitInfo.pWaitDstStageMask = &waitStage;
+    // Wait for image to be available before writing to it
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
+    submitInfo.pWaitDstStageMask = &waitStage;
 
-        // Submit command buffer
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmdBuffer;
+    // Submit command buffer
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
 
-        // Phase 0.2: Signal the per-flight render complete semaphore from FrameSyncNode
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
+    // Phase 0.2: Signal the per-flight render complete semaphore from FrameSyncNode
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
-        // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
-        VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
-        }
+    // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
+    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
+    }
 
-        // Output the same render complete semaphore for PresentNode (pass-through)
-        Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
-
-        return true;
-    };
-
-    // Execute as single task (forceSequential since this is rendering work)
-    ExecuteTasks(GeometryRenderNodeConfig::FRAMEBUFFERS_Slot::index, executeTask, nullptr, true);
+    // Output the same render complete semaphore for PresentNode (pass-through)
+    Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
 void GeometryRenderNode::CleanupImpl() {

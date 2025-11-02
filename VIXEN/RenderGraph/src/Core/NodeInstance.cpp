@@ -396,6 +396,18 @@ uint64_t NodeInstance::GetLoopStepCount() const {
 // PHASE F: SLOT TASK SYSTEM IMPLEMENTATION
 // ============================================================================
 
+uint32_t NodeInstance::DetermineTaskCount() const {
+    // For now, simple implementation: default to 1 task for all nodes
+    // In future, this will analyze slot configuration:
+    // - If all slots are NodeLevel: return 1
+    // - If there are TaskLevel/ParameterizedInput slots: return array length
+    // - If there are InstanceLevel slots: return instance count (async parallelism)
+
+    // TODO: Query node type's slot metadata to detect TaskLevel/ParameterizedInput slots
+    // For Phase F, all current nodes use NodeLevel, so return 1
+    return 1;
+}
+
 uint32_t NodeInstance::ExecuteTasks(
     uint32_t slotIndex,
     const SlotTaskFunction& taskFunction,

@@ -156,7 +156,7 @@ void RenderPassNode::CompileImpl() {
     NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
-void RenderPassNode::ExecuteImpl() {
+void RenderPassNode::ExecuteImpl(uint32_t taskIndex) {
     // No-op - render pass is created in Compile phase
 }
 

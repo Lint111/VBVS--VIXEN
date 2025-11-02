@@ -150,7 +150,7 @@ void FrameSyncNode::CompileImpl() {
     NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
-void FrameSyncNode::ExecuteImpl() {
+void FrameSyncNode::ExecuteImpl(uint32_t taskIndex) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
