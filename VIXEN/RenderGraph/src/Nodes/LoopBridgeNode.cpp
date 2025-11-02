@@ -25,10 +25,6 @@ LoopBridgeNode::LoopBridgeNode(
     : TypedNode<LoopBridgeNodeConfig>(instanceName, nodeType) {
 }
 
-LoopBridgeNode::~LoopBridgeNode() {
-    Cleanup();
-}
-
 void LoopBridgeNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 

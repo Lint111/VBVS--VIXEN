@@ -35,13 +35,9 @@ std::unique_ptr<NodeInstance> PresentNodeType::CreateInstance(
 PresentNode::PresentNode(
     const std::string& instanceName,
     NodeType* nodeType
-) 
+)
     : TypedNode<PresentNodeConfig>(instanceName, nodeType)
 {
-}
-
-PresentNode::~PresentNode() {
-    Cleanup();
 }
 
 void PresentNode::SetupImpl(Context& ctx) {

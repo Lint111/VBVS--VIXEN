@@ -45,7 +45,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~LoopBridgeNode();
+    ~LoopBridgeNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

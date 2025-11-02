@@ -50,10 +50,6 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-GraphicsPipelineNode::~GraphicsPipelineNode() {
-    Cleanup();
-}
-
 void GraphicsPipelineNode::SetupImpl(Context& ctx) {
     NODE_LOG_DEBUG("Setup: Reading device input");
 

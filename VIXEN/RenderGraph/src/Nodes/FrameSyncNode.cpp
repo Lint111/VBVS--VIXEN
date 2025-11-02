@@ -43,10 +43,6 @@ FrameSyncNode::FrameSyncNode(
 {
 }
 
-FrameSyncNode::~FrameSyncNode() {
-    Cleanup();
-}
-
 void FrameSyncNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 

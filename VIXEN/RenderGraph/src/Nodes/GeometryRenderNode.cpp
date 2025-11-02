@@ -50,10 +50,6 @@ GeometryRenderNode::GeometryRenderNode(
     clearDepthStencil.depthStencil.stencil = 0;
 }
 
-GeometryRenderNode::~GeometryRenderNode() {
-    Cleanup();
-}
-
 void GeometryRenderNode::SetupImpl(Context& ctx) {
     // Get device and command pool from inputs
     vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);

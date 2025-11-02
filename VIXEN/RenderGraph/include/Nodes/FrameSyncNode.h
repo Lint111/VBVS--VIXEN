@@ -50,7 +50,7 @@ public:
         NodeType* nodeType
     );
 
-    ~FrameSyncNode() override;
+    ~FrameSyncNode() override = default;
 
 protected:
     // Template method pattern - override *Impl() methods

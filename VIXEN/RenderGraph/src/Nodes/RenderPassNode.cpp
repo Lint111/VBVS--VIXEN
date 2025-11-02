@@ -44,10 +44,6 @@ RenderPassNode::RenderPassNode(
 {
 }
 
-RenderPassNode::~RenderPassNode() {
-    Cleanup();
-}
-
 void RenderPassNode::SetupImpl(Context& ctx) {
     VulkanDevicePtr devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 

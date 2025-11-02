@@ -39,7 +39,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~PresentNode();
+    ~PresentNode() override = default;
 
     // Execute presentation (helper called from ExecuteImpl)
     VkResult Present(Context& ctx);

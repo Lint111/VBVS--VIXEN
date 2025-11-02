@@ -48,7 +48,7 @@ public:
         const std::string& instanceName,
         NodeType* nodeType
     );
-    virtual ~GeometryRenderNode();
+    ~GeometryRenderNode() override = default;
 
     // Record draw commands for a specific framebuffer
     void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
