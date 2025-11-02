@@ -6,16 +6,13 @@ namespace Vixen::RenderGraph {
 
 // ====== PresentNodeType ======
 
-PresentNodeType::PresentNodeType(const std::string& typeName) : NodeType(typeName) {
+PresentNodeType::PresentNodeType(const std::string& typeName) : TypedNodeType<PresentNodeConfig>(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
     supportsInstancing = false; // Only one present operation at a time
     maxInstances = 1;
 
-    // Populate schemas from Config
-    PresentNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 512; // Minimal

@@ -8,11 +8,8 @@ namespace Vixen::RenderGraph {
 static constexpr NodeTypeId LOOP_BRIDGE_NODE_TYPE_ID = 110;
 
 LoopBridgeNodeType::LoopBridgeNodeType(const std::string& typeName)
-    : NodeType(typeName) {
-    // Populate schema from config
-    LoopBridgeNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    : TypedNodeType<LoopBridgeNodeConfig>(typeName) {
+    // Schema population now handled by TypedNodeType base class
 }
 
 std::unique_ptr<NodeInstance> LoopBridgeNodeType::CreateInstance(

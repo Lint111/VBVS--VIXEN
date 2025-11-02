@@ -16,16 +16,13 @@ namespace Vixen::RenderGraph {
 
 // ====== GraphicsPipelineNodeType ======
 
-GraphicsPipelineNodeType::GraphicsPipelineNodeType(const std::string& typeName) : NodeType(typeName) {
+GraphicsPipelineNodeType::GraphicsPipelineNodeType(const std::string& typeName) : TypedNodeType<GraphicsPipelineNodeConfig>(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
 
-    // Populate schemas from Config
-    GraphicsPipelineNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 8192; // Pipeline state

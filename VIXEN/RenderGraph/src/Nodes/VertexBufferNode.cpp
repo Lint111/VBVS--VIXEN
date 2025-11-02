@@ -12,17 +12,14 @@ namespace Vixen::RenderGraph {
 
 // ====== VertexBufferNodeType ======
 
-VertexBufferNodeType::VertexBufferNodeType(const std::string& typeName) : NodeType(typeName) {
+VertexBufferNodeType::VertexBufferNodeType(const std::string& typeName) : TypedNodeType<VertexBufferNodeConfig>(typeName) {
     typeId = 103; // Unique ID
     pipelineType = PipelineType::Transfer;
     requiredCapabilities = DeviceCapability::Transfer;
     supportsInstancing = true;
     maxInstances = 0; // Unlimited
 
-    // Initialize config and extract schema
-    VertexBufferNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 1024 * 1024; // ~1MB

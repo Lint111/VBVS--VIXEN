@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 
 // ====== WindowNodeType ======
 
-WindowNodeType::WindowNodeType(const std::string& typeName) : NodeType(typeName) {
+WindowNodeType::WindowNodeType(const std::string& typeName) : TypedNodeType<WindowNodeConfig>(typeName) {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = false;
@@ -21,10 +21,7 @@ WindowNodeType::WindowNodeType(const std::string& typeName) : NodeType(typeName)
     workloadMetrics.estimatedBandwidthCost = 0.0f;
     workloadMetrics.canRunInParallel = false;
 
-    // Populate schema from config
-    WindowNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 }
 
 std::unique_ptr<NodeInstance> WindowNodeType::CreateInstance(const std::string& instanceName) const {

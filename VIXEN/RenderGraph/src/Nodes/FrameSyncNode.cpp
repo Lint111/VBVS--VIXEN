@@ -9,16 +9,13 @@ namespace Vixen::RenderGraph {
 // ====== FrameSyncNodeType ======
 
 FrameSyncNodeType::FrameSyncNodeType(const std::string& typeName)
-    : NodeType(typeName)
+    : TypedNodeType<FrameSyncNodeConfig>(typeName)
 {
     requiredCapabilities = DeviceCapability::None;
     supportsInstancing = false;  // Only one frame sync manager per device
     maxInstances = 1;
 
-    // Populate schemas from Config
-    FrameSyncNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 
     // Workload metrics
     workloadMetrics.estimatedMemoryFootprint = 512;  // Small - just sync primitives

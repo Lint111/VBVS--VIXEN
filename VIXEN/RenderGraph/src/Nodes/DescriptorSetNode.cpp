@@ -20,16 +20,14 @@ namespace Vixen::RenderGraph {
 // ===== NODE TYPE =====
 
 DescriptorSetNodeType::DescriptorSetNodeType(const std::string& typeName)
-    : NodeType(typeName)
+    : TypedNodeType<DescriptorSetNodeConfig>(typeName)
 {
     pipelineType = PipelineType::Graphics;
     requiredCapabilities = DeviceCapability::Graphics;
     supportsInstancing = true;
     maxInstances = 0;
 
-    DescriptorSetNodeConfig config;
-    inputSchema = config.GetInputVector();
-    outputSchema = config.GetOutputVector();
+    // Schema population now handled by TypedNodeType base class
 
     workloadMetrics.estimatedMemoryFootprint = 4096;
     workloadMetrics.estimatedComputeCost = 0.1f;
