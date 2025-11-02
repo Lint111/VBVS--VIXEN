@@ -120,6 +120,49 @@ struct ShaderProgramHandleDescriptor : ResourceDescriptorBase {
     }
 };
 
+/**
+ * @brief Storage image descriptor (for compute shader output)
+ * Phase G.2: Compute shader writes to storage images
+ */
+struct StorageImageDescriptor : ResourceDescriptorBase {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkImageLayout finalLayout = VK_IMAGE_LAYOUT_GENERAL;  // Required for storage images
+
+    bool Validate() const override {
+        return width > 0 && height > 0 && format != VK_FORMAT_UNDEFINED;
+    }
+
+    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
+        return std::make_unique<StorageImageDescriptor>(*this);
+    }
+};
+
+/**
+ * @brief 3D texture descriptor (for voxel data)
+ * Phase G.2: Compute shader samples from 3D textures
+ */
+struct Texture3DDescriptor : ResourceDescriptorBase {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t depth = 0;
+    uint32_t mipLevels = 1;
+    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+
+    bool Validate() const override {
+        return width > 0 && height > 0 && depth > 0 && format != VK_FORMAT_UNDEFINED;
+    }
+
+    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
+        return std::make_unique<Texture3DDescriptor>(*this);
+    }
+};
+
 
 // ============================================================================
 // DESCRIPTOR VARIANT TYPE
@@ -128,7 +171,7 @@ struct ShaderProgramHandleDescriptor : ResourceDescriptorBase {
 /**
  * @brief Variant type holding all possible resource descriptors
  * Auto-generated from unique descriptors in RESOURCE_TYPE_REGISTRY
- * 
+ *
  * Note: We list each descriptor type once, even if multiple handle types use it
  */
 using ResourceDescriptorVariant = std::variant<
@@ -137,7 +180,9 @@ using ResourceDescriptorVariant = std::variant<
     BufferDescriptor,
     HandleDescriptor,
     CommandPoolDescriptor,
-    ShaderProgramHandleDescriptor
+    ShaderProgramHandleDescriptor,
+    StorageImageDescriptor,  // Phase G.2: Compute shader storage images
+    Texture3DDescriptor      // Phase G.2: 3D voxel textures
 >;
 
 
