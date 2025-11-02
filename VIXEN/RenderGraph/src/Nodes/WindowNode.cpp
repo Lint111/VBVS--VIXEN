@@ -169,6 +169,9 @@ void WindowNode::CompileImpl(Context& ctx) {
 }
 
 void WindowNode::ExecuteImpl(Context& ctx) {
+    // Phase F: Store slot index for use in message handlers
+    slotIndex = ctx.taskIndex;
+
     // Process Windows messages
 #ifdef _WIN32
     MSG msg;
@@ -238,10 +241,11 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 windowNode->width = actualWidth;
                 windowNode->height = actualHeight;
 
-                // Update outputs with actual dimensions
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling ctx.Out() with: " << actualWidth << "x" << actualHeight << std::endl;
-                windowNode->ctx.Out(WindowNodeConfig::WIDTH_OUT, actualWidth);
-                windowNode->ctx.Out(WindowNodeConfig::HEIGHT_OUT, actualHeight);
+                // Update outputs with actual dimensions (use window's slot index)
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling SetOutput() with: " << actualWidth << "x" << actualHeight
+                          << " at slot index " << windowNode->slotIndex << std::endl;
+                windowNode->SetOutput(WindowNodeConfig::WIDTH_OUT, windowNode->slotIndex, actualWidth);
+                windowNode->SetOutput(WindowNodeConfig::HEIGHT_OUT, windowNode->slotIndex, actualHeight);
 
                 // Verify outputs were updated
                 uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
@@ -276,12 +280,12 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     windowNode->height = newHeight;
                     windowNode->wasResized = true;
 
-                    // Update outputs with new dimensions so downstream nodes read new values
-                    std::cout << "[WindowNode::WM_SIZE] BEFORE ctx.Out() calls - width=" << newWidth
-                              << ", height=" << newHeight << std::endl;
-                    windowNode->ctx.Out(WindowNodeConfig::WIDTH_OUT, newWidth);
-                    windowNode->ctx.Out(WindowNodeConfig::HEIGHT_OUT, newHeight);
-                    std::cout << "[WindowNode::WM_SIZE] AFTER ctx.Out() calls - verifying..." << std::endl;
+                    // Update outputs with new dimensions so downstream nodes read new values (use window's slot index)
+                    std::cout << "[WindowNode::WM_SIZE] BEFORE SetOutput() calls - width=" << newWidth
+                              << ", height=" << newHeight << " at slot index " << windowNode->slotIndex << std::endl;
+                    windowNode->SetOutput(WindowNodeConfig::WIDTH_OUT, windowNode->slotIndex, newWidth);
+                    windowNode->SetOutput(WindowNodeConfig::HEIGHT_OUT, windowNode->slotIndex, newHeight);
+                    std::cout << "[WindowNode::WM_SIZE] AFTER SetOutput() calls - verifying..." << std::endl;
 
                     // Verify outputs were updated
                     uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);

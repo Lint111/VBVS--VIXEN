@@ -249,6 +249,22 @@ public:
         // Initialize arrays
         inputs.fill(VK_NULL_HANDLE);
         outputs.fill(VK_NULL_HANDLE);
+
+        // Phase F: Automatically register inputs/outputs from ConfigType metadata
+        // This removes boilerplate from NodeType constructors
+        ConfigType config;
+        auto inputDescs = config.GetInputVector();
+        auto outputDescs = config.GetOutputVector();
+
+        // Register all inputs
+        for (const auto& desc : inputDescs) {
+            NodeInstance::RegisterInput(desc);
+        }
+
+        // Register all outputs
+        for (const auto& desc : outputDescs) {
+            NodeInstance::RegisterOutput(desc);
+        }
     }
 
     virtual ~TypedNode() = default;
@@ -433,13 +449,15 @@ public:
      *   VkImage img = In(MyConfig::TEXTURES, 2);  // Get index 2
      */
     template<typename SlotType>
-    typename SlotType::Type In(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
+    typename SlotType::Type In(SlotType slot) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
         // Phase F: Use currentTaskIndex set by Execute() - provides task-local context
         uint32_t arrayIndex = static_cast<uint32_t>(currentTaskIndex);
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
-        // If caller requested Dependency semantics (bitwise), mark used-in-compile
-        if ((static_cast<uint8_t>(roles) & static_cast<uint8_t>(NodeInstance::SlotRole::Dependency)) != 0) {
+
+        // Phase F: Use slot's metadata for dependency tracking (not parameter)
+        // Mark used-in-compile if slot has Dependency role
+        if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
             NodeInstance::MarkInputUsedInCompile(SlotType::index);
         }
         if (!res) return typename SlotType::Type{};  // Return null handle
@@ -577,16 +595,18 @@ public:
      *   if (desc) { use desc->width, desc->height, etc. }
      */
     template<typename SlotType>
-    const auto* InDesc(SlotType slot, NodeInstance::SlotRole roles = NodeInstance::SlotRole::Dependency) const {
+    const auto* InDesc(SlotType slot) const {
         using HandleType = typename SlotType::Type;
         using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
         uint32_t arrayIndex = static_cast<uint32_t>(GetActiveBundleIndex());
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
-        if ((static_cast<uint8_t>(roles) & static_cast<uint8_t>(NodeInstance::SlotRole::Dependency)) != 0) {
+
+        // Phase F: Use slot's metadata for dependency tracking (not parameter)
+        if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
             NodeInstance::MarkInputUsedInCompile(SlotType::index);
         }
         if (!res) return static_cast<const DescriptorType*>(nullptr);
-        
+
         return res->GetDescriptor<DescriptorType>();
     }
 

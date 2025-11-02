@@ -83,6 +83,9 @@ private:
     bool shouldClose = false;
     bool isResizing = false;
     bool wasResized = false;
+
+    // Phase F: Slot index this window corresponds to (for multi-window support)
+    uint32_t slotIndex = 0;
 };
 
 } // namespace Vixen::RenderGraph
