@@ -24,22 +24,6 @@ using namespace Vixen::Vulkan::Resources;
 // DeviceNodeType
 // ============================================================================
 
-DeviceNodeType::DeviceNodeType()
-    : TypedNodeType<DeviceNodeConfig>("Device")
-{
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = false;
-    maxInstances = 1;
-
-    workloadMetrics.estimatedMemoryFootprint = 1024;
-    workloadMetrics.estimatedComputeCost = 0.0f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = false;
-
-    // Schema population now handled by TypedNodeType base class
-}
-
 std::unique_ptr<NodeInstance> DeviceNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

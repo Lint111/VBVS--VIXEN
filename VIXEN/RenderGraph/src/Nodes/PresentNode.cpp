@@ -6,21 +6,6 @@ namespace Vixen::RenderGraph {
 
 // ====== PresentNodeType ======
 
-PresentNodeType::PresentNodeType(const std::string& typeName) : TypedNodeType<PresentNodeConfig>(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
-    supportsInstancing = false; // Only one present operation at a time
-    maxInstances = 1;
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 512; // Minimal
-    workloadMetrics.estimatedComputeCost = 0.1f;
-    workloadMetrics.estimatedBandwidthCost = 0.5f; // Display bandwidth
-    workloadMetrics.canRunInParallel = false; // Presentation is sequential
-}
-
 std::unique_ptr<NodeInstance> PresentNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

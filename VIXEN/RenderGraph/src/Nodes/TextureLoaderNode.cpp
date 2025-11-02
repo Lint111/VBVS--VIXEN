@@ -10,21 +10,6 @@ namespace Vixen::RenderGraph {
 
 // ====== TextureLoaderNodeType ======
 
-TextureLoaderNodeType::TextureLoaderNodeType(const std::string& typeName) : TypedNodeType<TextureLoaderNodeConfig>(typeName) {
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Transfer;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024 * 1024 * 4; // ~4MB for 1K texture
-    workloadMetrics.estimatedComputeCost = 0.5f; // Loading is mostly I/O
-    workloadMetrics.estimatedBandwidthCost = 2.0f; // High bandwidth for upload
-    workloadMetrics.canRunInParallel = true; // Can load multiple textures in parallel
-}
-
 std::unique_ptr<NodeInstance> TextureLoaderNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

@@ -12,23 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== DepthBufferNodeType ======
 
-DepthBufferNodeType::DepthBufferNodeType(const std::string& typeName)
-    : TypedNodeType<DepthBufferNodeConfig>(typeName)
-{
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0;
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1920 * 1080 * 4; // ~8MB for D32
-    workloadMetrics.estimatedComputeCost = 0.1f; // Just allocation
-    workloadMetrics.estimatedBandwidthCost = 0.1f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> DepthBufferNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

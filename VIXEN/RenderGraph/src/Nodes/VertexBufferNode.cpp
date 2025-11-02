@@ -12,22 +12,6 @@ namespace Vixen::RenderGraph {
 
 // ====== VertexBufferNodeType ======
 
-VertexBufferNodeType::VertexBufferNodeType(const std::string& typeName) : TypedNodeType<VertexBufferNodeConfig>(typeName) {
-    typeId = 103; // Unique ID
-    pipelineType = PipelineType::Transfer;
-    requiredCapabilities = DeviceCapability::Transfer;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024 * 1024; // ~1MB
-    workloadMetrics.estimatedComputeCost = 0.3f;
-    workloadMetrics.estimatedBandwidthCost = 1.5f; // Upload cost
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> VertexBufferNodeType::CreateInstance(const std::string& instanceName) const {
     return std::make_unique<VertexBufferNode>(instanceName, const_cast<VertexBufferNodeType*>(this));
 }

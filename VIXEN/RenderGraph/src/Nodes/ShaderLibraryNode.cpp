@@ -14,20 +14,6 @@ namespace Vixen::RenderGraph {
 
 // ====== ShaderLibraryNodeType ======
 
-ShaderLibraryNodeType::ShaderLibraryNodeType(const std::string& typeName) : TypedNodeType<ShaderLibraryNodeConfig>(typeName) {
-    pipelineType = PipelineType::None;
-    requiredCapabilities = DeviceCapability::None;
-    supportsInstancing = false;
-    maxInstances = 1;
-
-    // Schema population now handled by TypedNodeType base class
-
-    workloadMetrics.estimatedMemoryFootprint = 0;
-    workloadMetrics.estimatedComputeCost = 0.0f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = false;
-}
-
 std::unique_ptr<NodeInstance> ShaderLibraryNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

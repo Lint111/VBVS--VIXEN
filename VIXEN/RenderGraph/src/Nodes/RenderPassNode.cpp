@@ -10,21 +10,6 @@ namespace Vixen::RenderGraph {
 
 // ====== RenderPassNodeType ======
 
-RenderPassNodeType::RenderPassNodeType(const std::string& typeName) : TypedNodeType<RenderPassNodeConfig>(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0;
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024; // Minimal
-    workloadMetrics.estimatedComputeCost = 0.05f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> RenderPassNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

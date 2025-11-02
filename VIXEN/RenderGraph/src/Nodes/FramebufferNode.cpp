@@ -9,21 +9,6 @@ namespace Vixen::RenderGraph {
 
 // ====== FramebufferNodeType ======
 
-FramebufferNodeType::FramebufferNodeType(const std::string& typeName) : TypedNodeType<FramebufferNodeConfig>(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 2048; // Minimal metadata
-    workloadMetrics.estimatedComputeCost = 0.1f;
-    workloadMetrics.estimatedBandwidthCost = 0.0f;
-    workloadMetrics.canRunInParallel = true;
-}
-
 std::unique_ptr<NodeInstance> FramebufferNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

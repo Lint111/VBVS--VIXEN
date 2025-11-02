@@ -8,21 +8,6 @@ namespace Vixen::RenderGraph {
 
 // ====== GeometryRenderNodeType ======
 
-GeometryRenderNodeType::GeometryRenderNodeType(const std::string& typeName) : TypedNodeType<GeometryRenderNodeConfig>(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics;
-    supportsInstancing = true;
-    maxInstances = 0; // Unlimited
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 1024; // Command recording
-    workloadMetrics.estimatedComputeCost = 1.0f; // Actual rendering work
-    workloadMetrics.estimatedBandwidthCost = 1.0f;
-    workloadMetrics.canRunInParallel = false; // Command recording is sequential per queue
-}
-
 std::unique_ptr<NodeInstance> GeometryRenderNodeType::CreateInstance(
     const std::string& instanceName
 ) const {

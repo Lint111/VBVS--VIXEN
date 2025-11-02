@@ -10,21 +10,6 @@ namespace Vixen::RenderGraph {
 
 // ====== SwapChainNodeType ======
 
-SwapChainNodeType::SwapChainNodeType(const std::string& typeName) : TypedNodeType<SwapChainNodeConfig>(typeName) {
-    pipelineType = PipelineType::Graphics;
-    requiredCapabilities = DeviceCapability::Graphics; // Uses graphics queue for presentation
-    supportsInstancing = false; // Only one swapchain per render graph
-    maxInstances = 1;
-
-    // Schema population now handled by TypedNodeType base class
-
-    // Workload metrics
-    workloadMetrics.estimatedMemoryFootprint = 32 * 1024 * 1024; // ~32MB for swapchain images
-    workloadMetrics.estimatedComputeCost = 0.2f;
-    workloadMetrics.estimatedBandwidthCost = 0.1f;
-    workloadMetrics.canRunInParallel = false; // Swapchain operations are sequential
-}
-
 std::unique_ptr<NodeInstance> SwapChainNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
