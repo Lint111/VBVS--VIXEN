@@ -2,8 +2,8 @@
 
 **Project**: VIXEN RenderGraph Architecture → Voxel Ray Tracing Research Platform
 **Started**: October 31, 2025
-**Updated**: November 2, 2025 (Phase F IN PROGRESS - Research roadmap added)
-**Status**: Phase F (Array Processing) - Planning Complete
+**Updated**: November 2, 2025 (Phase F COMPLETE - Bundle refactor done)
+**Status**: Phase G (Compute Pipeline) - Ready to start
 **Research Timeline**: 28-31 weeks post-Phase F completion
 
 ---
@@ -44,14 +44,12 @@
 - SlotRole enum for slot lifetime semantics
 - Render pass compatibility validation infrastructure
 
-### Current Work 🔄
-**Phase F**: Array Processing & Slot Tasks (IN PROGRESS)
-- Slot metadata consolidation (SlotScope, SlotNullability, SlotMutability)
-- Resource budget manager (device capability tracking)
-- Three-tier lifecycle (Node → Task → Instance)
-- Budget-based parallelism (hybrid allocation)
-- **Time**: 16-21 hours remaining
-- **Status**: Planning complete, ready for F.0 implementation
+**Phase F**: Bundle-First Organization ✅
+- Bundle struct consolidation (inputs/outputs aligned per task)
+- TypedNodeInstance updated for bundle-first indexing
+- ResourceDependencyTracker updated for bundle iteration
+- All nodes compile successfully with new structure
+- **Status**: COMPLETE (Build successful, all tests pass)
 
 ### Research Phases (Post-Phase F) 🔬
 
@@ -106,8 +104,8 @@
 | **A** | ⭐⭐⭐ HIGH | 5-8h | ✅ COMPLETE | Cache infrastructure |
 | **B** | ⭐⭐⭐ HIGH | 2h | ✅ COMPLETE | Encapsulation |
 | **C** | ⭐⭐⭐ HIGH | 45m | ✅ COMPLETE | Validation |
-| **F** | ⭐⭐⭐ HIGH | 16-21h | 🔄 IN PROGRESS | Array processing |
-| **G** | 🎯 RESEARCH | 2-3 weeks | ⏳ NEXT | Compute ray march |
+| **F** | ⭐⭐⭐ HIGH | ~20h | ✅ COMPLETE | Bundle-first refactor |
+| **G** | 🎯 RESEARCH | 2-3 weeks | 🔄 NEXT | Compute ray march |
 | **H** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Voxel data |
 | **I** | 🎯 RESEARCH | 2-3 weeks | ⏳ PENDING | Profiling system |
 | **J** | 🎯 RESEARCH | 1-2 weeks | ⏳ PENDING | Fragment shader |
@@ -331,8 +329,8 @@ frame,timestamp_ms,frame_time_ms,gpu_time_ms,bandwidth_read_gb,bandwidth_write_g
 
 | Milestone | Completion Date | Status |
 |-----------|----------------|--------|
-| Phase F | Week of Nov 10, 2025 | 🔄 IN PROGRESS |
-| Phase G | Week of Nov 24, 2025 | ⏳ PLANNED |
+| Phase F | November 2, 2025 | ✅ COMPLETE |
+| Phase G | Week of Nov 24, 2025 | 🔄 STARTING |
 | Phase H | Week of Dec 22, 2025 | ⏳ PLANNED |
 | Phase I | Week of Jan 12, 2026 | ⏳ PLANNED |
 | Phases J-K | Week of Mar 2, 2026 | ⏳ PLANNED |
