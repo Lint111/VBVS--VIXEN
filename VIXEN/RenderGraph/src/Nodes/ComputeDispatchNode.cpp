@@ -2,6 +2,7 @@
 #include "Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include <stdexcept>
 #include <iostream>
 #include <chrono>
@@ -43,6 +44,7 @@ void ComputeDispatchNode::SetupImpl(Context& ctx) {
     }
 
     SetDevice(devicePtr);
+    vulkanDevice = devicePtr;
 
 #if VIXEN_DEBUG_BUILD
     // Create specialized performance logger and register to node logger
@@ -58,145 +60,41 @@ void ComputeDispatchNode::SetupImpl(Context& ctx) {
 // ============================================================================
 
 void ComputeDispatchNode::CompileImpl(Context& ctx) {
-    std::cout << "[ComputeDispatchNode::CompileImpl] Recording compute dispatch command buffer" << std::endl;
+    std::cout << "[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers" << std::endl;
 
-    // 1. Get parameters
-    uint32_t dispatchX = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_X, 1);
-    uint32_t dispatchY = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Y, 1);
-    uint32_t dispatchZ = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Z, 1);
-    uint32_t pushConstantSize = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::PUSH_CONSTANT_SIZE, 0);
-    uint32_t descriptorSetCount = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DESCRIPTOR_SET_COUNT, 0);
+    // Get inputs
+    commandPool = In(ComputeDispatchNodeConfig::COMMAND_POOL);
+    SwapChainPublicVariables* swapchainInfo = In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
-    // Validate dispatch dimensions
-    if (!ComputeDispatchNodeConfig::ValidateDispatchDimensions(dispatchX, dispatchY, dispatchZ)) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Invalid dispatch dimensions: " +
-                                 std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ));
+    if (!swapchainInfo) {
+        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] SwapChain info is null");
     }
 
-    std::cout << "[ComputeDispatchNode::CompileImpl] Dispatch dimensions: "
-              << dispatchX << "x" << dispatchY << "x" << dispatchZ << std::endl;
+    uint32_t imageCount = swapchainInfo->swapChainImageCount;
+    std::cout << "[ComputeDispatchNode::CompileImpl] Allocating " << imageCount << " command buffers" << std::endl;
 
-    // 2. Get inputs
-    VulkanDevicePtr devicePtr = In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
-    VkCommandPool commandPool = In(ComputeDispatchNodeConfig::COMMAND_POOL);
-    VkPipeline computePipeline = In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
-    VkPipelineLayout pipelineLayout = In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
+    // Allocate command buffers (one per swapchain image)
+    commandBuffers.resize(imageCount);
 
-    // Optional inputs
-    DescriptorSetVector descriptorSets = In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
-    VkBuffer pushConstantsBuffer = In(ComputeDispatchNodeConfig::PUSH_CONSTANTS);
-
-    // 3. Allocate command buffer
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
+    allocInfo.commandBufferCount = imageCount;
 
-    VkResult result = vkAllocateCommandBuffers(devicePtr->device, &allocInfo, &commandBuffer_);
+    std::vector<VkCommandBuffer> cmdBuffers(imageCount);
+    VkResult result = vkAllocateCommandBuffers(vulkanDevice->device, &allocInfo, cmdBuffers.data());
     if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to allocate command buffer: " + std::to_string(result));
+        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to allocate command buffers: " + std::to_string(result));
     }
 
-    std::cout << "[ComputeDispatchNode::CompileImpl] Allocated command buffer: "
-              << reinterpret_cast<uint64_t>(commandBuffer_) << std::endl;
-
-    // 4. Begin recording
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;  // Can be resubmitted without re-recording
-
-#if VIXEN_DEBUG_BUILD
-    auto recordingStart = std::chrono::high_resolution_clock::now();
-#endif
-
-    result = vkBeginCommandBuffer(commandBuffer_, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to begin command buffer: " + std::to_string(result));
+    // Store command buffers in stateful container
+    for (uint32_t i = 0; i < imageCount; ++i) {
+        commandBuffers[i] = cmdBuffers[i];
+        commandBuffers.MarkDirty(i);  // Initial state: needs recording
     }
 
-    // 5. Bind compute pipeline
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
-    std::cout << "[ComputeDispatchNode::CompileImpl] Bound compute pipeline: "
-              << reinterpret_cast<uint64_t>(computePipeline) << std::endl;
-
-    // 6. Bind descriptor sets (if provided)
-    if (descriptorSetCount > 0 && !descriptorSets.empty()) {
-        if (descriptorSets.size() < descriptorSetCount) {
-            throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Descriptor set count mismatch: expected " +
-                                     std::to_string(descriptorSetCount) + ", got " + std::to_string(descriptorSets.size()));
-        }
-
-        vkCmdBindDescriptorSets(
-            commandBuffer_,
-            VK_PIPELINE_BIND_POINT_COMPUTE,
-            pipelineLayout,
-            0,  // firstSet
-            descriptorSetCount,
-            descriptorSets.data(),
-            0,  // dynamicOffsetCount
-            nullptr  // pDynamicOffsets
-        );
-
-        std::cout << "[ComputeDispatchNode::CompileImpl] Bound " << descriptorSetCount << " descriptor sets" << std::endl;
-
-#if VIXEN_DEBUG_BUILD
-        if (perfLogger_) {
-            perfLogger_->LogDescriptorSets(descriptorSetCount);
-        }
-#endif
-    }
-
-    // 7. Push constants (if provided)
-    if (pushConstantSize > 0 && pushConstantsBuffer != VK_NULL_HANDLE) {
-        // TODO: Map buffer and push constants
-        // For now, assume push constants are provided via mapped buffer
-        // In practice, this might need a different input type (raw bytes)
-        std::cout << "[ComputeDispatchNode::CompileImpl] WARNING: Push constants not yet implemented" << std::endl;
-
-#if VIXEN_DEBUG_BUILD
-        if (perfLogger_) {
-            perfLogger_->LogPushConstants(pushConstantSize);
-        }
-#endif
-    }
-
-    // 8. Dispatch compute shader
-    vkCmdDispatch(commandBuffer_, dispatchX, dispatchY, dispatchZ);
-    std::cout << "[ComputeDispatchNode::CompileImpl] Dispatched compute: "
-              << dispatchX << "x" << dispatchY << "x" << dispatchZ << std::endl;
-
-#if VIXEN_DEBUG_BUILD
-    // Note: Workgroup size comes from shader/pipeline, not dispatch parameters
-    // Use default values for logging (actual values determined by shader)
-    if (perfLogger_) {
-        perfLogger_->LogDispatch(8, 8, 1, dispatchX, dispatchY, dispatchZ);
-    }
-#endif
-
-    // 9. End recording
-    result = vkEndCommandBuffer(commandBuffer_);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Failed to end command buffer: " + std::to_string(result));
-    }
-
-#if VIXEN_DEBUG_BUILD
-    auto recordingEnd = std::chrono::high_resolution_clock::now();
-    float recordingTimeMs = std::chrono::duration<float, std::milli>(recordingEnd - recordingStart).count();
-
-    if (perfLogger_) {
-        perfLogger_->LogCommandBuffer(
-            reinterpret_cast<uint64_t>(commandBuffer_),
-            recordingTimeMs
-        );
-    }
-#endif
-
-    // 10. Set outputs
-    Out(ComputeDispatchNodeConfig::COMMAND_BUFFER, commandBuffer_);
-    Out(ComputeDispatchNodeConfig::VULKAN_DEVICE_OUT, devicePtr);
-
-    std::cout << "[ComputeDispatchNode::CompileImpl] Compute dispatch command buffer recorded successfully" << std::endl;
+    std::cout << "[ComputeDispatchNode::CompileImpl] Allocated " << imageCount << " command buffers successfully" << std::endl;
 }
 
 // ============================================================================
@@ -204,8 +102,185 @@ void ComputeDispatchNode::CompileImpl(Context& ctx) {
 // ============================================================================
 
 void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
-    // No-op: Command buffer submission handled by graph execution system
-    // The recorded command buffer is submitted by downstream nodes or graph orchestration
+    // Get current image index from SwapChainNode
+    uint32_t imageIndex = ctx.In(ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // Get current frame-in-flight index from FrameSyncNode
+    uint32_t currentFrameIndex = ctx.In(ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX);
+
+    // Get semaphore arrays from FrameSyncNode
+    const VkSemaphore* imageAvailableSemaphores = ctx.In(ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const VkSemaphore* renderCompleteSemaphores = ctx.In(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    VkFence inFlightFence = ctx.In(ComputeDispatchNodeConfig::IN_FLIGHT_FENCE);
+
+    // Two-tier indexing: imageAvailable by frame, renderComplete by image
+    VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
+    VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];
+
+    static int logCounter = 0;
+    if (logCounter++ < 20) {
+        NODE_LOG_INFO("Compute Frame " + std::to_string(currentFrameIndex) + ", Image " + std::to_string(imageIndex));
+    }
+
+    // Reset fence before submitting
+    vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+
+    // Guard against invalid image index
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
+        NODE_LOG_WARNING("ComputeDispatchNode: Invalid image index - skipping frame");
+        return;
+    }
+
+    // Detect if inputs changed (mark all command buffers dirty if so)
+    VkPipeline currentPipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
+    VkPipelineLayout currentPipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
+    DescriptorSetVector currentDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+
+    if (currentPipeline != lastPipeline ||
+        currentPipelineLayout != lastPipelineLayout ||
+        currentDescriptorSets != lastDescriptorSets) {
+        // Inputs changed - mark all command buffers dirty
+        commandBuffers.MarkAllDirty();
+
+        lastPipeline = currentPipeline;
+        lastPipelineLayout = currentPipelineLayout;
+        lastDescriptorSets = currentDescriptorSets;
+    }
+
+    // Only re-record if dirty
+    VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
+    if (commandBuffers.IsDirty(imageIndex)) {
+        RecordComputeCommands(ctx, cmdBuffer, imageIndex);
+        commandBuffers.MarkReady(imageIndex);
+    }
+
+    // Submit command buffer to compute queue
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    // Wait for image to be available before writing to it
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
+    submitInfo.pWaitDstStageMask = &waitStage;
+
+    // Submit command buffer
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    // Signal render complete semaphore (will be consumed by Present)
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
+
+    // Submit to graphics queue (assume compute = graphics for now)
+    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputeDispatchNode::ExecuteImpl] Failed to submit command buffer: " + std::to_string(result));
+    }
+
+    // Output semaphore for Present to wait on
+    Out(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+}
+
+// ============================================================================
+// RECORD COMPUTE COMMANDS
+// ============================================================================
+
+void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex) {
+    // Begin command buffer recording
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+
+    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to begin command buffer");
+    }
+
+    // Get inputs
+    VkPipeline pipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
+    VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
+    DescriptorSetVector descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+
+    // Get dispatch dimensions
+    uint32_t dispatchX = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_X, 1);
+    uint32_t dispatchY = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Y, 1);
+    uint32_t dispatchZ = GetParameterValue<uint32_t>(ComputeDispatchNodeConfig::DISPATCH_Z, 1);
+
+    // Validate descriptor sets
+    if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for image " + std::to_string(imageIndex));
+    }
+
+    // Transition swapchain image: UNDEFINED -> GENERAL
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = swapchainInfo->colorBuffers[imageIndex].image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    vkCmdPipelineBarrier(
+        cmdBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+
+    // Bind compute pipeline
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+
+    // Bind descriptor set from DescriptorSetNode
+    VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
+    vkCmdBindDescriptorSets(
+        cmdBuffer,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        pipelineLayout,
+        0,
+        1,
+        &descriptorSet,
+        0,
+        nullptr
+    );
+
+    // Dispatch compute shader
+    vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
+
+    // Transition swapchain image: GENERAL -> PRESENT_SRC
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = 0;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    vkCmdPipelineBarrier(
+        cmdBuffer,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+
+    // End command buffer
+    result = vkEndCommandBuffer(cmdBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
+    }
+
+    std::cout << "[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " << imageIndex << std::endl;
 }
 
 // ============================================================================
@@ -213,19 +288,28 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
 // ============================================================================
 
 void ComputeDispatchNode::CleanupImpl() {
-    std::cout << "[ComputeDispatchNode::CleanupImpl] Freeing command buffer" << std::endl;
+    std::cout << "[ComputeDispatchNode::CleanupImpl] Cleaning up resources" << std::endl;
 
-    if (commandBuffer_ != VK_NULL_HANDLE) {
-        VulkanDevicePtr devicePtr = In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
-        VkCommandPool commandPool = In(ComputeDispatchNodeConfig::COMMAND_POOL);
+    if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
+        // Free command buffers
+        if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE) {
+            std::vector<VkCommandBuffer> rawHandles;
+            rawHandles.reserve(commandBuffers.size());
+            for (size_t i = 0; i < commandBuffers.size(); ++i) {
+                rawHandles.push_back(commandBuffers.GetValue(i));
+            }
 
-        if (devicePtr && commandPool != VK_NULL_HANDLE) {
-            vkFreeCommandBuffers(devicePtr->device, commandPool, 1, &commandBuffer_);
-            std::cout << "[ComputeDispatchNode::CleanupImpl] Command buffer freed" << std::endl;
+            vkFreeCommandBuffers(
+                vulkanDevice->device,
+                commandPool,
+                static_cast<uint32_t>(rawHandles.size()),
+                rawHandles.data()
+            );
+            commandBuffers.clear();
         }
-
-        commandBuffer_ = VK_NULL_HANDLE;
     }
+
+    std::cout << "[ComputeDispatchNode::CleanupImpl] Cleanup complete" << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

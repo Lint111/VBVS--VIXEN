@@ -3,6 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
+#include "Core/StatefulContainer.h"
 #include "Nodes/ComputeDispatchNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -64,7 +65,19 @@ protected:
     void CleanupImpl() override;
 
 private:
-    VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
+    void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex);
+
+    // Device and command pool references
+    VulkanDevicePtr vulkanDevice = nullptr;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+
+    // Per-swapchain-image command buffers with state tracking
+    StatefulContainer<VkCommandBuffer> commandBuffers;
+
+    // Previous frame inputs (for dirty detection)
+    VkPipeline lastPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout lastPipelineLayout = VK_NULL_HANDLE;
+    DescriptorSetVector lastDescriptorSets;
 
 #if VIXEN_DEBUG_BUILD
     // Performance logging (debug only)

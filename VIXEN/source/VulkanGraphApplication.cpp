@@ -337,6 +337,9 @@ void VulkanGraphApplication::CompileRenderGraph() {
     graphCompiled = true;
     std::cout << "[CompileRenderGraph] Graph compilation complete" << std::endl;
 
+    // Phase G: Descriptor set updates with swapchain images are handled by DescriptorSetNode
+    // during Compile() - no manual updates needed here
+
     // Validate final graph (should pass with shaders connected)
     std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
     std::string errorMessage;
@@ -427,6 +430,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
+    NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
 
@@ -710,18 +714,49 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   physicsLoopBridge, LoopBridgeNodeConfig::LOOP_ID);
 
     // --- Phase G: Compute Pipeline Connections ---
+    // Pipeline setup
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   computeShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   computePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE,
                   computeDispatch, ComputeDispatchNodeConfig::COMPUTE_PIPELINE)
          .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
                   computeDispatch, ComputeDispatchNodeConfig::PIPELINE_LAYOUT)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  computeDispatch, ComputeDispatchNodeConfig::DESCRIPTOR_SETS)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
+
+    // Swapchain connections to descriptor set and dispatch
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // Sync connections
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // Connect compute output to Present
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

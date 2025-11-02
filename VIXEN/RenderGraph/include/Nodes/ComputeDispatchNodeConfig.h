@@ -10,8 +10,8 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 6;
-    static constexpr size_t OUTPUTS = 2;
+    static constexpr size_t INPUTS = 12;  // Added swapchain + sync inputs
+    static constexpr size_t OUTPUTS = 3;  // Added RENDER_COMPLETE_SEMAPHORE output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -83,24 +83,78 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotScope::NodeLevel);
 
     /**
-     * @brief Descriptor sets (array input for multiple sets)
-     */
-    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 4,
-        SlotNullability::Optional,  // Not all shaders use descriptors
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    /**
      * @brief Push constant data (raw byte array)
      */
-    INPUT_SLOT(PUSH_CONSTANTS, VkBuffer, 5,
+    INPUT_SLOT(PUSH_CONSTANTS, VkBuffer, 4,
         SlotNullability::Optional,  // Not all shaders use push constants
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    /**
+     * @brief Swapchain info (image views, dimensions, format)
+     */
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 5,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Current swapchain image index to render to
+     */
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 6,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Current frame-in-flight index for semaphore array indexing
+     */
+    INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 7,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief In-flight fence for CPU-GPU synchronization
+     */
+    INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 8,
+        SlotNullability::Required,
+        SlotRole::ExecuteOnly,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Image available semaphore array (indexed by CURRENT_FRAME_INDEX)
+     */
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 9,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Descriptor sets from DescriptorSetNode (per-image sets for storage image output)
+     */
+    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 10,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Render complete semaphore array (indexed by IMAGE_INDEX)
+     */
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 11,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // ===== OUTPUTS (3) =====
 
     /**
      * @brief Recorded command buffer with vkCmdDispatch
@@ -113,6 +167,13 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      * @brief Pass-through device for downstream nodes
      */
     OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    /**
+     * @brief Render complete semaphore for Present to wait on
+     */
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
