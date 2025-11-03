@@ -163,6 +163,133 @@ struct Texture3DDescriptor : ResourceDescriptorBase {
     }
 };
 
+// ============================================================================
+// RUNTIME STRUCT DESCRIPTOR (Phase H: Discovery System)
+// ============================================================================
+
+/**
+ * @brief Shader scalar type classification for runtime reflection
+ */
+enum class ShaderScalarType : uint8_t {
+    Float,
+    Int,
+    UInt,
+    Bool,
+    Mat,
+    Vec,
+    Unknown
+};
+
+/**
+ * @brief Runtime field information for shader struct reflection
+ *
+ * Describes a single field in a shader struct (from SPIRV reflection).
+ */
+struct RuntimeFieldInfo {
+    std::string name;
+    uint32_t offset = 0;
+    uint32_t size = 0;
+    ShaderScalarType baseType = ShaderScalarType::Unknown;
+    uint32_t componentCount = 0;
+    bool isArray = false;
+    uint32_t arraySize = 0;
+};
+
+/**
+ * @brief Runtime struct descriptor for shader UBO/SSBO layouts
+ *
+ * Phase H: Hybrid discovery system
+ * - Holds struct layout extracted from SPIRV reflection
+ * - layoutHash enables discovery of unknown types at startup
+ * - User can promote to compile-time by registering in RESOURCE_TYPE_REGISTRY
+ */
+struct RuntimeStructDescriptor : ResourceDescriptorBase {
+    std::string structName;
+    uint32_t totalSize = 0;
+    std::vector<RuntimeFieldInfo> fields;
+    std::unordered_map<std::string, size_t> fieldIndexByName;
+    uint64_t layoutHash = 0;  // Hash of (name, offset, size, type) for discovery
+
+    /**
+     * @brief Build field lookup map (call after adding fields)
+     */
+    void BuildLookup() {
+        fieldIndexByName.clear();
+        for (size_t i = 0; i < fields.size(); ++i) {
+            fieldIndexByName[fields[i].name] = i;
+        }
+    }
+
+    /**
+     * @brief Find field by name
+     */
+    std::optional<const RuntimeFieldInfo*> FindField(const std::string& name) const {
+        auto it = fieldIndexByName.find(name);
+        if (it != fieldIndexByName.end()) {
+            return &fields[it->second];
+        }
+        return std::nullopt;
+    }
+
+    bool Validate() const override {
+        return totalSize > 0 && !fields.empty();
+    }
+
+    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
+        return std::make_unique<RuntimeStructDescriptor>(*this);
+    }
+};
+
+/**
+ * @brief Runtime struct buffer with typed field access
+ *
+ * Holds actual data for a runtime-described struct.
+ * Used when descriptor layout is unknown at compile-time.
+ */
+struct RuntimeStructBuffer : ResourceDescriptorBase {
+    RuntimeStructDescriptor desc;
+    std::vector<uint8_t> data;
+
+    RuntimeStructBuffer() = default;
+
+    explicit RuntimeStructBuffer(const RuntimeStructDescriptor& d)
+        : desc(d), data(d.totalSize, 0) {}
+
+    /**
+     * @brief Set field by name (runtime type-checked)
+     */
+    bool SetFieldByName(const std::string& name, const void* src, uint32_t srcSize) {
+        auto fieldOpt = desc.FindField(name);
+        if (!fieldOpt.has_value()) {
+            return false;
+        }
+
+        const RuntimeFieldInfo* field = fieldOpt.value();
+        if (field->offset + srcSize > data.size()) {
+            return false;  // Out of bounds
+        }
+
+        std::memcpy(data.data() + field->offset, src, srcSize);
+        return true;
+    }
+
+    /**
+     * @brief Set field with compile-time type safety
+     */
+    template<typename T>
+    bool SetField(const std::string& name, const T& value) {
+        return SetFieldByName(name, &value, sizeof(T));
+    }
+
+    bool Validate() const override {
+        return desc.Validate() && data.size() == desc.totalSize;
+    }
+
+    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
+        return std::make_unique<RuntimeStructBuffer>(*this);
+    }
+};
+
 
 // ============================================================================
 // DESCRIPTOR VARIANT TYPE
@@ -182,7 +309,9 @@ using ResourceDescriptorVariant = std::variant<
     CommandPoolDescriptor,
     ShaderProgramHandleDescriptor,
     StorageImageDescriptor,  // Phase G.2: Compute shader storage images
-    Texture3DDescriptor      // Phase G.2: 3D voxel textures
+    Texture3DDescriptor,     // Phase G.2: 3D voxel textures
+    RuntimeStructDescriptor, // Phase H: Runtime-discovered struct layouts
+    RuntimeStructBuffer      // Phase H: Runtime struct data storage
 >;
 
 

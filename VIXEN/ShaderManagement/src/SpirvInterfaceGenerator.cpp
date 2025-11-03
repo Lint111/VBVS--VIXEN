@@ -82,6 +82,77 @@ std::string SanitizeName(const std::string& name) {
     return sanitized;
 }
 
+/**
+ * @brief Compute FNV-1a hash for struct layout (Phase H: Discovery System)
+ *
+ * Hashes struct name, total size, and each field's (name, offset, size, type).
+ * Matches algorithm in UnknownTypeRegistry::LayoutHasher.
+ */
+uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
+    uint64_t hash = 0xcbf29ce484222325ULL;  // FNV-1a offset basis
+    const uint64_t prime = 0x100000001b3ULL;
+
+    // Hash struct name
+    for (char c : structDef.name) {
+        hash ^= static_cast<uint64_t>(c);
+        hash *= prime;
+    }
+
+    // Hash total size
+    {
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&structDef.sizeInBytes);
+        for (size_t i = 0; i < sizeof(structDef.sizeInBytes); ++i) {
+            hash ^= static_cast<uint64_t>(bytes[i]);
+            hash *= prime;
+        }
+    }
+
+    // Hash each field
+    for (const auto& member : structDef.members) {
+        // Hash field name
+        for (char c : member.name) {
+            hash ^= static_cast<uint64_t>(c);
+            hash *= prime;
+        }
+
+        // Hash offset
+        {
+            const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.offset);
+            for (size_t i = 0; i < sizeof(member.offset); ++i) {
+                hash ^= static_cast<uint64_t>(bytes[i]);
+                hash *= prime;
+            }
+        }
+
+        // Hash size
+        {
+            const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.type.sizeInBytes);
+            for (size_t i = 0; i < sizeof(member.type.sizeInBytes); ++i) {
+                hash ^= static_cast<uint64_t>(bytes[i]);
+                hash *= prime;
+            }
+        }
+
+        // Hash type string (simplified - real implementation would hash base type enum)
+        std::string typeStr = member.type.ToCppType();
+        for (char c : typeStr) {
+            hash ^= static_cast<uint64_t>(c);
+            hash *= prime;
+        }
+
+        // Hash array size
+        {
+            const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.type.arraySize);
+            for (size_t i = 0; i < sizeof(member.type.arraySize); ++i) {
+                hash ^= static_cast<uint64_t>(bytes[i]);
+                hash *= prime;
+            }
+        }
+    }
+
+    return hash;
+}
+
 } // anonymous namespace
 
 // ===== SpirvInterfaceGenerator Implementation =====
@@ -357,14 +428,24 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinition(
 ) {
     std::ostringstream code;
 
+    // Compute layout hash for discovery system (Phase H)
+    uint64_t layoutHash = ComputeStructLayoutHash(structDef);
+
     code << "/**\n";
     code << " * @brief " << structDef.name << "\n";
     if (config_.generateLayoutInfo) {
         code << " * Size: " << structDef.sizeInBytes << " bytes\n";
         code << " * Alignment: " << structDef.alignment << " bytes\n";
+        code << " * Layout Hash: 0x" << std::hex << layoutHash << std::dec << " (for runtime discovery)\n";
     }
     code << " */\n";
     code << "struct " << structDef.name << " {\n";
+
+    // Emit layout hash as static constexpr for discovery system
+    code << Indent(1) << "// Phase H: Discovery system layout hash\n";
+    code << Indent(1) << "static constexpr uint64_t LAYOUT_HASH = 0x"
+         << std::hex << layoutHash << std::dec << "ULL;\n";
+    code << "\n";
 
     for (const auto& member : structDef.members) {
         if (config_.generateComments) {

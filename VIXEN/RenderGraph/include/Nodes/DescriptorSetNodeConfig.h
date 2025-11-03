@@ -56,7 +56,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 8; // Added SWAPCHAIN_PUBLIC and IMAGE_INDEX for per-frame resources
+    static constexpr size_t INPUTS = 9; // Added DESCRIPTOR_RESOURCES for Phase H
     static constexpr size_t OUTPUTS = 4;  // Added VULKAN_DEVICE_OUT for pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -114,6 +114,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    INPUT_SLOT(DESCRIPTOR_RESOURCES, ResourceHandleVariantVector, 8,
+        SlotNullability::Optional,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (4) =====
     OUTPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 0,
         SlotNullability::Required,
@@ -167,6 +173,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
 
+        HandleDescriptor descriptorResourcesDesc{"ResourceHandleVariantVector"};
+        INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
+
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
             ResourceLifetime::Persistent,
@@ -208,6 +217,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(IMAGE_INDEX_Slot::index == 7, "IMAGE_INDEX must be at index 7");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
+
+    static_assert(DESCRIPTOR_RESOURCES_Slot::index == 8, "DESCRIPTOR_RESOURCES must be at index 8");
+    static_assert(DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is optional");
 
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable, "DESCRIPTOR_SET_LAYOUT is required");

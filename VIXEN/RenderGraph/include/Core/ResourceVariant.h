@@ -56,7 +56,7 @@ using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Per-image semapho
 using VkFenceVector = std::vector<VkFence>*;  // Phase 0.7: Fence vector pointer (supports empty() check)
 
 namespace Vixen::RenderGraph {
-
+    
 
 // ============================================================================
 // RESOURCE USAGE OPERATORS (bitwise for flags)
@@ -136,11 +136,12 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE(bool,                            HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,       ResourceType::Buffer) \
-    RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,       ResourceType::Buffer)
+    RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(ResourceHandleVariantVector,     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
 // NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
 // We don't register separate types since VkImage already exists. The descriptor differentiates usage.

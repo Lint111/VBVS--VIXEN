@@ -161,17 +161,11 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
     pushConstants.time = elapsedTime;
     pushConstants.frame = static_cast<uint32_t>(elapsedTime * 60.0f);
 
-    // Only re-record if dirty
+    // Always re-record to update push constants (they change every frame)
+    // TODO: Optimize using secondary command buffers or dynamic state
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-    if (commandBuffers.IsDirty(imageIndex)) {
-        RecordComputeCommands(ctx, cmdBuffer, imageIndex, &pushConstants);
-        commandBuffers.MarkReady(imageIndex);
-    } else {
-        // Command buffer already recorded, just update push constants
-        VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
-        vkCmdPushConstants(cmdBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                          sizeof(float) + sizeof(uint32_t), &pushConstants);
-    }
+    RecordComputeCommands(ctx, cmdBuffer, imageIndex, &pushConstants);
+    commandBuffers.MarkReady(imageIndex);
 
     // Submit command buffer to compute queue
     VkSubmitInfo submitInfo{};
@@ -324,6 +318,14 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
 void ComputeDispatchNode::CleanupImpl() {
     std::cout << "[ComputeDispatchNode::CleanupImpl] Cleaning up resources" << std::endl;
+
+#if VIXEN_DEBUG_BUILD
+    // Unregister performance logger from parent before destruction
+    if (perfLogger_ && nodeLogger) {
+        nodeLogger->RemoveChild(perfLogger_.get());
+    }
+    perfLogger_.reset();
+#endif
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
         // Free command buffers

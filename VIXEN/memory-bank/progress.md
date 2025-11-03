@@ -118,11 +118,21 @@
 - All 17 nodes compile successfully
 - Build successful with zero errors
 
+**Phase G (Compute Shader Pipeline)**: ✅ COMPLETE (November 2, 2025)
+- ComputePipelineNode implemented with automatic descriptor layout generation
+- ComputeDispatchNode created for generic compute shader dispatch
+- Ray marching compute shader (ComputeTest.comp) rendering animated gradients
+- Dynamic dispatch calculation from swapchain extent (8x8 workgroups)
+- Per-frame push constants (time, frame) for animation
+- Command buffer re-recording every frame with updated push constants
+- Performance logger cleanup (proper parent-child hierarchy destruction)
+- **Known Issue**: Minor time stutter on swapchain rebuild (tracked for future optimization)
+
 **Previously Completed**:
 - ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 - Phase 0.1-0.7 (Synchronization infrastructure) ✅
 
-**Next**: Phase G (Compute Shader Pipeline) - Research foundation begins
+**Next**: Phase H (Storage Resources) or Research Foundation (Phases I-N)
 
 ---
 
