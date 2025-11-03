@@ -58,17 +58,23 @@ void DescriptorResourceGathererNode::CompileImpl(Context& ctx) {
 
     std::cout << "[DescriptorResourceGathererNode::Compile] Validation complete. Ready to gather "
               << GetVariadicInputCount() << " resources\n";
-}
 
-void DescriptorResourceGathererNode::ExecuteImpl(Context& ctx) {
-    // Gather resources from dynamic inputs
+    // Gather resources at compile-time (descriptor sets need resources during Compile phase)
     GatherResources(ctx);
 
-    // Output the resource array
+    // Output the resource array for downstream nodes
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
 
     // Pass through shader bundle for downstream nodes
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE));
+
+    std::cout << "[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with "
+              << resourceArray_.size() << " entries\n";
+}
+
+void DescriptorResourceGathererNode::ExecuteImpl(Context& ctx) {
+    // Resources already gathered during Compile phase
+    // Nothing to do here
 }
 
 void DescriptorResourceGathererNode::CleanupImpl() {
@@ -95,61 +101,78 @@ void DescriptorResourceGathererNode::DiscoverDescriptors(Context& ctx) {
         return;
     }
 
-    // Create slot info for each binding
+    // Clear old descriptor slots
     descriptorSlots_.clear();
+
+    // Register variadic slots based on shader reflection
     for (const auto& binding : layoutSpec->bindings) {
-        DescriptorSlotInfo slotInfo;
-        slotInfo.binding = binding.binding;
-        slotInfo.descriptorType = binding.descriptorType;
+        // Create descriptor slot info struct
+        DescriptorSlotInfo legacySlotInfo;
+        legacySlotInfo.binding = binding.binding;
+        legacySlotInfo.descriptorType = binding.descriptorType;
+        legacySlotInfo.dynamicInputIndex = descriptorSlots_.size();
 
         // Generate slot name based on descriptor type and binding
         switch (binding.descriptorType) {
             case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                slotInfo.slotName = "storage_image_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "storage_image_" + std::to_string(binding.binding);
                 break;
             case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                slotInfo.slotName = "sampled_image_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "sampled_image_" + std::to_string(binding.binding);
                 break;
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-                slotInfo.slotName = "combined_sampler_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "combined_sampler_" + std::to_string(binding.binding);
                 break;
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                slotInfo.slotName = "uniform_buffer_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "uniform_buffer_" + std::to_string(binding.binding);
                 break;
             case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-                slotInfo.slotName = "storage_buffer_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "storage_buffer_" + std::to_string(binding.binding);
                 break;
             default:
-                slotInfo.slotName = "descriptor_" + std::to_string(binding.binding);
+                legacySlotInfo.slotName = "descriptor_" + std::to_string(binding.binding);
                 break;
         }
 
-        slotInfo.dynamicInputIndex = descriptorSlots_.size();
-        descriptorSlots_.push_back(slotInfo);
+        descriptorSlots_.push_back(legacySlotInfo);
 
-        std::cout << "[DescriptorResourceGathererNode::DiscoverDescriptors] Discovered binding "
-                  << binding.binding << ": " << slotInfo.slotName
+        // Create variadic slot info for bundle system
+        NodeInstance::VariadicSlotInfo variadicSlot;
+        variadicSlot.resource = nullptr;  // Will be connected later
+        variadicSlot.resourceType = ResourceType::Image;  // Default - will be validated at connection time
+        variadicSlot.slotName = legacySlotInfo.slotName;
+        variadicSlot.binding = binding.binding;
+        variadicSlot.descriptorType = binding.descriptorType;
+
+        // Register variadic slot with bundle 0 (default bundle)
+        RegisterVariadicSlot(variadicSlot, 0);
+
+        std::cout << "[DescriptorResourceGathererNode::DiscoverDescriptors] Registered variadic slot "
+                  << binding.binding << ": " << variadicSlot.slotName
                   << " (type=" << binding.descriptorType << ")\n";
     }
 }
 
-bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx) {
-    // Call base class validation (count constraints, null checks)
-    if (!VariadicTypedNode<DescriptorResourceGathererNodeConfig>::ValidateVariadicInputsImpl(ctx)) {
+bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex) {
+    // Call base class validation (count constraints, null checks, type validation)
+    if (!VariadicTypedNode<DescriptorResourceGathererNodeConfig>::ValidateVariadicInputsImpl(ctx, bundleIndex)) {
         return false;  // Base validation failed
     }
 
-    size_t inputCount = GetVariadicInputCount();
+    size_t inputCount = GetVariadicInputCount(bundleIndex);
 
-    // Shader-specific validation: type matching
+    // Shader-specific validation: descriptor type matching
     bool allValid = true;
     for (size_t i = 0; i < inputCount; ++i) {
-        Resource* res = GetVariadicInputResource(i);
+        Resource* res = GetVariadicInputResource(i, bundleIndex);
+        const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
 
-        VkDescriptorType expectedType = descriptorSlots_[i].descriptorType;
+        if (!slotInfo) continue;
+
+        VkDescriptorType expectedType = slotInfo->descriptorType;
         if (!ValidateResourceType(res, expectedType)) {
             std::cout << "[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] ERROR: Resource " << i
-                      << " type mismatch for shader binding " << descriptorSlots_[i].binding
+                      << " (" << slotInfo->slotName << ") type mismatch for shader binding " << slotInfo->binding
                       << " (expected VkDescriptorType=" << expectedType << ")\n";
             allValid = false;
         }
@@ -159,21 +182,26 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx) {
 }
 
 void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
-    // Gather variadic inputs into resource array, indexed by binding
-    size_t inputCount = GetVariadicInputCount();
+    // Gather variadic inputs from bundle 0 into resource array, indexed by binding
+    size_t bundleIndex = 0;
+    size_t inputCount = GetVariadicInputCount(bundleIndex);
 
-    for (size_t i = 0; i < std::min(inputCount, descriptorSlots_.size()); ++i) {
-        Resource* res = GetVariadicInputResource(i);
-        if (!res || !res->IsValid()) {
-            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping invalid resource at index " << i << "\n";
+    for (size_t i = 0; i < inputCount; ++i) {
+        // Get variadic slot info (includes resource and metadata)
+        const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
+        if (!slotInfo || !slotInfo->resource || !slotInfo->resource->IsValid()) {
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping invalid resource at variadic index " << i << "\n";
             continue;
         }
 
-        uint32_t binding = descriptorSlots_[i].binding;
+        uint32_t binding = slotInfo->binding;
 
         // Extract handle variant and store in output array
-        resourceArray_[binding] = res->GetHandleVariant();
-        std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding << "\n";
+        auto variant = slotInfo->resource->GetHandleVariant();
+        resourceArray_[binding] = variant;
+        std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding
+                  << " (" << slotInfo->slotName << "), variant index=" << variant.index()
+                  << ", resource type=" << static_cast<int>(slotInfo->resource->GetType()) << "\n";
     }
 }
 

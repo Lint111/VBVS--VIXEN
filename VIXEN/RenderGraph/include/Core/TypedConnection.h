@@ -3,6 +3,8 @@
 #include "Core/RenderGraph.h"
 #include "Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
+#include "Core/VariadicTypedNode.h"
+#include "Nodes/DescriptorResourceGathererNodeConfig.h"
 #include <vector>
 #include <functional>
 
@@ -228,6 +230,9 @@ public:
      * Uses binding constant from Names.h (generated from SDI) as a config reference.
      * The binding constant contains all metadata needed to wire the connection.
      *
+     * **Phase G Update**: Now validates against registered variadic slot metadata
+     * and adds proper dependency tracking for topological sort.
+     *
      * Example:
      * ```cpp
      * // Using Names.h binding constant directly
@@ -247,10 +252,14 @@ public:
         NodeHandle sourceNode,
         SourceSlot sourceSlot
     ) {
+        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingRef.binding << std::endl;
+
         // Defer the variadic connection via lambda (applied during RegisterAll)
         variadicConnections.push_back([=]() {
+            std::cout << "[ConnectVariadic] Executing variadic connection for binding " << bindingRef.binding << std::endl;
+
             // Get the variadic node instance
-            NodeInstance* node = graph->GetNodeInstance(variadicNode);
+            NodeInstance* node = graph->GetInstance(variadicNode);
             if (!node) {
                 throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
             }
@@ -261,12 +270,8 @@ public:
                 throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
             }
 
-            // Extract binding index from binding ref
-            // Names.h constants should expose: binding index, name, type
-            uint32_t bindingIndex = bindingRef.binding;
-
             // Get source resource
-            NodeInstance* sourceNodeInst = graph->GetNodeInstance(sourceNode);
+            NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
             if (!sourceNodeInst) {
                 throw std::runtime_error("ConnectVariadic: Invalid source node handle");
             }
@@ -276,9 +281,41 @@ public:
                 throw std::runtime_error("ConnectVariadic: Source output not found");
             }
 
-            // Add to variadic inputs at the binding index position
-            // Note: DescriptorResourceGathererNode should order inputs by binding
-            variadicNodePtr->AddVariadicInput(sourceRes);
+            // Extract binding index from binding ref
+            // BindingRef is a struct with .binding member from Names.h
+            uint32_t bindingIndex = bindingRef.binding;
+
+            // Find the variadic slot index that matches this binding
+            // Variadic slots are registered during Setup based on shader reflection
+            size_t bundleIndex = 0;
+            size_t variadicSlotIndex = UINT32_MAX;
+
+            size_t variadicCount = variadicNodePtr->GetVariadicInputCount(bundleIndex);
+            for (size_t i = 0; i < variadicCount; ++i) {
+                const auto* slotInfo = variadicNodePtr->GetVariadicSlotInfo(i, bundleIndex);
+                if (slotInfo && slotInfo->binding == bindingIndex) {
+                    variadicSlotIndex = i;
+                    break;
+                }
+            }
+
+            if (variadicSlotIndex == UINT32_MAX) {
+                throw std::runtime_error("ConnectVariadic: No variadic slot found for binding " + std::to_string(bindingIndex));
+            }
+
+            // Add variadic input with validation (checks type against slot metadata)
+            bool success = variadicNodePtr->AddVariadicInput(variadicSlotIndex, sourceRes, bundleIndex);
+            if (!success) {
+                throw std::runtime_error("ConnectVariadic: Failed to add variadic input at slot " + std::to_string(variadicSlotIndex));
+            }
+
+            // Register dependency for topological sort (variadic node depends on source)
+            std::cout << "[ConnectVariadic] Adding dependency: " << node->GetInstanceName()
+                      << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
+            node->AddDependency(sourceNodeInst);
+
+            std::cout << "[ConnectVariadic] Successfully connected binding " << bindingIndex
+                      << " to variadic slot " << variadicSlotIndex << std::endl;
         });
 
         return *this;

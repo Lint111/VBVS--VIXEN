@@ -67,7 +67,7 @@ protected:
     void CleanupImpl() override;
 
     // Variadic validation override - shader metadata-specific validation
-    bool ValidateVariadicInputsImpl(Context& ctx) override;
+    bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) override;
 
 private:
     // Discovered descriptor metadata from shader

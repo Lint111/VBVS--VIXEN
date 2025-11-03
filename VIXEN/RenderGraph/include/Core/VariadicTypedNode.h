@@ -7,6 +7,32 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Variadic slot metadata (per-bundle)
+ *
+ * Stores metadata for a variadic input within a specific bundle.
+ * Variadic slots are dynamically discovered (e.g., from shader reflection)
+ * rather than statically defined in the config.
+ */
+struct VariadicSlotInfo {
+    Resource* resource = nullptr;      // Resource pointer for this variadic slot
+    ResourceType resourceType;         // Expected resource type
+    std::string slotName;              // Descriptive name (e.g., "sampled_image_0")
+    uint32_t binding = 0;              // Shader binding index (for descriptor-based nodes)
+    VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;  // Descriptor type (if applicable)
+};
+
+/**
+ * @brief Per-bundle variadic slot storage
+ *
+ * Extends the NodeInstance::Bundle concept with variadic slot support.
+ * Each variadic node maintains its own list of these bundles in parallel
+ * with the base NodeInstance bundles.
+ */
+struct VariadicBundle {
+    std::vector<VariadicSlotInfo> variadicSlots;  // Variadic inputs with metadata
+};
+
+/**
  * @brief Extension of TypedNode that supports variadic inputs
  *
  * Adds support for arbitrary number of additional input connections beyond
@@ -66,46 +92,161 @@ public:
     size_t GetMaxVariadicInputs() const { return maxVariadicInputs_; }
 
     /**
-     * @brief Add a variadic input connection
+     * @brief Register a variadic slot with metadata (per-bundle)
+     *
+     * Called during Setup to define expected variadic slots based on runtime
+     * discovery (e.g., shader reflection). Creates slot metadata in bundle 0.
+     *
+     * @param slotInfo Variadic slot metadata
+     */
+    void RegisterVariadicSlot(const VariadicSlotInfo& slotInfo, size_t bundleIndex = 0) {
+        // Ensure variadic bundle exists
+        if (bundleIndex >= variadicBundles_.size()) {
+            variadicBundles_.resize(bundleIndex + 1);
+        }
+
+        variadicBundles_[bundleIndex].variadicSlots.push_back(slotInfo);
+    }
+
+    /**
+     * @brief Add a variadic input connection with metadata validation
      *
      * Called by the render graph when connecting additional inputs beyond
-     * the statically-defined slots.
+     * the statically-defined slots. Validates against registered slot metadata.
+     *
+     * @param variadicIndex Index of the variadic slot (corresponds to registered order)
+     * @param resource Resource to connect
+     * @param bundleIndex Bundle index (default: 0)
+     * @return true if connection succeeded, false if validation failed
+     */
+    bool AddVariadicInput(size_t variadicIndex, Resource* resource, size_t bundleIndex = 0) {
+        if (!resource) {
+            std::cout << "[VariadicTypedNode::AddVariadicInput] ERROR: Null resource\n";
+            return false;
+        }
+
+        // Ensure variadic bundle exists
+        if (bundleIndex >= variadicBundles_.size()) {
+            std::cout << "[VariadicTypedNode::AddVariadicInput] ERROR: Bundle index "
+                      << bundleIndex << " out of range (max: " << variadicBundles_.size() << ")\n";
+            return false;
+        }
+
+        auto& bundle = variadicBundles_[bundleIndex];
+
+        // Validate variadic index
+        if (variadicIndex >= bundle.variadicSlots.size()) {
+            std::cout << "[VariadicTypedNode::AddVariadicInput] ERROR: Variadic index "
+                      << variadicIndex << " out of range (max: " << bundle.variadicSlots.size() << ")\n";
+            return false;
+        }
+
+        // Validate resource type against slot metadata
+        auto& slotInfo = bundle.variadicSlots[variadicIndex];
+        if (resource->GetType() != slotInfo.resourceType) {
+            std::cout << "[VariadicTypedNode::AddVariadicInput] ERROR: Type mismatch for variadic slot "
+                      << variadicIndex << " (expected: " << static_cast<int>(slotInfo.resourceType)
+                      << ", got: " << static_cast<int>(resource->GetType()) << ")\n";
+            return false;
+        }
+
+        // Assign resource to variadic slot
+        slotInfo.resource = resource;
+        return true;
+    }
+
+    /**
+     * @brief LEGACY: Add variadic input without metadata (appends to variadic list)
+     *
+     * For backward compatibility. Prefer AddVariadicInput(index, resource) instead.
      *
      * @param resource Resource to connect
      */
     void AddVariadicInput(Resource* resource) {
-        if (resource) {
-            variadicInputs_.push_back(resource);
+        if (!resource) return;
+
+        // Append to bundle 0's variadic slots
+        if (variadicBundles_.empty()) {
+            variadicBundles_.resize(1);
         }
+
+        VariadicSlotInfo slotInfo;
+        slotInfo.resource = resource;
+        slotInfo.resourceType = resource->GetType();
+        slotInfo.slotName = "variadic_" + std::to_string(variadicBundles_[0].variadicSlots.size());
+
+        variadicBundles_[0].variadicSlots.push_back(slotInfo);
     }
 
     /**
-     * @brief Get all variadic input resources
+     * @brief Get all variadic input resources from bundle
      *
+     * @param bundleIndex Bundle index (default: 0)
      * @return Vector of resource pointers
      */
-    const std::vector<Resource*>& GetVariadicInputs() const {
-        return variadicInputs_;
+    std::vector<Resource*> GetVariadicInputs(size_t bundleIndex = 0) const {
+        if (bundleIndex >= variadicBundles_.size()) {
+            return {};
+        }
+
+        const auto& variadicSlots = variadicBundles_[bundleIndex].variadicSlots;
+        std::vector<Resource*> resources;
+        resources.reserve(variadicSlots.size());
+
+        for (const auto& slot : variadicSlots) {
+            resources.push_back(slot.resource);
+        }
+
+        return resources;
     }
 
     /**
-     * @brief Get variadic input count
+     * @brief Get variadic input count from bundle
      *
-     * @return Number of variadic inputs connected
+     * @param bundleIndex Bundle index (default: 0)
+     * @return Number of variadic inputs in bundle
      */
-    size_t GetVariadicInputCount() const {
-        return variadicInputs_.size();
+    size_t GetVariadicInputCount(size_t bundleIndex = 0) const {
+        if (bundleIndex >= variadicBundles_.size()) {
+            return 0;
+        }
+        return variadicBundles_[bundleIndex].variadicSlots.size();
     }
 
     /**
      * @brief Get variadic input resource at index
      *
      * @param index Variadic input index (0-based)
+     * @param bundleIndex Bundle index (default: 0)
      * @return Resource pointer, or nullptr if invalid index
      */
-    Resource* GetVariadicInputResource(size_t index) const {
-        if (index < variadicInputs_.size()) {
-            return variadicInputs_[index];
+    Resource* GetVariadicInputResource(size_t index, size_t bundleIndex = 0) const {
+        if (bundleIndex >= variadicBundles_.size()) {
+            return nullptr;
+        }
+
+        const auto& variadicSlots = variadicBundles_[bundleIndex].variadicSlots;
+        if (index < variadicSlots.size()) {
+            return variadicSlots[index].resource;
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Get variadic slot metadata at index
+     *
+     * @param index Variadic input index (0-based)
+     * @param bundleIndex Bundle index (default: 0)
+     * @return Pointer to slot metadata, or nullptr if invalid index
+     */
+    const VariadicSlotInfo* GetVariadicSlotInfo(size_t index, size_t bundleIndex = 0) const {
+        if (bundleIndex >= variadicBundles_.size()) {
+            return nullptr;
+        }
+
+        const auto& variadicSlots = variadicBundles_[bundleIndex].variadicSlots;
+        if (index < variadicSlots.size()) {
+            return &variadicSlots[index];
         }
         return nullptr;
     }
@@ -115,11 +256,12 @@ public:
      *
      * @tparam T Handle type (e.g., VkImageView, VkBuffer)
      * @param index Variadic input index (0-based)
+     * @param bundleIndex Bundle index (default: 0)
      * @return Typed handle value, or null handle if invalid index/type
      */
     template<typename T>
-    T GetVariadicInput(size_t index) const {
-        Resource* res = GetVariadicInputResource(index);
+    T GetVariadicInput(size_t index, size_t bundleIndex = 0) const {
+        Resource* res = GetVariadicInputResource(index, bundleIndex);
         if (!res) return T{};
         return res->GetHandle<T>();
     }
@@ -130,10 +272,11 @@ public:
      * Useful for generic processing without knowing the exact type.
      *
      * @param index Variadic input index (0-based)
+     * @param bundleIndex Bundle index (default: 0)
      * @return ResourceHandleVariant containing the handle
      */
-    ResourceHandleVariant GetVariadicInputVariant(size_t index) const {
-        Resource* res = GetVariadicInputResource(index);
+    ResourceHandleVariant GetVariadicInputVariant(size_t index, size_t bundleIndex = 0) const {
+        Resource* res = GetVariadicInputResource(index, bundleIndex);
         if (!res || !res->IsValid()) {
             return std::monostate{};
         }
@@ -143,12 +286,27 @@ public:
     }
 
     /**
-     * @brief Clear all variadic inputs
+     * @brief Clear all variadic inputs from bundle
      *
      * Typically called during cleanup or graph rebuild.
+     *
+     * @param bundleIndex Bundle index (default: 0)
      */
-    void ClearVariadicInputs() {
-        variadicInputs_.clear();
+    void ClearVariadicInputs(size_t bundleIndex = 0) {
+        if (bundleIndex < variadicBundles_.size()) {
+            variadicBundles_[bundleIndex].variadicSlots.clear();
+        }
+    }
+
+    /**
+     * @brief Clear all variadic inputs from all bundles
+     *
+     * Typically called during full node reset.
+     */
+    void ClearAllVariadicInputs() {
+        for (auto& bundle : variadicBundles_) {
+            bundle.variadicSlots.clear();
+        }
     }
 
 protected:
@@ -161,12 +319,14 @@ protected:
      * Default implementation does:
      * 1. Count validation (min/max constraints)
      * 2. Null checks
+     * 3. Type validation against registered slot metadata
      *
      * @param ctx Compile context
+     * @param bundleIndex Bundle index to validate (default: 0)
      * @return true if validation passed, false otherwise
      */
-    virtual bool ValidateVariadicInputsImpl(Context& ctx) {
-        size_t count = variadicInputs_.size();
+    virtual bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) {
+        size_t count = GetVariadicInputCount(bundleIndex);
 
         // Validate count constraints
         if (count < minVariadicInputs_) {
@@ -183,11 +343,28 @@ protected:
             return false;
         }
 
-        // Check for null resources
-        for (size_t i = 0; i < count; ++i) {
-            if (!variadicInputs_[i]) {
+        // Validate each variadic slot
+        if (bundleIndex >= variadicBundles_.size()) {
+            return count == 0;  // Valid only if expecting 0 inputs
+        }
+
+        const auto& variadicSlots = variadicBundles_[bundleIndex].variadicSlots;
+        for (size_t i = 0; i < variadicSlots.size(); ++i) {
+            const auto& slotInfo = variadicSlots[i];
+
+            // Check for null resources
+            if (!slotInfo.resource) {
                 std::cout << "[VariadicTypedNode::ValidateVariadicInputsImpl] ERROR: "
-                          << "Variadic input " << i << " is null\n";
+                          << "Variadic input " << i << " (" << slotInfo.slotName << ") is null\n";
+                return false;
+            }
+
+            // Validate type
+            if (slotInfo.resource->GetType() != slotInfo.resourceType) {
+                std::cout << "[VariadicTypedNode::ValidateVariadicInputsImpl] ERROR: "
+                          << "Variadic input " << i << " (" << slotInfo.slotName << ") type mismatch. "
+                          << "Expected: " << static_cast<int>(slotInfo.resourceType)
+                          << ", got: " << static_cast<int>(slotInfo.resource->GetType()) << "\n";
                 return false;
             }
         }
@@ -195,12 +372,12 @@ protected:
         return true;
     }
 
-    // Variadic input storage
-    std::vector<Resource*> variadicInputs_;
-
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)
     size_t maxVariadicInputs_ = SIZE_MAX;  // Maximum allowed (default: unlimited)
+
+    // Variadic bundle storage (separate from NodeInstance bundles)
+    std::vector<VariadicBundle> variadicBundles_;
 };
 
 } // namespace Vixen::RenderGraph

@@ -806,8 +806,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
          // Phase H: Gatherer → DescriptorSet (data-driven resources)
          .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
                   computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
-         // Pass bundle through to descriptor set and pipeline
-         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT,
+         // Pass shader bundle directly to descriptor set and pipeline (needed during Compile)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
@@ -824,14 +824,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
          // Phase H: Data-driven resource connection via shader metadata
+         // Connect swapchain image views to descriptor gatherer's variadic input
          .ConnectVariadic(descriptorGatherer, ComputeTest::outputImage,
-                          swapChainNode, SwapChainNodeConfig::IMAGE_VIEW);
+                          swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC)
+         ;
 
     // Swapchain connections to descriptor set and dispatch
+    // SWAPCHAIN_PUBLIC provides imageCount metadata, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,

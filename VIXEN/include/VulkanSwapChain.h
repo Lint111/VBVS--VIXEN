@@ -60,6 +60,44 @@ struct SwapChainPublicVariables {
 
 	// Extends of the swapchain images
 	VkExtent2D Extent;
+
+    // Implicit conversion operators for render graph connections
+    // When nodes expect VkImageView, automatically provide current image view
+    operator VkImageView() const {
+        if (currentColorBuffer < colorBuffers.size()) {
+            return colorBuffers[currentColorBuffer].view;
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    // When nodes expect VkImage, automatically provide current image
+    operator VkImage() const {
+        if (currentColorBuffer < colorBuffers.size()) {
+            return colorBuffers[currentColorBuffer].image;
+        }
+        return VK_NULL_HANDLE;
+    }
+
+    operator VkSurfaceKHR() const {
+        return surface;
+    }
+
+    operator VkSwapchainKHR() const {
+        return swapChain;
+    }
+
+    operator std::vector<SwapChainBuffer>() const {
+        return colorBuffers;
+    }
+
+    operator VkFormat() const {
+        return Format;
+    }
+
+    operator VkExtent2D() const {
+        return Extent;
+    }
+    
 };
 
 class VulkanSwapChain {

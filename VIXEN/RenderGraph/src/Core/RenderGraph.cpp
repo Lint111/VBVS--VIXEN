@@ -203,6 +203,10 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error("Invalid node handle");
     }
 
+    std::cout << "[RenderGraph::ConnectNodes] Connecting " << fromNode->GetInstanceName()
+              << "[" << outputIdx << "] -> " << toNode->GetInstanceName()
+              << "[" << inputIdx << "]" << std::endl;
+
     // Validate indices
     NodeType* fromType = fromNode->GetNodeType();
     NodeType* toType = toNode->GetNodeType();
@@ -247,6 +251,8 @@ void RenderGraph::ConnectNodes(
 
     // Add dependency (once per connection, not per array element)
     toNode->AddDependency(fromNode);
+    std::cout << "[RenderGraph::ConnectNodes] Added dependency: " << toNode->GetInstanceName()
+              << " depends on " << fromNode->GetInstanceName() << std::endl;
 
     // Add edge to topology
     GraphEdge edge;
@@ -255,6 +261,7 @@ void RenderGraph::ConnectNodes(
     edge.target = toNode;
     edge.targetInputIndex = inputIdx;
     topology.AddEdge(edge);
+    std::cout << "[RenderGraph::ConnectNodes] Added topology edge" << std::endl;
 
     // Mark as needing compilation
     isCompiled = false;

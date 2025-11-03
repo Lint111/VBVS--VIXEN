@@ -52,8 +52,8 @@ public:
     // Phase F: Bundle structure - ensures inputs/outputs stay aligned
     // Each bundle represents one task/array index with all its slots
     struct Bundle {
-        std::vector<Resource*> inputs;   // One entry per input slot
-        std::vector<Resource*> outputs;  // One entry per output slot
+        std::vector<Resource*> inputs;   // One entry per static input slot
+        std::vector<Resource*> outputs;  // One entry per static output slot
     };
 
 public:

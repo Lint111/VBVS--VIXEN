@@ -38,7 +38,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 // Compile-time slot counts
 namespace DescriptorResourceGathererNodeCounts {
-    static constexpr size_t INPUTS = 2;   // SHADER_DATA_BUNDLE + VARIADIC_RESOURCES
+    static constexpr size_t INPUTS = 1;   // SHADER_DATA_BUNDLE (+ dynamic variadic resources)
     static constexpr size_t OUTPUTS = 2;  // DESCRIPTOR_RESOURCES array + SHADER_DATA_BUNDLE_OUT pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
