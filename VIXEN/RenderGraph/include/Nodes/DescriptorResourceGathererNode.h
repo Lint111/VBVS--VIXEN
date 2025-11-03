@@ -73,6 +73,15 @@ public:
         PreRegisterVariadicSlotsImpl({bindingRefs...});
     }
 
+    /**
+     * @brief IGraphCompilable override - discover variadic slots from shader bundle
+     *
+     * Reads the SHADER_DATA_BUNDLE input and registers variadic slots based on
+     * descriptor bindings found in the shader metadata. This happens during
+     * graph compilation, before ConnectVariadic connections are processed.
+     */
+    void GraphCompileSetup() override;
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(Context& ctx) override;

@@ -1,4 +1,5 @@
 #include "Core/RenderGraph.h"
+#include "Core/IGraphCompilable.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -756,6 +757,27 @@ void RenderGraph::GeneratePipelines() {
         std::cout << "[GeneratePipelines]   " << i << ": " << executionOrder[i]->GetInstanceName() << std::endl;
         std::cout.flush();
     }
+
+    // Phase 1: GraphCompileSetup - discover dynamic slots before deferred connections
+    std::cout << "[GeneratePipelines] Phase 1: GraphCompileSetup (discovering dynamic slots)..." << std::endl;
+    for (NodeInstance* instance : executionOrder) {
+        if (instance->GetState() == NodeState::Compiled) {
+            continue;  // Skip already-compiled nodes
+        }
+
+        // Check if node implements IGraphCompilable
+        if (auto* compilable = dynamic_cast<IGraphCompilable*>(instance)) {
+            std::cout << "[GeneratePipelines] Calling GraphCompileSetup() on: " << instance->GetInstanceName() << std::endl;
+            compilable->GraphCompileSetup();
+        }
+    }
+
+    // Phase 2: ProcessDeferredConnections - resolve ConnectVariadic, ConnectMember, etc.
+    // TODO: Implement deferred connection queue
+    std::cout << "[GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)" << std::endl;
+
+    // Phase 3: Setup and Compile nodes
+    std::cout << "[GeneratePipelines] Phase 3: Setup and Compile..." << std::endl;
 
     bool cachesLoaded = false;
 

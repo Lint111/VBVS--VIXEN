@@ -25,6 +25,89 @@ DescriptorResourceGathererNode::DescriptorResourceGathererNode(
 ) : VariadicTypedNode<DescriptorResourceGathererNodeConfig>(instanceName, nodeType) {
 }
 
+void DescriptorResourceGathererNode::GraphCompileSetup() {
+    std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] Discovering descriptors from shader bundle...\n";
+
+    // Check if slots were already pre-registered
+    if (!descriptorSlots_.empty()) {
+        std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] Slots already pre-registered ("
+                  << descriptorSlots_.size() << " bindings), skipping auto-discovery\n";
+        return;
+    }
+
+    // Get shader bundle from input (bundle 0, slot 0)
+    Resource* shaderBundleResource = GetInput(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE.index, 0);
+    if (!shaderBundleResource || !shaderBundleResource->IsValid()) {
+        std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] WARNING: No shader bundle connected, cannot auto-discover descriptors\n";
+        return;
+    }
+
+    // Extract ShaderDataBundle from resource
+    auto shaderBundle = shaderBundleResource->GetHandle<ShaderDataBundle*>();
+    if (!shaderBundle || !shaderBundle->descriptorLayout) {
+        std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] WARNING: Invalid shader bundle or no descriptor layout\n";
+        return;
+    }
+
+    const auto* layoutSpec = shaderBundle->descriptorLayout.get();
+    std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] Found " << layoutSpec->bindings.size()
+              << " descriptor bindings in shader\n";
+
+    // Register variadic slots based on shader reflection
+    for (const DescriptorBinding& binding : layoutSpec->bindings) {
+        // Create descriptor slot info
+        DescriptorSlotInfo slotInfo;
+        slotInfo.binding = binding.binding;
+        slotInfo.descriptorType = binding.descriptorType;
+        slotInfo.dynamicInputIndex = descriptorSlots_.size();
+
+        // Generate slot name
+        switch (binding.descriptorType) {
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                slotInfo.slotName = "storage_image_" + std::to_string(binding.binding);
+                break;
+            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                slotInfo.slotName = "sampled_image_" + std::to_string(binding.binding);
+                break;
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                slotInfo.slotName = "combined_sampler_" + std::to_string(binding.binding);
+                break;
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                slotInfo.slotName = "uniform_buffer_" + std::to_string(binding.binding);
+                break;
+            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                slotInfo.slotName = "storage_buffer_" + std::to_string(binding.binding);
+                break;
+            default:
+                slotInfo.slotName = "descriptor_" + std::to_string(binding.binding);
+                break;
+        }
+
+        descriptorSlots_.push_back(slotInfo);
+
+        // Register variadic slot with bundle system
+        VariadicSlotInfo variadicSlot;
+        variadicSlot.resource = nullptr;
+        variadicSlot.resourceType = ResourceType::Image;  // Default
+        variadicSlot.slotName = slotInfo.slotName;
+        variadicSlot.binding = binding.binding;
+        variadicSlot.descriptorType = binding.descriptorType;
+
+        RegisterVariadicSlot(variadicSlot, 0);
+
+        std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] Auto-registered variadic slot "
+                  << binding.binding << ": " << variadicSlot.slotName
+                  << " (type=" << binding.descriptorType << ")\n";
+    }
+
+    // Set variadic input constraints
+    if (!descriptorSlots_.empty()) {
+        SetVariadicInputConstraints(descriptorSlots_.size(), descriptorSlots_.size());
+        std::cout << "[DescriptorResourceGathererNode::GraphCompileSetup] Set exact count constraint: "
+                  << descriptorSlots_.size() << " required\n";
+    }
+}
+
 void DescriptorResourceGathererNode::SetupImpl(Context& ctx) {
     std::cout << "[DescriptorResourceGathererNode::Setup] Discovering descriptor requirements...\n";
 

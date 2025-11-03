@@ -441,12 +441,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
     NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
 
-    // Phase H: Pre-register variadic slots using shader metadata (enables ConnectVariadic before Setup)
+    // Phase H: NO LONGER NEEDED - GraphCompileSetup auto-discovers slots from shader bundle!
+    // (Kept commented for reference - will be removed once fully tested)
+    /*
     auto* gathererNode = dynamic_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
     if (gathererNode) {
         gathererNode->PreRegisterVariadicSlots(ComputeTest::outputImage);
         mainLogger->Info("Pre-registered variadic slots for compute descriptor gatherer");
     }
+    */
 
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");

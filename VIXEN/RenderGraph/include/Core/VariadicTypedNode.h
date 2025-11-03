@@ -70,24 +70,21 @@ public:
     virtual ~VariadicTypedNode() = default;
 
     /**
-     * @brief IGraphCompilable implementation - delegates to SetupImpl by default
+     * @brief IGraphCompilable implementation - no-op by default
      *
      * This allows variadic slots to be discovered during graph compilation
      * (before deferred connections like ConnectVariadic are processed).
      *
-     * Creates a Context for bundle 0 and calls SetupImpl. Override this method
-     * if you need custom graph-compile-time behavior or different bundle handling.
+     * Override this method in derived classes to perform graph-compile-time
+     * setup such as discovering dynamic slots from shader metadata.
+     *
+     * NOTE: Do NOT call Setup() or SetupImpl() here - inputs may not be connected yet!
+     * Use compile-time metadata (like PreRegisterVariadicSlots) for discovery.
      */
     void GraphCompileSetup() override {
-        std::cout << "[VariadicTypedNode::GraphCompileSetup] Running for "
-                  << this->GetInstanceName() << "\n";
-
-        // Create context for bundle 0 (graph-compile-time setup is single-threaded)
-        Context ctx{this, 0};
-
-        // Call the node's SetupImpl during graph compilation
-        // This discovers variadic slots before connections finalize
-        this->SetupImpl(ctx);
+        // Default: no-op
+        // Derived classes should override to register variadic slots using
+        // compile-time metadata (e.g., PreRegisterVariadicSlots)
     }
 
     /**
