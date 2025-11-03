@@ -65,10 +65,10 @@ void DescriptorResourceGathererNode::ExecuteImpl(Context& ctx) {
     GatherResources(ctx);
 
     // Output the resource array
-    OUTPUT(DESCRIPTOR_RESOURCES) = resourceArray_;
+    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES) = resourceArray_;
 
     // Pass through shader bundle for downstream nodes
-    OUTPUT(SHADER_DATA_BUNDLE_OUT) = INPUT(SHADER_DATA_BUNDLE);
+    ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT) = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
 }
 
 void DescriptorResourceGathererNode::CleanupImpl() {
@@ -82,7 +82,7 @@ void DescriptorResourceGathererNode::CleanupImpl() {
 
 void DescriptorResourceGathererNode::DiscoverDescriptors(Context& ctx) {
     // Get shader data bundle from input
-    auto shaderBundle = INPUT(SHADER_DATA_BUNDLE);
+    auto shaderBundle = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
     if (!shaderBundle) {
         std::cout << "[DescriptorResourceGathererNode::DiscoverDescriptors] ERROR: No shader bundle provided\n";
         return;
