@@ -65,10 +65,10 @@ void DescriptorResourceGathererNode::ExecuteImpl(Context& ctx) {
     GatherResources(ctx);
 
     // Output the resource array
-    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES) = resourceArray_;
+    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
 
     // Pass through shader bundle for downstream nodes
-    ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT) = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+    ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE));
 }
 
 void DescriptorResourceGathererNode::CleanupImpl() {
@@ -89,7 +89,7 @@ void DescriptorResourceGathererNode::DiscoverDescriptors(Context& ctx) {
     }
 
     // Get descriptor layout spec from shader bundle
-    const auto* layoutSpec = shaderBundle->descriptorLayoutSpec;
+    const auto* layoutSpec = shaderBundle->descriptorLayout.get();
     if (!layoutSpec) {
         std::cout << "[DescriptorResourceGathererNode::DiscoverDescriptors] ERROR: Shader bundle has no descriptor layout spec\n";
         return;
@@ -171,8 +171,8 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
 
         uint32_t binding = descriptorSlots_[i].binding;
 
-        // TODO: Need Resource::GetHandleVariant() to extract variant properly
-        // For now, placeholder - we'll need to extend Resource class
+        // Extract handle variant and store in output array
+        resourceArray_[binding] = res->GetHandleVariant();
         std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding << "\n";
     }
 }

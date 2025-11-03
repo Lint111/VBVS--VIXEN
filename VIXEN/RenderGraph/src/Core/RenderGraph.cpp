@@ -1244,7 +1244,7 @@ void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage
 
     // Publish completion event
     if (messageBus) {
-        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, cleanedCount);
+        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, static_cast<uint32_t>(cleanedCount));
         messageBus->Publish(std::move(completionMsg));
     }
 }

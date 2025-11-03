@@ -337,6 +337,13 @@ public:
     }
 
     /**
+     * @brief Get handle as variant (for generic processing)
+     */
+    const ResourceHandleVariant& GetHandleVariant() const {
+        return handle;
+    }
+
+    /**
      * @brief Get descriptor as specific type
      */
     template<typename DescType>

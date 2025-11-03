@@ -139,10 +139,7 @@ public:
         }
 
         // Extract variant from resource
-        // Note: Resource class would need to expose the variant directly
-        // For now, we need to know the type. This is a placeholder.
-        // TODO: Add Resource::GetHandleVariant() method
-        return std::monostate{};  // Placeholder
+        return res->GetHandleVariant();
     }
 
     /**
