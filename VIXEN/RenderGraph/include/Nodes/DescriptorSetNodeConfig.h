@@ -56,7 +56,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 9; // Added DESCRIPTOR_RESOURCES for Phase H
+    static constexpr size_t INPUTS = 9;  // Added DESCRIPTOR_RESOURCES for Phase H
     static constexpr size_t OUTPUTS = 4;  // Added VULKAN_DEVICE_OUT for pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -114,7 +114,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(DESCRIPTOR_RESOURCES, ResourceHandleVariantVector, 8,
+    // Phase H: Resource array from DescriptorResourceGathererNode
+    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceHandleVariant>, 8,
         SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -173,7 +174,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
 
-        HandleDescriptor descriptorResourcesDesc{"ResourceHandleVariantVector"};
+        // Phase H: Descriptor resource array from gatherer node
+        HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
         INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
 
         // Initialize output descriptors

@@ -261,62 +261,85 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     VkImageView textureView = ctx.In(DescriptorSetNodeConfig::TEXTURE_VIEW);
     VkSampler textureSampler = ctx.In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
 
+    // Phase H: Persistent storage for descriptor infos (must outlive vkUpdateDescriptorSets call)
+    std::vector<std::vector<VkDescriptorImageInfo>> perFrameImageInfos(imageCount);
+    std::vector<std::vector<VkDescriptorBufferInfo>> perFrameBufferInfos(imageCount);
+
     for (uint32_t i = 0; i < imageCount; i++) {
         std::vector<VkWriteDescriptorSet> writes;
 
         if (useResourceArray) {
-            // Phase H: New data-driven approach - bind resources from DESCRIPTOR_RESOURCES array
-            // Match resources to descriptor bindings based on type
+            // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
+            perFrameImageInfos[i].reserve(descriptorBindings.size());
+            perFrameBufferInfos[i].reserve(descriptorBindings.size());
+
             for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size() && bindingIdx < descriptorResources.size(); bindingIdx++) {
                 const auto& binding = descriptorBindings[bindingIdx];
                 const auto& resourceVariant = descriptorResources[bindingIdx];
 
-                // Create write descriptor based on binding type
-                if (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
-                    // Storage image - extract VkImageView from variant
-                    if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
-                        VkDescriptorImageInfo imageInfo{};
-                        imageInfo.imageView = *imageView;
-                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+                VkWriteDescriptorSet write{};
+                write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                write.dstSet = descriptorSets[i];
+                write.dstBinding = binding.binding;
+                write.dstArrayElement = 0;
+                write.descriptorType = binding.descriptorType;
+                write.descriptorCount = 1;
 
-                        VkWriteDescriptorSet write{};
-                        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        write.dstSet = descriptorSets[i];
-                        write.dstBinding = binding.binding;
-                        write.dstArrayElement = 0;
-                        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                        write.descriptorCount = 1;
-                        write.pImageInfo = &imageInfo;
-                        writes.push_back(write);
-
-                        std::cout << "[DescriptorSetNode::Compile] Bound storage image to binding " << binding.binding << std::endl;
+                // Generic variant inspection and descriptor creation
+                switch (binding.descriptorType) {
+                    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                        if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
+                            VkDescriptorImageInfo imageInfo{};
+                            imageInfo.imageView = *imageView;
+                            imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                                ? VK_IMAGE_LAYOUT_GENERAL
+                                : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                            perFrameImageInfos[i].push_back(imageInfo);
+                            write.pImageInfo = &perFrameImageInfos[i].back();
+                            writes.push_back(write);
+                        }
+                        break;
                     }
-                } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
-                    // Uniform buffer - extract VkBuffer from variant
-                    if (auto* buffer = std::get_if<VkBuffer>(&resourceVariant)) {
-                        VkDescriptorBufferInfo bufferInfo{};
-                        bufferInfo.buffer = *buffer;
-                        bufferInfo.offset = 0;
-                        bufferInfo.range = VK_WHOLE_SIZE;  // TODO: Get actual size from descriptor
 
-                        VkWriteDescriptorSet write{};
-                        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                        write.dstSet = descriptorSets[i];
-                        write.dstBinding = binding.binding;
-                        write.dstArrayElement = 0;
-                        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                        write.descriptorCount = 1;
-                        write.pBufferInfo = &bufferInfo;
-                        writes.push_back(write);
-
-                        std::cout << "[DescriptorSetNode::Compile] Bound uniform buffer to binding " << binding.binding << std::endl;
+                    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
+                        // For combined sampler, need VkImageView + VkSampler
+                        // Assume gatherer provides VkImageView, use textureSampler from legacy slot
+                        if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
+                            VkDescriptorImageInfo imageInfo{};
+                            imageInfo.imageView = *imageView;
+                            imageInfo.sampler = textureSampler;  // From legacy TEXTURE_SAMPLER slot
+                            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                            perFrameImageInfos[i].push_back(imageInfo);
+                            write.pImageInfo = &perFrameImageInfos[i].back();
+                            writes.push_back(write);
+                        }
+                        break;
                     }
-                } else if (binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
-                    // Combined image sampler - need both VkImageView and VkSampler
-                    // TODO: Handle combined resources (may need struct in variant)
-                    std::cout << "[DescriptorSetNode::Compile] WARNING: COMBINED_IMAGE_SAMPLER not yet implemented in resource array mode" << std::endl;
+
+                    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: {
+                        if (auto* buffer = std::get_if<VkBuffer>(&resourceVariant)) {
+                            VkDescriptorBufferInfo bufferInfo{};
+                            bufferInfo.buffer = *buffer;
+                            bufferInfo.offset = 0;
+                            bufferInfo.range = VK_WHOLE_SIZE;
+                            perFrameBufferInfos[i].push_back(bufferInfo);
+                            write.pBufferInfo = &perFrameBufferInfos[i].back();
+                            writes.push_back(write);
+                        }
+                        break;
+                    }
+
+                    default:
+                        std::cout << "[DescriptorSetNode::Compile] WARNING: Unsupported descriptor type "
+                                  << binding.descriptorType << " at binding " << binding.binding << std::endl;
+                        break;
                 }
             }
+
+            std::cout << "[DescriptorSetNode::Compile] Bound " << writes.size()
+                      << " descriptors for frame " << i << " (data-driven)" << std::endl;
         } else {
             // Legacy hardcoded logic
             // Update binding 0 based on what the shader reflection says it is

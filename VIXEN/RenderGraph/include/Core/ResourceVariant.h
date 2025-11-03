@@ -140,7 +140,6 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(ResourceHandleVariantVector,     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
 // NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
@@ -168,6 +167,9 @@ using ResourceHandleVariant = std::variant<
 >;
 
 // Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
+
+// Phase H: Type alias for resource array (defined after variant is complete)
+using ResourceHandleVariantVector = std::vector<ResourceHandleVariant>;
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS
@@ -202,6 +204,14 @@ struct ResourceTypeTraits {
 RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
+
+// Phase H: Manual registration for ResourceHandleVariantVector (can't use macro - circular dependency)
+template<>
+struct ResourceTypeTraits<ResourceHandleVariantVector> {
+    using DescriptorT = HandleDescriptor;
+    static constexpr ResourceType resourceType = ResourceType::Buffer;
+    static constexpr bool isValid = true;
+};
 
 // ============================================================================
 // HELPER: MACRO-GENERATED RESOURCE INITIALIZATION
