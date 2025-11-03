@@ -174,16 +174,16 @@ public:
 
     /**
      * @brief Register all connections with the RenderGraph
-     * 
+     *
      * Validates handles, creates GraphEdges, and registers with topology.
-     * Also processes constant connections.
+     * Also processes constant and variadic connections.
      * Throws if any connection is invalid.
      */
     void RegisterAll() {
         // First, register node-to-node connections
         for (const auto& conn : connections) {
             ValidateConnection(conn);
-            
+
             // Use RenderGraph's existing ConnectNodes method
             // This handles resource creation, dependency tracking, and topology
             graph->ConnectNodes(
@@ -200,6 +200,12 @@ public:
             constantConn(); // Execute the lambda that sets the input
         }
         constantConnections.clear();
+
+        // Finally, apply variadic connections
+        for (auto& variadicConn : variadicConnections) {
+            variadicConn(); // Execute the lambda that adds variadic input
+        }
+        variadicConnections.clear();
     }
 
     /**
@@ -210,15 +216,79 @@ public:
     /**
      * @brief Clear all pending connections without registering
      */
-    void Clear() { 
-        connections.clear(); 
+    void Clear() {
+        connections.clear();
         constantConnections.clear();
+        variadicConnections.clear();
+    }
+
+    /**
+     * @brief Connect to a variadic node using shader binding metadata from Names.h
+     *
+     * Uses binding constant from Names.h (generated from SDI) as a config reference.
+     * The binding constant contains all metadata needed to wire the connection.
+     *
+     * Example:
+     * ```cpp
+     * // Using Names.h binding constant directly
+     * batch.ConnectVariadic(gathererNode, ComputeShaderBindings::INPUT_IMAGE,
+     *                       textureNode, TextureConfig::IMAGE_VIEW);
+     * ```
+     *
+     * @param variadicNode Handle to variadic node (DescriptorResourceGathererNode)
+     * @param bindingRef Binding constant from Names.h (e.g., ComputeShaderBindings::INPUT_IMAGE)
+     * @param sourceNode Handle to source node providing the resource
+     * @param sourceSlot Output slot from source node
+     */
+    template<typename BindingRefType, typename SourceSlot>
+    ConnectionBatch& ConnectVariadic(
+        NodeHandle variadicNode,
+        BindingRefType bindingRef,
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot
+    ) {
+        // Defer the variadic connection via lambda (applied during RegisterAll)
+        variadicConnections.push_back([=]() {
+            // Get the variadic node instance
+            NodeInstance* node = graph->GetNodeInstance(variadicNode);
+            if (!node) {
+                throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
+            }
+
+            // Cast to VariadicTypedNode to access AddVariadicInput
+            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            if (!variadicNodePtr) {
+                throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
+            }
+
+            // Extract binding index from binding ref
+            // Names.h constants should expose: binding index, name, type
+            uint32_t bindingIndex = bindingRef.binding;
+
+            // Get source resource
+            NodeInstance* sourceNodeInst = graph->GetNodeInstance(sourceNode);
+            if (!sourceNodeInst) {
+                throw std::runtime_error("ConnectVariadic: Invalid source node handle");
+            }
+
+            Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
+            if (!sourceRes) {
+                throw std::runtime_error("ConnectVariadic: Source output not found");
+            }
+
+            // Add to variadic inputs at the binding index position
+            // Note: DescriptorResourceGathererNode should order inputs by binding
+            variadicNodePtr->AddVariadicInput(sourceRes);
+        });
+
+        return *this;
     }
 
 private:
     RenderGraph* graph;
     std::vector<TypedConnectionDescriptor> connections;
     std::vector<std::function<void()>> constantConnections; // Deferred constant setters
+    std::vector<std::function<void()>> variadicConnections; // Deferred variadic connections
 
     void ValidateConnection(const TypedConnectionDescriptor& conn) {
         if (!conn.sourceNode.IsValid()) {

@@ -4,7 +4,7 @@
 //
 // Program: ComputeTest
 // UUID: 3e331666c418cc79
-// Generated: 2025-11-02 20:40:08
+// Generated: 2025-11-03 10:32:13
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -29,9 +29,13 @@ namespace SDI = ShaderInterface::_3e331666c418cc79;
 // ============================================================================
 
 // outputImage (Set 0, Binding 0)
-using outputImage_t = SDI::Set0::outputImage;
-constexpr uint32_t outputImage_SET = outputImage_t::SET;
-constexpr uint32_t outputImage_BINDING = outputImage_t::BINDING;
-constexpr VkDescriptorType outputImage_TYPE = outputImage_t::TYPE;
+struct outputImage_Ref {
+    using SDI_Type = SDI::Set0::outputImage;
+    static constexpr uint32_t set = SDI_Type::SET;
+    static constexpr uint32_t binding = SDI_Type::BINDING;
+    static constexpr VkDescriptorType type = SDI_Type::TYPE;
+    static constexpr const char* name = "outputImage";
+};
+inline constexpr outputImage_Ref outputImage{};
 
 } // namespace ComputeTest

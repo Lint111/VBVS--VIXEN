@@ -1,0 +1,16 @@
+{
+  "descriptorInterfaceHash": "5dc25d782ed96b29",
+  "pipelineType": 2,
+  "programName": "ComputeTest",
+  "sdiHeaderPath": "./generated/sdi\\3e331666c418cc79-SDI.h",
+  "sdiNamespace": "ShaderInterface::3e331666c418cc79",
+  "stages": [
+    {
+      "entryPoint": "main",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\3e331666c418cc79_stage32.spv",
+      "spirvSize": 642,
+      "stage": 32
+    }
+  ],
+  "uuid": "3e331666c418cc79"
+}

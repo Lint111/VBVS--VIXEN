@@ -34,7 +34,9 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
 #include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
 #include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
+#include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
+#include "generated/sdi/ComputeTestNames.h"  // Phase H: Shader binding refs
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -386,8 +388,9 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
     nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
     nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
+    nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
 
-    mainLogger->Info("Successfully registered 21 node types");
+    mainLogger->Info("Successfully registered 22 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -436,6 +439,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
+    NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
@@ -444,7 +448,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 19 node instances (Phase G: added compute pipeline nodes)");
+    mainLogger->Info("Created 20 node instances (Phase H: added descriptor gatherer node)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -796,7 +800,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   computePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         // Phase H: Shader bundle → Gatherer for descriptor discovery
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         // Phase H: Gatherer → DescriptorSet (data-driven resources)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         // Pass bundle through to descriptor set and pipeline
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT,
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
@@ -811,7 +822,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
                   computeDispatch, ComputeDispatchNodeConfig::DESCRIPTOR_SETS)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
+                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
+         // Phase H: Data-driven resource connection via shader metadata
+         .ConnectVariadic(descriptorGatherer, ComputeTest::outputImage,
+                          swapChainNode, SwapChainNodeConfig::IMAGE_VIEW);
 
     // Swapchain connections to descriptor set and dispatch
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,

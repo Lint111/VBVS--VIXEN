@@ -302,17 +302,17 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
                         bindingName = "Binding" + std::to_string(binding.binding);
                     }
 
-                    // Generate constexpr aliases for this binding
+                    // Generate binding ref struct for use with ConnectVariadic
                     code << "// " << binding.name << " (Set " << setIndex
                          << ", Binding " << binding.binding << ")\n";
-                    code << "using " << bindingName << "_t = SDI::Set" << setIndex
-                         << "::" << bindingName << ";\n";
-                    code << "constexpr uint32_t " << bindingName << "_SET = "
-                         << bindingName << "_t::SET;\n";
-                    code << "constexpr uint32_t " << bindingName << "_BINDING = "
-                         << bindingName << "_t::BINDING;\n";
-                    code << "constexpr VkDescriptorType " << bindingName << "_TYPE = "
-                         << bindingName << "_t::TYPE;\n";
+                    code << "struct " << bindingName << "_Ref {\n";
+                    code << "    using SDI_Type = SDI::Set" << setIndex << "::" << bindingName << ";\n";
+                    code << "    static constexpr uint32_t set = SDI_Type::SET;\n";
+                    code << "    static constexpr uint32_t binding = SDI_Type::BINDING;\n";
+                    code << "    static constexpr VkDescriptorType type = SDI_Type::TYPE;\n";
+                    code << "    static constexpr const char* name = \"" << binding.name << "\";\n";
+                    code << "};\n";
+                    code << "inline constexpr " << bindingName << "_Ref " << bindingName << "{};\n";
                     code << "\n";
                 }
             }

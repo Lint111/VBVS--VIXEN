@@ -242,7 +242,7 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
 
     // Phase H: Check if DESCRIPTOR_RESOURCES input is provided (new data-driven approach)
-    auto& descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+    auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
     bool useResourceArray = !descriptorResources.empty();
 
     if (useResourceArray) {
@@ -261,9 +261,9 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     VkImageView textureView = ctx.In(DescriptorSetNodeConfig::TEXTURE_VIEW);
     VkSampler textureSampler = ctx.In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
 
-    // Phase H: Persistent storage for descriptor infos (must outlive vkUpdateDescriptorSets call)
-    std::vector<std::vector<VkDescriptorImageInfo>> perFrameImageInfos(imageCount);
-    std::vector<std::vector<VkDescriptorBufferInfo>> perFrameBufferInfos(imageCount);
+    // Phase H: Initialize persistent descriptor info storage (node scope for lifetime)
+    perFrameImageInfos.resize(imageCount);
+    perFrameBufferInfos.resize(imageCount);
 
     for (uint32_t i = 0; i < imageCount; i++) {
         std::vector<VkWriteDescriptorSet> writes;

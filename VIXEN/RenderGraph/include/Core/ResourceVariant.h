@@ -328,6 +328,7 @@ public:
         return VulkanType{}; // Return null handle if type mismatch
     }
 
+
     /**
      * @brief Check if handle is set
      */
@@ -369,8 +370,26 @@ private:
     ResourceHandleVariant handle;
     ResourceDescriptorVariant descriptor;
 
+    // Phase H: Separate storage for ResourceHandleVariantVector (can't be in variant - circular dependency)
+    std::optional<ResourceHandleVariantVector> vectorHandle;
+
     friend class RenderGraph;
 };
+
+// Phase H: Template specializations for ResourceHandleVariantVector
+// (must be outside class to avoid circular dependency issues)
+template<>
+inline void Resource::SetHandle<ResourceHandleVariantVector>(ResourceHandleVariantVector value) {
+    vectorHandle = std::move(value);
+}
+
+template<>
+inline ResourceHandleVariantVector Resource::GetHandle<ResourceHandleVariantVector>() const {
+    if (vectorHandle.has_value()) {
+        return vectorHandle.value();
+    }
+    return ResourceHandleVariantVector{};
+}
 
 // ============================================================================
 // RESOURCE SCHEMA DESCRIPTOR

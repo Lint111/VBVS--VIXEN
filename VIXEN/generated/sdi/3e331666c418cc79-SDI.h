@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: 3e331666c418cc79
-// Generated: 2025-11-02 20:40:08
+// Generated: 2025-11-03 10:32:13
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -51,8 +51,12 @@ namespace Set0 {
  * @brief PushConstants
  * Size: 16 bytes
  * Alignment: 16 bytes
+ * Layout Hash: 0xf87a55e2ef4e337 (for runtime discovery)
  */
 struct PushConstants {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xf87a55e2ef4e337ULL;
+
     // Offset: 0 bytes
     float time;
     // Offset: 4 bytes

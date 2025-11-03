@@ -119,6 +119,10 @@ private:
     // Pipeline layout for binding descriptor sets
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
+    // Phase H: Persistent storage for data-driven descriptor binding
+    std::vector<std::vector<VkDescriptorImageInfo>> perFrameImageInfos;
+    std::vector<std::vector<VkDescriptorBufferInfo>> perFrameBufferInfos;
+
     // Helpers
     void ValidateLayoutSpec();
     void CreateDescriptorSetLayout();
