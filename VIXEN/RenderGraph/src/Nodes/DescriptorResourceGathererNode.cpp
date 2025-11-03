@@ -1,5 +1,6 @@
 #include "Nodes/DescriptorResourceGathererNode.h"
 #include "ShaderManagement/ShaderDataBundle.h"
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include <iostream>
 
 namespace Vixen::RenderGraph {
@@ -27,7 +28,17 @@ DescriptorResourceGathererNode::DescriptorResourceGathererNode(
 void DescriptorResourceGathererNode::SetupImpl(Context& ctx) {
     std::cout << "[DescriptorResourceGathererNode::Setup] Discovering descriptor requirements...\n";
 
-    // Discover descriptor metadata from shader
+    // Check if slots were pre-registered during graph construction
+    bool slotsPreRegistered = !descriptorSlots_.empty();
+
+    if (slotsPreRegistered) {
+        std::cout << "[DescriptorResourceGathererNode::Setup] Using pre-registered variadic slots ("
+                  << descriptorSlots_.size() << " bindings)\n";
+        // Slots already registered, just validate against shader bundle during Compile
+        return;
+    }
+
+    // Discover descriptor metadata from shader (fallback if not pre-registered)
     DiscoverDescriptors(ctx);
 
     // Set variadic input constraints based on shader requirements
@@ -137,7 +148,7 @@ void DescriptorResourceGathererNode::DiscoverDescriptors(Context& ctx) {
         descriptorSlots_.push_back(legacySlotInfo);
 
         // Create variadic slot info for bundle system
-        NodeInstance::VariadicSlotInfo variadicSlot;
+        VariadicSlotInfo variadicSlot;
         variadicSlot.resource = nullptr;  // Will be connected later
         variadicSlot.resourceType = ResourceType::Image;  // Default - will be validated at connection time
         variadicSlot.slotName = legacySlotInfo.slotName;
@@ -189,8 +200,8 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
     for (size_t i = 0; i < inputCount; ++i) {
         // Get variadic slot info (includes resource and metadata)
         const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
-        if (!slotInfo || !slotInfo->resource || !slotInfo->resource->IsValid()) {
-            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping invalid resource at variadic index " << i << "\n";
+        if (!slotInfo || !slotInfo->resource) {
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping null resource at variadic index " << i << "\n";
             continue;
         }
 
@@ -198,10 +209,23 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
 
         // Extract handle variant and store in output array
         auto variant = slotInfo->resource->GetHandleVariant();
-        resourceArray_[binding] = variant;
-        std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding
-                  << " (" << slotInfo->slotName << "), variant index=" << variant.index()
-                  << ", resource type=" << static_cast<int>(slotInfo->resource->GetType()) << "\n";
+
+        // Check if this is a SwapChainPublicVariables* (special case for per-frame resources)
+        if (auto* scPtr = std::get_if<SwapChainPublicVariables*>(&variant)) {
+            resourceArray_[binding] = variant;
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered SwapChainPublicVariables* for binding "
+                      << binding << " (" << slotInfo->slotName << "), image count=" << (*scPtr)->swapChainImageCount << "\n";
+        }
+        // Regular resources (must be valid)
+        else if (slotInfo->resource->IsValid()) {
+            resourceArray_[binding] = variant;
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding
+                      << " (" << slotInfo->slotName << "), variant index=" << variant.index()
+                      << ", resource type=" << static_cast<int>(slotInfo->resource->GetType()) << "\n";
+        }
+        else {
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping invalid resource at variadic index " << i << "\n";
+        }
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include "TypedNodeInstance.h"
 #include "ResourceVariant.h"
+#include "IGraphCompilable.h"
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -57,7 +58,8 @@ struct VariadicBundle {
  * ```
  */
 template<typename ConfigType>
-class VariadicTypedNode : public TypedNode<ConfigType> {
+class VariadicTypedNode : public TypedNode<ConfigType>,
+                         public IGraphCompilable {
 public:
     using Base = TypedNode<ConfigType>;
     using Context = typename Base::Context;
@@ -66,6 +68,27 @@ public:
         : Base(instanceName, nodeType) {}
 
     virtual ~VariadicTypedNode() = default;
+
+    /**
+     * @brief IGraphCompilable implementation - delegates to SetupImpl by default
+     *
+     * This allows variadic slots to be discovered during graph compilation
+     * (before deferred connections like ConnectVariadic are processed).
+     *
+     * Creates a Context for bundle 0 and calls SetupImpl. Override this method
+     * if you need custom graph-compile-time behavior or different bundle handling.
+     */
+    void GraphCompileSetup() override {
+        std::cout << "[VariadicTypedNode::GraphCompileSetup] Running for "
+                  << this->GetInstanceName() << "\n";
+
+        // Create context for bundle 0 (graph-compile-time setup is single-threaded)
+        Context ctx{this, 0};
+
+        // Call the node's SetupImpl during graph compilation
+        // This discovers variadic slots before connections finalize
+        this->SetupImpl(ctx);
+    }
 
     /**
      * @brief Set variadic input count constraints

@@ -59,6 +59,20 @@ public:
     );
     ~DescriptorResourceGathererNode() override = default;
 
+    /**
+     * @brief Pre-register variadic slots using shader metadata from Names.h
+     *
+     * Call this during graph construction to enable ConnectVariadic() before Setup phase.
+     * Accepts variadic list of binding refs (e.g., ComputeTest::outputImage).
+     *
+     * Example:
+     *   gatherer->PreRegisterVariadicSlots(ComputeTest::outputImage, ComputeTest::uniformBuffer);
+     */
+    template<typename... BindingRefs>
+    void PreRegisterVariadicSlots(BindingRefs... bindingRefs) {
+        PreRegisterVariadicSlotsImpl({bindingRefs...});
+    }
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(Context& ctx) override;
@@ -83,6 +97,39 @@ private:
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);
     VkDescriptorType InferDescriptorType(Resource* res);
+
+    // Pre-registration helper (implementation detail)
+    template<typename BindingRef>
+    void PreRegisterVariadicSlotsImpl(std::initializer_list<BindingRef> bindingRefs) {
+        for (const auto& ref : bindingRefs) {
+            // Create descriptor slot info
+            DescriptorSlotInfo slotInfo;
+            slotInfo.binding = ref.binding;
+            slotInfo.descriptorType = ref.type;
+            slotInfo.slotName = ref.name;
+            slotInfo.dynamicInputIndex = descriptorSlots_.size();
+
+            descriptorSlots_.push_back(slotInfo);
+
+            // Register variadic slot with bundle 0
+            VariadicSlotInfo variadicSlot;
+            variadicSlot.resource = nullptr;
+            variadicSlot.resourceType = ResourceType::Image;  // Default
+            variadicSlot.slotName = slotInfo.slotName;
+            variadicSlot.binding = ref.binding;
+            variadicSlot.descriptorType = ref.type;
+
+            RegisterVariadicSlot(variadicSlot, 0);
+
+            std::cout << "[DescriptorResourceGathererNode::PreRegister] Registered slot for binding "
+                      << ref.binding << ": " << ref.name << " (type=" << ref.type << ")\n";
+        }
+
+        // Set variadic input constraints
+        if (!descriptorSlots_.empty()) {
+            SetVariadicInputConstraints(descriptorSlots_.size(), descriptorSlots_.size());
+        }
+    }
 };
 
 } // namespace Vixen::RenderGraph

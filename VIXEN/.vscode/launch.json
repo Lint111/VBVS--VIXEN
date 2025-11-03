@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Vulkan App",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/binaries/7e_ShadersWithSPIRV.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/binaries",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake Build Debug"
+        },
+        {
+            "name": "Debug Vulkan App (No Build)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/binaries/7e_ShadersWithSPIRV.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/binaries",
+            "environment": [],
+            "console": "integratedTerminal"
+        }
+    ]
+}

@@ -314,7 +314,7 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
 
                 case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
                     // For combined sampler, need VkImageView + VkSampler
-                    // TODO: Gatherer should provide both VkImageView and VkSampler as a struct
+                        // Assume gatherer provides VkImageView, use textureSampler from legacy slot
                     if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
                         VkDescriptorImageInfo imageInfo{};
                         imageInfo.imageView = *imageView;
