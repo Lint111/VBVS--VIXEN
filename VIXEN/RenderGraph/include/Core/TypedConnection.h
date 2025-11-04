@@ -256,7 +256,7 @@ public:
 
         // Defer the variadic connection via lambda (applied during RegisterAll)
         variadicConnections.push_back([=]() {
-            std::cout << "[ConnectVariadic] Executing variadic connection for binding " << bindingRef.binding << std::endl;
+            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << bindingRef.binding << std::endl;
 
             // Get the variadic node instance
             NodeInstance* node = graph->GetInstance(variadicNode);
@@ -264,7 +264,7 @@ public:
                 throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
             }
 
-            // Cast to VariadicTypedNode to access AddVariadicInput
+            // Cast to VariadicTypedNode to access UpdateVariadicSlot
             auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
             if (!variadicNodePtr) {
                 throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
@@ -282,40 +282,30 @@ public:
             }
 
             // Extract binding index from binding ref
-            // BindingRef is a struct with .binding member from Names.h
             uint32_t bindingIndex = bindingRef.binding;
-
-            // Find the variadic slot index that matches this binding
-            // Variadic slots are registered during Setup based on shader reflection
             size_t bundleIndex = 0;
-            size_t variadicSlotIndex = UINT32_MAX;
 
-            size_t variadicCount = variadicNodePtr->GetVariadicInputCount(bundleIndex);
-            for (size_t i = 0; i < variadicCount; ++i) {
-                const auto* slotInfo = variadicNodePtr->GetVariadicSlotInfo(i, bundleIndex);
-                if (slotInfo && slotInfo->binding == bindingIndex) {
-                    variadicSlotIndex = i;
-                    break;
-                }
-            }
+            // Create tentative slot (optimistic - trust user, defer validation to Compile)
+            VariadicSlotInfo tentativeSlot;
+            tentativeSlot.resource = sourceRes;
+            tentativeSlot.resourceType = sourceRes->GetType();  // Infer from resource
+            tentativeSlot.slotName = bindingRef.name;
+            tentativeSlot.binding = bindingIndex;
+            tentativeSlot.descriptorType = bindingRef.type;
+            tentativeSlot.state = SlotState::Tentative;  // Mark as unvalidated
+            tentativeSlot.sourceNode = sourceNode;
+            tentativeSlot.sourceOutput = sourceSlot.index;
 
-            if (variadicSlotIndex == UINT32_MAX) {
-                throw std::runtime_error("ConnectVariadic: No variadic slot found for binding " + std::to_string(bindingIndex));
-            }
-
-            // Add variadic input with validation (checks type against slot metadata)
-            bool success = variadicNodePtr->AddVariadicInput(variadicSlotIndex, sourceRes, bundleIndex);
-            if (!success) {
-                throw std::runtime_error("ConnectVariadic: Failed to add variadic input at slot " + std::to_string(variadicSlotIndex));
-            }
+            // Update/create slot (always succeeds)
+            variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
 
             // Register dependency for topological sort (variadic node depends on source)
             std::cout << "[ConnectVariadic] Adding dependency: " << node->GetInstanceName()
                       << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
             node->AddDependency(sourceNodeInst);
 
-            std::cout << "[ConnectVariadic] Successfully connected binding " << bindingIndex
-                      << " to variadic slot " << variadicSlotIndex << std::endl;
+            std::cout << "[ConnectVariadic] Created tentative slot at binding " << bindingIndex
+                      << " (state=Tentative, will validate during Compile)" << std::endl;
         });
 
         return *this;

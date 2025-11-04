@@ -56,7 +56,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceHandleVariant>, 0,
+    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -95,7 +95,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
-    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceHandleVariant>>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderDataBundlePtr>);
 };
 

@@ -86,7 +86,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotScope::NodeLevel);
 
     // Resource array from DescriptorResourceGathererNode (data-driven binding)
-    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceHandleVariant>, 3,
+    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 3,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -186,7 +186,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
-    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceHandleVariant>>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);

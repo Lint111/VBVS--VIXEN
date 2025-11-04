@@ -72,7 +72,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(PRESENT_FENCE_ARRAY, VkFenceVector, 5,
+    INPUT_SLOT(PRESENT_FENCE_ARRAY, std::vector<VkFence>, 5,
         SlotNullability::Optional,
         SlotRole::ExecuteOnly,
         SlotMutability::ReadOnly,
@@ -167,7 +167,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
-    static_assert(std::is_same_v<PRESENT_FENCE_ARRAY_Slot::Type, VkFenceVector>);
+    static_assert(std::is_same_v<PRESENT_FENCE_ARRAY_Slot::Type, std::vector<VkFence>>);
     static_assert(std::is_same_v<PRESENT_FUNCTION_Slot::Type, PFN_vkQueuePresentKHR>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };

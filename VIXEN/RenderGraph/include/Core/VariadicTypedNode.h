@@ -8,6 +8,22 @@
 namespace Vixen::RenderGraph {
 
 /**
+ * @brief Slot state lifecycle tracking
+ *
+ * Tracks the validation state of variadic slots through the compilation pipeline:
+ * - Tentative: Created during ConnectVariadic, not yet validated
+ * - Validated: Type-checked during Compile phase
+ * - Compiled: Finalized with Vulkan resources created
+ * - Invalid: Validation failed, slot cannot be used
+ */
+enum class SlotState {
+    Tentative,    // Created during connection, unvalidated
+    Validated,    // Type-checked during Compile
+    Compiled,     // Finalized with resources
+    Invalid       // Validation failed
+};
+
+/**
  * @brief Variadic slot metadata (per-bundle)
  *
  * Stores metadata for a variadic input within a specific bundle.
@@ -20,6 +36,11 @@ struct VariadicSlotInfo {
     std::string slotName;              // Descriptive name (e.g., "sampled_image_0")
     uint32_t binding = 0;              // Shader binding index (for descriptor-based nodes)
     VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;  // Descriptor type (if applicable)
+
+    // Phase separation support
+    SlotState state = SlotState::Tentative;  // Current validation state
+    NodeHandle sourceNode;                   // Source node for connection tracking
+    uint32_t sourceOutput = 0;               // Source output slot index
 };
 
 /**
@@ -126,6 +147,33 @@ public:
         }
 
         variadicBundles_[bundleIndex].variadicSlots.push_back(slotInfo);
+    }
+
+    /**
+     * @brief Update or create a variadic slot (optimistic, for ConnectVariadic)
+     *
+     * Creates a tentative slot if it doesn't exist, or updates existing slot.
+     * Always succeeds - validation happens during Compile phase.
+     *
+     * @param slotIndex Index of the variadic slot
+     * @param slotInfo Slot metadata (includes resource, state, source info)
+     * @param bundleIndex Bundle index (default: 0)
+     */
+    void UpdateVariadicSlot(size_t slotIndex, const VariadicSlotInfo& slotInfo, size_t bundleIndex = 0) {
+        // Ensure variadic bundle exists
+        if (bundleIndex >= variadicBundles_.size()) {
+            variadicBundles_.resize(bundleIndex + 1);
+        }
+
+        auto& bundle = variadicBundles_[bundleIndex];
+
+        // Extend slots vector if needed
+        if (slotIndex >= bundle.variadicSlots.size()) {
+            bundle.variadicSlots.resize(slotIndex + 1);
+        }
+
+        // Update/create slot (always succeeds)
+        bundle.variadicSlots[slotIndex] = slotInfo;
     }
 
     /**
@@ -295,7 +343,7 @@ public:
      * @param bundleIndex Bundle index (default: 0)
      * @return ResourceHandleVariant containing the handle
      */
-    ResourceHandleVariant GetVariadicInputVariant(size_t index, size_t bundleIndex = 0) const {
+    ResourceVariant GetVariadicInputVariant(size_t index, size_t bundleIndex = 0) const {
         Resource* res = GetVariadicInputResource(index, bundleIndex);
         if (!res || !res->IsValid()) {
             return std::monostate{};

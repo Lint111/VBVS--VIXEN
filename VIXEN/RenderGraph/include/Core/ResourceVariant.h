@@ -47,13 +47,16 @@ using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
-using FramebufferVector = std::vector<VkFramebuffer>;
-using DescriptorSetVector = std::vector<VkDescriptorSet>;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
-using BoolVector = std::vector<bool>;  // Phase 0.4
-using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Per-image semaphore arrays
-using VkFenceVector = std::vector<VkFence>*;  // Phase 0.7: Fence vector pointer (supports empty() check)
+
+// Legacy compatibility aliases - now handled by wrapper auto-generation
+// NOTE: Use std::vector<VkFramebuffer>, std::vector<VkDescriptorSet>, etc. directly in new code
+using FramebufferVector = std::vector<VkFramebuffer>;
+using DescriptorSetVector = std::vector<VkDescriptorSet>;
+using BoolVector = std::vector<bool>;
+using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Array pointer pattern
+using VkFenceVector = std::vector<VkFence>*;    // Phase 0.7: Vector pointer pattern
 
 namespace Vixen::RenderGraph {
     
@@ -79,19 +82,18 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
 // ============================================================================
 
 /**
- * @brief Master list of all resource types
+ * @brief Master list of base resource types
  * 
  * Format: RESOURCE_TYPE(HandleType, DescriptorType, ResourceTypeEnum)
  * - HandleType: The Vulkan/C++ type stored in the resource
  * - DescriptorType: The descriptor class (or HandleDescriptor for simple types)
  * - ResourceTypeEnum: The ResourceType enum value
  * 
- * To add a new type, add ONE line here. Everything else auto-generates.
+ * To add a new type, add ONE line here. Container variants (std::vector<T>) auto-generate.
  * 
  * Example:
  * RESOURCE_TYPE(VkImage, ImageDescriptor, ResourceType::Image)
- * RESOURCE_TYPE(VkBuffer, BufferDescriptor, ResourceType::Buffer)
- * RESOURCE_TYPE(VkSurface, HandleDescriptor, ResourceType::Image)  // Simple handle
+ * → Auto-generates: VkImage, std::vector<VkImage>
  */
 #define RESOURCE_TYPE_REGISTRY \
     RESOURCE_TYPE(VkImage,                         ImageDescriptor,       ResourceType::Image) \
@@ -107,7 +109,6 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkDescriptorSet,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkCommandPool,                   CommandPoolDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(VkSemaphore,                     HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkSemaphoreArrayPtr,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFence,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \
@@ -133,43 +134,58 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkRect2DPtr,                     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(PFN_vkQueuePresentKHR,           HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
+// NOTE: VkSemaphoreArrayPtr and legacy vector typedefs removed - use std::vector<T> auto-generation instead
 // NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
-// We don't register separate types since VkImage already exists. The descriptor differentiates usage.
 
 // ============================================================================
-// AUTO-GENERATED TYPE TRAITS
+// AUTO-GENERATED TEMPLATE WRAPPER HELPERS
 // ============================================================================
+
+/**
+ * @brief Helper macros to expand wrappers for each base type
+ * Generates all combinations: BaseType + std::vector<BaseType>
+ * 
+ * To add more wrapper types, modify WRAPPER_APPLY below (e.g., add shared_ptr, unique_ptr, etc.)
+ */
+
+// Generate base type + all wrapper variants
+#define EXPAND_WITH_WRAPPERS(HandleType) \
+    HandleType, \
+    std::vector<HandleType>,
+
+// For the last entry (no trailing comma on final wrapper)
+#define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
+    HandleType, \
+    std::vector<HandleType>
 
 // ============================================================================
 // AUTO-GENERATED VARIANTS
 // ============================================================================
 
 /**
- * @brief Variant holding all possible resource handle types
- * Auto-generated from RESOURCE_TYPE_REGISTRY
+ * @brief Variant holding all possible resource handle types + auto-generated wrappers
+ * 
+ * For each type T in RESOURCE_TYPE_REGISTRY, generates:
+ * - T (base type)
+ * - std::vector<T> (array wrapper)
+ * 
+ * To add more wrappers (e.g., T*, std::shared_ptr<T>), modify EXPAND_WITH_WRAPPERS macro above.
  */
-using ResourceHandleVariant = std::variant<
+using ResourceVariant = std::variant<
     std::monostate,  // Empty/uninitialized
-#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) HandleType,
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) HandleType
+#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS_LAST(HandleType)
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
 >;
 
 // Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
-
-// Phase H: Type alias for resource array (defined after variant is complete)
-using ResourceHandleVariantVector = std::vector<ResourceHandleVariant>;
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS
@@ -186,7 +202,7 @@ struct ResourceTypeTraits {
 };
 
 /**
- * @brief Specialized type traits for each registered type
+ * @brief Specialized type traits for base types
  * Auto-generated from RESOURCE_TYPE_REGISTRY
  */
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
@@ -205,55 +221,96 @@ RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
 
-// Phase H: Manual registration for ResourceHandleVariantVector (can't use macro - circular dependency)
+/**
+ * @brief Auto-generated type traits for wrapper types (std::vector<T>)
+ * Inherits descriptor/type from base type T
+ */
+#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
+    template<> struct ResourceTypeTraits<std::vector<HandleType>> { \
+        using DescriptorT = DescriptorType; \
+        static constexpr ResourceType resourceType = ResType; \
+        static constexpr bool isValid = true; \
+    };
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) \
+    template<> struct ResourceTypeTraits<std::vector<HandleType>> { \
+        using DescriptorT = DescriptorType; \
+        static constexpr ResourceType resourceType = ResType; \
+        static constexpr bool isValid = true; \
+    };
+RESOURCE_TYPE_REGISTRY
+#undef RESOURCE_TYPE
+#undef RESOURCE_TYPE_LAST
+
+// Forward declaration to avoid circular dependency
+class Resource;
+
+// Manual type traits for types that would cause circular dependencies if added to macro
 template<>
-struct ResourceTypeTraits<ResourceHandleVariantVector> {
+struct ResourceTypeTraits<ResourceVariant> {
     using DescriptorT = HandleDescriptor;
     static constexpr ResourceType resourceType = ResourceType::Buffer;
     static constexpr bool isValid = true;
 };
 
-// ============================================================================
-// HELPER: MACRO-GENERATED RESOURCE INITIALIZATION
-// ============================================================================
+template<>
+struct ResourceTypeTraits<std::vector<ResourceVariant>> {
+    using DescriptorT = HandleDescriptor;
+    static constexpr ResourceType resourceType = ResourceType::Buffer;
+    static constexpr bool isValid = true;
+};
+
+
+// Visitor pattern: Try to cast descriptor and initialize handle for matching type
+struct TypeInitializer {
+    ResourceType targetType;
+    ResourceDescriptorBase* descriptor;
+    ResourceVariant& handle;
+    ResourceDescriptorVariant& descVariant;
+    bool success = false;
+
+    // Generic handler for all types
+    template<typename HandleType>
+    void operator()(const HandleType&) {
+        using Traits = ResourceTypeTraits<HandleType>;
+        
+        // Skip monostate (uninitialized variant state)
+        if constexpr (std::is_same_v<HandleType, std::monostate>) {
+            return;
+        }
+        
+        // Check if this is the target type
+        if (Traits::resourceType != targetType) {
+            return;
+        }
+        
+        // Try to cast descriptor to expected type
+        if (auto* typedDesc = dynamic_cast<typename Traits::DescriptorT*>(descriptor)) {
+            descVariant = *typedDesc;
+            handle = HandleType{};
+            success = true;
+        }
+    }
+};
+
 
 /**
  * @brief Initialize resource variant from ResourceType enum
  * 
- * Auto-generated dispatch using RESOURCE_TYPE_REGISTRY - no manual switch needed!
+ * Uses std::visit pattern for type-safe dispatch without macro-generated if-else chains.
  * Each ResourceType maps to its correct handle type and descriptor type.
  */
 inline bool InitializeResourceFromType(
     ResourceType type,
     ResourceDescriptorBase* desc,
-    ResourceHandleVariant& outHandle,
+    ResourceVariant& outHandle,
     ResourceDescriptorVariant& outDescriptor)
 {
-    // Macro generates if-else chain matching ResourceType to concrete types
-    #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
-        if (type == ResType) { \
-            if (auto* typedDesc = dynamic_cast<DescriptorType*>(desc)) { \
-                outDescriptor = *typedDesc; \
-                outHandle = HandleType{}; \
-                return true; \
-            } \
-        }
-    #define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) \
-        if (type == ResType) { \
-            if (auto* typedDesc = dynamic_cast<DescriptorType*>(desc)) { \
-                outDescriptor = *typedDesc; \
-                outHandle = HandleType{}; \
-                return true; \
-            } \
-        }
     
-    RESOURCE_TYPE_REGISTRY
+    // Visit all possible types in the variant
+    TypeInitializer visitor{type, desc, outHandle, outDescriptor};
+    std::visit(visitor, ResourceVariant{});
     
-    #undef RESOURCE_TYPE
-    #undef RESOURCE_TYPE_LAST
-    
-    // Unknown type - use default
-    return false;
+    return visitor.success;
 }
 
 // ============================================================================
@@ -339,7 +396,7 @@ public:
     /**
      * @brief Get handle as variant (for generic processing)
      */
-    const ResourceHandleVariant& GetHandleVariant() const {
+    const ResourceVariant& GetHandleVariant() const {
         return handle;
     }
 
@@ -374,29 +431,11 @@ public:
 private:
     ResourceType type = ResourceType::Image;
     ResourceLifetime lifetime = ResourceLifetime::Transient;
-    ResourceHandleVariant handle;
+    ResourceVariant handle;
     ResourceDescriptorVariant descriptor;
-
-    // Phase H: Separate storage for ResourceHandleVariantVector (can't be in variant - circular dependency)
-    std::optional<ResourceHandleVariantVector> vectorHandle;
 
     friend class RenderGraph;
 };
-
-// Phase H: Template specializations for ResourceHandleVariantVector
-// (must be outside class to avoid circular dependency issues)
-template<>
-inline void Resource::SetHandle<ResourceHandleVariantVector>(ResourceHandleVariantVector value) {
-    vectorHandle = std::move(value);
-}
-
-template<>
-inline ResourceHandleVariantVector Resource::GetHandle<ResourceHandleVariantVector>() const {
-    if (vectorHandle.has_value()) {
-        return vectorHandle.value();
-    }
-    return ResourceHandleVariantVector{};
-}
 
 // ============================================================================
 // RESOURCE SCHEMA DESCRIPTOR

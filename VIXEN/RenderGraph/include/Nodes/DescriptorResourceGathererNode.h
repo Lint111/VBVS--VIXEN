@@ -73,14 +73,8 @@ public:
         PreRegisterVariadicSlotsImpl({bindingRefs...});
     }
 
-    /**
-     * @brief IGraphCompilable override - discover variadic slots from shader bundle
-     *
-     * Reads the SHADER_DATA_BUNDLE input and registers variadic slots based on
-     * descriptor bindings found in the shader metadata. This happens during
-     * graph compilation, before ConnectVariadic connections are processed.
-     */
-    void GraphCompileSetup() override;
+    // No GraphCompileSetup override - descriptor discovery happens in SetupImpl
+    // when connected inputs are available via Context
 
 protected:
     // Template method pattern - override *Impl() methods
@@ -97,11 +91,12 @@ private:
     std::vector<DescriptorSlotInfo> descriptorSlots_;
 
     // Output resource array (indexed by binding)
-    std::vector<ResourceHandleVariant> resourceArray_;
+    std::vector<ResourceVariant> resourceArray_;
 
     // Helpers
     void DiscoverDescriptors(Context& ctx);
     void GatherResources(Context& ctx);
+    void ValidateTentativeSlotsAgainstShader(Context& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
 
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);
