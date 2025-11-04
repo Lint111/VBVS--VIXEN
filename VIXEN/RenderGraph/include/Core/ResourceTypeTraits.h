@@ -9,6 +9,10 @@ namespace Vixen::RenderGraph {
 // Forward declare ResourceType enum
 enum class ResourceType;
 
+// Forward declare ResourceTypeTraitsImpl (defined in ResourceVariant.h after registry expansion)
+template<typename T>
+struct ResourceTypeTraitsImpl;
+
 // ============================================================================
 // TYPE UNWRAPPING - Strip container wrappers to get base type
 // ============================================================================
@@ -89,6 +93,37 @@ struct IsTypeInVariant<T, std::variant<Ts...>> {
 
 template<typename T, typename Variant>
 inline constexpr bool IsTypeInVariant_v = IsTypeInVariant<T, Variant>::value;
+
+/**
+ * @brief Check if ALL types in a variant are registered
+ *
+ * For custom variants like std::variant<VkImage, VkBuffer, VkSampler>,
+ * validates that every type in the parameter pack is registered.
+ *
+ * This enables type-safe subset variants of ResourceHandleVariant.
+ *
+ * Example:
+ * - variant<VkImage, VkBuffer> → valid if both registered ✅
+ * - variant<VkImage, UnknownType> → invalid (UnknownType not registered) ❌
+ */
+template<typename Variant>
+struct AllVariantTypesRegistered : std::false_type {};
+
+template<typename... Ts>
+struct AllVariantTypesRegistered<std::variant<Ts...>> {
+    // Forward declare ResourceTypeTraitsImpl to check registration
+    template<typename T>
+    static constexpr bool IsRegistered() {
+        // Will be defined after RESOURCE_TYPE_REGISTRY expansion
+        return ResourceTypeTraitsImpl<T>::isValid;
+    }
+
+    // Check all types in pack are registered (fold expression)
+    static constexpr bool value = (IsRegistered<Ts>() && ...);
+};
+
+template<typename Variant>
+inline constexpr bool AllVariantTypesRegistered_v = AllVariantTypesRegistered<Variant>::value;
 
 // ============================================================================
 // RECURSIVE UNWRAPPING - Handle nested containers

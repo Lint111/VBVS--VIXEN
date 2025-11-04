@@ -266,6 +266,7 @@ struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
  * 1. If T is registered, then vector<T> and array<T, N> are also valid!
  * 2. ResourceHandleVariant (the macro-generated variant) is valid!
  * 3. vector<ResourceHandleVariant> and array<ResourceHandleVariant, N> are valid!
+ * 4. Custom variants (std::variant<...>) valid if ALL element types are registered!
  *
  * Validation logic:
  * 1. Check if T is directly registered (ResourceTypeTraitsImpl<T>::isValid)
@@ -273,6 +274,7 @@ struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
  *    - If yes, unwrap and check if base type is registered
  * 3. Check if T is ResourceHandleVariant (using helper)
  * 4. Check if T is a container of ResourceHandleVariant (using helper)
+ * 5. Check if T is a custom variant with all registered types (NEW!)
  *
  * Examples:
  * - VkImage: Registered directly → isValid = true ✅
@@ -280,24 +282,46 @@ struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
  * - array<VkImage, 10>: Not registered, but VkImage is → isValid = true ✅
  * - ResourceHandleVariant: Special variant type → isValid = true ✅
  * - vector<ResourceHandleVariant>: Container of variant → isValid = true ✅
+ * - variant<VkImage, VkBuffer>: Custom variant, all types registered → isValid = true ✅
+ * - variant<VkImage, UnknownType>: Custom variant, UnknownType not registered → isValid = false ❌
  * - vector<UnknownType>: Not registered, UnknownType not registered → isValid = false ❌
  */
 template<typename T>
 struct ResourceTypeTraits {
     using BaseType = typename StripContainer<T>::Type;
 
+    // Check if T is a custom variant (not ResourceHandleVariant) with all types registered
+    static constexpr bool isCustomVariant =
+        IsVariant_v<T> &&
+        !IsResourceHandleVariant_v<T> &&
+        AllVariantTypesRegistered_v<T>;
+
+    // Check if T is a container of custom variant
+    static constexpr bool isCustomVariantContainer =
+        StripContainer<T>::isContainer &&
+        IsVariant_v<BaseType> &&
+        !IsResourceHandleVariant_v<BaseType> &&
+        AllVariantTypesRegistered_v<BaseType>;
+
     // Validation using helpers
     static constexpr bool isValid =
         ResourceTypeTraitsImpl<T>::isValid ||           // Direct registration
         (StripContainer<T>::isContainer &&
          ResourceTypeTraitsImpl<BaseType>::isValid) ||  // Container of registered type
-        IsResourceHandleVariant_v<T> ||                 // Variant itself (using helper)
-        IsResourceHandleVariantContainer_v<T>;          // Container of variant (using helper)
+        IsResourceHandleVariant_v<T> ||                 // ResourceHandleVariant itself
+        IsResourceHandleVariantContainer_v<T> ||        // Container of ResourceHandleVariant
+        isCustomVariant ||                              // Custom variant (NEW!)
+        isCustomVariantContainer;                       // Container of custom variant (NEW!)
 
     // Variant type checks (using helpers)
     static constexpr bool isVariantType = IsResourceHandleVariant_v<T>;
     static constexpr bool isVariantContainer = IsResourceHandleVariantContainer_v<T>;
     static constexpr bool isAnyVariant = IsAnyResourceHandleVariant_v<T>;
+
+    // Custom variant checks (NEW!)
+    // These are exposed so users can distinguish between:
+    // - ResourceHandleVariant (full variant)
+    // - Custom variants (type-safe subsets)
 
     // Use base type's descriptor and resource type (fallback for variant)
     using DescriptorT = typename std::conditional_t<
