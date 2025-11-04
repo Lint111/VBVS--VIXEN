@@ -9,7 +9,10 @@
 #include <optional>
 #include <memory>
 #include <string>
+#include <vector>
+#include <array>
 #include "Data/VariantDescriptors.h"
+#include "ResourceTypeTraits.h"  // NEW: Enhanced type trait system
 // TEMPORARILY REMOVED - ShaderManagement integration incomplete
 // #include "ShaderManagement/ShaderProgram.h"
 
@@ -166,31 +169,34 @@ using ResourceHandleVariant = std::variant<
 // Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
 
 // ============================================================================
-// AUTO-GENERATED TYPE TRAITS
+// AUTO-GENERATED TYPE TRAITS (BASE IMPLEMENTATION)
 // ============================================================================
 
 /**
- * @brief Default type traits (for unregistered types)
+ * @brief Internal base implementation - direct type registration only
+ *
+ * This is the raw auto-generated traits for types in RESOURCE_TYPE_REGISTRY.
+ * Use ResourceTypeTraits<T> instead, which adds array/variant support.
  */
 template<typename T>
-struct ResourceTypeTraits {
+struct ResourceTypeTraitsImpl {
     using DescriptorT = HandleDescriptor;
     static constexpr ResourceType resourceType = ResourceType::Buffer;
     static constexpr bool isValid = false;
 };
 
 /**
- * @brief Specialized type traits for each registered type
+ * @brief Specialized traits for each registered type
  * Auto-generated from RESOURCE_TYPE_REGISTRY
  */
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
-    template<> struct ResourceTypeTraits<HandleType> { \
+    template<> struct ResourceTypeTraitsImpl<HandleType> { \
         using DescriptorT = DescriptorType; \
         static constexpr ResourceType resourceType = ResType; \
         static constexpr bool isValid = true; \
     };
 #define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) \
-    template<> struct ResourceTypeTraits<HandleType> { \
+    template<> struct ResourceTypeTraitsImpl<HandleType> { \
         using DescriptorT = DescriptorType; \
         static constexpr ResourceType resourceType = ResType; \
         static constexpr bool isValid = true; \
@@ -198,6 +204,56 @@ struct ResourceTypeTraits {
 RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
+
+// ============================================================================
+// ENHANCED RESOURCE TYPE TRAITS (Array & Variant Support)
+// ============================================================================
+
+/**
+ * @brief Enhanced type traits with automatic array/vector support
+ *
+ * KEY FEATURE: If T is registered, then vector<T> and array<T, N> are also valid!
+ *
+ * Validation logic:
+ * 1. Check if T is directly registered (ResourceTypeTraitsImpl<T>::isValid)
+ * 2. If not, check if T is a container (vector/array)
+ *    - If yes, unwrap and check if base type is registered
+ * 3. Check if T is ResourceHandleVariant itself
+ *
+ * Examples:
+ * - VkImage: Registered directly → isValid = true ✅
+ * - vector<VkImage>: Not registered, but VkImage is → isValid = true ✅
+ * - array<VkImage, 10>: Not registered, but VkImage is → isValid = true ✅
+ * - vector<UnknownType>: Not registered, UnknownType not registered → isValid = false ❌
+ */
+template<typename T>
+struct ResourceTypeTraits {
+    using BaseType = typename StripContainer<T>::Type;
+
+    // Check if this is the variant type itself
+    static constexpr bool isVariantType = std::is_same_v<T, ResourceHandleVariant>;
+    static constexpr bool isVariantContainer =
+        StripContainer<T>::isContainer &&
+        std::is_same_v<BaseType, ResourceHandleVariant>;
+
+    // Validation: Direct registration OR container of registered type OR variant type
+    static constexpr bool isValid =
+        ResourceTypeTraitsImpl<T>::isValid ||           // Direct registration
+        (StripContainer<T>::isContainer &&
+         ResourceTypeTraitsImpl<BaseType>::isValid) ||  // Container of registered type
+        isVariantType ||                                // Variant itself
+        isVariantContainer;                             // Container of variant
+
+    // Use base type's descriptor and resource type
+    using DescriptorT = typename ResourceTypeTraitsImpl<BaseType>::DescriptorT;
+    static constexpr ResourceType resourceType = ResourceTypeTraitsImpl<BaseType>::resourceType;
+
+    // Container metadata
+    static constexpr bool isContainer = StripContainer<T>::isContainer;
+    static constexpr bool isVector = StripContainer<T>::isVector;
+    static constexpr bool isArray = StripContainer<T>::isArray;
+    static constexpr size_t arraySize = StripContainer<T>::arraySize;
+};
 
 // ============================================================================
 // HELPER: MACRO-GENERATED RESOURCE INITIALIZATION
