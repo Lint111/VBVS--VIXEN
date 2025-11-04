@@ -41,20 +41,34 @@ static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isValid,
 static_assert(ResourceTypeTraits<std::array<VkBuffer, 5>>::isValid,
               "array<VkBuffer, 5> should be valid when VkBuffer is registered");
 
-// Test 4: Variant type itself
+// Test 4: ResourceHandleVariant (macro-generated variant type)
 static_assert(ResourceTypeTraits<ResourceHandleVariant>::isValid,
               "ResourceHandleVariant itself should be valid");
+static_assert(ResourceTypeTraits<ResourceHandleVariant>::isVariantType,
+              "ResourceHandleVariant should be detected as variant type");
+static_assert(!ResourceTypeTraits<ResourceHandleVariant>::isContainer,
+              "ResourceHandleVariant scalar is not a container");
+
+// Test 5: Containers of ResourceHandleVariant
 static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isValid,
               "vector<ResourceHandleVariant> should be valid");
+static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isVariantContainer,
+              "vector<ResourceHandleVariant> should be detected as variant container");
+static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isAnyVariant,
+              "vector<ResourceHandleVariant> is any form of variant");
+static_assert(ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isValid,
+              "array<ResourceHandleVariant, 5> should be valid");
+static_assert(ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isVariantContainer,
+              "array<ResourceHandleVariant, 5> should be detected as variant container");
 
-// Test 5: Unregistered types (should fail)
+// Test 6: Unregistered types (should fail)
 struct UnknownType {};
 static_assert(!ResourceTypeTraits<UnknownType>::isValid,
               "UnknownType should be invalid");
 static_assert(!ResourceTypeTraits<std::vector<UnknownType>>::isValid,
               "vector<UnknownType> should be invalid");
 
-// Test 6: Container detection
+// Test 7: Container detection
 static_assert(!ResourceTypeTraits<VkImage>::isContainer,
               "VkImage is not a container");
 static_assert(ResourceTypeTraits<std::vector<VkImage>>::isContainer,
@@ -73,7 +87,7 @@ static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isArray,
 static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::arraySize == 10,
               "array<VkImage, 10> has size 10");
 
-// Test 7: Base type extraction
+// Test 8: Base type extraction
 static_assert(std::is_same_v<
                   ResourceTypeTraits<std::vector<VkImage>>::BaseType,
                   VkImage>,
@@ -87,8 +101,8 @@ static_assert(std::is_same_v<
 // SLOT VALIDATION TESTS
 // ============================================================================
 
-// Define test config with array slots
-CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 3, 2, SlotArrayMode::Single) {
+// Define test config with array and variant slots
+CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 4, 3, SlotArrayMode::Single) {
     // Scalar slot
     CONSTEXPR_INPUT(IMAGE, VkImage, 0, false);
 
@@ -98,17 +112,30 @@ CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 3, 2, SlotArrayMode::Single) {
     // Variant slot (accepts any registered type)
     CONSTEXPR_INPUT(ANY_HANDLE, ResourceHandleVariant, 2, false);
 
+    // Variant array slot (accepts array of any type)
+    CONSTEXPR_INPUT(ANY_HANDLES, std::vector<ResourceHandleVariant>, 3, false);
+
     // Output vector
     CONSTEXPR_OUTPUT(OUTPUT_BUFFERS, std::vector<VkBuffer>, 0, false);
 
     // Output variant
     CONSTEXPR_OUTPUT(OUTPUT_ANY, ResourceHandleVariant, 1, false);
+
+    // Output variant array
+    CONSTEXPR_OUTPUT(OUTPUT_ANY_ARRAY, std::vector<ResourceHandleVariant>, 2, false);
 };
 
-// Slots should compile successfully with array types
+// Slots should compile successfully with array and variant types
 static_assert(TestArrayNodeConfig::IMAGE_Slot::index == 0, "IMAGE at index 0");
 static_assert(TestArrayNodeConfig::IMAGES_Slot::index == 1, "IMAGES at index 1");
 static_assert(TestArrayNodeConfig::ANY_HANDLE_Slot::index == 2, "ANY_HANDLE at index 2");
+static_assert(TestArrayNodeConfig::ANY_HANDLES_Slot::index == 3, "ANY_HANDLES at index 3");
+
+// Verify variant type detection in slots
+static_assert(ResourceTypeTraits<TestArrayNodeConfig::ANY_HANDLE_Slot::Type>::isVariantType,
+              "ANY_HANDLE slot type should be variant");
+static_assert(ResourceTypeTraits<TestArrayNodeConfig::ANY_HANDLES_Slot::Type>::isVariantContainer,
+              "ANY_HANDLES slot type should be variant container");
 
 // ============================================================================
 // RUNTIME TEST
@@ -134,15 +161,28 @@ int main() {
     std::cout << "  array<VkImage, 10> valid: "
               << ResourceTypeTraits<std::array<VkImage, 10>>::isValid << std::endl;
 
-    // Test 4: Variant types
-    std::cout << "\nTest 4: Variant types" << std::endl;
+    // Test 4: ResourceHandleVariant (macro-generated variant)
+    std::cout << "\nTest 4: ResourceHandleVariant (macro-generated variant)" << std::endl;
     std::cout << "  ResourceHandleVariant valid: "
               << ResourceTypeTraits<ResourceHandleVariant>::isValid << std::endl;
+    std::cout << "  ResourceHandleVariant is variant type: "
+              << ResourceTypeTraits<ResourceHandleVariant>::isVariantType << std::endl;
+    std::cout << "  ResourceHandleVariant is any variant: "
+              << ResourceTypeTraits<ResourceHandleVariant>::isAnyVariant << std::endl;
+
+    // Test 5: Containers of ResourceHandleVariant
+    std::cout << "\nTest 5: Containers of ResourceHandleVariant" << std::endl;
     std::cout << "  vector<ResourceHandleVariant> valid: "
               << ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isValid << std::endl;
+    std::cout << "  vector<ResourceHandleVariant> is variant container: "
+              << ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isVariantContainer << std::endl;
+    std::cout << "  array<ResourceHandleVariant, 5> valid: "
+              << ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isValid << std::endl;
+    std::cout << "  array<ResourceHandleVariant, 5> is variant container: "
+              << ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isVariantContainer << std::endl;
 
-    // Test 5: Container detection
-    std::cout << "\nTest 5: Container detection" << std::endl;
+    // Test 7: Container detection
+    std::cout << "\nTest 7: Container detection" << std::endl;
     std::cout << "  vector<VkImage> is container: "
               << ResourceTypeTraits<std::vector<VkImage>>::isContainer << std::endl;
     std::cout << "  vector<VkImage> is vector: "
@@ -150,8 +190,8 @@ int main() {
     std::cout << "  array<VkImage, 10> array size: "
               << ResourceTypeTraits<std::array<VkImage, 10>>::arraySize << std::endl;
 
-    // Test 6: Config validation
-    std::cout << "\nTest 6: Config validation" << std::endl;
+    // Test 8: Config validation with variant slots
+    std::cout << "\nTest 8: Config validation with variant slots" << std::endl;
     std::cout << "  TestArrayNodeConfig INPUT_COUNT: "
               << TestArrayNodeConfig::INPUT_COUNT << std::endl;
     std::cout << "  TestArrayNodeConfig OUTPUT_COUNT: "

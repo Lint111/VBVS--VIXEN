@@ -169,6 +169,42 @@ using ResourceHandleVariant = std::variant<
 // Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
 
 // ============================================================================
+// VARIANT TYPE CHECKING HELPERS
+// ============================================================================
+
+/**
+ * @brief Check if T is the macro-generated ResourceHandleVariant
+ */
+template<typename T>
+struct IsResourceHandleVariant : std::false_type {};
+
+template<>
+struct IsResourceHandleVariant<ResourceHandleVariant> : std::true_type {};
+
+template<typename T>
+inline constexpr bool IsResourceHandleVariant_v = IsResourceHandleVariant<T>::value;
+
+/**
+ * @brief Check if T is a container of ResourceHandleVariant
+ *
+ * Accepts:
+ * - vector<ResourceHandleVariant>
+ * - array<ResourceHandleVariant, N>
+ * - ResourceHandleVariant[] (C-style arrays)
+ */
+template<typename T>
+inline constexpr bool IsResourceHandleVariantContainer_v =
+    StripContainer<T>::isContainer &&
+    IsResourceHandleVariant_v<typename StripContainer<T>::Type>;
+
+/**
+ * @brief Check if T is ResourceHandleVariant in any form (scalar or container)
+ */
+template<typename T>
+inline constexpr bool IsAnyResourceHandleVariant_v =
+    IsResourceHandleVariant_v<T> || IsResourceHandleVariantContainer_v<T>;
+
+// ============================================================================
 // AUTO-GENERATED TYPE TRAITS (BASE IMPLEMENTATION)
 // ============================================================================
 
@@ -205,6 +241,20 @@ RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
 
+/**
+ * @brief Explicit registration for ResourceHandleVariant itself
+ *
+ * This makes the variant type itself a valid slot type!
+ * Slots typed as ResourceHandleVariant accept ANY registered type.
+ */
+template<>
+struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
+    using DescriptorT = HandleDescriptor;
+    static constexpr ResourceType resourceType = ResourceType::Buffer;  // Generic fallback
+    static constexpr bool isValid = true;
+    static constexpr bool isVariantType = true;
+};
+
 // ============================================================================
 // ENHANCED RESOURCE TYPE TRAITS (Array & Variant Support)
 // ============================================================================
@@ -212,41 +262,52 @@ RESOURCE_TYPE_REGISTRY
 /**
  * @brief Enhanced type traits with automatic array/vector support
  *
- * KEY FEATURE: If T is registered, then vector<T> and array<T, N> are also valid!
+ * KEY FEATURES:
+ * 1. If T is registered, then vector<T> and array<T, N> are also valid!
+ * 2. ResourceHandleVariant (the macro-generated variant) is valid!
+ * 3. vector<ResourceHandleVariant> and array<ResourceHandleVariant, N> are valid!
  *
  * Validation logic:
  * 1. Check if T is directly registered (ResourceTypeTraitsImpl<T>::isValid)
  * 2. If not, check if T is a container (vector/array)
  *    - If yes, unwrap and check if base type is registered
- * 3. Check if T is ResourceHandleVariant itself
+ * 3. Check if T is ResourceHandleVariant (using helper)
+ * 4. Check if T is a container of ResourceHandleVariant (using helper)
  *
  * Examples:
  * - VkImage: Registered directly → isValid = true ✅
  * - vector<VkImage>: Not registered, but VkImage is → isValid = true ✅
  * - array<VkImage, 10>: Not registered, but VkImage is → isValid = true ✅
+ * - ResourceHandleVariant: Special variant type → isValid = true ✅
+ * - vector<ResourceHandleVariant>: Container of variant → isValid = true ✅
  * - vector<UnknownType>: Not registered, UnknownType not registered → isValid = false ❌
  */
 template<typename T>
 struct ResourceTypeTraits {
     using BaseType = typename StripContainer<T>::Type;
 
-    // Check if this is the variant type itself
-    static constexpr bool isVariantType = std::is_same_v<T, ResourceHandleVariant>;
-    static constexpr bool isVariantContainer =
-        StripContainer<T>::isContainer &&
-        std::is_same_v<BaseType, ResourceHandleVariant>;
-
-    // Validation: Direct registration OR container of registered type OR variant type
+    // Validation using helpers
     static constexpr bool isValid =
         ResourceTypeTraitsImpl<T>::isValid ||           // Direct registration
         (StripContainer<T>::isContainer &&
          ResourceTypeTraitsImpl<BaseType>::isValid) ||  // Container of registered type
-        isVariantType ||                                // Variant itself
-        isVariantContainer;                             // Container of variant
+        IsResourceHandleVariant_v<T> ||                 // Variant itself (using helper)
+        IsResourceHandleVariantContainer_v<T>;          // Container of variant (using helper)
 
-    // Use base type's descriptor and resource type
-    using DescriptorT = typename ResourceTypeTraitsImpl<BaseType>::DescriptorT;
-    static constexpr ResourceType resourceType = ResourceTypeTraitsImpl<BaseType>::resourceType;
+    // Variant type checks (using helpers)
+    static constexpr bool isVariantType = IsResourceHandleVariant_v<T>;
+    static constexpr bool isVariantContainer = IsResourceHandleVariantContainer_v<T>;
+    static constexpr bool isAnyVariant = IsAnyResourceHandleVariant_v<T>;
+
+    // Use base type's descriptor and resource type (fallback for variant)
+    using DescriptorT = typename std::conditional_t<
+        isAnyVariant,
+        std::type_identity<HandleDescriptor>,
+        std::type_identity<typename ResourceTypeTraitsImpl<BaseType>::DescriptorT>
+    >::type;
+
+    static constexpr ResourceType resourceType =
+        isAnyVariant ? ResourceType::Buffer : ResourceTypeTraitsImpl<BaseType>::resourceType;
 
     // Container metadata
     static constexpr bool isContainer = StripContainer<T>::isContainer;
