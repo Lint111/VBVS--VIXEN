@@ -452,19 +452,38 @@ inline bool InitializeResourceFromType(
 // ============================================================================
 
 /**
+ * @brief Wrapper for ResourceVariant when used as a pass-through value
+ *
+ * Distinguishes between:
+ * - ResourceVariant as a container alternative (e.g., VkImage stored in variant)
+ * - ResourceVariant itself as the value (pass-through semantic)
+ */
+struct VariantHandle {
+    ResourceVariant value;
+
+    VariantHandle() = default;
+    explicit VariantHandle(ResourceVariant v) : value(std::move(v)) {}
+};
+
+/**
  * @brief Type-safe resource container using std::variant
- * 
+ *
  * Eliminates manual type checking and casting by using compile-time type info
  * from slot definitions.
- * 
+ *
+ * Unified storage for three cases:
+ * 1. ResourceVariant - Single element from variant alternatives (VkImage, VkBuffer, etc.)
+ * 2. VariantHandle - ResourceVariant itself as pass-through value
+ * 3. std::vector<VariantHandle> - Vector of pass-through ResourceVariants
+ *
  * Example usage:
  * ```cpp
  * // Create resource with type-specific descriptor
  * Resource res = Resource::Create<VkImage>(ImageDescriptor{1920, 1080, ...});
- * 
+ *
  * // Set handle (type-checked at compile time)
  * res.SetHandle<VkImage>(myImage);
- * 
+ *
  * // Get handle (type-checked at compile time)
  * VkImage img = res.GetHandle<VkImage>();
  * ```
@@ -481,7 +500,7 @@ public:
         Resource res;
         res.type = ResourceTypeTraits<VulkanType>::resourceType;
         res.descriptor = descriptor;
-        res.handle = VulkanType{}; // Initialize with null handle
+        res.handleStorage = ResourceVariant{VulkanType{}}; // Initialize with null handle
         return res;
     }
 
@@ -505,16 +524,20 @@ public:
     void SetHandle(VulkanType&& value) {
         static_assert(ResourceTypeTraits<VulkanType>::isValid, "Type not registered");
 
-        // Special cases for meta-types (stored separately due to recursive type limitation)
         if constexpr (std::is_same_v<std::decay_t<VulkanType>, ResourceVariant>) {
-            // ResourceVariant as a handle (pass-through variant)
-            variantStorage = std::forward<VulkanType>(value);
+            // Case 2: ResourceVariant as a handle (pass-through variant)
+            handleStorage = VariantHandle{std::forward<VulkanType>(value)};
         } else if constexpr (std::is_same_v<std::decay_t<VulkanType>, std::vector<ResourceVariant>>) {
-            // std::vector<ResourceVariant> for descriptor sets
-            variantVectorStorage = std::forward<VulkanType>(value);
+            // Case 3: std::vector<ResourceVariant> - convert to vector<VariantHandle>
+            std::vector<VariantHandle> wrapped;
+            wrapped.reserve(value.size());
+            for (auto& v : value) {
+                wrapped.emplace_back(std::move(v));
+            }
+            handleStorage = std::move(wrapped);
         } else {
-            // Regular registered types
-            handle = std::forward<VulkanType>(value);
+            // Case 1: Regular registered types (VkImage, VkBuffer, etc.)
+            handleStorage = ResourceVariant{std::forward<VulkanType>(value)};
         }
     }
 
@@ -524,24 +547,30 @@ public:
     template<typename VulkanType>
     VulkanType GetHandle() const {
         static_assert(ResourceTypeTraits<VulkanType>::isValid, "Type not registered");
-        
-        // Special cases for meta-types (stored separately due to recursive type limitation)
+
         if constexpr (std::is_same_v<VulkanType, ResourceVariant>) {
-            // ResourceVariant as a handle (pass-through variant)
-            if (variantStorage.has_value()) {
-                return variantStorage.value();
+            // Case 2: Get ResourceVariant itself (pass-through)
+            if (auto* ptr = std::get_if<VariantHandle>(&handleStorage)) {
+                return ptr->value;
             }
             return ResourceVariant{};  // Return monostate variant if not set
         } else if constexpr (std::is_same_v<VulkanType, std::vector<ResourceVariant>>) {
-            // std::vector<ResourceVariant> for descriptor sets
-            if (variantVectorStorage.has_value()) {
-                return variantVectorStorage.value();
+            // Case 3: Get std::vector<ResourceVariant> - unwrap from vector<VariantHandle>
+            if (auto* ptr = std::get_if<std::vector<VariantHandle>>(&handleStorage)) {
+                std::vector<ResourceVariant> result;
+                result.reserve(ptr->size());
+                for (const auto& wrapped : *ptr) {
+                    result.push_back(wrapped.value);
+                }
+                return result;
             }
             return std::vector<ResourceVariant>{};  // Return empty vector if not set
         } else {
-            // Regular registered types
-            if (auto* ptr = std::get_if<VulkanType>(&handle)) {
-                return *ptr;
+            // Case 1: Regular registered types - extract from ResourceVariant
+            if (auto* variantPtr = std::get_if<ResourceVariant>(&handleStorage)) {
+                if (auto* ptr = std::get_if<VulkanType>(variantPtr)) {
+                    return *ptr;
+                }
             }
             return VulkanType{}; // Return null handle if type mismatch
         }
@@ -552,14 +581,27 @@ public:
      * @brief Check if handle is set
      */
     bool IsValid() const {
-        return !std::holds_alternative<std::monostate>(handle);
+        // Check if we have a ResourceVariant stored (case 1)
+        if (auto* variantPtr = std::get_if<ResourceVariant>(&handleStorage)) {
+            return !std::holds_alternative<std::monostate>(*variantPtr);
+        }
+        // Cases 2 and 3 (VariantHandle or vector) are always valid if present
+        return !std::holds_alternative<std::monostate>(handleStorage);
     }
 
     /**
      * @brief Get handle as variant (for generic processing)
+     *
+     * Returns the ResourceVariant for case 1, or empty variant for cases 2/3.
+     * For full access to all cases, use GetHandle<T>() with specific type.
      */
     const ResourceVariant& GetHandleVariant() const {
-        return handle;
+        if (auto* variantPtr = std::get_if<ResourceVariant>(&handleStorage)) {
+            return *variantPtr;
+        }
+        // For cases 2 and 3, return a static empty variant
+        static const ResourceVariant emptyVariant;
+        return emptyVariant;
     }
 
     /**
@@ -593,12 +635,18 @@ public:
 private:
     ResourceType type = ResourceType::Image;
     ResourceLifetime lifetime = ResourceLifetime::Transient;
-    ResourceVariant handle;
     ResourceDescriptorVariant descriptor;
-    
-    // Special storage for meta-types (cannot be stored in ResourceVariant due to recursive type limitation)
-    std::optional<ResourceVariant> variantStorage;           // Single ResourceVariant as handle
-    std::optional<std::vector<ResourceVariant>> variantVectorStorage;  // vector<ResourceVariant> for descriptor sets
+
+    // Unified handle storage for all three cases:
+    // 1. ResourceVariant - Regular handle (VkImage, VkBuffer, etc.)
+    // 2. VariantHandle - ResourceVariant itself as pass-through value
+    // 3. std::vector<VariantHandle> - Vector of pass-through ResourceVariants
+    std::variant<
+        std::monostate,              // Uninitialized state
+        ResourceVariant,             // Case 1: Single element from variant alternatives
+        VariantHandle,               // Case 2: ResourceVariant as pass-through
+        std::vector<VariantHandle>   // Case 3: Vector of pass-throughs
+    > handleStorage;
 
     friend class RenderGraph;
 };
