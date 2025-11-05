@@ -350,6 +350,7 @@ struct ResourceTypeTraits {
     // These are exposed so users can distinguish between:
     // - ResourceVariant (full variant)
     // - Custom variants (type-safe subsets)
+    static constexpr bool isResourceVariant = IsResourceVariant_v<T>;
 
     // Use base type's descriptor and resource type (fallback for variant)
     using DescriptorT = typename std::conditional_t<

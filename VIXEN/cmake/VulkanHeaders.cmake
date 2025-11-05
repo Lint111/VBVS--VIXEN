@@ -40,8 +40,13 @@ else()
     endif()
 endif()
 
-# Expose to parent scope
-set(VULKAN_HEADERS_AVAILABLE TRUE PARENT_SCOPE)
-set(VULKAN_HEADERS_INCLUDE_DIR "${VULKAN_HEADERS_INCLUDE_DIR}" PARENT_SCOPE)
+# Expose to parent scope (if possible)
+if(CMAKE_PARENT_LIST_FILE)
+    set(VULKAN_HEADERS_AVAILABLE TRUE PARENT_SCOPE)
+    set(VULKAN_HEADERS_INCLUDE_DIR "${VULKAN_HEADERS_INCLUDE_DIR}" PARENT_SCOPE)
+endif()
+
+# Also set in current scope
+set(VULKAN_HEADERS_AVAILABLE TRUE)
 
 message(STATUS "Vulkan headers available at: ${VULKAN_HEADERS_INCLUDE_DIR}")

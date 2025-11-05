@@ -13,6 +13,11 @@ set(Recipe_Name "7e_ShadersWithSPIRV")
 # OFF - Vulkan SDK path can be specified manually. This is helpful to test the build on various Vulkan version.
 option(AUTO_LOCATE_VULKAN "AUTO_LOCATE_VULKAN" ON)
 
+# VULKAN_TRIMMED_BUILD - Build without full Vulkan SDK (headers only)
+# ON  - Auto-fetch Vulkan headers if SDK not found, build only header-only components
+# OFF - Require full Vulkan SDK with runtime libraries
+option(VULKAN_TRIMMED_BUILD "Build with Vulkan headers only (no runtime libs)" OFF)
+
 # Enable testing early so subprojects can use BUILD_TESTING
 option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
@@ -42,17 +47,34 @@ if(AUTO_LOCATE_VULKAN)
 	endif()
 		 
 	if(NOT Vulkan_FOUND)
-		# CMake may fail to locate the libraries but could be able to 
+		# CMake may fail to locate the libraries but could be able to
 		# provide some path in Vulkan SDK include directory variable
 		# 'Vulkan_INCLUDE_DIRS', try to extract path from this.
 		message(STATUS "Failed to locate Vulkan SDK, retrying again...")
 		if(EXISTS "${VULKAN_PATH}")
 			message(STATUS "Successfully located the Vulkan SDK: ${VULKAN_PATH}")
 		else()
-			message("Error: Unable to locate Vulkan SDK. Please turn off auto locate option by specifying 'AUTO_LOCATE_VULKAN' as 'OFF'")
-			message("and specify manually path using 'VULKAN_SDK' and 'VULKAN_VERSION' variables in the CMakeLists.txt.")
-			return()
+			# Vulkan SDK not found - offer trimmed build option
+			if(VULKAN_TRIMMED_BUILD)
+				message(STATUS "==========================================================")
+				message(STATUS "Vulkan SDK not found, enabling TRIMMED BUILD mode")
+				message(STATUS "Fetching Vulkan headers (no runtime libraries)")
+				message(STATUS "Only header-only components will be built")
+				message(STATUS "==========================================================")
+				include(cmake/VulkanHeaders.cmake)
+				set(VULKAN_TRIMMED_BUILD_ACTIVE TRUE)
+			else()
+				message(WARNING "Unable to locate Vulkan SDK.")
+				message(WARNING "Options:")
+				message(WARNING "  1. Install Vulkan SDK")
+				message(WARNING "  2. Use -DVULKAN_TRIMMED_BUILD=ON to fetch headers only")
+				message(WARNING "  3. Turn off auto locate: -DAUTO_LOCATE_VULKAN=OFF")
+				message(FATAL_ERROR "Vulkan SDK required or use VULKAN_TRIMMED_BUILD")
+			endif()
 		endif()
+	else()
+		message(STATUS "Vulkan SDK found: ${VULKAN_PATH}")
+		set(VULKAN_TRIMMED_BUILD_ACTIVE FALSE)
 	endif()
 else()
 	message(STATUS "Attempting to locate Vulkan SDK using manual path......")
@@ -63,10 +85,24 @@ else()
 
 	# Check if manual set path exists
 	if(NOT EXISTS "${VULKAN_PATH}")
-		message("Error: Unable to locate this Vulkan SDK path VULKAN_PATH: ${VULKAN_PATH}, please specify correct path.
-		For more information on correct installation process, please refer to subsection 'Getting started with Lunar-G SDK'
-		and 'Setting up first project with CMake' in Chapter 3, 'Shaking hands with the device' in this book 'Learning Vulkan', ISBN - 9781786469809.")
-	   return()
+		if(VULKAN_TRIMMED_BUILD)
+			message(STATUS "==========================================================")
+			message(STATUS "Manual Vulkan path not found, enabling TRIMMED BUILD mode")
+			message(STATUS "Fetching Vulkan headers (no runtime libraries)")
+			message(STATUS "Only header-only components will be built")
+			message(STATUS "==========================================================")
+			include(cmake/VulkanHeaders.cmake)
+			set(VULKAN_TRIMMED_BUILD_ACTIVE TRUE)
+		else()
+			message(WARNING "Unable to locate this Vulkan SDK path VULKAN_PATH: ${VULKAN_PATH}")
+			message(WARNING "Options:")
+			message(WARNING "  1. Install Vulkan SDK at correct path")
+			message(WARNING "  2. Use -DVULKAN_TRIMMED_BUILD=ON to fetch headers only")
+			message(WARNING "  3. Use AUTO_LOCATE_VULKAN=ON for automatic detection")
+			message(FATAL_ERROR "Vulkan SDK required or use VULKAN_TRIMMED_BUILD")
+		endif()
+	else()
+		set(VULKAN_TRIMMED_BUILD_ACTIVE FALSE)
 	endif()
 endif()
 
@@ -77,9 +113,16 @@ endif()
 # OFF - Only reads .spv files, which need to be compiled offline using
 # glslangValidator.exe.
 # For example: glslangValidator.exe <GLSL file name> -V -o <output fileneame in SPIR-V(.spv) form>
-option(BUILD_SPV_ON_COMPILE_TIME "BUILD_SPV_ON_COMPILE_TIME" ON)
 
-if(BUILD_SPV_ON_COMPILE_TIME)
+# Disable SPV compile in trimmed mode (requires glslang libraries)
+if(VULKAN_TRIMMED_BUILD_ACTIVE)
+	set(BUILD_SPV_ON_COMPILE_TIME OFF)
+	message(STATUS "BUILD_SPV_ON_COMPILE_TIME disabled (trimmed build mode)")
+else()
+	option(BUILD_SPV_ON_COMPILE_TIME "BUILD_SPV_ON_COMPILE_TIME" ON)
+endif()
+
+if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# Preprocessor flag allows the solution to use glslang library functions
 	add_definitions(-DAUTO_COMPILE_GLSL_TO_SPV)
 
@@ -193,8 +236,16 @@ endif()
 project(${Recipe_Name})
 
 # Add any required preprocessor definitions here
-add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
-add_definitions(-DVK_ENABLE_BETA_EXTENSIONS -DVK_USE_PLATFORM_WIN32_KHR)
+add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
+
+# Platform-specific Vulkan defines
+if(WIN32)
+    add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+elseif(UNIX AND NOT APPLE)
+    add_definitions(-DVK_USE_PLATFORM_XCB_KHR)
+elseif(APPLE)
+    add_definitions(-DVK_USE_PLATFORM_MACOS_MVK)
+endif()
 
 # vulkan-1 library for build Vulkan application.
 # Note: Do NOT use set() here as it would overwrite glslang libraries if they were added above
