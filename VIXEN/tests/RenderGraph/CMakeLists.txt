@@ -39,3 +39,11 @@ gtest_discover_tests(test_typednode_helpers)
 
 # Additional typed-node tests
 target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)
+
+# ===========================================================================
+# Standalone array type validation test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates compile-time type traits only - no Vulkan needed!
+# If this compiles successfully, all static_assert tests passed.
+
+include(test_array_validation.cmake)
