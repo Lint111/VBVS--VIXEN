@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <array>
+#include <variant>
 #include <type_traits>
 
 namespace Vixen::RenderGraph {

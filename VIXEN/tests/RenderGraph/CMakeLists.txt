@@ -47,3 +47,11 @@ target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)
 # If this compiles successfully, all static_assert tests passed.
 
 include(test_array_validation.cmake)
+
+# ===========================================================================
+# Standalone field extraction test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates struct field extraction for ergonomic slot connections.
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_field_extraction.cmake)
