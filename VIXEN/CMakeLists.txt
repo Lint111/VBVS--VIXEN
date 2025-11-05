@@ -24,6 +24,19 @@ if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
 endif()
 
+# Enable code coverage (requires Debug build and GCC/Clang)
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+if(ENABLE_COVERAGE)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(STATUS "Code coverage enabled")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+    else()
+        message(WARNING "Coverage requires Debug build type. Set CMAKE_BUILD_TYPE=Debug")
+    endif()
+endif()
+
 # Centralized debug build macro
 # Automatically defined for Debug builds, can be used consistently across all code
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_CONFIGURATION_TYPES)
@@ -409,4 +422,29 @@ if(BUILD_TESTS)
     message(STATUS "Unit tests enabled - use 'ctest' or 'make test' to run")
 else()
     message(STATUS "Unit tests disabled - use -DBUILD_TESTS=ON to enable")
+endif()
+# ============================================================================
+# Code Coverage Target (for VS Code Coverage Gutters)
+# ============================================================================
+if(ENABLE_COVERAGE)
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E echo "Running tests with coverage..."
+        COMMAND ${CMAKE_CTEST_COMMAND} --verbose --output-on-failure
+        COMMAND ${CMAKE_COMMAND} -E echo "Generating coverage report..."
+        COMMAND lcov --capture --directory . --output-file coverage.info
+        COMMAND lcov --remove coverage.info '/usr/*' '*/build/_deps/*' --output-file coverage.info
+        COMMAND genhtml coverage.info --output-directory coverage_html
+        COMMAND ${CMAKE_COMMAND} -E echo "Coverage report generated in coverage_html/"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Generating code coverage report"
+    )
+    
+    add_custom_target(coverage-clean
+        COMMAND find . -name "*.gcda" -delete
+        COMMAND find . -name "*.gcno" -delete
+        COMMAND rm -f coverage.info
+        COMMAND rm -rf coverage_html
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Cleaning coverage data"
+    )
 endif()

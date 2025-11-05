@@ -1,0 +1,245 @@
+{
+  // ============================================================================
+  // VS Code Build and Test Tasks
+  // ============================================================================
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake: configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "${workspaceFolder}/VIXEN/build",
+        "-S",
+        "${workspaceFolder}/VIXEN",
+        "-DVULKAN_TRIMMED_BUILD=ON",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: configure (coverage)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "${workspaceFolder}/VIXEN/build",
+        "-S",
+        "${workspaceFolder}/VIXEN",
+        "-DVULKAN_TRIMMED_BUILD=ON",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DENABLE_COVERAGE=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: build",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/VIXEN/build",
+        "-j4"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": ["cmake: configure"],
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "cmake: build coverage",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/VIXEN/build",
+        "--target",
+        "coverage",
+        "-j4"
+      ],
+      "group": "build",
+      "dependsOn": ["cmake: configure (coverage)"],
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "cmake: build RenderGraph tests",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/VIXEN/build",
+        "--target",
+        "test_array_type_validation",
+        "test_field_extraction",
+        "test_resource_gatherer",
+        "test_resource_management",
+        "test_graph_topology",
+        "-j4"
+      ],
+      "group": "build",
+      "dependsOn": ["cmake: configure"],
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "test: run all RenderGraph tests",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "-R",
+        "RenderGraph",
+        "--verbose",
+        "--output-on-failure"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "dependsOn": ["cmake: build RenderGraph tests"],
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: array type validation",
+      "type": "shell",
+      "command": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_array_type_validation",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: field extraction",
+      "type": "shell",
+      "command": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_field_extraction",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: resource gatherer",
+      "type": "shell",
+      "command": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_resource_gatherer",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: resource management",
+      "type": "shell",
+      "command": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_resource_management",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: graph topology",
+      "type": "shell",
+      "command": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_graph_topology",
+      "args": [],
+      "options": {
+        "cwd": "${workspaceFolder}/VIXEN/build"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "coverage: generate report",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd ${workspaceFolder}/VIXEN/build && lcov --capture --directory . --output-file coverage.info && lcov --remove coverage.info '/usr/*' --output-file coverage.info && genhtml coverage.info --output-directory coverage_html"
+      ],
+      "group": "build",
+      "dependsOn": ["test: run all RenderGraph tests"],
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "coverage: open report",
+      "type": "shell",
+      "command": "xdg-open",
+      "args": [
+        "${workspaceFolder}/VIXEN/build/coverage_html/index.html"
+      ],
+      "group": "test",
+      "dependsOn": ["coverage: generate report"],
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "clean: build directory",
+      "type": "shell",
+      "command": "rm",
+      "args": [
+        "-rf",
+        "${workspaceFolder}/VIXEN/build"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
