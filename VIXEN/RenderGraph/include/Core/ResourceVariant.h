@@ -139,8 +139,20 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
-// NOTE: VkSemaphoreArrayPtr and legacy vector typedefs removed - use std::vector<T> auto-generation instead
+// REMOVED: VkSemaphoreArrayPtr, VkFenceVector - these legacy pointer types are being phased out
+// Use std::vector<VkSemaphore>, std::vector<VkFence> instead (auto-generated above)
 // NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
+
+// ============================================================================
+// FORWARD DECLARATIONS FOR CIRCULAR DEPENDENCY RESOLUTION
+// ============================================================================
+
+// Forward declare ResourceVariant to allow std::vector<ResourceVariant> in the variant itself
+struct ResourceVariant;
+
+// Type alias for std::vector<ResourceVariant> to break circular dependency
+// This gets stored in the variant by value, but the vector itself holds the recursive type
+using ResourceVariantVector = std::vector<Vixen::RenderGraph::ResourceVariant>;
 
 // ============================================================================
 // AUTO-GENERATED TEMPLATE WRAPPER HELPERS
@@ -174,16 +186,29 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
  * - T (base type)
  * - std::vector<T> (array wrapper)
  * 
- * To add more wrappers (e.g., T*, std::shared_ptr<T>), modify EXPAND_WITH_WRAPPERS macro above.
+ * SPECIAL CASE: ResourceVariantVector (std::vector<ResourceVariant>) is added to support
+ * dynamic resource arrays. Uses forward declaration to break circular dependency.
  */
-using ResourceVariant = std::variant<
+struct ResourceVariant : std::variant<
     std::monostate,  // Empty/uninitialized
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS_LAST(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)  // Keep trailing comma for manual addition
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
->;
+    ResourceVariantVector  // Recursive type - std::vector<ResourceVariant> via forward declaration
+> {
+    // Inherit all constructors and assignment operators from std::variant
+    using std::variant<
+        std::monostate,
+#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
+        RESOURCE_TYPE_REGISTRY
+#undef RESOURCE_TYPE
+#undef RESOURCE_TYPE_LAST
+        ResourceVariantVector
+    >::variant;
+};
 
 // Note: ResourceDescriptorVariant is defined in Data/VariantDescriptors.h
 
@@ -244,7 +269,8 @@ RESOURCE_TYPE_REGISTRY
 // Forward declaration to avoid circular dependency
 class Resource;
 
-// Manual type traits for types that would cause circular dependencies if added to macro
+// Manual type trait for ResourceVariant itself (can't be in macro - circular dependency)
+// Also manually add ResourceVariantVector (which IS std::vector<ResourceVariant>)
 template<>
 struct ResourceTypeTraits<ResourceVariant> {
     using DescriptorT = HandleDescriptor;
@@ -253,45 +279,46 @@ struct ResourceTypeTraits<ResourceVariant> {
 };
 
 template<>
-struct ResourceTypeTraits<std::vector<ResourceVariant>> {
+struct ResourceTypeTraits<ResourceVariantVector> {
     using DescriptorT = HandleDescriptor;
     static constexpr ResourceType resourceType = ResourceType::Buffer;
     static constexpr bool isValid = true;
 };
 
+// Helper struct for InitializeResourceFromType visitor pattern
+// (must be outside function - local classes can't have template members)
+namespace detail {
+    struct TypeInitializer {
+        ResourceType targetType;
+        ResourceDescriptorBase* descriptor;
+        ResourceVariant& handle;
+        ResourceDescriptorVariant& descVariant;
+        bool success = false;
 
-// Visitor pattern: Try to cast descriptor and initialize handle for matching type
-struct TypeInitializer {
-    ResourceType targetType;
-    ResourceDescriptorBase* descriptor;
-    ResourceVariant& handle;
-    ResourceDescriptorVariant& descVariant;
-    bool success = false;
-
-    // Generic handler for all types
-    template<typename HandleType>
-    void operator()(const HandleType&) {
-        using Traits = ResourceTypeTraits<HandleType>;
-        
-        // Skip monostate (uninitialized variant state)
-        if constexpr (std::is_same_v<HandleType, std::monostate>) {
-            return;
+        // Generic handler for all types
+        template<typename HandleType>
+        void operator()(const HandleType&) {
+            using Traits = ResourceTypeTraits<HandleType>;
+            
+            // Skip monostate (uninitialized variant state)
+            if constexpr (std::is_same_v<HandleType, std::monostate>) {
+                return;
+            }
+            
+            // Check if this is the target type
+            if (Traits::resourceType != targetType) {
+                return;
+            }
+            
+            // Try to cast descriptor to expected type
+            if (auto* typedDesc = dynamic_cast<typename Traits::DescriptorT*>(descriptor)) {
+                descVariant = *typedDesc;
+                handle = HandleType{};
+                success = true;
+            }
         }
-        
-        // Check if this is the target type
-        if (Traits::resourceType != targetType) {
-            return;
-        }
-        
-        // Try to cast descriptor to expected type
-        if (auto* typedDesc = dynamic_cast<typename Traits::DescriptorT*>(descriptor)) {
-            descVariant = *typedDesc;
-            handle = HandleType{};
-            success = true;
-        }
-    }
-};
-
+    };
+} // namespace detail
 
 /**
  * @brief Initialize resource variant from ResourceType enum
@@ -305,13 +332,16 @@ inline bool InitializeResourceFromType(
     ResourceVariant& outHandle,
     ResourceDescriptorVariant& outDescriptor)
 {
-    
     // Visit all possible types in the variant
-    TypeInitializer visitor{type, desc, outHandle, outDescriptor};
+    detail::TypeInitializer visitor{type, desc, outHandle, outDescriptor};
     std::visit(visitor, ResourceVariant{});
     
     return visitor.success;
 }
+
+// ============================================================================
+// UNIFIED RESOURCE CLASS
+// ============================================================================
 
 // ============================================================================
 // UNIFIED RESOURCE CLASS

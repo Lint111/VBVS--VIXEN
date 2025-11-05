@@ -19,6 +19,10 @@
 // Forward declare Logger to avoid circular dependency
 class Logger;
 
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;  // Forward declare VulkanDevice
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations

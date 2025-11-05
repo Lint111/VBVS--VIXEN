@@ -3,10 +3,11 @@
 #include "Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 
-namespace Vixen::RenderGraph {
+namespace Vixen::Vulkan::Resources {
+    class VulkanDevice;  // Forward declare VulkanDevice
+}
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+namespace Vixen::RenderGraph {
 
 /**
  * @brief Pure constexpr resource configuration for PresentNode
