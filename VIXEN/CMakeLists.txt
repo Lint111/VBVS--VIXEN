@@ -8,6 +8,73 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 set(Recipe_Name "7e_ShadersWithSPIRV")
 
+# ============================================================================
+# Build Performance Optimizations
+# ============================================================================
+
+# Use Ninja generator for faster builds (if available)
+# Run: cmake -G Ninja -B build
+if(NOT CMAKE_GENERATOR)
+    find_program(NINJA_EXECUTABLE ninja)
+    if(NINJA_EXECUTABLE)
+        set(CMAKE_GENERATOR "Ninja" CACHE STRING "CMake generator" FORCE)
+        message(STATUS "Ninja found, using Ninja generator for faster builds")
+    endif()
+endif()
+
+# Ccache/sccache support for faster rebuilds
+option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
+if(USE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    find_program(SCCACHE_PROGRAM sccache)
+
+    if(SCCACHE_PROGRAM)
+        message(STATUS "Found sccache: ${SCCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
+    elseif(CCACHE_PROGRAM)
+        message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    else()
+        message(STATUS "ccache/sccache not found - install for faster rebuilds")
+    endif()
+endif()
+
+# Unity builds - combine source files for faster compilation
+option(USE_UNITY_BUILD "Use Unity builds for faster compilation" OFF)
+if(USE_UNITY_BUILD)
+    message(STATUS "Unity builds enabled - faster initial compilation")
+    set(CMAKE_UNITY_BUILD ON)
+    set(CMAKE_UNITY_BUILD_BATCH_SIZE 16)
+endif()
+
+# Parallel compilation (MSVC)
+if(MSVC)
+    add_compile_options(/MP)  # Multi-processor compilation
+    message(STATUS "MSVC multi-processor compilation enabled")
+endif()
+
+# Precompiled headers option
+option(USE_PRECOMPILED_HEADERS "Use precompiled headers" ON)
+
+# Link-time optimization option (disable by default for faster debug builds)
+option(USE_LTO "Enable link-time optimization (slower builds, faster runtime)" OFF)
+if(USE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+    if(ipo_supported)
+        message(STATUS "Link-time optimization enabled")
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(WARNING "LTO not supported: ${ipo_error}")
+    endif()
+endif()
+
+# ============================================================================
+# Build Configuration
+# ============================================================================
+
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
 # OFF - Vulkan SDK path can be specified manually. This is helpful to test the build on various Vulkan version.
