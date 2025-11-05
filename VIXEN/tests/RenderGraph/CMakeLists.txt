@@ -66,6 +66,24 @@ include(test_field_extraction.cmake)
 include(test_resource_gatherer.cmake)
 
 # ===========================================================================
+# Resource Management Tests
+# ===========================================================================
+# This test suite validates resource management systems:
+# - ResourceBudgetManager, DeferredDestruction, StatefulContainer, SlotTask
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_resource_management.cmake)
+
+# ===========================================================================
+# Graph Topology Tests
+# ===========================================================================
+# This test suite validates graph topology and dependency tracking:
+# - Circular dependency detection, topological sorting, validation
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_graph_topology.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):
