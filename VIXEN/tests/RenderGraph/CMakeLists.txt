@@ -55,3 +55,12 @@ include(test_array_validation.cmake)
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
 include(test_field_extraction.cmake)
+
+# ===========================================================================
+# Resource gatherer node test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates the variadic template resource gatherer node works
+# with all type system features (arrays, variants, field extraction).
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_resource_gatherer.cmake)
