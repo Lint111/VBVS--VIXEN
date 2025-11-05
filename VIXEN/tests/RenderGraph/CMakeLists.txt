@@ -64,3 +64,11 @@ include(test_field_extraction.cmake)
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
 include(test_resource_gatherer.cmake)
+
+# ===========================================================================
+# Configured gatherer test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates shader bundle headers as "pseudo config files"
+# for resource gathering. Compatible with VULKAN_TRIMMED_BUILD.
+
+include(test_configured_gatherer.cmake)
