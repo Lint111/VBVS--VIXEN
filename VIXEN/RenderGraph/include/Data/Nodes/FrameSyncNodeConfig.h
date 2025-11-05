@@ -1,7 +1,7 @@
 #pragma once
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Core/ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 
 namespace Vixen::RenderGraph {
 

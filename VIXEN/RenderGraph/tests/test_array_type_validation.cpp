@@ -10,8 +10,8 @@
  * - vector<ResourceVariant>
  */
 
-#include "Core/ResourceVariant.h"
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceConfig.h"
 #include <iostream>
 #include <vector>
 #include <array>

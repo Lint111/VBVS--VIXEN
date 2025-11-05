@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/GraphicsPipelineNodeConfig.h"
+#include "Data/Nodes/GraphicsPipelineNodeConfig.h"
 #include <memory>
 #include <unordered_map>
 

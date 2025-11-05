@@ -118,7 +118,11 @@ std::string Logger::GetTimestamp() const
 
     std::ostringstream oss;
     std::tm tm_buf;
+#ifdef _WIN32
     localtime_s(&tm_buf, &time);
+#else
+    localtime_r(&time, &tm_buf);
+#endif
     oss << std::put_time(&tm_buf, "%H:%M:%S")
         << '.' << std::setfill('0') << std::setw(3) << ms.count();
 

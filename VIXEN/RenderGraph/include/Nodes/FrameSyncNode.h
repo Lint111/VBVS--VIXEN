@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Nodes/FrameSyncNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <vector>
 

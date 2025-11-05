@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 
 // Forward declare VulkanShader for the shader constant type
 class VulkanShader;

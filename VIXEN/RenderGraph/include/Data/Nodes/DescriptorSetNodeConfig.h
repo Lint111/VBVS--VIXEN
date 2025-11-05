@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 // TEMPORARILY REMOVED - using simple descriptor layouts for MVP
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include "VulkanResources/VulkanDevice.h"

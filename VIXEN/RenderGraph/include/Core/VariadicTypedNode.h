@@ -1,7 +1,7 @@
 #pragma once
 
 #include "TypedNodeInstance.h"
-#include "ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include "IGraphCompilable.h"
 #include <vector>
 

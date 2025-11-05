@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Core/ResourceVariant.h"
-#include "Core/ResourceTypeTraits.h"
+#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceTypeTraits.h"
 #include "Core/FieldExtractor.h"
 #include <tuple>
 #include <vector>

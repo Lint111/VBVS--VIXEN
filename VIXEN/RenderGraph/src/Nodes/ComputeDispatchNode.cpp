@@ -1,5 +1,5 @@
 #include "Nodes/ComputeDispatchNode.h"
-#include "Nodes/ComputeDispatchNodeConfig.h"
+#include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables

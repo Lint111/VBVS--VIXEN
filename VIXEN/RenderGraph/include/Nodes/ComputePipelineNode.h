@@ -3,7 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
-#include "Nodes/ComputePipelineNodeConfig.h"
+#include "Data/Nodes/ComputePipelineNodeConfig.h"
 
 // Forward declarations
 namespace CashSystem {

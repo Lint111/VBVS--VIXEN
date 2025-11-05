@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/DeviceNodeConfig.h"
+#include "Data/Nodes/DeviceNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <memory>
 #include <vector>

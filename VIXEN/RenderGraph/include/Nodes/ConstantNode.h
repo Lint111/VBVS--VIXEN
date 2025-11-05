@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Core/ResourceVariant.h"
-#include "Nodes/ConstantNodeConfig.h"
+#include "Data/Core/ResourceVariant.h"
+#include "Data/Nodes/ConstantNodeConfig.h"
 #include <optional>
 #include <functional>
 #include <cstdint>

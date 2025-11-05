@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/PresentNodeConfig.h"
+#include "Data/Nodes/PresentNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {

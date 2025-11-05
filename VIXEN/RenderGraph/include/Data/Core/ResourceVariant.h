@@ -4,7 +4,7 @@
 #define USE_RESOURCE_VARIANT_SYSTEM
 
 #include "Headers.h"
-#include "ResourceTypes.h"
+#include "Data/Core/ResourceTypes.h"
 #include <variant>
 #include <optional>
 #include <memory>

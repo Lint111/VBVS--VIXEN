@@ -4,7 +4,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Core/StatefulContainer.h"
-#include "Nodes/ComputeDispatchNodeConfig.h"
+#include "Data/Nodes/ComputeDispatchNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

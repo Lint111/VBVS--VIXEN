@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"
 #include "VulkanResources/VulkanDevice.h"
 

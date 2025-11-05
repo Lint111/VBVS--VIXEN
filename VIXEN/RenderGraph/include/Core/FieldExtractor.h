@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ResourceTypeTraits.h"
+#include "Data/Core/ResourceTypeTraits.h"
 #include <type_traits>
 
 namespace Vixen::RenderGraph {

@@ -2,12 +2,12 @@
 
 #include "Headers.h"
 
-#include "ResourceTypes.h"
+#include "Data/Core/ResourceTypes.h"
 #include <array>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include "Core/ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 
 // Forward declare global type
 struct SwapChainPublicVariables;

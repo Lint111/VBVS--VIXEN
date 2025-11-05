@@ -3,7 +3,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
-#include "Core/ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include <sstream>
 #include "VulkanSwapChain.h"
 

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Core/RenderGraph.h"
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
-#include "Nodes/DescriptorResourceGathererNodeConfig.h"
+#include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
 #include <vector>
 #include <functional>
 

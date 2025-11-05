@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "Nodes/TextureLoaderNodeConfig.h"
+#include "Data/Nodes/TextureLoaderNodeConfig.h"
 
 // Forward declarations
 namespace CashSystem {

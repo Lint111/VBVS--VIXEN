@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Nodes/CommandPoolNodeConfig.h"
+#include "Data/Nodes/CommandPoolNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 
 namespace Vixen::RenderGraph {

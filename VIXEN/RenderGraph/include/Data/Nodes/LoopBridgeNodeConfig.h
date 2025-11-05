@@ -1,5 +1,5 @@
 #pragma once
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "Core/LoopManager.h"
 
 namespace Vixen::RenderGraph {

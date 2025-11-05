@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 
 // Forward declare ShaderDataBundle
@@ -15,51 +15,41 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 /**
- * @brief Pure constexpr resource configuration for GraphicsPipelineNode
+ * @brief Pure constexpr resource configuration for ComputePipelineNode
  *
  * Inputs:
  * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
  * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Shader reflection data from ShaderLibraryNode
- * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
- * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
- * - SWAPCHAIN_INFO (SwapChainPublicVariablesPtr) - Swapchain info for viewport/scissor
+ * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Optional (auto-generated if not provided)
  *
  * Outputs:
- * - PIPELINE (VkPipeline) - Graphics pipeline handle
+ * - PIPELINE (VkPipeline) - Compute pipeline handle
  * - PIPELINE_LAYOUT (VkPipelineLayout) - Pipeline layout handle
  * - PIPELINE_CACHE (VkPipelineCache) - Pipeline cache for optimization
  * - VULKAN_DEVICE_OUT (VulkanDevicePtr) - Device passthrough
  *
  * Parameters:
- * - ENABLE_DEPTH_TEST (bool) - Enable depth testing (default: true)
- * - ENABLE_DEPTH_WRITE (bool) - Enable depth writes (default: true)
- * - ENABLE_VERTEX_INPUT (bool) - Enable vertex input (default: true)
- * - CULL_MODE (string) - Cull mode: "None", "Front", "Back", "FrontAndBack" (default: "Back")
- * - POLYGON_MODE (string) - Polygon mode: "Fill", "Line", "Point" (default: "Fill")
- * - TOPOLOGY (string) - Primitive topology: "TriangleList", "TriangleStrip", etc. (default: "TriangleList")
- * - FRONT_FACE (string) - Front face: "Clockwise", "CounterClockwise" (default: "CounterClockwise")
+ * - WORKGROUP_SIZE_X (uint32_t) - Workgroup size X (default: 0 = extract from shader)
+ * - WORKGROUP_SIZE_Y (uint32_t) - Workgroup size Y (default: 0 = extract from shader)
+ * - WORKGROUP_SIZE_Z (uint32_t) - Workgroup size Z (default: 0 = extract from shader)
  */
 // Compile-time slot counts
-namespace GraphicsPipelineNodeCounts {
-    static constexpr size_t INPUTS = 5;
+namespace ComputePipelineNodeCounts {
+    static constexpr size_t INPUTS = 3;
     static constexpr size_t OUTPUTS = 4;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
-CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig, 
-                      GraphicsPipelineNodeCounts::INPUTS, 
-                      GraphicsPipelineNodeCounts::OUTPUTS, 
-                      GraphicsPipelineNodeCounts::ARRAY_MODE) {
+CONSTEXPR_NODE_CONFIG(ComputePipelineNodeConfig,
+                      ComputePipelineNodeCounts::INPUTS,
+                      ComputePipelineNodeCounts::OUTPUTS,
+                      ComputePipelineNodeCounts::ARRAY_MODE) {
     // ===== PARAMETER NAMES =====
-    static constexpr const char* ENABLE_DEPTH_TEST = "enableDepthTest";
-    static constexpr const char* ENABLE_DEPTH_WRITE = "enableDepthWrite";
-    static constexpr const char* ENABLE_VERTEX_INPUT = "enableVertexInput";
-    static constexpr const char* CULL_MODE = "cullMode";
-    static constexpr const char* POLYGON_MODE = "polygonMode";
-    static constexpr const char* TOPOLOGY = "topology";
-    static constexpr const char* FRONT_FACE = "frontFace";
+    static constexpr const char* WORKGROUP_SIZE_X = "workgroupSizeX";
+    static constexpr const char* WORKGROUP_SIZE_Y = "workgroupSizeY";
+    static constexpr const char* WORKGROUP_SIZE_Z = "workgroupSizeZ";
 
-    // ===== INPUTS (5) =====
+    // ===== INPUTS (3) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
@@ -72,20 +62,8 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(RENDER_PASS, VkRenderPass, 2,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 4,
-        SlotNullability::Required,
+    INPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 2,
+        SlotNullability::Optional,  // Auto-generated if not provided
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -107,18 +85,14 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    GraphicsPipelineNodeConfig() {
+    ComputePipelineNodeConfig() {
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
         HandleDescriptor shaderBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderBundleDesc);
 
-        INIT_INPUT_DESC(RENDER_PASS, "render_pass", ResourceLifetime::Persistent, BufferDescription{});
         INIT_INPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout", ResourceLifetime::Persistent, BufferDescription{});
-
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
-        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainInfoDesc);
 
         INIT_OUTPUT_DESC(PIPELINE, "pipeline", ResourceLifetime::Persistent, BufferDescription{});
         INIT_OUTPUT_DESC(PIPELINE_LAYOUT, "pipeline_layout", ResourceLifetime::Persistent, BufferDescription{});
@@ -127,20 +101,16 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     }
 
     // Compile-time validations
-    static_assert(INPUT_COUNT == GraphicsPipelineNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == GraphicsPipelineNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == GraphicsPipelineNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    static_assert(INPUT_COUNT == ComputePipelineNodeCounts::INPUTS, "Input count mismatch");
+    static_assert(OUTPUT_COUNT == ComputePipelineNodeCounts::OUTPUTS, "Output count mismatch");
+    static_assert(ARRAY_MODE == ComputePipelineNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable);
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 1);
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable);
-    static_assert(RENDER_PASS_Slot::index == 2);
-    static_assert(!RENDER_PASS_Slot::nullable);
-    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 3);
-    static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable);
-    static_assert(SWAPCHAIN_INFO_Slot::index == 4);
-    static_assert(!SWAPCHAIN_INFO_Slot::nullable);
+    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 2);
+    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::nullable);  // Optional
 
     static_assert(PIPELINE_Slot::index == 0);
     static_assert(!PIPELINE_Slot::nullable);
@@ -154,9 +124,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
-    static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);
@@ -164,7 +132,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(GraphicsPipelineNodeConfig::INPUT_COUNT == GraphicsPipelineNodeCounts::INPUTS);
-static_assert(GraphicsPipelineNodeConfig::OUTPUT_COUNT == GraphicsPipelineNodeCounts::OUTPUTS);
+static_assert(ComputePipelineNodeConfig::INPUT_COUNT == ComputePipelineNodeCounts::INPUTS);
+static_assert(ComputePipelineNodeConfig::OUTPUT_COUNT == ComputePipelineNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

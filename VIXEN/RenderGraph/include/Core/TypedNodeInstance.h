@@ -1,8 +1,8 @@
 #pragma once
 
 #include "NodeInstance.h"
-#include "ResourceConfig.h"
-#include "ResourceVariant.h"
+#include "Data/Core/ResourceConfig.h"
+#include "Data/Core/ResourceVariant.h"
 #include <future>
 #include <vector>
 
