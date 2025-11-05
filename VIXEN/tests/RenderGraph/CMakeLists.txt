@@ -72,3 +72,14 @@ include(test_resource_gatherer.cmake)
 # for resource gathering. Compatible with VULKAN_TRIMMED_BUILD.
 
 include(test_configured_gatherer.cmake)
+
+# ===========================================================================
+# Shader bundle gatherer test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates the FINAL pattern for Phase G resource gathering:
+# - Single bundle type parameter with automatic input slot generation
+# - Variadic inputs validated against bundle header fields
+# - Minimal graph setup (just connect inputs)
+# Compatible with VULKAN_TRIMMED_BUILD.
+
+include(test_shader_bundle_gatherer.cmake)
