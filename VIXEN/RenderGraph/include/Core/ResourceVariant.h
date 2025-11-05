@@ -81,19 +81,34 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
 }
 
 // ============================================================================
+// PLATFORM-SPECIFIC TYPE COMPATIBILITY
+// ============================================================================
+
+// Windows-specific types: Define distinct placeholders on non-Windows platforms
+// This allows ResourceVariant to compile cross-platform even though these
+// types are only meaningful on Windows
+// NOTE: Must be distinct types to avoid std::variant duplicate type errors
+#ifndef _WIN32
+struct HWND_Placeholder { void* ptr; };       // Window handle (Windows only)
+struct HINSTANCE_Placeholder { void* ptr; };  // Instance handle (Windows only)
+using HWND = HWND_Placeholder*;
+using HINSTANCE = HINSTANCE_Placeholder*;
+#endif
+
+// ============================================================================
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
 
 /**
  * @brief Master list of base resource types
- * 
+ *
  * Format: RESOURCE_TYPE(HandleType, DescriptorType, ResourceTypeEnum)
  * - HandleType: The Vulkan/C++ type stored in the resource
  * - DescriptorType: The descriptor class (or HandleDescriptor for simple types)
  * - ResourceTypeEnum: The ResourceType enum value
- * 
+ *
  * To add a new type, add ONE line here. Container variants (std::vector<T>) auto-generate.
- * 
+ *
  * Example:
  * RESOURCE_TYPE(VkImage, ImageDescriptor, ResourceType::Image)
  * → Auto-generates: VkImage, std::vector<VkImage>
