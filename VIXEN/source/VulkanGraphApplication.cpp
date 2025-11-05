@@ -835,9 +835,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
          // Phase H: Data-driven resource connection via shader metadata
-         // Connect swapchain image views to descriptor gatherer's variadic input
-         .ConnectVariadic(descriptorGatherer, ComputeTest::outputImage,
-                          swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC)
+         // Extract colorBuffers field from SwapChainPublicVariables for descriptor binding
+         .ConnectVariadic(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                          descriptorGatherer, ComputeTest::outputImage,
+                          &SwapChainPublicVariables::colorBuffers)
          ;
 
     // Swapchain connections to descriptor set and dispatch

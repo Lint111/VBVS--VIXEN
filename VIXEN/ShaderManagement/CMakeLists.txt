@@ -120,6 +120,11 @@ if(USE_PRECOMPILED_HEADERS)
         <functional>
         <filesystem>
     )
+    # Exclude C files from precompiled headers (spirv_reflect.c is C, not C++)
+    set_source_files_properties(
+        ${spirv_reflect_SOURCE_DIR}/spirv_reflect.c
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
     message(STATUS "ShaderManagement: Precompiled headers enabled")
 endif()
 

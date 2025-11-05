@@ -328,12 +328,12 @@ public:
      * @param sourceNode Handle to source node providing the resource
      * @param sourceSlot Output slot from source node
      */
-    template<typename BindingRefType, typename SourceSlot>
+    template<typename SourceSlot, typename BindingRefType>
     ConnectionBatch& ConnectVariadic(
-        NodeHandle variadicNode,
-        BindingRefType bindingRef,
         NodeHandle sourceNode,
-        SourceSlot sourceSlot
+        SourceSlot sourceSlot,
+        NodeHandle variadicNode,
+        BindingRefType bindingRef
     ) {
         std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingRef.binding << std::endl;
 
@@ -414,12 +414,12 @@ public:
      * @param sourceSlot Output slot from source node (struct type)
      * @param memberPtr Pointer-to-member for field extraction
      */
-    template<typename BindingRefType, typename SourceSlot, typename StructType, typename FieldType>
+    template<typename SourceSlot, typename BindingRefType, typename StructType, typename FieldType>
     ConnectionBatch& ConnectVariadic(
-        NodeHandle variadicNode,
-        BindingRefType bindingRef,
         NodeHandle sourceNode,
         SourceSlot sourceSlot,
+        NodeHandle variadicNode,
+        BindingRefType bindingRef,
         FieldType StructType::* memberPtr  // Member pointer for field extraction
     ) {
         std::cout << "[ConnectVariadic] Queuing variadic connection with field extraction for binding "
