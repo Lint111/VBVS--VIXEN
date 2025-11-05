@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "RenderPassNodeConfig.h"
+#include "Data/Nodes/RenderPassNodeConfig.h"
 #include <memory>
 
 // Forward declarations

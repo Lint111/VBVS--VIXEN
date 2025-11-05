@@ -192,6 +192,9 @@ using HINSTANCE = HINSTANCE_Placeholder*;
  * - T (base type)
  * - std::vector<T> (array wrapper)
  * 
+ * NOTE: std::vector<ResourceVariant> is NOT in this variant (C++ doesn't allow recursive types).
+ * It's handled as a meta-type through ResourceTypeTraits validation (IsResourceVariantContainer_v).
+ * 
  * To add more wrappers (e.g., T*, std::shared_ptr<T>), modify EXPAND_WITH_WRAPPERS macro above.
  */
 using ResourceVariant = std::variant<
@@ -499,9 +502,20 @@ public:
      * @brief Set handle value (compile-time type-safe)
      */
     template<typename VulkanType>
-    void SetHandle(VulkanType value) {
+    void SetHandle(VulkanType&& value) {
         static_assert(ResourceTypeTraits<VulkanType>::isValid, "Type not registered");
-        handle = value;
+
+        // Special cases for meta-types (stored separately due to recursive type limitation)
+        if constexpr (std::is_same_v<std::decay_t<VulkanType>, ResourceVariant>) {
+            // ResourceVariant as a handle (pass-through variant)
+            variantStorage = std::forward<VulkanType>(value);
+        } else if constexpr (std::is_same_v<std::decay_t<VulkanType>, std::vector<ResourceVariant>>) {
+            // std::vector<ResourceVariant> for descriptor sets
+            variantVectorStorage = std::forward<VulkanType>(value);
+        } else {
+            // Regular registered types
+            handle = std::forward<VulkanType>(value);
+        }
     }
 
     /**
@@ -510,10 +524,27 @@ public:
     template<typename VulkanType>
     VulkanType GetHandle() const {
         static_assert(ResourceTypeTraits<VulkanType>::isValid, "Type not registered");
-        if (auto* ptr = std::get_if<VulkanType>(&handle)) {
-            return *ptr;
+        
+        // Special cases for meta-types (stored separately due to recursive type limitation)
+        if constexpr (std::is_same_v<VulkanType, ResourceVariant>) {
+            // ResourceVariant as a handle (pass-through variant)
+            if (variantStorage.has_value()) {
+                return variantStorage.value();
+            }
+            return ResourceVariant{};  // Return monostate variant if not set
+        } else if constexpr (std::is_same_v<VulkanType, std::vector<ResourceVariant>>) {
+            // std::vector<ResourceVariant> for descriptor sets
+            if (variantVectorStorage.has_value()) {
+                return variantVectorStorage.value();
+            }
+            return std::vector<ResourceVariant>{};  // Return empty vector if not set
+        } else {
+            // Regular registered types
+            if (auto* ptr = std::get_if<VulkanType>(&handle)) {
+                return *ptr;
+            }
+            return VulkanType{}; // Return null handle if type mismatch
         }
-        return VulkanType{}; // Return null handle if type mismatch
     }
 
 
@@ -564,6 +595,10 @@ private:
     ResourceLifetime lifetime = ResourceLifetime::Transient;
     ResourceVariant handle;
     ResourceDescriptorVariant descriptor;
+    
+    // Special storage for meta-types (cannot be stored in ResourceVariant due to recursive type limitation)
+    std::optional<ResourceVariant> variantStorage;           // Single ResourceVariant as handle
+    std::optional<std::vector<ResourceVariant>> variantVectorStorage;  // vector<ResourceVariant> for descriptor sets
 
     friend class RenderGraph;
 };

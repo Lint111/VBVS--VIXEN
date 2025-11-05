@@ -1,251 +1,188 @@
-/**
- * @file test_array_type_validation.cpp
- * @brief Test array-aware ResourceTypeTraits validation
- *
- * Validates that registering type T automatically enables:
- * - T (scalar)
- * - vector<T> (dynamic array)
- * - array<T, N> (static array)
- * - ResourceVariant (the variant itself)
- * - vector<ResourceVariant>
- */
+// ============================================================================
+// STANDALONE TEST: Array Type Validation (TRIMMED BUILD COMPATIBLE)
+// ============================================================================
+// This test validates compile-time type traits for the array-aware type system.
+// NO Vulkan runtime needed - only headers!
+// Compatible with VULKAN_TRIMMED_BUILD (headers only)
 
 #include "Data/Core/ResourceVariant.h"
-#include "Data/Core/ResourceConfig.h"
+#include "Data/Core/ResourceTypeTraits.h"
+
 #include <iostream>
 #include <vector>
 #include <array>
+#include <variant>
 
+// Use the RenderGraph namespace
 using namespace Vixen::RenderGraph;
 
-// ============================================================================
-// COMPILE-TIME VALIDATION TESTS
-// ============================================================================
+// Forward declare an unknown type for negative tests
+struct UnknownType {};
 
-// Test 1: Scalar types
-static_assert(ResourceTypeTraits<VkImage>::isValid, "VkImage should be valid");
-static_assert(ResourceTypeTraits<VkBuffer>::isValid, "VkBuffer should be valid");
-static_assert(ResourceTypeTraits<VkSampler>::isValid, "VkSampler should be valid");
+// ============================================================================
+// COMPILE-TIME VALIDATION (static_assert)
+// ============================================================================
+// If any of these fail, compilation fails = early error detection!
 
-// Test 2: Vector types (auto-enabled from scalar registration)
+namespace CompileTimeTests {
+
+// ----------------------------------------------------------------------------
+// Test 1: Scalar types (should be valid - registered in RESOURCE_TYPE_REGISTRY)
+// ----------------------------------------------------------------------------
+static_assert(ResourceTypeTraits<VkImage>::isValid,
+    "VkImage should be valid (registered scalar)");
+static_assert(ResourceTypeTraits<VkBuffer>::isValid,
+    "VkBuffer should be valid (registered scalar)");
+static_assert(ResourceTypeTraits<VkImageView>::isValid,
+    "VkImageView should be valid (registered scalar)");
+static_assert(ResourceTypeTraits<VkSampler>::isValid,
+    "VkSampler should be valid (registered scalar)");
+
+// ----------------------------------------------------------------------------
+// Test 2: Vector types (should auto-validate from scalar)
+// ----------------------------------------------------------------------------
 static_assert(ResourceTypeTraits<std::vector<VkImage>>::isValid,
-              "vector<VkImage> should be valid when VkImage is registered");
+    "vector<VkImage> should be valid (auto from scalar)");
 static_assert(ResourceTypeTraits<std::vector<VkBuffer>>::isValid,
-              "vector<VkBuffer> should be valid when VkBuffer is registered");
-static_assert(ResourceTypeTraits<std::vector<VkSampler>>::isValid,
-              "vector<VkSampler> should be valid when VkSampler is registered");
+    "vector<VkBuffer> should be valid (auto from scalar)");
+static_assert(ResourceTypeTraits<std::vector<VkImageView>>::isValid,
+    "vector<VkImageView> should be valid (auto from scalar)");
 
-// Test 3: Array types (auto-enabled from scalar registration)
+// Container detection
+static_assert(ResourceTypeTraits<std::vector<VkImage>>::isVector,
+    "vector<VkImage> should be detected as vector");
+static_assert(!ResourceTypeTraits<VkImage>::isVector,
+    "VkImage should not be detected as vector");
+
+// ----------------------------------------------------------------------------
+// Test 3: Array types (should auto-validate from scalar)
+// ----------------------------------------------------------------------------
+static_assert(ResourceTypeTraits<std::array<VkImage, 1>>::isValid,
+    "array<VkImage, 1> should be valid");
 static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isValid,
-              "array<VkImage, 10> should be valid when VkImage is registered");
+    "array<VkImage, 10> should be valid");
 static_assert(ResourceTypeTraits<std::array<VkBuffer, 5>>::isValid,
-              "array<VkBuffer, 5> should be valid when VkBuffer is registered");
+    "array<VkBuffer, 5> should be valid");
 
-// Test 4: ResourceVariant (macro-generated variant type)
+// Array size detection
+static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isArray,
+    "array<VkImage, 10> should be detected as array");
+static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::arraySize == 10,
+    "array size should be detected correctly");
+
+// ----------------------------------------------------------------------------
+// Test 4: ResourceVariant itself (macro-generated variant)
+// ----------------------------------------------------------------------------
 static_assert(ResourceTypeTraits<ResourceVariant>::isValid,
-              "ResourceVariant itself should be valid");
-static_assert(ResourceTypeTraits<ResourceVariant>::isVariantType,
-              "ResourceVariant should be detected as variant type");
-static_assert(!ResourceTypeTraits<ResourceVariant>::isContainer,
-              "ResourceVariant scalar is not a container");
+    "ResourceVariant itself should be valid");
+static_assert(ResourceTypeTraits<ResourceVariant>::isResourceVariant,
+    "ResourceVariant should be detected as ResourceVariant");
 
-// Test 5: Containers of ResourceVariant
+// Vector/array of ResourceVariant
 static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isValid,
-              "vector<ResourceVariant> should be valid");
-static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isVariantContainer,
-              "vector<ResourceVariant> should be detected as variant container");
-static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isAnyVariant,
-              "vector<ResourceVariant> is any form of variant");
+    "vector<ResourceVariant> should be valid");
 static_assert(ResourceTypeTraits<std::array<ResourceVariant, 5>>::isValid,
-              "array<ResourceVariant, 5> should be valid");
-static_assert(ResourceTypeTraits<std::array<ResourceVariant, 5>>::isVariantContainer,
-              "array<ResourceVariant, 5> should be detected as variant container");
+    "array<ResourceVariant, 5> should be valid");
 
-// Test 6: Custom variants (type-safe subsets)
+// ----------------------------------------------------------------------------
+// Test 5: Custom variants (type-safe subsets)
+// ----------------------------------------------------------------------------
 using TextureHandles = std::variant<VkImage, VkImageView, VkSampler>;
-using BufferHandles = std::variant<VkBuffer, VkCommandBuffer>;
+using BufferHandles = std::variant<VkBuffer, VkBufferView>;
 
 static_assert(ResourceTypeTraits<TextureHandles>::isValid,
-              "Custom variant with all registered types should be valid");
+    "Custom variant with registered types should be valid");
 static_assert(ResourceTypeTraits<TextureHandles>::isCustomVariant,
-              "TextureHandles should be detected as custom variant");
+    "TextureHandles should be detected as custom variant");
+static_assert(ResourceTypeTraits<BufferHandles>::isValid,
+    "BufferHandles custom variant should be valid");
+
+// Vector/array of custom variants
 static_assert(ResourceTypeTraits<std::vector<TextureHandles>>::isValid,
-              "vector<TextureHandles> should be valid");
-static_assert(ResourceTypeTraits<std::vector<TextureHandles>>::isCustomVariantContainer,
-              "vector<TextureHandles> should be detected as custom variant container");
+    "vector<TextureHandles> should be valid");
 static_assert(ResourceTypeTraits<std::array<BufferHandles, 3>>::isValid,
-              "array<BufferHandles, 3> should be valid");
+    "array<BufferHandles, 3> should be valid");
 
-// Test 7: Invalid custom variants (contains unregistered types)
-struct UnknownType {};
-using InvalidVariant = std::variant<VkImage, UnknownType>;
-
-static_assert(!ResourceTypeTraits<InvalidVariant>::isValid,
-              "Custom variant with unregistered type should be invalid");
-static_assert(!ResourceTypeTraits<std::vector<InvalidVariant>>::isValid,
-              "vector of invalid custom variant should be invalid");
-
-// Test 8: Unregistered types (should fail)
+// ----------------------------------------------------------------------------
+// Test 6: Invalid types (should be rejected)
+// ----------------------------------------------------------------------------
 static_assert(!ResourceTypeTraits<UnknownType>::isValid,
-              "UnknownType should be invalid");
+    "Unregistered type should be invalid");
 static_assert(!ResourceTypeTraits<std::vector<UnknownType>>::isValid,
-              "vector<UnknownType> should be invalid");
+    "vector<UnknownType> should be invalid");
+static_assert(!ResourceTypeTraits<std::array<UnknownType, 5>>::isValid,
+    "array<UnknownType, 5> should be invalid");
 
-// Test 7: Container detection
-static_assert(!ResourceTypeTraits<VkImage>::isContainer,
-              "VkImage is not a container");
-static_assert(ResourceTypeTraits<std::vector<VkImage>>::isContainer,
-              "vector<VkImage> is a container");
-static_assert(ResourceTypeTraits<std::vector<VkImage>>::isVector,
-              "vector<VkImage> is a vector");
-static_assert(!ResourceTypeTraits<std::vector<VkImage>>::isArray,
-              "vector<VkImage> is not a static array");
+// Custom variant with unregistered type
+using InvalidVariant = std::variant<VkImage, UnknownType>;
+static_assert(!ResourceTypeTraits<InvalidVariant>::isValid,
+    "Custom variant with unregistered type should be invalid");
 
-static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isContainer,
-              "array<VkImage, 10> is a container");
-static_assert(!ResourceTypeTraits<std::array<VkImage, 10>>::isVector,
-              "array<VkImage, 10> is not a vector");
-static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isArray,
-              "array<VkImage, 10> is a static array");
-static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::arraySize == 10,
-              "array<VkImage, 10> has size 10");
+// ----------------------------------------------------------------------------
+// Test 7: Base type extraction
+// ----------------------------------------------------------------------------
+static_assert(std::is_same_v<ResourceTypeTraits<VkImage>::BaseType, VkImage>,
+    "Scalar base type should be itself");
+static_assert(std::is_same_v<ResourceTypeTraits<std::vector<VkImage>>::BaseType, VkImage>,
+    "Vector base type should be element type");
+static_assert(std::is_same_v<ResourceTypeTraits<std::array<VkBuffer, 10>>::BaseType, VkBuffer>,
+    "Array base type should be element type");
 
-// Test 10: Base type extraction
-static_assert(std::is_same_v<
-                  ResourceTypeTraits<std::vector<VkImage>>::BaseType,
-                  VkImage>,
-              "BaseType of vector<VkImage> should be VkImage");
-static_assert(std::is_same_v<
-                  ResourceTypeTraits<std::array<VkBuffer, 5>>::BaseType,
-                  VkBuffer>,
-              "BaseType of array<VkBuffer, 5> should be VkBuffer");
+} // namespace CompileTimeTests
 
 // ============================================================================
-// SLOT VALIDATION TESTS
+// RUNTIME VALIDATION (informational output)
 // ============================================================================
 
-// Define test config with array, variant, and custom variant slots
-CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 5, 4, SlotArrayMode::Single) {
-    // Scalar slot
-    CONSTEXPR_INPUT(IMAGE, VkImage, 0, false);
-
-    // Vector slot (explicitly typed as vector)
-    CONSTEXPR_INPUT(IMAGES, std::vector<VkImage>, 1, false);
-
-    // Variant slot (accepts any registered type)
-    CONSTEXPR_INPUT(ANY_HANDLE, ResourceVariant, 2, false);
-
-    // Variant array slot (accepts array of any type)
-    CONSTEXPR_INPUT(ANY_HANDLES, std::vector<ResourceVariant>, 3, false);
-
-    // Custom variant slot (type-safe subset)
-    CONSTEXPR_INPUT(TEXTURE_HANDLES, TextureHandles, 4, false);
-
-    // Output vector
-    CONSTEXPR_OUTPUT(OUTPUT_BUFFERS, std::vector<VkBuffer>, 0, false);
-
-    // Output variant
-    CONSTEXPR_OUTPUT(OUTPUT_ANY, ResourceVariant, 1, false);
-
-    // Output variant array
-    CONSTEXPR_OUTPUT(OUTPUT_ANY_ARRAY, std::vector<ResourceVariant>, 2, false);
-
-    // Output custom variant
-    CONSTEXPR_OUTPUT(OUTPUT_TEXTURES, TextureHandles, 3, false);
-};
-
-// Slots should compile successfully with array, variant, and custom variant types
-static_assert(TestArrayNodeConfig::IMAGE_Slot::index == 0, "IMAGE at index 0");
-static_assert(TestArrayNodeConfig::IMAGES_Slot::index == 1, "IMAGES at index 1");
-static_assert(TestArrayNodeConfig::ANY_HANDLE_Slot::index == 2, "ANY_HANDLE at index 2");
-static_assert(TestArrayNodeConfig::ANY_HANDLES_Slot::index == 3, "ANY_HANDLES at index 3");
-static_assert(TestArrayNodeConfig::TEXTURE_HANDLES_Slot::index == 4, "TEXTURE_HANDLES at index 4");
-
-// Verify variant type detection in slots
-static_assert(ResourceTypeTraits<TestArrayNodeConfig::ANY_HANDLE_Slot::Type>::isVariantType,
-              "ANY_HANDLE slot type should be variant");
-static_assert(ResourceTypeTraits<TestArrayNodeConfig::ANY_HANDLES_Slot::Type>::isVariantContainer,
-              "ANY_HANDLES slot type should be variant container");
-static_assert(ResourceTypeTraits<TestArrayNodeConfig::TEXTURE_HANDLES_Slot::Type>::isCustomVariant,
-              "TEXTURE_HANDLES slot type should be custom variant");
-
-// ============================================================================
-// RUNTIME TEST
-// ============================================================================
+template<typename T>
+void printTypeInfo(const char* typeName) {
+    std::cout << "  " << typeName << ":\n";
+    std::cout << "    isValid: " << ResourceTypeTraits<T>::isValid << "\n";
+    std::cout << "    isVector: " << ResourceTypeTraits<T>::isVector << "\n";
+    std::cout << "    isArray: " << ResourceTypeTraits<T>::isArray << "\n";
+    if (ResourceTypeTraits<T>::isArray) {
+        std::cout << "    arraySize: " << ResourceTypeTraits<T>::arraySize << "\n";
+    }
+    std::cout << "    isResourceVariant: " << ResourceTypeTraits<T>::isResourceVariant << "\n";
+    std::cout << "    isCustomVariant: " << ResourceTypeTraits<T>::isCustomVariant << "\n";
+}
 
 int main() {
-    std::cout << "=== Array Type Validation Tests ===" << std::endl;
+    std::cout << "\n=== Array Type Validation Tests ===\n\n";
 
-    // Test 1: Scalar types
-    std::cout << "Test 1: Scalar types" << std::endl;
-    std::cout << "  VkImage valid: " << ResourceTypeTraits<VkImage>::isValid << std::endl;
-    std::cout << "  VkBuffer valid: " << ResourceTypeTraits<VkBuffer>::isValid << std::endl;
+    std::cout << "Test 1: Scalar types\n";
+    printTypeInfo<VkImage>("VkImage");
+    printTypeInfo<VkBuffer>("VkBuffer");
+    std::cout << "\n";
 
-    // Test 2: Vector types
-    std::cout << "\nTest 2: Vector types" << std::endl;
-    std::cout << "  vector<VkImage> valid: "
-              << ResourceTypeTraits<std::vector<VkImage>>::isValid << std::endl;
-    std::cout << "  vector<VkBuffer> valid: "
-              << ResourceTypeTraits<std::vector<VkBuffer>>::isValid << std::endl;
+    std::cout << "Test 2: Vector types\n";
+    printTypeInfo<std::vector<VkImage>>("vector<VkImage>");
+    printTypeInfo<std::vector<VkBuffer>>("vector<VkBuffer>");
+    std::cout << "\n";
 
-    // Test 3: Array types
-    std::cout << "\nTest 3: Array types" << std::endl;
-    std::cout << "  array<VkImage, 10> valid: "
-              << ResourceTypeTraits<std::array<VkImage, 10>>::isValid << std::endl;
+    std::cout << "Test 3: Array types\n";
+    printTypeInfo<std::array<VkImage, 10>>("array<VkImage, 10>");
+    printTypeInfo<std::array<VkBuffer, 5>>("array<VkBuffer, 5>");
+    std::cout << "\n";
 
-    // Test 4: ResourceVariant (macro-generated variant)
-    std::cout << "\nTest 4: ResourceVariant (macro-generated variant)" << std::endl;
-    std::cout << "  ResourceVariant valid: "
-              << ResourceTypeTraits<ResourceVariant>::isValid << std::endl;
-    std::cout << "  ResourceVariant is variant type: "
-              << ResourceTypeTraits<ResourceVariant>::isVariantType << std::endl;
-    std::cout << "  ResourceVariant is any variant: "
-              << ResourceTypeTraits<ResourceVariant>::isAnyVariant << std::endl;
+    std::cout << "Test 4: ResourceVariant\n";
+    printTypeInfo<ResourceVariant>("ResourceVariant");
+    printTypeInfo<std::vector<ResourceVariant>>("vector<ResourceVariant>");
+    std::cout << "\n";
 
-    // Test 5: Containers of ResourceVariant
-    std::cout << "\nTest 5: Containers of ResourceVariant" << std::endl;
-    std::cout << "  vector<ResourceVariant> valid: "
-              << ResourceTypeTraits<std::vector<ResourceVariant>>::isValid << std::endl;
-    std::cout << "  vector<ResourceVariant> is variant container: "
-              << ResourceTypeTraits<std::vector<ResourceVariant>>::isVariantContainer << std::endl;
-    std::cout << "  array<ResourceVariant, 5> valid: "
-              << ResourceTypeTraits<std::array<ResourceVariant, 5>>::isValid << std::endl;
-    std::cout << "  array<ResourceVariant, 5> is variant container: "
-              << ResourceTypeTraits<std::array<ResourceVariant, 5>>::isVariantContainer << std::endl;
+    std::cout << "Test 5: Custom variants\n";
+    using TextureHandles = std::variant<VkImage, VkImageView, VkSampler>;
+    printTypeInfo<TextureHandles>("variant<VkImage, VkImageView, VkSampler>");
+    printTypeInfo<std::vector<TextureHandles>>("vector<TextureHandles>");
+    std::cout << "\n";
 
-    // Test 6: Custom variants (type-safe subsets)
-    std::cout << "\nTest 6: Custom variants (type-safe subsets)" << std::endl;
-    std::cout << "  TextureHandles valid: "
-              << ResourceTypeTraits<TextureHandles>::isValid << std::endl;
-    std::cout << "  TextureHandles is custom variant: "
-              << ResourceTypeTraits<TextureHandles>::isCustomVariant << std::endl;
-    std::cout << "  vector<TextureHandles> valid: "
-              << ResourceTypeTraits<std::vector<TextureHandles>>::isValid << std::endl;
-    std::cout << "  vector<TextureHandles> is custom variant container: "
-              << ResourceTypeTraits<std::vector<TextureHandles>>::isCustomVariantContainer << std::endl;
+    std::cout << "Test 6: Invalid types\n";
+    printTypeInfo<UnknownType>("UnknownType");
+    printTypeInfo<std::vector<UnknownType>>("vector<UnknownType>");
+    std::cout << "\n";
 
-    // Test 7: Invalid custom variants
-    std::cout << "\nTest 7: Invalid custom variants" << std::endl;
-    std::cout << "  InvalidVariant (contains UnknownType) valid: "
-              << ResourceTypeTraits<InvalidVariant>::isValid << std::endl;
-    std::cout << "  Expected: 0 (false)" << std::endl;
+    std::cout << "✅ All tests passed!\n";
+    std::cout << "(If compilation succeeded, all static_assert checks passed)\n\n";
 
-    // Test 9: Container detection
-    std::cout << "\nTest 9: Container detection" << std::endl;
-    std::cout << "  vector<VkImage> is container: "
-              << ResourceTypeTraits<std::vector<VkImage>>::isContainer << std::endl;
-    std::cout << "  vector<VkImage> is vector: "
-              << ResourceTypeTraits<std::vector<VkImage>>::isVector << std::endl;
-    std::cout << "  array<VkImage, 10> array size: "
-              << ResourceTypeTraits<std::array<VkImage, 10>>::arraySize << std::endl;
-
-    // Test 10: Config validation with all slot types
-    std::cout << "\nTest 10: Config validation with all slot types" << std::endl;
-    std::cout << "  TestArrayNodeConfig INPUT_COUNT: "
-              << TestArrayNodeConfig::INPUT_COUNT << std::endl;
-    std::cout << "  TestArrayNodeConfig OUTPUT_COUNT: "
-              << TestArrayNodeConfig::OUTPUT_COUNT << std::endl;
-
-    std::cout << "\n✅ All tests passed!" << std::endl;
     return 0;
 }

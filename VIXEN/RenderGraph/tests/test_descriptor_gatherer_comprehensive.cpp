@@ -21,9 +21,9 @@
 #include "../../generated/sdi/4e34fbf760c3a28b-SDI.h"
 
 // Render graph components
-#include "../../RenderGraph/include/Nodes/DescriptorResourceGathererNode.h"
-#include "../../RenderGraph/include/Core/RenderGraph.h"
-#include "../../RenderGraph/include/Core/ResourceVariant.h"
+#include "../include/Nodes/DescriptorResourceGathererNode.h"
+#include "../include/Core/RenderGraph.h"
+#include "../include/Core/ResourceVariant.h"
 
 // Shader management
 #include "../../ShaderManagement/include/ShaderManagement/ShaderDataBundle.h"

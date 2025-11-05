@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "VertexBufferNodeConfig.h"
+#include "Data/Nodes/VertexBufferNodeConfig.h"
 #include "../../include/MeshData.h"
 #include <memory>
 

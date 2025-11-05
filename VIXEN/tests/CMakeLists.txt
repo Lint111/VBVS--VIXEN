@@ -49,7 +49,6 @@ endmacro()
 # List of test subfolders to include. Add new entries as needed.
 set(TEST_SUBFOLDERS
     CashSystem
-    RenderGraph
     EventBus
     ResourceManagement
     Logger

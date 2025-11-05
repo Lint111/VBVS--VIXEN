@@ -109,8 +109,8 @@ void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     uint32_t currentFrameIndex = ctx.In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
 
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = ctx.In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const VkSemaphore* renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
     // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing

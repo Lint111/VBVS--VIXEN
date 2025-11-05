@@ -2,7 +2,7 @@
 
 #include "Core/VariadicTypedNode.h"
 #include "Core/NodeType.h"
-#include "DescriptorResourceGathererNodeConfig.h"
+#include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include <memory>
 #include <vector>

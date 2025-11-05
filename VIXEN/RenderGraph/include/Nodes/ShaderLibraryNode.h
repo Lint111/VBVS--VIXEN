@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "ShaderLibraryNodeConfig.h"
+#include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderDataBundle.h>
 #include "VulkanShader.h"
 #include <memory>

@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "LoopBridgeNodeConfig.h"
+#include "Data/Nodes/LoopBridgeNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {

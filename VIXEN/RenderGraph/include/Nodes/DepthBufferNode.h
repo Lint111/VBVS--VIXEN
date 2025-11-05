@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "DepthBufferNodeConfig.h"
+#include "Data/Nodes/DepthBufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

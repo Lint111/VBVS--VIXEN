@@ -228,15 +228,15 @@ void SwapChainNode::CompileImpl(Context& ctx) {
 
 void SwapChainNode::ExecuteImpl(Context& ctx) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const VkSemaphore* renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
-    if (!imageAvailableSemaphores || !renderCompleteSemaphores) {
+    if (imageAvailableSemaphores.empty() || renderCompleteSemaphores.empty()) {
         throw std::runtime_error("SwapChainNode: Semaphore arrays are null");
     }
 
     // Phase 0.7: Get present fences array (VK_EXT_swapchain_maintenance1)
-    VkFenceVector presentFencesArray = ctx.In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+    const std::vector<VkFence>& presentFencesArray = ctx.In(SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
 
     // Phase 0.6: CORRECT two-tier semaphore indexing (Vulkan guide pattern)
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -260,8 +260,8 @@ void SwapChainNode::ExecuteImpl(Context& ctx) {
 
     // Phase 0.7: Now that we know which image we got, wait for presentation to finish with it
     // This ensures the presentation engine has released the image before we start rendering to it
-    if (currentImageIndex != UINT32_MAX && presentFencesArray != nullptr && !presentFencesArray->empty()) {
-        VkFence presentFence = (*presentFencesArray)[currentImageIndex];
+    if (currentImageIndex != UINT32_MAX && (!presentFencesArray || presentFencesArray->empty())) {
+        VkFence presentFence = presentFencesArray[currentImageIndex];
         if (presentFence != VK_NULL_HANDLE && GetDevice() != nullptr) {
             vkWaitForFences(GetDevice()->device, 1, &presentFence, VK_TRUE, UINT64_MAX);
             vkResetFences(GetDevice()->device, 1, &presentFence);

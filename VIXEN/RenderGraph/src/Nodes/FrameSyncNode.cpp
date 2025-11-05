@@ -117,9 +117,9 @@ void FrameSyncNode::CompileImpl(Context& ctx) {
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, &presentFences);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences);
 
     NODE_LOG_INFO("Synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");

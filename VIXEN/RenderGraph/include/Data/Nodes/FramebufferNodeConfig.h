@@ -73,7 +73,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== OUTPUTS (2) =====
     // Framebuffer handles (vector containing all swapchain framebuffers)
-    OUTPUT_SLOT(FRAMEBUFFERS, FramebufferVector, 0,
+    OUTPUT_SLOT(FRAMEBUFFERS, std::vector<VkFramebuffer>, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -136,7 +136,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
-    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, FramebufferVector>);
+    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
 	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
 };
 

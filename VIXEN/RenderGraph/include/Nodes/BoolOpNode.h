@@ -1,8 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "BoolOpNodeConfig.h"
-#include <memory>
+#include "Data/Nodes/BoolOpNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

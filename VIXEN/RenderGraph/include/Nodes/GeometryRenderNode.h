@@ -3,7 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
 #include "Core/StatefulContainer.h"
-#include "GeometryRenderNodeConfig.h"
+#include "Data/Nodes/GeometryRenderNodeConfig.h"
 #include <memory>
 #include <vector>
 

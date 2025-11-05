@@ -12,10 +12,10 @@
  */
 
 #include <gtest/gtest.h>
-#include "../../RenderGraph/include/Core/ResourceBudgetManager.h"
-#include "../../RenderGraph/include/Core/DeferredDestruction.h"
-#include "../../RenderGraph/include/Core/StatefulContainer.h"
-#include "../../RenderGraph/include/Core/SlotTask.h"
+#include "../include/Core/ResourceBudgetManager.h"
+#include "../include/Core/DeferredDestruction.h"
+#include "../include/Core/StatefulContainer.h"
+#include "../include/Core/SlotTask.h"
 
 using namespace Vixen::RenderGraph;
 

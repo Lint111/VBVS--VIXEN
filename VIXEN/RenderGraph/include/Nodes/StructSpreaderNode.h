@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/VariadicTypedNode.h"
-#include "StructSpreaderNodeConfig.h"
+#include "Data/Nodes/StructSpreaderNodeConfig.h"
 #include "VulkanSwapChain.h"
 
 namespace Vixen::RenderGraph {

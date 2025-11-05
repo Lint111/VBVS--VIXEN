@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "FramebufferNodeConfig.h"
+#include "Data/Nodes/FramebufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

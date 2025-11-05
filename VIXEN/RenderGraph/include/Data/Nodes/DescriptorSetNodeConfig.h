@@ -107,7 +107,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 2,
+    OUTPUT_SLOT(DESCRIPTOR_SETS, std::vector<VkDescriptorSet>, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -190,7 +190,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, DescriptorSetVector>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, std::vector<VkDescriptorSet>>);
 
     //-------------------------------------------------------------------------
     // Parameters

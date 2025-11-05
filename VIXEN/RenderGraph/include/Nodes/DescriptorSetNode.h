@@ -2,7 +2,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
-#include "DescriptorSetNodeConfig.h"
+#include "Data/Nodes/DescriptorSetNodeConfig.h"
 // TEMPORARILY REMOVED - MVP uses hardcoded descriptor layouts
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include <memory>

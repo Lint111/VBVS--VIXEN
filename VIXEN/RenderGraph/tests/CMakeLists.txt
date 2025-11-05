@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 project(RenderGraphTests)
 
+# Include Google Test helpers (provided by FetchContent in the top-level CMake)
+include(GoogleTest)
+
 add_executable(test_rendergraph_basic
     test_rendergraph_basic.cpp
     test_rendergraph_dependency.cpp
@@ -117,4 +120,27 @@ if(TARGET GTest::gtest_main)
     message(STATUS "✓ test_descriptor_gatherer_comprehensive configured")
 else()
     message(STATUS "⊗ test_descriptor_gatherer_comprehensive skipped (GoogleTest not available)")
+endif()
+
+# ===========================================================================
+# ResourceVariant Handle Types Test
+# ===========================================================================
+# This test validates ResourceVariant accepts platform handle types used by nodes.
+# Tests compile-time type registration (no Vulkan runtime required).
+
+if(TARGET GTest::gtest_main)
+    add_executable(test_resourcevariant_handles
+        test_resourcevariant_handles.cpp
+    )
+
+    target_link_libraries(test_resourcevariant_handles PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    gtest_discover_tests(test_resourcevariant_handles)
+
+    message(STATUS "✓ test_resourcevariant_handles configured")
+else()
+    message(STATUS "⊗ test_resourcevariant_handles skipped (GoogleTest not available)")
 endif()

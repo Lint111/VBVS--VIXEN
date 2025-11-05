@@ -62,7 +62,7 @@ VkResult PresentNode::Present(Context& ctx) {
     VkSwapchainKHR swapchain = ctx.In(PresentNodeConfig::SWAPCHAIN);
     uint32_t imageIndex = ctx.In(PresentNodeConfig::IMAGE_INDEX);
     VkSemaphore renderCompleteSemaphore = ctx.In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
-    VkFenceVector presentFenceArray = ctx.In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
+    const std::vector<VkFence>& presentFenceArray = ctx.In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX) {
@@ -86,12 +86,12 @@ VkResult PresentNode::Present(Context& ctx) {
     VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
     presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
     presentFenceInfo.pNext = nullptr;
-    if (presentFenceArray != nullptr && !presentFenceArray->empty()) {
-        presentFenceInfo.swapchainCount = 1;
-        presentFenceInfo.pFences = &((*presentFenceArray)[imageIndex]);
-    } else {
+    if (presentFenceArray.empty()) {
         presentFenceInfo.swapchainCount = 0;
         presentFenceInfo.pFences = nullptr;
+    } else {
+        presentFenceInfo.swapchainCount = 1;
+        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
     }
 
     // Setup present info

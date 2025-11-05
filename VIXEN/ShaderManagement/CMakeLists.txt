@@ -1,7 +1,7 @@
 # ShaderManagement static library
 # Pure shader compilation and management logic - no RenderGraph dependencies
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...4.10 FATAL_ERROR)
 
 project(ShaderManagement)
 

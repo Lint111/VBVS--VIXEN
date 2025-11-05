@@ -85,7 +85,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Descriptor sets (from DescriptorSetNode)
      */
-    INPUT_SLOT(DESCRIPTOR_SETS, DescriptorSetVector, 4,
+    INPUT_SLOT(DESCRIPTOR_SETS, std::vector<VkDescriptorSet>, 4,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -130,7 +130,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Image available semaphore array (indexed by CURRENT_FRAME_INDEX)
      */
-    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 9,
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 9,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -139,7 +139,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Render complete semaphore array (indexed by IMAGE_INDEX)
      */
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, VkSemaphoreArrayPtr, 10,
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 10,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

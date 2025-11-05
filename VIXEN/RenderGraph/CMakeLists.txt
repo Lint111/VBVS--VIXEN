@@ -250,3 +250,11 @@ source_group("Core\\Sources" FILES ${RENDERGRAPH_CORE_SOURCES})
 source_group("Nodes\\Headers" FILES ${RENDERGRAPH_NODE_HEADERS})
 source_group("Nodes\\Sources" FILES ${RENDERGRAPH_NODE_SOURCES})
 source_group("EventTypes" FILES ${RENDERGRAPH_EVENT_HEADERS})
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

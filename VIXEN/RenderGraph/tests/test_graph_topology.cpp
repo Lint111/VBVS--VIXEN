@@ -13,10 +13,10 @@
  */
 
 #include <gtest/gtest.h>
-#include "../../RenderGraph/include/Core/RenderGraph.h"
-#include "../../RenderGraph/include/Core/GraphTopology.h"
-#include "../../RenderGraph/include/Nodes/ConstantNode.h"
-#include "../../RenderGraph/include/Data/Core/GraphMessages.h"
+#include "../include/Core/RenderGraph.h"
+#include "../include/Core/GraphTopology.h"
+#include "../include/Nodes/ConstantNode.h"
+#include "../include/Data/Core/GraphMessages.h"
 
 using namespace Vixen::RenderGraph;
 
