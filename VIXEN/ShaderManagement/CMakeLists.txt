@@ -107,6 +107,31 @@ endif()
 # C++23 standard
 target_compile_features(ShaderManagement PUBLIC cxx_std_23)
 
+# Precompiled headers for faster compilation
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(ShaderManagement PRIVATE
+        <vector>
+        <map>
+        <unordered_map>
+        <string>
+        <string_view>
+        <memory>
+        <optional>
+        <functional>
+        <filesystem>
+    )
+    message(STATUS "ShaderManagement: Precompiled headers enabled")
+endif()
+
+# Unity build support (optional)
+if(USE_UNITY_BUILD)
+    set_target_properties(ShaderManagement PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE 12
+    )
+    message(STATUS "ShaderManagement: Unity build enabled")
+endif()
+
 # Platform definitions
 if(WIN32)
     target_compile_definitions(ShaderManagement PRIVATE VK_USE_PLATFORM_WIN32_KHR)
