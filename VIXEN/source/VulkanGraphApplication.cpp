@@ -29,7 +29,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/PresentNode.h"
 #include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
 #include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
-#include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
+#include "Data/Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
 #include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
 #include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline

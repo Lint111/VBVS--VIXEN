@@ -194,7 +194,7 @@ public:
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
             node->EnsureOutputSlot(SlotType::index, taskIndex);
             Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
-            res->SetHandle<typename SlotType::Type>(value);
+            res->SetHandle<typename SlotType::Type>(std::move(value));
         }
 
         /**
@@ -584,10 +584,10 @@ public:
         // Create resource if needed
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
-        
+
         // Store typed handle in resource variant
         // SlotType::Type automatically provides the correct type!
-        res->SetHandle<typename SlotType::Type>(value);
+        res->SetHandle<typename SlotType::Type>(std::move(value));
     }
 
     /**
@@ -643,7 +643,7 @@ public:
         size_t arrayIndex = currentTaskIndex;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
-        res->SetHandle<typename SlotType::Type>(value);
+        res->SetHandle<typename SlotType::Type>(std::move(value));
     }
 
     /**

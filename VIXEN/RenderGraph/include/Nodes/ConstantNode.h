@@ -81,7 +81,7 @@ public:
 
         // Create a Resource with the typed value using the variant system
         storedResource = Resource::Create<T>(HandleDescriptor("Constant"));
-        storedResource->SetHandle<T>(value);
+        storedResource->SetHandle<T>(std::move(value));
 
         std::cout << "[ConstantNode::SetValue] Value set successfully" << std::endl;
     }
