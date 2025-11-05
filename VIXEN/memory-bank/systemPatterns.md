@@ -298,6 +298,128 @@ void SwapChainNode::Compile() {
 }
 
 // GeometryRenderNode creates render complete semaphores
+```
+
+**Purpose**: Proper GPU-GPU synchronization without CPU stalls
+
+**Location**: SwapChainNode, GeometryRenderNode, PresentNode
+
+---
+
+### 10. Compute Pipeline Pattern (November 5, 2025)
+**Classes**: `ComputePipelineNode`, `ComputeDispatchNode`
+
+**Implementation**:
+```cpp
+// ComputePipelineNode - Creates pipeline (data-driven)
+class ComputePipelineNode {
+    void CompileImpl(Context& ctx) override {
+        auto device = ctx.In(VULKAN_DEVICE_IN);
+        auto shaderBundle = ctx.In(SHADER_DATA_BUNDLE);
+
+        // Auto-generate descriptor layout if not provided
+        if (!ctx.In(DESCRIPTOR_SET_LAYOUT)) {
+            descriptorSetLayout = DescriptorSetLayoutCacher::GetOrCreate(device, shaderBundle);
+        }
+
+        // Create pipeline via cacher
+        VkPipeline pipeline = ComputePipelineCacher::GetOrCreate(device, params);
+
+        ctx.Out(PIPELINE, pipeline);
+        ctx.Out(PIPELINE_LAYOUT, pipelineLayout);
+    }
+};
+
+// ComputeDispatchNode - Generic dispatcher (any shader)
+class ComputeDispatchNode {
+    void CompileImpl(Context& ctx) override {
+        auto pipeline = ctx.In(COMPUTE_PIPELINE);
+        auto descriptorSets = ctx.In(DESCRIPTOR_SETS);
+
+        // Record dispatch command
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, ...);
+        vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
+
+        ctx.Out(COMMAND_BUFFER, cmd);
+    }
+};
+```
+
+**Purpose**: Separation of concerns - pipeline creation vs dispatch logic, enables generic compute shaders
+
+**Key Insight**: Ray marching becomes application-level graph wiring, not node-level logic
+
+**Location**: `RenderGraph/src/Nodes/ComputePipelineNode.cpp`, `RenderGraph/src/Nodes/ComputeDispatchNode.cpp`
+
+---
+
+### 11. Test Infrastructure Pattern (November 5, 2025)
+**Classes**: GoogleTest suites, VS Code Test Explorer integration
+
+**Implementation**:
+```cpp
+// Test fixture with RenderGraph setup
+class ResourceManagementTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        budgetManager = std::make_unique<ResourceBudgetManager>();
+        destructionQueue = std::make_unique<DeferredDestruction>();
+    }
+};
+
+// Comprehensive test coverage
+TEST_F(ResourceBudgetManagerTest, SetBudget) {
+    ResourceBudget budget;
+    budget.totalBytes = 1024 * 1024 * 100;
+    budgetManager->SetBudget(BudgetResourceType::Image, budget);
+    // ... verification
+}
+```
+
+**VS Code Integration**:
+```json
+{
+  "testMate.cpp.test.executables": "{build}/**/*{test,Test,TEST}*",
+  "cmake.testExplorer.enabled": true,
+  "coverage-gutters.coverageBaseDir": "${workspaceFolder}/VIXEN/build"
+}
+```
+
+**Purpose**: Hierarchical test organization, LCOV coverage visualization, one-click debugging
+
+**Coverage Workflow**:
+1. Build with ENABLE_COVERAGE=ON
+2. Run tests (generates .profdata)
+3. Generate LCOV (coverage target)
+4. View in VS Code (green/orange/red gutters)
+
+**Documentation**: `VIXEN/docs/VS_CODE_TESTING_SETUP.md` (~800 pages)
+
+**Location**: `.vscode/settings.json`, `VIXEN/tests/RenderGraph/`
+
+---
+
+## Additional Pattern Updates (November 5, 2025)
+
+### Generic Dispatcher Pattern
+**Principle**: Separate pipeline creation from dispatch logic
+
+**Example**:
+- `GraphicsPipelineNode` creates → `GeometryRenderNode` dispatches
+- `ComputePipelineNode` creates → `ComputeDispatchNode` dispatches
+
+**Benefits**:
+- Reusable dispatchers (one node handles all compute shaders)
+- Data-driven shader selection (via graph wiring)
+- Easy algorithm swapping (Phase L research comparisons)
+
+---
+
+### 12. Two-Semaphore Synchronization Details (Continued)
+
+**Implementation (continued)**:
+```cpp
 void GeometryRenderNode::Compile() {
     renderCompleteSemaphores.resize(imageCount);
     for (uint32_t i = 0; i < imageCount; i++) {
