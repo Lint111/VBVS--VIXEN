@@ -6,8 +6,8 @@
  * - T (scalar)
  * - vector<T> (dynamic array)
  * - array<T, N> (static array)
- * - ResourceHandleVariant (the variant itself)
- * - vector<ResourceHandleVariant>
+ * - ResourceVariant (the variant itself)
+ * - vector<ResourceVariant>
  */
 
 #include "Core/ResourceVariant.h"
@@ -41,25 +41,25 @@ static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::isValid,
 static_assert(ResourceTypeTraits<std::array<VkBuffer, 5>>::isValid,
               "array<VkBuffer, 5> should be valid when VkBuffer is registered");
 
-// Test 4: ResourceHandleVariant (macro-generated variant type)
-static_assert(ResourceTypeTraits<ResourceHandleVariant>::isValid,
-              "ResourceHandleVariant itself should be valid");
-static_assert(ResourceTypeTraits<ResourceHandleVariant>::isVariantType,
-              "ResourceHandleVariant should be detected as variant type");
-static_assert(!ResourceTypeTraits<ResourceHandleVariant>::isContainer,
-              "ResourceHandleVariant scalar is not a container");
+// Test 4: ResourceVariant (macro-generated variant type)
+static_assert(ResourceTypeTraits<ResourceVariant>::isValid,
+              "ResourceVariant itself should be valid");
+static_assert(ResourceTypeTraits<ResourceVariant>::isVariantType,
+              "ResourceVariant should be detected as variant type");
+static_assert(!ResourceTypeTraits<ResourceVariant>::isContainer,
+              "ResourceVariant scalar is not a container");
 
-// Test 5: Containers of ResourceHandleVariant
-static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isValid,
-              "vector<ResourceHandleVariant> should be valid");
-static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isVariantContainer,
-              "vector<ResourceHandleVariant> should be detected as variant container");
-static_assert(ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isAnyVariant,
-              "vector<ResourceHandleVariant> is any form of variant");
-static_assert(ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isValid,
-              "array<ResourceHandleVariant, 5> should be valid");
-static_assert(ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isVariantContainer,
-              "array<ResourceHandleVariant, 5> should be detected as variant container");
+// Test 5: Containers of ResourceVariant
+static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isValid,
+              "vector<ResourceVariant> should be valid");
+static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isVariantContainer,
+              "vector<ResourceVariant> should be detected as variant container");
+static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isAnyVariant,
+              "vector<ResourceVariant> is any form of variant");
+static_assert(ResourceTypeTraits<std::array<ResourceVariant, 5>>::isValid,
+              "array<ResourceVariant, 5> should be valid");
+static_assert(ResourceTypeTraits<std::array<ResourceVariant, 5>>::isVariantContainer,
+              "array<ResourceVariant, 5> should be detected as variant container");
 
 // Test 6: Custom variants (type-safe subsets)
 using TextureHandles = std::variant<VkImage, VkImageView, VkSampler>;
@@ -133,10 +133,10 @@ CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 5, 4, SlotArrayMode::Single) {
     CONSTEXPR_INPUT(IMAGES, std::vector<VkImage>, 1, false);
 
     // Variant slot (accepts any registered type)
-    CONSTEXPR_INPUT(ANY_HANDLE, ResourceHandleVariant, 2, false);
+    CONSTEXPR_INPUT(ANY_HANDLE, ResourceVariant, 2, false);
 
     // Variant array slot (accepts array of any type)
-    CONSTEXPR_INPUT(ANY_HANDLES, std::vector<ResourceHandleVariant>, 3, false);
+    CONSTEXPR_INPUT(ANY_HANDLES, std::vector<ResourceVariant>, 3, false);
 
     // Custom variant slot (type-safe subset)
     CONSTEXPR_INPUT(TEXTURE_HANDLES, TextureHandles, 4, false);
@@ -145,10 +145,10 @@ CONSTEXPR_NODE_CONFIG(TestArrayNodeConfig, 5, 4, SlotArrayMode::Single) {
     CONSTEXPR_OUTPUT(OUTPUT_BUFFERS, std::vector<VkBuffer>, 0, false);
 
     // Output variant
-    CONSTEXPR_OUTPUT(OUTPUT_ANY, ResourceHandleVariant, 1, false);
+    CONSTEXPR_OUTPUT(OUTPUT_ANY, ResourceVariant, 1, false);
 
     // Output variant array
-    CONSTEXPR_OUTPUT(OUTPUT_ANY_ARRAY, std::vector<ResourceHandleVariant>, 2, false);
+    CONSTEXPR_OUTPUT(OUTPUT_ANY_ARRAY, std::vector<ResourceVariant>, 2, false);
 
     // Output custom variant
     CONSTEXPR_OUTPUT(OUTPUT_TEXTURES, TextureHandles, 3, false);
@@ -193,25 +193,25 @@ int main() {
     std::cout << "  array<VkImage, 10> valid: "
               << ResourceTypeTraits<std::array<VkImage, 10>>::isValid << std::endl;
 
-    // Test 4: ResourceHandleVariant (macro-generated variant)
-    std::cout << "\nTest 4: ResourceHandleVariant (macro-generated variant)" << std::endl;
-    std::cout << "  ResourceHandleVariant valid: "
-              << ResourceTypeTraits<ResourceHandleVariant>::isValid << std::endl;
-    std::cout << "  ResourceHandleVariant is variant type: "
-              << ResourceTypeTraits<ResourceHandleVariant>::isVariantType << std::endl;
-    std::cout << "  ResourceHandleVariant is any variant: "
-              << ResourceTypeTraits<ResourceHandleVariant>::isAnyVariant << std::endl;
+    // Test 4: ResourceVariant (macro-generated variant)
+    std::cout << "\nTest 4: ResourceVariant (macro-generated variant)" << std::endl;
+    std::cout << "  ResourceVariant valid: "
+              << ResourceTypeTraits<ResourceVariant>::isValid << std::endl;
+    std::cout << "  ResourceVariant is variant type: "
+              << ResourceTypeTraits<ResourceVariant>::isVariantType << std::endl;
+    std::cout << "  ResourceVariant is any variant: "
+              << ResourceTypeTraits<ResourceVariant>::isAnyVariant << std::endl;
 
-    // Test 5: Containers of ResourceHandleVariant
-    std::cout << "\nTest 5: Containers of ResourceHandleVariant" << std::endl;
-    std::cout << "  vector<ResourceHandleVariant> valid: "
-              << ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isValid << std::endl;
-    std::cout << "  vector<ResourceHandleVariant> is variant container: "
-              << ResourceTypeTraits<std::vector<ResourceHandleVariant>>::isVariantContainer << std::endl;
-    std::cout << "  array<ResourceHandleVariant, 5> valid: "
-              << ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isValid << std::endl;
-    std::cout << "  array<ResourceHandleVariant, 5> is variant container: "
-              << ResourceTypeTraits<std::array<ResourceHandleVariant, 5>>::isVariantContainer << std::endl;
+    // Test 5: Containers of ResourceVariant
+    std::cout << "\nTest 5: Containers of ResourceVariant" << std::endl;
+    std::cout << "  vector<ResourceVariant> valid: "
+              << ResourceTypeTraits<std::vector<ResourceVariant>>::isValid << std::endl;
+    std::cout << "  vector<ResourceVariant> is variant container: "
+              << ResourceTypeTraits<std::vector<ResourceVariant>>::isVariantContainer << std::endl;
+    std::cout << "  array<ResourceVariant, 5> valid: "
+              << ResourceTypeTraits<std::array<ResourceVariant, 5>>::isValid << std::endl;
+    std::cout << "  array<ResourceVariant, 5> is variant container: "
+              << ResourceTypeTraits<std::array<ResourceVariant, 5>>::isVariantContainer << std::endl;
 
     // Test 6: Custom variants (type-safe subsets)
     std::cout << "\nTest 6: Custom variants (type-safe subsets)" << std::endl;

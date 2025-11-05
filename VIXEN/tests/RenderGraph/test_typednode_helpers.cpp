@@ -5,6 +5,11 @@
 
 using namespace Vixen::RenderGraph;
 
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
+
 // Small test helper: expose protected setters via a derived test instance
 class TestNodeInstance : public NodeInstance {
 public:
@@ -12,8 +17,9 @@ public:
     // make protected setters/public accessors available for tests
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
-    using NodeInstance::GetInputs;
-    using NodeInstance::GetOutputs;
+    // Phase F: GetInputs/GetOutputs removed, use GetBundles() instead
+    // using NodeInstance::GetInputs;   // REMOVED: Use bundles[taskIndex].inputs
+    // using NodeInstance::GetOutputs;  // REMOVED: Use bundles[taskIndex].outputs
 
 protected:
     // Provide minimal Execute implementation to satisfy abstract base

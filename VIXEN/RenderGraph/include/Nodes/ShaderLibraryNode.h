@@ -6,11 +6,16 @@
 #include <ShaderManagement/ShaderDataBundle.h>
 #include "VulkanShader.h"
 #include <memory>
+#include <functional>
 
 // Forward declarations
 namespace CashSystem {
     class ShaderModuleCacher;
     struct ShaderModuleWrapper;
+}
+
+namespace ShaderManagement {
+    class ShaderBundleBuilder;
 }
 
 namespace Vixen::RenderGraph {
@@ -56,17 +61,39 @@ public:
     );
     ~ShaderLibraryNode() override = default;
 
+    // ===== Program Management API =====
+
+    /**
+     * @brief Register shader program via builder function
+     *
+     * Accepts a function that configures and returns a ShaderBundleBuilder.
+     * This decouples the node from builder implementation details.
+     * Can be called multiple times to register multiple shader programs.
+     *
+     * @param builderFunc Function that returns configured ShaderBundleBuilder
+     *
+     * Example:
+     * @code
+     * shaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+     *     ShaderManagement::ShaderBundleBuilder builder;
+     *     builder.SetProgramName("ComputeTest")
+     *            .SetTargetVulkanVersion(vulkanVer)
+     *            .SetTargetSpirvVersion(spirvVer)
+     *            .AddStageFromFile(ShaderManagement::ShaderStage::Compute, "ComputeTest.comp", "main");
+     *     return builder;
+     * });
+     * @endcode
+     */
+    void RegisterShaderBuilder(
+        std::function<ShaderManagement::ShaderBundleBuilder(int vulkanVersion, int spirvVersion)> builderFunc
+    );
+
 protected:
     // Template method pattern - override *Impl() methods
     void SetupImpl(Context& ctx) override;
     void CompileImpl(Context& ctx) override;
     void ExecuteImpl(Context& ctx) override;
     void CleanupImpl() override;
-
-    // ===== Program Management API (MVP STUBS - NOT IMPLEMENTED) =====
-
-    // MVP: These methods are stubs - shader management not integrated yet
-    // In MVP, load shaders directly via VulkanShader class in application code
 
 private:
     // Note: device member is inherited from base class NodeInstance
@@ -92,6 +119,9 @@ private:
 
     // Event handlers
     void OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message);
+
+    // Shader builder functions (registered via RegisterShaderBuilder)
+    std::vector<std::function<ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
 };
 
 } // namespace Vixen::RenderGraph

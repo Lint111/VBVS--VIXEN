@@ -39,8 +39,8 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-// Initialize logger in debug builds (MSVC: _DEBUG, GCC/Clang: DEBUG or !NDEBUG)
-#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
+// Initialize logger in debug builds
+#if VIXEN_DEBUG_BUILD
     nodeLogger = std::make_unique<Logger>(instanceName);
 #endif
 }

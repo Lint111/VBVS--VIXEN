@@ -3,8 +3,15 @@
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/ResourceDependencyTracker.h"
+#include <vector>
+#include <vulkan/vulkan.h>
 
 using namespace Vixen::RenderGraph;
+
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
 
 // Reuse TestNodeInstance and DummyNodeType pattern from other tests
 class TestNodeInstance : public NodeInstance {

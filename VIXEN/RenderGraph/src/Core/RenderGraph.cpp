@@ -1,4 +1,5 @@
 #include "Core/RenderGraph.h"
+#include "Core/IGraphCompilable.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -203,6 +204,10 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error("Invalid node handle");
     }
 
+    std::cout << "[RenderGraph::ConnectNodes] Connecting " << fromNode->GetInstanceName()
+              << "[" << outputIdx << "] -> " << toNode->GetInstanceName()
+              << "[" << inputIdx << "]" << std::endl;
+
     // Validate indices
     NodeType* fromType = fromNode->GetNodeType();
     NodeType* toType = toNode->GetNodeType();
@@ -247,6 +252,8 @@ void RenderGraph::ConnectNodes(
 
     // Add dependency (once per connection, not per array element)
     toNode->AddDependency(fromNode);
+    std::cout << "[RenderGraph::ConnectNodes] Added dependency: " << toNode->GetInstanceName()
+              << " depends on " << fromNode->GetInstanceName() << std::endl;
 
     // Add edge to topology
     GraphEdge edge;
@@ -255,6 +262,7 @@ void RenderGraph::ConnectNodes(
     edge.target = toNode;
     edge.targetInputIndex = inputIdx;
     topology.AddEdge(edge);
+    std::cout << "[RenderGraph::ConnectNodes] Added topology edge" << std::endl;
 
     // Mark as needing compilation
     isCompiled = false;
@@ -750,6 +758,27 @@ void RenderGraph::GeneratePipelines() {
         std::cout.flush();
     }
 
+    // Phase 1: GraphCompileSetup - discover dynamic slots before deferred connections
+    std::cout << "[GeneratePipelines] Phase 1: GraphCompileSetup (discovering dynamic slots)..." << std::endl;
+    for (NodeInstance* instance : executionOrder) {
+        if (instance->GetState() == NodeState::Compiled) {
+            continue;  // Skip already-compiled nodes
+        }
+
+        // Check if node implements IGraphCompilable
+        if (auto* compilable = dynamic_cast<IGraphCompilable*>(instance)) {
+            std::cout << "[GeneratePipelines] Calling GraphCompileSetup() on: " << instance->GetInstanceName() << std::endl;
+            compilable->GraphCompileSetup();
+        }
+    }
+
+    // Phase 2: ProcessDeferredConnections - resolve ConnectVariadic, ConnectMember, etc.
+    // TODO: Implement deferred connection queue
+    std::cout << "[GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)" << std::endl;
+
+    // Phase 3: Setup and Compile nodes
+    std::cout << "[GeneratePipelines] Phase 3: Setup and Compile..." << std::endl;
+
     bool cachesLoaded = false;
 
     for (NodeInstance* instance : executionOrder) {
@@ -1244,7 +1273,7 @@ void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage
 
     // Publish completion event
     if (messageBus) {
-        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, cleanedCount);
+        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, static_cast<uint32_t>(cleanedCount));
         messageBus->Publish(std::move(completionMsg));
     }
 }

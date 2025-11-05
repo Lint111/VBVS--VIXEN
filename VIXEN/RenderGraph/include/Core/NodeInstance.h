@@ -52,8 +52,8 @@ public:
     // Phase F: Bundle structure - ensures inputs/outputs stay aligned
     // Each bundle represents one task/array index with all its slots
     struct Bundle {
-        std::vector<Resource*> inputs;   // One entry per input slot
-        std::vector<Resource*> outputs;  // One entry per output slot
+        std::vector<Resource*> inputs;   // One entry per static input slot
+        std::vector<Resource*> outputs;  // One entry per static output slot
     };
 
 public:
@@ -688,7 +688,7 @@ public:
     // Caching
     uint64_t cacheKey = 0;
 
-#ifdef _DEBUG
+#if VIXEN_DEBUG_BUILD
     // Debug-only hierarchical logger (zero overhead in release builds)
     std::unique_ptr<Logger> nodeLogger;
 #endif

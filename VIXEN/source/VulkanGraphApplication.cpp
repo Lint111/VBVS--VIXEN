@@ -32,6 +32,11 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
 #include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
+#include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
+#include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
+#include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
+#include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
+#include "generated/sdi/ComputeTestNames.h"  // Phase H: Shader binding refs
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -335,6 +340,9 @@ void VulkanGraphApplication::CompileRenderGraph() {
     graphCompiled = true;
     std::cout << "[CompileRenderGraph] Graph compilation complete" << std::endl;
 
+    // Phase G: Descriptor set updates with swapchain images are handled by DescriptorSetNode
+    // during Compile() - no manual updates needed here
+
     // Validate final graph (should pass with shaders connected)
     std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
     std::string errorMessage;
@@ -378,8 +386,11 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
     nodeRegistry->RegisterNodeType(std::make_unique<LoopBridgeNodeType>());  // Phase 0.4: Loop system
     nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
+    nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
 
-    mainLogger->Info("Successfully registered 19 node types");
+    mainLogger->Info("Successfully registered 22 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -404,6 +415,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
     // --- Resource Nodes ---
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
+    /*
     NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
     NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
@@ -415,19 +428,38 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
     pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
-    
+
     // Phase 1: ShaderLibraryNode replaces manual shader loading
     // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
 
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
+    */
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
+
+    // --- Phase G: Compute Pipeline Nodes ---
+    NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
+    NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
+
+    // Phase H: NO LONGER NEEDED - GraphCompileSetup auto-discovers slots from shader bundle!
+    // (Kept commented for reference - will be removed once fully tested)
+    /*
+    auto* gathererNode = dynamic_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
+    if (gathererNode) {
+        gathererNode->PreRegisterVariadicSlots(ComputeTest::outputImage);
+        mainLogger->Info("Pre-registered variadic slots for compute descriptor gatherer");
+    }
+    */
+
+    NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
+    NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
+    NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
 
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 16 node instances (Phase 0.4: added LoopBridgeNode + ConstantNode)");
+    mainLogger->Info("Created 20 node instances (Phase H: added descriptor gatherer node)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -442,6 +474,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
+    /*
     // Vertex buffer parameters (simple triangle)
     auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
@@ -501,15 +535,89 @@ void VulkanGraphApplication::BuildRenderGraph() {
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
 
-    // Present parameters
+    // Phase G: Configure shader libraries with builder functions
+
+    // Graphics shader library (Draw.vert + Draw.frag)
+    auto* graphicsShaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
+    graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find shader paths
+        std::vector<std::filesystem::path> possiblePaths = {
+            "Draw.vert", "Shaders/Draw.vert", "../Shaders/Draw.vert", "binaries/Draw.vert"
+        };
+        std::filesystem::path vertPath, fragPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                vertPath = path;
+                fragPath = path.parent_path() / "Draw.frag";
+                break;
+            }
+        }
+
+        // Configure SDI generation
+        ShaderManagement::SdiGeneratorConfig sdiConfig;
+        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
+        sdiConfig.namespacePrefix = "ShaderInterface";
+        sdiConfig.generateComments = true;
+
+        builder.SetProgramName("Draw_Shader")
+               .SetSdiConfig(sdiConfig)
+               .EnableSdiGeneration(true)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
+
+        return builder;
+    });
+    */
+
+    // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode)
+    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
+    std::cout << "[BuildRenderGraph] Loop ID set, moving to shader library..." << std::endl;
 
-    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID constant)");
+    // Compute shader library (ComputeTest.comp)
+    auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
+    computeShaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find compute shader path
+        std::vector<std::filesystem::path> possiblePaths = {
+            "ComputeTest.comp", "Shaders/ComputeTest.comp", "../Shaders/ComputeTest.comp", "binaries/ComputeTest.comp"
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                compPath = path;
+                break;
+            }
+        }
+
+        builder.SetProgramName("ComputeTest")
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+
+        return builder;
+    });
+
+    // Phase G: Compute dispatch parameters
+    auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
+    uint32_t dispatchX = width / 8;
+    uint32_t dispatchY = height / 8;
+    std::cout << "[BuildRenderGraph] Setting dispatch dims: " << dispatchX << "x" << dispatchY << "x1 (from window " << width << "x" << height << ")" << std::endl;
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
+
+    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID + compute nodes)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -558,6 +666,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline connections
+    /*
     // --- Device → DepthBuffer device connection (for Vulkan operations) ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -593,7 +703,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
             framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
-         
+
 
     // --- Device → ShaderLibrary device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -669,18 +779,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of per-flight semaphores (indexed by frameIndex)
          .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of per-image semaphores (indexed by imageIndex)
+    */
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain + GeometryRender → Present connections (Phase 0.2) ---
+    // --- SwapChain → Present connections (for compute-only rendering) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
+         .Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Wait on ComputeDispatch's output
 
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
@@ -691,6 +802,70 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase 0.4: Loop System Connections ---
     batch.Connect(physicsLoopIDConstant, ConstantNodeConfig::OUTPUT,
                   physicsLoopBridge, LoopBridgeNodeConfig::LOOP_ID);
+
+    // --- Phase G: Compute Pipeline Connections ---
+    // Pipeline setup
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         // Phase H: Shader bundle → Gatherer for descriptor discovery
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         // Phase H: Gatherer → DescriptorSet (data-driven resources)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         // Pass shader bundle directly to descriptor set and pipeline (needed during Compile)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  computePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDispatch, ComputeDispatchNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  computeDispatch, ComputeDispatchNodeConfig::COMPUTE_PIPELINE)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  computeDispatch, ComputeDispatchNodeConfig::PIPELINE_LAYOUT)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  computeDispatch, ComputeDispatchNodeConfig::DESCRIPTOR_SETS)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
+         // Phase H: Data-driven resource connection via shader metadata
+         // Connect swapchain image views to descriptor gatherer's variadic input
+         .ConnectVariadic(descriptorGatherer, ComputeTest::outputImage,
+                          swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC)
+         ;
+
+    // Swapchain connections to descriptor set and dispatch
+    // SWAPCHAIN_PUBLIC provides imageCount metadata, DESCRIPTOR_RESOURCES provides actual bindings
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // Sync connections
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // Connect compute output to Present
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

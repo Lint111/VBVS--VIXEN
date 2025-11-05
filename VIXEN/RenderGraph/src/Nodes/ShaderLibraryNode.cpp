@@ -66,52 +66,23 @@ void ShaderLibraryNode::SetupImpl(Context& ctx) {
     std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
 }
 
+void ShaderLibraryNode::RegisterShaderBuilder(
+    std::function<ShaderManagement::ShaderBundleBuilder(int, int)> builderFunc
+) {
+    shaderBuilderFuncs.push_back(builderFunc);
+    std::cout << "[ShaderLibraryNode::RegisterShaderBuilder] Builder function registered (total: "
+              << shaderBuilderFuncs.size() << ")" << std::endl;
+}
+
 void ShaderLibraryNode::CompileImpl(Context& ctx) {
-    std::cout << "[ShaderLibraryNode::Compile] START - Phase 1 integration" << std::endl;
+    std::cout << "[ShaderLibraryNode::Compile] START - Phase G shader builder" << std::endl;
 
-    // Step 1: Build shader bundle from GLSL source using ShaderManagement
-    // Check current working directory
-    auto cwd = std::filesystem::current_path();
-    std::cout << "[ShaderLibraryNode] Current working directory: " << cwd << std::endl;
-
-    // Try multiple possible paths
-    std::vector<std::filesystem::path> possibleVertPaths = {
-        "Draw.vert",
-        "Shaders/Draw.vert",
-        "../Shaders/Draw.vert",
-        "binaries/Draw.vert"
-    };
-
-    std::filesystem::path vertPath;
-    std::filesystem::path fragPath;
-
-    for (const auto& path : possibleVertPaths) {
-        if (std::filesystem::exists(path)) {
-            vertPath = path;
-            // Assume frag is in same directory
-            auto dir = path.parent_path();
-            fragPath = dir / "Draw.frag";
-            std::cout << "[ShaderLibraryNode] Found shaders at: " << dir << std::endl;
-            break;
-        }
-    }
-
-    std::cout << "[ShaderLibraryNode] Checking for shader files..." << std::endl;
-    std::cout << "[ShaderLibraryNode] Vertex path: " << vertPath << " exists=" << std::filesystem::exists(vertPath) << std::endl;
-    std::cout << "[ShaderLibraryNode] Fragment path: " << fragPath << " exists=" << std::filesystem::exists(fragPath) << std::endl;
-
-    if (!std::filesystem::exists(vertPath)) {
-        std::string errorMsg = "ShaderLibraryNode: Vertex shader not found: " + vertPath.string();
+    // Check if any builder functions were registered
+    if (shaderBuilderFuncs.empty()) {
+        std::string errorMsg = "ShaderLibraryNode: No shader builders registered. Call RegisterShaderBuilder() before compilation.";
         std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
         throw std::runtime_error(errorMsg);
     }
-    if (!std::filesystem::exists(fragPath)) {
-        std::string errorMsg = "ShaderLibraryNode: Fragment shader not found: " + fragPath.string();
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        throw std::runtime_error(errorMsg);
-    }
-
-    std::cout << "[ShaderLibraryNode] Creating ShaderBundleBuilder..." << std::endl;
 
     // Use device metadata for shader compilation if available
     int targetVulkan = deviceVulkanVersion;
@@ -127,31 +98,15 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
         NODE_LOG_WARNING("  - Default SPIR-V: " + std::to_string(targetSpirv));
     }
 
-    // Configure SDI generation to write to binaries/generated/sdi (runtime shaders only)
-    ShaderManagement::SdiGeneratorConfig sdiConfig;
-    sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
-    sdiConfig.namespacePrefix = "ShaderInterface";
-    sdiConfig.generateComments = true;
+    // MVP: Compile only first registered shader program
+    // TODO Phase G.1: Support multiple programs with indexed outputs
+    std::cout << "[ShaderLibraryNode] Registered builders: " << shaderBuilderFuncs.size()
+              << " (compiling first only)" << std::endl;
 
-    ShaderManagement::ShaderBundleBuilder builder;
-    builder.SetProgramName("Draw_Shader")
-           // UUID will be auto-generated from content hash (deterministic)
-           .SetSdiConfig(sdiConfig)
-           .EnableSdiGeneration(true)  // Phase 3: Enable SDI generation
-           .SetTargetVulkanVersion(targetVulkan)  // Use device capability
-           .SetTargetSpirvVersion(targetSpirv)    // Use device capability
-           .AddStageFromFile(
-               ShaderManagement::ShaderStage::Vertex,
-               vertPath,
-               "main"
-           )
-           .AddStageFromFile(
-               ShaderManagement::ShaderStage::Fragment,
-               fragPath,
-               "main"
-           );
+    std::cout << "[ShaderLibraryNode] Calling shader builder function..." << std::endl;
+    ShaderManagement::ShaderBundleBuilder builder = shaderBuilderFuncs[0](targetVulkan, targetSpirv);
 
-    std::cout << "[ShaderLibraryNode] Stages added (SDI enabled), calling Build()..." << std::endl;
+    std::cout << "[ShaderLibraryNode] Builder configured, calling Build()..." << std::endl;
 
     auto result = builder.Build();
     if (!result.success) {

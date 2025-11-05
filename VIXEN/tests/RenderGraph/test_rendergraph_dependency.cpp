@@ -15,8 +15,9 @@ public:
     // make protected setters public for tests
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
-    using NodeInstance::GetInputs;
-    using NodeInstance::GetOutputs;
+    // Phase F: GetInputs/GetOutputs removed, use GetBundles() instead
+    // using NodeInstance::GetInputs;   // REMOVED: Use bundles[taskIndex].inputs
+    // using NodeInstance::GetOutputs;  // REMOVED: Use bundles[taskIndex].outputs
 
 protected:
     // Provide minimal Execute implementation to satisfy abstract base (uses template method pattern)

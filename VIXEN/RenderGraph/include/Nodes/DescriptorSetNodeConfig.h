@@ -56,8 +56,8 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 8; // Added SWAPCHAIN_PUBLIC and IMAGE_INDEX for per-frame resources
-    static constexpr size_t OUTPUTS = 4;  // Added VULKAN_DEVICE_OUT for pass-through
+    static constexpr size_t INPUTS = 5;  // DEVICE, SHADER_BUNDLE, SWAPCHAIN_PUBLIC, DESCRIPTOR_RESOURCES, IMAGE_INDEX
+    static constexpr size_t OUTPUTS = 4;  // LAYOUT, POOL, SETS, DEVICE_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -65,50 +65,34 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
                       DescriptorSetNodeCounts::INPUTS,
                       DescriptorSetNodeCounts::OUTPUTS,
                       DescriptorSetNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (8) =====
-    INPUT_SLOT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0,
-        SlotNullability::Optional,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1,
+    // ===== INPUTS (5) - Data-Driven with Metadata =====
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(TEXTURE_IMAGE, VkImage, 2,
-        SlotNullability::Optional,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(TEXTURE_VIEW, VkImageView, 3,
-        SlotNullability::Optional,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(TEXTURE_SAMPLER, VkSampler, 4,
-        SlotNullability::Optional,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6,
+    // Swapchain metadata (for imageCount and compile-time info)
+    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(IMAGE_INDEX, uint32_t, 7,
+    // Resource array from DescriptorResourceGathererNode (data-driven binding)
+    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 3,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 4,
         SlotNullability::Required,
         SlotRole::ExecuteOnly,
         SlotMutability::ReadOnly,
@@ -133,37 +117,17 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     DescriptorSetNodeConfig() {
         // Initialize input descriptors
-        INIT_INPUT_DESC(SHADER_PROGRAM, "shader_program",
-            ResourceLifetime::Persistent,
-            BufferDescription{}  // Opaque pointer (future use)
-        );
-
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Texture inputs (MVP for descriptor set binding 1)
-        INIT_INPUT_DESC(TEXTURE_IMAGE, "texture_image",
-            ResourceLifetime::Persistent,
-            ImageDescription{}
-        );
-
-        INIT_INPUT_DESC(TEXTURE_VIEW, "texture_view",
-            ResourceLifetime::Persistent,
-            ImageDescription{}
-        );
-
-        INIT_INPUT_DESC(TEXTURE_SAMPLER, "texture_sampler",
-            ResourceLifetime::Persistent,
-            BufferDescription{}
-        );
-
-        // ShaderDataBundle input (Phase 2)
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
 
-        // Per-frame resource inputs (Phase 0.1)
         HandleDescriptor swapchainPublicDesc{"SwapChainPublicVariables*"};
         INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public", ResourceLifetime::Persistent, swapchainPublicDesc);
+
+        HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
+        INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
 
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
 
@@ -194,19 +158,19 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == DescriptorSetNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
-    static_assert(SHADER_PROGRAM_Slot::index == 0, "SHADER_PROGRAM must be at index 0");
-    static_assert(SHADER_PROGRAM_Slot::nullable, "SHADER_PROGRAM is optional (future use)");
-
-    static_assert(VULKAN_DEVICE_IN_Slot::index == 1, "VULKAN_DEVICE input must be at index 1");
+    static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
 
-    static_assert(SHADER_DATA_BUNDLE_Slot::index == 5, "SHADER_DATA_BUNDLE must be at index 5");
+    static_assert(SHADER_DATA_BUNDLE_Slot::index == 1, "SHADER_DATA_BUNDLE must be at index 1");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
 
-    static_assert(SWAPCHAIN_PUBLIC_Slot::index == 6, "SWAPCHAIN_PUBLIC must be at index 6");
+    static_assert(SWAPCHAIN_PUBLIC_Slot::index == 2, "SWAPCHAIN_PUBLIC must be at index 2");
     static_assert(!SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC is required");
 
-    static_assert(IMAGE_INDEX_Slot::index == 7, "IMAGE_INDEX must be at index 7");
+    static_assert(DESCRIPTOR_RESOURCES_Slot::index == 3, "DESCRIPTOR_RESOURCES must be at index 3");
+    static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
+
+    static_assert(IMAGE_INDEX_Slot::index == 4, "IMAGE_INDEX must be at index 4");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
 
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");
@@ -219,9 +183,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(!DESCRIPTOR_SETS_Slot::nullable, "DESCRIPTOR_SETS is required");
 
     // Type validations
-    static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, const ShaderManagement::CompiledProgram*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);

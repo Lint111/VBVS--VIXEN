@@ -50,16 +50,19 @@ using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
-using FramebufferVector = std::vector<VkFramebuffer>;
-using DescriptorSetVector = std::vector<VkDescriptorSet>;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
-using BoolVector = std::vector<bool>;  // Phase 0.4
-using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Per-image semaphore arrays
-using VkFenceVector = std::vector<VkFence>*;  // Phase 0.7: Fence vector pointer (supports empty() check)
+
+// Legacy compatibility aliases - now handled by wrapper auto-generation
+// NOTE: Use std::vector<VkFramebuffer>, std::vector<VkDescriptorSet>, etc. directly in new code
+using FramebufferVector = std::vector<VkFramebuffer>;
+using DescriptorSetVector = std::vector<VkDescriptorSet>;
+using BoolVector = std::vector<bool>;
+using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Array pointer pattern
+using VkFenceVector = std::vector<VkFence>*;    // Phase 0.7: Vector pointer pattern
 
 namespace Vixen::RenderGraph {
-
+    
 
 // ============================================================================
 // RESOURCE USAGE OPERATORS (bitwise for flags)
@@ -82,19 +85,18 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
 // ============================================================================
 
 /**
- * @brief Master list of all resource types
+ * @brief Master list of base resource types
  * 
  * Format: RESOURCE_TYPE(HandleType, DescriptorType, ResourceTypeEnum)
  * - HandleType: The Vulkan/C++ type stored in the resource
  * - DescriptorType: The descriptor class (or HandleDescriptor for simple types)
  * - ResourceTypeEnum: The ResourceType enum value
  * 
- * To add a new type, add ONE line here. Everything else auto-generates.
+ * To add a new type, add ONE line here. Container variants (std::vector<T>) auto-generate.
  * 
  * Example:
  * RESOURCE_TYPE(VkImage, ImageDescriptor, ResourceType::Image)
- * RESOURCE_TYPE(VkBuffer, BufferDescriptor, ResourceType::Buffer)
- * RESOURCE_TYPE(VkSurface, HandleDescriptor, ResourceType::Image)  // Simple handle
+ * → Auto-generates: VkImage, std::vector<VkImage>
  */
 #define RESOURCE_TYPE_REGISTRY \
     RESOURCE_TYPE(VkImage,                         ImageDescriptor,       ResourceType::Image) \
@@ -110,7 +112,6 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkDescriptorSet,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkCommandPool,                   CommandPoolDescriptor, ResourceType::Buffer) \
     RESOURCE_TYPE(VkSemaphore,                     HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkSemaphoreArrayPtr,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFence,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \
@@ -136,31 +137,52 @@ inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
     RESOURCE_TYPE(VkRect2DPtr,                     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(PFN_vkQueuePresentKHR,           HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(FramebufferVector,               HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(DescriptorSetVector,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(BoolVector,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VkFenceVector,                   HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE_LAST(VkAccelerationStructureKHR, HandleDescriptor,      ResourceType::AccelerationStructure)
+    RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
+
+// NOTE: VkSemaphoreArrayPtr and legacy vector typedefs removed - use std::vector<T> auto-generation instead
+// NOTE: Phase G.2 storage/3D images handled via VkImage + StorageImageDescriptor/Texture3DDescriptor
 
 // ============================================================================
-// AUTO-GENERATED TYPE TRAITS
+// AUTO-GENERATED TEMPLATE WRAPPER HELPERS
 // ============================================================================
+
+/**
+ * @brief Helper macros to expand wrappers for each base type
+ * Generates all combinations: BaseType + std::vector<BaseType>
+ * 
+ * To add more wrapper types, modify WRAPPER_APPLY below (e.g., add shared_ptr, unique_ptr, etc.)
+ */
+
+// Generate base type + all wrapper variants
+#define EXPAND_WITH_WRAPPERS(HandleType) \
+    HandleType, \
+    std::vector<HandleType>,
+
+// For the last entry (no trailing comma on final wrapper)
+#define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
+    HandleType, \
+    std::vector<HandleType>
 
 // ============================================================================
 // AUTO-GENERATED VARIANTS
 // ============================================================================
 
 /**
- * @brief Variant holding all possible resource handle types
- * Auto-generated from RESOURCE_TYPE_REGISTRY
+ * @brief Variant holding all possible resource handle types + auto-generated wrappers
+ * 
+ * For each type T in RESOURCE_TYPE_REGISTRY, generates:
+ * - T (base type)
+ * - std::vector<T> (array wrapper)
+ * 
+ * To add more wrappers (e.g., T*, std::shared_ptr<T>), modify EXPAND_WITH_WRAPPERS macro above.
  */
-using ResourceHandleVariant = std::variant<
+using ResourceVariant = std::variant<
     std::monostate,  // Empty/uninitialized
-#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) HandleType,
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) HandleType
+#define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS_LAST(HandleType)
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
@@ -173,36 +195,36 @@ using ResourceHandleVariant = std::variant<
 // ============================================================================
 
 /**
- * @brief Check if T is the macro-generated ResourceHandleVariant
+ * @brief Check if T is the macro-generated ResourceVariant
  */
 template<typename T>
-struct IsResourceHandleVariant : std::false_type {};
+struct IsResourceVariant : std::false_type {};
 
 template<>
-struct IsResourceHandleVariant<ResourceHandleVariant> : std::true_type {};
+struct IsResourceVariant<ResourceVariant> : std::true_type {};
 
 template<typename T>
-inline constexpr bool IsResourceHandleVariant_v = IsResourceHandleVariant<T>::value;
+inline constexpr bool IsResourceVariant_v = IsResourceVariant<T>::value;
 
 /**
- * @brief Check if T is a container of ResourceHandleVariant
+ * @brief Check if T is a container of ResourceVariant
  *
  * Accepts:
- * - vector<ResourceHandleVariant>
- * - array<ResourceHandleVariant, N>
- * - ResourceHandleVariant[] (C-style arrays)
+ * - vector<ResourceVariant>
+ * - array<ResourceVariant, N>
+ * - ResourceVariant[] (C-style arrays)
  */
 template<typename T>
-inline constexpr bool IsResourceHandleVariantContainer_v =
+inline constexpr bool IsResourceVariantContainer_v =
     StripContainer<T>::isContainer &&
-    IsResourceHandleVariant_v<typename StripContainer<T>::Type>;
+    IsResourceVariant_v<typename StripContainer<T>::Type>;
 
 /**
- * @brief Check if T is ResourceHandleVariant in any form (scalar or container)
+ * @brief Check if T is ResourceVariant in any form (scalar or container)
  */
 template<typename T>
-inline constexpr bool IsAnyResourceHandleVariant_v =
-    IsResourceHandleVariant_v<T> || IsResourceHandleVariantContainer_v<T>;
+inline constexpr bool IsAnyResourceVariant_v =
+    IsResourceVariant_v<T> || IsResourceVariantContainer_v<T>;
 
 // ============================================================================
 // AUTO-GENERATED TYPE TRAITS (BASE IMPLEMENTATION)
@@ -222,7 +244,7 @@ struct ResourceTypeTraitsImpl {
 };
 
 /**
- * @brief Specialized traits for each registered type
+ * @brief Specialized type traits for base types
  * Auto-generated from RESOURCE_TYPE_REGISTRY
  */
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
@@ -241,14 +263,17 @@ RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST
 
+// Forward declaration to avoid circular dependency
+class Resource;
+
 /**
- * @brief Explicit registration for ResourceHandleVariant itself
+ * @brief Explicit registration for ResourceVariant itself
  *
  * This makes the variant type itself a valid slot type!
- * Slots typed as ResourceHandleVariant accept ANY registered type.
+ * Slots typed as ResourceVariant accept ANY registered type.
  */
 template<>
-struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
+struct ResourceTypeTraitsImpl<ResourceVariant> {
     using DescriptorT = HandleDescriptor;
     static constexpr ResourceType resourceType = ResourceType::Buffer;  // Generic fallback
     static constexpr bool isValid = true;
@@ -264,24 +289,27 @@ struct ResourceTypeTraitsImpl<ResourceHandleVariant> {
  *
  * KEY FEATURES:
  * 1. If T is registered, then vector<T> and array<T, N> are also valid!
- * 2. ResourceHandleVariant (the macro-generated variant) is valid!
- * 3. vector<ResourceHandleVariant> and array<ResourceHandleVariant, N> are valid!
+ * 2. ResourceVariant (the macro-generated variant) is valid!
+ * 3. vector<ResourceVariant> and array<ResourceVariant, N> are valid!
  * 4. Custom variants (std::variant<...>) valid if ALL element types are registered!
+ *
+ * Note: ResourceVariant already includes vector<T> for all registered types T,
+ * but this system also validates array<T, N> and custom variants.
  *
  * Validation logic:
  * 1. Check if T is directly registered (ResourceTypeTraitsImpl<T>::isValid)
  * 2. If not, check if T is a container (vector/array)
  *    - If yes, unwrap and check if base type is registered
- * 3. Check if T is ResourceHandleVariant (using helper)
- * 4. Check if T is a container of ResourceHandleVariant (using helper)
+ * 3. Check if T is ResourceVariant (using helper)
+ * 4. Check if T is a container of ResourceVariant (using helper)
  * 5. Check if T is a custom variant with all registered types (NEW!)
  *
  * Examples:
  * - VkImage: Registered directly → isValid = true ✅
- * - vector<VkImage>: Not registered, but VkImage is → isValid = true ✅
+ * - vector<VkImage>: Registered directly (auto-generated in variant) → isValid = true ✅
  * - array<VkImage, 10>: Not registered, but VkImage is → isValid = true ✅
- * - ResourceHandleVariant: Special variant type → isValid = true ✅
- * - vector<ResourceHandleVariant>: Container of variant → isValid = true ✅
+ * - ResourceVariant: Special variant type → isValid = true ✅
+ * - vector<ResourceVariant>: Container of variant → isValid = true ✅
  * - variant<VkImage, VkBuffer>: Custom variant, all types registered → isValid = true ✅
  * - variant<VkImage, UnknownType>: Custom variant, UnknownType not registered → isValid = false ❌
  * - vector<UnknownType>: Not registered, UnknownType not registered → isValid = false ❌
@@ -290,17 +318,17 @@ template<typename T>
 struct ResourceTypeTraits {
     using BaseType = typename StripContainer<T>::Type;
 
-    // Check if T is a custom variant (not ResourceHandleVariant) with all types registered
+    // Check if T is a custom variant (not ResourceVariant) with all types registered
     static constexpr bool isCustomVariant =
         IsVariant_v<T> &&
-        !IsResourceHandleVariant_v<T> &&
+        !IsResourceVariant_v<T> &&
         AllVariantTypesRegistered_v<T>;
 
     // Check if T is a container of custom variant
     static constexpr bool isCustomVariantContainer =
         StripContainer<T>::isContainer &&
         IsVariant_v<BaseType> &&
-        !IsResourceHandleVariant_v<BaseType> &&
+        !IsResourceVariant_v<BaseType> &&
         AllVariantTypesRegistered_v<BaseType>;
 
     // Validation using helpers
@@ -308,19 +336,19 @@ struct ResourceTypeTraits {
         ResourceTypeTraitsImpl<T>::isValid ||           // Direct registration
         (StripContainer<T>::isContainer &&
          ResourceTypeTraitsImpl<BaseType>::isValid) ||  // Container of registered type
-        IsResourceHandleVariant_v<T> ||                 // ResourceHandleVariant itself
-        IsResourceHandleVariantContainer_v<T> ||        // Container of ResourceHandleVariant
+        IsResourceVariant_v<T> ||                       // ResourceVariant itself
+        IsResourceVariantContainer_v<T> ||              // Container of ResourceVariant
         isCustomVariant ||                              // Custom variant (NEW!)
         isCustomVariantContainer;                       // Container of custom variant (NEW!)
 
     // Variant type checks (using helpers)
-    static constexpr bool isVariantType = IsResourceHandleVariant_v<T>;
-    static constexpr bool isVariantContainer = IsResourceHandleVariantContainer_v<T>;
-    static constexpr bool isAnyVariant = IsAnyResourceHandleVariant_v<T>;
+    static constexpr bool isVariantType = IsResourceVariant_v<T>;
+    static constexpr bool isVariantContainer = IsResourceVariantContainer_v<T>;
+    static constexpr bool isAnyVariant = IsAnyResourceVariant_v<T>;
 
     // Custom variant checks (NEW!)
     // These are exposed so users can distinguish between:
-    // - ResourceHandleVariant (full variant)
+    // - ResourceVariant (full variant)
     // - Custom variants (type-safe subsets)
 
     // Use base type's descriptor and resource type (fallback for variant)
@@ -341,46 +369,63 @@ struct ResourceTypeTraits {
 };
 
 // ============================================================================
+// TYPE INITIALIZER VISITOR (Runtime variant initialization)
+// ============================================================================
+
+// Visitor pattern: Try to cast descriptor and initialize handle for matching type
+struct TypeInitializer {
+    ResourceType targetType;
+    ResourceDescriptorBase* descriptor;
+    ResourceVariant& handle;
+    ResourceDescriptorVariant& descVariant;
+    bool success = false;
+
+    // Generic handler for all types
+    template<typename HandleType>
+    void operator()(const HandleType&) {
+        using Traits = ResourceTypeTraits<HandleType>;
+
+        // Skip monostate (uninitialized variant state)
+        if constexpr (std::is_same_v<HandleType, std::monostate>) {
+            return;
+        }
+
+        // Check if this is the target type
+        if (Traits::resourceType != targetType) {
+            return;
+        }
+
+        // Try to cast descriptor to expected type
+        if (auto* typedDesc = dynamic_cast<typename Traits::DescriptorT*>(descriptor)) {
+            descVariant = *typedDesc;
+            handle = HandleType{};
+            success = true;
+        }
+    }
+};
+
+// ============================================================================
 // HELPER: MACRO-GENERATED RESOURCE INITIALIZATION
 // ============================================================================
 
 /**
  * @brief Initialize resource variant from ResourceType enum
  * 
- * Auto-generated dispatch using RESOURCE_TYPE_REGISTRY - no manual switch needed!
+ * Uses std::visit pattern for type-safe dispatch without macro-generated if-else chains.
  * Each ResourceType maps to its correct handle type and descriptor type.
  */
 inline bool InitializeResourceFromType(
     ResourceType type,
     ResourceDescriptorBase* desc,
-    ResourceHandleVariant& outHandle,
+    ResourceVariant& outHandle,
     ResourceDescriptorVariant& outDescriptor)
 {
-    // Macro generates if-else chain matching ResourceType to concrete types
-    #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) \
-        if (type == ResType) { \
-            if (auto* typedDesc = dynamic_cast<DescriptorType*>(desc)) { \
-                outDescriptor = *typedDesc; \
-                outHandle = HandleType{}; \
-                return true; \
-            } \
-        }
-    #define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) \
-        if (type == ResType) { \
-            if (auto* typedDesc = dynamic_cast<DescriptorType*>(desc)) { \
-                outDescriptor = *typedDesc; \
-                outHandle = HandleType{}; \
-                return true; \
-            } \
-        }
     
-    RESOURCE_TYPE_REGISTRY
+    // Visit all possible types in the variant
+    TypeInitializer visitor{type, desc, outHandle, outDescriptor};
+    std::visit(visitor, ResourceVariant{});
     
-    #undef RESOURCE_TYPE
-    #undef RESOURCE_TYPE_LAST
-    
-    // Unknown type - use default
-    return false;
+    return visitor.success;
 }
 
 // ============================================================================
@@ -455,11 +500,19 @@ public:
         return VulkanType{}; // Return null handle if type mismatch
     }
 
+
     /**
      * @brief Check if handle is set
      */
     bool IsValid() const {
         return !std::holds_alternative<std::monostate>(handle);
+    }
+
+    /**
+     * @brief Get handle as variant (for generic processing)
+     */
+    const ResourceVariant& GetHandleVariant() const {
+        return handle;
     }
 
     /**
@@ -493,7 +546,7 @@ public:
 private:
     ResourceType type = ResourceType::Image;
     ResourceLifetime lifetime = ResourceLifetime::Transient;
-    ResourceHandleVariant handle;
+    ResourceVariant handle;
     ResourceDescriptorVariant descriptor;
 
     friend class RenderGraph;

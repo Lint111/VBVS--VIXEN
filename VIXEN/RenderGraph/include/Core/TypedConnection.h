@@ -3,6 +3,8 @@
 #include "Core/RenderGraph.h"
 #include "Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
+#include "Core/VariadicTypedNode.h"
+#include "Nodes/DescriptorResourceGathererNodeConfig.h"
 #include <vector>
 #include <functional>
 
@@ -174,16 +176,16 @@ public:
 
     /**
      * @brief Register all connections with the RenderGraph
-     * 
+     *
      * Validates handles, creates GraphEdges, and registers with topology.
-     * Also processes constant connections.
+     * Also processes constant and variadic connections.
      * Throws if any connection is invalid.
      */
     void RegisterAll() {
         // First, register node-to-node connections
         for (const auto& conn : connections) {
             ValidateConnection(conn);
-            
+
             // Use RenderGraph's existing ConnectNodes method
             // This handles resource creation, dependency tracking, and topology
             graph->ConnectNodes(
@@ -200,6 +202,12 @@ public:
             constantConn(); // Execute the lambda that sets the input
         }
         constantConnections.clear();
+
+        // Finally, apply variadic connections
+        for (auto& variadicConn : variadicConnections) {
+            variadicConn(); // Execute the lambda that adds variadic input
+        }
+        variadicConnections.clear();
     }
 
     /**
@@ -210,15 +218,104 @@ public:
     /**
      * @brief Clear all pending connections without registering
      */
-    void Clear() { 
-        connections.clear(); 
+    void Clear() {
+        connections.clear();
         constantConnections.clear();
+        variadicConnections.clear();
+    }
+
+    /**
+     * @brief Connect to a variadic node using shader binding metadata from Names.h
+     *
+     * Uses binding constant from Names.h (generated from SDI) as a config reference.
+     * The binding constant contains all metadata needed to wire the connection.
+     *
+     * **Phase G Update**: Now validates against registered variadic slot metadata
+     * and adds proper dependency tracking for topological sort.
+     *
+     * Example:
+     * ```cpp
+     * // Using Names.h binding constant directly
+     * batch.ConnectVariadic(gathererNode, ComputeShaderBindings::INPUT_IMAGE,
+     *                       textureNode, TextureConfig::IMAGE_VIEW);
+     * ```
+     *
+     * @param variadicNode Handle to variadic node (DescriptorResourceGathererNode)
+     * @param bindingRef Binding constant from Names.h (e.g., ComputeShaderBindings::INPUT_IMAGE)
+     * @param sourceNode Handle to source node providing the resource
+     * @param sourceSlot Output slot from source node
+     */
+    template<typename BindingRefType, typename SourceSlot>
+    ConnectionBatch& ConnectVariadic(
+        NodeHandle variadicNode,
+        BindingRefType bindingRef,
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot
+    ) {
+        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingRef.binding << std::endl;
+
+        // Defer the variadic connection via lambda (applied during RegisterAll)
+        variadicConnections.push_back([=]() {
+            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << bindingRef.binding << std::endl;
+
+            // Get the variadic node instance
+            NodeInstance* node = graph->GetInstance(variadicNode);
+            if (!node) {
+                throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
+            }
+
+            // Cast to VariadicTypedNode to access UpdateVariadicSlot
+            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            if (!variadicNodePtr) {
+                throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
+            }
+
+            // Get source resource
+            NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
+            if (!sourceNodeInst) {
+                throw std::runtime_error("ConnectVariadic: Invalid source node handle");
+            }
+
+            Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
+            if (!sourceRes) {
+                throw std::runtime_error("ConnectVariadic: Source output not found");
+            }
+
+            // Extract binding index from binding ref
+            uint32_t bindingIndex = bindingRef.binding;
+            size_t bundleIndex = 0;
+
+            // Create tentative slot (optimistic - trust user, defer validation to Compile)
+            VariadicSlotInfo tentativeSlot;
+            tentativeSlot.resource = sourceRes;
+            tentativeSlot.resourceType = sourceRes->GetType();  // Infer from resource
+            tentativeSlot.slotName = bindingRef.name;
+            tentativeSlot.binding = bindingIndex;
+            tentativeSlot.descriptorType = bindingRef.type;
+            tentativeSlot.state = SlotState::Tentative;  // Mark as unvalidated
+            tentativeSlot.sourceNode = sourceNode;
+            tentativeSlot.sourceOutput = sourceSlot.index;
+
+            // Update/create slot (always succeeds)
+            variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
+
+            // Register dependency for topological sort (variadic node depends on source)
+            std::cout << "[ConnectVariadic] Adding dependency: " << node->GetInstanceName()
+                      << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
+            node->AddDependency(sourceNodeInst);
+
+            std::cout << "[ConnectVariadic] Created tentative slot at binding " << bindingIndex
+                      << " (state=Tentative, will validate during Compile)" << std::endl;
+        });
+
+        return *this;
     }
 
 private:
     RenderGraph* graph;
     std::vector<TypedConnectionDescriptor> connections;
     std::vector<std::function<void()>> constantConnections; // Deferred constant setters
+    std::vector<std::function<void()>> variadicConnections; // Deferred variadic connections
 
     void ValidateConnection(const TypedConnectionDescriptor& conn) {
         if (!conn.sourceNode.IsValid()) {

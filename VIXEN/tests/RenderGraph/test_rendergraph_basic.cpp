@@ -1,4 +1,11 @@
 #include <gtest/gtest.h>
+#include <vector>
+#include <vulkan/vulkan.h>
+
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
 
 TEST(RenderGraph_Basic, Placeholder) {
     // Placeholder test - replace with real tests.

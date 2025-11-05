@@ -153,12 +153,10 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
     // Phase 0.4: Get swapchain image count for per-image resource allocation
+    // Phase G: SWAPCHAIN_PUBLIC is now optional (required for compute, optional for graphics)
     auto* swapchainPublic = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
-    if (!swapchainPublic) {
-        throw std::runtime_error("DescriptorSetNode: SWAPCHAIN_PUBLIC input is null");
-    }
 
-    uint32_t imageCount = swapchainPublic->swapChainImageCount;
+    uint32_t imageCount = swapchainPublic ? swapchainPublic->swapChainImageCount : 0;
     if (imageCount == 0) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
     }
@@ -240,64 +238,123 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
 
     std::cout << "[DescriptorSetNode::Compile] Created " << imageCount << " per-frame UBOs" << std::endl;
 
-    // Phase 0.4: Update each descriptor set with its corresponding per-frame UBO
+    // Phase 0.4: Update each descriptor set with its corresponding per-frame resources
     // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
-    // Check if texture inputs are provided
-    VkImageView textureView = ctx.In(DescriptorSetNodeConfig::TEXTURE_VIEW);
-    VkSampler textureSampler = ctx.In(DescriptorSetNodeConfig::TEXTURE_SAMPLER);
+
+    // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
+    auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+    std::cout << "[DescriptorSetNode::Compile] Using DESCRIPTOR_RESOURCES array (" << descriptorResources.size() << " resources)" << std::endl;
+
+    // Phase H: Initialize persistent descriptor info storage (node scope for lifetime)
+    perFrameImageInfos.resize(imageCount);
+    perFrameBufferInfos.resize(imageCount);
 
     for (uint32_t i = 0; i < imageCount; i++) {
-        // UBO descriptor (binding 0)
-        VkDescriptorBufferInfo bufferDescInfo{};
-        bufferDescInfo.buffer = perFrameResources.GetUniformBuffer(i);
-        bufferDescInfo.offset = 0;
-        bufferDescInfo.range = sizeof(Draw_Shader::bufferVals);
+        std::vector<VkWriteDescriptorSet> writes;
 
-        VkWriteDescriptorSet bufferWrite{};
-        bufferWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        bufferWrite.dstSet = descriptorSets[i];
-        bufferWrite.dstBinding = 0;
-        bufferWrite.dstArrayElement = 0;
-        bufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bufferWrite.descriptorCount = 1;
-        bufferWrite.pBufferInfo = &bufferDescInfo;
+        // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
+        perFrameImageInfos[i].reserve(descriptorBindings.size());
+        perFrameBufferInfos[i].reserve(descriptorBindings.size());
 
-        if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
-            // Texture descriptor (binding 1)
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textureView;
-            imageInfo.sampler = textureSampler;
+        for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size() && bindingIdx < descriptorResources.size(); bindingIdx++) {
+            const auto& binding = descriptorBindings[bindingIdx];
+            const auto& resourceVariant = descriptorResources[bindingIdx];
 
-            VkWriteDescriptorSet textureWrite{};
-            textureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            textureWrite.dstSet = descriptorSets[i];
-            textureWrite.dstBinding = 1;
-            textureWrite.dstArrayElement = 0;
-            textureWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            textureWrite.descriptorCount = 1;
-            textureWrite.pImageInfo = &imageInfo;
+            std::cout << "[DescriptorSetNode::Compile] Processing binding " << binding.binding
+                      << " (type=" << binding.descriptorType << "), variant index=" << resourceVariant.index() << std::endl;
 
-            VkWriteDescriptorSet writes[] = {bufferWrite, textureWrite};
-            vkUpdateDescriptorSets(device->device, 2, writes, 0, nullptr);
-        } else {
-            // UBO only
-            vkUpdateDescriptorSets(device->device, 1, &bufferWrite, 0, nullptr);
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = descriptorSets[i];
+            write.dstBinding = binding.binding;
+            write.dstArrayElement = 0;
+            write.descriptorType = binding.descriptorType;
+            write.descriptorCount = 1;
+
+            // Generic variant inspection and descriptor creation
+            switch (binding.descriptorType) {
+                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                    // Check for SwapChainPublicInfo (per-frame image views)
+                    if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
+                        SwapChainPublicVariables* sc = *swapchainPtr;
+                        if (sc && i < sc->colorBuffers.size()) {
+                            std::cout << "[DescriptorSetNode::Compile] Found SwapChainPublicInfo for binding " << binding.binding
+                                      << ", extracting frame " << i << " image view" << std::endl;
+                            VkDescriptorImageInfo imageInfo{};
+                            imageInfo.imageView = sc->colorBuffers[i].view;
+                            imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                                ? VK_IMAGE_LAYOUT_GENERAL
+                                : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                            perFrameImageInfos[i].push_back(imageInfo);
+                            write.pImageInfo = &perFrameImageInfos[i].back();
+                            writes.push_back(write);
+                        } else {
+                            std::cout << "[DescriptorSetNode::Compile] ERROR: SwapChainPublicInfo is null or frame " << i
+                                      << " out of bounds" << std::endl;
+                        }
+                    }
+                    // Direct VkImageView (single image, same for all frames)
+                    else if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
+                        std::cout << "[DescriptorSetNode::Compile] Found VkImageView for binding " << binding.binding << std::endl;
+                        VkDescriptorImageInfo imageInfo{};
+                        imageInfo.imageView = *imageView;
+                        imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                            ? VK_IMAGE_LAYOUT_GENERAL
+                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        perFrameImageInfos[i].push_back(imageInfo);
+                        write.pImageInfo = &perFrameImageInfos[i].back();
+                        writes.push_back(write);
+                    } else {
+                        std::cout << "[DescriptorSetNode::Compile] WARNING: Expected VkImageView or SwapChainPublicInfo but got variant index "
+                                  << resourceVariant.index() << " for binding " << binding.binding << std::endl;
+                    }
+                    break;
+                }
+
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
+                    // For combined sampler, need VkImageView + VkSampler
+                        // Assume gatherer provides VkImageView, use textureSampler from legacy slot
+                    if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
+                        VkDescriptorImageInfo imageInfo{};
+                        imageInfo.imageView = *imageView;
+                        imageInfo.sampler = VK_NULL_HANDLE;  // TODO: Get from gatherer
+                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        perFrameImageInfos[i].push_back(imageInfo);
+                        write.pImageInfo = &perFrameImageInfos[i].back();
+                        writes.push_back(write);
+                    }
+                    break;
+                }
+
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: {
+                    if (auto* buffer = std::get_if<VkBuffer>(&resourceVariant)) {
+                        VkDescriptorBufferInfo bufferInfo{};
+                        bufferInfo.buffer = *buffer;
+                        bufferInfo.offset = 0;
+                        bufferInfo.range = VK_WHOLE_SIZE;
+                        perFrameBufferInfos[i].push_back(bufferInfo);
+                        write.pBufferInfo = &perFrameBufferInfos[i].back();
+                        writes.push_back(write);
+                    }
+                    break;
+                }
+
+                default:
+                    std::cout << "[DescriptorSetNode::Compile] WARNING: Unsupported descriptor type "
+                              << binding.descriptorType << " at binding " << binding.binding << std::endl;
+                    break;
+            }
         }
 
-        std::cout << "[DescriptorSetNode::Compile] Updated descriptor set " << i << " with UBO" << std::endl;
+        std::cout << "[DescriptorSetNode::Compile] Bound " << writes.size()
+                  << " descriptors for frame " << i << " (data-driven)" << std::endl;
+
+        vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
-    if (textureView != VK_NULL_HANDLE && textureSampler != VK_NULL_HANDLE) {
-        std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated with texture (view="
-                  << textureView << ", sampler=" << textureSampler << ")" << std::endl;
-    } else {
-        std::cout << "[DescriptorSetNode::Compile] WARNING: No texture inputs provided!" << std::endl;
-    }
-    
-    // Note: We're intentionally NOT storing dummyUBO/dummyUBOMemory for cleanup
-    // This is a memory leak but acceptable for MVP testing
-    // TODO: Properly manage dummy resources
+    std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated (data-driven)" << std::endl;
 
     // Set outputs
     ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
