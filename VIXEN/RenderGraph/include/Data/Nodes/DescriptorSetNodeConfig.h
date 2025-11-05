@@ -78,8 +78,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // Swapchain metadata (for imageCount and compile-time info)
-    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 2,
+    // Swapchain image count metadata (extracted from SwapChainPublicVariables::imageCount)
+    INPUT_SLOT(SWAPCHAIN_IMAGE_COUNT, uint32_t, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -123,8 +123,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         HandleDescriptor shaderDataBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
 
-        HandleDescriptor swapchainPublicDesc{"SwapChainPublicVariables*"};
-        INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public", ResourceLifetime::Persistent, swapchainPublicDesc);
+        INIT_INPUT_DESC(SWAPCHAIN_IMAGE_COUNT, "swapchain_image_count", ResourceLifetime::Transient, BufferDescription{});
 
         HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
         INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
@@ -164,8 +163,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 1, "SHADER_DATA_BUNDLE must be at index 1");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
 
-    static_assert(SWAPCHAIN_PUBLIC_Slot::index == 2, "SWAPCHAIN_PUBLIC must be at index 2");
-    static_assert(!SWAPCHAIN_PUBLIC_Slot::nullable, "SWAPCHAIN_PUBLIC is required");
+    static_assert(SWAPCHAIN_IMAGE_COUNT_Slot::index == 2, "SWAPCHAIN_IMAGE_COUNT must be at index 2");
+    static_assert(!SWAPCHAIN_IMAGE_COUNT_Slot::nullable, "SWAPCHAIN_IMAGE_COUNT is required");
 
     static_assert(DESCRIPTOR_RESOURCES_Slot::index == 3, "DESCRIPTOR_RESOURCES must be at index 3");
     static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
@@ -185,7 +184,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
+    static_assert(std::is_same_v<SWAPCHAIN_IMAGE_COUNT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);

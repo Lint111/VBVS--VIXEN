@@ -153,10 +153,9 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
 
     // Phase 0.4: Get swapchain image count for per-image resource allocation
-    // Phase G: SWAPCHAIN_PUBLIC is now optional (required for compute, optional for graphics)
-    auto* swapchainPublic = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_PUBLIC);
+    // Phase H: SWAPCHAIN_IMAGE_COUNT directly provides the extracted imageCount value
+    uint32_t imageCount = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT);
 
-    uint32_t imageCount = swapchainPublic ? swapchainPublic->swapChainImageCount : 0;
     if (imageCount == 0) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
     }
