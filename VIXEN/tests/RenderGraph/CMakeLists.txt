@@ -66,31 +66,37 @@ include(test_field_extraction.cmake)
 include(test_resource_gatherer.cmake)
 
 # ===========================================================================
-# Configured gatherer test (no Vulkan runtime required)
+# Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
-# This test validates shader bundle headers as "pseudo config files"
-# for resource gathering. Compatible with VULKAN_TRIMMED_BUILD.
+# This test suite validates DescriptorResourceGathererNode (Phase G):
+# - Order-agnostic binding connections
+# - SDI naming.h integration
+# - Expected failures and edge cases
+# - Full validation coverage
+# Requires GoogleTest framework.
 
-include(test_configured_gatherer.cmake)
+if(TARGET GTest::gtest_main)
+    add_executable(test_descriptor_gatherer_comprehensive
+        test_descriptor_gatherer_comprehensive.cpp
+    )
 
-# ===========================================================================
-# Shader bundle gatherer test (no Vulkan runtime required)
-# ===========================================================================
-# This test validates the FINAL pattern for Phase G resource gathering:
-# - Single bundle type parameter with automatic input slot generation
-# - Variadic inputs validated against bundle header fields
-# - Minimal graph setup (just connect inputs)
-# Compatible with VULKAN_TRIMMED_BUILD.
+    target_include_directories(test_descriptor_gatherer_comprehensive PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    )
 
-include(test_shader_bundle_gatherer.cmake)
+    target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE
+        GTest::gtest_main
+        RenderGraph
+        ShaderManagement
+    )
 
-# ===========================================================================
-# Naming.h pattern test (no Vulkan runtime required)
-# ===========================================================================
-# This test validates the ZERO CONFIGURATION pattern:
-# - naming.h is self-contained with embedded _Reflection
-# - NO manual trait declarations
-# - Include and use - IT JUST WORKS
-# Compatible with VULKAN_TRIMMED_BUILD.
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE Vulkan::Vulkan)
+    endif()
 
-include(test_naming_h_pattern.cmake)
+    gtest_discover_tests(test_descriptor_gatherer_comprehensive)
+
+    message(STATUS "✓ test_descriptor_gatherer_comprehensive configured")
+else()
+    message(STATUS "⊗ test_descriptor_gatherer_comprehensive skipped (GoogleTest not available)")
+endif()
