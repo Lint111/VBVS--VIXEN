@@ -230,25 +230,49 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
 
         std::cout << "[DescriptorResourceGathererNode::GatherResources] Slot " << i << " variant index=" << variant.index()
                   << ", resource type=" << static_cast<int>(slotInfo->resource->GetType())
-                  << ", isValid=" << slotInfo->resource->IsValid() << "\n";
+                  << ", isValid=" << slotInfo->resource->IsValid()
+                  << ", hasFieldExtraction=" << slotInfo->hasFieldExtraction << "\n";
 
-        // Check if this is a SwapChainPublicVariables* (special case for per-frame resources)
-        if (auto* scPtr = std::get_if<SwapChainPublicVariables*>(&variant)) {
-            resourceArray_[binding] = variant;
-            std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered SwapChainPublicVariables* for binding "
-                      << binding << " (" << slotInfo->slotName << "), image count=" << (*scPtr)->swapChainImageCount << "\n";
+        // Handle field extraction from struct
+        if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
+            // Generic field extraction - works with any struct pointer type
+            // Apply offset to extract field from struct without needing to know types
+            std::visit([&](auto&& structPtr) {
+                using T = std::decay_t<decltype(structPtr)>;
+
+                // Check if this is a pointer type
+                if constexpr (std::is_pointer_v<T>) {
+                    if (structPtr) {
+                        // Apply offset to get field pointer - completely generic
+                        auto* structBase = reinterpret_cast<char*>(structPtr);
+                        auto* fieldPtr = structBase + slotInfo->fieldOffset;
+
+                        // Reinterpret as pointer to the expected field type
+                        // The extracted field is stored as a ResourceVariant in the vector
+                        auto* extractedField = reinterpret_cast<std::vector<SwapChainBuffer>*>(fieldPtr);
+
+                        std::cout << "[DescriptorResourceGathererNode::GatherResources] Extracted field at offset "
+                                  << slotInfo->fieldOffset << " from struct\n";
+
+                        // Store extracted field as ResourceVariant by wrapping the pointer
+                        // This creates a ResourceVariant containing the vector pointer
+                        resourceArray_[binding] = ResourceVariant{extractedField};
+
+                        std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered extracted field for binding "
+                                  << binding << " (" << slotInfo->slotName << ")\n";
+                    } else {
+                        std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer for field extraction\n";
+                    }
+                } else {
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Field extraction requested but variant does not hold a pointer\n";
+                }
+            }, variant);
         }
-        // Regular resources (must be valid)
-        else if (slotInfo->resource->IsValid()) {
+        // Regular resources - just pass through the variant
+        else {
             resourceArray_[binding] = variant;
             std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding
-                      << " (" << slotInfo->slotName << "), variant index=" << variant.index()
-                      << ", resource type=" << static_cast<int>(slotInfo->resource->GetType()) << "\n";
-        }
-        else {
-            std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Slot " << i
-                      << " (binding=" << binding << ", name=" << slotInfo->slotName
-                      << ") resource is not valid, variant index=" << variant.index() << "\n";
+                      << " (" << slotInfo->slotName << "), variant index=" << variant.index() << "\n";
         }
     }
 

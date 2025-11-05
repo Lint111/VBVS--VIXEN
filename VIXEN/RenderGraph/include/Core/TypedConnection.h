@@ -105,6 +105,89 @@ public:
     }
 
     /**
+     * @brief Connect with automatic field extraction from struct output
+     *
+     * Overload that accepts a member pointer for extracting specific fields from struct outputs.
+     * Automatically handles field extraction behind the scenes.
+     *
+     * Example:
+     * ```cpp
+     * // Extract colorBuffers field from SwapChainPublicVariables
+     * batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+     *               descriptorNode, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES,
+     *               &SwapChainPublicVariables::colorBuffers);
+     * ```
+     *
+     * @param sourceNode Handle to source node
+     * @param sourceSlot Output slot from source node (struct type)
+     * @param targetNode Handle to target node
+     * @param targetSlot Input slot on target node (field type)
+     * @param memberPtr Pointer-to-member for field extraction
+     * @param arrayIndex Array index for arrayable inputs (default: 0)
+     */
+    template<typename SourceSlot, typename TargetSlot, typename StructType, typename FieldType>
+    ConnectionBatch& Connect(
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot,
+        NodeHandle targetNode,
+        TargetSlot targetSlot,
+        FieldType StructType::* memberPtr,  // Member pointer for field extraction
+        uint32_t arrayIndex = 0
+    ) {
+        // Extract type information
+        using SourceType = typename SourceSlot::Type;
+        using TargetType = typename TargetSlot::Type;
+
+        // Validate struct type matches source
+        static_assert(std::is_same_v<SourceType, StructType> ||
+                     std::is_base_of_v<StructType, SourceType>,
+            "Source slot type must match or derive from struct type in member pointer");
+
+        // Validate field type matches target
+        using FieldResourceType = std::remove_reference_t<FieldType>;
+        static_assert(std::is_same_v<TargetType, FieldResourceType> ||
+                     (ResourceTypeTraits<FieldResourceType>::resourceType == TargetSlot::resourceType),
+            "Target slot type must match extracted field type");
+
+        // Store as deferred connection with field extraction
+        constantConnections.push_back([this, sourceNode, sourceSlot, targetNode, targetSlot, memberPtr, arrayIndex]() {
+            auto* srcNode = graph->GetInstance(sourceNode);
+            auto* tgtNode = graph->GetInstance(targetNode);
+            if (!srcNode || !tgtNode) {
+                throw std::runtime_error("Connect with field extraction: Invalid node handle");
+            }
+
+            // Get source resource (struct)
+            Resource* sourceRes = srcNode->GetOutput(sourceSlot.index, 0);
+            if (!sourceRes) {
+                throw std::runtime_error("Connect with field extraction: Source output not found");
+            }
+
+            // Get the struct instance
+            auto structPtr = sourceRes->GetHandle<StructType>();
+            if (!structPtr) {
+                throw std::runtime_error("Connect with field extraction: Failed to get struct from source");
+            }
+
+            // Extract the field using member pointer
+            FieldType& extractedField = structPtr->*memberPtr;
+
+            // Create a Resource for the extracted field
+            Resource fieldRes = Resource::Create<FieldResourceType>(
+                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
+            fieldRes.SetHandle(&extractedField);
+
+            // Set as input on target node
+            tgtNode->SetInput(targetSlot.index, arrayIndex, &fieldRes);
+
+            // Register dependency
+            tgtNode->AddDependency(srcNode);
+        });
+
+        return *this;
+    }
+
+    /**
      * @brief Connect source output to multiple array elements of target input
      * 
      * For arrayable inputs (e.g., multiple framebuffers, multiple images).
@@ -306,6 +389,124 @@ public:
 
             std::cout << "[ConnectVariadic] Created tentative slot at binding " << bindingIndex
                       << " (state=Tentative, will validate during Compile)" << std::endl;
+        });
+
+        return *this;
+    }
+
+    /**
+     * @brief Connect variadic node with automatic field extraction from struct
+     *
+     * Overload that accepts a member pointer for extracting specific fields from struct outputs.
+     * Automatically handles field extraction behind the scenes.
+     *
+     * Example:
+     * ```cpp
+     * // Extract colorBuffers field from SwapChainPublicVariables
+     * batch.ConnectVariadic(gathererNode, ComputeTest::outputImage,
+     *                       swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+     *                       &SwapChainPublicVariables::colorBuffers);
+     * ```
+     *
+     * @param variadicNode Handle to variadic node
+     * @param bindingRef Binding constant from Names.h
+     * @param sourceNode Handle to source node
+     * @param sourceSlot Output slot from source node (struct type)
+     * @param memberPtr Pointer-to-member for field extraction
+     */
+    template<typename BindingRefType, typename SourceSlot, typename StructType, typename FieldType>
+    ConnectionBatch& ConnectVariadic(
+        NodeHandle variadicNode,
+        BindingRefType bindingRef,
+        NodeHandle sourceNode,
+        SourceSlot sourceSlot,
+        FieldType StructType::* memberPtr  // Member pointer for field extraction
+    ) {
+        std::cout << "[ConnectVariadic] Queuing variadic connection with field extraction for binding "
+                  << bindingRef.binding << std::endl;
+
+        // Defer the variadic connection via lambda (applied during RegisterAll)
+        variadicConnections.push_back([=]() {
+            std::cout << "[ConnectVariadic] Creating tentative slot with field extraction for binding "
+                      << bindingRef.binding << std::endl;
+
+            // Get the variadic node instance
+            NodeInstance* node = graph->GetInstance(variadicNode);
+            if (!node) {
+                throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
+            }
+
+            // Cast to VariadicTypedNode
+            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            if (!variadicNodePtr) {
+                throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
+            }
+
+            // Get source node
+            NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
+            if (!sourceNodeInst) {
+                throw std::runtime_error("ConnectVariadic: Invalid source node handle");
+            }
+
+            // Get source resource (should be a struct)
+            Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
+            if (!sourceRes) {
+                throw std::runtime_error("ConnectVariadic: Source output not found");
+            }
+
+            // Validate struct type matches
+            using SourceType = typename SourceSlot::Type;
+            static_assert(std::is_same_v<SourceType, StructType> ||
+                         std::is_base_of_v<StructType, SourceType>,
+                "Source slot type must match or derive from struct type in member pointer");
+
+            // Get the struct instance from the resource
+            auto structPtr = sourceRes->GetHandle<SourceType>();
+            if (!structPtr) {
+                throw std::runtime_error("ConnectVariadic: Failed to get struct from source resource");
+            }
+
+            // Extract the field using member pointer
+            FieldType& extractedField = structPtr->*memberPtr;
+
+            // Create a temporary resource for the extracted field
+            // This resource will be used for type validation but the actual value
+            // will be extracted at Execute time
+            using FieldResourceType = std::remove_reference_t<FieldType>;
+            Resource extractedRes = Resource::Create<FieldResourceType>(
+                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
+            // Note: We don't set the handle here - it will be extracted dynamically during Execute
+
+            // Extract binding index
+            uint32_t bindingIndex = bindingRef.binding;
+            size_t bundleIndex = 0;
+
+            // Create tentative slot with field extraction metadata
+            VariadicSlotInfo tentativeSlot;
+            tentativeSlot.resource = sourceRes;  // Store original struct resource
+            tentativeSlot.resourceType = ResourceTypeTraits<FieldResourceType>::resourceType;  // Type of extracted field
+            tentativeSlot.slotName = bindingRef.name;
+            tentativeSlot.binding = bindingIndex;
+            tentativeSlot.descriptorType = bindingRef.type;
+            tentativeSlot.state = SlotState::Tentative;
+            tentativeSlot.sourceNode = sourceNode;
+            tentativeSlot.sourceOutput = sourceSlot.index;
+            // Store member pointer offset for runtime extraction
+            tentativeSlot.fieldOffset = reinterpret_cast<size_t>(
+                &(static_cast<StructType*>(nullptr)->*memberPtr));
+            tentativeSlot.hasFieldExtraction = true;
+
+            // Update/create slot
+            variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
+
+            // Register dependency
+            std::cout << "[ConnectVariadic] Adding dependency with field extraction: "
+                      << node->GetInstanceName() << " -> " << sourceNodeInst->GetInstanceName()
+                      << " (extracting field at offset " << tentativeSlot.fieldOffset << ")" << std::endl;
+            node->AddDependency(sourceNodeInst);
+
+            std::cout << "[ConnectVariadic] Created tentative slot with field extraction at binding "
+                      << bindingIndex << std::endl;
         });
 
         return *this;

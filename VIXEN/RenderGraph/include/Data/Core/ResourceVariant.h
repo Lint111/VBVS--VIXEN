@@ -18,6 +18,7 @@
 
 // Global namespace forward declarations
 struct SwapChainPublicVariables;
+struct SwapChainBuffer;  // For field extraction support
 class VulkanShader; // Forward declare for MVP shader approach
 
 // Forward declare ShaderManagement types to avoid hard dependency
@@ -52,15 +53,6 @@ using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
-
-// Legacy compatibility aliases - now handled by wrapper auto-generation
-// NOTE: Use std::vector<VkFramebuffer>, std::vector<VkDescriptorSet>, etc. directly in new code
-using FramebufferVector = std::vector<VkFramebuffer>;
-using DescriptorSetVector = std::vector<VkDescriptorSet>;
-using BoolVector = std::vector<bool>;
-using VkSemaphoreArrayPtr = const VkSemaphore*;  // Phase 0.4: Array pointer pattern
-using VkFenceVector = std::vector<VkFence>*;    // Phase 0.7: Vector pointer pattern
-
 namespace Vixen::RenderGraph {
     
 
@@ -155,6 +147,7 @@ using HINSTANCE = HINSTANCE_Placeholder*;
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(SwapChainBuffer,                 HandleDescriptor,      ResourceType::Buffer) \  
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
 // NOTE: VkSemaphoreArrayPtr and legacy vector typedefs removed - use std::vector<T> auto-generation instead
@@ -200,7 +193,7 @@ using HINSTANCE = HINSTANCE_Placeholder*;
 using ResourceVariant = std::variant<
     std::monostate,  // Empty/uninitialized
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS_LAST(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
 #undef RESOURCE_TYPE_LAST

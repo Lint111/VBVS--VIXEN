@@ -41,6 +41,10 @@ struct VariadicSlotInfo {
     SlotState state = SlotState::Tentative;  // Current validation state
     NodeHandle sourceNode;                   // Source node for connection tracking
     uint32_t sourceOutput = 0;               // Source output slot index
+
+    // Field extraction support (for ConnectVariadic with member pointers)
+    size_t fieldOffset = 0;                  // Offset of field in struct (0 = no extraction)
+    bool hasFieldExtraction = false;         // True if field extraction is needed
 };
 
 /**
@@ -83,7 +87,50 @@ class VariadicTypedNode : public TypedNode<ConfigType>,
                          public IGraphCompilable {
 public:
     using Base = TypedNode<ConfigType>;
-    using Context = typename Base::Context;
+
+    /**
+     * @brief Extended Context with variadic input/output accessors
+     *
+     * Extends TypedNode::Context to add InVariadic/OutVariadic methods
+     * following the same pattern as In/Out.
+     */
+    struct Context : public Base::Context {
+        VariadicTypedNode<ConfigType>* variadicNode;
+
+        Context(VariadicTypedNode<ConfigType>* n, uint32_t idx)
+            : Base::Context(n, idx), variadicNode(n) {}
+
+        /**
+         * @brief Get variadic input value (mirrors ctx.In() API)
+         *
+         * @tparam T Handle type (e.g., VkImageView, VkBuffer)
+         * @param index Variadic input index (0-based)
+         * @return Typed handle value, or null handle if invalid
+         */
+        template<typename T>
+        T InVariadic(size_t index) const {
+            return variadicNode->GetVariadicInput<T>(index, this->taskIndex);
+        }
+
+        /**
+         * @brief Get variadic slot info (advanced usage)
+         *
+         * @param index Variadic input index (0-based)
+         * @return Pointer to slot metadata, or nullptr if invalid
+         */
+        const VariadicSlotInfo* InVariadicSlot(size_t index) const {
+            return variadicNode->GetVariadicSlotInfo(index, this->taskIndex);
+        }
+
+        /**
+         * @brief Get variadic input count
+         *
+         * @return Number of variadic inputs
+         */
+        size_t InVariadicCount() const {
+            return variadicNode->GetVariadicInputCount(this->taskIndex);
+        }
+    };
 
     VariadicTypedNode(const std::string& instanceName, NodeType* nodeType)
         : Base(instanceName, nodeType) {}
