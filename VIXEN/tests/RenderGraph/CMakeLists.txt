@@ -83,3 +83,14 @@ include(test_configured_gatherer.cmake)
 # Compatible with VULKAN_TRIMMED_BUILD.
 
 include(test_shader_bundle_gatherer.cmake)
+
+# ===========================================================================
+# Naming.h pattern test (no Vulkan runtime required)
+# ===========================================================================
+# This test validates the ZERO CONFIGURATION pattern:
+# - naming.h is self-contained with embedded _Reflection
+# - NO manual trait declarations
+# - Include and use - IT JUST WORKS
+# Compatible with VULKAN_TRIMMED_BUILD.
+
+include(test_naming_h_pattern.cmake)
