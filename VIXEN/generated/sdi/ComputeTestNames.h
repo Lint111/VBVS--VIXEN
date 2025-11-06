@@ -4,7 +4,7 @@
 //
 // Program: ComputeTest
 // UUID: 3e331666c418cc79
-// Generated: 2025-11-05 21:26:06
+// Generated: 2025-11-06 12:54:47
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.

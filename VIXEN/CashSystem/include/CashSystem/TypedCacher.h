@@ -41,8 +41,9 @@ public:
 
     /**
      * @brief Check if the cacher has been initialized
+     * @note For device-dependent cachers, both flag and device pointer must be valid
      */
-    bool IsInitialized() const noexcept { return m_initialized; }
+    bool IsInitialized() const noexcept { return m_initialized && m_device != nullptr; }
 
     /**
      * @brief Get the device context

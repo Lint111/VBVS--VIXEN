@@ -37,7 +37,8 @@ void DescriptorResourceGathererNode::SetupImpl(Context& ctx) {
 }
 
 void DescriptorResourceGathererNode::CompileImpl(Context& ctx) {
-    std::cout << "[DescriptorResourceGathererNode::Compile] Validating tentative slots against shader metadata...\n";
+    std::cout << "[DescriptorResourceGathererNode::Compile] START - Validating tentative slots against shader metadata...\n";
+    std::cout << "[DescriptorResourceGathererNode::Compile] Current variadic input count: " << GetVariadicInputCount() << "\n";
 
     // Get shader bundle to discover expected descriptor layout
     auto shaderBundle = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);

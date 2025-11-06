@@ -822,12 +822,17 @@ void RenderGraph::GeneratePipelines() {
         instance->Compile();
 
         std::cout << "[GeneratePipelines] Node compiled successfully: " << instance->GetInstanceName() << std::endl;
-        instance->SetState(NodeState::Compiled);
 
-        // Execute post-compile callbacks (e.g., field extraction)
+        // Execute post-compile callbacks immediately after compilation
+        // This ensures extracted values are available before dependent nodes compile
+        // Debug: Executing callbacks
+        // std::cout << "[GeneratePipelines] Executing " << postNodeCompileCallbacks.size()
+        //           << " post-compile callbacks for node: " << instance->GetInstanceName() << std::endl;
         for (auto& callback : postNodeCompileCallbacks) {
             callback(instance);
         }
+
+        instance->SetState(NodeState::Compiled);
     }
 }
 

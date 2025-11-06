@@ -146,7 +146,7 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
         );
     }
 
-    // Get PipelineLayoutCacher
+    // Get PipelineLayoutCacher - this will initialize it with the device
     auto* layoutCacher = mainCacher.GetCacher<
         CashSystem::PipelineLayoutCacher,
         CashSystem::PipelineLayoutWrapper,
@@ -156,6 +156,12 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
     if (!layoutCacher) {
         vkDestroyShaderModule(devicePtr->device, shaderModule, nullptr);
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to get PipelineLayoutCacher");
+    }
+
+    // Ensure cacher is initialized with device (workaround for initialization timing issue)
+    if (!layoutCacher->IsInitialized()) {
+        std::cout << "[ComputePipelineNode::CompileImpl] Initializing PipelineLayoutCacher with device..." << std::endl;
+        layoutCacher->Initialize(devicePtr);
     }
 
     // Build pipeline layout params

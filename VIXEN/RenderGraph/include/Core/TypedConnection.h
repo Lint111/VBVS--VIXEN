@@ -134,6 +134,10 @@ public:
         FieldType StructType::* memberPtr,  // Member pointer for field extraction
         uint32_t arrayIndex = 0
     ) {
+        // Debug: Connect() called with member pointer
+        // std::cout << "[FieldExtraction] Connect() called with member pointer - Source handle index: " << sourceNode.index
+        //           << ", Target handle index: " << targetNode.index << std::endl;
+
         // Extract type information
         using SourceType = typename SourceSlot::Type;
         using TargetType = typename TargetSlot::Type;
@@ -161,6 +165,11 @@ public:
                 throw std::runtime_error("Connect with field extraction: Invalid node handle");
             }
 
+            // Debug: Registering callback
+            // std::cout << "[FieldExtraction] Registering callback: extract from " << srcNode->GetInstanceName()
+            //           << " slot " << sourceSlot.index << " to " << tgtNode->GetInstanceName()
+            //           << " slot " << targetSlot.index << std::endl;
+
             // Register dependency so topological sort works
             tgtNode->AddDependency(srcNode);
 
@@ -174,12 +183,24 @@ public:
         }
 
         // Register callback with graph to execute after source node compiles
-        graph->RegisterPostNodeCompileCallback([this, sourceNode, sourceSlot, targetNode, targetSlot, memberPtr, arrayIndex](NodeInstance* compiledNode) {
-            // Only execute if this is the source node we're waiting for
+        graph->RegisterPostNodeCompileCallback([graph=this->graph, sourceNode, sourceSlot, targetNode, targetSlot, memberPtr, arrayIndex](NodeInstance* compiledNode) {
+            // Debug: Log every callback invocation
             auto* srcNode = graph->GetInstance(sourceNode);
+            // std::cout << "[FieldExtraction] Callback triggered for compiled node: " << compiledNode->GetInstanceName() << std::endl;
+            // std::cout << "[FieldExtraction] Looking for source node: " << (srcNode ? srcNode->GetInstanceName() : "NULL") << std::endl;
+            // std::cout << "[FieldExtraction] Pointer match: " << (compiledNode == srcNode ? "YES" : "NO") << std::endl;
+            // std::cout << "[FieldExtraction] compiledNode ptr: " << compiledNode << ", srcNode ptr: " << srcNode << std::endl;
+
+            // Only execute if this is the source node we're waiting for
             if (compiledNode != srcNode) {
                 return;  // Not the node we're waiting for
             }
+
+            // Debug: Field extraction executing
+            // auto* tgtNodeCheck = graph->GetInstance(targetNode);
+            // std::cout << "[FieldExtraction] Extracting field from " << srcNode->GetInstanceName()
+            //           << " slot " << sourceSlot.index << " to " << (tgtNodeCheck ? tgtNodeCheck->GetInstanceName() : "NULL")
+            //           << " slot " << targetSlot.index << std::endl;
 
             auto* tgtNode = graph->GetInstance(targetNode);
             if (!srcNode || !tgtNode) {
@@ -218,12 +239,29 @@ public:
             using FieldResourceType = std::remove_reference_t<FieldType>;
             FieldType fieldValue = extractFieldCallback();
 
-            Resource fieldRes = Resource::Create<FieldResourceType>(
-                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
-            fieldRes.SetHandle<FieldResourceType>(FieldResourceType(fieldValue));
+            // Debug: Extracted field value
+            // std::cout << "[FieldExtraction] Extracted field value: " << fieldValue << std::endl;
+
+            // Create resource as unique_ptr and let graph manage its lifetime
+            // Note: We can't access graph->resources directly, so we create a static storage
+            // This is a workaround - ideally RenderGraph would provide an AllocateResource() method
+            static std::vector<std::unique_ptr<Resource>> extractedFieldResources;
+
+            auto fieldResPtr = std::make_unique<Resource>(Resource::Create<FieldResourceType>(
+                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{}));
+            fieldResPtr->SetHandle<FieldResourceType>(FieldResourceType(fieldValue));
+
+            Resource* fieldRes = fieldResPtr.get();
+            extractedFieldResources.push_back(std::move(fieldResPtr));
+
+            // Debug: Created resource
+            // std::cout << "[FieldExtraction] Created resource and setting input on target node" << std::endl;
 
             // Set as input on target node
-            tgtNode->SetInput(targetSlot.index, arrayIndex, &fieldRes);
+            tgtNode->SetInput(targetSlot.index, arrayIndex, fieldRes);
+
+            // Debug: Input set successfully
+            // std::cout << "[FieldExtraction] Input set successfully" << std::endl;
         });
 
         return *this;
