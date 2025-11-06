@@ -601,8 +601,12 @@ public:
                         // Update the slot
                         variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
 
+                        // Register resource with dependency tracker for recompile tracking
+                        // This ensures when source node recompiles, gatherer knows to recompile too
+                        graph->RegisterResourceProducer(sourceRes, sourceNodeInst, sourceSlot.index);
+
                         std::cout << "[ConnectVariadic PostSetup Hook] Resource populated for binding "
-                                  << bindingIndex << std::endl;
+                                  << bindingIndex << " and registered with dependency tracker" << std::endl;
                     } else {
                         std::cerr << "[ConnectVariadic PostSetup Hook] ERROR: Could not find slot at binding "
                                   << bindingIndex << std::endl;

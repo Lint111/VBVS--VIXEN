@@ -35,16 +35,7 @@ ComputePipelineNode::ComputePipelineNode(
 }
 
 void ComputePipelineNode::SetupImpl(Context& ctx) {
-    std::cout << "[ComputePipelineNode::SetupImpl] Setting up..." << std::endl;
-
-    // Get device from input
-    VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
-    if (!devicePtr) {
-        throw std::runtime_error("[ComputePipelineNode::SetupImpl] VULKAN_DEVICE_IN is null");
-    }
-
-    // Register device for cleanup tracking
-    SetDevice(devicePtr);
+    std::cout << "[ComputePipelineNode::SetupImpl] Graph-scope initialization..." << std::endl;
 
 #if VIXEN_DEBUG_BUILD
     // Create specialized performance logger and register to node logger
@@ -54,11 +45,20 @@ void ComputePipelineNode::SetupImpl(Context& ctx) {
     }
 #endif
 
-    std::cout << "[ComputePipelineNode::SetupImpl] Setup complete (device registered)" << std::endl;
+    std::cout << "[ComputePipelineNode::SetupImpl] Setup complete" << std::endl;
 }
 
 void ComputePipelineNode::CompileImpl(Context& ctx) {
     std::cout << "[ComputePipelineNode::CompileImpl] Compiling compute pipeline..." << std::endl;
+
+    // Access device input (compile-time dependency)
+    VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+    if (!devicePtr) {
+        throw std::runtime_error("[ComputePipelineNode::CompileImpl] VULKAN_DEVICE_IN is null");
+    }
+
+    // Register device for cleanup tracking
+    SetDevice(devicePtr);
 
     // ===== 1. Get Parameters =====
     uint32_t workgroupX = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_X, 0);
@@ -69,13 +69,10 @@ void ComputePipelineNode::CompileImpl(Context& ctx) {
               << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
 
     // ===== 2. Get Inputs =====
-    VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+    // Note: devicePtr already retrieved and validated at start of CompileImpl
     ShaderDataBundlePtr shaderBundle = In(ComputePipelineNodeConfig::SHADER_DATA_BUNDLE);
     VkDescriptorSetLayout descriptorSetLayout = In(ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
-    if (!devicePtr) {
-        throw std::runtime_error("[ComputePipelineNode::CompileImpl] VULKAN_DEVICE_IN is null");
-    }
     if (!shaderBundle) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] SHADER_DATA_BUNDLE is null");
     }

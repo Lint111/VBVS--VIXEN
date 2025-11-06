@@ -1462,4 +1462,8 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
     std::cout << "[RenderGraph] Device sync took " << duration.count() << "ms" << std::endl;
 }
 
+void RenderGraph::RegisterResourceProducer(Resource* resource, NodeInstance* producer, size_t outputIndex) {
+    dependencyTracker.RegisterResourceProducer(resource, producer, static_cast<uint32_t>(outputIndex));
+}
+
 } // namespace Vixen::RenderGraph

@@ -407,6 +407,20 @@ public:
     GraphLifecycleHooks& GetLifecycleHooks() { return lifecycleHooks; }
     const GraphLifecycleHooks& GetLifecycleHooks() const { return lifecycleHooks; }
 
+    // ====== Resource Dependency Tracking ======
+
+    /**
+     * @brief Register a resource producer for recompile dependency tracking
+     *
+     * This is used by variadic connections with field extraction to register
+     * dynamically-populated resources after PostSetup hooks execute.
+     *
+     * @param resource The resource being produced
+     * @param producer The node that produces this resource
+     * @param outputIndex The output slot index on the producer node
+     */
+    void RegisterResourceProducer(Resource* resource, NodeInstance* producer, size_t outputIndex);
+
 
 private:
     // Core components
