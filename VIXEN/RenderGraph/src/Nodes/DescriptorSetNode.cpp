@@ -250,108 +250,20 @@ void DescriptorSetNode::CompileImpl(Context& ctx) {
     perFrameBufferInfos.resize(imageCount);
 
     for (uint32_t i = 0; i < imageCount; i++) {
-        std::vector<VkWriteDescriptorSet> writes;
-
         // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
         perFrameImageInfos[i].reserve(descriptorBindings.size());
         perFrameBufferInfos[i].reserve(descriptorBindings.size());
 
-        for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size() && bindingIdx < descriptorResources.size(); bindingIdx++) {
-            const auto& binding = descriptorBindings[bindingIdx];
-            const auto& resourceVariant = descriptorResources[bindingIdx];
-
-            std::cout << "[DescriptorSetNode::Compile] Processing binding " << binding.binding
-                      << " (type=" << binding.descriptorType << "), variant index=" << resourceVariant.index() << std::endl;
-
-            VkWriteDescriptorSet write{};
-            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet = descriptorSets[i];
-            write.dstBinding = binding.binding;
-            write.dstArrayElement = 0;
-            write.descriptorType = binding.descriptorType;
-            write.descriptorCount = 1;
-
-            // Generic variant inspection and descriptor creation
-            switch (binding.descriptorType) {
-                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
-                    // Check for SwapChainPublicInfo (per-frame image views)
-                    if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
-                        SwapChainPublicVariables* sc = *swapchainPtr;
-                        if (sc && i < sc->colorBuffers.size()) {
-                            std::cout << "[DescriptorSetNode::Compile] Found SwapChainPublicInfo for binding " << binding.binding
-                                      << ", extracting frame " << i << " image view" << std::endl;
-                            VkDescriptorImageInfo imageInfo{};
-                            imageInfo.imageView = sc->colorBuffers[i].view;
-                            imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-                                ? VK_IMAGE_LAYOUT_GENERAL
-                                : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                            perFrameImageInfos[i].push_back(imageInfo);
-                            write.pImageInfo = &perFrameImageInfos[i].back();
-                            writes.push_back(write);
-                        } else {
-                            std::cout << "[DescriptorSetNode::Compile] ERROR: SwapChainPublicInfo is null or frame " << i
-                                      << " out of bounds" << std::endl;
-                        }
-                    }
-                    // Direct VkImageView (single image, same for all frames)
-                    else if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
-                        std::cout << "[DescriptorSetNode::Compile] Found VkImageView for binding " << binding.binding << std::endl;
-                        VkDescriptorImageInfo imageInfo{};
-                        imageInfo.imageView = *imageView;
-                        imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-                            ? VK_IMAGE_LAYOUT_GENERAL
-                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        perFrameImageInfos[i].push_back(imageInfo);
-                        write.pImageInfo = &perFrameImageInfos[i].back();
-                        writes.push_back(write);
-                    } else {
-                        std::cout << "[DescriptorSetNode::Compile] WARNING: Expected VkImageView or SwapChainPublicInfo but got variant index "
-                                  << resourceVariant.index() << " for binding " << binding.binding << std::endl;
-                    }
-                    break;
-                }
-
-                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
-                    // For combined sampler, need VkImageView + VkSampler
-                        // Assume gatherer provides VkImageView, use textureSampler from legacy slot
-                    if (auto* imageView = std::get_if<VkImageView>(&resourceVariant)) {
-                        VkDescriptorImageInfo imageInfo{};
-                        imageInfo.imageView = *imageView;
-                        imageInfo.sampler = VK_NULL_HANDLE;  // TODO: Get from gatherer
-                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        perFrameImageInfos[i].push_back(imageInfo);
-                        write.pImageInfo = &perFrameImageInfos[i].back();
-                        writes.push_back(write);
-                    }
-                    break;
-                }
-
-                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: {
-                    if (auto* buffer = std::get_if<VkBuffer>(&resourceVariant)) {
-                        VkDescriptorBufferInfo bufferInfo{};
-                        bufferInfo.buffer = *buffer;
-                        bufferInfo.offset = 0;
-                        bufferInfo.range = VK_WHOLE_SIZE;
-                        perFrameBufferInfos[i].push_back(bufferInfo);
-                        write.pBufferInfo = &perFrameBufferInfos[i].back();
-                        writes.push_back(write);
-                    }
-                    break;
-                }
-
-                default:
-                    std::cout << "[DescriptorSetNode::Compile] WARNING: Unsupported descriptor type "
-                              << binding.descriptorType << " at binding " << binding.binding << std::endl;
-                    break;
-            }
-        }
+        // Use helper method to build descriptor writes
+        auto writes = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
+                                           perFrameImageInfos[i], perFrameBufferInfos[i]);
 
         std::cout << "[DescriptorSetNode::Compile] Bound " << writes.size()
                   << " descriptors for frame " << i << " (data-driven)" << std::endl;
 
-        vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        if (!writes.empty()) {
+            vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        }
     }
 
     std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated (data-driven)" << std::endl;
@@ -425,15 +337,45 @@ void DescriptorSetNode::ExecuteImpl(Context& ctx) {
         return;
     }
 
-    // Generic descriptor update - handles all descriptor types from metadata
+    // Reuse BuildDescriptorWrites helper for transient descriptor updates
+    // Use temporary storage for info structures (they must outlive vkUpdateDescriptorSets call)
+    std::vector<VkDescriptorImageInfo> transientImageInfos;
+    std::vector<VkDescriptorBufferInfo> transientBufferInfos;
+
+    auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
+                                       transientImageInfos, transientBufferInfos);
+
+    if (!writes.empty()) {
+        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        std::cout << "[DescriptorSetNode::Execute] Updated " << writes.size()
+                  << " transient descriptor(s) for frame " << imageIndex << std::endl;
+    }
+}
+
+std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
+    uint32_t imageIndex,
+    const std::vector<ResourceVariant>& descriptorResources,
+    const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
+    std::vector<VkDescriptorImageInfo>& imageInfos,
+    std::vector<VkDescriptorBufferInfo>& bufferInfos
+) {
     std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorImageInfo> imageInfos;   // Keep alive
-    std::vector<VkDescriptorBufferInfo> bufferInfos; // Keep alive
+    writes.reserve(descriptorBindings.size());
 
-    for (const auto& binding : descriptorBindings) {
-        if (binding.binding >= descriptorResources.size()) continue;
+    // Helper to find sampler resource by binding index
+    auto findSamplerResource = [&](uint32_t bindingIndex) -> VkSampler {
+        if (bindingIndex < descriptorResources.size()) {
+            const auto& resource = descriptorResources[bindingIndex];
+            if (std::holds_alternative<VkSampler>(resource)) {
+                return std::get<VkSampler>(resource);
+            }
+        }
+        return VK_NULL_HANDLE;
+    };
 
-        const auto& resourceVariant = descriptorResources[binding.binding];
+    for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size() && bindingIdx < descriptorResources.size(); bindingIdx++) {
+        const auto& binding = descriptorBindings[bindingIdx];
+        const auto& resourceVariant = descriptorResources[bindingIdx];
 
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -445,16 +387,28 @@ void DescriptorSetNode::ExecuteImpl(Context& ctx) {
 
         // Generic variant inspection based on descriptor type
         switch (binding.descriptorType) {
-            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
-                if (std::holds_alternative<VkImageView>(resourceVariant)) {
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE: {
+                // Storage images don't need samplers
+                // Check for SwapChainPublicInfo (per-frame image views)
+                if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
+                    SwapChainPublicVariables* sc = *swapchainPtr;
+                    if (sc && imageIndex < sc->colorBuffers.size()) {
+                        VkDescriptorImageInfo imageInfo{};
+                        imageInfo.imageView = sc->colorBuffers[imageIndex].view;
+                        imageInfo.sampler = VK_NULL_HANDLE;
+                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+                        imageInfos.push_back(imageInfo);
+                        write.pImageInfo = &imageInfos.back();
+                        writes.push_back(write);
+                    }
+                }
+                // Direct VkImageView (single image, same for all frames)
+                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
                     VkImageView imageView = std::get<VkImageView>(resourceVariant);
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.imageView = imageView;
                     imageInfo.sampler = VK_NULL_HANDLE;
-                    imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-                        ? VK_IMAGE_LAYOUT_GENERAL
-                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                     imageInfos.push_back(imageInfo);
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
@@ -462,16 +416,129 @@ void DescriptorSetNode::ExecuteImpl(Context& ctx) {
                 break;
             }
 
-            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
-                if (std::holds_alternative<VkImageView>(resourceVariant)) {
-                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
+            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                // Sampled images are used with separate samplers
+                // Samplers should be in the same descriptor set (validated by ShaderDataBundle)
+                VkImageView imageView = VK_NULL_HANDLE;
+
+                // Check for SwapChainPublicInfo (per-frame image views)
+                if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
+                    SwapChainPublicVariables* sc = *swapchainPtr;
+                    if (sc && imageIndex < sc->colorBuffers.size()) {
+                        imageView = sc->colorBuffers[imageIndex].view;
+                    }
+                }
+                // Direct VkImageView (single image, same for all frames)
+                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+                    imageView = std::get<VkImageView>(resourceVariant);
+                }
+
+                if (imageView != VK_NULL_HANDLE) {
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.imageView = imageView;
-                    imageInfo.sampler = VK_NULL_HANDLE;  // TODO: Get from gatherer
+                    imageInfo.sampler = VK_NULL_HANDLE;  // Sampled images don't include sampler
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     imageInfos.push_back(imageInfo);
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
+
+                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound SAMPLED_IMAGE '"
+                              << binding.name << "' at binding " << binding.binding
+                              << " (sampler should be separate)" << std::endl;
+                }
+                break;
+            }
+
+            case VK_DESCRIPTOR_TYPE_SAMPLER: {
+                // Standalone sampler descriptor (no image)
+                if (std::holds_alternative<VkSampler>(resourceVariant)) {
+                    VkSampler sampler = std::get<VkSampler>(resourceVariant);
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.sampler = sampler;
+                    imageInfo.imageView = VK_NULL_HANDLE;
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    writes.push_back(write);
+                }
+                // Handle vector of samplers (for array bindings)
+                else if (std::holds_alternative<std::vector<VkSampler>>(resourceVariant)) {
+                    const auto& samplerArray = std::get<std::vector<VkSampler>>(resourceVariant);
+                    if (!samplerArray.empty()) {
+                        // For array bindings, create one write with multiple samplers
+                        size_t startIdx = imageInfos.size();
+                        for (const auto& sampler : samplerArray) {
+                            VkDescriptorImageInfo imageInfo{};
+                            imageInfo.sampler = sampler;
+                            imageInfo.imageView = VK_NULL_HANDLE;
+                            imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                            imageInfos.push_back(imageInfo);
+                        }
+                        write.pImageInfo = &imageInfos[startIdx];
+                        write.descriptorCount = static_cast<uint32_t>(samplerArray.size());
+                        writes.push_back(write);
+                    }
+                }
+                break;
+            }
+
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
+                // Handle combined image sampler (image + sampler)
+                // Gatherer should provide imageView, we'll look for sampler in adjacent slot
+                if (std::holds_alternative<VkImageView>(resourceVariant)) {
+                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
+                    VkSampler sampler = VK_NULL_HANDLE;
+
+                    // Try to get sampler from next resource slot (if available)
+                    // Convention: gatherer places sampler immediately after imageView
+                    if (bindingIdx + 1 < descriptorResources.size()) {
+                        const auto& nextResource = descriptorResources[bindingIdx + 1];
+                        if (std::holds_alternative<VkSampler>(nextResource)) {
+                            sampler = std::get<VkSampler>(nextResource);
+                        }
+                    }
+
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageView = imageView;
+                    imageInfo.sampler = sampler;
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    writes.push_back(write);
+
+                    if (sampler == VK_NULL_HANDLE) {
+                        std::cout << "[DescriptorSetNode::BuildDescriptorWrites] WARNING: "
+                                  << "Combined image sampler at binding " << binding.binding
+                                  << " has no sampler (VK_NULL_HANDLE)" << std::endl;
+                    }
+                }
+                // Handle array of combined image samplers
+                // Expect vector<VkImageView> followed by vector<VkSampler>
+                else if (std::holds_alternative<std::vector<VkImageView>>(resourceVariant)) {
+                    const auto& imageViewArray = std::get<std::vector<VkImageView>>(resourceVariant);
+                    std::vector<VkSampler> samplerArray;
+
+                    // Try to get sampler array from next slot
+                    if (bindingIdx + 1 < descriptorResources.size()) {
+                        const auto& nextResource = descriptorResources[bindingIdx + 1];
+                        if (std::holds_alternative<std::vector<VkSampler>>(nextResource)) {
+                            samplerArray = std::get<std::vector<VkSampler>>(nextResource);
+                        }
+                    }
+
+                    if (!imageViewArray.empty()) {
+                        size_t startIdx = imageInfos.size();
+                        for (size_t i = 0; i < imageViewArray.size(); i++) {
+                            VkDescriptorImageInfo imageInfo{};
+                            imageInfo.imageView = imageViewArray[i];
+                            imageInfo.sampler = (i < samplerArray.size()) ? samplerArray[i] : VK_NULL_HANDLE;
+                            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                            imageInfos.push_back(imageInfo);
+                        }
+                        write.pImageInfo = &imageInfos[startIdx];
+                        write.descriptorCount = static_cast<uint32_t>(imageViewArray.size());
+                        writes.push_back(write);
+                    }
                 }
                 break;
             }
@@ -497,11 +564,7 @@ void DescriptorSetNode::ExecuteImpl(Context& ctx) {
         }
     }
 
-    if (!writes.empty()) {
-        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-        std::cout << "[DescriptorSetNode::Execute] Updated " << writes.size()
-                  << " transient descriptor(s) for frame " << imageIndex << std::endl;
-    }
+    return writes;
 }
 
 void DescriptorSetNode::CleanupImpl() {

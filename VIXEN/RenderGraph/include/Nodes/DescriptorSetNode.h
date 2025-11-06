@@ -13,6 +13,10 @@ namespace CashSystem {
     class DescriptorCacher;
 }
 
+namespace ShaderManagement {
+    struct SpirvDescriptorBinding;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -129,6 +133,23 @@ private:
     void CreateDescriptorPool();
     void AllocateDescriptorSets();
     void CreateDescriptorSetLayoutManually();
+
+    /**
+     * @brief Update descriptor sets from resource array using shader metadata
+     * @param imageIndex Swapchain image index (which descriptor set to update)
+     * @param descriptorResources Resource array from DescriptorResourceGathererNode
+     * @param descriptorBindings Shader bindings metadata
+     * @param imageInfos Output vector for image infos (keep alive for vkUpdateDescriptorSets)
+     * @param bufferInfos Output vector for buffer infos (keep alive for vkUpdateDescriptorSets)
+     * @return VkWriteDescriptorSet array ready for vkUpdateDescriptorSets
+     */
+    std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
+        uint32_t imageIndex,
+        const std::vector<ResourceVariant>& descriptorResources,
+        const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
+        std::vector<VkDescriptorImageInfo>& imageInfos,
+        std::vector<VkDescriptorBufferInfo>& bufferInfos
+    );
 };
 
 } // namespace Vixen::RenderGraph
