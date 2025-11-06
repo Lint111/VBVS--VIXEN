@@ -28,6 +28,12 @@ FrameSyncNode::FrameSyncNode(
 }
 
 void FrameSyncNode::SetupImpl(Context& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("FrameSyncNode: Setup (graph-scope initialization)");
+}
+
+void FrameSyncNode::CompileImpl(Context& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
     if (devicePtr == nullptr) {
@@ -38,9 +44,6 @@ void FrameSyncNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
-
-void FrameSyncNode::CompileImpl(Context& ctx) {
     // Phase 0.4: Separate concerns - fences for CPU-GPU, semaphores for GPU-GPU
     constexpr uint32_t flightCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
     constexpr uint32_t imageCount = FrameSyncNodeConfig::MAX_SWAPCHAIN_IMAGES;

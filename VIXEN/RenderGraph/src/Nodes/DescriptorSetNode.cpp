@@ -40,7 +40,14 @@ DescriptorSetNode::DescriptorSetNode(
 }
 
 void DescriptorSetNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: DescriptorSetNode (MVP stub)");
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("DescriptorSetNode: Setup (graph-scope initialization)");
+}
+
+void DescriptorSetNode::CompileImpl(Context& ctx) {
+    NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
+
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("DescriptorSetNode: VulkanDevice input is null");
@@ -48,12 +55,6 @@ void DescriptorSetNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-
-    NODE_LOG_INFO("Setup: Descriptor set node ready (MVP stub - no descriptors)");
-}
-
-void DescriptorSetNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Phase 2: Read ShaderDataBundle from input
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);

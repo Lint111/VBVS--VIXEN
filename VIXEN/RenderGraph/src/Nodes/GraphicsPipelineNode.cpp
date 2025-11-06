@@ -36,8 +36,12 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 }
 
 void GraphicsPipelineNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("GraphicsPipelineNode: Setup (graph-scope initialization)");
+}
 
+void GraphicsPipelineNode::CompileImpl(Context& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -49,10 +53,6 @@ void GraphicsPipelineNode::SetupImpl(Context& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // Pipeline cache will be created by PipelineCacher during Compile()
-}
-
-void GraphicsPipelineNode::CompileImpl(Context& ctx) {
     // Get parameters using typed config constants
     enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
     enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);

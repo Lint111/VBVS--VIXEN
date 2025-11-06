@@ -35,18 +35,7 @@ ShaderLibraryNode::ShaderLibraryNode(
 }
 
 void ShaderLibraryNode::SetupImpl(Context& ctx) {
-    std::cout << "[ShaderLibraryNode::Setup] Called" << std::endl;
-
-    VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-
-    if (devicePtr == nullptr) {
-        std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null";
-        std::cout << "[ShaderLibraryNode::Setup] ERROR: " << errorMsg << std::endl;
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Set base class device member for cleanup tracking
-    SetDevice(devicePtr);
+    std::cout << "[ShaderLibraryNode::Setup] Called - graph-scope initialization" << std::endl;
 
     // Subscribe to DeviceMetadataEvent for shader version validation
     auto* messageBus = GetOwningGraph()->GetMessageBus();
@@ -63,6 +52,29 @@ void ShaderLibraryNode::SetupImpl(Context& ctx) {
         NODE_LOG_WARNING("ShaderLibraryNode: MessageBus not available - cannot subscribe to device metadata");
     }
 
+    // Register ShaderModuleCacher (idempotent) - graph-scope setup
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    std::cout << "[ShaderLibraryNode] Checking if ShaderModuleCacher is registered..." << std::endl;
+    bool wasRegistered = mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper));
+    std::cout << "[ShaderLibraryNode] Is registered: " << wasRegistered << std::endl;
+
+    if (!wasRegistered) {
+        std::cout << "[ShaderLibraryNode] Registering ShaderModuleCacher..." << std::endl;
+        mainCacher.RegisterCacher<
+            CashSystem::ShaderModuleCacher,
+            CashSystem::ShaderModuleWrapper,
+            CashSystem::ShaderModuleCreateParams
+        >(
+            typeid(CashSystem::ShaderModuleWrapper),
+            "ShaderModule",
+            true  // device-dependent
+        );
+        std::cout << "[ShaderLibraryNode] ShaderModuleCacher registered" << std::endl;
+        NODE_LOG_DEBUG("ShaderLibraryNode: Registered ShaderModuleCacher");
+    } else {
+        std::cout << "[ShaderLibraryNode] ShaderModuleCacher already registered" << std::endl;
+    }
+
     std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
 }
 
@@ -76,6 +88,42 @@ void ShaderLibraryNode::RegisterShaderBuilder(
 
 void ShaderLibraryNode::CompileImpl(Context& ctx) {
     std::cout << "[ShaderLibraryNode::Compile] START - Phase G shader builder" << std::endl;
+
+    // Access VulkanDevice input (compile-time dependency)
+    std::cout << "[ShaderLibraryNode::Compile] Retrieving VulkanDevice input..." << std::endl;
+    VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    if (devicePtr == nullptr) {
+        std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null during Compile";
+        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
+        throw std::runtime_error(errorMsg);
+    }
+
+    std::cout << "[ShaderLibraryNode::Compile] VulkanDevice retrieved: " << devicePtr << std::endl;
+    SetDevice(devicePtr);
+
+    // Get ShaderModuleCacher (registered during Setup)
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    std::cout << "[ShaderLibraryNode] Getting ShaderModuleCacher from MainCacher..." << std::endl;
+    std::cout << "[ShaderLibraryNode] Device pointer value: " << device << std::endl;
+    std::cout << "[ShaderLibraryNode] IsDeviceDependent: " << mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) << std::endl;
+
+    shaderModuleCacher = mainCacher.GetCacher<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(typeid(CashSystem::ShaderModuleWrapper), device);
+
+    if (!shaderModuleCacher) {
+        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
+        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
+        std::cout << "[ShaderLibraryNode] ERROR: device=" << device << std::endl;
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    std::cout << "[ShaderLibraryNode] Got ShaderModuleCacher successfully" << std::endl;
+    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->IsInitialized()=" << shaderModuleCacher->IsInitialized() << std::endl;
+    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->GetDevice()=" << shaderModuleCacher->GetDevice() << std::endl;
 
     // Check if any builder functions were registered
     if (shaderBuilderFuncs.empty()) {
@@ -123,65 +171,9 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
     // Store bundle for future descriptor automation (Phase 2)
     shaderBundle_ = std::move(result.bundle);
 
-    // Use device from base class (set in Setup via SetDevice)
-    if (!device) {
-        std::string errorMsg = "ShaderLibraryNode: device member is null during Compile";
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-    std::cout << "[ShaderLibraryNode] Using device: " << device << std::endl;
-
     // Step 2: Create VkShaderModules using CashSystem caching
     std::cout << "[ShaderLibraryNode] Creating VkShaderModules via CashSystem..." << std::endl;
     NODE_LOG_INFO("ShaderLibraryNode: Creating VkShaderModules via CashSystem");
-
-    // Get MainCacher from owning graph
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-
-    // Register ShaderModuleCacher (idempotent)
-    std::cout << "[ShaderLibraryNode] Checking if ShaderModuleCacher is registered..." << std::endl;
-    bool wasRegistered = mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper));
-    std::cout << "[ShaderLibraryNode] Is registered: " << wasRegistered << std::endl;
-
-    if (!wasRegistered) {
-        std::cout << "[ShaderLibraryNode] Registering ShaderModuleCacher..." << std::endl;
-        mainCacher.RegisterCacher<
-            CashSystem::ShaderModuleCacher,
-            CashSystem::ShaderModuleWrapper,
-            CashSystem::ShaderModuleCreateParams
-        >(
-            typeid(CashSystem::ShaderModuleWrapper),
-            "ShaderModule",
-            true  // device-dependent
-        );
-        std::cout << "[ShaderLibraryNode] ShaderModuleCacher registered" << std::endl;
-        NODE_LOG_DEBUG("ShaderLibraryNode: Registered ShaderModuleCacher");
-    } else {
-        std::cout << "[ShaderLibraryNode] ShaderModuleCacher already registered" << std::endl;
-    }
-
-    // Get cacher reference (using base class device member)
-    std::cout << "[ShaderLibraryNode] Getting ShaderModuleCacher from MainCacher..." << std::endl;
-    std::cout << "[ShaderLibraryNode] Device pointer value: " << device << std::endl;
-    std::cout << "[ShaderLibraryNode] IsDeviceDependent: " << mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) << std::endl;
-
-    shaderModuleCacher = mainCacher.GetCacher<
-        CashSystem::ShaderModuleCacher,
-        CashSystem::ShaderModuleWrapper,
-        CashSystem::ShaderModuleCreateParams
-    >(typeid(CashSystem::ShaderModuleWrapper), device);
-
-    if (!shaderModuleCacher) {
-        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        std::cout << "[ShaderLibraryNode] ERROR: device=" << device << std::endl;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-    std::cout << "[ShaderLibraryNode] Got ShaderModuleCacher successfully" << std::endl;
-    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->IsInitialized()=" << shaderModuleCacher->IsInitialized() << std::endl;
-    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->GetDevice()=" << shaderModuleCacher->GetDevice() << std::endl;
 
     // Step 3: Create shader modules from ShaderDataBundle SPIR-V
     try {

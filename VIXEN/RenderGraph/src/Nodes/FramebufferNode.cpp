@@ -26,8 +26,14 @@ FramebufferNode::FramebufferNode(
 }
 
 void FramebufferNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("FramebufferNode: Setup (graph-scope initialization)");
+}
 
+void FramebufferNode::CompileImpl(Context& ctx) {
+    NODE_LOG_INFO("Compile: Creating framebuffers");
+
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -38,12 +44,6 @@ void FramebufferNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-
-    NODE_LOG_INFO("Setup: Framebuffer node ready");
-}
-
-void FramebufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Get typed inputs
     VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);   

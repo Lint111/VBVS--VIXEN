@@ -44,6 +44,12 @@ CommandPoolNode::CommandPoolNode(
 }
 
 void CommandPoolNode::SetupImpl(Context& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("CommandPoolNode: Setup (graph-scope initialization)");
+}
+
+void CommandPoolNode::CompileImpl(Context& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -54,9 +60,6 @@ void CommandPoolNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
-
-void CommandPoolNode::CompileImpl(Context& ctx) {
 
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter

@@ -26,7 +26,12 @@ PresentNode::PresentNode(
 }
 
 void PresentNode::SetupImpl(Context& ctx) {
-    // Read and validate device input
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("PresentNode: Setup (graph-scope initialization)");
+}
+
+void PresentNode::CompileImpl(Context& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("PresentNode: Invalid device handle");
@@ -34,9 +39,7 @@ void PresentNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
 
-void PresentNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 

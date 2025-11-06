@@ -30,13 +30,8 @@ SwapChainNode::SwapChainNode(
 }
 
 void SwapChainNode::SetupImpl(Context& ctx) {
-    SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
-
-    if (GetDevice() == nullptr) {
-        std::string errorMsg = "SwapChainNode: VulkanDevice input is null";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("SwapChainNode: Setup (graph-scope initialization)");
 
     // Subscribe to window resize events
     if (GetMessageBus()) {
@@ -63,6 +58,15 @@ void SwapChainNode::SetupImpl(Context& ctx) {
 
 void SwapChainNode::CompileImpl(Context& ctx) {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
+
+    // Access device input (compile-time dependency)
+    SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
+
+    if (GetDevice() == nullptr) {
+        std::string errorMsg = "SwapChainNode: VulkanDevice input is null";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
 
     // Publish render pause starting event
     if (GetMessageBus()) {

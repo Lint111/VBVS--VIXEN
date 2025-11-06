@@ -798,10 +798,9 @@ void RenderGraph::GeneratePipelines() {
     // TODO: Implement deferred connection queue
     std::cout << "[GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)" << std::endl;
 
-    // Phase 3: Setup and Compile nodes
-    std::cout << "[GeneratePipelines] Phase 3: Setup and Compile..." << std::endl;
-
-    bool cachesLoaded = false;
+    // Phase 3: Setup all nodes first, then compile all nodes
+    // This ensures PostSetup hooks can populate resources before any Compile phase begins
+    std::cout << "[GeneratePipelines] Phase 3a: Setup all nodes..." << std::endl;
 
     for (NodeInstance* instance : executionOrder) {
         // Skip nodes that are already compiled (e.g., pre-compiled device node)
@@ -811,29 +810,35 @@ void RenderGraph::GeneratePipelines() {
         }
 
         std::cout << "[GeneratePipelines] Calling Setup() on node: " << instance->GetInstanceName() << std::endl;
-        instance->Setup();    // Call Setup() before Compile()
+        instance->Setup();
+    }
 
-        // Load caches after all Setup() calls but before first Compile()
-        // This ensures all cachers are registered before loading
-        if (!cachesLoaded) {
-            std::cout << "[GeneratePipelines] Loading persistent caches..." << std::endl;
-            if (mainCacher) {
-                std::filesystem::path cacheDir = "cache";
-                if (std::filesystem::exists(cacheDir)) {
-                    std::cout << "[RenderGraph] Loading persistent caches from: " << cacheDir.string() << std::endl;
-                    auto loadFuture = mainCacher->LoadAllAsync(cacheDir);
+    // Load caches after all Setup() calls but before first Compile()
+    // This ensures all cachers are registered and all PostSetup hooks have executed
+    std::cout << "[GeneratePipelines] Loading persistent caches..." << std::endl;
+    if (mainCacher) {
+        std::filesystem::path cacheDir = "cache";
+        if (std::filesystem::exists(cacheDir)) {
+            std::cout << "[RenderGraph] Loading persistent caches from: " << cacheDir.string() << std::endl;
+            auto loadFuture = mainCacher->LoadAllAsync(cacheDir);
 
-                    bool loadSuccess = loadFuture.get();
-                    if (loadSuccess) {
-                        std::cout << "[RenderGraph] Persistent caches loaded successfully" << std::endl;
-                    } else {
-                        std::cout << "[RenderGraph] WARNING: Some caches failed to load (will recreate)" << std::endl;
-                    }
-                } else {
-                    std::cout << "[RenderGraph] No existing caches found (first run)" << std::endl;
-                }
+            bool loadSuccess = loadFuture.get();
+            if (loadSuccess) {
+                std::cout << "[RenderGraph] Persistent caches loaded successfully" << std::endl;
+            } else {
+                std::cout << "[RenderGraph] WARNING: Some caches failed to load (will recreate)" << std::endl;
             }
-            cachesLoaded = true;
+        } else {
+            std::cout << "[RenderGraph] No existing caches found (first run)" << std::endl;
+        }
+    }
+
+    std::cout << "[GeneratePipelines] Phase 3b: Compile all nodes..." << std::endl;
+
+    for (NodeInstance* instance : executionOrder) {
+        // Skip nodes that are already compiled
+        if (instance->GetState() == NodeState::Compiled) {
+            continue;
         }
 
         std::cout << "[GeneratePipelines] Calling Compile() on node: " << instance->GetInstanceName() << std::endl;
@@ -843,9 +848,6 @@ void RenderGraph::GeneratePipelines() {
 
         // Execute post-compile callbacks immediately after compilation
         // This ensures extracted values are available before dependent nodes compile
-        // Debug: Executing callbacks
-        // std::cout << "[GeneratePipelines] Executing " << postNodeCompileCallbacks.size()
-        //           << " post-compile callbacks for node: " << instance->GetInstanceName() << std::endl;
         for (auto& callback : postNodeCompileCallbacks) {
             callback(instance);
         }

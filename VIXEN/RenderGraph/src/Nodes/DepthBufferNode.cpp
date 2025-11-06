@@ -32,22 +32,22 @@ DepthBufferNode::DepthBufferNode(
 }
 
 void DepthBufferNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
-    
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("DepthBufferNode: Setup (graph-scope initialization)");
+}
+
+void DepthBufferNode::CompileImpl(Context& ctx) {
+    NODE_LOG_INFO("Compile: Creating depth buffer");
+
+    // Access device input (compile-time dependency)
     vulkanDevice = In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
     deviceHandle = vulkanDevice; // Keep for legacy code
-    
+
     if (!vulkanDevice) {
         std::string errorMsg = "DepthBufferNode: VulkanDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-
-    NODE_LOG_INFO("Setup complete");
-}
-
-void DepthBufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Helper macro for VkDevice
     #define VK_DEVICE (vulkanDevice->device)
