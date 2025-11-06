@@ -567,6 +567,18 @@ public:
             tentativeSlot.fieldOffset = fieldOffset;
             tentativeSlot.hasFieldExtraction = true;
 
+            // Detect transient outputs by checking the source output's ResourceLifetime
+            // Dependency (Compile-time): Static resources, gathered once during Compile phase
+            // ExecuteOnly (Execute-time): Transient resources, updated every frame
+            const ResourceDescriptor* outputDesc = sourceNodeInst->GetNodeType()->GetOutputDescriptor(sourceSlot.index);
+            if (outputDesc && outputDesc->lifetime == ResourceLifetime::Transient) {
+                tentativeSlot.slotRole = SlotRole::ExecuteOnly;
+                std::cout << "[ConnectVariadic] Detected transient output - marking slot as ExecuteOnly\n";
+            } else {
+                tentativeSlot.slotRole = SlotRole::Dependency;
+                std::cout << "[ConnectVariadic] Marking slot as Dependency (static resource)\n";
+            }
+
             // Register the slot
             variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
 
@@ -609,16 +621,20 @@ public:
                         VariadicSlotInfo updatedSlot = *existingSlot;
                         updatedSlot.resource = sourceRes;
 
+                        // CRITICAL: Update resource type from the actual resource
+                        // The tentative slot may have set this to Unknown if ResourceTypeTraits didn't match
+                        updatedSlot.resourceType = sourceRes->GetType();
+
                         // Update the slot
                         variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
 
-                        // Register resource with dependency tracker for recompile tracking
-                        // This ensures when source node recompiles and creates new resources,
-                        // the gatherer knows to recompile too
-                        graph->RegisterResourceProducer(sourceRes, sourceNodeInst, sourceSlot.index);
+                        // NOTE: We do NOT call RegisterResourceProducer here because variadic field
+                        // extraction doesn't create intermediate Resource objects - it accesses fields
+                        // directly from the source node's output struct via member pointer offset.
+                        // Recompile dependencies are handled by the topology edge we added above.
 
                         std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
-                                  << bindingIndex << " and registered with dependency tracker" << std::endl;
+                                  << bindingIndex << " with type " << static_cast<int>(updatedSlot.resourceType) << std::endl;
                     } else {
                         std::cerr << "[ConnectVariadic PostCompile Hook] ERROR: Could not find slot at binding "
                                   << bindingIndex << std::endl;

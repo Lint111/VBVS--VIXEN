@@ -41,6 +41,7 @@ public:
  * - swapchain: VkSwapchainKHR handle
  * - colorImageViews: Array of swapchain image views
  * - currentImageIndex: Currently acquired image index
+ * - currentFrameImageView: VkImageView for the current frame's swapchain image
  */
 class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:

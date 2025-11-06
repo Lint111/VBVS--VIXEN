@@ -281,6 +281,10 @@ void SwapChainNode::ExecuteImpl(Context& ctx) {
     // Output the acquired image index
     ctx.Out(SwapChainNodeConfig::IMAGE_INDEX, currentImageIndex);
 
+    // Output the current frame's image view
+    VkImageView currentFrameImageView = swapChainWrapper->scPublicVars.colorBuffers[currentImageIndex].view;
+    ctx.Out(SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW, currentFrameImageView);
+
     NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
                   + ", frameIdx=" + std::to_string(currentFrameIndex)
                   + ", acquireSem[" + std::to_string(currentFrameIndex) + "]=0x" + std::to_string(reinterpret_cast<uint64_t>(acquireSemaphore))

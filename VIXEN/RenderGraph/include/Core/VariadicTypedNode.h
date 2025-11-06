@@ -45,6 +45,9 @@ struct VariadicSlotInfo {
     // Field extraction support (for ConnectVariadic with member pointers)
     size_t fieldOffset = 0;                  // Offset of field in struct (0 = no extraction)
     bool hasFieldExtraction = false;         // True if field extraction is needed
+
+    // Slot role tracking (reuses NodeInstance::SlotRole enum)
+    SlotRole slotRole = SlotRole::Dependency;  // Dependency (Compile-time) or ExecuteOnly (transient)
 };
 
 /**

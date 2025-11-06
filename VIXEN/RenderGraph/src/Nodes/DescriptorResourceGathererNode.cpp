@@ -82,8 +82,52 @@ void DescriptorResourceGathererNode::CompileImplVariadic(Context& ctx) {
 }
 
 void DescriptorResourceGathererNode::ExecuteImplVariadic(Context& ctx) {
-    // Resources already gathered during Compile phase
-    // Nothing to do here
+    // Execute phase: Update transient (per-frame) resources only
+    // - Compile phase gathered static resources and validated against shader
+    // - Execute phase refreshes transient resources (like current frame image view)
+    // This separation avoids redundant work while supporting frame-varying data
+
+    size_t variadicCount = ctx.InVariadicCount();
+    bool hasTransients = false;
+
+    for (size_t i = 0; i < variadicCount; ++i) {
+        const auto* slotInfo = ctx.InVariadicSlot(i);
+        if (!slotInfo || !(static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly))) {
+            continue;  // Skip Dependency slots (already gathered in Compile)
+        }
+
+        hasTransients = true;
+
+        // Fetch fresh resource from source node
+        NodeInstance* sourceNodeInst = GetOwningGraph()->GetInstance(slotInfo->sourceNode);
+        if (!sourceNodeInst) {
+            std::cout << "[DescriptorResourceGathererNode::Execute] WARNING: Transient slot " << i
+                      << " has invalid source node\n";
+            continue;
+        }
+
+        Resource* freshResource = sourceNodeInst->GetOutput(slotInfo->sourceOutput, 0);
+        if (!freshResource) {
+            std::cout << "[DescriptorResourceGathererNode::Execute] WARNING: Transient slot " << i
+                      << " source output is null\n";
+            continue;
+        }
+
+        // Update resource array with fresh value
+        uint32_t binding = slotInfo->binding;
+        auto variant = freshResource->GetHandleVariant();
+        resourceArray_[binding] = variant;
+
+        std::cout << "[DescriptorResourceGathererNode::Execute] Updated transient resource at binding "
+                  << binding << " (slot " << i << ")\n";
+    }
+
+    if (hasTransients) {
+        // Re-output updated resource array
+        ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
+        std::cout << "[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with "
+                  << resourceArray_.size() << " entries (transients updated)\n";
+    }
 }
 
 void DescriptorResourceGathererNode::CleanupImplVariadic(Context& ctx) {
@@ -185,6 +229,13 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx, si
         const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
 
         if (!slotInfo) continue;
+
+        // Skip type validation for field extraction - DescriptorSetNode handles per-frame indexing
+        if (slotInfo->hasFieldExtraction) {
+            std::cout << "[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping type validation for field extraction slot "
+                      << i << " (" << slotInfo->slotName << ") - downstream node will handle per-frame extraction\n";
+            continue;
+        }
 
         VkDescriptorType expectedType = slotInfo->descriptorType;
         if (!ValidateResourceType(res, expectedType)) {

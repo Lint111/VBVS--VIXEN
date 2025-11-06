@@ -31,7 +31,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 // Compile-time slot counts (declared early for reuse)
 namespace SwapChainNodeCounts {
     static constexpr size_t INPUTS = 10;  // Phase 0.7: Added PRESENT_FENCES_ARRAY
-    static constexpr size_t OUTPUTS = 3;  // Phase 0.5: Removed single semaphore outputs (use arrays from FrameSyncNode)
+    static constexpr size_t OUTPUTS = 4;  // Phase 0.8: Added CURRENT_FRAME_IMAGE_VIEW
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -103,7 +103,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (3) =====
+    // ===== OUTPUTS (4) =====
     OUTPUT_SLOT(SWAPCHAIN_HANDLE, VkSwapchainKHR, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
@@ -113,6 +113,10 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::WriteOnly);
 
     OUTPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(CURRENT_FRAME_IMAGE_VIEW, VkImageView, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -177,6 +181,12 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
             ResourceLifetime::Transient,
             BufferDescription{}  // uint32_t current image index
         );
+
+        HandleDescriptor imageViewDesc{"VkImageView"};
+        INIT_OUTPUT_DESC(CURRENT_FRAME_IMAGE_VIEW, "current_frame_image_view",
+            ResourceLifetime::Transient,
+            imageViewDesc  // VkImageView for current frame's swapchain image
+        );
     }
 
     // Compile-time validations
@@ -223,6 +233,9 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(IMAGE_INDEX_Slot::index == 2, "IMAGE_INDEX must be at index 2");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
 
+    static_assert(CURRENT_FRAME_IMAGE_VIEW_Slot::index == 3, "CURRENT_FRAME_IMAGE_VIEW must be at index 3");
+    static_assert(!CURRENT_FRAME_IMAGE_VIEW_Slot::nullable, "CURRENT_FRAME_IMAGE_VIEW is required");
+
     // Type validations
     static_assert(std::is_same_v<HWND_Slot::Type, ::HWND>);
     static_assert(std::is_same_v<HINSTANCE_Slot::Type, ::HINSTANCE>);
@@ -238,6 +251,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
+    static_assert(std::is_same_v<CURRENT_FRAME_IMAGE_VIEW_Slot::Type, VkImageView>);
 };
 
 // Global compile-time validations
