@@ -359,15 +359,16 @@ public:
     }
 
     /**
-     * @brief Final cleanup method with double-cleanup protection
+     * @brief Cleanup method with double-cleanup protection
      *
      * This is the public interface for cleanup. It ensures CleanupImpl()
      * is only called once, even if Cleanup() is called multiple times
      * (e.g., from CleanupStack and from destructor).
      *
-     * Derived classes should override CleanupImpl(), NOT this method.
+     * Derived classes (like TypedNode) can override this method to implement
+     * task-based cleanup, following the same pattern as Execute().
      */
-    virtual void Cleanup() final {
+    virtual void Cleanup() {
         if (cleanedUp) {
             return;  // Already cleaned up
         }

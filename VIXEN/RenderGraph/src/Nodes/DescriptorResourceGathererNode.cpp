@@ -235,36 +235,36 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
 
         // Handle field extraction from struct
         if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
-            // Generic field extraction - works with any struct pointer type
+            // Generic field extraction - works with any struct pointer type (raw or smart)
             // Apply offset to extract field from struct without needing to know types
             std::visit([&](auto&& structPtr) {
                 using T = std::decay_t<decltype(structPtr)>;
 
-                // Check if this is a pointer type
+                // Get raw pointer - works with both raw pointers and smart pointers
+                void* rawPtr = nullptr;
                 if constexpr (std::is_pointer_v<T>) {
-                    if (structPtr) {
-                        // Apply offset to get field pointer - completely generic
-                        auto* structBase = reinterpret_cast<char*>(structPtr);
-                        auto* fieldPtr = structBase + slotInfo->fieldOffset;
+                    rawPtr = structPtr;
+                } else if constexpr (requires { structPtr.get(); }) {
+                    // Smart pointer (std::shared_ptr, std::unique_ptr)
+                    rawPtr = structPtr.get();
+                }
 
-                        // Reinterpret as pointer to the expected field type
-                        // The extracted field is stored as a ResourceVariant in the vector
-                        auto* extractedField = reinterpret_cast<std::vector<SwapChainBuffer>*>(fieldPtr);
+                if (rawPtr) {
+                    // Apply offset to get field pointer - completely type-agnostic
+                    auto* structBase = reinterpret_cast<char*>(rawPtr);
+                    void* fieldPtr = structBase + slotInfo->fieldOffset;
 
-                        std::cout << "[DescriptorResourceGathererNode::GatherResources] Extracted field at offset "
-                                  << slotInfo->fieldOffset << " from struct\n";
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] Extracted field at offset "
+                              << slotInfo->fieldOffset << " from struct (pointer=" << fieldPtr << ")\n";
 
-                        // Store extracted field as ResourceVariant by wrapping the pointer
-                        // This creates a ResourceVariant containing the vector pointer
-                        resourceArray_[binding] = ResourceVariant{extractedField};
+                    // Store the field pointer as a void* in ResourceVariant
+                    // The downstream node (DescriptorSetNode) knows the actual type and will cast appropriately
+                    resourceArray_[binding] = fieldPtr;
 
-                        std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered extracted field for binding "
-                                  << binding << " (" << slotInfo->slotName << ")\n";
-                    } else {
-                        std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer for field extraction\n";
-                    }
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered field pointer for binding "
+                              << binding << " (" << slotInfo->slotName << ")\n";
                 } else {
-                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Field extraction requested but variant does not hold a pointer\n";
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer for field extraction\n";
                 }
             }, variant);
         }

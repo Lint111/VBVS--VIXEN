@@ -352,7 +352,7 @@ public:
      * @brief Cleanup override - creates Context for cleanup phase
      *
      * Phase F: Executes cleanup for each task that was created during execution.
-     * Follows the same pattern as Execute() but runs in reverse order.
+     * Follows the exact same pattern as Execute() for consistency.
      */
     void Cleanup() override final {
         if (cleanedUp) {
@@ -476,16 +476,6 @@ protected:
     void ExecuteImpl(uint32_t taskIndex) final override {
         // Should never be called - Execute() above creates Context instead
         // This is here only to satisfy NodeInstance pure virtual requirement
-    }
-
-    /**
-     * @brief Hide base class CleanupImpl() - not used in TypedNode
-     *
-     * Cleanup() override above handles task-based cleanup with Context.
-     */
-    void CleanupImpl() final override {
-        // Should never be called - Cleanup() above creates Context instead
-        // This is here only to satisfy NodeInstance virtual requirement
     }
 
 public:
