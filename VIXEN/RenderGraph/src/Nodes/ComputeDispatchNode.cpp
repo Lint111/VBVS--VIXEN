@@ -36,15 +36,8 @@ ComputeDispatchNode::ComputeDispatchNode(
 // ============================================================================
 
 void ComputeDispatchNode::SetupImpl(Context& ctx) {
-    std::cout << "[ComputeDispatchNode::SetupImpl] Setting device" << std::endl;
-
-    VulkanDevicePtr devicePtr = In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
-    if (!devicePtr) {
-        throw std::runtime_error("[ComputeDispatchNode::SetupImpl] Vulkan device input is null");
-    }
-
-    SetDevice(devicePtr);
-    vulkanDevice = devicePtr;
+    // Graph-scope initialization only (no input access)
+    std::cout << "[ComputeDispatchNode::SetupImpl] Graph-scope initialization" << std::endl;
 
 #if VIXEN_DEBUG_BUILD
     // Create specialized performance logger and register to node logger
@@ -61,6 +54,15 @@ void ComputeDispatchNode::SetupImpl(Context& ctx) {
 
 void ComputeDispatchNode::CompileImpl(Context& ctx) {
     std::cout << "[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers" << std::endl;
+
+    // Access device input (compile-time dependency)
+    VulkanDevicePtr devicePtr = In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
+    if (!devicePtr) {
+        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Vulkan device input is null");
+    }
+
+    SetDevice(devicePtr);
+    vulkanDevice = devicePtr;
 
     // Get inputs
     commandPool = In(ComputeDispatchNodeConfig::COMMAND_POOL);

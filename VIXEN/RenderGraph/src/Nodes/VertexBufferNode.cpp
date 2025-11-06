@@ -27,7 +27,14 @@ VertexBufferNode::VertexBufferNode(
 }
 
 void VertexBufferNode::SetupImpl(Context& ctx) {
-    // Read and validate device input
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("VertexBufferNode: Setup (graph-scope initialization)");
+}
+
+void VertexBufferNode::CompileImpl(Context& ctx) {
+    NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
+
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
@@ -35,12 +42,6 @@ void VertexBufferNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-
-    NODE_LOG_INFO("Setup: Vertex buffer node ready");
-}
-
-void VertexBufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Get typed parameters
     vertexCount = GetParameterValue<uint32_t>(

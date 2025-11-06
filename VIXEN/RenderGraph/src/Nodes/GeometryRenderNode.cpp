@@ -36,7 +36,12 @@ GeometryRenderNode::GeometryRenderNode(
 }
 
 void GeometryRenderNode::SetupImpl(Context& ctx) {
-    // Get device and command pool from inputs
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("GeometryRenderNode: Setup (graph-scope initialization)");
+}
+
+void GeometryRenderNode::CompileImpl(Context& ctx) {
+    // Access device and command pool inputs (compile-time dependencies)
     vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
         throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
@@ -46,9 +51,7 @@ void GeometryRenderNode::SetupImpl(Context& ctx) {
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("GeometryRenderNode: CommandPool input is null");
     }
-}
 
-void GeometryRenderNode::CompileImpl(Context& ctx) {
     // Get parameters
     vertexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::VERTEX_COUNT, 0);
     instanceCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INSTANCE_COUNT, 1);

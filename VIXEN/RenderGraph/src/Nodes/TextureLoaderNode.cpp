@@ -30,7 +30,12 @@ TextureLoaderNode::TextureLoaderNode(
 }
 
 void TextureLoaderNode::SetupImpl(Context& ctx) {
-    // Read and validate device input
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("TextureLoaderNode: Setup (graph-scope initialization)");
+}
+
+void TextureLoaderNode::CompileImpl(Context& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
@@ -39,10 +44,6 @@ void TextureLoaderNode::SetupImpl(Context& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // Note: TextureCacher handles command pool and texture loading internally
-}
-
-void TextureLoaderNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
