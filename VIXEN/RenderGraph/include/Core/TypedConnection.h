@@ -345,6 +345,10 @@ public:
      * Throws if any connection is invalid.
      */
     void RegisterAll() {
+        std::cout << "[ConnectionBatch::RegisterAll] Registering " << connections.size()
+                  << " connections, " << constantConnections.size() << " constants, "
+                  << variadicConnections.size() << " variadic connections\n";
+
         // First, register node-to-node connections
         for (const auto& conn : connections) {
             ValidateConnection(conn);
@@ -367,10 +371,13 @@ public:
         constantConnections.clear();
 
         // Finally, apply variadic connections
-        for (auto& variadicConn : variadicConnections) {
-            variadicConn(); // Execute the lambda that adds variadic input
+        std::cout << "[ConnectionBatch::RegisterAll] Executing " << variadicConnections.size() << " variadic lambdas...\n";
+        for (size_t i = 0; i < variadicConnections.size(); ++i) {
+            std::cout << "[ConnectionBatch::RegisterAll] Executing variadic lambda " << i << "\n";
+            variadicConnections[i](); // Execute the lambda that adds variadic input
         }
         variadicConnections.clear();
+        std::cout << "[ConnectionBatch::RegisterAll] Complete\n";
     }
 
 

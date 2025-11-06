@@ -29,14 +29,14 @@ DescriptorResourceGathererNode::DescriptorResourceGathererNode(
 // GraphCompileSetup removed - cannot access connected inputs during this phase
 // Descriptor discovery happens in SetupImpl via DiscoverDescriptors(ctx)
 
-void DescriptorResourceGathererNode::SetupImpl(Context& ctx) {
+void DescriptorResourceGathererNode::SetupImplVariadic(Context& ctx) {
     std::cout << "[DescriptorResourceGathererNode::Setup] Node initialization (no data access)\n";
     // Phase C: Setup is now node initialization only
     // No input data access, no slot discovery
     // Tentative slots already created by ConnectVariadic
 }
 
-void DescriptorResourceGathererNode::CompileImpl(Context& ctx) {
+void DescriptorResourceGathererNode::CompileImplVariadic(Context& ctx) {
     std::cout << "[DescriptorResourceGathererNode::Compile] START - Validating tentative slots against shader metadata...\n";
     std::cout << "[DescriptorResourceGathererNode::Compile] Current variadic input count: " << GetVariadicInputCount() << "\n";
 

@@ -391,6 +391,9 @@ void RenderGraph::Compile() {
         throw std::runtime_error("Graph validation failed: " + errorMessage);
     }
 
+    // Hook: PreTopologyBuild
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PreTopologyBuild, this);
+
     // Phase 1: Propagate device affinity
     // PropagateDeviceAffinity();  // Removed - single device system
 
@@ -398,9 +401,21 @@ void RenderGraph::Compile() {
     std::cout << "[RenderGraph::Compile] Phase: AnalyzeDependencies..." << std::endl;
     AnalyzeDependencies();
 
+    // Hook: PostTopologyBuild
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostTopologyBuild, this);
+
+    // Hook: PreExecutionOrder
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PreExecutionOrder, this);
+
     // Phase 3: Allocate resources
     std::cout << "[RenderGraph::Compile] Phase: AllocateResources..." << std::endl;
     AllocateResources();
+
+    // Hook: PostExecutionOrder (after resource allocation, before compilation)
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostExecutionOrder, this);
+
+    // Hook: PreCompilation
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PreCompilation, this);
 
     // Phase 4: Generate pipelines
     std::cout << "[RenderGraph::Compile] Phase: GeneratePipelines..." << std::endl;
@@ -409,6 +424,9 @@ void RenderGraph::Compile() {
     // Phase 5: Build final execution order
     std::cout << "[RenderGraph::Compile] Phase: BuildExecutionOrder..." << std::endl;
     BuildExecutionOrder();
+
+    // Hook: PostCompilation
+    lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostCompilation, this);
 
     std::cout << "[RenderGraph::Compile] Compilation complete!" << std::endl;
     isCompiled = true;

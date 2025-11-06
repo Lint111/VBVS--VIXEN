@@ -15,6 +15,7 @@
 #include "Time/EngineTime.h"
 #include "CashSystem/MainCacher.h"
 #include "LoopManager.h"
+#include "GraphLifecycleHooks.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -398,7 +399,15 @@ public:
      */
     bool Validate(std::string& errorMessage) const;
 
-    
+    // ====== Lifecycle Hooks ======
+
+    /**
+     * @brief Get the lifecycle hooks manager
+     */
+    GraphLifecycleHooks& GetLifecycleHooks() { return lifecycleHooks; }
+    const GraphLifecycleHooks& GetLifecycleHooks() const { return lifecycleHooks; }
+
+
 private:
     // Core components
     NodeTypeRegistry* typeRegistry;
@@ -456,6 +465,9 @@ private:
 
     // Phase F: Resource budget manager (optional)
     std::unique_ptr<ResourceBudgetManager> budgetManager;
+
+    // Lifecycle hook system
+    GraphLifecycleHooks lifecycleHooks;
 
     // Compilation phases
     void AnalyzeDependencies();

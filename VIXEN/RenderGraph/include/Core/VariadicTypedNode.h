@@ -488,6 +488,40 @@ protected:
     }
 
     /**
+     * @brief Default SetupImpl override to satisfy TypedNode
+     *
+     * Creates VariadicTypedNode::Context and forwards to SetupImplVariadic.
+     */
+    void SetupImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+        Context ctx(this, baseCtx.taskIndex);
+        SetupImplVariadic(ctx);
+    }
+
+    /**
+     * @brief SetupImpl with variadic-extended Context - override in derived classes
+     *
+     * @param ctx Extended context with InVariadic/OutVariadic support
+     */
+    virtual void SetupImplVariadic(Context& ctx) {}
+
+    /**
+     * @brief Default CompileImpl override to satisfy TypedNode
+     *
+     * Creates VariadicTypedNode::Context and forwards to CompileImplVariadic.
+     */
+    void CompileImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+        Context ctx(this, baseCtx.taskIndex);
+        CompileImplVariadic(ctx);
+    }
+
+    /**
+     * @brief CompileImpl with variadic-extended Context - override in derived classes
+     *
+     * @param ctx Extended context with InVariadic/OutVariadic support
+     */
+    virtual void CompileImplVariadic(Context& ctx) {}
+
+    /**
      * @brief Default ExecuteImpl override to satisfy TypedNode pure virtual
      *
      * Derived classes must override ExecuteImplVariadic() instead.

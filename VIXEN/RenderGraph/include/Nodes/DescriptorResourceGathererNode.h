@@ -77,10 +77,9 @@ public:
     // when connected inputs are available via Context
 
 protected:
-    // Template method pattern - these hide (not override) base class methods
-    // due to different Context type (VariadicTypedNode::Context vs TypedNode::Context)
-    void SetupImpl(Context& ctx);
-    void CompileImpl(Context& ctx);
+    // Variadic lifecycle overrides with extended Context support
+    void SetupImplVariadic(Context& ctx) override;
+    void CompileImplVariadic(Context& ctx) override;
     void ExecuteImplVariadic(Context& ctx) override;
     void CleanupImplVariadic(Context& ctx) override;
 
