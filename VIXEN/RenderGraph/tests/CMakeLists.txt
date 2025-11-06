@@ -102,6 +102,20 @@ include(test_resource_dependency_tracker.cmake)
 include(test_per_frame_resources.cmake)
 
 # ===========================================================================
+# Critical Nodes Tests (Priority 3)
+# ===========================================================================
+# These test suites validate critical infrastructure and synchronization nodes:
+# - DeviceNode: Vulkan device initialization
+# - WindowNode: Window and surface creation
+# - CommandPoolNode: Command buffer management
+# - SwapChainNode: Swapchain and presentation
+# - FrameSyncNode: Frame synchronization primitives
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full Vulkan SDK.
+
+include(test_critical_nodes.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):
