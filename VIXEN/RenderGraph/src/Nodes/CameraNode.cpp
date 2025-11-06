@@ -68,72 +68,17 @@ void CameraNode::CompileImpl(Context& ctx) {
     uint32_t imageCount = swapchainInfo->swapChainImageCount;
     NODE_LOG_INFO("Creating " + std::to_string(imageCount) + " camera UBOs");
 
-    // Create per-frame uniform buffers
-    uniformBuffers.resize(imageCount);
-    uniformMemories.resize(imageCount);
-    mappedData.resize(imageCount);
+    // Initialize per-frame resources
+    perFrameResources.Initialize(vulkanDevice, imageCount);
 
     VkDeviceSize bufferSize = sizeof(CameraData);
 
     for (uint32_t i = 0; i < imageCount; ++i) {
-        // Create buffer
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VkResult result = vkCreateBuffer(vulkanDevice->device, &bufferInfo, nullptr, &uniformBuffers[i]);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[CameraNode] Failed to create uniform buffer: " + std::to_string(result));
-        }
-
-        // Allocate memory
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(vulkanDevice->device, uniformBuffers[i], &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-
-        // Find host-visible, host-coherent memory type
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(vulkanDevice->physicalDevice, &memProperties);
-
-        uint32_t memoryTypeIndex = UINT32_MAX;
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-        for (uint32_t j = 0; j < memProperties.memoryTypeCount; ++j) {
-            if ((memRequirements.memoryTypeBits & (1 << j)) &&
-                (memProperties.memoryTypes[j].propertyFlags & properties) == properties) {
-                memoryTypeIndex = j;
-                break;
-            }
-        }
-
-        if (memoryTypeIndex == UINT32_MAX) {
-            throw std::runtime_error("[CameraNode] Failed to find suitable memory type");
-        }
-
-        allocInfo.memoryTypeIndex = memoryTypeIndex;
-
-        result = vkAllocateMemory(vulkanDevice->device, &allocInfo, nullptr, &uniformMemories[i]);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[CameraNode] Failed to allocate uniform buffer memory: " + std::to_string(result));
-        }
-
-        // Bind memory to buffer
-        vkBindBufferMemory(vulkanDevice->device, uniformBuffers[i], uniformMemories[i], 0);
-
-        // Map memory (persistent mapping)
-        result = vkMapMemory(vulkanDevice->device, uniformMemories[i], 0, bufferSize, 0, &mappedData[i]);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("[CameraNode] Failed to map uniform buffer memory: " + std::to_string(result));
-        }
+        perFrameResources.CreateUniformBuffer(i, bufferSize);
     }
 
     // Output the first buffer (descriptor set will index into array)
-    Out(CameraNodeConfig::CAMERA_BUFFER, uniformBuffers[0]);
+    Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(0));
     Out(CameraNodeConfig::CAMERA_BUFFER_SIZE, static_cast<uint64_t>(bufferSize));
 
     NODE_LOG_INFO("Created " + std::to_string(imageCount) + " camera UBOs successfully");
@@ -149,18 +94,19 @@ void CameraNode::ExecuteImpl(Context& ctx) {
         return;
     }
 
-    float aspectRatio = static_cast<float>(swapchainInfo->swapChainExtent.width) /
-                        static_cast<float>(swapchainInfo->swapChainExtent.height);
+    float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
+                        static_cast<float>(swapchainInfo->Extent.height);
 
     // Update camera matrices for this frame
     UpdateCameraMatrices(0, imageIndex, aspectRatio);
 
     // Output the buffer for this frame
-    Out(CameraNodeConfig::CAMERA_BUFFER, uniformBuffers[imageIndex]);
+    Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(imageIndex));
 }
 
 void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio) {
-    if (imageIndex >= uniformBuffers.size() || !mappedData[imageIndex]) {
+    void* mappedPtr = perFrameResources.GetUniformBufferMapped(imageIndex);
+    if (!mappedPtr) {
         return;
     }
 
@@ -193,7 +139,7 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     cameraData.cameraPos = cameraPosition;
     cameraData.gridResolution = gridResolution;
 
-    std::memcpy(mappedData[imageIndex], &cameraData, sizeof(CameraData));
+    std::memcpy(mappedPtr, &cameraData, sizeof(CameraData));
 }
 
 void CameraNode::CleanupImpl() {
@@ -206,27 +152,8 @@ void CameraNode::CleanupImpl() {
     // Wait for device idle before cleanup
     vkDeviceWaitIdle(vulkanDevice->device);
 
-    // Unmap and destroy buffers
-    for (size_t i = 0; i < uniformBuffers.size(); ++i) {
-        if (mappedData[i]) {
-            vkUnmapMemory(vulkanDevice->device, uniformMemories[i]);
-            mappedData[i] = nullptr;
-        }
-
-        if (uniformBuffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(vulkanDevice->device, uniformBuffers[i], nullptr);
-            uniformBuffers[i] = VK_NULL_HANDLE;
-        }
-
-        if (uniformMemories[i] != VK_NULL_HANDLE) {
-            vkFreeMemory(vulkanDevice->device, uniformMemories[i], nullptr);
-            uniformMemories[i] = VK_NULL_HANDLE;
-        }
-    }
-
-    uniformBuffers.clear();
-    uniformMemories.clear();
-    mappedData.clear();
+    // Cleanup per-frame resources
+    perFrameResources.Cleanup();
 }
 
 } // namespace Vixen::RenderGraph

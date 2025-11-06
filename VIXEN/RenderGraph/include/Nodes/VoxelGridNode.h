@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
 #include <memory>
 #include <vector>

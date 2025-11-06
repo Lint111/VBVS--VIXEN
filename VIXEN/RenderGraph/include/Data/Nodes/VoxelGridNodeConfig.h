@@ -67,20 +67,18 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
 
         // Initialize output descriptors
-        ImageDescriptor voxelImageDesc{};
+        Texture3DDescriptor voxelImageDesc{};
         voxelImageDesc.format = VK_FORMAT_R8_UNORM;
-        voxelImageDesc.imageType = VK_IMAGE_TYPE_3D;
+        voxelImageDesc.width = 128;
+        voxelImageDesc.height = 128;
+        voxelImageDesc.depth = 128;
         voxelImageDesc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         INIT_OUTPUT_DESC(VOXEL_IMAGE, "voxel_image", ResourceLifetime::Persistent, voxelImageDesc);
 
-        ImageViewDescriptor imageViewDesc{};
-        imageViewDesc.format = VK_FORMAT_R8_UNORM;
-        imageViewDesc.viewType = VK_IMAGE_VIEW_TYPE_3D;
+        HandleDescriptor imageViewDesc{"VkImageView"};
         INIT_OUTPUT_DESC(VOXEL_IMAGE_VIEW, "voxel_image_view", ResourceLifetime::Persistent, imageViewDesc);
 
-        SamplerDescriptor samplerDesc{};
-        samplerDesc.magFilter = VK_FILTER_LINEAR;
-        samplerDesc.minFilter = VK_FILTER_LINEAR;
+        HandleDescriptor samplerDesc{"VkSampler"};
         INIT_OUTPUT_DESC(VOXEL_SAMPLER, "voxel_sampler", ResourceLifetime::Persistent, samplerDesc);
     }
 

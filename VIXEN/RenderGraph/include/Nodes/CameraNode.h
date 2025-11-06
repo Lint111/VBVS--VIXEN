@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/NodeLogging.h"
 #include "Data/Nodes/CameraNodeConfig.h"
 #include "Core/PerFrameResources.h"
 #include <glm/glm.hpp>
@@ -74,10 +75,8 @@ private:
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
 
-    // Per-frame uniform buffers (ring buffer for frames in flight)
-    PerFrameResources<VkBuffer> uniformBuffers;
-    PerFrameResources<VkDeviceMemory> uniformMemories;
-    PerFrameResources<void*> mappedData;
+    // Per-frame uniform buffers using PerFrameResources helper
+    PerFrameResources perFrameResources;
 
     // Camera state
     glm::vec3 cameraPosition{0.0f, 0.0f, 3.0f};

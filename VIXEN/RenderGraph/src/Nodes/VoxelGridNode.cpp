@@ -90,9 +90,8 @@ void VoxelGridNode::CompileImpl(Context& ctx) {
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
 
-    // Find device-local memory
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(vulkanDevice->physicalDevice, &memProperties);
+    // Use cached memory properties from VulkanDevice
+    const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
 
     uint32_t memoryTypeIndex = UINT32_MAX;
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
@@ -215,8 +214,8 @@ void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
 
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(vulkanDevice->physicalDevice, &memProperties);
+    // Use cached memory properties from VulkanDevice
+    const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
 
     uint32_t memoryTypeIndex = UINT32_MAX;
     VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -333,8 +332,8 @@ void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmdBuffer;
 
-    vkQueueSubmit(vulkanDevice->graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(vulkanDevice->graphicsQueue);
+    vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vulkanDevice->queue);
 
     // Cleanup staging resources
     vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);

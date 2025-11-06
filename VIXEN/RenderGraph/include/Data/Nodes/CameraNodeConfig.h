@@ -44,7 +44,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotNullability::Required,
         SlotRole::ExecuteOnly,
         SlotMutability::ReadOnly,
-        SlotScope::PerExecution);
+        SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(CAMERA_BUFFER, VkBuffer, 0,
@@ -78,16 +78,16 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
         INIT_INPUT_DESC(SWAPCHAIN_PUBLIC, "swapchain_public", ResourceLifetime::Persistent, swapchainDesc);
 
-        PrimitiveDescriptor imageIndexDesc{};
+        HandleDescriptor imageIndexDesc{"uint32_t"};
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, imageIndexDesc);
 
         // Initialize output descriptors
         BufferDescriptor cameraBufferDesc{};
         cameraBufferDesc.size = 144;  // sizeof(CameraData)
-        cameraBufferDesc.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        cameraBufferDesc.usage = ResourceUsage::UniformBuffer;
         INIT_OUTPUT_DESC(CAMERA_BUFFER, "camera_buffer", ResourceLifetime::Persistent, cameraBufferDesc);
 
-        PrimitiveDescriptor sizeDesc{};
+        HandleDescriptor sizeDesc{"uint64_t"};
         INIT_OUTPUT_DESC(CAMERA_BUFFER_SIZE, "camera_buffer_size", ResourceLifetime::Persistent, sizeDesc);
     }
 
