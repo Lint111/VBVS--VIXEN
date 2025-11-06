@@ -92,10 +92,14 @@ include(test_graph_topology.cmake)
 # These test suites validate core infrastructure classes:
 # - Timer: High-resolution delta time measurement
 # - LoopManager: Fixed timestep accumulator with catchup modes
+# - ResourceDependencyTracker: Resource-to-producer mapping and dependency tracking
+# - PerFrameResources: Ring buffer pattern for per-frame GPU resources
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
 include(test_timer.cmake)
 include(test_loop_manager.cmake)
+include(test_resource_dependency_tracker.cmake)
+include(test_per_frame_resources.cmake)
 
 # ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
