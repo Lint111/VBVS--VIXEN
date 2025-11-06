@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/RenderGraph.h"
+#include "Core/GraphLifecycleHooks.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
@@ -510,44 +511,15 @@ public:
         BindingRefType bindingRef,
         FieldType StructType::* memberPtr  // Member pointer for field extraction
     ) {
-        std::cout << "[ConnectVariadic] Registering field extraction callback for binding "
+        std::cout << "[ConnectVariadic] Storing field extraction lambda for PostSetup execution at binding "
                   << bindingRef.binding << std::endl;
 
-        // Register callback with graph to execute after source node compiles
-        graph->RegisterPostNodeCompileCallback([=](NodeInstance* compiledNode) {
-            // Only execute if this is the source node we're waiting for
-            auto* srcNode = graph->GetInstance(sourceNode);
-            if (compiledNode != srcNode) {
-                return;  // Not the node we're waiting for
-            }
-            std::cout << "[ConnectVariadic] Creating tentative slot with field extraction for binding "
+        // Store lambda in variadicConnections to be executed during RegisterAll (before compilation)
+        variadicConnections.push_back([=]() {
+            std::cout << "[ConnectVariadic] Executing field extraction lambda - creating tentative slot at binding "
                       << bindingRef.binding << std::endl;
 
-            // Get the variadic node instance
-            NodeInstance* node = graph->GetInstance(variadicNode);
-            if (!node) {
-                throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
-            }
-
-            // Cast to VariadicTypedNode
-            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
-            if (!variadicNodePtr) {
-                throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
-            }
-
-            // Get source node
-            NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
-            if (!sourceNodeInst) {
-                throw std::runtime_error("ConnectVariadic: Invalid source node handle");
-            }
-
-            // Get source resource (should be a struct)
-            Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
-            if (!sourceRes) {
-                throw std::runtime_error("ConnectVariadic: Source output not found");
-            }
-
-            // Validate struct type matches (handle both pointer and non-pointer types)
+            // Validate types at compile-time
             using SourceType = typename SourceSlot::Type;
             using SourceBaseType = std::remove_pointer_t<SourceType>;
             static_assert(std::is_same_v<SourceBaseType, StructType> ||
@@ -556,57 +528,91 @@ public:
                          std::is_base_of_v<StructType, SourceType>,
                 "Source slot type must match or derive from struct type in member pointer");
 
-            // Get the struct instance from the resource (handle both pointer and non-pointer types)
-            StructType* structPtr = nullptr;
-            if constexpr (std::is_pointer_v<SourceType>) {
-                // Source is a pointer type - GetHandle returns the pointer value directly
-                structPtr = sourceRes->GetHandle<SourceType>();
-            } else {
-                // Source is a value type - get pointer to it
-                structPtr = sourceRes->GetHandle<StructType*>();
+            // Get node instances
+            NodeInstance* node = graph->GetInstance(variadicNode);
+            if (!node) {
+                throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
             }
 
-            if (!structPtr) {
-                throw std::runtime_error("ConnectVariadic: Failed to get struct from source resource");
+            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            if (!variadicNodePtr) {
+                throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
             }
 
-            // Extract the field using member pointer (for validation and offset calculation)
-            FieldType& extractedField = structPtr->*memberPtr;
+            NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
+            if (!sourceNodeInst) {
+                throw std::runtime_error("ConnectVariadic: Invalid source node handle");
+            }
 
-            // Note: We don't create a temporary resource here - field extraction happens at Execute time
-            // The tentative slot stores the source resource and field offset for runtime extraction
+            // Calculate member pointer offset (doesn't require resource to exist)
+            size_t fieldOffset = reinterpret_cast<size_t>(
+                &(static_cast<StructType*>(nullptr)->*memberPtr));
+
+            // Type information for the extracted field
             using FieldResourceType = std::remove_reference_t<FieldType>;
-
-            // Extract binding index
             uint32_t bindingIndex = bindingRef.binding;
             size_t bundleIndex = 0;
 
-            // Create tentative slot with field extraction metadata
+            // Create tentative slot WITHOUT accessing the actual resource
+            // The resource will be available after source node's Setup completes
             VariadicSlotInfo tentativeSlot;
-            tentativeSlot.resource = sourceRes;  // Store original struct resource
-            tentativeSlot.resourceType = ResourceTypeTraits<FieldResourceType>::resourceType;  // Type of extracted field
+            tentativeSlot.resource = nullptr;  // Will be set in PostSetup hook
+            tentativeSlot.resourceType = ResourceTypeTraits<FieldResourceType>::resourceType;
             tentativeSlot.slotName = bindingRef.name;
             tentativeSlot.binding = bindingIndex;
             tentativeSlot.descriptorType = bindingRef.type;
             tentativeSlot.state = SlotState::Tentative;
             tentativeSlot.sourceNode = sourceNode;
             tentativeSlot.sourceOutput = sourceSlot.index;
-            // Store member pointer offset for runtime extraction
-            tentativeSlot.fieldOffset = reinterpret_cast<size_t>(
-                &(static_cast<StructType*>(nullptr)->*memberPtr));
+            tentativeSlot.fieldOffset = fieldOffset;
             tentativeSlot.hasFieldExtraction = true;
 
-            // Update/create slot
+            // Register the slot
             variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
 
             // Register dependency
-            std::cout << "[ConnectVariadic] Adding dependency with field extraction: "
-                      << node->GetInstanceName() << " -> " << sourceNodeInst->GetInstanceName()
-                      << " (extracting field at offset " << tentativeSlot.fieldOffset << ")" << std::endl;
             node->AddDependency(sourceNodeInst);
 
+            // Register PostSetup hook to populate resource pointer after source node sets up its outputs
+            graph->GetLifecycleHooks().RegisterNodeHook(
+                NodeLifecyclePhase::PostSetup,
+                [=](NodeInstance* setupNode) {
+                    // Only execute for the source node
+                    if (setupNode != sourceNodeInst) {
+                        return;
+                    }
+
+                    std::cout << "[ConnectVariadic PostSetup Hook] Populating resource for binding "
+                              << bindingIndex << std::endl;
+
+                    // Get the source resource (now available after Setup)
+                    Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
+                    if (!sourceRes) {
+                        throw std::runtime_error("ConnectVariadic: Source output not found after Setup");
+                    }
+
+                    // Get the existing slot info and update its resource pointer
+                    const VariadicSlotInfo* existingSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (existingSlot) {
+                        // Create updated slot with resource populated
+                        VariadicSlotInfo updatedSlot = *existingSlot;
+                        updatedSlot.resource = sourceRes;
+
+                        // Update the slot
+                        variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
+
+                        std::cout << "[ConnectVariadic PostSetup Hook] Resource populated for binding "
+                                  << bindingIndex << std::endl;
+                    } else {
+                        std::cerr << "[ConnectVariadic PostSetup Hook] ERROR: Could not find slot at binding "
+                                  << bindingIndex << std::endl;
+                    }
+                },
+                "ConnectVariadic field extraction resource population"
+            );
+
             std::cout << "[ConnectVariadic] Created tentative slot with field extraction at binding "
-                      << bindingIndex << std::endl;
+                      << bindingIndex << " (resource will be populated in PostSetup)" << std::endl;
         });
 
         return *this;

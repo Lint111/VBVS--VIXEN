@@ -1,6 +1,7 @@
 #include "Core/NodeInstance.h"
 #include "Core/RenderGraph.h"
 #include "Core/ResourceDependencyTracker.h"
+#include "Core/GraphLifecycleHooks.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
@@ -246,6 +247,16 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
     }
 }
 #endif
+
+void NodeInstance::ExecuteNodeHook(NodeLifecyclePhase phase) {
+    if (!owningGraph) {
+        std::cout << "[NodeInstance::ExecuteNodeHook] WARNING: No owning graph for node: "
+                  << GetInstanceName() << std::endl;
+        return; // No graph - can't execute hooks
+    }
+
+    owningGraph->GetLifecycleHooks().ExecuteNodeHooks(phase, this);
+}
 
 void NodeInstance::RegisterCleanup() {
     if (!owningGraph) {

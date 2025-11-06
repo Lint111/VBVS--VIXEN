@@ -8,6 +8,7 @@
 #include "INodeWiring.h"
 #include "SlotTask.h"
 #include "ResourceBudgetManager.h"
+#include "GraphLifecycleHooks.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -301,26 +302,36 @@ public:
      *
      * Automatically handles:
      * - Reset compile-time input tracking
+     * - Execute PreSetup hooks
      * - Calls SetupImpl() for derived class logic
+     * - Execute PostSetup hooks
      *
      * Derived classes should override SetupImpl(), NOT this method.
      */
     virtual void Setup() {
         ResetInputsUsedInCompile();
+        std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
+        ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
         SetupImpl();
+        std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
+        ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
     }
 
     /**
      * @brief Compile lifecycle method with automatic cleanup registration
      *
      * Automatically handles:
+     * - Execute PreCompile hooks
      * - Calls CompileImpl() for derived class logic
+     * - Execute PostCompile hooks
      * - Registers node in CleanupStack (prevents forgetting RegisterCleanup())
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
     virtual void Compile() {
+        ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
         CompileImpl();
+        ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
         RegisterCleanup();
     }
 
@@ -328,20 +339,25 @@ public:
      * @brief Execute lifecycle method with automatic task orchestration
      *
      * Automatically handles:
+     * - Execute PreExecute hooks
      * - Analyzes slot configuration to determine task count
      * - Generates tasks based on SlotScope and array sizes
      * - Sets up task-local In()/Out() context for each task
      * - Calls ExecuteImpl() for each task with pre-bound slot access
      * - Node implementations use In()/Out() without knowing about indices
+     * - Execute PostExecute hooks
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
     virtual void Execute() {
+        ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
+
         // Analyze slot configuration to determine task generation strategy
         uint32_t taskCount = DetermineTaskCount();
 
         if (taskCount == 0) {
             // No tasks to execute (e.g., no inputs connected)
+            ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
             return;
         }
 
@@ -356,6 +372,8 @@ public:
 
         // Reset task index after execution
         currentTaskIndex = 0;
+
+        ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
     }
 
     /**
@@ -365,6 +383,11 @@ public:
      * is only called once, even if Cleanup() is called multiple times
      * (e.g., from CleanupStack and from destructor).
      *
+     * Automatically handles:
+     * - Execute PreCleanup hooks
+     * - Calls CleanupImpl() for derived class logic
+     * - Execute PostCleanup hooks
+     *
      * Derived classes (like TypedNode) can override this method to implement
      * task-based cleanup, following the same pattern as Execute().
      */
@@ -372,7 +395,9 @@ public:
         if (cleanedUp) {
             return;  // Already cleaned up
         }
+        ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
         CleanupImpl();
+        ExecuteNodeHook(NodeLifecyclePhase::PostCleanup);
         cleanedUp = true;
     }
 
@@ -516,6 +541,16 @@ protected:
      * @return SlotScope enum value (defaults to NodeLevel if not found)
      */
     SlotScope GetSlotScope(uint32_t slotIndex) const;
+
+    /**
+     * @brief Execute node-level lifecycle hooks
+     *
+     * Called automatically during Setup/Compile/Execute/Cleanup lifecycle methods.
+     * Delegates to RenderGraph's hook system if graph is available.
+     *
+     * @param phase Lifecycle phase to execute hooks for
+     */
+    void ExecuteNodeHook(NodeLifecyclePhase phase);
 
 public:
     // ============================================================================

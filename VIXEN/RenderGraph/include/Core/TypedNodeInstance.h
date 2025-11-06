@@ -13,20 +13,6 @@ namespace Vixen::RenderGraph {
  *
  * The config now GENERATES the member variables - you don't declare them manually!
  *
- * OLD APPROACH (error-prone):
- * ```cpp
- * CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);  // Config says VkSurfaceKHR
- * // But you manually declare:
- * VkImage surface;  // Oops! Wrong type! Runtime error!
- * ```
- *
- * NEW APPROACH (foolproof):
- * ```cpp
- * CONSTEXPR_OUTPUT(SURFACE, VkSurfaceKHR, 0, false);  // Config says VkSurfaceKHR
- * GENERATE_OUTPUT_STORAGE;  // Automatically creates: VkSurfaceKHR output_0;
- * ```
- *
- * The storage is DERIVED from config - impossible to mismatch!
  */
 
 // ====================================================================
@@ -261,92 +247,8 @@ public:
 
     // ===== PHASE F: CONTEXT SYSTEM =====
 
-    /**
-     * @brief Setup override - creates Context for setup phase
-     *
-     * Phase F: Executes setup for each task based on input array sizes
-     */
-    void Setup() override final {
-        ResetInputsUsedInCompile();
 
-        uint32_t taskCount = DetermineTaskCount();
-        if (taskCount == 0) {
-            return;
-        }
 
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            Context ctx(this, taskIndex);
-            SetupImpl(ctx);
-        }
-    }
-
-    /**
-     * @brief Compile override - creates Context for compile phase
-     *
-     * Phase F: Executes compile for each task based on input array sizes
-     */
-    void Compile() override final {
-        uint32_t taskCount = DetermineTaskCount();
-        if (taskCount == 0) {
-            return;
-        }
-
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            Context ctx(this, taskIndex);
-            CompileImpl(ctx);
-        }
-
-        RegisterCleanup();
-    }
-
-    /**
-     * @brief Execute override - creates Context for each task
-     *
-     * Phase F: Executes tasks in parallel based on input array sizes.
-     * Each task processes one array element independently.
-     *
-     * This enables:
-     * - Clean node API: ctx.In(slot) instead of In(slot, index)
-     * - Parallelization: each task runs concurrently
-     * - Type safety: Context is templated on ConfigType
-     */
-    void Execute() override final {
-        // Analyze slot configuration to determine task count
-        uint32_t taskCount = DetermineTaskCount();
-
-        if (taskCount == 0) {
-            // No tasks to execute (e.g., no inputs connected)
-            return;
-        }
-
-        if (taskCount == 1) {
-            // Single task - execute directly without threading overhead
-            Context ctx(this, 0);
-            currentTaskIndex = 0;
-            ExecuteImpl(ctx);
-            return;
-        }
-
-        // Multiple tasks - execute in parallel
-        std::vector<std::future<void>> futures;
-        futures.reserve(taskCount);
-
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            futures.push_back(std::async(std::launch::async, [this, taskIndex]() {
-                Context ctx(this, taskIndex);
-                currentTaskIndex = taskIndex;
-                ExecuteImpl(ctx);
-            }));
-        }
-
-        // Wait for all tasks to complete
-        for (auto& future : futures) {
-            future.get();
-        }
-
-        // Reset task index after execution
-        currentTaskIndex = 0;
-    }
 
     /**
      * @brief Cleanup override - creates Context for cleanup phase
@@ -453,29 +355,44 @@ protected:
     virtual void CleanupImpl(Context& ctx) {}
 
     /**
-     * @brief Hide base class SetupImpl() - not used in TypedNode
+     * @brief Override base class SetupImpl() to create Context
      */
     void SetupImpl() final override {
-        // Should never be called - Setup() above creates Context instead
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            SetupImpl(ctx);
+        }
     }
 
     /**
-     * @brief Hide base class CompileImpl() - not used in TypedNode
+     * @brief Override base class CompileImpl() to create Context
      */
     void CompileImpl() final override {
-        // Should never be called - Compile() above creates Context instead
+        uint32_t taskCount = DetermineTaskCount();
+        if (taskCount == 0) {
+            return;
+        }
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            Context ctx(this, taskIndex);
+            CompileImpl(ctx);
+        }
     }
 
     /**
-     * @brief Hide base class ExecuteImpl(uint32_t) - not used in TypedNode
+     * @brief Override base class ExecuteImpl(uint32_t) to create Context
      *
-     * TypedNode intercepts Execute() to create Context, so this
-     * base class method should never be called. Mark as final to prevent
-     * derived classes from accidentally overriding it.
+     * NodeInstance::Execute() calls this with taskIndex for task-based execution
      */
     void ExecuteImpl(uint32_t taskIndex) final override {
-        // Should never be called - Execute() above creates Context instead
-        // This is here only to satisfy NodeInstance pure virtual requirement
+        Context ctx(this, taskIndex);
+        currentTaskIndex = taskIndex;
+        ExecuteImpl(ctx);
     }
 
 public:

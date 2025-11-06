@@ -66,7 +66,15 @@ void GraphLifecycleHooks::ExecuteNodeHooks(NodeLifecyclePhase phase, NodeInstanc
         return;
     }
 
+    std::cout << "[GraphLifecycleHooks] Executing " << hooks.size()
+              << " node hooks for phase: " << GetPhaseName(phase)
+              << " on node: " << node->GetInstanceName() << std::endl;
+
     for (const auto& entry : hooks) {
+        if (!entry.debugName.empty()) {
+            std::cout << "[GraphLifecycleHooks]   Executing: " << entry.debugName << std::endl;
+        }
+
         try {
             entry.callback(node);
         } catch (const std::exception& e) {
