@@ -107,7 +107,15 @@ endif()
 # C++23 standard
 target_compile_features(ShaderManagement PUBLIC cxx_std_23)
 
-# Precompiled headers for faster compilation
+# Ensure spirv_reflect.c is compiled as C code without PCH
+set_source_files_properties(
+    ${spirv_reflect_SOURCE_DIR}/spirv_reflect.c
+    PROPERTIES 
+        LANGUAGE C
+        SKIP_PRECOMPILE_HEADERS ON
+)
+
+# Precompiled headers for faster compilation (C++ only)
 if(USE_PRECOMPILED_HEADERS)
     target_precompile_headers(ShaderManagement PRIVATE
         <vector>
@@ -119,11 +127,6 @@ if(USE_PRECOMPILED_HEADERS)
         <optional>
         <functional>
         <filesystem>
-    )
-    # Exclude C files from precompiled headers (spirv_reflect.c is C, not C++)
-    set_source_files_properties(
-        ${spirv_reflect_SOURCE_DIR}/spirv_reflect.c
-        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )
     message(STATUS "ShaderManagement: Precompiled headers enabled")
 endif()

@@ -487,6 +487,42 @@ protected:
         return true;
     }
 
+    /**
+     * @brief Default ExecuteImpl override to satisfy TypedNode pure virtual
+     *
+     * Derived classes must override ExecuteImplVariadic() instead.
+     * This simply creates VariadicTypedNode::Context and calls the variadic version.
+     */
+    void ExecuteImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+        // Create VariadicTypedNode::Context from Base::Context
+        Context ctx(this, baseCtx.taskIndex);
+        ExecuteImplVariadic(ctx);
+    }
+
+    /**
+     * @brief ExecuteImpl with variadic-extended Context - override in derived classes
+     *
+     * @param ctx Extended context with InVariadic/OutVariadic support
+     */
+    virtual void ExecuteImplVariadic(Context& ctx) = 0;
+
+    /**
+     * @brief Default CleanupImpl override to satisfy TypedNode
+     *
+     * Creates VariadicTypedNode::Context and forwards to CleanupImplVariadic.
+     */
+    void CleanupImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+        Context ctx(this, baseCtx.taskIndex);
+        CleanupImplVariadic(ctx);
+    }
+
+    /**
+     * @brief CleanupImpl with variadic-extended Context - override in derived classes
+     *
+     * @param ctx Extended context with InVariadic/OutVariadic support
+     */
+    virtual void CleanupImplVariadic(Context& ctx) {}
+
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)
     size_t maxVariadicInputs_ = SIZE_MAX;  // Maximum allowed (default: unlimited)

@@ -77,7 +77,7 @@ private:
     // Previous frame inputs (for dirty detection)
     VkPipeline lastPipeline = VK_NULL_HANDLE;
     VkPipelineLayout lastPipelineLayout = VK_NULL_HANDLE;
-    DescriptorSetVector lastDescriptorSets;
+    std::vector<VkDescriptorSet> lastDescriptorSets;
 
 #if VIXEN_DEBUG_BUILD
     // Performance logging (debug only)

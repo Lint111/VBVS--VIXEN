@@ -348,6 +348,56 @@ public:
         currentTaskIndex = 0;
     }
 
+    /**
+     * @brief Cleanup override - creates Context for cleanup phase
+     *
+     * Phase F: Executes cleanup for each task that was created during execution.
+     * Follows the same pattern as Execute() but runs in reverse order.
+     */
+    void Cleanup() override final {
+        if (cleanedUp) {
+            return;  // Already cleaned up
+        }
+
+        // Determine task count (same as execution)
+        uint32_t taskCount = DetermineTaskCount();
+
+        if (taskCount == 0) {
+            cleanedUp = true;
+            return;
+        }
+
+        if (taskCount == 1) {
+            // Single task - cleanup directly without threading overhead
+            Context ctx(this, 0);
+            currentTaskIndex = 0;
+            CleanupImpl(ctx);
+            cleanedUp = true;
+            return;
+        }
+
+        // Multiple tasks - cleanup in parallel
+        std::vector<std::future<void>> futures;
+        futures.reserve(taskCount);
+
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            futures.push_back(std::async(std::launch::async, [this, taskIndex]() {
+                Context ctx(this, taskIndex);
+                currentTaskIndex = taskIndex;
+                CleanupImpl(ctx);
+            }));
+        }
+
+        // Wait for all cleanup tasks to complete
+        for (auto& future : futures) {
+            future.get();
+        }
+
+        // Reset task index after cleanup
+        currentTaskIndex = 0;
+        cleanedUp = true;
+    }
+
 protected:
     /**
      * @brief SetupImpl with Context - override this in derived classes
@@ -392,6 +442,17 @@ protected:
     virtual void ExecuteImpl(Context& ctx) = 0;
 
     /**
+     * @brief CleanupImpl with Context - override this in derived classes
+     *
+     * Called during Cleanup phase. Context provides clean In()/Out() access
+     * for reading final state or accessing resources before destruction.
+     * Context uses index 0 (non-task-based).
+     *
+     * @param ctx Cleanup context with bound slot accessors
+     */
+    virtual void CleanupImpl(Context& ctx) {}
+
+    /**
      * @brief Hide base class SetupImpl() - not used in TypedNode
      */
     void SetupImpl() final override {
@@ -415,6 +476,16 @@ protected:
     void ExecuteImpl(uint32_t taskIndex) final override {
         // Should never be called - Execute() above creates Context instead
         // This is here only to satisfy NodeInstance pure virtual requirement
+    }
+
+    /**
+     * @brief Hide base class CleanupImpl() - not used in TypedNode
+     *
+     * Cleanup() override above handles task-based cleanup with Context.
+     */
+    void CleanupImpl() final override {
+        // Should never be called - Cleanup() above creates Context instead
+        // This is here only to satisfy NodeInstance virtual requirement
     }
 
 public:

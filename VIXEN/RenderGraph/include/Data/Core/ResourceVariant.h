@@ -53,6 +53,43 @@ using VkResultPtr = VkResult*;
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
+
+// Workaround for std::vector<bool> which has special semantics that break std::variant
+// Use a wrapper with proper copy semantics
+struct BoolVector {
+    std::vector<bool> data;
+    
+    BoolVector() = default;
+    BoolVector(const BoolVector& other) : data(other.data) {}
+    BoolVector(BoolVector&& other) noexcept : data(std::move(other.data)) {}
+    BoolVector& operator=(const BoolVector& other) {
+        if (this != &other) data = other.data;
+        return *this;
+    }
+    BoolVector& operator=(BoolVector&& other) noexcept {
+        if (this != &other) data = std::move(other.data);
+        return *this;
+    }
+    
+    // Implicit conversion from std::vector<bool>
+    BoolVector(const std::vector<bool>& v) : data(v) {}
+    BoolVector(std::vector<bool>&& v) : data(std::move(v)) {}
+    
+    // Implicit conversion to std::vector<bool>
+    operator std::vector<bool>&() { return data; }
+    operator const std::vector<bool>&() const { return data; }
+    
+    // Convenience methods
+    auto begin() { return data.begin(); }
+    auto end() { return data.end(); }
+    auto begin() const { return data.begin(); }
+    auto end() const { return data.end(); }
+    size_t size() const { return data.size(); }
+    bool empty() const { return data.empty(); }
+    bool operator[](size_t i) const { return data[i]; }
+    auto operator[](size_t i) { return data[i]; }
+};
+
 namespace Vixen::RenderGraph {
     
 
@@ -146,8 +183,8 @@ using HINSTANCE = HINSTANCE_Placeholder*;
     RESOURCE_TYPE(VkResultPtr,                     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(bool,                            HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(SwapChainBuffer,                 HandleDescriptor,      ResourceType::Buffer) \  
+    RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
 
 // NOTE: VkSemaphoreArrayPtr and legacy vector typedefs removed - use std::vector<T> auto-generation instead
@@ -161,15 +198,28 @@ using HINSTANCE = HINSTANCE_Placeholder*;
  * @brief Helper macros to expand wrappers for each base type
  * Generates all combinations: BaseType + std::vector<BaseType>
  * 
- * To add more wrapper types, modify WRAPPER_APPLY below (e.g., add shared_ptr, unique_ptr, etc.)
+ * Special case: bool and BoolVector don't get auto-vectorized
+ * - bool → BoolVector (not std::vector<bool> due to vector<bool> specialization)
+ * - BoolVector → no vector wrapper needed
  */
 
-// Generate base type + all wrapper variants
+// Generate base type + vector wrapper (for most types)
 #define EXPAND_WITH_WRAPPERS(HandleType) \
     HandleType, \
     std::vector<HandleType>,
 
-// For the last entry (no trailing comma on final wrapper)
+// For bool: base type only (BoolVector is separately registered)
+#define EXPAND_BOOL_ONLY(HandleType) \
+    HandleType,
+
+// For BoolVector: no vector wrapper
+#define EXPAND_NO_VECTOR(HandleType) \
+    HandleType,
+
+// For the last entry (no trailing comma)
+#define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
+    HandleType, \
+    std::vector<HandleType>
 #define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
     HandleType, \
     std::vector<HandleType>
@@ -193,9 +243,13 @@ using HINSTANCE = HINSTANCE_Placeholder*;
 using ResourceVariant = std::variant<
     std::monostate,  // Empty/uninitialized
 #define RESOURCE_TYPE(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
-#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS(HandleType)
+#define RESOURCE_TYPE_BOOL_ONLY(HandleType, DescriptorType, ResType) EXPAND_BOOL_ONLY(HandleType)
+#define RESOURCE_TYPE_NO_VECTOR(HandleType, DescriptorType, ResType) EXPAND_NO_VECTOR(HandleType)
+#define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) EXPAND_WITH_WRAPPERS_LAST(HandleType)
     RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
+#undef RESOURCE_TYPE_BOOL_ONLY
+#undef RESOURCE_TYPE_NO_VECTOR
 #undef RESOURCE_TYPE_LAST
 >;
 
@@ -264,6 +318,18 @@ struct ResourceTypeTraitsImpl {
         static constexpr ResourceType resourceType = ResType; \
         static constexpr bool isValid = true; \
     };
+#define RESOURCE_TYPE_BOOL_ONLY(HandleType, DescriptorType, ResType) \
+    template<> struct ResourceTypeTraitsImpl<HandleType> { \
+        using DescriptorT = DescriptorType; \
+        static constexpr ResourceType resourceType = ResType; \
+        static constexpr bool isValid = true; \
+    };
+#define RESOURCE_TYPE_NO_VECTOR(HandleType, DescriptorType, ResType) \
+    template<> struct ResourceTypeTraitsImpl<HandleType> { \
+        using DescriptorT = DescriptorType; \
+        static constexpr ResourceType resourceType = ResType; \
+        static constexpr bool isValid = true; \
+    };
 #define RESOURCE_TYPE_LAST(HandleType, DescriptorType, ResType) \
     template<> struct ResourceTypeTraitsImpl<HandleType> { \
         using DescriptorT = DescriptorType; \
@@ -272,6 +338,8 @@ struct ResourceTypeTraitsImpl {
     };
 RESOURCE_TYPE_REGISTRY
 #undef RESOURCE_TYPE
+#undef RESOURCE_TYPE_BOOL_ONLY
+#undef RESOURCE_TYPE_NO_VECTOR
 #undef RESOURCE_TYPE_LAST
 
 // Forward declaration to avoid circular dependency
@@ -455,7 +523,7 @@ struct VariantHandle {
     ResourceVariant value;
 
     VariantHandle() = default;
-    explicit VariantHandle(ResourceVariant v) : value(std::move(v)) {}
+    explicit VariantHandle(ResourceVariant&& v) : value(std::move(v)) {}
 };
 
 /**

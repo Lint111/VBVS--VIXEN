@@ -80,12 +80,12 @@ void DescriptorResourceGathererNode::CompileImpl(Context& ctx) {
               << resourceArray_.size() << " entries\n";
 }
 
-void DescriptorResourceGathererNode::ExecuteImpl(Context& ctx) {
+void DescriptorResourceGathererNode::ExecuteImplVariadic(Context& ctx) {
     // Resources already gathered during Compile phase
     // Nothing to do here
 }
 
-void DescriptorResourceGathererNode::CleanupImpl() {
+void DescriptorResourceGathererNode::CleanupImplVariadic(Context& ctx) {
     descriptorSlots_.clear();
     resourceArray_.clear();
 }

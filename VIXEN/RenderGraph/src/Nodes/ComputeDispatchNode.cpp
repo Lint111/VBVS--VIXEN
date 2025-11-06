@@ -134,7 +134,7 @@ void ComputeDispatchNode::ExecuteImpl(Context& ctx) {
     // Detect if inputs changed (mark all command buffers dirty if so)
     VkPipeline currentPipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout currentPipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
-    DescriptorSetVector currentDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+    std::vector<VkDescriptorSet> currentDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
 
     if (currentPipeline != lastPipeline ||
         currentPipelineLayout != lastPipelineLayout ||
@@ -213,7 +213,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     // Get inputs
     VkPipeline pipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
-    DescriptorSetVector descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+    std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
     SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
     // Get dispatch dimensions from swapchain extent (8x8 workgroup size)

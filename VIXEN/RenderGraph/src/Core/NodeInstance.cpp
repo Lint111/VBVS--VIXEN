@@ -232,7 +232,7 @@ uint64_t NodeInstance::ComputeCacheKey() const {
     return hash;
 }
 
-#ifdef _DEBUG
+#if VIXEN_DEBUG_BUILD
 void NodeInstance::RegisterToParentLogger(Logger* parentLogger)
 {
     if (parentLogger) {

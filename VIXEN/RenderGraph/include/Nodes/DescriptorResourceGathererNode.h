@@ -77,11 +77,12 @@ public:
     // when connected inputs are available via Context
 
 protected:
-    // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    // Template method pattern - these hide (not override) base class methods
+    // due to different Context type (VariadicTypedNode::Context vs TypedNode::Context)
+    void SetupImpl(Context& ctx);
+    void CompileImpl(Context& ctx);
+    void ExecuteImplVariadic(Context& ctx) override;
+    void CleanupImplVariadic(Context& ctx) override;
 
     // Variadic validation override - shader metadata-specific validation
     bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) override;
