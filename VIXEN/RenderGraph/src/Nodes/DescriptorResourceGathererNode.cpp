@@ -233,42 +233,44 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
                   << ", isValid=" << slotInfo->resource->IsValid()
                   << ", hasFieldExtraction=" << slotInfo->hasFieldExtraction << "\n";
 
-        // Handle field extraction from struct
+        // Handle field extraction from struct using runtime type dispatch
         if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
-            // Generic field extraction - works with any struct pointer type (raw or smart)
-            // Apply offset to extract field from struct without needing to know types
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Extracting field at offset "
+                      << slotInfo->fieldOffset << " from struct for binding " << binding << "\n";
+
+            // Extract field using visitor pattern - get raw struct pointer from variant
             std::visit([&](auto&& structPtr) {
-                using T = std::decay_t<decltype(structPtr)>;
+                using StructPtrType = std::decay_t<decltype(structPtr)>;
 
-                // Get raw pointer - works with both raw pointers and smart pointers
-                void* rawPtr = nullptr;
-                if constexpr (std::is_pointer_v<T>) {
-                    rawPtr = structPtr;
+                // Get raw pointer from smart pointer or raw pointer
+                const void* rawStructPtr = nullptr;
+                if constexpr (std::is_pointer_v<StructPtrType>) {
+                    rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr));
                 } else if constexpr (requires { structPtr.get(); }) {
-                    // Smart pointer (std::shared_ptr, std::unique_ptr)
-                    rawPtr = structPtr.get();
-                }
-
-                if (rawPtr) {
-                    // Apply offset to get field pointer - completely type-agnostic
-                    auto* structBase = reinterpret_cast<char*>(rawPtr);
-                    void* fieldPtr = structBase + slotInfo->fieldOffset;
-
-                    std::cout << "[DescriptorResourceGathererNode::GatherResources] Extracted field at offset "
-                              << slotInfo->fieldOffset << " from struct (pointer=" << fieldPtr << ")\n";
-
-                    // Store the field pointer as a void* in ResourceVariant
-                    // The downstream node (DescriptorSetNode) knows the actual type and will cast appropriately
-                    resourceArray_[binding] = fieldPtr;
-
-                    std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered field pointer for binding "
-                              << binding << " (" << slotInfo->slotName << ")\n";
+                    rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr.get()));
                 } else {
-                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer for field extraction\n";
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Cannot extract raw pointer from variant type\n";
+                    return;
                 }
+
+                if (!rawStructPtr) {
+                    std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer\n";
+                    return;
+                }
+
+                // Apply field offset to get field pointer
+                auto* fieldPtr = reinterpret_cast<const char*>(rawStructPtr) + slotInfo->fieldOffset;
+
+                // Extract field value based on resourceType - dispatch to correct type
+                // NOTE: This requires knowing the actual field type at runtime
+                // For now, we store the struct and let downstream nodes handle extraction
+                resourceArray_[binding] = variant;  // Store original struct
+
+                std::cout << "[DescriptorResourceGathererNode::GatherResources] Stored struct with field at offset "
+                          << slotInfo->fieldOffset << " for binding " << binding << " (downstream will extract)\n";
             }, variant);
         }
-        // Regular resources - just pass through the variant
+        // Regular resources - pass through
         else {
             resourceArray_[binding] = variant;
             std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding

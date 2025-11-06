@@ -845,7 +845,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
-                  &SwapChainPublicVariables::imageCount)
+                  &SwapChainPublicVariables::swapChainImageCount)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
          .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,

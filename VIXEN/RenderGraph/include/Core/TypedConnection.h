@@ -138,8 +138,11 @@ public:
         using SourceType = typename SourceSlot::Type;
         using TargetType = typename TargetSlot::Type;
 
-        // Validate struct type matches source
-        static_assert(std::is_same_v<SourceType, StructType> ||
+        // Validate struct type matches source (handle both pointer and non-pointer types)
+        using SourceBaseType = std::remove_pointer_t<SourceType>;
+        static_assert(std::is_same_v<SourceBaseType, StructType> ||
+                     std::is_base_of_v<StructType, SourceBaseType> ||
+                     std::is_same_v<SourceType, StructType> ||
                      std::is_base_of_v<StructType, SourceType>,
             "Source slot type must match or derive from struct type in member pointer");
 
@@ -163,8 +166,16 @@ public:
                 throw std::runtime_error("Connect with field extraction: Source output not found");
             }
 
-            // Get the struct instance
-            auto structPtr = sourceRes->GetHandle<StructType>();
+            // Get the struct instance (handle both pointer and non-pointer types)
+            StructType* structPtr = nullptr;
+            if constexpr (std::is_pointer_v<SourceType>) {
+                // Source is a pointer type - GetHandle returns the pointer value directly
+                structPtr = sourceRes->GetHandle<SourceType>();
+            } else {
+                // Source is a value type - get pointer to it
+                structPtr = sourceRes->GetHandle<StructType*>();
+            }
+
             if (!structPtr) {
                 throw std::runtime_error("Connect with field extraction: Failed to get struct from source");
             }
@@ -173,9 +184,12 @@ public:
             FieldType& extractedField = structPtr->*memberPtr;
 
             // Create a Resource for the extracted field
+            // Note: Use remove_reference to get the actual type for the resource
+            using FieldResourceType = std::remove_reference_t<FieldType>;
             Resource fieldRes = Resource::Create<FieldResourceType>(
                 typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
-            fieldRes.SetHandle(&extractedField);
+            // Copy the field value into the resource (SetHandle takes rvalue ref, so make a copy)
+            fieldRes.SetHandle<FieldResourceType>(FieldResourceType(extractedField));
 
             // Set as input on target node
             tgtNode->SetInput(targetSlot.index, arrayIndex, &fieldRes);
@@ -454,28 +468,35 @@ public:
                 throw std::runtime_error("ConnectVariadic: Source output not found");
             }
 
-            // Validate struct type matches
+            // Validate struct type matches (handle both pointer and non-pointer types)
             using SourceType = typename SourceSlot::Type;
-            static_assert(std::is_same_v<SourceType, StructType> ||
+            using SourceBaseType = std::remove_pointer_t<SourceType>;
+            static_assert(std::is_same_v<SourceBaseType, StructType> ||
+                         std::is_base_of_v<StructType, SourceBaseType> ||
+                         std::is_same_v<SourceType, StructType> ||
                          std::is_base_of_v<StructType, SourceType>,
                 "Source slot type must match or derive from struct type in member pointer");
 
-            // Get the struct instance from the resource
-            auto structPtr = sourceRes->GetHandle<SourceType>();
+            // Get the struct instance from the resource (handle both pointer and non-pointer types)
+            StructType* structPtr = nullptr;
+            if constexpr (std::is_pointer_v<SourceType>) {
+                // Source is a pointer type - GetHandle returns the pointer value directly
+                structPtr = sourceRes->GetHandle<SourceType>();
+            } else {
+                // Source is a value type - get pointer to it
+                structPtr = sourceRes->GetHandle<StructType*>();
+            }
+
             if (!structPtr) {
                 throw std::runtime_error("ConnectVariadic: Failed to get struct from source resource");
             }
 
-            // Extract the field using member pointer
+            // Extract the field using member pointer (for validation and offset calculation)
             FieldType& extractedField = structPtr->*memberPtr;
 
-            // Create a temporary resource for the extracted field
-            // This resource will be used for type validation but the actual value
-            // will be extracted at Execute time
+            // Note: We don't create a temporary resource here - field extraction happens at Execute time
+            // The tentative slot stores the source resource and field offset for runtime extraction
             using FieldResourceType = std::remove_reference_t<FieldType>;
-            Resource extractedRes = Resource::Create<FieldResourceType>(
-                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
-            // Note: We don't set the handle here - it will be extracted dynamically during Execute
 
             // Extract binding index
             uint32_t bindingIndex = bindingRef.binding;
