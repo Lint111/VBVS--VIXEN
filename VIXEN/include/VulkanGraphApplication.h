@@ -3,6 +3,7 @@
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
+#include "Core/TypedConnection.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "EventBus/MessageBus.h"
@@ -118,13 +119,6 @@ private:
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
     HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
-    NodeHandle windowNodeHandle;                     // Cached for accessing window HWND
-
-    // ====== Phase 1: Shader Management via ShaderLibraryNode ======
-    // triangleShader and shaderConstantNodeHandle removed
-    // Shaders now managed by ShaderLibraryNode
-    NodeHandle deviceNodeHandle;                     // Cached for pre-compilation
-    NodeHandle pipelineNodeHandle;                   // Cached for pipeline access (if needed)
 
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz

@@ -161,14 +161,12 @@ void VulkanGraphApplication::Prepare() {
         BuildRenderGraph();
         std::cout << "[VulkanGraphApplication::Prepare] BuildRenderGraph complete" << std::endl;
 
-        // Cache window handle for graceful shutdown
-        if (windowNodeHandle.IsValid()) {
-            auto* windowInst = renderGraph->GetInstance(windowNodeHandle);
-            if (windowInst) {
-                auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
-                if (windowNode) {
-                    windowHandle = windowNode->GetWindow();
-                }
+        // Get window handle for graceful shutdown
+        auto* windowInst = renderGraph->GetInstanceByName("main_window");
+        if (windowInst) {
+            auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
+            if (windowNode) {
+                windowHandle = windowNode->GetWindow();
             }
         }
 
@@ -309,41 +307,12 @@ void VulkanGraphApplication::CompileRenderGraph() {
         return;
     }
 
-    // NOTE: Legacy Phase 1 wiring removed - nodes now use typed slots.
-    // All connections should be established via Connect() API during BuildRenderGraph().
-    // Example:
-    // Connect(deviceNode, DeviceNodeConfig::QUEUE, presentNode, PresentNodeConfig::QUEUE);
-    // Connect(deviceNode, DeviceNodeConfig::PRESENT_FUNCTION, presentNode, PresentNodeConfig::PRESENT_FUNCTION);
-
-
-    // MVP: Load shaders BEFORE compilation
-    // We need to inject the shader into ConstantNode before Compile() is called
-    // Strategy: Compile device first, load shaders, inject into ConstantNode, then compile rest
-    
-    std::cout << "[CompileRenderGraph] Pre-compiling device node..." << std::endl;
-    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNodeHandle));
-    deviceNode->Setup();
-    deviceNode->Compile();
-    deviceNode->SetState(NodeState::Compiled);  // CRITICAL: Mark as compiled to prevent re-compilation
-    std::cout << "[CompileRenderGraph] Device node compiled and marked as Compiled" << std::endl;
-    
-    // Phase 1 Integration: Shaders now loaded by ShaderLibraryNode
-    // - ShaderLibraryNode compiles GLSL → SPIR-V via ShaderManagement
-    // - Creates VkShaderModules via CashSystem (with caching)
-    // - Outputs VulkanShader wrapper directly to GraphicsPipelineNode
-    // - Cleanup handled automatically by node cleanup system
-    mainLogger->Info("Shaders will be compiled by ShaderLibraryNode during graph compilation...");
-
-    // Now compile the full graph (all nodes including pipeline with shaders ready)
-    std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
+    // Field extraction now integrated into RenderGraph::Compile() via post-node-compile callbacks
+    // Callbacks are registered during RegisterAll() and executed automatically as nodes compile
     renderGraph->Compile();
     graphCompiled = true;
-    std::cout << "[CompileRenderGraph] Graph compilation complete" << std::endl;
 
-    // Phase G: Descriptor set updates with swapchain images are handled by DescriptorSetNode
-    // during Compile() - no manual updates needed here
-
-    // Validate final graph (should pass with shaders connected)
+    // Validate final graph
     std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
     std::string errorMessage;
     if (!renderGraph->Validate(errorMessage)) {
@@ -351,11 +320,8 @@ void VulkanGraphApplication::CompileRenderGraph() {
         std::cerr << "[CompileRenderGraph] VALIDATION FAILED: " << errorMessage << std::endl;
         return;
     }
-    std::cout << "[CompileRenderGraph] Validation passed" << std::endl;
-
-    mainLogger->Info("Render graph compiled successfully");
-    mainLogger->Info("Node count: " + std::to_string(renderGraph->GetNodeCount()));
-    std::cout << "[CompileRenderGraph] SUCCESS" << std::endl;
+    mainLogger->Info("Render graph compiled and validated successfully");
+    std::cout << "[CompileRenderGraph] Complete - " << renderGraph->GetNodeCount() << " nodes" << std::endl;
 }
 
 void VulkanGraphApplication::RegisterNodeTypes() {
@@ -407,10 +373,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Infrastructure Nodes ---
     NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
-    windowNodeHandle = windowNode; // Cache for shutdown handling
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
-    deviceNodeHandle = deviceNode; // MVP: Cache for post-compile shader loading
-    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");  // Phase 0.2
+    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");
     NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
@@ -427,7 +391,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
     NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
-    pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
 
     // Phase 1: ShaderLibraryNode replaces manual shader loading
     // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly

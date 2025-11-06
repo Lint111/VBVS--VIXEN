@@ -377,9 +377,13 @@ void RenderGraph::ExecuteCleanup() {
     std::cout << "[RenderGraph::ExecuteCleanup] Cleanup complete" << std::endl;
 }
 
+void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callback) {
+    postNodeCompileCallbacks.push_back(std::move(callback));
+}
+
 void RenderGraph::Compile() {
     std::cout << "[RenderGraph::Compile] Starting compilation..." << std::endl;
-    
+
     // Validation
     std::cout << "[RenderGraph::Compile] Phase: Validation..." << std::endl;
     std::string errorMessage;
@@ -819,6 +823,11 @@ void RenderGraph::GeneratePipelines() {
 
         std::cout << "[GeneratePipelines] Node compiled successfully: " << instance->GetInstanceName() << std::endl;
         instance->SetState(NodeState::Compiled);
+
+        // Execute post-compile callbacks (e.g., field extraction)
+        for (auto& callback : postNodeCompileCallbacks) {
+            callback(instance);
+        }
     }
 }
 

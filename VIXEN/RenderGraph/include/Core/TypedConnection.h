@@ -152,50 +152,78 @@ public:
                      (ResourceTypeTraits<FieldResourceType>::resourceType == TargetSlot::resourceType),
             "Target slot type must match extracted field type");
 
-        // Store as deferred connection with field extraction
-        constantConnections.push_back([this, sourceNode, sourceSlot, targetNode, targetSlot, memberPtr, arrayIndex]() {
+        // Register dependency and create placeholder input NOW (for validation)
+        // Actual field extraction will happen post-compile
+        {
             auto* srcNode = graph->GetInstance(sourceNode);
             auto* tgtNode = graph->GetInstance(targetNode);
             if (!srcNode || !tgtNode) {
                 throw std::runtime_error("Connect with field extraction: Invalid node handle");
             }
 
-            // Get source resource (struct)
+            // Register dependency so topological sort works
+            tgtNode->AddDependency(srcNode);
+
+            // Create placeholder resource so validation passes
+            using FieldResourceType = std::remove_reference_t<FieldType>;
+            Resource placeholderRes = Resource::Create<FieldResourceType>(
+                typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
+            // Set with default value
+            placeholderRes.SetHandle<FieldResourceType>(FieldResourceType{});
+            tgtNode->SetInput(targetSlot.index, arrayIndex, &placeholderRes);
+        }
+
+        // Register callback with graph to execute after source node compiles
+        graph->RegisterPostNodeCompileCallback([this, sourceNode, sourceSlot, targetNode, targetSlot, memberPtr, arrayIndex](NodeInstance* compiledNode) {
+            // Only execute if this is the source node we're waiting for
+            auto* srcNode = graph->GetInstance(sourceNode);
+            if (compiledNode != srcNode) {
+                return;  // Not the node we're waiting for
+            }
+
+            auto* tgtNode = graph->GetInstance(targetNode);
+            if (!srcNode || !tgtNode) {
+                throw std::runtime_error("Connect with field extraction: Invalid node handle");
+            }
+
+            // Get source output resource
             Resource* sourceRes = srcNode->GetOutput(sourceSlot.index, 0);
             if (!sourceRes) {
                 throw std::runtime_error("Connect with field extraction: Source output not found");
             }
 
-            // Get the struct instance (handle both pointer and non-pointer types)
-            StructType* structPtr = nullptr;
-            if constexpr (std::is_pointer_v<SourceType>) {
-                // Source is a pointer type - GetHandle returns the pointer value directly
-                structPtr = sourceRes->GetHandle<SourceType>();
-            } else {
-                // Source is a value type - get pointer to it
-                structPtr = sourceRes->GetHandle<StructType*>();
-            }
+            // Create a lambda that extracts the field value on-demand
+            // This lambda will be called when the target node accesses its input
+            auto extractFieldCallback = [sourceRes, memberPtr]() -> FieldType {
+                // Get the struct instance (handle both pointer and non-pointer types)
+                StructType* structPtr = nullptr;
+                if constexpr (std::is_pointer_v<SourceType>) {
+                    // Source is a pointer type - GetHandle returns the pointer value directly
+                    structPtr = sourceRes->GetHandle<SourceType>();
+                } else {
+                    // Source is a value type - get pointer to it
+                    structPtr = sourceRes->GetHandle<StructType*>();
+                }
 
-            if (!structPtr) {
-                throw std::runtime_error("Connect with field extraction: Failed to get struct from source");
-            }
+                if (!structPtr) {
+                    throw std::runtime_error("Field extraction: Failed to get struct from source");
+                }
 
-            // Extract the field using member pointer
-            FieldType& extractedField = structPtr->*memberPtr;
+                // Extract and return the field
+                return structPtr->*memberPtr;
+            };
 
-            // Create a Resource for the extracted field
-            // Note: Use remove_reference to get the actual type for the resource
+            // For now, extract once and store the value
+            // TODO: Make this truly lazy by creating a proxy Resource that extracts on-demand
             using FieldResourceType = std::remove_reference_t<FieldType>;
+            FieldType fieldValue = extractFieldCallback();
+
             Resource fieldRes = Resource::Create<FieldResourceType>(
                 typename ResourceTypeTraits<FieldResourceType>::DescriptorT{});
-            // Copy the field value into the resource (SetHandle takes rvalue ref, so make a copy)
-            fieldRes.SetHandle<FieldResourceType>(FieldResourceType(extractedField));
+            fieldRes.SetHandle<FieldResourceType>(FieldResourceType(fieldValue));
 
             // Set as input on target node
             tgtNode->SetInput(targetSlot.index, arrayIndex, &fieldRes);
-
-            // Register dependency
-            tgtNode->AddDependency(srcNode);
         });
 
         return *this;
@@ -306,6 +334,7 @@ public:
         }
         variadicConnections.clear();
     }
+
 
     /**
      * @brief Get number of pending connections (node-to-node only)
@@ -436,11 +465,16 @@ public:
         BindingRefType bindingRef,
         FieldType StructType::* memberPtr  // Member pointer for field extraction
     ) {
-        std::cout << "[ConnectVariadic] Queuing variadic connection with field extraction for binding "
+        std::cout << "[ConnectVariadic] Registering field extraction callback for binding "
                   << bindingRef.binding << std::endl;
 
-        // Defer the variadic connection via lambda (applied during RegisterAll)
-        variadicConnections.push_back([=]() {
+        // Register callback with graph to execute after source node compiles
+        graph->RegisterPostNodeCompileCallback([=](NodeInstance* compiledNode) {
+            // Only execute if this is the source node we're waiting for
+            auto* srcNode = graph->GetInstance(sourceNode);
+            if (compiledNode != srcNode) {
+                return;  // Not the node we're waiting for
+            }
             std::cout << "[ConnectVariadic] Creating tentative slot with field extraction for binding "
                       << bindingRef.binding << std::endl;
 
@@ -536,8 +570,9 @@ public:
 private:
     RenderGraph* graph;
     std::vector<TypedConnectionDescriptor> connections;
-    std::vector<std::function<void()>> constantConnections; // Deferred constant setters
-    std::vector<std::function<void()>> variadicConnections; // Deferred variadic connections
+    std::vector<std::function<void()>> constantConnections; // Deferred constant setters (run at RegisterAll)
+    std::vector<std::function<void()>> variadicConnections; // Deferred variadic connections (run at RegisterAll)
+    // postCompileConnections removed - now registered directly with RenderGraph callbacks
 
     void ValidateConnection(const TypedConnectionDescriptor& conn) {
         if (!conn.sourceNode.IsValid()) {

@@ -131,7 +131,7 @@ public:
 
     /**
      * @brief Compile the graph
-     * 
+     *
      * Performs:
      * - Dependency analysis
      * - Resource allocation
@@ -139,6 +139,17 @@ public:
      * - Command buffer generation
      */
     void Compile();
+
+    /**
+     * @brief Register a callback to be executed after each node compiles
+     *
+     * Callbacks are invoked during Compile() after each node's Compile() method succeeds.
+     * Use this for field extraction or other operations that need compiled node outputs.
+     *
+     * @param callback Function taking the just-compiled NodeInstance
+     */
+    using PostNodeCompileCallback = std::function<void(NodeInstance*)>;
+    void RegisterPostNodeCompileCallback(PostNodeCompileCallback callback);
 
     /**
      * @brief Check if graph is compiled
@@ -409,6 +420,7 @@ private:
     // Graph data
     std::vector<std::unique_ptr<NodeInstance>> instances;
     std::map<std::string, NodeHandle> nameToHandle;
+    std::vector<PostNodeCompileCallback> postNodeCompileCallbacks;  // Callbacks executed after each node compiles
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
     
     // Resources (lifetime management only - nodes are the logical containers)
