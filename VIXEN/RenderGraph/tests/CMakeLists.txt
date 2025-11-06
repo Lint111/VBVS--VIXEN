@@ -87,6 +87,15 @@ include(test_resource_management.cmake)
 include(test_graph_topology.cmake)
 
 # ===========================================================================
+# Core Infrastructure Tests
+# ===========================================================================
+# These test suites validate core infrastructure classes:
+# - Timer: High-resolution delta time measurement
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_timer.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):
