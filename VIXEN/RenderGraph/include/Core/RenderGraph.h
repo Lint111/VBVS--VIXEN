@@ -218,6 +218,7 @@ public:
     /**
      * @brief Get the graph topology
      */
+    GraphTopology& GetTopology() { return topology; }
     const GraphTopology& GetTopology() const { return topology; }
 
     // ====== Cleanup Management ======

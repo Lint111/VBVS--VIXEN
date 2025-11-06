@@ -21,9 +21,9 @@
  */
 
 #include <gtest/gtest.h>
-#include "../../include/Core/ResourceDependencyTracker.h"
-#include "../../include/Core/NodeInstance.h"
-#include "../../include/Core/CleanupStack.h"
+#include "Core/ResourceDependencyTracker.h"
+#include "Core/NodeInstance.h"
+#include "../../include/CleanupStack.h"
 #include <memory>
 #include <chrono>
 

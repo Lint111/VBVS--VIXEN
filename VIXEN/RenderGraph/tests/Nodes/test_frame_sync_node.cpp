@@ -28,16 +28,16 @@ TEST_F(FrameSyncNodeTest, ConfigHasMultipleOutputs) {
 }
 
 TEST_F(FrameSyncNodeTest, ConfigDeviceInputIndex) {
-    EXPECT_EQ(FrameSyncNodeConfig::VULKAN_DEVICE_IN_Slot::index, 0);
+    EXPECT_EQ(FrameSyncNodeConfig::VULKAN_DEVICE_Slot::index, 0);
 }
 
 TEST_F(FrameSyncNodeTest, ConfigDeviceIsRequired) {
-    EXPECT_FALSE(FrameSyncNodeConfig::VULKAN_DEVICE_IN_Slot::nullable);
+    EXPECT_FALSE(FrameSyncNodeConfig::VULKAN_DEVICE_Slot::nullable);
 }
 
 TEST_F(FrameSyncNodeTest, ConfigDeviceTypeIsVulkanDevicePtr) {
     bool isCorrect = std::is_same_v<
-        FrameSyncNodeConfig::VULKAN_DEVICE_IN_Slot::Type,
+        FrameSyncNodeConfig::VULKAN_DEVICE_Slot::Type,
         Vixen::Vulkan::Resources::VulkanDevice*
     >;
     EXPECT_TRUE(isCorrect);
@@ -57,7 +57,7 @@ TEST_F(FrameSyncNodeTest, ConfigHasSemaphoreOutputs) {
 
 // Slot Metadata
 TEST_F(FrameSyncNodeTest, ConfigDeviceIsReadOnly) {
-    EXPECT_EQ(FrameSyncNodeConfig::VULKAN_DEVICE_IN_Slot::mutability,
+    EXPECT_EQ(FrameSyncNodeConfig::VULKAN_DEVICE_Slot::mutability,
               SlotMutability::ReadOnly);
 }
 

@@ -570,25 +570,36 @@ public:
             // Register the slot
             variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
 
-            // Register dependency
+            // Register dependency (gatherer depends on source) - both node-level and topology
+            std::cout << "[ConnectVariadic] Adding topology dependency: "
+                      << node->GetInstanceName() << " depends on " << sourceNodeInst->GetInstanceName() << std::endl;
             node->AddDependency(sourceNodeInst);
 
-            // Register PostSetup hook to populate resource pointer after source node sets up its outputs
+            // Add edge to topology graph for topological sort
+            GraphEdge edge;
+            edge.source = sourceNodeInst;
+            edge.target = node;
+            edge.sourceOutputIndex = sourceSlot.index;
+            edge.targetInputIndex = bindingIndex;
+            graph->GetTopology().AddEdge(edge);
+
+            // Register PostCompile hook to populate resource pointer after source node compiles
+            // Use PostCompile instead of PostSetup because resources may be created/recreated during Compile
             graph->GetLifecycleHooks().RegisterNodeHook(
-                NodeLifecyclePhase::PostSetup,
-                [=](NodeInstance* setupNode) {
+                NodeLifecyclePhase::PostCompile,
+                [=](NodeInstance* compiledNode) {
                     // Only execute for the source node
-                    if (setupNode != sourceNodeInst) {
+                    if (compiledNode != sourceNodeInst) {
                         return;
                     }
 
-                    std::cout << "[ConnectVariadic PostSetup Hook] Populating resource for binding "
+                    std::cout << "[ConnectVariadic PostCompile Hook] Populating resource for binding "
                               << bindingIndex << std::endl;
 
-                    // Get the source resource (now available after Setup)
+                    // Get the source resource (now available after Compile)
                     Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
                     if (!sourceRes) {
-                        throw std::runtime_error("ConnectVariadic: Source output not found after Setup");
+                        throw std::runtime_error("ConnectVariadic: Source output not found after Compile");
                     }
 
                     // Get the existing slot info and update its resource pointer
@@ -602,13 +613,14 @@ public:
                         variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
 
                         // Register resource with dependency tracker for recompile tracking
-                        // This ensures when source node recompiles, gatherer knows to recompile too
+                        // This ensures when source node recompiles and creates new resources,
+                        // the gatherer knows to recompile too
                         graph->RegisterResourceProducer(sourceRes, sourceNodeInst, sourceSlot.index);
 
-                        std::cout << "[ConnectVariadic PostSetup Hook] Resource populated for binding "
+                        std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
                                   << bindingIndex << " and registered with dependency tracker" << std::endl;
                     } else {
-                        std::cerr << "[ConnectVariadic PostSetup Hook] ERROR: Could not find slot at binding "
+                        std::cerr << "[ConnectVariadic PostCompile Hook] ERROR: Could not find slot at binding "
                                   << bindingIndex << std::endl;
                     }
                 },
@@ -616,7 +628,7 @@ public:
             );
 
             std::cout << "[ConnectVariadic] Created tentative slot with field extraction at binding "
-                      << bindingIndex << " (resource will be populated in PostSetup)" << std::endl;
+                      << bindingIndex << " (resource will be populated in PostCompile)" << std::endl;
         });
 
         return *this;

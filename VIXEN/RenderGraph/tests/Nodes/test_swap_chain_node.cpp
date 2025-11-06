@@ -20,7 +20,7 @@ class SwapChainNodeTest : public ::testing::Test {};
 
 // Configuration Tests
 TEST_F(SwapChainNodeTest, ConfigHasTwoInputs) {
-    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 2) << "Requires DEVICE and SURFACE";
+    EXPECT_EQ(SwapChainNodeConfig::INPUT_COUNT, 10) << "Requires multiple inputs including DEVICE, HWND, etc.";
 }
 
 TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
@@ -28,15 +28,16 @@ TEST_F(SwapChainNodeTest, ConfigHasMultipleOutputs) {
 }
 
 TEST_F(SwapChainNodeTest, ConfigDeviceInputIndex) {
-    EXPECT_EQ(SwapChainNodeConfig::VULKAN_DEVICE_IN_Slot::index, 0);
+    EXPECT_EQ(SwapChainNodeConfig::VULKAN_DEVICE_IN_Slot::index, 5);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSurfaceInputIndex) {
-    EXPECT_EQ(SwapChainNodeConfig::SURFACE_IN_Slot::index, 1);
+    // Surface is created internally in SwapChainNode, not an input slot
+    EXPECT_EQ(SwapChainNodeConfig::INSTANCE_Slot::index, 4);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSwapChainOutputIndex) {
-    EXPECT_EQ(SwapChainNodeConfig::SWAPCHAIN_Slot::index, 0);
+    EXPECT_EQ(SwapChainNodeConfig::SWAPCHAIN_HANDLE_Slot::index, 0);
 }
 
 TEST_F(SwapChainNodeTest, ConfigDeviceIsRequired) {
@@ -44,7 +45,8 @@ TEST_F(SwapChainNodeTest, ConfigDeviceIsRequired) {
 }
 
 TEST_F(SwapChainNodeTest, ConfigSurfaceIsRequired) {
-    EXPECT_FALSE(SwapChainNodeConfig::SURFACE_IN_Slot::nullable);
+    // Surface is created internally, but INSTANCE is required
+    EXPECT_FALSE(SwapChainNodeConfig::INSTANCE_Slot::nullable);
 }
 
 TEST_F(SwapChainNodeTest, ConfigDeviceTypeIsVulkanDevicePtr) {
@@ -56,16 +58,17 @@ TEST_F(SwapChainNodeTest, ConfigDeviceTypeIsVulkanDevicePtr) {
 }
 
 TEST_F(SwapChainNodeTest, ConfigSurfaceTypeIsVkSurfaceKHR) {
+    // Surface is created internally, but INSTANCE is VkInstance
     bool isCorrect = std::is_same_v<
-        SwapChainNodeConfig::SURFACE_IN_Slot::Type,
-        VkSurfaceKHR
+        SwapChainNodeConfig::INSTANCE_Slot::Type,
+        VkInstance
     >;
     EXPECT_TRUE(isCorrect);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSwapChainTypeIsVkSwapchainKHR) {
     bool isCorrect = std::is_same_v<
-        SwapChainNodeConfig::SWAPCHAIN_Slot::Type,
+        SwapChainNodeConfig::SWAPCHAIN_HANDLE_Slot::Type,
         VkSwapchainKHR
     >;
     EXPECT_TRUE(isCorrect);
@@ -75,12 +78,12 @@ TEST_F(SwapChainNodeTest, ConfigSwapChainTypeIsVkSwapchainKHR) {
 TEST_F(SwapChainNodeTest, ConfigInputsAreReadOnly) {
     EXPECT_EQ(SwapChainNodeConfig::VULKAN_DEVICE_IN_Slot::mutability,
               SlotMutability::ReadOnly);
-    EXPECT_EQ(SwapChainNodeConfig::SURFACE_IN_Slot::mutability,
+    EXPECT_EQ(SwapChainNodeConfig::INSTANCE_Slot::mutability,
               SlotMutability::ReadOnly);
 }
 
 TEST_F(SwapChainNodeTest, ConfigSwapChainIsWriteOnly) {
-    EXPECT_EQ(SwapChainNodeConfig::SWAPCHAIN_Slot::mutability,
+    EXPECT_EQ(SwapChainNodeConfig::SWAPCHAIN_HANDLE_Slot::mutability,
               SlotMutability::WriteOnly);
 }
 
