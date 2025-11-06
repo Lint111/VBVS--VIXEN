@@ -410,8 +410,98 @@ void DescriptorSetNode::ExecuteImpl(Context& ctx) {
 
     memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
 
-    // Phase 0.4: NO DESCRIPTOR SET UPDATE - each image uses its own set
-    // This avoids invalidating command buffers that reference the descriptor sets
+    // Update descriptor sets for transient resources in Execute phase
+    // Read fresh shader bundle and resource array
+    auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+    auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+
+    if (!shaderBundle || descriptorResources.empty()) {
+        return;  // No transient updates needed
+    }
+
+    // Get descriptor bindings from shader reflection
+    auto descriptorBindings = shaderBundle->GetDescriptorSet(0);
+    if (descriptorBindings.empty()) {
+        return;
+    }
+
+    // Generic descriptor update - handles all descriptor types from metadata
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<VkDescriptorImageInfo> imageInfos;   // Keep alive
+    std::vector<VkDescriptorBufferInfo> bufferInfos; // Keep alive
+
+    for (const auto& binding : descriptorBindings) {
+        if (binding.binding >= descriptorResources.size()) continue;
+
+        const auto& resourceVariant = descriptorResources[binding.binding];
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptorSets[imageIndex];
+        write.dstBinding = binding.binding;
+        write.dstArrayElement = 0;
+        write.descriptorType = binding.descriptorType;
+        write.descriptorCount = 1;
+
+        // Generic variant inspection based on descriptor type
+        switch (binding.descriptorType) {
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
+                if (std::holds_alternative<VkImageView>(resourceVariant)) {
+                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageView = imageView;
+                    imageInfo.sampler = VK_NULL_HANDLE;
+                    imageInfo.imageLayout = (binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                        ? VK_IMAGE_LAYOUT_GENERAL
+                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    writes.push_back(write);
+                }
+                break;
+            }
+
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
+                if (std::holds_alternative<VkImageView>(resourceVariant)) {
+                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageView = imageView;
+                    imageInfo.sampler = VK_NULL_HANDLE;  // TODO: Get from gatherer
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    writes.push_back(write);
+                }
+                break;
+            }
+
+            case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: {
+                if (std::holds_alternative<VkBuffer>(resourceVariant)) {
+                    VkBuffer buffer = std::get<VkBuffer>(resourceVariant);
+                    VkDescriptorBufferInfo bufferInfo{};
+                    bufferInfo.buffer = buffer;
+                    bufferInfo.offset = 0;
+                    bufferInfo.range = VK_WHOLE_SIZE;
+                    bufferInfos.push_back(bufferInfo);
+                    write.pBufferInfo = &bufferInfos.back();
+                    writes.push_back(write);
+                }
+                break;
+            }
+
+            default:
+                // Unsupported or constant descriptor type - skip
+                break;
+        }
+    }
+
+    if (!writes.empty()) {
+        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        std::cout << "[DescriptorSetNode::Execute] Updated " << writes.size()
+                  << " transient descriptor(s) for frame " << imageIndex << std::endl;
+    }
 }
 
 void DescriptorSetNode::CleanupImpl() {

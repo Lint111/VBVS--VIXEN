@@ -176,14 +176,13 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 windowNode->shouldClose = true;
                 // Publish window close REQUESTED event to allow graceful shutdown
                 // Systems can subscribe to this event to save state, cleanup resources, etc.
-                // After all subscribers acknowledge, the window will actually close
                 if (windowNode->GetMessageBus()) {
                     windowNode->GetMessageBus()->Publish(
                         std::make_unique<EventBus::WindowCloseEvent>(windowNode->instanceId)
                     );
                 }
-                // Don't destroy window immediately - let the application handle shutdown sequence
-                // Application will call DestroyWindow when shutdown is complete
+                // Destroy window immediately to trigger WM_DESTROY -> PostQuitMessage
+                DestroyWindow(hWnd);
             }
             return 0;
 

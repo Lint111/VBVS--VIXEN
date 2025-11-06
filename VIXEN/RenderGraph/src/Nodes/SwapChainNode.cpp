@@ -176,6 +176,13 @@ void SwapChainNode::CompileImpl(Context& ctx) {
     // Step 6: Select optimal present mode
     swapChainWrapper->ManagePresentMode();
 
+    // Step 6.5: If this is a recompilation (swapchain already exists), destroy old swapchain first
+    // This is necessary because vkCreateSwapchainKHR fails with VK_ERROR_OUT_OF_DATE_KHR if old swapchain exists
+    if (swapChainWrapper->scPublicVars.swapChain != VK_NULL_HANDLE) {
+        std::cout << "[SwapChainNode::Compile] Destroying existing swapchain for recreation" << std::endl;
+        swapChainWrapper->DestroySwapChain(GetDevice()->device);
+    }
+
     // Step 7: Create the swapchain with configured settings
     swapChainWrapper->CreateSwapChainColorImages(GetDevice()->device);
 
