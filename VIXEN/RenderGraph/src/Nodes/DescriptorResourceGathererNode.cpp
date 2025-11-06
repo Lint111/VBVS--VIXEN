@@ -230,6 +230,13 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx, si
 
         if (!slotInfo) continue;
 
+        // Skip validation for transient slots (ExecuteOnly) - validated in Execute phase
+        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
+            std::cout << "[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping transient slot "
+                      << i << " (" << slotInfo->slotName << ") - will be validated in Execute phase\n";
+            continue;
+        }
+
         // Skip type validation for field extraction - DescriptorSetNode handles per-frame indexing
         if (slotInfo->hasFieldExtraction) {
             std::cout << "[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping type validation for field extraction slot "
@@ -270,7 +277,15 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
             continue;
         }
 
-        // Slot should have valid resource after validation
+        // For transient slots (marked ExecuteOnly), fetch resource from source node
+        // These don't exist during Compile phase, so skip them here (will be fetched in Execute)
+        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
+            std::cout << "[DescriptorResourceGathererNode::GatherResources] Skipping transient slot " << i
+                      << " (binding=" << slotInfo->binding << ") - will fetch in Execute phase\n";
+            continue;
+        }
+
+        // Slot should have valid resource after validation (for non-transient)
         if (!slotInfo->resource) {
             std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Validated slot " << i
                       << " (binding=" << slotInfo->binding << ") has null resource\n";

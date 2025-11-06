@@ -798,10 +798,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
          // Phase H: Data-driven resource connection via shader metadata
-         // Extract colorBuffers field from SwapChainPublicVariables for descriptor binding
-         .ConnectVariadic(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                          descriptorGatherer, ComputeTest::outputImage,
-                          &SwapChainPublicVariables::colorBuffers)
+         // Connect transient CURRENT_FRAME_IMAGE_VIEW output (updated per-frame)
+         .ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+                          descriptorGatherer, ComputeTest::outputImage)
          ;
 
     // Swapchain connections to descriptor set and dispatch

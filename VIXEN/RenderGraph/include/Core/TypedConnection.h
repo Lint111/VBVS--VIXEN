@@ -448,25 +448,36 @@ public:
                 throw std::runtime_error("ConnectVariadic: Invalid source node handle");
             }
 
-            Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
-            if (!sourceRes) {
-                throw std::runtime_error("ConnectVariadic: Source output not found");
-            }
-
             // Extract binding index from binding ref
             uint32_t bindingIndex = bindingRef.binding;
             size_t bundleIndex = 0;
 
-            // Create tentative slot (optimistic - trust user, defer validation to Compile)
+            // Create tentative slot WITHOUT accessing the resource
+            // Resource will be populated in PostCompile hook
             VariadicSlotInfo tentativeSlot;
-            tentativeSlot.resource = sourceRes;
-            tentativeSlot.resourceType = sourceRes->GetType();  // Infer from resource
+            tentativeSlot.resource = nullptr;  // Will be set in PostCompile
+            tentativeSlot.resourceType = ResourceTypeTraits<typename SourceSlot::Type>::resourceType;
             tentativeSlot.slotName = bindingRef.name;
             tentativeSlot.binding = bindingIndex;
             tentativeSlot.descriptorType = bindingRef.type;
-            tentativeSlot.state = SlotState::Tentative;  // Mark as unvalidated
+            tentativeSlot.state = SlotState::Tentative;
             tentativeSlot.sourceNode = sourceNode;
             tentativeSlot.sourceOutput = sourceSlot.index;
+
+            // Detect transient outputs - mark with both Dependency and ExecuteOnly flags
+            // This allows:
+            // - Compile phase: Initial setup and validation
+            // - Execute phase: Per-frame resource refresh
+            const ResourceDescriptor* outputDesc = sourceNodeInst->GetNodeType()->GetOutputDescriptor(sourceSlot.index);
+            if (outputDesc && outputDesc->lifetime == ResourceLifetime::Transient) {
+                tentativeSlot.slotRole = static_cast<SlotRole>(
+                    static_cast<uint8_t>(SlotRole::Dependency) | static_cast<uint8_t>(SlotRole::ExecuteOnly)
+                );
+                std::cout << "[ConnectVariadic] Detected transient output - marking slot as Dependency|ExecuteOnly\n";
+            } else {
+                tentativeSlot.slotRole = SlotRole::Dependency;
+                std::cout << "[ConnectVariadic] Marking slot as Dependency (static resource)\n";
+            }
 
             // Update/create slot (always succeeds)
             variadicNodePtr->UpdateVariadicSlot(bindingIndex, tentativeSlot, bundleIndex);
@@ -475,6 +486,50 @@ public:
             std::cout << "[ConnectVariadic] Adding dependency: " << node->GetInstanceName()
                       << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
             node->AddDependency(sourceNodeInst);
+
+            // Add topology edge
+            GraphEdge edge;
+            edge.source = sourceNodeInst;
+            edge.target = node;
+            edge.sourceOutputIndex = sourceSlot.index;
+            edge.targetInputIndex = bindingIndex;
+            graph->GetTopology().AddEdge(edge);
+
+            // Register PostCompile hook to populate resource pointer (skip for transient slots)
+            graph->GetLifecycleHooks().RegisterNodeHook(
+                NodeLifecyclePhase::PostCompile,
+                [=](NodeInstance* compiledNode) {
+                    if (compiledNode != sourceNodeInst) return;
+
+                    // Check if slot is transient (ExecuteOnly) - skip population if so
+                    const VariadicSlotInfo* currentSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (currentSlot && (static_cast<uint8_t>(currentSlot->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly))) {
+                        std::cout << "[ConnectVariadic PostCompile Hook] Skipping transient slot at binding "
+                                  << bindingIndex << " (will populate in Execute phase)\n";
+                        return;
+                    }
+
+                    std::cout << "[ConnectVariadic PostCompile Hook] Populating resource for binding "
+                              << bindingIndex << std::endl;
+
+                    Resource* sourceRes = sourceNodeInst->GetOutput(sourceSlot.index, 0);
+                    if (!sourceRes) {
+                        throw std::runtime_error("ConnectVariadic: Source output not found after Compile");
+                    }
+
+                    const VariadicSlotInfo* existingSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (existingSlot) {
+                        VariadicSlotInfo updatedSlot = *existingSlot;
+                        updatedSlot.resource = sourceRes;
+                        updatedSlot.resourceType = sourceRes->GetType();
+                        variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
+
+                        std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
+                                  << bindingIndex << " with type " << static_cast<int>(updatedSlot.resourceType) << std::endl;
+                    }
+                },
+                "ConnectVariadic resource population"
+            );
 
             std::cout << "[ConnectVariadic] Created tentative slot at binding " << bindingIndex
                       << " (state=Tentative, will validate during Compile)" << std::endl;
@@ -567,13 +622,16 @@ public:
             tentativeSlot.fieldOffset = fieldOffset;
             tentativeSlot.hasFieldExtraction = true;
 
-            // Detect transient outputs by checking the source output's ResourceLifetime
-            // Dependency (Compile-time): Static resources, gathered once during Compile phase
-            // ExecuteOnly (Execute-time): Transient resources, updated every frame
+            // Detect transient outputs - mark with both Dependency and ExecuteOnly flags
+            // This allows:
+            // - Compile phase: Initial setup and validation
+            // - Execute phase: Per-frame resource refresh
             const ResourceDescriptor* outputDesc = sourceNodeInst->GetNodeType()->GetOutputDescriptor(sourceSlot.index);
             if (outputDesc && outputDesc->lifetime == ResourceLifetime::Transient) {
-                tentativeSlot.slotRole = SlotRole::ExecuteOnly;
-                std::cout << "[ConnectVariadic] Detected transient output - marking slot as ExecuteOnly\n";
+                tentativeSlot.slotRole = static_cast<SlotRole>(
+                    static_cast<uint8_t>(SlotRole::Dependency) | static_cast<uint8_t>(SlotRole::ExecuteOnly)
+                );
+                std::cout << "[ConnectVariadic] Detected transient output - marking slot as Dependency|ExecuteOnly\n";
             } else {
                 tentativeSlot.slotRole = SlotRole::Dependency;
                 std::cout << "[ConnectVariadic] Marking slot as Dependency (static resource)\n";
@@ -595,13 +653,21 @@ public:
             edge.targetInputIndex = bindingIndex;
             graph->GetTopology().AddEdge(edge);
 
-            // Register PostCompile hook to populate resource pointer after source node compiles
+            // Register PostCompile hook to populate resource pointer after source node compiles (skip for transient slots)
             // Use PostCompile instead of PostSetup because resources may be created/recreated during Compile
             graph->GetLifecycleHooks().RegisterNodeHook(
                 NodeLifecyclePhase::PostCompile,
                 [=](NodeInstance* compiledNode) {
                     // Only execute for the source node
                     if (compiledNode != sourceNodeInst) {
+                        return;
+                    }
+
+                    // Check if slot is transient (ExecuteOnly) - skip population if so
+                    const VariadicSlotInfo* currentSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (currentSlot && (static_cast<uint8_t>(currentSlot->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly))) {
+                        std::cout << "[ConnectVariadic PostCompile Hook] Skipping transient slot at binding "
+                                  << bindingIndex << " (will populate in Execute phase)\n";
                         return;
                     }
 

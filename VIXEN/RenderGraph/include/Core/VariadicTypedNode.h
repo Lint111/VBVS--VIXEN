@@ -470,7 +470,14 @@ protected:
         for (size_t i = 0; i < variadicSlots.size(); ++i) {
             const auto& slotInfo = variadicSlots[i];
 
-            // Check for null resources
+            // Skip validation for transient slots (ExecuteOnly) - they're populated in Execute phase
+            if (static_cast<uint8_t>(slotInfo.slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
+                std::cout << "[VariadicTypedNode::ValidateVariadicInputsImpl] Skipping validation for transient slot "
+                          << i << " (" << slotInfo.slotName << ") - will be populated in Execute phase\n";
+                continue;
+            }
+
+            // Check for null resources (non-transient only)
             if (!slotInfo.resource) {
                 std::cout << "[VariadicTypedNode::ValidateVariadicInputsImpl] ERROR: "
                           << "Variadic input " << i << " (" << slotInfo.slotName << ") is null\n";
