@@ -34,6 +34,7 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
 
 set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/BoolOpNodeConfig.h
+    include/Data/Nodes/CameraNodeConfig.h
     include/Data/Nodes/CommandPoolNodeConfig.h
     include/Data/Nodes/ComputeDispatchNodeConfig.h
     include/Data/Nodes/ComputePipelineNodeConfig.h
@@ -55,6 +56,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/SwapChainStructSpreaderNodeConfig.h
     include/Data/Nodes/TextureLoaderNodeConfig.h
     include/Data/Nodes/VertexBufferNodeConfig.h
+    include/Data/Nodes/VoxelGridNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
 )
 
@@ -112,6 +114,7 @@ set(RENDERGRAPH_CORE_SOURCES
 
 set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/BoolOpNode.h
+    include/Nodes/CameraNode.h
     include/Nodes/CommandPoolNode.h
     include/Nodes/ComputeDispatchNode.h
     include/Nodes/ComputePipelineNode.h
@@ -135,11 +138,13 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/SwapChainStructSpreaderNode.h
     include/Nodes/TextureLoaderNode.h
     include/Nodes/VertexBufferNode.h
+    include/Nodes/VoxelGridNode.h
     include/Nodes/WindowNode.h
 )
 
 set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/BoolOpNode.cpp
+    src/Nodes/CameraNode.cpp
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
     src/Nodes/ComputePipelineNode.cpp
@@ -159,6 +164,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/SwapChainNode.cpp
     src/Nodes/TextureLoaderNode.cpp
     src/Nodes/VertexBufferNode.cpp
+    src/Nodes/VoxelGridNode.cpp
     src/Nodes/WindowNode.cpp
 )
 

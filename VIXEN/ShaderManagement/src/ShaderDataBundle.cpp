@@ -302,6 +302,7 @@ void ShaderDataBundle::ValidateDescriptorPairing() const {
         std::vector<const SpirvDescriptorBinding*> samplers;
         std::vector<const SpirvDescriptorBinding*> sampledImages;
         std::vector<const SpirvDescriptorBinding*> combinedImageSamplers;
+        std::vector<const SpirvDescriptorBinding*> storageImages;  // Output images
 
         for (const auto& binding : bindings) {
             switch (binding.descriptorType) {
@@ -313,6 +314,9 @@ void ShaderDataBundle::ValidateDescriptorPairing() const {
                     break;
                 case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                     combinedImageSamplers.push_back(&binding);
+                    break;
+                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                    storageImages.push_back(&binding);  // Typically outputs, don't need samplers
                     break;
                 default:
                     break;

@@ -35,8 +35,10 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
 #include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
 #include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
+#include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
+#include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
-#include "generated/sdi/ComputeTestNames.h"  // Phase H: Shader binding refs
+// Note: VoxelRayMarch SDI will be generated at runtime by ShaderBundleBuilder
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -355,8 +357,10 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
     nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
     nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
+    nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
+    nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
 
-    mainLogger->Info("Successfully registered 22 node types");
+    mainLogger->Info("Successfully registered 24 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -403,26 +407,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
     NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
-
-    // Phase H: NO LONGER NEEDED - GraphCompileSetup auto-discovers slots from shader bundle!
-    // (Kept commented for reference - will be removed once fully tested)
-    /*
-    auto* gathererNode = dynamic_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
-    if (gathererNode) {
-        gathererNode->PreRegisterVariadicSlots(ComputeTest::outputImage);
-        mainLogger->Info("Pre-registered variadic slots for compute descriptor gatherer");
-    }
-    */
-
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
+
+    // --- Ray Marching Nodes ---
+    NodeHandle cameraNode = renderGraph->AddNode("Camera", "raymarch_camera");
+    NodeHandle voxelGridNode = renderGraph->AddNode("VoxelGrid", "voxel_grid");
 
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 20 node instances (Phase H: added descriptor gatherer node)");
+    mainLogger->Info("Created 22 node instances (including camera and voxel grid)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -545,14 +542,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
     std::cout << "[BuildRenderGraph] Loop ID set, moving to shader library..." << std::endl;
 
-    // Compute shader library (ComputeTest.comp)
+    // Voxel ray marching compute shader (VoxelRayMarch.comp)
     auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
     computeShaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Find compute shader path
+        // Find voxel ray march shader path
         std::vector<std::filesystem::path> possiblePaths = {
-            "ComputeTest.comp", "Shaders/ComputeTest.comp", "../Shaders/ComputeTest.comp", "binaries/ComputeTest.comp"
+            "VoxelRayMarch.comp", "Shaders/VoxelRayMarch.comp", "../Shaders/VoxelRayMarch.comp", "binaries/VoxelRayMarch.comp"
         };
         std::filesystem::path compPath;
         for (const auto& path : possiblePaths) {
@@ -562,7 +559,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             }
         }
 
-        builder.SetProgramName("ComputeTest")
+        builder.SetProgramName("VoxelRayMarch")
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(spirvVer)
@@ -570,6 +567,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         return builder;
     });
+
+    std::cout << "[BuildRenderGraph] Configured voxel ray marching compute shader" << std::endl;
 
     // Phase G: Compute dispatch parameters
     auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
@@ -580,7 +579,24 @@ void VulkanGraphApplication::BuildRenderGraph() {
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
 
-    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID + compute nodes)");
+    // Ray marching: Camera parameters
+    auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode));
+    camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
+    camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 100.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
+
+    // Ray marching: Voxel grid parameters
+    auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_RESOLUTION, 128u);
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));
+
+    mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -796,12 +812,37 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
                   computeDispatch, ComputeDispatchNodeConfig::DESCRIPTOR_SETS)
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
-                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL)
-         // Phase H: Data-driven resource connection via shader metadata
-         // Connect transient CURRENT_FRAME_IMAGE_VIEW output (updated per-frame)
-         .ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, ComputeTest::outputImage)
-         ;
+                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
+
+    // --- Ray Marching Resource Connections ---
+    // Camera node connections
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  cameraNode, CameraNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  cameraNode, CameraNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  cameraNode, CameraNodeConfig::IMAGE_INDEX);
+
+    // Voxel grid node connections
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  voxelGridNode, VoxelGridNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
+
+    // Connect ray marching resources to descriptor gatherer
+    // Binding 0: outputImage (swapchain image view)
+    batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+                          descriptorGatherer, 0);
+
+    // Binding 1: camera (uniform buffer)
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
+                          descriptorGatherer, 1);
+
+    // Binding 2: voxelGrid (combined image sampler - need both view and sampler)
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_IMAGE_VIEW,
+                          descriptorGatherer, 2)
+         .ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_SAMPLER,
+                          descriptorGatherer, 2);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
