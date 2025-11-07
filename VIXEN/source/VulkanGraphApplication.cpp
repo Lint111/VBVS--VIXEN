@@ -38,7 +38,7 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
-// Note: VoxelRayMarch SDI will be generated at runtime by ShaderBundleBuilder
+#include "../generated/sdi/VoxelRayMarchNames.h"  // Generated shader binding constants
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -829,20 +829,20 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
 
-    // Connect ray marching resources to descriptor gatherer
+    // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage (swapchain image view)
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, 0);
+                          descriptorGatherer, VoxelRayMarch::outputImage);
 
     // Binding 1: camera (uniform buffer)
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
-                          descriptorGatherer, 1);
+                          descriptorGatherer, VoxelRayMarch::camera);
 
     // Binding 2: voxelGrid (combined image sampler - need both view and sampler)
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_IMAGE_VIEW,
-                          descriptorGatherer, 2)
+                          descriptorGatherer, VoxelRayMarch::voxelGrid)
          .ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_SAMPLER,
-                          descriptorGatherer, 2);
+                          descriptorGatherer, VoxelRayMarch::voxelGrid);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings

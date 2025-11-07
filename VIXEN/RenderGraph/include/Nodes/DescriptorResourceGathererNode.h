@@ -27,6 +27,16 @@ public:
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName
     ) const override;
+
+    // Override to account for variadic input slots (binding indices)
+    // Returns: base input count + max variadic binding index + 1
+    size_t GetInputCount() const override {
+        // Base implementation returns inputSchema.size() = 1 (SHADER_DATA_BUNDLE)
+        // Variadic nodes need to account for dynamic binding indices
+        // Since we don't know max binding at type-level, return a large value
+        // Validation will be skipped for indices >= base count
+        return 256;  // Support up to 256 descriptor bindings (Vulkan max per set)
+    }
 };
 
 /**
@@ -100,7 +110,11 @@ private:
 
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);
-    VkDescriptorType InferDescriptorType(Resource* res);
+    VkDescriptorType InferDescriptorType(Resource* res);  // Deprecated - use IsResourceCompatibleWithDescriptorType
+
+    // Generic descriptor type compatibility (visitor pattern)
+    bool IsResourceCompatibleWithDescriptorType(Resource* res, VkDescriptorType descriptorType);
+    bool IsResourceTypeCompatibleWithDescriptor(ResourceType resType, VkDescriptorType descriptorType);
 
     // Pre-registration helper (implementation detail)
     template<typename BindingRef>

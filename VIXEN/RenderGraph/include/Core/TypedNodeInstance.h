@@ -681,9 +681,30 @@ private:
         // This happens when a node wants to write to an output that wasn't connected
         // TODO: Ideally the graph should manage all Resource<HandleType> instances, but for now we create locally
         if (outputs[slotIndex] == nullptr) {
-            // HACK: Create Resource inline - this should be managed by RenderGraph
-            // For now, just allocate it here. This is a memory leak if not cleaned up!
-            outputs[slotIndex] = new Resource();
+            // Create Resource using the output schema descriptor from NodeType
+            const ResourceDescriptor* schemaDesc = nodeType->GetOutputDescriptor(slotIndex);
+            if (schemaDesc) {
+                // Clone the descriptor and use it to initialize the Resource
+                std::unique_ptr<ResourceDescriptorBase> descClone;
+                // Visit the descriptor variant to clone it
+                std::visit([&descClone](const auto& desc) {
+                    using DescType = std::decay_t<decltype(desc)>;
+                    if constexpr (!std::is_same_v<DescType, std::monostate>) {
+                        descClone = std::make_unique<DescType>(desc);
+                    }
+                }, schemaDesc->descriptor);
+
+                // Create resource from type + descriptor
+                if (descClone) {
+                    outputs[slotIndex] = new Resource();
+                    *outputs[slotIndex] = Resource::CreateFromType(schemaDesc->type, std::move(descClone));
+                } else {
+                    outputs[slotIndex] = new Resource();
+                }
+            } else {
+                // Fallback: Create empty resource
+                outputs[slotIndex] = new Resource();
+            }
         }
     }
 

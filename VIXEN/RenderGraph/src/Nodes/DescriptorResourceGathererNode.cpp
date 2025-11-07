@@ -351,32 +351,139 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {
     if (!res) return false;
 
-    // Infer actual descriptor type from resource
-    VkDescriptorType actualType = InferDescriptorType(res);
-
-    // Check type compatibility
-    return actualType == expectedType;
+    // Use visitor pattern to check descriptor compatibility with expected type
+    return IsResourceCompatibleWithDescriptorType(res, expectedType);
 }
 
 VkDescriptorType DescriptorResourceGathererNode::InferDescriptorType(Resource* res) {
+    // Deprecated - kept for legacy compatibility
+    // Use IsResourceCompatibleWithDescriptorType instead
     if (!res) return VK_DESCRIPTOR_TYPE_MAX_ENUM;
 
-    // Infer from resource type
     ResourceType resType = res->GetType();
 
     switch (resType) {
         case ResourceType::Image:
-            // Could be storage image, sampled image, or combined sampler
-            // Default to storage for now - ideally we'd check descriptor metadata
             return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-
         case ResourceType::Buffer:
-            // Could be uniform or storage buffer
-            // Default to uniform - ideally we'd check descriptor metadata
             return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-
         default:
             return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+    }
+}
+
+bool DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType(
+    Resource* res,
+    VkDescriptorType descriptorType
+) {
+    if (!res) return false;
+
+    // Get descriptor from resource
+    ResourceType resType = res->GetType();
+
+    // Try to extract usage from descriptor using visitor pattern
+    std::optional<ResourceUsage> usageOpt;
+
+    // Visit BufferDescriptor
+    if (auto* bufferDesc = res->GetDescriptor<BufferDescriptor>()) {
+        usageOpt = bufferDesc->usage;
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found BufferDescriptor with usage="
+                  << static_cast<uint32_t>(bufferDesc->usage) << "\n";
+    }
+    // Visit ImageDescriptor
+    else if (auto* imageDesc = res->GetDescriptor<ImageDescriptor>()) {
+        usageOpt = imageDesc->usage;
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found ImageDescriptor with usage="
+                  << static_cast<uint32_t>(imageDesc->usage) << "\n";
+    }
+    // Visit StorageImageDescriptor
+    else if (auto* storageImageDesc = res->GetDescriptor<StorageImageDescriptor>()) {
+        usageOpt = ResourceUsage::Storage;  // Storage images always have Storage usage
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found StorageImageDescriptor\n";
+    }
+    // Visit Texture3DDescriptor
+    else if (auto* texture3DDesc = res->GetDescriptor<Texture3DDescriptor>()) {
+        usageOpt = ResourceUsage::Sampled;  // 3D textures typically sampled
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found Texture3DDescriptor\n";
+    }
+    else {
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] No descriptor with usage found, using fallback\n";
+    }
+
+    // If no usage available, fall back to ResourceType-based compatibility
+    if (!usageOpt.has_value()) {
+        bool fallbackResult = IsResourceTypeCompatibleWithDescriptor(resType, descriptorType);
+        std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Fallback result for ResourceType="
+                  << static_cast<int>(resType) << ", VkDescriptorType=" << descriptorType << ": " << (fallbackResult ? "PASS" : "FAIL") << "\n";
+        return fallbackResult;
+    }
+
+    ResourceUsage usage = usageOpt.value();
+    std::cout << "[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Checking usage=" << static_cast<uint32_t>(usage)
+              << " against VkDescriptorType=" << descriptorType << "\n";
+
+    // Check compatibility based on descriptor type
+    switch (descriptorType) {
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+            return HasUsage(usage, ResourceUsage::UniformBuffer);
+
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+            return HasUsage(usage, ResourceUsage::StorageBuffer);
+
+        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+            return HasUsage(usage, ResourceUsage::Storage) &&
+                   (resType == ResourceType::Image || resType == ResourceType::StorageImage);
+
+        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+            return HasUsage(usage, ResourceUsage::Sampled) &&
+                   (resType == ResourceType::Image || resType == ResourceType::Image3D);
+
+        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+            // Combined sampler requires Sampled usage
+            // Note: Actual sampler is separate resource, we check image compatibility here
+            return HasUsage(usage, ResourceUsage::Sampled) &&
+                   (resType == ResourceType::Image || resType == ResourceType::Image3D);
+
+        case VK_DESCRIPTOR_TYPE_SAMPLER:
+            // Samplers are separate resources - check ResourceType
+            return resType == ResourceType::Buffer;  // VkSampler registered as Buffer type
+
+        default:
+            return false;
+    }
+}
+
+bool DescriptorResourceGathererNode::IsResourceTypeCompatibleWithDescriptor(
+    ResourceType resType,
+    VkDescriptorType descriptorType
+) {
+    // Fallback compatibility check when usage info not available
+    // This handles HandleDescriptor resources (VkImageView, VkSampler, etc.)
+
+    switch (descriptorType) {
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+            return resType == ResourceType::Buffer;
+
+        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+            return resType == ResourceType::Image ||
+                   resType == ResourceType::StorageImage ||
+                   resType == ResourceType::Image3D;
+
+        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+            // Combined sampler can accept BOTH ImageView (Image type) and Sampler (Buffer type)
+            // When two resources connect to same binding, check each individually
+            return resType == ResourceType::Image ||
+                   resType == ResourceType::StorageImage ||
+                   resType == ResourceType::Image3D ||
+                   resType == ResourceType::Buffer;  // VkSampler uses Buffer ResourceType
+
+        case VK_DESCRIPTOR_TYPE_SAMPLER:
+            return resType == ResourceType::Buffer;  // VkSampler uses Buffer ResourceType
+
+        default:
+            return false;
     }
 }
 
