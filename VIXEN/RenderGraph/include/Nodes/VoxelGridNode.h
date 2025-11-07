@@ -44,6 +44,8 @@ public:
  */
 class VoxelGridNode : public TypedNode<VoxelGridNodeConfig> {
 public:
+    using Base = TypedNode<VoxelGridNodeConfig>;
+
     VoxelGridNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -51,11 +53,6 @@ public:
     ~VoxelGridNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;

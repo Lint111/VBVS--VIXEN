@@ -47,6 +47,8 @@ public:
  */
 class DeviceNode : public TypedNode<DeviceNodeConfig> {
 public:
+    using Base = TypedNode<DeviceNodeConfig>;
+
     DeviceNode(
         const std::string& instanceName,
         NodeType* nodeType,
@@ -60,11 +62,6 @@ public:
     }
 
 protected:
-	using TypedSetupContext = typename Base::TypedSetupContext;
-	using TypedCompileContext = typename Base::TypedCompileContext;
-	using TypedExecuteContext = typename Base::TypedExecuteContext;
-	using TypedCleanupContext = typename Base::TypedCleanupContext;
-
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

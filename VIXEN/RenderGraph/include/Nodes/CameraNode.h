@@ -57,6 +57,7 @@ struct CameraData {
  */
 class CameraNode : public TypedNode<CameraNodeConfig> {
 public:
+
     CameraNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -64,11 +65,6 @@ public:
     ~CameraNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;

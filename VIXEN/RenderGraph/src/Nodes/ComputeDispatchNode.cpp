@@ -35,7 +35,7 @@ ComputeDispatchNode::ComputeDispatchNode(
 // SETUP
 // ============================================================================
 
-void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
+void ComputeDispatchNode::SetupImpl(TypedNode<ComputeDispatchNodeConfig>::TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     std::cout << "[ComputeDispatchNode::SetupImpl] Graph-scope initialization" << std::endl;
 
@@ -52,7 +52,7 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
 // COMPILE
 // ============================================================================
 
-void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
+void ComputeDispatchNode::CompileImpl(TypedNode<ComputeDispatchNodeConfig>::TypedCompileContext& ctx) {
     std::cout << "[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers" << std::endl;
 
     // Access device input (compile-time dependency)
@@ -103,7 +103,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 // EXECUTE
 // ============================================================================
 
-void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void ComputeDispatchNode::ExecuteImpl(TypedNode<ComputeDispatchNodeConfig>::TypedExecuteContext& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(ComputeDispatchNodeConfig::IMAGE_INDEX);
 
@@ -335,7 +335,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 // CLEANUP
 // ============================================================================
 
-void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
+void ComputeDispatchNode::CleanupImpl(TypedNode<ComputeDispatchNodeConfig>::TypedCleanupContext& ctx) {
     std::cout << "[ComputeDispatchNode::CleanupImpl] Cleaning up resources" << std::endl;
 
 #if VIXEN_DEBUG_BUILD

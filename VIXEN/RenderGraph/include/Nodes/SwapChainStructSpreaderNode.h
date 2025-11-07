@@ -31,6 +31,7 @@ public:
  */
 class SwapChainStructSpreaderNode : public TypedNode<SwapChainStructSpreaderNodeConfig> {
 public:
+
     SwapChainStructSpreaderNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -38,11 +39,6 @@ public:
     ~SwapChainStructSpreaderNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;

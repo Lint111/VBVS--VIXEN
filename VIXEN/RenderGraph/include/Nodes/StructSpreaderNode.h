@@ -61,6 +61,7 @@ public:
  */
 class StructSpreaderNode : public VariadicTypedNode<StructSpreaderNodeConfig> {
 public:
+
     StructSpreaderNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -105,10 +106,10 @@ public:
     }
 
 protected:
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl(Context& ctx) override;
+    void SetupImpl(VariadicSetupContext& ctx) override;
+    void CompileImpl(VariadicCompileContext& ctx) override;
+    void ExecuteImpl(VariadicExecuteContext& ctx) override;
+    void CleanupImpl(VariadicCleanupContext& ctx) override;
 
 private:
     std::vector<StructMemberMetadata> memberMetadata_;

@@ -723,11 +723,9 @@ protected:
 
 public:
 
-    // Mark that a specific input slot (slotIndex) was used during compile.
-    // The array/bundle index is resolved using the node's active bundle index.
+    // Mark that a specific input slot (slotIndex) was used during compile at given arrayIndex.
     // This method is const so it can be called from const accessors.
-    void MarkInputUsedInCompile(uint32_t slotIndex) const {
-        uint32_t arrayIndex = static_cast<uint32_t>(activeBundleIndex);
+    void MarkInputUsedInCompile(uint32_t slotIndex, uint32_t arrayIndex) const {
         // Ensure the vector dimensions
         if (inputUsedInCompile.size() <= slotIndex) {
             inputUsedInCompile.resize(slotIndex + 1);

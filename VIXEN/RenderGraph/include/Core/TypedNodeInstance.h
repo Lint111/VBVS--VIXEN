@@ -379,14 +379,15 @@ private:
     template<typename SlotType>
     typename SlotType::Type In(SlotType slot) const {
         static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-        // Phase F: Use currentTaskIndex set by Execute() - provides task-local context
-        uint32_t arrayIndex = static_cast<uint32_t>(currentTaskIndex);
+        // DEPRECATED: Use context-based In() from TypedIOContext instead
+        // This method remains for backward compatibility but should not be used
+        uint32_t arrayIndex = 0; // Fallback to first task
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
 
         // Phase F: Use slot's metadata for dependency tracking (not parameter)
         // Mark used-in-compile if slot has Dependency role
         if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
-            NodeInstance::MarkInputUsedInCompile(SlotType::index);
+            NodeInstance::MarkInputUsedInCompile(SlotType::index, arrayIndex);
         }
         if (!res) return typename SlotType::Type{};  // Return null handle
 
@@ -526,12 +527,13 @@ private:
     const auto* InDesc(SlotType slot) const {
         using HandleType = typename SlotType::Type;
         using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
-        uint32_t arrayIndex = static_cast<uint32_t>(GetActiveBundleIndex());
+        // DEPRECATED: Use context-based InDesc() from TypedIOContext instead
+        uint32_t arrayIndex = 0; // Fallback to first task
         Resource* res = NodeInstance::GetInput(SlotType::index, arrayIndex);
 
         // Phase F: Use slot's metadata for dependency tracking (not parameter)
         if ((static_cast<uint8_t>(SlotType::role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0) {
-            NodeInstance::MarkInputUsedInCompile(SlotType::index);
+            NodeInstance::MarkInputUsedInCompile(SlotType::index, arrayIndex);
         }
         if (!res) return static_cast<const DescriptorType*>(nullptr);
 
@@ -541,11 +543,12 @@ private:
     // Overload of Out that uses the node's active bundle index so callers inside
     // node logic don't need to pass the array index explicitly for the common
     // single-bundle case.
+    // DEPRECATED: Use context-based Out() from TypedIOContext instead
     template<typename SlotType>
     void Out(SlotType slot, typename SlotType::Type value) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-        // Phase F: Use currentTaskIndex for context-aware slot access
-        size_t arrayIndex = currentTaskIndex;
+        // Fallback to first task
+        size_t arrayIndex = 0;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
         res->SetHandle<typename SlotType::Type>(std::move(value));

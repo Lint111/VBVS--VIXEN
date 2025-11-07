@@ -41,6 +41,8 @@ public:
  */
 class LoopBridgeNode : public TypedNode<LoopBridgeNodeConfig> {
 public:
+    using Base = TypedNode<LoopBridgeNodeConfig>;
+
     LoopBridgeNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -48,11 +50,6 @@ public:
     ~LoopBridgeNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

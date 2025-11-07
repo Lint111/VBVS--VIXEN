@@ -43,7 +43,7 @@ DeviceNode::DeviceNode(
 {
 }
 
-void DeviceNode::SetupImpl(TypedSetupContext& ctx) {
+void DeviceNode::SetupImpl(TypedNode<DeviceNodeConfig>::TypedSetupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup: Preparing device creation");
 
     // Get VkInstance from global (Phase 1 temporary solution)
@@ -64,7 +64,7 @@ void DeviceNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Setup complete");
 }
 
-void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
+void DeviceNode::CompileImpl(TypedNode<DeviceNodeConfig>::TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // If device already exists, publish invalidation event before recreation
@@ -117,11 +117,11 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
 
-void DeviceNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DeviceNode::ExecuteImpl(TypedNode<DeviceNodeConfig>::TypedExecuteContext& ctx) {
     // DeviceNode doesn't record commands - it just provides the device
 }
 
-void DeviceNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DeviceNode::CleanupImpl(TypedNode<DeviceNodeConfig>::TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Cleanup: Cleaning device-dependent caches");
 
     // Cleanup all device-dependent caches BEFORE destroying the device

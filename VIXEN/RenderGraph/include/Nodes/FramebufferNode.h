@@ -21,6 +21,8 @@ namespace Vixen::RenderGraph {
  */
 class FramebufferNode : public TypedNode<FramebufferNodeConfig> {
 public:
+    using Base = TypedNode<FramebufferNodeConfig>;
+
     FramebufferNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -36,11 +38,6 @@ public:
     uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
 
 protected:
-	using TypedSetupContext = typename Base::TypedSetupContext;
-	using TypedCompileContext = typename Base::TypedCompileContext;
-	using TypedExecuteContext = typename Base::TypedExecuteContext;
-	using TypedCleanupContext = typename Base::TypedCleanupContext;
-
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

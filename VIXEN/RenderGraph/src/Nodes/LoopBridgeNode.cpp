@@ -20,7 +20,7 @@ LoopBridgeNode::LoopBridgeNode(
     : TypedNode<LoopBridgeNodeConfig>(instanceName, nodeType) {
 }
 
-void LoopBridgeNode::SetupImpl(TypedSetupContext& ctx) {
+void LoopBridgeNode::SetupImpl(TypedNode<LoopBridgeNodeConfig>::TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
@@ -36,7 +36,7 @@ void LoopBridgeNode::SetupImpl(TypedSetupContext& ctx) {
     }
 }
 
-void LoopBridgeNode::CompileImpl(TypedCompileContext& ctx) {
+void LoopBridgeNode::CompileImpl(TypedNode<LoopBridgeNodeConfig>::TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Verify loop exists
@@ -48,7 +48,7 @@ void LoopBridgeNode::CompileImpl(TypedCompileContext& ctx) {
     }
 }
 
-void LoopBridgeNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void LoopBridgeNode::ExecuteImpl(TypedNode<LoopBridgeNodeConfig>::TypedExecuteContext& ctx) {
     if (!loopManager) return;
 
     // Get current loop state
@@ -69,7 +69,7 @@ void LoopBridgeNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-void LoopBridgeNode::CleanupImpl(TypedCleanupContext& ctx) {
+void LoopBridgeNode::CleanupImpl(TypedNode<LoopBridgeNodeConfig>::TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::CleanupImpl(TypedCleanupContext& ctx)");
 
     // No resources to clean up - LoopManager owned by graph

@@ -24,7 +24,7 @@ WindowNode::WindowNode(
 {
 }
 
-void WindowNode::SetupImpl(TypedSetupContext& ctx) {
+void WindowNode::SetupImpl(TypedNode<WindowNodeConfig>::TypedSetupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 
 #ifdef _WIN32
@@ -58,7 +58,7 @@ void WindowNode::SetupImpl(TypedSetupContext& ctx) {
 #endif
 }
 
-void WindowNode::CompileImpl(TypedCompileContext& ctx) {
+void WindowNode::CompileImpl(TypedNode<WindowNodeConfig>::TypedCompileContext& ctx) {
     std::cout << "[WindowNode::Compile] START" << std::endl;
     
     // Get parameters using typed names from config
@@ -147,7 +147,7 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
 #endif
 }
 
-void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void WindowNode::ExecuteImpl(TypedNode<WindowNodeConfig>::TypedExecuteContext& ctx) {
     // Phase F: Store slot index for use in message handlers
     slotIndex = ctx.taskIndex;
 
@@ -330,16 +330,19 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 #endif
 
-void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
+void WindowNode::CleanupImpl(TypedNode<WindowNodeConfig>::TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Cleanup");
 
 #ifdef _WIN32
-    // Destroy surface using named slot from config (NEW VARIANT API)
-    VkSurfaceKHR surface = GetOut(WindowNodeConfig::SURFACE);
-    if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
-        extern VkInstance g_VulkanInstance;
-        fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
-        SetOutput(WindowNodeConfig::SURFACE, 0, VK_NULL_HANDLE);  // Clear typed storage
+    // Destroy surface - access output directly via NodeInstance (CleanupContext has no I/O)
+    Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE, 0);
+    if (surfaceRes) {
+        VkSurfaceKHR surface = surfaceRes->GetHandle<VkSurfaceKHR>();
+        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
+            extern VkInstance g_VulkanInstance;
+            fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
+            surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);  // Clear typed storage
+        }
     }
 
     // Destroy window

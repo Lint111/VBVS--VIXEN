@@ -21,6 +21,8 @@ namespace Vixen::RenderGraph {
  */
 class DepthBufferNode : public TypedNode<DepthBufferNodeConfig> {
 public:
+    using Base = TypedNode<DepthBufferNodeConfig>;
+
     DepthBufferNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -32,11 +34,6 @@ public:
     VkImageView GetDepthImageView() const { return depthImage.view; }
 
 protected:
-	using TypedSetupContext = typename Base::TypedSetupContext;
-	using TypedCompileContext = typename Base::TypedCompileContext;
-	using TypedExecuteContext = typename Base::TypedExecuteContext;
-	using TypedCleanupContext = typename Base::TypedCleanupContext;
-
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

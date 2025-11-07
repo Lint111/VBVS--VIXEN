@@ -35,12 +35,12 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
+void GraphicsPipelineNode::SetupImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("GraphicsPipelineNode: Setup (graph-scope initialization)");
 }
 
-void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
+void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
@@ -150,12 +150,12 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void GraphicsPipelineNode::ExecuteImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedExecuteContext& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
+void GraphicsPipelineNode::CleanupImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedCleanupContext& ctx) {
     // If we have a cached pipeline wrapper, just release the shared_ptr
     // The cacher owns VkPipeline, VkPipelineLayout, and VkPipelineCache - will destroy when appropriate
     if (cachedPipelineWrapper) {

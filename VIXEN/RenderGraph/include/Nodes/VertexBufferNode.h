@@ -48,6 +48,7 @@ public:
  */
 class VertexBufferNode : public TypedNode<VertexBufferNodeConfig> {
 public:
+
     VertexBufferNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -64,11 +65,6 @@ public:
     bool HasIndices() const { return hasIndices; }
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

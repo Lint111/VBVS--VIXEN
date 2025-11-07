@@ -63,6 +63,8 @@ struct DescriptorSlotInfo {
  */
 class DescriptorResourceGathererNode : public VariadicTypedNode<DescriptorResourceGathererNodeConfig> {
 public:
+    using Base = VariadicTypedNode<DescriptorResourceGathererNodeConfig>;
+
     DescriptorResourceGathererNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -87,14 +89,14 @@ public:
     // when connected inputs are available via Context
 
 protected:
-    // Variadic lifecycle overrides with extended Context support
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl(Context& ctx) override;
+    // Variadic lifecycle overrides with phase-specific contexts
+    void SetupImpl(VariadicSetupContext& ctx) override;
+    void CompileImpl(VariadicCompileContext& ctx) override;
+    void ExecuteImpl(VariadicExecuteContext& ctx) override;
+    void CleanupImpl(VariadicCleanupContext& ctx) override;
 
     // Variadic validation override - shader metadata-specific validation
-    bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) override;
+    bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx, size_t bundleIndex = 0) override;
 
 private:
     // Discovered descriptor metadata from shader

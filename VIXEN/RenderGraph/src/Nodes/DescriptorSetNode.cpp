@@ -39,12 +39,12 @@ DescriptorSetNode::DescriptorSetNode(
     // MVP STUB: No descriptor set initialization
 }
 
-void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
+void DescriptorSetNode::SetupImpl(TypedNode<DescriptorSetNodeConfig>::TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("DescriptorSetNode: Setup (graph-scope initialization)");
 }
 
-void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
+void DescriptorSetNode::CompileImpl(TypedNode<DescriptorSetNodeConfig>::TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
     // Access device input (compile-time dependency)
@@ -277,7 +277,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
 }
 
-void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+void DescriptorSetNode::ExecuteImpl(TypedNode<DescriptorSetNodeConfig>::TypedExecuteContext& ctx) {
     // Phase 0.4: Get current image index to select correct per-frame buffer
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
@@ -616,7 +616,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     return writes;
 }
 
-void DescriptorSetNode::CleanupImpl(TypedCleanupContext& ctx) {
+void DescriptorSetNode::CleanupImpl(TypedNode<DescriptorSetNodeConfig>::TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: DescriptorSetNode");
 
     // Phase 0.1: Cleanup per-frame resources (UBOs for all frames)

@@ -27,6 +27,7 @@ namespace Vixen::RenderGraph {
  */
 class RenderPassNode : public TypedNode<RenderPassNodeConfig> {
 public:
+
     RenderPassNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -39,11 +40,6 @@ public:
     bool HasDepthAttachment() const { return hasDepth; }
 
 protected:
-	using TypedSetupContext = typename Base::TypedSetupContext;
-	using TypedCompileContext = typename Base::TypedCompileContext;
-	using TypedExecuteContext = typename Base::TypedExecuteContext;
-	using TypedCleanupContext = typename Base::TypedCleanupContext;
-
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

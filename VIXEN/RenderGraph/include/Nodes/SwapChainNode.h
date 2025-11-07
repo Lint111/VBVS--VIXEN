@@ -45,6 +45,8 @@ public:
  */
 class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:
+    using Base = TypedNode<SwapChainNodeConfig>;
+
     SwapChainNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -70,11 +72,6 @@ public:
     void Recreate(uint32_t newWidth, uint32_t newHeight);
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;

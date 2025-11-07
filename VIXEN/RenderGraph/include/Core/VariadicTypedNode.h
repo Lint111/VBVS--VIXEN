@@ -92,16 +92,19 @@ public:
     using Base = TypedNode<ConfigType>;
 
     /**
-     * @brief Extended Context with variadic input/output accessors
+     * @brief Template to add variadic accessors to any context type
      *
-     * Extends TypedNode::Context to add InVariadic/OutVariadic methods
-     * following the same pattern as In/Out.
+     * Extends any base context (TypedCompileContext, TypedExecuteContext)
+     * to add InVariadic/OutVariadic methods.
      */
-    struct Context : public Base::Context {
+    template<typename BaseContext>
+    struct VariadicContext : public BaseContext {
         VariadicTypedNode<ConfigType>* variadicNode;
 
-        Context(VariadicTypedNode<ConfigType>* n, uint32_t idx)
-            : Base::Context(n, idx), variadicNode(n) {}
+        template<typename... Args>
+        VariadicContext(VariadicTypedNode<ConfigType>* n, Args&&... args)
+            : BaseContext(n, std::forward<Args>(args)...)
+            , variadicNode(n) {}
 
         /**
          * @brief Get variadic input value (mirrors ctx.In() API)
@@ -134,6 +137,15 @@ public:
             return variadicNode->GetVariadicInputCount(this->taskIndex);
         }
     };
+
+    // Type aliases for variadic contexts - extend each typed context
+    using VariadicSetupContext = typename Base::TypedSetupContext;  // No I/O in Setup
+    using VariadicCompileContext = VariadicContext<typename Base::TypedCompileContext>;
+    using VariadicExecuteContext = VariadicContext<typename Base::TypedExecuteContext>;
+    using VariadicCleanupContext = typename Base::TypedCleanupContext;  // No I/O in Cleanup
+
+    // Legacy alias for backwards compatibility
+    using Context = VariadicExecuteContext;
 
     VariadicTypedNode(const std::string& instanceName, NodeType* nodeType)
         : Base(instanceName, nodeType) {}
@@ -497,75 +509,69 @@ protected:
         return true;
     }
 
+    // ============================================================================
+    // CONTEXT FACTORY OVERRIDES - Return variadic-extended contexts
+    // ============================================================================
+
     /**
-     * @brief Override TypedNode's SetupImpl to wrap with variadic context
-     *
-     * Creates VariadicTypedNode::Context and forwards to SetupImpl(Context&).
+     * @brief Override to return base setup context (no I/O in Setup)
      */
-    void SetupImpl(typename Base::TypedSetupContext& baseCtx) override {
-        Context ctx(this, baseCtx.taskIndex);
-        SetupImpl(ctx);
+    typename Base::TypedSetupContext CreateSetupContext() override {
+        return VariadicSetupContext(this);
     }
 
     /**
-     * @brief SetupImpl with variadic-extended Context - override in derived classes
-     *
-     * @param ctx Extended context with InVariadic/OutVariadic support
+     * @brief Override to return variadic-extended context for Compile
      */
-    virtual void SetupImpl(Context& ctx) {}
+    typename Base::TypedCompileContext CreateCompileContext() override {
+        return VariadicCompileContext(this, 0);  // Compile is non-task-based
+    }
 
     /**
-     * @brief Override TypedNode's CompileImpl to wrap with variadic context
-     *
-     * Creates VariadicTypedNode::Context and forwards to CompileImpl(Context&).
+     * @brief Override to return variadic-extended context for Execute
      */
-    void CompileImpl(typename Base::TypedCompileContext& baseCtx) override {
-        Context ctx(this, baseCtx.taskIndex);
-        CompileImpl(ctx);
+    typename Base::TypedExecuteContext CreateExecuteContext(uint32_t taskIndex) override {
+        return VariadicExecuteContext(this, taskIndex);
     }
+
+    /**
+     * @brief Override to return base cleanup context (no I/O in Cleanup)
+     */
+    typename Base::TypedCleanupContext CreateCleanupContext() override {
+        return VariadicCleanupContext(this);
+    }
+
+    // ============================================================================
+    // LIFECYCLE IMPLEMENTATIONS - Override in derived variadic nodes
+    // ============================================================================
+
+    /**
+     * @brief SetupImpl - override in derived classes
+     *
+     * @param ctx Setup context (no I/O access, no variadic extensions needed)
+     */
+    virtual void SetupImpl(VariadicSetupContext& ctx) {}
 
     /**
      * @brief CompileImpl with variadic-extended Context - override in derived classes
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void CompileImpl(Context& ctx) {}
-
-    /**
-     * @brief Override TypedNode's ExecuteImpl to wrap with variadic context
-     *
-     * Creates VariadicTypedNode::Context and forwards to ExecuteImpl(Context&).
-     * Derived classes must override ExecuteImpl(Context&) instead.
-     */
-    void ExecuteImpl(typename Base::TypedExecuteContext& baseCtx) override {
-        // Create VariadicTypedNode::Context from Base::Context
-        Context ctx(this, baseCtx.taskIndex);
-        ExecuteImpl(ctx);
-    }
+    virtual void CompileImpl(VariadicCompileContext& ctx) {}
 
     /**
      * @brief ExecuteImpl with variadic-extended Context - override in derived classes
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void ExecuteImpl(Context& ctx) = 0;
+    virtual void ExecuteImpl(VariadicExecuteContext& ctx) = 0;
 
     /**
-     * @brief Override TypedNode's CleanupImpl to wrap with variadic context
+     * @brief CleanupImpl - override in derived classes
      *
-     * Creates VariadicTypedNode::Context and forwards to CleanupImpl(Context&).
+     * @param ctx Cleanup context (no I/O access, no variadic extensions needed)
      */
-    void CleanupImpl(typename Base::TypedCleanupContext& baseCtx) override {
-        Context ctx(this, baseCtx.taskIndex);
-        CleanupImpl(ctx);
-    }
-
-    /**
-     * @brief CleanupImpl with variadic-extended Context - override in derived classes
-     *
-     * @param ctx Extended context with InVariadic/OutVariadic support
-     */
-    virtual void CleanupImpl(Context& ctx) {}
+    virtual void CleanupImpl(VariadicCleanupContext& ctx) {}
 
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)

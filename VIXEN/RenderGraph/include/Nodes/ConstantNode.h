@@ -110,11 +110,6 @@ public:
     }
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override {
         // No setup needed - graph will allocate output Resource

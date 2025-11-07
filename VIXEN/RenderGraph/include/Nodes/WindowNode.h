@@ -37,6 +37,8 @@ public:
  */
 class WindowNode : public TypedNode<WindowNodeConfig> {
 public:
+    using Base = TypedNode<WindowNodeConfig>;
+
     WindowNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -55,11 +57,6 @@ public:
     void ClearResizeFlag() { wasResized = false; }
 
 protected:
-	using TypedSetupContext = typename Base::TypedSetupContext;
-	using TypedCompileContext = typename Base::TypedCompileContext;
-	using TypedExecuteContext = typename Base::TypedExecuteContext;
-	using TypedCleanupContext = typename Base::TypedCleanupContext;
-
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

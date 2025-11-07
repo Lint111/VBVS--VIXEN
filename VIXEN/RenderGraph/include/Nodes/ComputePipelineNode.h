@@ -52,6 +52,8 @@ public:
  */
 class ComputePipelineNode : public TypedNode<ComputePipelineNodeConfig> {
 public:
+    using Base = TypedNode<ComputePipelineNodeConfig>;
+
     ComputePipelineNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -59,11 +61,6 @@ public:
     ~ComputePipelineNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
     void ExecuteImpl(TypedExecuteContext& ctx) override;

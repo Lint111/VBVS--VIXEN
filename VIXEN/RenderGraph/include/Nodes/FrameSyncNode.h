@@ -45,6 +45,8 @@ public:
  */
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
 public:
+    using Base = TypedNode<FrameSyncNodeConfig>;
+
     FrameSyncNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -53,11 +55,6 @@ public:
     ~FrameSyncNode() override = default;
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
     // Template method pattern - override *Impl() methods
     void SetupImpl(TypedSetupContext& ctx) override;
     void CompileImpl(TypedCompileContext& ctx) override;
