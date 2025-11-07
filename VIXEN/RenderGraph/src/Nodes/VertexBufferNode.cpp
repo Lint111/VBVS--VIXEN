@@ -26,12 +26,12 @@ VertexBufferNode::VertexBufferNode(
 {
 }
 
-void VertexBufferNode::SetupImpl(Context& ctx) {
+void VertexBufferNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("VertexBufferNode: Setup (graph-scope initialization)");
 }
 
-void VertexBufferNode::CompileImpl(Context& ctx) {
+void VertexBufferNode::CompileImpl(CompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Access device input (compile-time dependency)
@@ -138,12 +138,12 @@ void VertexBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl(Context& ctx) {
+void VertexBufferNode::ExecuteImpl(ExecuteContext& ctx) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void VertexBufferNode::CleanupImpl() {
+void VertexBufferNode::CleanupImpl(CleanupContext& ctx) {
     // Release cached wrapper - cacher owns VkBuffer and VkDeviceMemory and destroys when appropriate
     if (cachedMeshWrapper) {
         NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper (cacher owns resources)");

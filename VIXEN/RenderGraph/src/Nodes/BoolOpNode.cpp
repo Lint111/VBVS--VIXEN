@@ -19,14 +19,14 @@ BoolOpNode::BoolOpNode(
     : TypedNode<BoolOpNodeConfig>(instanceName, nodeType) {
 }
 
-void BoolOpNode::SetupImpl(Context& ctx) {
+void BoolOpNode::SetupImpl(SetupContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 
     // Read OPERATION from input (connected to ConstantNode)
     operation = In(BoolOpNodeConfig::OPERATION);
 }
 
-void BoolOpNode::CompileImpl(Context& ctx) {
+void BoolOpNode::CompileImpl(CompileContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
 
     // Validate operation type
@@ -35,7 +35,7 @@ void BoolOpNode::CompileImpl(Context& ctx) {
     }
 }
 
-void BoolOpNode::ExecuteImpl(Context& ctx) {
+void BoolOpNode::ExecuteImpl(ExecuteContext& ctx) {
     // Read vector of bools from INPUTS slot
     std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 
@@ -108,8 +108,8 @@ void BoolOpNode::ExecuteImpl(Context& ctx) {
     ctx.Out(BoolOpNodeConfig::OUTPUT, result);
 }
 
-void BoolOpNode::CleanupImpl() {
-    NODE_LOG_DEBUG("BoolOpNode::CleanupImpl()");
+void BoolOpNode::CleanupImpl(CleanupContext& ctx) {
+    NODE_LOG_DEBUG("BoolOpNode::CleanupImpl(CleanupContext& ctx)");
     // No resources to clean up
 }
 

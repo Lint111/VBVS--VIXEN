@@ -35,12 +35,12 @@ GeometryRenderNode::GeometryRenderNode(
     clearDepthStencil.depthStencil.stencil = 0;
 }
 
-void GeometryRenderNode::SetupImpl(Context& ctx) {
+void GeometryRenderNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("GeometryRenderNode: Setup (graph-scope initialization)");
 }
 
-void GeometryRenderNode::CompileImpl(Context& ctx) {
+void GeometryRenderNode::CompileImpl(CompileContext& ctx) {
     // Access device and command pool inputs (compile-time dependencies)
     vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
@@ -104,7 +104,7 @@ void GeometryRenderNode::CompileImpl(Context& ctx) {
     // No need to create per-swapchain-image semaphores anymore
 }
 
-void GeometryRenderNode::ExecuteImpl(Context& ctx) {
+void GeometryRenderNode::ExecuteImpl(ExecuteContext& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
@@ -198,7 +198,7 @@ void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     ctx.Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
-void GeometryRenderNode::CleanupImpl() {
+void GeometryRenderNode::CleanupImpl(CleanupContext& ctx) {
     // Free command buffers
     if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && vulkanDevice) {
         // Extract raw command buffer handles for vkFreeCommandBuffers

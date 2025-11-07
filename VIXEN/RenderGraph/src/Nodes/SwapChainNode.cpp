@@ -29,7 +29,7 @@ SwapChainNode::SwapChainNode(
 {
 }
 
-void SwapChainNode::SetupImpl(Context& ctx) {
+void SwapChainNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("SwapChainNode: Setup (graph-scope initialization)");
 
@@ -56,7 +56,7 @@ void SwapChainNode::SetupImpl(Context& ctx) {
     currentFrame = 0;
 }
 
-void SwapChainNode::CompileImpl(Context& ctx) {
+void SwapChainNode::CompileImpl(CompileContext& ctx) {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
 
     // Access device input (compile-time dependency)
@@ -150,7 +150,7 @@ void SwapChainNode::CompileImpl(Context& ctx) {
     std::cout << "[SwapChainNode::Compile] Extension function pointers loaded successfully" << std::endl;
 
     // Step 2: Create the platform-specific surface
-    // Note: Old resources were already destroyed in CleanupImpl() before Setup() created fresh wrapper
+    // Note: Old resources were already destroyed in CleanupImpl(CleanupContext& ctx) before Setup() created fresh wrapper
     result = swapChainWrapper->CreateSurface(instance, hwnd, hinstance);
     if (result != VK_SUCCESS) {
         std::string errorMsg = "SwapChainNode: Failed to create VkSurfaceKHR";
@@ -237,7 +237,7 @@ void SwapChainNode::CompileImpl(Context& ctx) {
     }
 }
 
-void SwapChainNode::ExecuteImpl(Context& ctx) {
+void SwapChainNode::ExecuteImpl(ExecuteContext& ctx) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
@@ -300,7 +300,7 @@ void SwapChainNode::ExecuteImpl(Context& ctx) {
     currentFrame++;
 }
 
-void SwapChainNode::CleanupImpl() {
+void SwapChainNode::CleanupImpl(CleanupContext& ctx) {
     std::cout << "[SwapChainNode::CleanupImpl] Called" << std::endl;
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here

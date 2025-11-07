@@ -24,7 +24,7 @@
 // ) : VariadicTypedNode<StructSpreaderNodeConfig>(instanceName, nodeType) {
 // }
 
-// void StructSpreaderNode::SetupImpl(Context& ctx) {
+// void StructSpreaderNode::SetupImpl(SetupContext& ctx) {
 //     std::cout << "[StructSpreaderNode::Setup] Initializing struct spreader\n";
 
 //     // Get struct resource from input
@@ -52,7 +52,7 @@
 //               << ", registered members: " << memberMetadata_.size() << "\n";
 // }
 
-// void StructSpreaderNode::CompileImpl(Context& ctx) {
+// void StructSpreaderNode::CompileImpl(CompileContext& ctx) {
 //     std::cout << "[StructSpreaderNode::Compile] Spreading struct members into variadic outputs\n";
 
 //     if (!structPtr_) {
@@ -94,11 +94,11 @@
 //     std::cout << "[StructSpreaderNode::Compile] Spread " << memberMetadata_.size() << " members to outputs\n";
 // }
 
-// void StructSpreaderNode::ExecuteImpl(Context& ctx) {
+// void StructSpreaderNode::ExecuteImpl(ExecuteContext& ctx) {
 //     // No per-frame work - struct spreading happens during Compile
 // }
 
-// void StructSpreaderNode::CleanupImpl() {
+// void StructSpreaderNode::CleanupImpl(CleanupContext& ctx) {
 //     structPtr_ = nullptr;
 // }
 

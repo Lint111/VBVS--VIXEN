@@ -29,12 +29,12 @@ RenderPassNode::RenderPassNode(
 {
 }
 
-void RenderPassNode::SetupImpl(Context& ctx) {
+void RenderPassNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("RenderPassNode: Setup (graph-scope initialization)");
 }
 
-void RenderPassNode::CompileImpl(Context& ctx) {
+void RenderPassNode::CompileImpl(CompileContext& ctx) {
     NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Access device input (compile-time dependency)
@@ -136,11 +136,11 @@ void RenderPassNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
-void RenderPassNode::ExecuteImpl(Context& ctx) {
+void RenderPassNode::ExecuteImpl(ExecuteContext& ctx) {
     // No-op - render pass is created in Compile phase
 }
 
-void RenderPassNode::CleanupImpl() {
+void RenderPassNode::CleanupImpl(CleanupContext& ctx) {
     // Release cached wrapper - cacher owns VkRenderPass and destroys when appropriate
     if (cachedRenderPassWrapper) {
         std::cout << "[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)" << std::endl;

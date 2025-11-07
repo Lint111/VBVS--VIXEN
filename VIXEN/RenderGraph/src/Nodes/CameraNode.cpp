@@ -29,7 +29,7 @@ CameraNode::CameraNode(
     NODE_LOG_INFO("CameraNode constructor");
 }
 
-void CameraNode::SetupImpl(Context& ctx) {
+void CameraNode::SetupImpl(SetupContext& ctx) {
     NODE_LOG_INFO("CameraNode setup");
 
     // Read parameters
@@ -47,7 +47,7 @@ void CameraNode::SetupImpl(Context& ctx) {
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 }
 
-void CameraNode::CompileImpl(Context& ctx) {
+void CameraNode::CompileImpl(CompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
     // Get device
@@ -84,7 +84,7 @@ void CameraNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Created " + std::to_string(imageCount) + " camera UBOs successfully");
 }
 
-void CameraNode::ExecuteImpl(Context& ctx) {
+void CameraNode::ExecuteImpl(ExecuteContext& ctx) {
     // Get current image index
     uint32_t imageIndex = ctx.In(CameraNodeConfig::IMAGE_INDEX);
 
@@ -142,7 +142,7 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     std::memcpy(mappedPtr, &cameraData, sizeof(CameraData));
 }
 
-void CameraNode::CleanupImpl() {
+void CameraNode::CleanupImpl(CleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
     if (!vulkanDevice) {

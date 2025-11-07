@@ -43,12 +43,12 @@ CommandPoolNode::CommandPoolNode(
 {
 }
 
-void CommandPoolNode::SetupImpl(Context& ctx) {
+void CommandPoolNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("CommandPoolNode: Setup (graph-scope initialization)");
 }
 
-void CommandPoolNode::CompileImpl(Context& ctx) {
+void CommandPoolNode::CompileImpl(CompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
@@ -90,12 +90,12 @@ void CommandPoolNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }
 
-void CommandPoolNode::ExecuteImpl(Context& ctx) {
+void CommandPoolNode::ExecuteImpl(ExecuteContext& ctx) {
     // Command pool creation happens in Compile phase
     // Execute is a no-op
 }
 
-void CommandPoolNode::CleanupImpl() {
+void CommandPoolNode::CleanupImpl(CleanupContext& ctx) {
     if (isCreated && commandPool != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;

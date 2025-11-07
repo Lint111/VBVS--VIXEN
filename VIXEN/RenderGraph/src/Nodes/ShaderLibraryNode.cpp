@@ -34,7 +34,7 @@ ShaderLibraryNode::ShaderLibraryNode(
     // MVP STUB: No shader library initialized
 }
 
-void ShaderLibraryNode::SetupImpl(Context& ctx) {
+void ShaderLibraryNode::SetupImpl(SetupContext& ctx) {
     std::cout << "[ShaderLibraryNode::Setup] Called - graph-scope initialization" << std::endl;
 
     // Subscribe to DeviceMetadataEvent for shader version validation
@@ -86,7 +86,7 @@ void ShaderLibraryNode::RegisterShaderBuilder(
               << shaderBuilderFuncs.size() << ")" << std::endl;
 }
 
-void ShaderLibraryNode::CompileImpl(Context& ctx) {
+void ShaderLibraryNode::CompileImpl(CompileContext& ctx) {
     std::cout << "[ShaderLibraryNode::Compile] START - Phase G shader builder" << std::endl;
 
     // Access VulkanDevice input (compile-time dependency)
@@ -224,11 +224,11 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
 
-void ShaderLibraryNode::ExecuteImpl(Context& ctx) {
+void ShaderLibraryNode::ExecuteImpl(ExecuteContext& ctx) {
     // MVP STUB: No-op - shaders loaded directly in application
 }
 
-void ShaderLibraryNode::CleanupImpl() {
+void ShaderLibraryNode::CleanupImpl(CleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - releasing resources");
 
     // Release shared_ptrs (cacher owns the VkShaderModule handles and will destroy them)

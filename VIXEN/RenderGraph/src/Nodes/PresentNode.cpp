@@ -25,12 +25,12 @@ PresentNode::PresentNode(
 {
 }
 
-void PresentNode::SetupImpl(Context& ctx) {
+void PresentNode::SetupImpl(SetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("PresentNode: Setup (graph-scope initialization)");
 }
 
-void PresentNode::CompileImpl(Context& ctx) {
+void PresentNode::CompileImpl(CompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -52,11 +52,11 @@ void PresentNode::CompileImpl(Context& ctx) {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::ExecuteImpl(Context& ctx) {
+void PresentNode::ExecuteImpl(ExecuteContext& ctx) {
     Present(ctx);
 }
 
-void PresentNode::CleanupImpl() {
+void PresentNode::CleanupImpl(CleanupContext& ctx) {
     // No resources to clean up
 }
 
