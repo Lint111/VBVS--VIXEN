@@ -63,7 +63,6 @@ struct DescriptorSlotInfo {
  */
 class DescriptorResourceGathererNode : public VariadicTypedNode<DescriptorResourceGathererNodeConfig> {
 public:
-    using Base = VariadicTypedNode<DescriptorResourceGathererNodeConfig>;
 
     DescriptorResourceGathererNode(
         const std::string& instanceName,
