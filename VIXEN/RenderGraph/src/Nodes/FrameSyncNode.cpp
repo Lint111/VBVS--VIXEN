@@ -27,12 +27,12 @@ FrameSyncNode::FrameSyncNode(
 {
 }
 
-void FrameSyncNode::SetupImpl(SetupContext& ctx) {
+void FrameSyncNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("FrameSyncNode: Setup (graph-scope initialization)");
 }
 
-void FrameSyncNode::CompileImpl(CompileContext& ctx) {
+void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
@@ -130,7 +130,7 @@ void FrameSyncNode::CompileImpl(CompileContext& ctx) {
     NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
-void FrameSyncNode::ExecuteImpl(ExecuteContext& ctx) {
+void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
@@ -150,7 +150,7 @@ void FrameSyncNode::ExecuteImpl(ExecuteContext& ctx) {
     // SwapChainNode will index into these arrays using the current frame index
 }
 
-void FrameSyncNode::CleanupImpl(CleanupContext& ctx) {
+void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated && device != nullptr && device->device != VK_NULL_HANDLE) {
         NODE_LOG_INFO("Destroying frame synchronization primitives");
 

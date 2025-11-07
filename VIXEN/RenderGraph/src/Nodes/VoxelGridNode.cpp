@@ -28,7 +28,7 @@ VoxelGridNode::VoxelGridNode(
     NODE_LOG_INFO("VoxelGridNode constructor");
 }
 
-void VoxelGridNode::SetupImpl(SetupContext& ctx) {
+void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
     std::cout << "[VoxelGridNode::SetupImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
     NODE_LOG_INFO("VoxelGridNode setup");
 
@@ -40,7 +40,7 @@ void VoxelGridNode::SetupImpl(SetupContext& ctx) {
     std::cout << "[VoxelGridNode::SetupImpl] COMPLETED" << std::endl;
 }
 
-void VoxelGridNode::CompileImpl(CompileContext& ctx) {
+void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     std::cout << "[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
     NODE_LOG_INFO("=== VoxelGridNode::CompileImpl START ===");
 
@@ -171,7 +171,7 @@ void VoxelGridNode::CompileImpl(CompileContext& ctx) {
     std::cout << "[VoxelGridNode::CompileImpl] COMPLETED" << std::endl;
 }
 
-void VoxelGridNode::ExecuteImpl(ExecuteContext& ctx) {
+void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     std::cout << "[VoxelGridNode::ExecuteImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
     // Re-output persistent resources every frame for variadic connections
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
@@ -354,7 +354,7 @@ void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
     NODE_LOG_INFO("Uploaded voxel data to GPU");
 }
 
-void VoxelGridNode::CleanupImpl(CleanupContext& ctx) {
+void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("VoxelGridNode cleanup");
 
     if (!vulkanDevice) {

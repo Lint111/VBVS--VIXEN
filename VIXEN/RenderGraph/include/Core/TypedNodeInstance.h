@@ -271,25 +271,25 @@ public:
 
 protected:
     /**
-     * @brief SetupImpl with SetupContext - override this in derived classes
+     * @brief SetupImpl with TypedSetupContext - override this in derived classes
      *
      * Called during Setup phase. No I/O access in Setup.
      *
      * @param ctx Setup context (no I/O access)
      */
-    virtual void SetupImpl(SetupContext& ctx) {}
+    virtual void SetupImpl(TypedSetupContext& ctx) {}
 
     /**
-     * @brief CompileImpl with CompileContext - override this in derived classes
+     * @brief CompileImpl with TypedCompileContext - override this in derived classes
      *
      * Called during Compile phase. Context provides typed In()/Out() access.
      *
      * @param ctx Compile context with typed slot accessors
      */
-    virtual void CompileImpl(CompileContext& ctx) {}
+    virtual void CompileImpl(TypedCompileContext& ctx) {}
 
     /**
-     * @brief ExecuteImpl with ExecuteContext - override this in derived classes
+     * @brief ExecuteImpl with TypedExecuteContext - override this in derived classes
      *
      * **Phase F: Context-based execution.**
      *
@@ -298,7 +298,7 @@ protected:
      *
      * Example:
      * ```cpp
-     * void MyNode::ExecuteImpl(ExecuteContext& ctx) override {
+     * void MyNode::ExecuteImpl(TypedExecuteContext& ctx) override {
      *     auto device = ctx.In(MyConfig::DEVICE);
      *     auto input = ctx.In(MyConfig::INPUT_DATA);
      *     auto result = Process(device, input);
@@ -308,16 +308,16 @@ protected:
      *
      * @param ctx Execute context with typed slot accessors
      */
-    virtual void ExecuteImpl(ExecuteContext& ctx) = 0;
+    virtual void ExecuteImpl(TypedExecuteContext& ctx) = 0;
 
     /**
-     * @brief CleanupImpl with CleanupContext - override this in derived classes
+     * @brief CleanupImpl with TypedCleanupContext - override this in derived classes
      *
      * Called during Cleanup phase. No I/O access during cleanup.
      *
      * @param ctx Cleanup context (no I/O access)
      */
-    virtual void CleanupImpl(CleanupContext& ctx) {}
+    virtual void CleanupImpl(TypedCleanupContext& ctx) {}
 
     // Task orchestration is handled at NodeInstance level
     // TypedNode only provides *Impl(Context&) virtual methods for downstream nodes

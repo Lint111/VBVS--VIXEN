@@ -110,12 +110,17 @@ public:
     }
 
 protected:
+    using TypedSetupContext = typename Base::TypedSetupContext;
+    using TypedCompileContext = typename Base::TypedCompileContext;
+    using TypedExecuteContext = typename Base::TypedExecuteContext;
+    using TypedCleanupContext = typename Base::TypedCleanupContext;
+
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override {
+    void SetupImpl(TypedSetupContext& ctx) override {
         // No setup needed - graph will allocate output Resource
     }
 
-    void CompileImpl(Context& ctx) override {
+    void CompileImpl(TypedCompileContext& ctx) override {
         std::cout << "[ConstantNode::Compile] START for node: " << GetInstanceName() << std::endl;
 
         // Ensure value has been set
@@ -165,11 +170,11 @@ protected:
         }
     }
 
-    void ExecuteImpl(Context& ctx) override {
+    void ExecuteImpl(TypedExecuteContext& ctx) override {
         // No execution needed - this is a data node
     }
 
-    void CleanupImpl() override {
+    void CleanupImpl(TypedCleanupContext& ctx) override {
         // Invoke custom cleanup callback if set (for externally-managed resources)
         if (cleanupCallback) {
             std::cout << "[ConstantNode::CleanupImpl] Invoking cleanup callback for: " 

@@ -64,10 +64,15 @@ public:
     ~CameraNode() override = default;
 
 protected:
-    void SetupImpl(SetupContext& ctx) override;
-    void CompileImpl(CompileContext& ctx) override;
-    void ExecuteImpl(ExecuteContext& ctx) override;
-    void CleanupImpl(CleanupContext& ctx) override;
+    using TypedSetupContext = typename Base::TypedSetupContext;
+    using TypedCompileContext = typename Base::TypedCompileContext;
+    using TypedExecuteContext = typename Base::TypedExecuteContext;
+    using TypedCleanupContext = typename Base::TypedCleanupContext;
+
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     void UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio);

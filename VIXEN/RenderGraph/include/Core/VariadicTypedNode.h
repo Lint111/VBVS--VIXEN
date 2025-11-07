@@ -502,7 +502,7 @@ protected:
      *
      * Creates VariadicTypedNode::Context and forwards to SetupImplVariadic.
      */
-    void SetupImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+    void SetupImpl(SetupContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
         SetupImplVariadic(ctx);
     }
@@ -519,7 +519,7 @@ protected:
      *
      * Creates VariadicTypedNode::Context and forwards to CompileImplVariadic.
      */
-    void CompileImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+    void CompileImpl(CompileContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
         CompileImplVariadic(ctx);
     }
@@ -537,7 +537,7 @@ protected:
      * Derived classes must override ExecuteImplVariadic() instead.
      * This simply creates VariadicTypedNode::Context and calls the variadic version.
      */
-    void ExecuteImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+    void ExecuteImpl(ExecuteContext& baseCtx) override {
         // Create VariadicTypedNode::Context from Base::Context
         Context ctx(this, baseCtx.taskIndex);
         ExecuteImplVariadic(ctx);
@@ -555,7 +555,7 @@ protected:
      *
      * Creates VariadicTypedNode::Context and forwards to CleanupImplVariadic.
      */
-    void CleanupImpl(typename TypedNode<ConfigType>::Context& baseCtx) override {
+    void CleanupImpl(CleanupContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
         CleanupImplVariadic(ctx);
     }

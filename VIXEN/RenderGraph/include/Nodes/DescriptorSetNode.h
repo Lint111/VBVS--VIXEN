@@ -96,11 +96,16 @@ public:
     const ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
 
 protected:
+	using TypedSetupContext = typename Base::TypedSetupContext;
+	using TypedCompileContext = typename Base::TypedCompileContext;
+	using TypedExecuteContext = typename Base::TypedExecuteContext;
+	using TypedCleanupContext = typename Base::TypedCleanupContext;
+
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(SetupContext& ctx) override;
-	void CompileImpl(CompileContext& ctx) override;
-	void ExecuteImpl(ExecuteContext& ctx) override;
-	void CleanupImpl(CleanupContext& ctx) override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Configuration
