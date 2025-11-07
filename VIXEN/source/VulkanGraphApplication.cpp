@@ -54,7 +54,10 @@ VulkanGraphApplication::VulkanGraphApplication()
       width(500),
       height(500) {
 
+    // Enable main logger for application-level logging
     if (mainLogger) {
+        mainLogger->SetEnabled(true);
+        mainLogger->SetTerminalOutput(false);  // Set to true to see logs in real-time
         mainLogger->Info("VulkanGraphApplication (Graph-based) Starting");
     }
 }
@@ -260,7 +263,7 @@ void VulkanGraphApplication::DeInitialize() {
     // Node instances register child loggers with the main logger; if we
     // destroy the graph first those child loggers are destroyed and their
     // entries won't appear in the aggregated log output.
-    if (mainLogger) {
+    if (mainLogger && mainLogger->IsEnabled()) {
         try {
             std::string logs = mainLogger->ExtractLogs();
             // Write logs into the binaries folder so logs are colocated with the build artifacts.
@@ -273,7 +276,7 @@ void VulkanGraphApplication::DeInitialize() {
         } catch (...) {
             // Best-effort: don't throw during cleanup
         }
-        
+
         // Clear all child logger pointers before destroying nodes
         // This prevents dangling pointer access during final cleanup
         mainLogger->ClearChildren();
@@ -939,5 +942,26 @@ void VulkanGraphApplication::CompleteShutdown() {
         }
         DestroyWindow(windowHandle);
         windowHandle = nullptr;
+    }
+}
+
+void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool enableTerminal) {
+    if (!renderGraph) {
+        std::cerr << "[EnableNodeLogger] ERROR: RenderGraph not initialized" << std::endl;
+        return;
+    }
+
+    NodeInstance* node = renderGraph->GetNodeInstance(nodeName);
+    if (!node) {
+        std::cerr << "[EnableNodeLogger] ERROR: Node '" << nodeName << "' not found" << std::endl;
+        return;
+    }
+
+    if (node->nodeLogger) {
+        node->nodeLogger->SetEnabled(true);
+        node->nodeLogger->SetTerminalOutput(enableTerminal);
+        std::cout << "[EnableNodeLogger] Enabled logger for node '" << nodeName << "' (terminal=" << enableTerminal << ")" << std::endl;
+    } else {
+        std::cerr << "[EnableNodeLogger] WARNING: Node '" << nodeName << "' has no logger" << std::endl;
     }
 }

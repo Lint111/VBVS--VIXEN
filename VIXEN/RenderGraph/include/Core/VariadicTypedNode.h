@@ -562,6 +562,28 @@ protected:
     }
 
     // ============================================================================
+    // LIFECYCLE ORCHESTRATION - Override to create variadic contexts
+    // ============================================================================
+    // VariadicTypedNode overrides the no-parameter lifecycle methods to create variadic contexts
+    // and call the variadic *Impl(VariadicContext&) methods. This avoids object slicing.
+
+    void CompileImpl() override {
+        uint32_t taskCount = this->DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            VariadicCompileContext ctx(this, taskIndex);
+            CompileImpl(ctx);
+        }
+    }
+
+    void ExecuteImpl() override {
+        uint32_t taskCount = this->DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            VariadicExecuteContext ctx(this, taskIndex);
+            ExecuteImpl(ctx);
+        }
+    }
+
+    // ============================================================================
     // LIFECYCLE IMPLEMENTATIONS - Override in derived variadic nodes
     // ============================================================================
 

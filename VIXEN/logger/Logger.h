@@ -18,12 +18,16 @@ enum class LogLevel {
 
 class Logger {
 public:
-    explicit Logger(const std::string& name, bool enabled = true);
+    explicit Logger(const std::string& name, bool enabled = false);
     virtual ~Logger();
 
     // Enable/disable logging
     void SetEnabled(bool enabled) { this->enabled = enabled; }
     bool IsEnabled() const { return enabled; }
+
+    // Enable/disable terminal output (prints to console in addition to storing)
+    void SetTerminalOutput(bool enable) { terminalOutput = enable; }
+    bool HasTerminalOutput() const { return terminalOutput; }
 
     // Hierarchical logging
     void AddChild(Logger* child);
@@ -52,6 +56,7 @@ public:
 protected:
     std::string name;
     bool enabled;
+    bool terminalOutput = false;
     std::vector<Logger*> children; // Non-owning pointers to child loggers
     std::vector<std::string> logEntries;
 

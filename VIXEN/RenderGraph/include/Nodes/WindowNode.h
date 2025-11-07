@@ -76,7 +76,7 @@ private:
         uint32_t height = 0;  // For Resize events
     };
     std::vector<WindowEvent> pendingEvents;
-    std::mutex eventMutex;  // Protect event queue from Win32 callback thread
+    std::recursive_mutex eventMutex;  // Protect event queue (recursive for nested WndProc calls)
 
     uint32_t width = 0;
     uint32_t height = 0;

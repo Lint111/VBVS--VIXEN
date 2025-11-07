@@ -166,7 +166,7 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Process queued events with proper Context access
     std::vector<WindowEvent> eventsToProcess;
     {
-        std::lock_guard<std::mutex> lock(eventMutex);
+        std::lock_guard<std::recursive_mutex> lock(eventMutex);
         eventsToProcess.swap(pendingEvents);  // Take ownership of events
     }
 
@@ -236,7 +236,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received - queuing close event");
             if (windowNode) {
                 // Queue close event for processing in Execute()
-                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                 windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Close});
                 // Destroy window immediately to trigger WM_DESTROY -> PostQuitMessage
                 DestroyWindow(hWnd);
@@ -278,7 +278,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
                 // Queue resize event for processing in Execute()
                 std::cout << "[WindowNode::WM_EXITSIZEMOVE] Queuing resize event: " << actualWidth << "x" << actualHeight << std::endl;
-                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                 windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Resize, actualWidth, actualHeight});
             }
             return 0;
@@ -293,7 +293,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                     NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - queuing resize event: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
 
                     // Queue event for processing in Execute() phase with proper Context
-                    std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                    std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                     windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Resize, newWidth, newHeight});
                 }
             }
@@ -301,7 +301,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
         case WM_SYSCOMMAND:
             if (windowNode) {
-                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                 if (wParam == SC_MINIMIZE) {
                     windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Minimize});
                 } else if (wParam == SC_MAXIMIZE) {
@@ -315,7 +315,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         case WM_ACTIVATE:
             if (windowNode) {
                 bool focused = (LOWORD(wParam) != WA_INACTIVE);
-                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                 windowNode->pendingEvents.push_back({
                     focused ? WindowNode::WindowEvent::Type::Focus : WindowNode::WindowEvent::Type::Unfocus
                 });

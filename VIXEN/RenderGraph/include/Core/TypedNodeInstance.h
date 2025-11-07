@@ -269,6 +269,29 @@ protected:
 public:
     // ===== PHASE F: CONTEXT SYSTEM =====
 
+    // ============================================================================
+    // LIFECYCLE ORCHESTRATION - Override to create typed contexts
+    // ============================================================================
+    // TypedNode overrides the no-parameter lifecycle methods to create typed contexts
+    // and call the typed *Impl(TypedContext&) methods. This avoids object slicing
+    // that would occur if we relied on virtual CreateContext() methods returning by value.
+
+    void CompileImpl() override {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedCompileContext ctx(this, taskIndex);
+            CompileImpl(ctx);
+        }
+    }
+
+    void ExecuteImpl() override {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            TypedExecuteContext ctx(this, taskIndex);
+            ExecuteImpl(ctx);
+        }
+    }
+
 protected:
     /**
      * @brief SetupImpl with TypedSetupContext - override this in derived classes

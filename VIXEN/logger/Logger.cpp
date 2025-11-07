@@ -40,7 +40,13 @@ void Logger::Log(LogLevel level, const std::string& message)
         << "[" << LogLevelToString(level) << "] "
         << message;
 
-    logEntries.push_back(oss.str());
+    std::string logEntry = oss.str();
+    logEntries.push_back(logEntry);
+
+    // Print to terminal if enabled
+    if (terminalOutput) {
+        std::cout << logEntry << std::endl;
+    }
 }
 
 void Logger::Debug(const std::string& message)
