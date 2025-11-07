@@ -498,13 +498,13 @@ protected:
     }
 
     /**
-     * @brief Default SetupImpl override to satisfy TypedNode
+     * @brief Override TypedNode's SetupImpl to wrap with variadic context
      *
-     * Creates VariadicTypedNode::Context and forwards to SetupImplVariadic.
+     * Creates VariadicTypedNode::Context and forwards to SetupImpl(Context&).
      */
-    void SetupImpl(SetupContext& baseCtx) override {
+    void SetupImpl(typename Base::TypedSetupContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
-        SetupImplVariadic(ctx);
+        SetupImpl(ctx);
     }
 
     /**
@@ -512,16 +512,16 @@ protected:
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void SetupImplVariadic(Context& ctx) {}
+    virtual void SetupImpl(Context& ctx) {}
 
     /**
-     * @brief Default CompileImpl override to satisfy TypedNode
+     * @brief Override TypedNode's CompileImpl to wrap with variadic context
      *
-     * Creates VariadicTypedNode::Context and forwards to CompileImplVariadic.
+     * Creates VariadicTypedNode::Context and forwards to CompileImpl(Context&).
      */
-    void CompileImpl(CompileContext& baseCtx) override {
+    void CompileImpl(typename Base::TypedCompileContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
-        CompileImplVariadic(ctx);
+        CompileImpl(ctx);
     }
 
     /**
@@ -529,18 +529,18 @@ protected:
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void CompileImplVariadic(Context& ctx) {}
+    virtual void CompileImpl(Context& ctx) {}
 
     /**
-     * @brief Default ExecuteImpl override to satisfy TypedNode pure virtual
+     * @brief Override TypedNode's ExecuteImpl to wrap with variadic context
      *
-     * Derived classes must override ExecuteImplVariadic() instead.
-     * This simply creates VariadicTypedNode::Context and calls the variadic version.
+     * Creates VariadicTypedNode::Context and forwards to ExecuteImpl(Context&).
+     * Derived classes must override ExecuteImpl(Context&) instead.
      */
-    void ExecuteImpl(ExecuteContext& baseCtx) override {
+    void ExecuteImpl(typename Base::TypedExecuteContext& baseCtx) override {
         // Create VariadicTypedNode::Context from Base::Context
         Context ctx(this, baseCtx.taskIndex);
-        ExecuteImplVariadic(ctx);
+        ExecuteImpl(ctx);
     }
 
     /**
@@ -548,16 +548,16 @@ protected:
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void ExecuteImplVariadic(Context& ctx) = 0;
+    virtual void ExecuteImpl(Context& ctx) = 0;
 
     /**
-     * @brief Default CleanupImpl override to satisfy TypedNode
+     * @brief Override TypedNode's CleanupImpl to wrap with variadic context
      *
-     * Creates VariadicTypedNode::Context and forwards to CleanupImplVariadic.
+     * Creates VariadicTypedNode::Context and forwards to CleanupImpl(Context&).
      */
-    void CleanupImpl(CleanupContext& baseCtx) override {
+    void CleanupImpl(typename Base::TypedCleanupContext& baseCtx) override {
         Context ctx(this, baseCtx.taskIndex);
-        CleanupImplVariadic(ctx);
+        CleanupImpl(ctx);
     }
 
     /**
@@ -565,7 +565,7 @@ protected:
      *
      * @param ctx Extended context with InVariadic/OutVariadic support
      */
-    virtual void CleanupImplVariadic(Context& ctx) {}
+    virtual void CleanupImpl(Context& ctx) {}
 
     // Variadic input count constraints
     size_t minVariadicInputs_ = 0;         // Minimum required (default: none)

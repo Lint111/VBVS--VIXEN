@@ -105,15 +105,10 @@ public:
     }
 
 protected:
-    using TypedSetupContext = typename Base::TypedSetupContext;
-    using TypedCompileContext = typename Base::TypedCompileContext;
-    using TypedExecuteContext = typename Base::TypedExecuteContext;
-    using TypedCleanupContext = typename Base::TypedCleanupContext;
-
-    void SetupImpl(TypedSetupContext& ctx) override;
-    void CompileImpl(TypedCompileContext& ctx) override;
-    void ExecuteImpl(TypedExecuteContext& ctx) override;
-    void CleanupImpl(TypedCleanupContext& ctx) override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
+    void CleanupImpl(Context& ctx) override;
 
 private:
     std::vector<StructMemberMetadata> memberMetadata_;

@@ -87,16 +87,11 @@ public:
     // when connected inputs are available via Context
 
 protected:
-    using VariadicSetupContext = typename Base::VariadicSetupContext;
-    using VariadicCompileContext = typename Base::VariadicCompileContext;
-    using VariadicExecuteContext = typename Base::VariadicExecuteContext;
-    using VariadicCleanupContext = typename Base::VariadicCleanupContext;
-
     // Variadic lifecycle overrides with extended Context support
-    void SetupImplVariadic(VariadicSetupContext& ctx) override;
-    void CompileImplVariadic(VariadicCompileContext& ctx) override;
-    void ExecuteImplVariadic(VariadicExecuteContext& ctx) override;
-    void CleanupImplVariadic(VariadicCleanupContext& ctx) override;
+    void SetupImpl(Context& ctx) override;
+    void CompileImpl(Context& ctx) override;
+    void ExecuteImpl(Context& ctx) override;
+    void CleanupImpl(Context& ctx) override;
 
     // Variadic validation override - shader metadata-specific validation
     bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) override;
