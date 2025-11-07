@@ -29,7 +29,7 @@ SwapChainNode::SwapChainNode(
 {
 }
 
-void SwapChainNode::SetupImpl(TypedNode<SwapChainNodeConfig>::TypedSetupContext& ctx) {
+void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("SwapChainNode: Setup (graph-scope initialization)");
 
@@ -56,7 +56,7 @@ void SwapChainNode::SetupImpl(TypedNode<SwapChainNodeConfig>::TypedSetupContext&
     currentFrame = 0;
 }
 
-void SwapChainNode::CompileImpl(TypedNode<SwapChainNodeConfig>::TypedCompileContext& ctx) {
+void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     std::cout << "[SwapChainNode::Compile] START" << std::endl;
 
     // Access device input (compile-time dependency)
@@ -237,7 +237,7 @@ void SwapChainNode::CompileImpl(TypedNode<SwapChainNodeConfig>::TypedCompileCont
     }
 }
 
-void SwapChainNode::ExecuteImpl(TypedNode<SwapChainNodeConfig>::TypedExecuteContext& ctx) {
+void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
     const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
@@ -300,7 +300,7 @@ void SwapChainNode::ExecuteImpl(TypedNode<SwapChainNodeConfig>::TypedExecuteCont
     currentFrame++;
 }
 
-void SwapChainNode::CleanupImpl(TypedNode<SwapChainNodeConfig>::TypedCleanupContext& ctx) {
+void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
     std::cout << "[SwapChainNode::CleanupImpl] Called" << std::endl;
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here

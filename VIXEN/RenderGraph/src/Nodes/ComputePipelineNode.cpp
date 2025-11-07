@@ -34,7 +34,7 @@ ComputePipelineNode::ComputePipelineNode(
     std::cout << "[ComputePipelineNode] Constructor called for " << instanceName << std::endl;
 }
 
-void ComputePipelineNode::SetupImpl(TypedNode<ComputePipelineNodeConfig>::TypedSetupContext& ctx) {
+void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
     std::cout << "[ComputePipelineNode::SetupImpl] Graph-scope initialization..." << std::endl;
 
 #if VIXEN_DEBUG_BUILD
@@ -48,7 +48,7 @@ void ComputePipelineNode::SetupImpl(TypedNode<ComputePipelineNodeConfig>::TypedS
     std::cout << "[ComputePipelineNode::SetupImpl] Setup complete" << std::endl;
 }
 
-void ComputePipelineNode::CompileImpl(TypedNode<ComputePipelineNodeConfig>::TypedCompileContext& ctx) {
+void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     std::cout << "[ComputePipelineNode::CompileImpl] Compiling compute pipeline..." << std::endl;
 
     // Access device input (compile-time dependency)
@@ -266,12 +266,12 @@ void ComputePipelineNode::CompileImpl(TypedNode<ComputePipelineNodeConfig>::Type
     std::cout << "[ComputePipelineNode::CompileImpl] Outputs set" << std::endl;
 }
 
-void ComputePipelineNode::ExecuteImpl(TypedNode<ComputePipelineNodeConfig>::TypedExecuteContext& ctx) {
+void ComputePipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // No-op: Pipeline is compile-time only resource
     // ComputeDispatchNode will use the pipeline during Execute phase
 }
 
-void ComputePipelineNode::CleanupImpl(TypedNode<ComputePipelineNodeConfig>::TypedCleanupContext& ctx) {
+void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     std::cout << "[ComputePipelineNode::CleanupImpl] Cleaning up..." << std::endl;
 
     // Destroy shader module (we own this, not the cacher)

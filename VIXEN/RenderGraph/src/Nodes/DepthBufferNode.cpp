@@ -31,12 +31,12 @@ DepthBufferNode::DepthBufferNode(
 {
 }
 
-void DepthBufferNode::SetupImpl(TypedNode<DepthBufferNodeConfig>::TypedSetupContext& ctx) {
+void DepthBufferNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("DepthBufferNode: Setup (graph-scope initialization)");
 }
 
-void DepthBufferNode::CompileImpl(TypedNode<DepthBufferNodeConfig>::TypedCompileContext& ctx) {
+void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Access device input (compile-time dependency)
@@ -127,11 +127,11 @@ void DepthBufferNode::CompileImpl(TypedNode<DepthBufferNodeConfig>::TypedCompile
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
-void DepthBufferNode::ExecuteImpl(TypedNode<DepthBufferNodeConfig>::TypedExecuteContext& ctx) {
+void DepthBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // No-op - depth buffer is created in Compile phase
 }
 
-void DepthBufferNode::CleanupImpl(TypedNode<DepthBufferNodeConfig>::TypedCleanupContext& ctx) {
+void DepthBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated) {
         VkDevice device = vulkanDevice ? vulkanDevice->device : VK_NULL_HANDLE;
         if (!device) return;

@@ -35,12 +35,12 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-void GraphicsPipelineNode::SetupImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
+void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("GraphicsPipelineNode: Setup (graph-scope initialization)");
 }
 
-void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
+void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
@@ -150,12 +150,12 @@ void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::Ty
     ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedExecuteContext& ctx) {
+void GraphicsPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void GraphicsPipelineNode::CleanupImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedCleanupContext& ctx) {
+void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     // If we have a cached pipeline wrapper, just release the shared_ptr
     // The cacher owns VkPipeline, VkPipelineLayout, and VkPipelineCache - will destroy when appropriate
     if (cachedPipelineWrapper) {
@@ -387,7 +387,7 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     }
 }
 
-void GraphicsPipelineNode::CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
+void GraphicsPipelineNode::CreatePipeline(TypedCompileContext& ctx) {
     VkRenderPass renderPass =  ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
     // Dynamic state
@@ -604,7 +604,7 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
     return VK_FRONT_FACE_COUNTER_CLOCKWISE; // Default
 }
 
-void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
+void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 

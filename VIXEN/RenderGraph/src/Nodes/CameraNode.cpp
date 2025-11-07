@@ -29,7 +29,7 @@ CameraNode::CameraNode(
     NODE_LOG_INFO("CameraNode constructor");
 }
 
-void CameraNode::SetupImpl(TypedNode<CameraNodeConfig>::TypedSetupContext& ctx) {
+void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("CameraNode setup");
 
     // Read parameters
@@ -47,7 +47,7 @@ void CameraNode::SetupImpl(TypedNode<CameraNodeConfig>::TypedSetupContext& ctx) 
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 }
 
-void CameraNode::CompileImpl(TypedNode<CameraNodeConfig>::TypedCompileContext& ctx) {
+void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
     // Get device
@@ -84,7 +84,7 @@ void CameraNode::CompileImpl(TypedNode<CameraNodeConfig>::TypedCompileContext& c
     NODE_LOG_INFO("Created " + std::to_string(imageCount) + " camera UBOs successfully");
 }
 
-void CameraNode::ExecuteImpl(TypedNode<CameraNodeConfig>::TypedExecuteContext& ctx) {
+void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get current image index
     uint32_t imageIndex = ctx.In(CameraNodeConfig::IMAGE_INDEX);
 
@@ -142,7 +142,7 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     std::memcpy(mappedPtr, &cameraData, sizeof(CameraData));
 }
 
-void CameraNode::CleanupImpl(TypedNode<CameraNodeConfig>::TypedCleanupContext& ctx) {
+void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
     if (!vulkanDevice) {

@@ -29,12 +29,12 @@ TextureLoaderNode::TextureLoaderNode(
 {
 }
 
-void TextureLoaderNode::SetupImpl(TypedNode<TextureLoaderNodeConfig>::TypedSetupContext& ctx) {
+void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("TextureLoaderNode: Setup (graph-scope initialization)");
 }
 
-void TextureLoaderNode::CompileImpl(TypedNode<TextureLoaderNodeConfig>::TypedCompileContext& ctx) {
+void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -147,7 +147,7 @@ void TextureLoaderNode::CompileImpl(TypedNode<TextureLoaderNodeConfig>::TypedCom
     ctx.Out(TextureLoaderNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void TextureLoaderNode::ExecuteImpl(TypedNode<TextureLoaderNodeConfig>::TypedExecuteContext& ctx) {
+void TextureLoaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Texture loading happens in Compile phase
     // Execute phase is a no-op for this node since the texture is already loaded
     
@@ -155,7 +155,7 @@ void TextureLoaderNode::ExecuteImpl(TypedNode<TextureLoaderNodeConfig>::TypedExe
     // If we need to transition to a different layout, we would do it here
 }
 
-void TextureLoaderNode::CleanupImpl(TypedNode<TextureLoaderNodeConfig>::TypedCleanupContext& ctx) {
+void TextureLoaderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Release cached wrappers - cachers own all Vulkan resources and manage lifecycle
     if (cachedTextureWrapper) {
         NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached texture wrapper (cacher owns resources)");

@@ -19,12 +19,12 @@ BoolOpNode::BoolOpNode(
     : TypedNode<BoolOpNodeConfig>(instanceName, nodeType) {
 }
 
-void BoolOpNode::SetupImpl(TypedNode<BoolOpNodeConfig>::TypedSetupContext& ctx) {
+void BoolOpNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
    
 }
 
-void BoolOpNode::CompileImpl(TypedNode<BoolOpNodeConfig>::TypedCompileContext& ctx) {
+void BoolOpNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
 
      // Read OPERATION from input (connected to ConstantNode)
@@ -36,7 +36,7 @@ void BoolOpNode::CompileImpl(TypedNode<BoolOpNodeConfig>::TypedCompileContext& c
     }
 }
 
-void BoolOpNode::ExecuteImpl(TypedNode<BoolOpNodeConfig>::TypedExecuteContext& ctx) {
+void BoolOpNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Read vector of bools from INPUTS slot
     std::vector<bool> inputs = ctx.In(BoolOpNodeConfig::INPUTS);
 
@@ -109,7 +109,7 @@ void BoolOpNode::ExecuteImpl(TypedNode<BoolOpNodeConfig>::TypedExecuteContext& c
     ctx.Out(BoolOpNodeConfig::OUTPUT, result);
 }
 
-void BoolOpNode::CleanupImpl(TypedNode<BoolOpNodeConfig>::TypedCleanupContext& ctx) {
+void BoolOpNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CleanupImpl(TypedCleanupContext& ctx)");
     // No resources to clean up
 }
