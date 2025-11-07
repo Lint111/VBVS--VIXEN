@@ -173,8 +173,7 @@ void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
 
 void NodeInstance::ExecuteNodeHook(NodeLifecyclePhase phase) {
     if (!owningGraph) {
-        std::cout << "[NodeInstance::ExecuteNodeHook] WARNING: No owning graph for node: "
-                  << GetInstanceName() << std::endl;
+        NODE_LOG_WARNING("[NodeInstance::ExecuteNodeHook] WARNING: No owning graph for node: " + GetInstanceName());
         return; // No graph - can't execute hooks
     }
 

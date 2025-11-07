@@ -31,7 +31,7 @@ ComputePipelineNode::ComputePipelineNode(
     NodeType* nodeType
 ) : TypedNode<ComputePipelineNodeConfig>(instanceName, nodeType)
 {
-    std::cout << "[ComputePipelineNode] Constructor called for " << instanceName << std::endl;
+    NODE_LOG_DEBUG("[ComputePipelineNode] Constructor called for " + instanceName);
 }
 
 void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
@@ -48,7 +48,7 @@ void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
 }
 
 void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
-    std::cout << "[ComputePipelineNode::CompileImpl] Compiling compute pipeline..." << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compiling compute pipeline...");
 
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
@@ -64,8 +64,8 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     uint32_t workgroupY = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Y, 0);
     uint32_t workgroupZ = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Z, 0);
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Workgroup sizes (params): "
-              << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Workgroup sizes (params): " +
+                  std::to_string(workgroupX) + "x" + std::to_string(workgroupY) + "x" + std::to_string(workgroupZ));
 
     // ===== 2. Get Inputs =====
     // Note: devicePtr already retrieved and validated at start of CompileImpl
@@ -76,7 +76,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] SHADER_DATA_BUNDLE is null");
     }
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Shader UUID: " << shaderBundle->uuid << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Shader UUID: " + shaderBundle->uuid);
 
     // ===== 3. Create VkShaderModule from SPIRV =====
     ShaderManagement::ShaderStage computeStage = ShaderManagement::ShaderStage::Compute;
@@ -96,8 +96,8 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] Failed to create shader module: " + std::to_string(result));
     }
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Created VkShaderModule: "
-              << reinterpret_cast<uint64_t>(shaderModule) << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Created VkShaderModule: " +
+                  std::to_string(reinterpret_cast<uint64_t>(shaderModule)));
     if (perfLogger_) {
         perfLogger_->LogShaderModule(spirv.size() * sizeof(uint32_t), 1);
     }
@@ -109,8 +109,8 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
         workgroupX = 8;
         workgroupY = 8;
         workgroupZ = 1;
-        std::cout << "[ComputePipelineNode::CompileImpl] No workgroup size in params, using default: "
-                  << workgroupX << "x" << workgroupY << "x" << workgroupZ << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] No workgroup size in params, using default: " +
+                      std::to_string(workgroupX) + "x" + std::to_string(workgroupY) + "x" + std::to_string(workgroupZ));
     }
 
     // ===== 5. Get MainCacher =====
@@ -127,7 +127,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Register PipelineLayoutCacher if not already registered
     if (!mainCacher.IsRegistered(typeid(CashSystem::PipelineLayoutWrapper))) {
-        std::cout << "[ComputePipelineNode::CompileImpl] Registering PipelineLayoutCacher..." << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Registering PipelineLayoutCacher...");
         mainCacher.RegisterCacher<
             CashSystem::PipelineLayoutCacher,
             CashSystem::PipelineLayoutWrapper,
@@ -153,7 +153,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Ensure cacher is initialized with device (workaround for initialization timing issue)
     if (!layoutCacher->IsInitialized()) {
-        std::cout << "[ComputePipelineNode::CompileImpl] Initializing PipelineLayoutCacher with device..." << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Initializing PipelineLayoutCacher with device...");
         layoutCacher->Initialize(devicePtr);
     }
 
@@ -164,7 +164,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     // Add descriptor set layout if provided
     if (descriptorSetLayout != VK_NULL_HANDLE) {
         layoutParams.descriptorSetLayout = descriptorSetLayout;
-        std::cout << "[ComputePipelineNode::CompileImpl] Using provided descriptor set layout" << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Using provided descriptor set layout");
     }
 
     // Convert push constants from reflection if available
@@ -176,20 +176,20 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
             range.size = pc.size;
             layoutParams.pushConstantRanges.push_back(range);
         }
-        std::cout << "[ComputePipelineNode::CompileImpl] Found " << layoutParams.pushConstantRanges.size()
-                  << " push constant range(s) in shader reflection" << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Found " + std::to_string(layoutParams.pushConstantRanges.size()) +
+                      " push constant range(s) in shader reflection");
     }
 
     pipelineLayoutWrapper = layoutCacher->GetOrCreate(layoutParams);
     layoutKey = layoutParams.layoutKey;
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Created pipeline layout: " << layoutKey << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Created pipeline layout: " + layoutKey);
 
     // ===== 7. Create Compute Pipeline via ComputePipelineCacher =====
 
     // Register ComputePipelineCacher if not already registered
     if (!mainCacher.IsRegistered(typeid(CashSystem::ComputePipelineWrapper))) {
-        std::cout << "[ComputePipelineNode::CompileImpl] Registering ComputePipelineCacher..." << std::endl;
+        NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Registering ComputePipelineCacher...");
         mainCacher.RegisterCacher<
             CashSystem::ComputePipelineCacher,
             CashSystem::ComputePipelineWrapper,
@@ -247,11 +247,11 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     }
 #endif
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Compute pipeline created successfully" << std::endl;
-    std::cout << "[ComputePipelineNode::CompileImpl]   Pipeline: "
-              << reinterpret_cast<uint64_t>(pipeline_) << std::endl;
-    std::cout << "[ComputePipelineNode::CompileImpl]   Layout: "
-              << reinterpret_cast<uint64_t>(pipelineLayout_) << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compute pipeline created successfully");
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl]   Pipeline: " +
+                  std::to_string(reinterpret_cast<uint64_t>(pipeline_)));
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl]   Layout: " +
+                  std::to_string(reinterpret_cast<uint64_t>(pipelineLayout_)));
 
     // ===== 8. Set Outputs =====
     ctx.Out(ComputePipelineNodeConfig::PIPELINE, pipeline_);
@@ -259,7 +259,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(ComputePipelineNodeConfig::PIPELINE_CACHE, pipelineCache_);
     ctx.Out(ComputePipelineNodeConfig::VULKAN_DEVICE_OUT, devicePtr);
 
-    std::cout << "[ComputePipelineNode::CompileImpl] Outputs set" << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Outputs set");
 }
 
 void ComputePipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -268,14 +268,14 @@ void ComputePipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
-    std::cout << "[ComputePipelineNode::CleanupImpl] Cleaning up..." << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CleanupImpl] Cleaning up...");
 
     // Destroy shader module (we own this, not the cacher)
     if (shaderModule_ != VK_NULL_HANDLE) {
         VulkanDevicePtr devicePtr = GetDevice();
         if (devicePtr) {
             vkDestroyShaderModule(devicePtr->device, shaderModule_, nullptr);
-            std::cout << "[ComputePipelineNode::CleanupImpl] Destroyed shader module" << std::endl;
+            NODE_LOG_INFO("[ComputePipelineNode::CleanupImpl] Destroyed shader module");
         }
         shaderModule_ = VK_NULL_HANDLE;
     }
@@ -288,7 +288,7 @@ void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     pipelineLayout_ = VK_NULL_HANDLE;
     pipelineCache_ = VK_NULL_HANDLE;
 
-    std::cout << "[ComputePipelineNode::CleanupImpl] Cleanup complete" << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode::CleanupImpl] Cleanup complete");
 }
 
 } // namespace Vixen::RenderGraph

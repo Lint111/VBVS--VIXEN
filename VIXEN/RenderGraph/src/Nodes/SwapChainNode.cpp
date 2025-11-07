@@ -39,7 +39,7 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
             EventTypes::WindowResizedMessage::TYPE,
             [this](const EventBus::BaseEventMessage& msg) -> bool {
                 // Mark this node for recompilation
-                std::cout << "[SwapChainNode] Received WindowResizedMessage - marking self for recompilation" << std::endl;
+                NODE_LOG_INFO("[SwapChainNode] Received WindowResizedMessage - marking self for recompilation");
                 MarkNeedsRecompile();
                 return true; // Message handled
             }
@@ -57,7 +57,7 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
 }
 
 void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
-    std::cout << "[SwapChainNode::Compile] START" << std::endl;
+    NODE_LOG_INFO("[SwapChainNode::Compile] START");
 
     // Access device input (compile-time dependency)
     SetDevice(ctx.In(SwapChainNodeConfig::VULKAN_DEVICE_IN));
@@ -80,24 +80,24 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     // Get input resources from connected nodes
-    std::cout << "[SwapChainNode::Compile] Reading HWND..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading HWND...");
     HWND hwnd = ctx.In(SwapChainNodeConfig::HWND);
-    std::cout << "[SwapChainNode::Compile] Reading HINSTANCE..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading HINSTANCE...");
     HINSTANCE hinstance = ctx.In(SwapChainNodeConfig::HINSTANCE);
-    std::cout << "[SwapChainNode::Compile] Reading WIDTH..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading WIDTH...");
     width = ctx.In(SwapChainNodeConfig::WIDTH);
-    std::cout << "[SwapChainNode::Compile] WIDTH = " << width << std::endl;
-    std::cout << "[SwapChainNode::Compile] Reading HEIGHT..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] WIDTH = " + std::to_string(width));
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading HEIGHT...");
     height = ctx.In(SwapChainNodeConfig::HEIGHT);
-    std::cout << "[SwapChainNode::Compile] HEIGHT = " << height << std::endl;
-    std::cout << "[SwapChainNode::Compile] Reading INSTANCE..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] HEIGHT = " + std::to_string(height));
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Reading INSTANCE...");
     VkInstance instance = ctx.In(SwapChainNodeConfig::INSTANCE);
 
     VkResult result = VK_SUCCESS;  // Declare result variable for error checking
 
 
     // Validate inputs
-    std::cout << "[SwapChainNode::Compile] Validating dimensions..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Validating dimensions...");
     if (width == 0 || height == 0) {
         std::string errorMsg = "SwapChainNode: width and height must be greater than 0 (got " + 
                                std::to_string(width) + "x" + std::to_string(height) + ")";
@@ -105,41 +105,40 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error(errorMsg);
     }
     
-    std::cout << "[SwapChainNode::Compile] Validating HWND..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Validating HWND...");
     if (hwnd == nullptr) {
         std::string errorMsg = "SwapChainNode: HWND is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
     
-    std::cout << "[SwapChainNode::Compile] Validating HINSTANCE..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Validating HINSTANCE...");
     if (hinstance == nullptr) {
         std::string errorMsg = "SwapChainNode: HINSTANCE is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
     
-    std::cout << "[SwapChainNode::Compile] Validating VkInstance..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Validating VkInstance...");
     if (instance == VK_NULL_HANDLE) {
         std::string errorMsg = "SwapChainNode: VkInstance is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
-    std::cout << "[SwapChainNode::Compile] Checking swapchain wrapper..." << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Checking swapchain wrapper...");
     if (swapChainWrapper == nullptr) {
         std::string errorMsg = "SwapChainNode: swapchain wrapper not set - call SetSwapChainWrapper() before Compile()";
-        std::cout << "[SwapChainNode::Compile] ERROR: " << errorMsg << std::endl;
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    std::cout << "[SwapChainNode::Compile] Swapchain wrapper OK" << std::endl;
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Swapchain wrapper OK");
 
     // === SWAPCHAIN CREATION PROCESS ===
 
     // Step 1: Load swapchain extension function pointers
-    std::cout << "[SwapChainNode::Compile] Loading swapchain extensions..." << std::endl;
-    std::cout << "[SwapChainNode::Compile] Instance handle: " << std::hex << instance << std::dec << std::endl;
+    NODE_LOG_INFO("[SwapChainNode::Compile] Loading swapchain extensions...");
+    NODE_LOG_DEBUG("[SwapChainNode::Compile] Instance handle: 0x" + std::to_string(reinterpret_cast<uint64_t>(instance)));
 
     result = swapChainWrapper->CreateSwapChainExtensions(instance, GetDevice()->device);
     if (result != VK_SUCCESS) {
@@ -147,7 +146,7 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    std::cout << "[SwapChainNode::Compile] Extension function pointers loaded successfully" << std::endl;
+    NODE_LOG_INFO("[SwapChainNode::Compile] Extension function pointers loaded successfully");
 
     // Step 2: Create the platform-specific surface
     // Note: Old resources were already destroyed in CleanupImpl(TypedCleanupContext& ctx) before Setup() created fresh wrapper
@@ -179,7 +178,7 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     // Step 6.5: If this is a recompilation (swapchain already exists), destroy old swapchain first
     // This is necessary because vkCreateSwapchainKHR fails with VK_ERROR_OUT_OF_DATE_KHR if old swapchain exists
     if (swapChainWrapper->scPublicVars.swapChain != VK_NULL_HANDLE) {
-        std::cout << "[SwapChainNode::Compile] Destroying existing swapchain for recreation" << std::endl;
+        NODE_LOG_INFO("[SwapChainNode::Compile] Destroying existing swapchain for recreation");
         swapChainWrapper->DestroySwapChain(GetDevice()->device);
     }
 
@@ -192,8 +191,8 @@ void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
     swapChainWrapper->CreateColorImageView(GetDevice()->device, dummyCmd);
 
     // Verify colorBuffers were populated
-    std::cout << "[SwapChainNode::Compile] ColorBuffers populated: "
-              << swapChainWrapper->scPublicVars.colorBuffers.size() << " buffers" << std::endl;
+    NODE_LOG_INFO("[SwapChainNode::Compile] ColorBuffers populated: " +
+                  std::to_string(swapChainWrapper->scPublicVars.colorBuffers.size()) + " buffers");
 
     // Verify swapchain was created successfully
     if (swapChainWrapper->scPublicVars.swapChain == VK_NULL_HANDLE) {
@@ -301,7 +300,7 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void SwapChainNode::CleanupImpl(TypedCleanupContext& ctx) {
-    std::cout << "[SwapChainNode::CleanupImpl] Called" << std::endl;
+    NODE_LOG_INFO("[SwapChainNode::CleanupImpl] Called");
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode - no cleanup needed here
 

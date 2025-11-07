@@ -7,6 +7,12 @@
 #include <stdexcept>
 #include <unordered_set>
 
+// Logging macros for RenderGraph (uses mainLogger instead of nodeLogger)
+#define GRAPH_LOG_DEBUG(msg) do { if (mainLogger) mainLogger->Debug(msg); } while(0)
+#define GRAPH_LOG_INFO(msg) do { if (mainLogger) mainLogger->Info(msg); } while(0)
+#define GRAPH_LOG_WARNING(msg) do { if (mainLogger) mainLogger->Warning(msg); } while(0)
+#define GRAPH_LOG_ERROR(msg) do { if (mainLogger) mainLogger->Error(msg); } while(0)
+
 namespace Vixen::RenderGraph {
 
 RenderGraph::RenderGraph(
@@ -198,9 +204,9 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error("Invalid node handle");
     }
 
-    std::cout << "[RenderGraph::ConnectNodes] Connecting " << fromNode->GetInstanceName()
-              << "[" << outputIdx << "] -> " << toNode->GetInstanceName()
-              << "[" << inputIdx << "]" << std::endl;
+    NODE_LOG_INFO("[RenderGraph::ConnectNodes] Connecting " + fromNode->GetInstanceName() +
+                  "[" + std::to_string(outputIdx) + "] -> " + toNode->GetInstanceName() +
+                  "[" + std::to_string(inputIdx) + "]");
 
     // Validate indices
     NodeType* fromType = fromNode->GetNodeType();
@@ -246,8 +252,8 @@ void RenderGraph::ConnectNodes(
 
     // Add dependency (once per connection, not per array element)
     toNode->AddDependency(fromNode);
-    std::cout << "[RenderGraph::ConnectNodes] Added dependency: " << toNode->GetInstanceName()
-              << " depends on " << fromNode->GetInstanceName() << std::endl;
+    NODE_LOG_INFO("[RenderGraph::ConnectNodes] Added dependency: " + toNode->GetInstanceName() +
+                  " depends on " + fromNode->GetInstanceName());
 
     // Add edge to topology
     GraphEdge edge;
@@ -256,7 +262,7 @@ void RenderGraph::ConnectNodes(
     edge.target = toNode;
     edge.targetInputIndex = inputIdx;
     topology.AddEdge(edge);
-    std::cout << "[RenderGraph::ConnectNodes] Added topology edge" << std::endl;
+    NODE_LOG_INFO("[RenderGraph::ConnectNodes] Added topology edge");
 
     // Mark as needing compilation
     isCompiled = false;
@@ -312,7 +318,7 @@ void RenderGraph::Clear() {
 }
 
 void RenderGraph::HandleWindowClose() {
-    std::cout << "[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup" << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Received WindowCloseEvent - initiating graceful cleanup");
 
     // Wait for GPU to finish all work before cleanup
     for (const auto& inst : instances) {
@@ -328,7 +334,7 @@ void RenderGraph::HandleWindowClose() {
     // Save persistent caches BEFORE cleanup destroys resources (async for responsiveness)
     if (mainCacher) {
         std::filesystem::path cacheDir = "cache";
-        std::cout << "[RenderGraph] Saving persistent caches asynchronously to: " << cacheDir.string() << std::endl;
+        NODE_LOG_INFO("[RenderGraph] Saving persistent caches asynchronously to: " + cacheDir.string());
 
         auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
 
@@ -336,16 +342,16 @@ void RenderGraph::HandleWindowClose() {
         bool saveSuccess = saveFuture.get();
 
         if (saveSuccess) {
-            std::cout << "[RenderGraph] Persistent caches saved successfully" << std::endl;
+            NODE_LOG_INFO("[RenderGraph] Persistent caches saved successfully");
         } else {
-            std::cerr << "[RenderGraph] Warning: Some caches failed to save" << std::endl;
+            NODE_LOG_WARNING("[RenderGraph] Warning: Some caches failed to save");
         }
     }
 
     // Execute cleanup (destroys all Vulkan resources)
     ExecuteCleanup();
 
-    std::cout << "[RenderGraph] Cleanup complete" << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Cleanup complete");
 
     // Acknowledge shutdown to application
     if (messageBus) {
@@ -356,11 +362,11 @@ void RenderGraph::HandleWindowClose() {
 }
 
 void RenderGraph::ExecuteCleanup() {
-    std::cout << "[RenderGraph::ExecuteCleanup] Executing cleanup callbacks..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::ExecuteCleanup] Executing cleanup callbacks...");
 
     // Check if cleanup has already been executed
     if (cleanupStack.GetNodeCount() == 0) {
-        std::cout << "[RenderGraph::ExecuteCleanup] Cleanup already executed, skipping" << std::endl;
+        NODE_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup already executed, skipping");
         return;
     }
 
@@ -368,7 +374,7 @@ void RenderGraph::ExecuteCleanup() {
     WaitForGraphDevicesIdle();
 
     cleanupStack.ExecuteAll();
-    std::cout << "[RenderGraph::ExecuteCleanup] Cleanup complete" << std::endl;
+    NODE_LOG_INFO("[RenderGraph::ExecuteCleanup] Cleanup complete");
 }
 
 void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callback) {
@@ -376,10 +382,10 @@ void RenderGraph::RegisterPostNodeCompileCallback(PostNodeCompileCallback callba
 }
 
 void RenderGraph::Compile() {
-    std::cout << "[RenderGraph::Compile] Starting compilation..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Starting compilation...");
 
     // Validation
-    std::cout << "[RenderGraph::Compile] Phase: Validation..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Phase: Validation...");
     std::string errorMessage;
     if (!Validate(errorMessage)) {
         throw std::runtime_error("Graph validation failed: " + errorMessage);
@@ -392,7 +398,7 @@ void RenderGraph::Compile() {
     // PropagateDeviceAffinity();  // Removed - single device system
 
     // Phase 2: Analyze dependencies and build execution order
-    std::cout << "[RenderGraph::Compile] Phase: AnalyzeDependencies..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Phase: AnalyzeDependencies...");
     AnalyzeDependencies();
 
     // Hook: PostTopologyBuild
@@ -402,7 +408,7 @@ void RenderGraph::Compile() {
     lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PreExecutionOrder, this);
 
     // Phase 3: Allocate resources
-    std::cout << "[RenderGraph::Compile] Phase: AllocateResources..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Phase: AllocateResources...");
     AllocateResources();
 
     // Hook: PostExecutionOrder (after resource allocation, before compilation)
@@ -412,17 +418,17 @@ void RenderGraph::Compile() {
     lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PreCompilation, this);
 
     // Phase 4: Generate pipelines
-    std::cout << "[RenderGraph::Compile] Phase: GeneratePipelines..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Phase: GeneratePipelines...");
     GeneratePipelines();
 
     // Phase 5: Build final execution order
-    std::cout << "[RenderGraph::Compile] Phase: BuildExecutionOrder..." << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Phase: BuildExecutionOrder...");
     BuildExecutionOrder();
 
     // Hook: PostCompilation
     lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostCompilation, this);
 
-    std::cout << "[RenderGraph::Compile] Compilation complete!" << std::endl;
+    NODE_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
 }
 
@@ -767,15 +773,13 @@ void RenderGraph::AllocateResources() {
 
 void RenderGraph::GeneratePipelines() {
     // Compile nodes in dependency order (executionOrder is topologically sorted)
-    std::cout << "[GeneratePipelines] Total instances to compile: " << executionOrder.size() << std::endl;
-    std::cout.flush();
+    NODE_LOG_INFO("[GeneratePipelines] Total instances to compile: " + std::to_string(executionOrder.size()));
     for (size_t i = 0; i < executionOrder.size(); ++i) {
-        std::cout << "[GeneratePipelines]   " << i << ": " << executionOrder[i]->GetInstanceName() << std::endl;
-        std::cout.flush();
+        NODE_LOG_DEBUG("[GeneratePipelines]   " + std::to_string(i) + ": " + executionOrder[i]->GetInstanceName());
     }
 
     // Phase 1: GraphCompileSetup - discover dynamic slots before deferred connections
-    std::cout << "[GeneratePipelines] Phase 1: GraphCompileSetup (discovering dynamic slots)..." << std::endl;
+    NODE_LOG_INFO("[GeneratePipelines] Phase 1: GraphCompileSetup (discovering dynamic slots)...");
     for (NodeInstance* instance : executionOrder) {
         if (instance->GetState() == NodeState::Compiled) {
             continue;  // Skip already-compiled nodes
@@ -783,51 +787,51 @@ void RenderGraph::GeneratePipelines() {
 
         // Check if node implements IGraphCompilable
         if (auto* compilable = dynamic_cast<IGraphCompilable*>(instance)) {
-            std::cout << "[GeneratePipelines] Calling GraphCompileSetup() on: " << instance->GetInstanceName() << std::endl;
+            NODE_LOG_DEBUG("[GeneratePipelines] Calling GraphCompileSetup() on: " + instance->GetInstanceName());
             compilable->GraphCompileSetup();
         }
     }
 
     // Phase 2: ProcessDeferredConnections - resolve ConnectVariadic, ConnectMember, etc.
     // TODO: Implement deferred connection queue
-    std::cout << "[GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)" << std::endl;
+    NODE_LOG_INFO("[GeneratePipelines] Phase 2: ProcessDeferredConnections (future implementation)");
 
     // Phase 3: Setup all nodes first, then compile all nodes
     // This ensures PostSetup hooks can populate resources before any Compile phase begins
-    std::cout << "[GeneratePipelines] Phase 3a: Setup all nodes..." << std::endl;
+    NODE_LOG_INFO("[GeneratePipelines] Phase 3a: Setup all nodes...");
 
     for (NodeInstance* instance : executionOrder) {
         // Skip nodes that are already compiled (e.g., pre-compiled device node)
         if (instance->GetState() == NodeState::Compiled) {
-            std::cout << "[GeneratePipelines] Skipping already-compiled node: " << instance->GetInstanceName() << std::endl;
+            NODE_LOG_DEBUG("[GeneratePipelines] Skipping already-compiled node: " + instance->GetInstanceName());
             continue;
         }
 
-        std::cout << "[GeneratePipelines] Calling Setup() on node: " << instance->GetInstanceName() << std::endl;
+        NODE_LOG_DEBUG("[GeneratePipelines] Calling Setup() on node: " + instance->GetInstanceName());
         instance->Setup();
     }
 
     // Load caches after all Setup() calls but before first Compile()
     // This ensures all cachers are registered and all PostSetup hooks have executed
-    std::cout << "[GeneratePipelines] Loading persistent caches..." << std::endl;
+    NODE_LOG_INFO("[GeneratePipelines] Loading persistent caches...");
     if (mainCacher) {
         std::filesystem::path cacheDir = "cache";
         if (std::filesystem::exists(cacheDir)) {
-            std::cout << "[RenderGraph] Loading persistent caches from: " << cacheDir.string() << std::endl;
+            NODE_LOG_INFO("[RenderGraph] Loading persistent caches from: " + cacheDir.string());
             auto loadFuture = mainCacher->LoadAllAsync(cacheDir);
 
             bool loadSuccess = loadFuture.get();
             if (loadSuccess) {
-                std::cout << "[RenderGraph] Persistent caches loaded successfully" << std::endl;
+                NODE_LOG_INFO("[RenderGraph] Persistent caches loaded successfully");
             } else {
-                std::cout << "[RenderGraph] WARNING: Some caches failed to load (will recreate)" << std::endl;
+                NODE_LOG_WARNING("[RenderGraph] WARNING: Some caches failed to load (will recreate)");
             }
         } else {
-            std::cout << "[RenderGraph] No existing caches found (first run)" << std::endl;
+            NODE_LOG_INFO("[RenderGraph] No existing caches found (first run)");
         }
     }
 
-    std::cout << "[GeneratePipelines] Phase 3b: Compile all nodes..." << std::endl;
+    NODE_LOG_INFO("[GeneratePipelines] Phase 3b: Compile all nodes...");
 
     for (NodeInstance* instance : executionOrder) {
         // Skip nodes that are already compiled
@@ -835,10 +839,10 @@ void RenderGraph::GeneratePipelines() {
             continue;
         }
 
-        std::cout << "[GeneratePipelines] Calling Compile() on node: " << instance->GetInstanceName() << std::endl;
+        NODE_LOG_DEBUG("[GeneratePipelines] Calling Compile() on node: " + instance->GetInstanceName());
         instance->Compile();
 
-        std::cout << "[GeneratePipelines] Node compiled successfully: " << instance->GetInstanceName() << std::endl;
+        NODE_LOG_DEBUG("[GeneratePipelines] Node compiled successfully: " + instance->GetInstanceName());
 
         // Execute post-compile callbacks immediately after compilation
         // This ensures extracted values are available before dependent nodes compile
@@ -878,31 +882,31 @@ void RenderGraph::RecursiveCleanup(NodeInstance* node, std::set<NodeInstance*>& 
     if (!node || cleaned.count(node) > 0) {
         return; // Already cleaned or invalid
     }
-    
-    std::cout << "[RecursiveCleanup] Checking node: " << node->GetInstanceName() << std::endl;
-    
+
+    NODE_LOG_DEBUG("[RecursiveCleanup] Checking node: " + node->GetInstanceName());
+
     // First, recursively clean dependencies that would become orphaned
     for (NodeInstance* dependency : node->GetDependencies()) {
         auto it = dependentCounts.find(dependency);
         if (it != dependentCounts.end()) {
-            std::cout << "[RecursiveCleanup]   Dependency " << dependency->GetInstanceName() 
-                      << " has refCount=" << it->second << std::endl;
-            
+            NODE_LOG_DEBUG("[RecursiveCleanup]   Dependency " + dependency->GetInstanceName() +
+                          " has refCount=" + std::to_string(it->second));
+
             // Check if this dependency has refCount == 1 (only current node uses it)
             if (it->second == 1) {
-                std::cout << "[RecursiveCleanup]   -> Will be orphaned, cleaning recursively" << std::endl;
+                NODE_LOG_DEBUG("[RecursiveCleanup]   -> Will be orphaned, cleaning recursively");
                 RecursiveCleanup(dependency, cleaned);
             } else {
-                std::cout << "[RecursiveCleanup]   -> Still has other users, keeping" << std::endl;
+                NODE_LOG_DEBUG("[RecursiveCleanup]   -> Still has other users, keeping");
             }
-            
+
             // Decrement count after checking (simulate removing this edge)
             it->second--;
         }
     }
-    
+
     // Now clean this node
-    std::cout << "[RecursiveCleanup] Cleaning node: " << node->GetInstanceName() << std::endl;
+    NODE_LOG_DEBUG("[RecursiveCleanup] Cleaning node: " + node->GetInstanceName());
 
     // Execute cleanup callback via CleanupStack using handle
     cleanupStack.ExecuteFrom(node->GetHandle());
@@ -927,11 +931,11 @@ std::string RenderGraph::GetDeviceCleanupNodeName() const {
 size_t RenderGraph::CleanupSubgraph(const std::string& rootNodeName) {
     NodeInstance* rootNode = GetInstanceByName(rootNodeName);
     if (!rootNode) {
-        std::cerr << "[CleanupSubgraph] Node not found: " << rootNodeName << std::endl;
+        NODE_LOG_ERROR("[CleanupSubgraph] Node not found: " + rootNodeName);
         return 0;
     }
-    
-    std::cout << "[CleanupSubgraph] Starting partial cleanup from: " << rootNodeName << std::endl;
+
+    NODE_LOG_INFO("[CleanupSubgraph] Starting partial cleanup from: " + rootNodeName);
     
     // Compute which nodes would be cleaned in this subgraph (dry-run)
     std::vector<std::string> scope = GetCleanupScope(rootNodeName);
@@ -956,9 +960,9 @@ size_t RenderGraph::CleanupSubgraph(const std::string& rootNodeName) {
     
     // Recursively clean
     RecursiveCleanup(rootNode, cleaned);
-    
-    std::cout << "[CleanupSubgraph] Cleaned " << cleaned.size() << " nodes" << std::endl;
-    
+
+    NODE_LOG_INFO("[CleanupSubgraph] Cleaned " + std::to_string(cleaned.size()) + " nodes");
+
     return cleaned.size();
 }
 
@@ -1011,8 +1015,8 @@ std::vector<std::string> RenderGraph::GetCleanupScope(const std::string& rootNod
 }
 
 size_t RenderGraph::CleanupByTag(const std::string& tag) {
-    std::cout << "[CleanupByTag] Cleaning nodes with tag: " << tag << std::endl;
-    
+    NODE_LOG_INFO("[CleanupByTag] Cleaning nodes with tag: " + tag);
+
     // Find all nodes with this tag
     std::vector<NodeInstance*> matchingNodes;
     for (const auto& instance : instances) {
@@ -1020,9 +1024,9 @@ size_t RenderGraph::CleanupByTag(const std::string& tag) {
             matchingNodes.push_back(instance.get());
         }
     }
-    
+
     if (matchingNodes.empty()) {
-        std::cout << "[CleanupByTag] No nodes found with tag: " << tag << std::endl;
+        NODE_LOG_INFO("[CleanupByTag] No nodes found with tag: " + tag);
         return 0;
     }
     
@@ -1037,14 +1041,14 @@ size_t RenderGraph::CleanupByTag(const std::string& tag) {
     for (NodeInstance* node : matchingNodes) {
         RecursiveCleanup(node, cleaned);
     }
-    
-    std::cout << "[CleanupByTag] Cleaned " << cleaned.size() << " nodes" << std::endl;
+
+    NODE_LOG_INFO("[CleanupByTag] Cleaned " + std::to_string(cleaned.size()) + " nodes");
     return cleaned.size();
 }
 
 size_t RenderGraph::CleanupByType(const std::string& typeName) {
-    std::cout << "[CleanupByType] Cleaning nodes of type: " << typeName << std::endl;
-    
+    NODE_LOG_INFO("[CleanupByType] Cleaning nodes of type: " + typeName);
+
     // Find all nodes of this type
     std::vector<NodeInstance*> matchingNodes;
     for (const auto& instance : instances) {
@@ -1052,9 +1056,9 @@ size_t RenderGraph::CleanupByType(const std::string& typeName) {
             matchingNodes.push_back(instance.get());
         }
     }
-    
+
     if (matchingNodes.empty()) {
-        std::cout << "[CleanupByType] No nodes found of type: " << typeName << std::endl;
+        NODE_LOG_INFO("[CleanupByType] No nodes found of type: " + typeName);
         return 0;
     }
     
@@ -1069,8 +1073,8 @@ size_t RenderGraph::CleanupByType(const std::string& typeName) {
     for (NodeInstance* node : matchingNodes) {
         RecursiveCleanup(node, cleaned);
     }
-    
-    std::cout << "[CleanupByType] Cleaned " << cleaned.size() << " nodes" << std::endl;
+
+    NODE_LOG_INFO("[CleanupByType] Cleaned " + std::to_string(cleaned.size()) + " nodes");
     return cleaned.size();
 }
 
@@ -1107,8 +1111,8 @@ void RenderGraph::RecompileDirtyNodes() {
 
     if (dirtyNodes.empty()) {
         if (!deferredNodes.empty()) {
-            std::cout << "[RenderGraph] Deferring recompilation of " << deferredNodes.size() 
-                      << " nodes currently executing on GPU" << std::endl;
+            NODE_LOG_INFO("[RenderGraph] Deferring recompilation of " + std::to_string(deferredNodes.size()) +
+                         " nodes currently executing on GPU");
         }
         return;  // All dirty nodes are still executing
     }
@@ -1122,7 +1126,7 @@ void RenderGraph::RecompileDirtyNodes() {
     // Keep recompiling until there are no more dirty nodes
     // (recompiling a node may mark its dependents as dirty)
     while (!dirtyNodes.empty()) {
-        std::cout << "[RenderGraph] Recompiling " << dirtyNodes.size() << " dirty nodes" << std::endl;
+        NODE_LOG_INFO("[RenderGraph] Recompiling " + std::to_string(dirtyNodes.size()) + " dirty nodes");
 
         // Convert dirty handles to set of node pointers for fast lookup
         std::unordered_set<NodeInstance*> dirtyNodeSet;
@@ -1187,8 +1191,8 @@ void RenderGraph::RecompileDirtyNodes() {
             for (NodeInstance* dep : dependencies) {
                 if (failedNodes.count(dep) > 0) {
                     dependencyFailed = true;
-                    std::cout << "[RenderGraph] Skipping node '" << node->GetInstanceName()
-                              << "' - dependency '" << dep->GetInstanceName() << "' failed to recompile" << std::endl;
+                    NODE_LOG_WARNING("[RenderGraph] Skipping node '" + node->GetInstanceName() +
+                                    "' - dependency '" + dep->GetInstanceName() + "' failed to recompile");
                     break;
                 }
             }
@@ -1205,8 +1209,8 @@ void RenderGraph::RecompileDirtyNodes() {
                 allNodesSucceeded = false;
                 continue;
             }
-    
-            std::cout << "[RenderGraph] Recompiling node: " << node->GetInstanceName() << std::endl;
+
+            NODE_LOG_INFO("[RenderGraph] Recompiling node: " + node->GetInstanceName());
     
             try {
                 // Call cleanup first (destroy old resources)
@@ -1243,15 +1247,15 @@ void RenderGraph::RecompileDirtyNodes() {
                     if (depHandle.IsValid() && depHandle.index < instances.size()) {
                         NodeInstance* dependent = instances[depHandle.index].get();
                         if (dependent) {
-                            std::cout << "[RenderGraph] Marking dependent node '" << dependent->GetInstanceName()
-                                      << "' for recompilation" << std::endl;
+                            NODE_LOG_INFO("[RenderGraph] Marking dependent node '" + dependent->GetInstanceName() +
+                                         "' for recompilation");
                             dependent->MarkNeedsRecompile();
                         }
                     }
                 }
             } catch (const std::exception& e) {
-                std::cerr << "[RenderGraph] Failed to recompile node '" << node->GetInstanceName()
-                          << "' - deferring. Error: " << e.what() << std::endl;
+                NODE_LOG_ERROR("[RenderGraph] Failed to recompile node '" + node->GetInstanceName() +
+                              "' - deferring. Error: " + std::string(e.what()));
     
                 // Re-add to dirty set to retry next frame
                 // Find the node index to create a handle
@@ -1273,12 +1277,12 @@ void RenderGraph::RecompileDirtyNodes() {
     if (allNodesSucceeded && dirtyNodes.empty()) {
         // All nodes successfully recompiled and no new dirty nodes were added
         isCompiled = true;
-        std::cout << "[RenderGraph] All nodes successfully recompiled - graph is compiled" << std::endl;
+        NODE_LOG_INFO("[RenderGraph] All nodes successfully recompiled - graph is compiled");
     } else {
         // Some nodes failed or new dirty nodes were added during recompilation
         isCompiled = false;
         if (!allNodesSucceeded) {
-            std::cout << "[RenderGraph] Some nodes failed to recompile - graph remains uncompiled" << std::endl;
+            NODE_LOG_WARNING("[RenderGraph] Some nodes failed to recompile - graph remains uncompiled");
         }
     }
 }
@@ -1290,7 +1294,7 @@ void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
 }
 
 void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg) {
-    std::cout << "[RenderGraph] Received cleanup request (ID: " << msg.requestId << ")" << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Received cleanup request (ID: " + std::to_string(msg.requestId) + ")");
 
     // Execute full cleanup for now - simplified from complex scope-based cleanup
     ExecuteCleanup();
@@ -1304,21 +1308,21 @@ void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage
 }
 
 void RenderGraph::HandleRenderPause(const EventTypes::RenderPauseEvent& msg) {
-    std::cout << "[RenderGraph] Render pause event: "
-              << (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START ? "START" : "END")
-              << " (reason: " << static_cast<int>(msg.pauseReason) << ")" << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Render pause event: " +
+                 std::string(msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START ? "START" : "END") +
+                 " (reason: " + std::to_string(static_cast<int>(msg.pauseReason)) + ")");
 
     renderPaused = (msg.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
 
     if (renderPaused) {
-        std::cout << "[RenderGraph] Rendering paused - continuing with event processing only" << std::endl;
+        NODE_LOG_INFO("[RenderGraph] Rendering paused - continuing with event processing only");
     } else {
-        std::cout << "[RenderGraph] Rendering resumed" << std::endl;
+        NODE_LOG_INFO("[RenderGraph] Rendering resumed");
     }
 }
 
 void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg) {
-    std::cout << "[RenderGraph] Window resized: " << msg.newWidth << "x" << msg.newHeight << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Window resized: " + std::to_string(msg.newWidth) + "x" + std::to_string(msg.newHeight));
     // Note: Nodes that need to respond to window resize (e.g., SwapChainNode)
     // subscribe to WindowResizedMessage and mark themselves dirty.
     // Downstream consumers (DepthBufferNode, FramebufferNode, etc.) are automatically
@@ -1326,29 +1330,29 @@ void RenderGraph::HandleWindowResize(const EventTypes::WindowResizedMessage& msg
 }
 
 void RenderGraph::HandleWindowStateChange(const EventBus::WindowStateChangeEvent& msg) {
-    std::cout << "[RenderGraph] Window state changed: ";
-    
+    std::string stateStr;
+
     switch (msg.newState) {
         case EventBus::WindowStateChangeEvent::State::Minimized:
-            std::cout << "MINIMIZED - pausing rendering, continuing updates";
+            stateStr = "MINIMIZED - pausing rendering, continuing updates";
             renderPaused = true;
             break;
         case EventBus::WindowStateChangeEvent::State::Maximized:
-            std::cout << "MAXIMIZED - resuming rendering";
+            stateStr = "MAXIMIZED - resuming rendering";
             renderPaused = false;
             break;
         case EventBus::WindowStateChangeEvent::State::Restored:
-            std::cout << "RESTORED - resuming rendering";
+            stateStr = "RESTORED - resuming rendering";
             renderPaused = false;
             break;
         case EventBus::WindowStateChangeEvent::State::Focused:
-            std::cout << "FOCUSED";
+            stateStr = "FOCUSED";
             break;
         case EventBus::WindowStateChangeEvent::State::Unfocused:
-            std::cout << "UNFOCUSED";
+            stateStr = "UNFOCUSED";
             break;
     }
-    std::cout << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Window state changed: " + stateStr);
 }
 
 void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedMessage& msg) {
@@ -1373,12 +1377,12 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
                 }
                 deviceCount = devicesToWait.size();
 
-                std::cout << "[RenderGraph] Device sync completed for all devices ("
-                          << deviceCount << " devices)";
+                std::string logMsg = "[RenderGraph] Device sync completed for all devices (" +
+                                    std::to_string(deviceCount) + " devices)";
                 if (!msg.reason.empty()) {
-                    std::cout << " - Reason: " << msg.reason;
+                    logMsg += " - Reason: " + msg.reason;
                 }
-                std::cout << std::endl;
+                NODE_LOG_INFO(logMsg);
             }
             break;
 
@@ -1391,8 +1395,7 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
                     if (node) {
                         nodesToSync.push_back(node);
                     } else {
-                        std::cerr << "[RenderGraph] Warning: Node not found for sync: "
-                                  << nodeName << std::endl;
+                        NODE_LOG_WARNING("[RenderGraph] Warning: Node not found for sync: " + nodeName);
                     }
                 }
 
@@ -1408,13 +1411,13 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
                     }
                     deviceCount = devicesToWait.size();
 
-                    std::cout << "[RenderGraph] Device sync completed for "
-                              << nodesToSync.size() << " nodes ("
-                              << deviceCount << " devices)";
+                    std::string logMsg = "[RenderGraph] Device sync completed for " +
+                                        std::to_string(nodesToSync.size()) + " nodes (" +
+                                        std::to_string(deviceCount) + " devices)";
                     if (!msg.reason.empty()) {
-                        std::cout << " - Reason: " << msg.reason;
+                        logMsg += " - Reason: " + msg.reason;
                     }
-                    std::cout << std::endl;
+                    NODE_LOG_INFO(logMsg);
                 }
             }
             break;
@@ -1426,12 +1429,12 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
                 WaitForDevicesIdle(devicesToWait);
                 deviceCount = devicesToWait.size();
 
-                std::cout << "[RenderGraph] Device sync completed for "
-                          << deviceCount << " specific devices";
+                std::string logMsg = "[RenderGraph] Device sync completed for " +
+                                    std::to_string(deviceCount) + " specific devices";
                 if (!msg.reason.empty()) {
-                    std::cout << " - Reason: " << msg.reason;
+                    logMsg += " - Reason: " + msg.reason;
                 }
-                std::cout << std::endl;
+                NODE_LOG_INFO(logMsg);
             }
             break;
     }
@@ -1450,7 +1453,7 @@ void RenderGraph::HandleDeviceSyncRequest(const EventTypes::DeviceSyncRequestedM
         messageBus->Publish(std::move(completionMsg));
     }
 
-    std::cout << "[RenderGraph] Device sync took " << duration.count() << "ms" << std::endl;
+    NODE_LOG_INFO("[RenderGraph] Device sync took " + std::to_string(duration.count()) + "ms");
 }
 
 void RenderGraph::RegisterResourceProducer(Resource* resource, NodeInstance* producer, size_t outputIndex) {

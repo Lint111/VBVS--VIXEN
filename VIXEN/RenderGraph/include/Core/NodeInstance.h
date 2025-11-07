@@ -80,6 +80,9 @@ public:
     const std::string& GetInstanceName() const { return instanceName; }
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
+
+    // Logger access
+    Logger* GetLogger() const { return nodeLogger.get(); }
     uint64_t GetInstanceId() const { return instanceId; }
     NodeHandle GetHandle() const { return nodeHandle; }
     void SetHandle(NodeHandle handle) { nodeHandle = handle; }

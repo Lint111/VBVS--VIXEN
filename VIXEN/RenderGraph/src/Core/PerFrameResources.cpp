@@ -17,7 +17,7 @@ void PerFrameResources::Initialize(Vixen::Vulkan::Resources::VulkanDevice* devic
     device = devicePtr;
     frames.resize(frameCount);
 
-    std::cout << "[PerFrameResources] Initialized for " << frameCount << " frames" << std::endl;
+    NODE_LOG_INFO("[PerFrameResources] Initialized for " + std::to_string(frameCount) + " frames");
 }
 
 VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSize bufferSize) {
@@ -86,8 +86,9 @@ VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSiz
 
     frame.uniformBufferSize = bufferSize;
 
-    std::cout << "[PerFrameResources] Created UBO for frame " << frameIndex
-              << " (buffer=" << frame.uniformBuffer << ", size=" << bufferSize << ")" << std::endl;
+    NODE_LOG_INFO("[PerFrameResources] Created UBO for frame " + std::to_string(frameIndex) +
+                 " (buffer=" + std::to_string(reinterpret_cast<uint64_t>(frame.uniformBuffer)) +
+                 ", size=" + std::to_string(bufferSize) + ")");
 
     return frame.uniformBuffer;
 }
@@ -167,7 +168,7 @@ void PerFrameResources::Cleanup() {
     frames.clear();
     device = nullptr;
 
-    std::cout << "[PerFrameResources] Cleaned up all per-frame resources" << std::endl;
+    NODE_LOG_INFO("[PerFrameResources] Cleaned up all per-frame resources");
 }
 
 uint32_t PerFrameResources::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {

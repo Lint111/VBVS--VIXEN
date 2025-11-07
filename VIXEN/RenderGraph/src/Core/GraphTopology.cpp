@@ -30,16 +30,16 @@ void GraphTopology::AddEdge(const GraphEdge& edge) {
         // Check if edge already exists
         auto it = std::find(edges.begin(), edges.end(), edge);
         if (it == edges.end()) {
-            std::cout << "[GraphTopology::AddEdge] Adding edge: "
-                      << edge.source->GetInstanceName() << " -> " << edge.target->GetInstanceName() << std::endl;
+            NODE_LOG_DEBUG("[GraphTopology::AddEdge] Adding edge: " +
+                          edge.source->GetInstanceName() + " -> " + edge.target->GetInstanceName());
             edges.push_back(edge);
 
             // Ensure both nodes are in the graph
             nodes.insert(edge.source);
             nodes.insert(edge.target);
         } else {
-            std::cout << "[GraphTopology::AddEdge] Edge already exists: "
-                      << edge.source->GetInstanceName() << " -> " << edge.target->GetInstanceName() << std::endl;
+            NODE_LOG_DEBUG("[GraphTopology::AddEdge] Edge already exists: " +
+                          edge.source->GetInstanceName() + " -> " + edge.target->GetInstanceName());
         }
     }
 }

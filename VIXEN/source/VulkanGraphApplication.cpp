@@ -156,15 +156,21 @@ void VulkanGraphApplication::Initialize() {
 }
 
 void VulkanGraphApplication::Prepare() {
-    std::cout << "[VulkanGraphApplication::Prepare] START" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::Prepare] START");
+    }
     isPrepared = false;
 
     try {
         // PHASE 1: Nodes manage their own resources
         // Build the render graph - nodes allocate their own resources
-        std::cout << "[VulkanGraphApplication::Prepare] Calling BuildRenderGraph..." << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
+        }
         BuildRenderGraph();
-        std::cout << "[VulkanGraphApplication::Prepare] BuildRenderGraph complete" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
+        }
 
         // Get window handle for graceful shutdown
         auto* windowInst = renderGraph->GetInstanceByName("main_window");
@@ -176,19 +182,27 @@ void VulkanGraphApplication::Prepare() {
         }
 
         // Compile the render graph - nodes set up their pipelines
-        std::cout << "[VulkanGraphApplication::Prepare] Calling CompileRenderGraph..." << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
+        }
         CompileRenderGraph();
-        std::cout << "[VulkanGraphApplication::Prepare] CompileRenderGraph complete" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+        }
 
         isPrepared = true;
 
         if (mainLogger) {
             mainLogger->Info("VulkanGraphApplication prepared and ready to render");
         }
-        std::cout << "[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true");
+        }
     }
     catch (const std::exception& e) {
-        std::cerr << "[VulkanGraphApplication::Prepare] EXCEPTION: " << e.what() << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error(std::string("[VulkanGraphApplication::Prepare] EXCEPTION: ") + e.what());
+        }
         isPrepared = false;
         throw;  // Re-throw to let main() handle it
     }
@@ -271,7 +285,7 @@ void VulkanGraphApplication::DeInitialize() {
             if (logFile.is_open()) {
                 logFile << logs;
                 logFile.close();
-                std::cout << "Logs written to binaries\\vulkan_app_log.txt" << std::endl;
+                mainLogger->Info("Logs written to binaries\\vulkan_app_log.txt");
             }
         } catch (...) {
             // Best-effort: don't throw during cleanup
@@ -287,9 +301,13 @@ void VulkanGraphApplication::DeInitialize() {
     // This ensures all node-owned Vulkan resources (buffers, images, views, shaders) are destroyed
     // while the VkDevice is still valid.
     // Note: ConstantNode's cleanup callback will destroy the shader via registered callback
-    std::cout << "[DeInitialize] Destroying render graph..." << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[DeInitialize] Destroying render graph...");
+    }
     renderGraph.reset();
-    std::cout << "[DeInitialize] Render graph destroyed" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[DeInitialize] Render graph destroyed");
+    }
 
     // Destroy node registry
     nodeRegistry.reset();
@@ -305,10 +323,14 @@ void VulkanGraphApplication::DeInitialize() {
 }
 
 void VulkanGraphApplication::CompileRenderGraph() {
-    std::cout << "[CompileRenderGraph] START" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] START");
+    }
     if (!renderGraph) {
         mainLogger->Error("Cannot compile render graph: RenderGraph not initialized");
-        std::cerr << "[CompileRenderGraph] ERROR: renderGraph is null" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("[CompileRenderGraph] ERROR: renderGraph is null");
+        }
         return;
     }
 
@@ -318,15 +340,21 @@ void VulkanGraphApplication::CompileRenderGraph() {
     graphCompiled = true;
 
     // Validate final graph
-    std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] Validating graph...");
+    }
     std::string errorMessage;
     if (!renderGraph->Validate(errorMessage)) {
         mainLogger->Error("Render graph validation failed: " + errorMessage);
-        std::cerr << "[CompileRenderGraph] VALIDATION FAILED: " << errorMessage << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("[CompileRenderGraph] VALIDATION FAILED: " + errorMessage);
+        }
         return;
     }
     mainLogger->Info("Render graph compiled and validated successfully");
-    std::cout << "[CompileRenderGraph] Complete - " << renderGraph->GetNodeCount() << " nodes" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] Complete - " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
+    }
 }
 
 void VulkanGraphApplication::RegisterNodeTypes() {
@@ -543,7 +571,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
-    std::cout << "[BuildRenderGraph] Loop ID set, moving to shader library..." << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Loop ID set, moving to shader library...");
+    }
 
     // Voxel ray marching compute shader (VoxelRayMarch.comp)
     auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
@@ -571,13 +601,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
         return builder;
     });
 
-    std::cout << "[BuildRenderGraph] Configured voxel ray marching compute shader" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Configured voxel ray marching compute shader");
+    }
 
     // Phase G: Compute dispatch parameters
     auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
     uint32_t dispatchX = width / 8;
     uint32_t dispatchY = height / 8;
-    std::cout << "[BuildRenderGraph] Setting dispatch dims: " << dispatchX << "x" << dispatchY << "x1 (from window " << width << "x" << height << ")" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Setting dispatch dims: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x1 (from window " + std::to_string(width) + "x" + std::to_string(height) + ")");
+    }
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
     dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
@@ -946,31 +980,9 @@ void VulkanGraphApplication::CompleteShutdown() {
 }
 
 void VulkanGraphApplication::EnableNodeLogger(NodeHandle handle, bool enableTerminal) {
-    if (!renderGraph) {
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Error("EnableNodeLogger: RenderGraph not initialized");
-        }
-        return;
-    }
-
-    NodeInstance* node = renderGraph->GetNodeInstance(handle);
-    if (!node) {
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Error("EnableNodeLogger: Invalid node handle");
-        }
-        return;
-    }
-
-    if (node->nodeLogger) {
-        node->nodeLogger->SetEnabled(true);
-        node->nodeLogger->SetTerminalOutput(enableTerminal);
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("Enabled logger for node '" + node->GetInstanceName() + "' (terminal=" + std::to_string(enableTerminal) + ")");
-        }
-    } else {
-        if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Warning("Node '" + node->GetInstanceName() + "' has no logger");
-        }
+    // Handle-based API not yet implemented - use string-based version
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Warning("EnableNodeLogger(NodeHandle) not yet implemented - use string version");
     }
 }
 
@@ -982,6 +994,28 @@ void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool 
         return;
     }
 
-    NodeHandle handle = renderGraph->GetNodeHandle(nodeName);
-    EnableNodeLogger(handle, enableTerminal);
+    // Find node by iterating instances
+    const auto& instances = renderGraph->GetAllNodes();
+    for (const auto& instancePtr : instances) {
+        if (instancePtr->GetInstanceName() == nodeName) {
+            Logger* logger = instancePtr->GetLogger();
+            if (logger) {
+                logger->SetEnabled(true);
+                logger->SetTerminalOutput(enableTerminal);
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Info("Enabled logger for node '" + nodeName + "' (terminal=" + std::to_string(enableTerminal) + ")");
+                }
+                return;
+            } else {
+                if (mainLogger && mainLogger->IsEnabled()) {
+                    mainLogger->Warning("Node '" + nodeName + "' has no logger");
+                }
+                return;
+            }
+        }
+    }
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Error("EnableNodeLogger: Node '" + nodeName + "' not found");
+    }
 }
