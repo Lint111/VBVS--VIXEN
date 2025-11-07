@@ -583,10 +583,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode));
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
-    camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 100.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 80.0f);  // Closer to see sphere (radius ~38 units)
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);

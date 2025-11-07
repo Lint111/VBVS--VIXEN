@@ -362,6 +362,12 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(descriptorBindings.size());
 
+    // CRITICAL: Reserve space to prevent reallocation during iteration
+    // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo) become invalid
+    // Reserve enough space for worst-case: all bindings could be image descriptors
+    imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
+    bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
+
     // Helper to find sampler resource by searching all resources
     // This handles the case where ImageView and Sampler both connect to the same binding
     // but are stored in different slots in the resource array
@@ -509,8 +515,14 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
                 // Handle combined image sampler (image + sampler)
                 // Check for ImageSamplerPair first (new type-safe approach)
+                std::cout << "[DescriptorSetNode::BuildDescriptorWrites] COMBINED_IMAGE_SAMPLER binding "
+                          << binding.binding << " (" << binding.name << "), variant index=" << resourceVariant.index() << std::endl;
+
                 if (std::holds_alternative<ImageSamplerPair>(resourceVariant)) {
                     const ImageSamplerPair& pair = std::get<ImageSamplerPair>(resourceVariant);
+
+                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Extracted ImageSamplerPair: "
+                              << "imageView=" << pair.imageView << ", sampler=" << pair.sampler << std::endl;
 
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.imageView = pair.imageView;

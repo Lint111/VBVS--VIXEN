@@ -276,15 +276,15 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         nullptr
     );
 
-    // Set push constants from caller (updated every frame in ExecuteImpl)
-    vkCmdPushConstants(
-        cmdBuffer,
-        pipelineLayout,
-        VK_SHADER_STAGE_COMPUTE_BIT,
-        0,  // offset
-        sizeof(float) + sizeof(uint32_t),  // size (8 bytes: float + uint)
-        pushConstantData
-    );
+    //     // Set push constants from caller (updated every frame in ExecuteImpl)
+    //     vkCmdPushConstants(
+    //         cmdBuffer,
+    //         pipelineLayout,
+    //         VK_SHADER_STAGE_COMPUTE_BIT,
+    //         0,  // offset
+    //         sizeof(float) + sizeof(uint32_t),  // size (8 bytes: float + uint)
+    //         pushConstantData
+    //     );
 
     // Dispatch compute shader
     vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);

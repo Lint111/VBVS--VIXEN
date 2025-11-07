@@ -29,6 +29,7 @@ VoxelGridNode::VoxelGridNode(
 }
 
 void VoxelGridNode::SetupImpl(Context& ctx) {
+    std::cout << "[VoxelGridNode::SetupImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
     NODE_LOG_INFO("VoxelGridNode setup");
 
     // Read parameters
@@ -36,14 +37,19 @@ void VoxelGridNode::SetupImpl(Context& ctx) {
     sceneType = GetParameterValue<std::string>(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));
 
     NODE_LOG_INFO("Voxel grid: " + std::to_string(resolution) + "^3, scene=" + sceneType);
+    std::cout << "[VoxelGridNode::SetupImpl] COMPLETED" << std::endl;
 }
 
 void VoxelGridNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("VoxelGridNode compile");
+    std::cout << "[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
+    NODE_LOG_INFO("=== VoxelGridNode::CompileImpl START ===");
 
+    std::cout << "[VoxelGridNode::CompileImpl] Getting device..." << std::endl;
     // Get device
-    VulkanDevicePtr devicePtr = In(VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+    std::cout << "[VoxelGridNode::CompileImpl] Device ptr: " << (void*)devicePtr << std::endl;
     if (!devicePtr) {
+        std::cout << "[VoxelGridNode::CompileImpl] ERROR: Device is null!" << std::endl;
         throw std::runtime_error("[VoxelGridNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -51,7 +57,7 @@ void VoxelGridNode::CompileImpl(Context& ctx) {
     vulkanDevice = devicePtr;
 
     // Get command pool
-    commandPool = In(VoxelGridNodeConfig::COMMAND_POOL);
+    commandPool = ctx.In(VoxelGridNodeConfig::COMMAND_POOL);
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
@@ -155,42 +161,42 @@ void VoxelGridNode::CompileImpl(Context& ctx) {
     }
 
     // Output resources
-    Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
+    ctx.Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
 
     // Create combined image/sampler pair
     ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
-    Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
+    ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
 
     NODE_LOG_INFO("Created 3D voxel texture successfully");
+    std::cout << "[VoxelGridNode::CompileImpl] COMPLETED" << std::endl;
 }
 
 void VoxelGridNode::ExecuteImpl(Context& ctx) {
-    // Static resource - no per-frame updates needed
+    std::cout << "[VoxelGridNode::ExecuteImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
+    // Re-output persistent resources every frame for variadic connections
+    // When swapchain recompiles, descriptor gatherer re-queries these outputs
+
+    NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl START ===");
+    NODE_LOG_INFO("  voxelImage handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelImage)));
+    NODE_LOG_INFO("  voxelImageView handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelImageView)));
+    NODE_LOG_INFO("  voxelSampler handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelSampler)));
+
+    ctx.Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
+
+    ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
+    ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
+
+    NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
+    std::cout << "[VoxelGridNode::ExecuteImpl] COMPLETED" << std::endl;
 }
 
 void VoxelGridNode::GenerateTestPattern(std::vector<uint8_t>& voxelData) {
-    // Generate simple test pattern: sphere at center
-    int32_t center = resolution / 2;
-    float radius = resolution * 0.3f;
-
-    for (uint32_t z = 0; z < resolution; ++z) {
-        for (uint32_t y = 0; y < resolution; ++y) {
-            for (uint32_t x = 0; x < resolution; ++x) {
-                size_t index = x + y * resolution + z * resolution * resolution;
-
-                // Calculate distance from center
-                float dx = static_cast<float>(x) - center;
-                float dy = static_cast<float>(y) - center;
-                float dz = static_cast<float>(z) - center;
-                float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
-
-                // Solid if inside sphere
-                voxelData[index] = (distance < radius) ? 255 : 0;
-            }
-        }
+    // DEBUG: Fill entire grid with solid voxels to test upload
+    for (size_t i = 0; i < voxelData.size(); ++i) {
+        voxelData[i] = 255;  // All voxels solid
     }
 
-    NODE_LOG_INFO("Generated test sphere pattern");
+    NODE_LOG_INFO("Generated FULL SOLID test pattern (all voxels = 255)");
 }
 
 void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
