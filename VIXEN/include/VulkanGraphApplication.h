@@ -65,6 +65,13 @@ public:
     inline NodeTypeRegistry* GetNodeTypeRegistry() const { return nodeRegistry.get(); }
 
     /**
+     * @brief Enable logging for a specific node (by handle)
+     * @param handle Node handle
+     * @param enableTerminal If true, also prints logs to console in real-time
+     */
+    void EnableNodeLogger(NodeHandle handle, bool enableTerminal = true);
+
+    /**
      * @brief Enable logging for a specific node (by instance name)
      * @param nodeName Name of the node instance
      * @param enableTerminal If true, also prints logs to console in real-time

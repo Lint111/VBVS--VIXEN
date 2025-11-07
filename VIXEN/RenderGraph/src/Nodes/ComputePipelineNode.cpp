@@ -35,17 +35,16 @@ ComputePipelineNode::ComputePipelineNode(
 }
 
 void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
-    std::cout << "[ComputePipelineNode::SetupImpl] Graph-scope initialization..." << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode] Graph-scope initialization...");
 
-#if VIXEN_DEBUG_BUILD
-    // Create specialized performance logger and register to node logger
+    // Create specialized performance logger and register to node logger (disabled by default)
     perfLogger_ = std::make_unique<ComputePerformanceLogger>(instanceName);
+    perfLogger_->SetEnabled(false);  // Disabled by default
     if (nodeLogger) {
         nodeLogger->AddChild(perfLogger_.get());
     }
-#endif
 
-    std::cout << "[ComputePipelineNode::SetupImpl] Setup complete" << std::endl;
+    NODE_LOG_INFO("[ComputePipelineNode] Setup complete");
 }
 
 void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
@@ -99,12 +98,9 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
 
     std::cout << "[ComputePipelineNode::CompileImpl] Created VkShaderModule: "
               << reinterpret_cast<uint64_t>(shaderModule) << std::endl;
-
-#if VIXEN_DEBUG_BUILD
     if (perfLogger_) {
         perfLogger_->LogShaderModule(spirv.size() * sizeof(uint32_t), 1);
     }
-#endif
 
     // ===== 4. Extract Workgroup Size from Shader (if not specified) =====
     // Note: SPIRV reflection doesn't expose local_size_x/y/z, so we must use parameters or defaults

@@ -945,23 +945,43 @@ void VulkanGraphApplication::CompleteShutdown() {
     }
 }
 
-void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool enableTerminal) {
+void VulkanGraphApplication::EnableNodeLogger(NodeHandle handle, bool enableTerminal) {
     if (!renderGraph) {
-        std::cerr << "[EnableNodeLogger] ERROR: RenderGraph not initialized" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: RenderGraph not initialized");
+        }
         return;
     }
 
-    NodeInstance* node = renderGraph->GetNodeInstance(nodeName);
+    NodeInstance* node = renderGraph->GetNodeInstance(handle);
     if (!node) {
-        std::cerr << "[EnableNodeLogger] ERROR: Node '" << nodeName << "' not found" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: Invalid node handle");
+        }
         return;
     }
 
     if (node->nodeLogger) {
         node->nodeLogger->SetEnabled(true);
         node->nodeLogger->SetTerminalOutput(enableTerminal);
-        std::cout << "[EnableNodeLogger] Enabled logger for node '" << nodeName << "' (terminal=" << enableTerminal << ")" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("Enabled logger for node '" + node->GetInstanceName() + "' (terminal=" + std::to_string(enableTerminal) + ")");
+        }
     } else {
-        std::cerr << "[EnableNodeLogger] WARNING: Node '" << nodeName << "' has no logger" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Warning("Node '" + node->GetInstanceName() + "' has no logger");
+        }
     }
+}
+
+void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool enableTerminal) {
+    if (!renderGraph) {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: RenderGraph not initialized");
+        }
+        return;
+    }
+
+    NodeHandle handle = renderGraph->GetNodeHandle(nodeName);
+    EnableNodeLogger(handle, enableTerminal);
 }
