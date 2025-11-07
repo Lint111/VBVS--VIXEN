@@ -139,20 +139,7 @@ size_t NodeInstance::GetOutputCount(uint32_t slotIndex) const {
     return count;
 }
 
-void NodeInstance::SetParameter(const std::string& name, const ParamTypeValue& value) {
-    parameters[name] = value;
-    
-    // Invalidate cache when parameters change
-    cacheKey = 0;
-}
-
-const ParamTypeValue* NodeInstance::GetParameter(const std::string& name) const {
-    auto it = parameters.find(name);
-    if (it != parameters.end()) {
-        return &it->second;
-    }
-    return nullptr;
-}
+// Parameter management now delegated to NodeParameterManager (inline in header)
 
 void NodeInstance::AddDependency(NodeInstance* node) {
     if (node && !DependsOn(node)) {
@@ -171,64 +158,7 @@ bool NodeInstance::DependsOn(NodeInstance* node) const {
     return std::find(dependencies.begin(), dependencies.end(), node) != dependencies.end();
 }
 
-void NodeInstance::UpdatePerformanceStats(uint64_t executionTimeNs, uint64_t cpuTimeNs) {
-    performanceStats.executionTimeNs = executionTimeNs;
-    performanceStats.cpuTimeNs = cpuTimeNs;
-    performanceStats.executionCount++;
-    
-    // Calculate running average
-    float currentMs = executionTimeNs / 1000000.0f;
-    if (performanceStats.executionCount == 1) {
-        performanceStats.averageExecutionTimeMs = currentMs;
-    } else {
-        // Exponential moving average with alpha = 0.1
-        performanceStats.averageExecutionTimeMs = 
-            performanceStats.averageExecutionTimeMs * 0.9f + currentMs * 0.1f;
-    }
-}
-
-uint64_t NodeInstance::ComputeCacheKey() const {
-    // Simple hash combining type, parameters, and resource descriptions
-    // This is a simplified version - production code would use proper hashing
-    
-    std::hash<std::string> hasher;
-    uint64_t hash = hasher(instanceName);
-    
-    // Hash type ID
-    hash ^= static_cast<uint64_t>(GetTypeId()) << 1;
-    
-    // Hash parameters
-    for (const auto& [name, value] : parameters) {
-        hash ^= hasher(name) << 2;
-        
-        // Hash parameter value based on type
-        std::visit([&hash](const auto& val) {
-            using T = std::decay_t<decltype(val)>;
-            if constexpr (std::is_same_v<T, std::string>) {
-                hash ^= std::hash<std::string>{}(val);
-            } else if constexpr (std::is_arithmetic_v<T>) {
-                hash ^= std::hash<T>{}(val);
-            }
-        }, value);
-    }
-    
-    // Phase F: Hash input resource descriptors from bundles
-    for (const auto& bundle : bundles) {
-        for (const auto* input : bundle.inputs) {
-            if (input) {
-                // Try to get image descriptor for hashing
-                if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
-                    hash ^= static_cast<uint64_t>(imgDesc->format) << 3;
-                    hash ^= (static_cast<uint64_t>(imgDesc->width) << 4) |
-                            (static_cast<uint64_t>(imgDesc->height) << 5);
-                }
-                // Could add more descriptor types if needed for better hash distribution
-            }
-        }
-    }
-
-    return hash;
-}
+// Dead code removed: UpdatePerformanceStats, ComputeCacheKey
 
 #if VIXEN_DEBUG_BUILD
 void NodeInstance::RegisterToParentLogger(Logger* parentLogger)

@@ -91,7 +91,7 @@ void ShaderLibraryNode::CompileImpl(TypedNode<ShaderLibraryNodeConfig>::TypedCom
 
     // Access VulkanDevice input (compile-time dependency)
     std::cout << "[ShaderLibraryNode::Compile] Retrieving VulkanDevice input..." << std::endl;
-    VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null during Compile";
@@ -218,8 +218,8 @@ void ShaderLibraryNode::CompileImpl(TypedNode<ShaderLibraryNodeConfig>::TypedCom
     }
 
     // Output device and shader data bundle
-    Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
-    Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
+    ctx.Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
 
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }

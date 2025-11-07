@@ -516,28 +516,28 @@ protected:
     /**
      * @brief Override to return base setup context (no I/O in Setup)
      */
-    typename Base::TypedSetupContext CreateSetupContext(uint32_t taskIndex) override {
+    Vixen::RenderGraph::SetupContext CreateSetupContext(uint32_t taskIndex) override {
         return VariadicSetupContext(this, taskIndex);
     }
 
     /**
      * @brief Override to return variadic-extended context for Compile
      */
-    typename Base::TypedCompileContext CreateCompileContext(uint32_t taskIndex) override {
+    Vixen::RenderGraph::CompileContext CreateCompileContext(uint32_t taskIndex) override {
         return VariadicCompileContext(this, taskIndex);
     }
 
     /**
      * @brief Override to return variadic-extended context for Execute
      */
-    typename Base::TypedExecuteContext CreateExecuteContext(uint32_t taskIndex) override {
+    Vixen::RenderGraph::ExecuteContext CreateExecuteContext(uint32_t taskIndex) override {
         return VariadicExecuteContext(this, taskIndex);
     }
 
     /**
      * @brief Override to return base cleanup context (no I/O in Cleanup)
      */
-    typename Base::TypedCleanupContext CreateCleanupContext(uint32_t taskIndex) override {
+    Vixen::RenderGraph::CleanupContext CreateCleanupContext(uint32_t taskIndex) override {
         return VariadicCleanupContext(this, taskIndex);
     }
 

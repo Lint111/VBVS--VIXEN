@@ -22,6 +22,11 @@ LoopBridgeNode::LoopBridgeNode(
 
 void LoopBridgeNode::SetupImpl(TypedNode<LoopBridgeNodeConfig>::TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
+    
+}
+
+void LoopBridgeNode::CompileImpl(TypedNode<LoopBridgeNodeConfig>::TypedCompileContext& ctx) {
+    NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Read LOOP_ID from input (connected to ConstantNode)
     loopID = ctx.In(LoopBridgeNodeConfig::LOOP_ID);
@@ -34,10 +39,6 @@ void LoopBridgeNode::SetupImpl(TypedNode<LoopBridgeNodeConfig>::TypedSetupContex
     } else {
         NODE_LOG_ERROR("LoopBridgeNode has no owning graph");
     }
-}
-
-void LoopBridgeNode::CompileImpl(TypedNode<LoopBridgeNodeConfig>::TypedCompileContext& ctx) {
-    NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
 
     // Verify loop exists
     if (loopManager) {

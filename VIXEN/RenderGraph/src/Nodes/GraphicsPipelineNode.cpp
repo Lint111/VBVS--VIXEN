@@ -387,7 +387,7 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     }
 }
 
-void GraphicsPipelineNode::CreatePipeline() {
+void GraphicsPipelineNode::CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
     VkRenderPass renderPass =  ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
     // Dynamic state
@@ -604,7 +604,7 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
     return VK_FRONT_FACE_COUNTER_CLOCKWISE; // Default
 }
 
-void GraphicsPipelineNode::CreatePipelineWithCache() {
+void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 

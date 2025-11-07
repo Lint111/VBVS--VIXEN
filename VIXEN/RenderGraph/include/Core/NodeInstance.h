@@ -3,6 +3,7 @@
 #include "Data/Core/ResourceVariant.h"
 #include "NodeType.h"
 #include "Data/ParameterDataTypes.h"
+#include "Data/NodeParameterManager.h"
 #include "CleanupStack.h"
 #include "LoopManager.h"
 #include "INodeWiring.h"
@@ -91,8 +92,6 @@ public:
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const { return device; }
-    uint32_t GetDeviceIndex() const { return deviceIndex; }
-    void SetDeviceIndex(uint32_t index) { deviceIndex = index; }
 
     // Owning graph access (for cleanup registration)
     RenderGraph* GetOwningGraph() const { return owningGraph; }
@@ -102,18 +101,21 @@ public:
     bool AllowsInputArrays() const { return allowInputArrays; }
     void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
 
-    // Phase F: Bundle access (for graph-level operations)
-    const std::vector<Bundle>& GetBundles() const { return bundles; }
-
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
     size_t GetOutputCount(uint32_t slotIndex) const;
 
-    // Parameters
-    void SetParameter(const std::string& name, const ParamTypeValue& value);
-    const ParamTypeValue* GetParameter(const std::string& name) const;
+    // Parameters (delegated to NodeParameterManager)
+    void SetParameter(const std::string& name, const ParamTypeValue& value) {
+        parameterManager.SetParameter(name, value);
+    }
+    const ParamTypeValue* GetParameter(const std::string& name) const {
+        return parameterManager.GetParameter(name);
+    }
     template<typename T>
-    T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const;
+    T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const {
+        return parameterManager.GetParameterValue<T>(name, defaultValue);
+    }
 
     // Dependencies
     const std::vector<NodeInstance*>& GetDependencies() const { return dependencies; }
@@ -121,9 +123,8 @@ public:
     void RemoveDependency(NodeInstance* node);
     bool DependsOn(NodeInstance* node) const;
 
-    // State
+    // State (read-only access - lifecycle methods manage state internally)
     NodeState GetState() const { return state; }
-    void SetState(NodeState newState) { state = newState; }
 
     // Execution order (set during compilation)
     uint32_t GetExecutionOrder() const { return executionOrder; }
@@ -132,13 +133,6 @@ public:
     // Workload metrics
     size_t GetInputMemoryFootprint() const { return inputMemoryFootprint; }
     void SetInputMemoryFootprint(size_t size) { inputMemoryFootprint = size; }
-    const PerformanceStats& GetPerformanceStats() const { return performanceStats; }
-    void UpdatePerformanceStats(uint64_t executionTimeNs, uint64_t cpuTimeNs);
-
-    // Caching
-    uint64_t GetCacheKey() const { return cacheKey; }
-    void SetCacheKey(uint64_t key) { cacheKey = key; }
-    uint64_t ComputeCacheKey() const;
 
     // Cleanup registration helper
     /**
@@ -684,6 +678,18 @@ public:
     void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) override;
 
 protected:
+    /**
+     * @brief Set node state (internal use only)
+     *
+     * State transitions managed automatically by lifecycle methods and RenderGraph.
+     * External code should not manually change state.
+     *
+     * @param newState New state to transition to
+     */
+    void SetState(NodeState newState) { state = newState; }
+
+    // Grant RenderGraph access to SetState for lifecycle orchestration
+    friend class RenderGraph;
 
     // Instance identification
     std::string instanceName;
@@ -691,11 +697,10 @@ protected:
     NodeHandle nodeHandle;  // Handle to this node in the graph
     NodeType* nodeType;
     std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
-    
+
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* device;
-    uint32_t deviceIndex = 0;
 
     // Owning graph pointer (for cleanup registration)
     RenderGraph* owningGraph = nullptr;
@@ -712,9 +717,13 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
+private:
     // Phase F: Resources organized as bundles (one bundle per task/array index)
     // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
     std::vector<Bundle> bundles;
+
+    // Parameter management (encapsulated)
+    NodeParameterManager parameterManager;
 
     // Runtime tracking: which input slots were used during the last Compile() call.
     // This is transient runtime state (not serialized). It is mutable so that
@@ -722,6 +731,8 @@ protected:
     mutable std::vector<std::vector<bool>> inputUsedInCompile;
 
 public:
+    // Phase F: Bundle access (for graph-level operations)
+    const std::vector<Bundle>& GetBundles() const { return bundles; }
 
     // Mark that a specific input slot (slotIndex) was used during compile at given arrayIndex.
     // This method is const so it can be called from const accessors.
@@ -752,9 +763,7 @@ public:
         }
     }
 
-    // Instance-specific parameters
-    std::map<std::string, ParamTypeValue> parameters;
-
+protected:
     // Phase 0.4: Loop connections (zero or more loops)
     std::vector<const LoopReference*> connectedLoops;
 
@@ -769,10 +778,6 @@ public:
 
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
-    PerformanceStats performanceStats;
-
-    // Caching
-    uint64_t cacheKey = 0;
 
 #if VIXEN_DEBUG_BUILD
     // Debug-only hierarchical logger (zero overhead in release builds)
@@ -784,18 +789,4 @@ public:
     void DeallocateResources();
 };
 
-// Template implementation
-template<typename T>
-T NodeInstance::GetParameterValue(const std::string& name, const T& defaultValue) const {
-    auto it = parameters.find(name);
-    if (it == parameters.end()) {
-        return defaultValue;
-    }
-    
-    if (auto* value = std::get_if<T>(&it->second)) {
-        return *value;
-    }
-    
-    return defaultValue;
-}
 } // namespace Vixen::RenderGraph

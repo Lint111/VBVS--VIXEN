@@ -21,13 +21,14 @@ BoolOpNode::BoolOpNode(
 
 void BoolOpNode::SetupImpl(TypedNode<BoolOpNodeConfig>::TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
-
-    // Read OPERATION from input (connected to ConstantNode)
-    operation = ctx.In(BoolOpNodeConfig::OPERATION);
+   
 }
 
 void BoolOpNode::CompileImpl(TypedNode<BoolOpNodeConfig>::TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
+
+     // Read OPERATION from input (connected to ConstantNode)
+    operation = ctx.In(BoolOpNodeConfig::OPERATION);
 
     // Validate operation type
     if (static_cast<uint8_t>(operation) > static_cast<uint8_t>(BoolOp::NOR)) {

@@ -313,7 +313,7 @@ void SwapChainNode::CleanupImpl(TypedNode<SwapChainNodeConfig>::TypedCleanupCont
 
         try {
             // Cleanup-time access only - use GetInput directly
-            instance = GetInput(SwapChainNodeConfig::INSTANCE, 0);
+            instance = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE, 0);
         } catch (...) {
             // Instance might not be available during shutdown - that's ok
         }
