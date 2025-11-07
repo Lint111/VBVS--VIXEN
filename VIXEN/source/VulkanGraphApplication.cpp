@@ -838,10 +838,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
                           descriptorGatherer, VoxelRayMarch::camera);
 
-    // Binding 2: voxelGrid (combined image sampler - need both view and sampler)
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_IMAGE_VIEW,
-                          descriptorGatherer, VoxelRayMarch::voxelGrid)
-         .ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_SAMPLER,
+    // Binding 2: voxelGrid (combined image sampler)
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER,
                           descriptorGatherer, VoxelRayMarch::voxelGrid);
 
     // Swapchain connections to descriptor set and dispatch

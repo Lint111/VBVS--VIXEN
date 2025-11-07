@@ -362,20 +362,44 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(descriptorBindings.size());
 
-    // Helper to find sampler resource by binding index
-    auto findSamplerResource = [&](uint32_t bindingIndex) -> VkSampler {
-        if (bindingIndex < descriptorResources.size()) {
-            const auto& resource = descriptorResources[bindingIndex];
+    // Helper to find sampler resource by searching all resources
+    // This handles the case where ImageView and Sampler both connect to the same binding
+    // but are stored in different slots in the resource array
+    auto findSamplerResource = [&](uint32_t targetBinding) -> VkSampler {
+        // First check the binding index itself
+        if (targetBinding < descriptorResources.size()) {
+            const auto& resource = descriptorResources[targetBinding];
             if (std::holds_alternative<VkSampler>(resource)) {
                 return std::get<VkSampler>(resource);
             }
         }
+
+        // Search all resources for a sampler (for combined image samplers)
+        // The gatherer may have placed it elsewhere due to overwriting
+        for (size_t i = 0; i < descriptorResources.size(); ++i) {
+            const auto& resource = descriptorResources[i];
+            if (std::holds_alternative<VkSampler>(resource)) {
+                // Found a sampler - assume it's for this combined sampler binding
+                // TODO: Better tracking of which sampler belongs to which binding
+                return std::get<VkSampler>(resource);
+            }
+        }
+
         return VK_NULL_HANDLE;
     };
 
-    for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size() && bindingIdx < descriptorResources.size(); bindingIdx++) {
+    for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size(); bindingIdx++) {
         const auto& binding = descriptorBindings[bindingIdx];
-        const auto& resourceVariant = descriptorResources[bindingIdx];
+
+        // Use binding.binding (shader binding number) to index into resources, not loop index
+        if (binding.binding >= descriptorResources.size()) {
+            std::cout << "[DescriptorSetNode::BuildDescriptorWrites] WARNING: "
+                      << "Binding " << binding.binding << " (" << binding.name << ") "
+                      << "exceeds resource array size " << descriptorResources.size() << std::endl;
+            continue;
+        }
+
+        const auto& resourceVariant = descriptorResources[binding.binding];
 
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -484,19 +508,28 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
                 // Handle combined image sampler (image + sampler)
-                // Gatherer should provide imageView, we'll look for sampler in adjacent slot
-                if (std::holds_alternative<VkImageView>(resourceVariant)) {
-                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
-                    VkSampler sampler = VK_NULL_HANDLE;
+                // Check for ImageSamplerPair first (new type-safe approach)
+                if (std::holds_alternative<ImageSamplerPair>(resourceVariant)) {
+                    const ImageSamplerPair& pair = std::get<ImageSamplerPair>(resourceVariant);
 
-                    // Try to get sampler from next resource slot (if available)
-                    // Convention: gatherer places sampler immediately after imageView
-                    if (bindingIdx + 1 < descriptorResources.size()) {
-                        const auto& nextResource = descriptorResources[bindingIdx + 1];
-                        if (std::holds_alternative<VkSampler>(nextResource)) {
-                            sampler = std::get<VkSampler>(nextResource);
-                        }
-                    }
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageView = pair.imageView;
+                    imageInfo.sampler = pair.sampler;
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    writes.push_back(write);
+
+                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '"
+                              << binding.name << "' at binding " << binding.binding
+                              << " (imageView=" << pair.imageView << ", sampler=" << pair.sampler << ")" << std::endl;
+                }
+                // Fallback: Legacy approach with separate ImageView and Sampler resources
+                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
+
+                    // Find paired sampler resource using helper
+                    VkSampler sampler = findSamplerResource(binding.binding);
 
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.imageView = imageView;
@@ -505,6 +538,10 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                     imageInfos.push_back(imageInfo);
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
+
+                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '"
+                              << binding.name << "' at binding " << binding.binding
+                              << " (imageView=" << imageView << ", sampler=" << sampler << ") [legacy]" << std::endl;
 
                     if (sampler == VK_NULL_HANDLE) {
                         std::cout << "[DescriptorSetNode::BuildDescriptorWrites] WARNING: "

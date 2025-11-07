@@ -10,7 +10,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -18,10 +18,10 @@ namespace VoxelGridNodeCounts {
  * @brief Configuration for VoxelGridNode
  *
  * Generates or loads 3D voxel texture for raymarching.
- * Outputs image view and sampler for shader binding.
+ * Outputs combined image/sampler pair for shader binding.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 3 (VOXEL_IMAGE, VOXEL_IMAGE_VIEW, VOXEL_SAMPLER)
+ * Outputs: 2 (VOXEL_IMAGE, VOXEL_COMBINED_SAMPLER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -40,16 +40,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (3) =====
+    // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(VOXEL_IMAGE, VkImage, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VOXEL_IMAGE_VIEW, VkImageView, 1,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    OUTPUT_SLOT(VOXEL_SAMPLER, VkSampler, 2,
+    OUTPUT_SLOT(VOXEL_COMBINED_SAMPLER, ImageSamplerPair, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -75,11 +71,8 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         voxelImageDesc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         INIT_OUTPUT_DESC(VOXEL_IMAGE, "voxel_image", ResourceLifetime::Persistent, voxelImageDesc);
 
-        HandleDescriptor imageViewDesc{"VkImageView"};
-        INIT_OUTPUT_DESC(VOXEL_IMAGE_VIEW, "voxel_image_view", ResourceLifetime::Persistent, imageViewDesc);
-
-        HandleDescriptor samplerDesc{"VkSampler"};
-        INIT_OUTPUT_DESC(VOXEL_SAMPLER, "voxel_sampler", ResourceLifetime::Persistent, samplerDesc);
+        HandleDescriptor combinedSamplerDesc{"ImageSamplerPair"};
+        INIT_OUTPUT_DESC(VOXEL_COMBINED_SAMPLER, "voxel_combined_sampler", ResourceLifetime::Persistent, combinedSamplerDesc);
     }
 
     // Compile-time validations
@@ -90,15 +83,13 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
     static_assert(VOXEL_IMAGE_Slot::index == 0, "VOXEL_IMAGE must be at index 0");
-    static_assert(VOXEL_IMAGE_VIEW_Slot::index == 1, "VOXEL_IMAGE_VIEW must be at index 1");
-    static_assert(VOXEL_SAMPLER_Slot::index == 2, "VOXEL_SAMPLER must be at index 2");
+    static_assert(VOXEL_COMBINED_SAMPLER_Slot::index == 1, "VOXEL_COMBINED_SAMPLER must be at index 1");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<VOXEL_IMAGE_Slot::Type, VkImage>);
-    static_assert(std::is_same_v<VOXEL_IMAGE_VIEW_Slot::Type, VkImageView>);
-    static_assert(std::is_same_v<VOXEL_SAMPLER_Slot::Type, VkSampler>);
+    static_assert(std::is_same_v<VOXEL_COMBINED_SAMPLER_Slot::Type, ImageSamplerPair>);
 };
 
 // Global compile-time validations

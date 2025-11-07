@@ -337,7 +337,7 @@ void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
                           << slotInfo->fieldOffset << " for binding " << binding << " (downstream will extract)\n";
             }, variant);
         }
-        // Regular resources - pass through
+        // Regular resources - store directly at binding index
         else {
             resourceArray_[binding] = variant;
             std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " << binding

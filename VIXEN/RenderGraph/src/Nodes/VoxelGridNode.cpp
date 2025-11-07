@@ -156,8 +156,10 @@ void VoxelGridNode::CompileImpl(Context& ctx) {
 
     // Output resources
     Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
-    Out(VoxelGridNodeConfig::VOXEL_IMAGE_VIEW, voxelImageView);
-    Out(VoxelGridNodeConfig::VOXEL_SAMPLER, voxelSampler);
+
+    // Create combined image/sampler pair
+    ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
+    Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
 
     NODE_LOG_INFO("Created 3D voxel texture successfully");
 }

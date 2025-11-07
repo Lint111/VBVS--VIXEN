@@ -124,6 +124,20 @@ using HWND = HWND_Placeholder*;
 using HINSTANCE = HINSTANCE_Placeholder*;
 #endif
 
+/**
+ * @brief Pair of ImageView and Sampler for VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+ *
+ * Combined image samplers require both an image view and a sampler in a single binding.
+ * This struct bundles them together for type-safe handling.
+ */
+struct ImageSamplerPair {
+    VkImageView imageView = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
+
+    ImageSamplerPair() = default;
+    ImageSamplerPair(VkImageView view, VkSampler samp) : imageView(view), sampler(samp) {}
+};
+
 // ============================================================================
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
@@ -147,6 +161,7 @@ using HINSTANCE = HINSTANCE_Placeholder*;
     RESOURCE_TYPE(VkBuffer,                        BufferDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkImageView,                     HandleDescriptor,      ResourceType::Image) \
     RESOURCE_TYPE(VkSampler,                       HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(ImageSamplerPair,                HandleDescriptor,      ResourceType::Image) \
     RESOURCE_TYPE(VkSurfaceKHR,                    HandleDescriptor,      ResourceType::Image) \
     RESOURCE_TYPE(VkSwapchainKHR,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkRenderPass,                    HandleDescriptor,      ResourceType::Buffer) \
