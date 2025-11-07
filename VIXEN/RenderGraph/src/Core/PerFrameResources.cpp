@@ -1,7 +1,7 @@
 #include "Core/PerFrameResources.h"
+#include "Core/NodeLogging.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <stdexcept>
-#include <iostream>
 
 namespace Vixen::RenderGraph {
 

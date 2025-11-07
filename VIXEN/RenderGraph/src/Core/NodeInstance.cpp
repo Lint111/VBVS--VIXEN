@@ -2,6 +2,7 @@
 #include "Core/RenderGraph.h"
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/GraphLifecycleHooks.h"
+#include "Core/NodeLogging.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>

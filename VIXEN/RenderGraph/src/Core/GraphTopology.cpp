@@ -1,4 +1,5 @@
 #include "Core/GraphTopology.h"
+#include "Core/NodeLogging.h"
 #include <algorithm>
 #include <queue>
 

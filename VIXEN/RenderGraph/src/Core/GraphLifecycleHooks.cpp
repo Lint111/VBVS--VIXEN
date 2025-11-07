@@ -1,6 +1,7 @@
 #include "Core/GraphLifecycleHooks.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeInstance.h"
+#include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 
