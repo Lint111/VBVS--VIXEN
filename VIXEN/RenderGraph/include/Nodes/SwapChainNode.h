@@ -45,7 +45,6 @@ public:
  */
 class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:
-    using Base = TypedNode<SwapChainNodeConfig>;
 
     SwapChainNode(
         const std::string& instanceName,

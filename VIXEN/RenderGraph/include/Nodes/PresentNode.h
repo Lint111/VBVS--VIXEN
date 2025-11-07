@@ -35,7 +35,6 @@ public:
  */
 class PresentNode : public TypedNode<PresentNodeConfig> {
 public:
-    using Base = TypedNode<PresentNodeConfig>;
 
     PresentNode(
         const std::string& instanceName,

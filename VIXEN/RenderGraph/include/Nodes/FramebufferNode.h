@@ -21,7 +21,6 @@ namespace Vixen::RenderGraph {
  */
 class FramebufferNode : public TypedNode<FramebufferNodeConfig> {
 public:
-    using Base = TypedNode<FramebufferNodeConfig>;
 
     FramebufferNode(
         const std::string& instanceName,

@@ -45,7 +45,6 @@ public:
  */
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
 public:
-    using Base = TypedNode<FrameSyncNodeConfig>;
 
     FrameSyncNode(
         const std::string& instanceName,

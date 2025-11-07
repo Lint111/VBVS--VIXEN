@@ -55,7 +55,6 @@ public:
  */
 class ShaderLibraryNode : public TypedNode<ShaderLibraryNodeConfig> {
 public:
-    using Base = TypedNode<ShaderLibraryNodeConfig>;
 
     ShaderLibraryNode(
         const std::string& instanceName,

@@ -48,7 +48,6 @@ public:
  */
 class GraphicsPipelineNode : public TypedNode<GraphicsPipelineNodeConfig> {
 public:
-    using Base = TypedNode<GraphicsPipelineNodeConfig>;
 
     GraphicsPipelineNode(
         const std::string& instanceName,

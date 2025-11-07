@@ -52,7 +52,6 @@ public:
  */
 class ComputePipelineNode : public TypedNode<ComputePipelineNodeConfig> {
 public:
-    using Base = TypedNode<ComputePipelineNodeConfig>;
 
     ComputePipelineNode(
         const std::string& instanceName,

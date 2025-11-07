@@ -21,7 +21,6 @@ namespace Vixen::RenderGraph {
  */
 class DepthBufferNode : public TypedNode<DepthBufferNodeConfig> {
 public:
-    using Base = TypedNode<DepthBufferNodeConfig>;
 
     DepthBufferNode(
         const std::string& instanceName,

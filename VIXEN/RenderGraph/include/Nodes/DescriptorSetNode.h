@@ -63,7 +63,6 @@ struct DescriptorUpdate {
  */
 class DescriptorSetNode : public TypedNode<DescriptorSetNodeConfig> {
 public:
-    using Base = TypedNode<DescriptorSetNodeConfig>;
 
     DescriptorSetNode(
         const std::string& instanceName,

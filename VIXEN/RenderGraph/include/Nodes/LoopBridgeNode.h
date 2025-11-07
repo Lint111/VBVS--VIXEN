@@ -41,7 +41,6 @@ public:
  */
 class LoopBridgeNode : public TypedNode<LoopBridgeNodeConfig> {
 public:
-    using Base = TypedNode<LoopBridgeNodeConfig>;
 
     LoopBridgeNode(
         const std::string& instanceName,

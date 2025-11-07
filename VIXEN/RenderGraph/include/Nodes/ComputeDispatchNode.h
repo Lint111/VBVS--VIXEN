@@ -52,7 +52,6 @@ public:
  */
 class ComputeDispatchNode : public TypedNode<ComputeDispatchNodeConfig> {
 public:
-    using Base = TypedNode<ComputeDispatchNodeConfig>;
 
     ComputeDispatchNode(
         const std::string& instanceName,

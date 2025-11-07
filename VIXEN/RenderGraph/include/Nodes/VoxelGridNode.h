@@ -44,7 +44,6 @@ public:
  */
 class VoxelGridNode : public TypedNode<VoxelGridNodeConfig> {
 public:
-    using Base = TypedNode<VoxelGridNodeConfig>;
 
     VoxelGridNode(
         const std::string& instanceName,

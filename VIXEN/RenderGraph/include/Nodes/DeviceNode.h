@@ -47,7 +47,6 @@ public:
  */
 class DeviceNode : public TypedNode<DeviceNodeConfig> {
 public:
-    using Base = TypedNode<DeviceNodeConfig>;
 
     DeviceNode(
         const std::string& instanceName,

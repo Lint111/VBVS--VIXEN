@@ -44,7 +44,6 @@ public:
  */
 class GeometryRenderNode : public TypedNode<GeometryRenderNodeConfig> {
 public:
-    using Base = TypedNode<GeometryRenderNodeConfig>;
 
     GeometryRenderNode(
         const std::string& instanceName,
