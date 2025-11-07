@@ -88,10 +88,10 @@ public:
 
 protected:
     // Variadic lifecycle overrides with extended Context support
-    void SetupImplVariadic(Context& ctx) override;
-    void CompileImplVariadic(Context& ctx) override;
-    void ExecuteImplVariadic(Context& ctx) override;
-    void CleanupImplVariadic(Context& ctx) override;
+    void SetupImplVariadic(SetupContext& ctx) override;
+    void CompileImplVariadic(CompileContext& ctx) override;
+    void ExecuteImplVariadic(ExecuteContext& ctx) override;
+    void CleanupImplVariadic(CleanupContext& ctx) override;
 
     // Variadic validation override - shader metadata-specific validation
     bool ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex = 0) override;
