@@ -521,7 +521,7 @@ protected:
     virtual void CleanupImpl() {
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            CleanupContext ctx = CreateCleanupContext();
+            CleanupContext ctx = CreateCleanupContext(taskIndex);
             CleanupImpl(ctx);
         }
     }

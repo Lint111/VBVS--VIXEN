@@ -516,15 +516,15 @@ protected:
     /**
      * @brief Override to return base setup context (no I/O in Setup)
      */
-    typename Base::TypedSetupContext CreateSetupContext() override {
-        return VariadicSetupContext(this);
+    typename Base::TypedSetupContext CreateSetupContext(uint32_t taskIndex) override {
+        return VariadicSetupContext(this, taskIndex);
     }
 
     /**
      * @brief Override to return variadic-extended context for Compile
      */
-    typename Base::TypedCompileContext CreateCompileContext() override {
-        return VariadicCompileContext(this, 0);  // Compile is non-task-based
+    typename Base::TypedCompileContext CreateCompileContext(uint32_t taskIndex) override {
+        return VariadicCompileContext(this, taskIndex);
     }
 
     /**
@@ -537,8 +537,8 @@ protected:
     /**
      * @brief Override to return base cleanup context (no I/O in Cleanup)
      */
-    typename Base::TypedCleanupContext CreateCleanupContext() override {
-        return VariadicCleanupContext(this);
+    typename Base::TypedCleanupContext CreateCleanupContext(uint32_t taskIndex) override {
+        return VariadicCleanupContext(this, taskIndex);
     }
 
     // ============================================================================

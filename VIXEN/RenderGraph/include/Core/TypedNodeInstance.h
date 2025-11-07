@@ -250,20 +250,20 @@ protected:
     // CONTEXT FACTORY OVERRIDES - Return typed contexts
     // ============================================================================
 
-    SetupContext CreateSetupContext() override {
-        return TypedSetupContext(this);
+    SetupContext CreateSetupContext(uint32_t taskIndex) override {
+        return TypedSetupContext(this, taskIndex);
     }
 
-    CompileContext CreateCompileContext() override {
-        return TypedCompileContext(this);
+    CompileContext CreateCompileContext(uint32_t taskIndex) override {
+        return TypedCompileContext(this, taskIndex);
     }
 
     ExecuteContext CreateExecuteContext(uint32_t taskIndex) override {
         return TypedExecuteContext(this, taskIndex);
     }
 
-    CleanupContext CreateCleanupContext() override {
-        return TypedCleanupContext(this);
+    CleanupContext CreateCleanupContext(uint32_t taskIndex) override {
+        return TypedCleanupContext(this, taskIndex);
     }
 
 public:

@@ -34,14 +34,14 @@ protected:
  * Use for graph-scope initialization only.
  */
 struct SetupContext : public BaseContext {
-    SetupContext(NodeInstance* n)
-        : BaseContext(n, 0) {}  // No tasks in Setup
+    SetupContext(NodeInstance* n, uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}
 
 protected:
     // Constructor for derived typed contexts
     template<typename NodeT>
-    SetupContext(NodeT* n)
-        : BaseContext(n, 0) {}
+    SetupContext(NodeT* n, uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}
 };
 
 /**
@@ -51,14 +51,14 @@ protected:
  * Graph topology is finalized, resources can be allocated.
  */
 struct CompileContext : public BaseContext {
-    CompileContext(NodeInstance* n)
-        : BaseContext(n, 0) {}  // No tasks in Compile
+    CompileContext(NodeInstance* n, uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}
 
 protected:
     // Constructor for derived typed contexts
     template<typename NodeT>
-    CompileContext(NodeT* n)
-        : BaseContext(n, 0) {}
+    CompileContext(NodeT* n , uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}
 };
 
 /**
@@ -84,14 +84,14 @@ protected:
  * Cleanup cannot access inputs/outputs - resources being destroyed.
  */
 struct CleanupContext : public BaseContext {
-    CleanupContext(NodeInstance* n)
-        : BaseContext(n, 0) {}  // No tasks in Cleanup
+    CleanupContext(NodeInstance* n, uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}  // No tasks in Cleanup
 
 protected:
     // Constructor for derived typed contexts
     template<typename NodeT>
-    CleanupContext(NodeT* n)
-        : BaseContext(n, 0) {}
+    CleanupContext(NodeT* n, uint32_t taskIdx)
+        : BaseContext(n, taskIdx) {}
 };
 
 } // namespace Vixen::RenderGraph
