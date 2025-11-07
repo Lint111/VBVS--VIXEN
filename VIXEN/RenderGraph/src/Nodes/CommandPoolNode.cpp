@@ -50,7 +50,7 @@ void CommandPoolNode::SetupImpl(TypedNode<CommandPoolNodeConfig>::TypedSetupCont
 
 void CommandPoolNode::CompileImpl(TypedNode<CommandPoolNodeConfig>::TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "CommandPoolNode: VkDevice input is null";
@@ -84,8 +84,8 @@ void CommandPoolNode::CompileImpl(TypedNode<CommandPoolNodeConfig>::TypedCompile
     isCreated = true;
 
     // Store command pool handle in output resource (NEW VARIANT API)
-    Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
-    Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
+    ctx.Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }

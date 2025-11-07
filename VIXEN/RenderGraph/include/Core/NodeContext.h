@@ -20,7 +20,7 @@ struct BaseContext {
 
     virtual ~BaseContext() = default;
 
-protected:
+public:
     // Constructor for derived classes that need to override node pointer type
     template<typename NodeT>
     BaseContext(NodeT* n, uint32_t idx)
@@ -37,7 +37,7 @@ struct SetupContext : public BaseContext {
     SetupContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}
 
-protected:
+public:
     // Constructor for derived typed contexts
     template<typename NodeT>
     SetupContext(NodeT* n, uint32_t taskIdx)
@@ -54,7 +54,7 @@ struct CompileContext : public BaseContext {
     CompileContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}
 
-protected:
+public:
     // Constructor for derived typed contexts
     template<typename NodeT>
     CompileContext(NodeT* n , uint32_t taskIdx)
@@ -71,7 +71,7 @@ struct ExecuteContext : public BaseContext {
     ExecuteContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}
 
-protected:
+public:
     // Constructor for derived typed contexts
     template<typename NodeT>
     ExecuteContext(NodeT* n, uint32_t taskIdx)
@@ -87,7 +87,7 @@ struct CleanupContext : public BaseContext {
     CleanupContext(NodeInstance* n, uint32_t taskIdx)
         : BaseContext(n, taskIdx) {}  // No tasks in Cleanup
 
-protected:
+public:
     // Constructor for derived typed contexts
     template<typename NodeT>
     CleanupContext(NodeT* n, uint32_t taskIdx)

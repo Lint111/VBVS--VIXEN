@@ -23,7 +23,7 @@ void BoolOpNode::SetupImpl(TypedNode<BoolOpNodeConfig>::TypedSetupContext& ctx) 
     NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
 
     // Read OPERATION from input (connected to ConstantNode)
-    operation = In(BoolOpNodeConfig::OPERATION);
+    operation = ctx.In(BoolOpNodeConfig::OPERATION);
 }
 
 void BoolOpNode::CompileImpl(TypedNode<BoolOpNodeConfig>::TypedCompileContext& ctx) {

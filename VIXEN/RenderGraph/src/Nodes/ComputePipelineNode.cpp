@@ -70,8 +70,8 @@ void ComputePipelineNode::CompileImpl(TypedNode<ComputePipelineNodeConfig>::Type
 
     // ===== 2. Get Inputs =====
     // Note: devicePtr already retrieved and validated at start of CompileImpl
-    ShaderDataBundlePtr shaderBundle = In(ComputePipelineNodeConfig::SHADER_DATA_BUNDLE);
-    VkDescriptorSetLayout descriptorSetLayout = In(ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    ShaderDataBundlePtr shaderBundle = ctx.In(ComputePipelineNodeConfig::SHADER_DATA_BUNDLE);
+    VkDescriptorSetLayout descriptorSetLayout = ctx.In(ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
     if (!shaderBundle) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] SHADER_DATA_BUNDLE is null");
@@ -258,10 +258,10 @@ void ComputePipelineNode::CompileImpl(TypedNode<ComputePipelineNodeConfig>::Type
               << reinterpret_cast<uint64_t>(pipelineLayout_) << std::endl;
 
     // ===== 8. Set Outputs =====
-    Out(ComputePipelineNodeConfig::PIPELINE, pipeline_);
-    Out(ComputePipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout_);
-    Out(ComputePipelineNodeConfig::PIPELINE_CACHE, pipelineCache_);
-    Out(ComputePipelineNodeConfig::VULKAN_DEVICE_OUT, devicePtr);
+    ctx.Out(ComputePipelineNodeConfig::PIPELINE, pipeline_);
+    ctx.Out(ComputePipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout_);
+    ctx.Out(ComputePipelineNodeConfig::PIPELINE_CACHE, pipelineCache_);
+    ctx.Out(ComputePipelineNodeConfig::VULKAN_DEVICE_OUT, devicePtr);
 
     std::cout << "[ComputePipelineNode::CompileImpl] Outputs set" << std::endl;
 }

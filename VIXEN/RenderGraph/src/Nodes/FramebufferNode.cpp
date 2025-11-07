@@ -34,7 +34,7 @@ void FramebufferNode::CompileImpl(TypedNode<FramebufferNodeConfig>::TypedCompile
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "FramebufferNode: VkDevice input is null";
@@ -46,10 +46,10 @@ void FramebufferNode::CompileImpl(TypedNode<FramebufferNodeConfig>::TypedCompile
     SetDevice(devicePtr);
 
     // Get typed inputs
-    VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);   
+    VkRenderPass renderPass =  ctx.In(FramebufferNodeConfig::RENDER_PASS);
 
     // Check for depth attachment
-    VkImageView depthView = In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
+    VkImageView depthView = ctx.In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
     hasDepth = (depthView != VK_NULL_HANDLE);
 
     NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
@@ -59,7 +59,7 @@ void FramebufferNode::CompileImpl(TypedNode<FramebufferNodeConfig>::TypedCompile
         FramebufferNodeConfig::PARAM_LAYERS, 1);
 
     // Get swapchain public variables to access ALL color buffers
-    SwapChainPublicVariables* swapchainInfo = In(FramebufferNodeConfig::SWAPCHAIN_INFO);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(FramebufferNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("FramebufferNode: SwapChain info is null");
     }
@@ -135,10 +135,10 @@ void FramebufferNode::CompileImpl(TypedNode<FramebufferNodeConfig>::TypedCompile
     }
 
     // Output all framebuffers as a vector in ONE bundle
-    Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
     std::cout << "[FramebufferNode::Compile] Output " << framebuffers.size() << " framebuffers as vector" << std::endl;
 
-    Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }

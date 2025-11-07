@@ -51,7 +51,7 @@ void CameraNode::CompileImpl(TypedNode<CameraNodeConfig>::TypedCompileContext& c
     NODE_LOG_INFO("CameraNode compile");
 
     // Get device
-    VulkanDevicePtr devicePtr = In(CameraNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(CameraNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[CameraNode] VULKAN_DEVICE_IN is null");
     }
@@ -60,7 +60,7 @@ void CameraNode::CompileImpl(TypedNode<CameraNodeConfig>::TypedCompileContext& c
     vulkanDevice = devicePtr;
 
     // Get swapchain info
-    SwapChainPublicVariables* swapchainInfo = In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainInfo) {
         throw std::runtime_error("[CameraNode] SWAPCHAIN_PUBLIC is null");
     }

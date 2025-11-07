@@ -56,7 +56,7 @@ void ComputeDispatchNode::CompileImpl(TypedNode<ComputeDispatchNodeConfig>::Type
     std::cout << "[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers" << std::endl;
 
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Vulkan device input is null");
     }
@@ -65,8 +65,8 @@ void ComputeDispatchNode::CompileImpl(TypedNode<ComputeDispatchNodeConfig>::Type
     vulkanDevice = devicePtr;
 
     // Get inputs
-    commandPool = In(ComputeDispatchNodeConfig::COMMAND_POOL);
-    SwapChainPublicVariables* swapchainInfo = In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
+    commandPool = ctx.In(ComputeDispatchNodeConfig::COMMAND_POOL);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
     if (!swapchainInfo) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] SwapChain info is null");
@@ -194,7 +194,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedNode<ComputeDispatchNodeConfig>::Type
     }
 
     // Output semaphore for Present to wait on
-    Out(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+    ctx.Out(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
 // ============================================================================

@@ -42,7 +42,7 @@ void GraphicsPipelineNode::SetupImpl(TypedNode<GraphicsPipelineNodeConfig>::Type
 
 void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "GraphicsPipelineNode: VkDevice input is null";
@@ -69,10 +69,10 @@ void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::Ty
     frontFace = ParseFrontFace(frontFaceStr);
 
     // Get inputs
-    currentShaderBundle = In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
-    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
-    VkDescriptorSetLayout manualDescriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-    SwapChainPublicVariables* swapchainInfo = In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+    currentShaderBundle =  ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
+    VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    VkDescriptorSetLayout manualDescriptorSetLayout = ctx.In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
 
     // Validate inputs
     if (!currentShaderBundle) {
@@ -144,10 +144,10 @@ void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::Ty
     CreatePipelineWithCache();
     
     // Set outputs
-    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
 void GraphicsPipelineNode::ExecuteImpl(TypedNode<GraphicsPipelineNodeConfig>::TypedExecuteContext& ctx) {
@@ -388,7 +388,7 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
 }
 
 void GraphicsPipelineNode::CreatePipeline() {
-    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    VkRenderPass renderPass =  ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
     // Dynamic state
     VkDynamicState dynamicStates[] = {
@@ -566,10 +566,10 @@ void GraphicsPipelineNode::CreatePipeline() {
     }
     
     // Output pipeline resources and device
-    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
 // Parse helper methods
@@ -632,7 +632,7 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
     if (pipelineCacher) {
         NODE_LOG_INFO("GraphicsPipelineNode: Pipeline cache ready - attempting cached pipeline creation");
 
-        VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+        VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
 
         // Build vertex input descriptions from reflection data
         std::vector<VkVertexInputBindingDescription> vertexBindings;
