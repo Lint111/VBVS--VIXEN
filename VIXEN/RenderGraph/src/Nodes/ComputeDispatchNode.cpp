@@ -276,15 +276,32 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         nullptr
     );
 
-    //     // Set push constants from caller (updated every frame in ExecuteImpl)
-    //     vkCmdPushConstants(
-    //         cmdBuffer,
-    //         pipelineLayout,
-    //         VK_SHADER_STAGE_COMPUTE_BIT,
-    //         0,  // offset
-    //         sizeof(float) + sizeof(uint32_t),  // size (8 bytes: float + uint)
-    //         pushConstantData
-    //     );
+    // Get shader bundle to check for push constants
+    ShaderDataBundlePtr shaderBundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
+
+    // Conditionally set push constants if shader declares them
+    if (shaderBundle && shaderBundle->reflectionData &&
+        !shaderBundle->reflectionData->pushConstants.empty() &&
+        pushConstantData != nullptr) {
+
+        // Get first push constant range (we assume single range for now)
+        const auto& pc = shaderBundle->reflectionData->pushConstants[0];
+
+        vkCmdPushConstants(
+            cmdBuffer,
+            pipelineLayout,
+            VK_SHADER_STAGE_COMPUTE_BIT,
+            pc.offset,
+            pc.size,
+            pushConstantData
+        );
+
+        static int pcLogCount = 0;
+        if (pcLogCount++ < 3) {
+            std::cout << "[ComputeDispatchNode] Setting push constants: offset=" << pc.offset
+                      << ", size=" << pc.size << std::endl;
+        }
+    }
 
     // Dispatch compute shader
     vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);

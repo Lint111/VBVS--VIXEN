@@ -9,6 +9,7 @@
 #include "SlotTask.h"
 #include "ResourceBudgetManager.h"
 #include "GraphLifecycleHooks.h"
+#include "NodeContext.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -328,9 +329,10 @@ public:
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
-    virtual void Compile() {
+    virtual void Compile() final {
         ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
         CompileImpl();
+        
         ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
         RegisterCleanup();
     }
@@ -349,30 +351,9 @@ public:
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
-    virtual void Execute() {
+    virtual void Execute() final {
         ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
-
-        // Analyze slot configuration to determine task generation strategy
-        uint32_t taskCount = DetermineTaskCount();
-
-        if (taskCount == 0) {
-            // No tasks to execute (e.g., no inputs connected)
-            ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
-            return;
-        }
-
-        // Execute each task with task-local context
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            // Set current task index for In()/Out() binding
-            currentTaskIndex = taskIndex;
-
-            // Execute with task-bound slot access
-            ExecuteImpl(taskIndex);
-        }
-
-        // Reset task index after execution
-        currentTaskIndex = 0;
-
+        ExecuteImpl();
         ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
     }
 
@@ -391,7 +372,7 @@ public:
      * Derived classes (like TypedNode) can override this method to implement
      * task-based cleanup, following the same pattern as Execute().
      */
-    virtual void Cleanup() {
+    virtual void Cleanup() final {
         if (cleanedUp) {
             return;  // Already cleaned up
         }
@@ -403,66 +384,148 @@ public:
 
 protected:
     // ============================================================================
+    // CONTEXT FACTORY METHODS - Override to provide specialized contexts
+    // ============================================================================
+
+    /**
+     * @brief Create SetupContext for this node
+     *
+     * Override in derived classes to provide specialized setup contexts.
+     * Default: Returns base SetupContext.
+     */
+    virtual SetupContext CreateSetupContext() {
+        return SetupContext(this);
+    }
+
+    /**
+     * @brief Create CompileContext for this node
+     *
+     * Override in derived classes to provide specialized compile contexts.
+     * Default: Returns base CompileContext.
+     */
+    virtual CompileContext CreateCompileContext() {
+        return CompileContext(this);
+    }
+
+    /**
+     * @brief Create ExecuteContext for this node
+     *
+     * Override in derived classes to provide specialized execute contexts.
+     * Default: Returns base ExecuteContext.
+     */
+    virtual ExecuteContext CreateExecuteContext(uint32_t taskIndex) {
+        return ExecuteContext(this, taskIndex);
+    }
+
+    /**
+     * @brief Create CleanupContext for this node
+     *
+     * Override in derived classes to provide specialized cleanup contexts.
+     * Default: Returns base CleanupContext.
+     */
+    virtual CleanupContext CreateCleanupContext() {
+        return CleanupContext(this);
+    }
+
+    // ============================================================================
     // TEMPLATE METHOD PATTERN - Override these *Impl() methods in derived classes
     // ============================================================================
 
     /**
      * @brief Setup implementation for derived classes
      *
-     * Override this to implement setup logic (reading config, connecting to managers, etc.).
-     * Called automatically by Setup() after resetting input tracking.
+     * Task orchestration and context creation happens here.
+     * Override to create tasks and call SetupImpl(SetupContext&) for each.
      *
-     * Default: No-op (some nodes don't need setup).
+     * Default: Creates single SetupContext and calls SetupImpl(ctx).
      */
-    virtual void SetupImpl() {}
+    virtual void SetupImpl() {
+        SetupContext ctx = CreateSetupContext();
+        SetupImpl(ctx);
+    }
+
+    /**
+     * @brief Setup implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual setup logic.
+     * Access inputs/outputs via context methods (if context supports them).
+     *
+     * @param ctx Setup context with phase-specific capabilities
+     */
+    virtual void SetupImpl(SetupContext& ctx) {}
 
     /**
      * @brief Compile implementation for derived classes
      *
-     * Override this to implement compilation logic (creating Vulkan resources, pipelines, etc.).
-     * Called automatically by Compile(). RegisterCleanup() is called automatically after this.
+     * Task orchestration and context creation happens here.
+     * Override to create tasks and call CompileImpl(CompileContext&) for each.
      *
-     * IMPORTANT: Do NOT call RegisterCleanup() manually - it happens automatically!
-     *
-     * Default: No-op (must override in most nodes).
+     * Default: Creates single CompileContext and calls CompileImpl(ctx).
      */
-    virtual void CompileImpl() {}
+    virtual void CompileImpl() {
+        CompileContext ctx = CreateCompileContext();
+        CompileImpl(ctx);
+    }
 
     /**
-     * @brief Execute implementation for derived classes (task-aware)
+     * @brief Compile implementation with context (final implementation)
      *
-     * Override this to implement execution logic for ONE task's worth of work.
-     * Called automatically by Execute() for each generated task.
+     * Override this in concrete nodes to implement actual compilation logic.
+     * Access inputs/outputs via context methods.
      *
-     * @param taskIndex The index of the current task being executed (0-based)
+     * @param ctx Compile context with phase-specific capabilities
+     */
+    virtual void CompileImpl(CompileContext& ctx) {}
+
+    /**
+     * @brief Execute implementation for derived classes
+     *
+     * Task orchestration and context creation happens here.
+     * Override to determine task count and call ExecuteImpl(ExecuteContext&) for each.
+     *
+     * Default: Creates single ExecuteContext(0) and calls ExecuteImpl(ctx).
+     */
+    virtual void ExecuteImpl() {
+        ExecuteContext ctx = CreateExecuteContext(0);
+        ExecuteImpl(ctx);
+    }
+
+    /**
+     * @brief Execute implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual execution logic.
+     * Access inputs/outputs via context methods with automatic task binding.
+     *
+     * @param ctx Execute context with task-bound input/output access
      *
      * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
-     *
-     * Phase F: Execute() automatically determines task count based on slot configuration.
-     * Node implementations just handle one task. Use In()/Out() normally - they are
-     * context-aware of currentTaskIndex.
-     *
-     * For most nodes with NodeLevel slots, taskIndex will always be 0 (single task).
-     * For nodes with TaskLevel/ParameterizedInput slots, taskIndex indicates which
-     * element/task to process.
-     *
-     * Note: Nodes that need VkCommandBuffer should read it from their input slots.
      */
-    virtual void ExecuteImpl(uint32_t taskIndex) = 0;
+    virtual void ExecuteImpl(ExecuteContext& ctx) = 0;
 
     /**
      * @brief Cleanup implementation for derived classes
      *
-     * Override this to implement cleanup logic (destroying Vulkan resources, etc.).
-     * Guaranteed to be called exactly once per node lifetime.
-     * Called automatically by Cleanup() with double-cleanup protection.
+     * Task orchestration and context creation happens here (if needed).
+     * Override to create tasks and call CleanupImpl(CleanupContext&) for each.
      *
-     * IMPORTANT: Always null out VulkanDevice pointers and handles
-     * after destroying Vulkan resources to prevent dangling references.
-     *
-     * Default: No-op (some nodes don't allocate resources).
+     * Default: Creates single CleanupContext and calls CleanupImpl(ctx).
      */
-    virtual void CleanupImpl() {}
+    virtual void CleanupImpl() {
+        CleanupContext ctx = CreateCleanupContext();
+        CleanupImpl(ctx);
+    }
+
+    /**
+     * @brief Cleanup implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual cleanup logic.
+     *
+     * @param ctx Cleanup context (no input/output access during cleanup)
+     *
+     * IMPORTANT: This is pure virtual - all nodes MUST implement cleanup.
+     * Always null out VulkanDevice pointers and handles after destroying resources.
+     */
+    virtual void CleanupImpl(CleanupContext& ctx) = 0;
 
     // ============================================================================
     // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
@@ -648,22 +711,6 @@ protected:
     mutable std::vector<std::vector<bool>> inputUsedInCompile;
 
 public:
-    // Slot role flags used by TypedNode::In() to indicate the access semantics.
-    // Implemented as bitflags so callers can combine roles (e.g., ExecuteOnly | CleanupOnly).
-    enum class SlotRole : uint8_t {
-        Dependency   = 1u << 0,
-        ExecuteOnly  = 1u << 1,
-        CleanupOnly  = 1u << 2
-    };
-
-    // NOTE: bitwise operator helpers for SlotRole are declared at namespace scope
-    // after the class definition so they behave as non-member operators.
-
-    // Active bundle index for this node instance. This lets In()/Out() use a
-    // per-instance "current bundle" instead of requiring callers to pass an
-    // explicit array index everywhere. Default = 0.
-    void SetActiveBundleIndex(size_t idx) { activeBundleIndex = idx; }
-    size_t GetActiveBundleIndex() const { return activeBundleIndex; }
 
     // Mark that a specific input slot (slotIndex) was used during compile.
     // The array/bundle index is resolved using the node's active bundle index.
@@ -699,9 +746,6 @@ public:
     // Instance-specific parameters
     std::map<std::string, ParamTypeValue> parameters;
 
-    // Current active bundle index used by In()/Out() when callers omit explicit array index
-    size_t activeBundleIndex = 0;
-
     // Phase 0.4: Loop connections (zero or more loops)
     std::vector<const LoopReference*> connectedLoops;
 
@@ -717,9 +761,6 @@ public:
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
     PerformanceStats performanceStats;
-
-    // Phase F: Thread-local task index for parallel-safe slot access
-    static thread_local uint32_t currentTaskIndex;
 
     // Caching
     uint64_t cacheKey = 0;
@@ -748,14 +789,4 @@ T NodeInstance::GetParameterValue(const std::string& name, const T& defaultValue
     
     return defaultValue;
 }
-
-// Bitwise operators for SlotRole (non-member) so callers can combine flags naturally.
-inline NodeInstance::SlotRole operator|(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
-    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
-}
-
-inline NodeInstance::SlotRole operator&(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
-    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
-}
-
 } // namespace Vixen::RenderGraph

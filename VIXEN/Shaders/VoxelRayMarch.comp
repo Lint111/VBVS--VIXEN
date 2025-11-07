@@ -23,7 +23,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // Binding 0: Output image (storage image, write-only)
 // NOTE: Shader uses rgba8, swapchain is bgra8 (VK_FORMAT_B8G8R8A8_UNORM)
 // This causes validation warnings but hardware typically handles the format difference gracefully
-layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outputImage;
+layout(set = 0, binding = 0) uniform writeonly image2D outputImage;
 
 // Binding 1: Camera data (uniform buffer)
 layout(set = 0, binding = 1) uniform CameraData {

@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 11;  // Added swapchain + sync inputs (descriptor sets moved to index 4)
+    static constexpr size_t INPUTS = 12;  // Added SHADER_DATA_BUNDLE for push constant reflection
     static constexpr size_t OUTPUTS = 3;  // Added RENDER_COMPLETE_SEMAPHORE output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -140,6 +140,15 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      * @brief Render complete semaphore array (indexed by IMAGE_INDEX)
      */
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 10,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Shader data bundle with reflection metadata (for push constant detection)
+     */
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 11,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

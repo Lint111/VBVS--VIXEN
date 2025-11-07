@@ -1228,10 +1228,7 @@ void RenderGraph::RecompileDirtyNodes() {
                 // can record which inputs are actually used during compilation.
                 node->ResetInputsUsedInCompile();
                 node->Compile();
-    
-                // Register cleanup again
-                node->RegisterCleanup();
-
+                
                 // Clear recompilation flag - node is now compiled
                 node->ClearNeedsRecompile();
 

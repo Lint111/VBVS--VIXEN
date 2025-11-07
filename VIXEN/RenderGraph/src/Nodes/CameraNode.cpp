@@ -78,8 +78,8 @@ void CameraNode::CompileImpl(Context& ctx) {
     }
 
     // Output the first buffer (descriptor set will index into array)
-    Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(0));
-    Out(CameraNodeConfig::CAMERA_BUFFER_SIZE, static_cast<uint64_t>(bufferSize));
+    ctx.Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(0));
+    ctx.Out(CameraNodeConfig::CAMERA_BUFFER_SIZE, static_cast<uint64_t>(bufferSize));
 
     NODE_LOG_INFO("Created " + std::to_string(imageCount) + " camera UBOs successfully");
 }
@@ -101,7 +101,7 @@ void CameraNode::ExecuteImpl(Context& ctx) {
     UpdateCameraMatrices(0, imageIndex, aspectRatio);
 
     // Output the buffer for this frame
-    Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(imageIndex));
+    ctx.Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(imageIndex));
 }
 
 void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio) {

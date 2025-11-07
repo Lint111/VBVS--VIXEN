@@ -151,7 +151,7 @@ void WindowNode::ExecuteImpl(Context& ctx) {
     // Phase F: Store slot index for use in message handlers
     slotIndex = ctx.taskIndex;
 
-    // Process Windows messages
+    // Process Windows messages (fills event queue)
 #ifdef _WIN32
     MSG msg;
     while (PeekMessageW(&msg, window, 0, 0, PM_REMOVE)) {
@@ -162,6 +162,68 @@ void WindowNode::ExecuteImpl(Context& ctx) {
         DispatchMessageW(&msg);
     }
 #endif
+
+    // Process queued events with proper Context access
+    std::vector<WindowEvent> eventsToProcess;
+    {
+        std::lock_guard<std::mutex> lock(eventMutex);
+        eventsToProcess.swap(pendingEvents);  // Take ownership of events
+    }
+
+    for (const auto& event : eventsToProcess) {
+        switch (event.type) {
+            case WindowEvent::Type::Resize:
+                width = event.width;
+                height = event.height;
+                wasResized = true;
+
+                // Update outputs using Context (proper phase-aware access)
+                ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
+                ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
+
+                // Publish event
+                if (GetMessageBus()) {
+                    GetMessageBus()->Publish(
+                        std::make_unique<EventTypes::WindowResizedMessage>(
+                            instanceId,
+                            event.width,
+                            event.height
+                        )
+                    );
+                }
+                break;
+
+            case WindowEvent::Type::Close:
+                shouldClose = true;
+                if (GetMessageBus()) {
+                    GetMessageBus()->Publish(
+                        std::make_unique<EventBus::WindowCloseEvent>(instanceId)
+                    );
+                }
+                break;
+
+            case WindowEvent::Type::Minimize:
+            case WindowEvent::Type::Maximize:
+            case WindowEvent::Type::Restore:
+            case WindowEvent::Type::Focus:
+            case WindowEvent::Type::Unfocus:
+                if (GetMessageBus()) {
+                    EventBus::WindowStateChangeEvent::State state;
+                    switch (event.type) {
+                        case WindowEvent::Type::Minimize: state = EventBus::WindowStateChangeEvent::State::Minimized; break;
+                        case WindowEvent::Type::Maximize: state = EventBus::WindowStateChangeEvent::State::Maximized; break;
+                        case WindowEvent::Type::Restore: state = EventBus::WindowStateChangeEvent::State::Restored; break;
+                        case WindowEvent::Type::Focus: state = EventBus::WindowStateChangeEvent::State::Focused; break;
+                        case WindowEvent::Type::Unfocus: state = EventBus::WindowStateChangeEvent::State::Unfocused; break;
+                        default: continue;
+                    }
+                    GetMessageBus()->Publish(
+                        std::make_unique<EventBus::WindowStateChangeEvent>(instanceId, state)
+                    );
+                }
+                break;
+        }
+    }
 }
 
 #ifdef _WIN32
@@ -171,16 +233,11 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 
     switch (msg) {
         case WM_CLOSE:
-            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received - initiating graceful shutdown");
+            NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_CLOSE received - queuing close event");
             if (windowNode) {
-                windowNode->shouldClose = true;
-                // Publish window close REQUESTED event to allow graceful shutdown
-                // Systems can subscribe to this event to save state, cleanup resources, etc.
-                if (windowNode->GetMessageBus()) {
-                    windowNode->GetMessageBus()->Publish(
-                        std::make_unique<EventBus::WindowCloseEvent>(windowNode->instanceId)
-                    );
-                }
+                // Queue close event for processing in Execute()
+                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Close});
                 // Destroy window immediately to trigger WM_DESTROY -> PostQuitMessage
                 DestroyWindow(hWnd);
             }
@@ -219,30 +276,10 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 windowNode->width = actualWidth;
                 windowNode->height = actualHeight;
 
-                // Update outputs with actual dimensions (use window's slot index)
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Calling SetOutput() with: " << actualWidth << "x" << actualHeight
-                          << " at slot index " << windowNode->slotIndex << std::endl;
-                windowNode->SetOutput(WindowNodeConfig::WIDTH_OUT, windowNode->slotIndex, actualWidth);
-                windowNode->SetOutput(WindowNodeConfig::HEIGHT_OUT, windowNode->slotIndex, actualHeight);
-
-                // Verify outputs were updated
-                uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
-                uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Read back from outputs: width=" << readBackWidth
-                          << ", height=" << readBackHeight << std::endl;
-
-                // Publish resize event with ACTUAL dimensions
-                if (windowNode->GetMessageBus()) {
-                    std::cout << "[WindowNode::WM_EXITSIZEMOVE] Publishing WindowResizedMessage with "
-                              << actualWidth << "x" << actualHeight << std::endl;
-                    windowNode->GetMessageBus()->Publish(
-                        std::make_unique<EventTypes::WindowResizedMessage>(
-                            windowNode->instanceId,
-                            actualWidth,
-                            actualHeight
-                        )
-                    );
-                }
+                // Queue resize event for processing in Execute()
+                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Queuing resize event: " << actualWidth << "x" << actualHeight << std::endl;
+                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Resize, actualWidth, actualHeight});
             }
             return 0;
 
@@ -251,77 +288,37 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 UINT newWidth = LOWORD(lParam);
                 UINT newHeight = HIWORD(lParam);
 
-                // If not actively resizing (e.g., maximize/restore), trigger immediate resize
+                // If not actively resizing (e.g., maximize/restore), queue resize event
                 if (!windowNode->isResizing && (newWidth != windowNode->width || newHeight != windowNode->height)) {
-                    NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - window resized to " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
-                    windowNode->width = newWidth;
-                    windowNode->height = newHeight;
-                    windowNode->wasResized = true;
+                    NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - queuing resize event: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
 
-                    // Update outputs with new dimensions so downstream nodes read new values (use window's slot index)
-                    std::cout << "[WindowNode::WM_SIZE] BEFORE SetOutput() calls - width=" << newWidth
-                              << ", height=" << newHeight << " at slot index " << windowNode->slotIndex << std::endl;
-                    windowNode->SetOutput(WindowNodeConfig::WIDTH_OUT, windowNode->slotIndex, newWidth);
-                    windowNode->SetOutput(WindowNodeConfig::HEIGHT_OUT, windowNode->slotIndex, newHeight);
-                    std::cout << "[WindowNode::WM_SIZE] AFTER SetOutput() calls - verifying..." << std::endl;
-
-                    // Verify outputs were updated
-                    uint32_t readBackWidth = windowNode->GetOut(WindowNodeConfig::WIDTH_OUT);
-                    uint32_t readBackHeight = windowNode->GetOut(WindowNodeConfig::HEIGHT_OUT);
-                    std::cout << "[WindowNode::WM_SIZE] Read back: width=" << readBackWidth
-                              << ", height=" << readBackHeight << std::endl;
-
-                    // Publish resize event
-                    if (windowNode->GetMessageBus()) {
-                        std::cout << "[WindowNode::WM_SIZE] Publishing WindowResizedMessage with "
-                                  << newWidth << "x" << newHeight << std::endl;
-                        windowNode->GetMessageBus()->Publish(
-                            std::make_unique<EventTypes::WindowResizedMessage>(
-                                windowNode->instanceId,
-                                newWidth,
-                                newHeight
-                            )
-                        );
-                    }
+                    // Queue event for processing in Execute() phase with proper Context
+                    std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                    windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Resize, newWidth, newHeight});
                 }
             }
             return 0;
 
         case WM_SYSCOMMAND:
-            if (wParam == SC_MINIMIZE && windowNode && windowNode->GetMessageBus()) {
-                windowNode->GetMessageBus()->Publish(
-                    std::make_unique<EventBus::WindowStateChangeEvent>(
-                        windowNode->instanceId,
-                        EventBus::WindowStateChangeEvent::State::Minimized
-                    )
-                );
-            } else if (wParam == SC_MAXIMIZE && windowNode && windowNode->GetMessageBus()) {
-                windowNode->GetMessageBus()->Publish(
-                    std::make_unique<EventBus::WindowStateChangeEvent>(
-                        windowNode->instanceId,
-                        EventBus::WindowStateChangeEvent::State::Maximized
-                    )
-                );
-            } else if (wParam == SC_RESTORE && windowNode && windowNode->GetMessageBus()) {
-                windowNode->GetMessageBus()->Publish(
-                    std::make_unique<EventBus::WindowStateChangeEvent>(
-                        windowNode->instanceId,
-                        EventBus::WindowStateChangeEvent::State::Restored
-                    )
-                );
+            if (windowNode) {
+                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                if (wParam == SC_MINIMIZE) {
+                    windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Minimize});
+                } else if (wParam == SC_MAXIMIZE) {
+                    windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Maximize});
+                } else if (wParam == SC_RESTORE) {
+                    windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Restore});
+                }
             }
             break;
 
         case WM_ACTIVATE:
-            if (windowNode && windowNode->GetMessageBus()) {
+            if (windowNode) {
                 bool focused = (LOWORD(wParam) != WA_INACTIVE);
-                windowNode->GetMessageBus()->Publish(
-                    std::make_unique<EventBus::WindowStateChangeEvent>(
-                        windowNode->instanceId,
-                        focused ? EventBus::WindowStateChangeEvent::State::Focused
-                               : EventBus::WindowStateChangeEvent::State::Unfocused
-                    )
-                );
+                std::lock_guard<std::mutex> lock(windowNode->eventMutex);
+                windowNode->pendingEvents.push_back({
+                    focused ? WindowNode::WindowEvent::Type::Focus : WindowNode::WindowEvent::Type::Unfocus
+                });
             }
             break;
 

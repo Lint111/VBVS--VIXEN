@@ -801,6 +801,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computeDispatch, ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE)
          .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   computePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

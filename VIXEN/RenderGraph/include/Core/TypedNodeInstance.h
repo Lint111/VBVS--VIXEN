@@ -389,13 +389,13 @@ protected:
      *
      * NodeInstance::Execute() calls this with taskIndex for task-based execution
      */
-    void ExecuteImpl(uint32_t taskIndex) final override {
+    void ExecuteImpl() final override {
         Context ctx(this, taskIndex);
         currentTaskIndex = taskIndex;
         ExecuteImpl(ctx);
     }
 
-public:
+private:
     // ===== INDEX-BASED ACCESS =====
 
     /**

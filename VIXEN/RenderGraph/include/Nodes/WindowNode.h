@@ -47,10 +47,6 @@ public:
 #ifdef _WIN32
     HWND GetWindow() const { return window; }
 #endif
-    VkSurfaceKHR GetSurface() const {
-        // Type-safe access using named slot from config (NEW VARIANT API)
-        return GetOut(WindowNodeConfig::SURFACE);
-    }
 
     // State queries
     bool ShouldClose() const { return shouldClose; }
@@ -69,6 +65,16 @@ private:
 #ifdef _WIN32
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #endif
+
+    // Window event queue for deferred processing in Execute()
+    struct WindowEvent {
+        enum class Type { Resize, Close, Minimize, Maximize, Restore, Focus, Unfocus };
+        Type type;
+        uint32_t width = 0;   // For Resize events
+        uint32_t height = 0;  // For Resize events
+    };
+    std::vector<WindowEvent> pendingEvents;
+    std::mutex eventMutex;  // Protect event queue from Win32 callback thread
 
     uint32_t width = 0;
     uint32_t height = 0;
