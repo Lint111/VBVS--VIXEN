@@ -59,13 +59,12 @@ void WindowNode::SetupImpl(TypedSetupContext& ctx) {
 }
 
 void WindowNode::CompileImpl(TypedCompileContext& ctx) {
-    std::cout << "[WindowNode::Compile] START" << std::endl;
-    
+    NODE_LOG_INFO("[WindowNode] Compile START");
+
     // Get parameters using typed names from config
     width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
     height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
 
-    std::cout << "[WindowNode::Compile] Creating window " << width << "x" << height << std::endl;
     NODE_LOG_INFO("[WindowNode] Creating window " + std::to_string(width) + "x" + std::to_string(height));
 
 #ifdef _WIN32
@@ -269,15 +268,15 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 UINT actualWidth = clientRect.right - clientRect.left;
                 UINT actualHeight = clientRect.bottom - clientRect.top;
 
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] GetClientRect returned: " << actualWidth << "x" << actualHeight << std::endl;
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Old cached dimensions: " << windowNode->width << "x" << windowNode->height << std::endl;
+                NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_EXITSIZEMOVE GetClientRect returned: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+                NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_EXITSIZEMOVE Old cached dimensions: " + std::to_string(windowNode->width) + "x" + std::to_string(windowNode->height));
 
                 // Update member variables with actual dimensions
                 windowNode->width = actualWidth;
                 windowNode->height = actualHeight;
 
                 // Queue resize event for processing in Execute()
-                std::cout << "[WindowNode::WM_EXITSIZEMOVE] Queuing resize event: " << actualWidth << "x" << actualHeight << std::endl;
+                NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_EXITSIZEMOVE Queuing resize event: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
                 std::lock_guard<std::recursive_mutex> lock(windowNode->eventMutex);
                 windowNode->pendingEvents.push_back({WindowNode::WindowEvent::Type::Resize, actualWidth, actualHeight});
             }

@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include <iostream>
 
 Logger::Logger(const std::string& name, bool enabled)
     : name(name), enabled(enabled)

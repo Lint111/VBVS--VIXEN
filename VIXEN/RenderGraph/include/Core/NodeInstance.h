@@ -144,10 +144,8 @@ public:
     void RegisterCleanup();
 
     // Logger Registration
-    #ifdef _DEBUG
     void RegisterToParentLogger(Logger* parentLogger);
     void DeregisterFromParentLogger(Logger* parentLogger);
-    #endif
 
     // EventBus Integration
     /**
@@ -796,10 +794,8 @@ protected:
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
 
-#if VIXEN_DEBUG_BUILD
-    // Debug-only hierarchical logger (zero overhead in release builds)
+    // Hierarchical logger (disabled by default, enable in VulkanGraphApplication as needed)
     std::unique_ptr<Logger> nodeLogger;
-#endif
 
     // Helper methods
     void AllocateResources();

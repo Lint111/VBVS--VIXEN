@@ -23,13 +23,9 @@ RenderGraph::RenderGraph(
         throw std::runtime_error("Node type registry cannot be null");
     }
 
-#ifdef _DEBUG
     if (mainLogger) {
         this->mainLogger = mainLogger;
     }
-#else
-    (void)mainLogger;
-#endif
 
     // Subscribe to cleanup events if bus provided
     if (messageBus) {
@@ -169,10 +165,8 @@ NodeHandle RenderGraph::AddNode(
     // Inject MessageBus for event publishing/subscription
     instances[index]->SetMessageBus(messageBus);
 
-    // Add logger if in debug mode (attach node to parent logger)
-    #ifdef _DEBUG
+    // Attach node to parent logger (loggers disabled by default)
     instances[index]->RegisterToParentLogger(mainLogger);
-    #endif
 
     // Add to topology
     topology.AddNode(instances[index].get());

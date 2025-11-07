@@ -37,10 +37,8 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-// Initialize logger in debug builds
-#if VIXEN_DEBUG_BUILD
-    nodeLogger = std::make_unique<Logger>(instanceName);
-#endif
+    // Initialize logger (disabled by default)
+    nodeLogger = std::make_unique<Logger>(instanceName, false);
 }
 
 NodeInstance::~NodeInstance() {
@@ -160,20 +158,18 @@ bool NodeInstance::DependsOn(NodeInstance* node) const {
 
 // Dead code removed: UpdatePerformanceStats, ComputeCacheKey
 
-#if VIXEN_DEBUG_BUILD
 void NodeInstance::RegisterToParentLogger(Logger* parentLogger)
 {
-    if (parentLogger) {
+    if (parentLogger && nodeLogger) {
         parentLogger->AddChild(nodeLogger.get());
     }
 }
 void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
 {
-    if (parentLogger) {
+    if (parentLogger && nodeLogger) {
         parentLogger->RemoveChild(nodeLogger.get());
     }
 }
-#endif
 
 void NodeInstance::ExecuteNodeHook(NodeLifecyclePhase phase) {
     if (!owningGraph) {

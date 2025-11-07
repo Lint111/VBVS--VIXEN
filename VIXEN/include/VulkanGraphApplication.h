@@ -65,8 +65,15 @@ public:
     inline NodeTypeRegistry* GetNodeTypeRegistry() const { return nodeRegistry.get(); }
 
     /**
+     * @brief Enable logging for a specific node (by instance name)
+     * @param nodeName Name of the node instance
+     * @param enableTerminal If true, also prints logs to console in real-time
+     */
+    void EnableNodeLogger(const std::string& nodeName, bool enableTerminal = true);
+
+    /**
      * @brief Build the render graph
-     * 
+     *
      * Override this method to construct your specific render graph.
      * Called during Prepare() phase.
      */
