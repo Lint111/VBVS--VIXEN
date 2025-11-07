@@ -114,10 +114,8 @@ protected:
     Schema outputSchema;
     ParameterBundle parameterBundle;
 
-#ifdef _DEBUG
     // Performance hints
     WorkloadMetrics workloadMetrics;
-#endif
 
     // Node-level flag: allow array-shaped inputs (IA<I>) for nodes that can process arrays
     bool allowInputArrays = false;

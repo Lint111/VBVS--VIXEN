@@ -436,10 +436,8 @@ private:
     EventBus::EventSubscriptionID windowCloseSubscription = 0;
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
-    #ifdef _DEBUG
-    // Debug logger (non-owning pointer — application owns the logger)
+    // Logger (non-owning pointer — application owns the logger)
     Logger* mainLogger = nullptr;
-    #endif
 
     // Graph data
     std::vector<std::unique_ptr<NodeInstance>> instances;
