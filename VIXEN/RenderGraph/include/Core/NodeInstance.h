@@ -444,7 +444,9 @@ protected:
      *
      * @param ctx Setup context with phase-specific capabilities
      */
-    virtual void SetupImpl(SetupContext& ctx) = 0;
+    virtual void SetupImpl(SetupContext& ctx) {
+        // Default: no-op (many nodes don't need setup)
+    }
 
     /**
      * @brief Compile implementation for derived classes
@@ -469,8 +471,13 @@ protected:
      * Access inputs/outputs via context methods.
      *
      * @param ctx Compile context with phase-specific capabilities
+     *
+     * NOTE: TypedNode overrides this with TypedCompileContext variant.
+     * Default: no-op (TypedNode provides implementation).
      */
-    virtual void CompileImpl(CompileContext& ctx) = 0;
+    virtual void CompileImpl(CompileContext& ctx) {
+        // Default: no-op (TypedNode hierarchy provides override)
+    }
 
     /**
      * @brief Execute implementation for derived classes
@@ -500,9 +507,12 @@ protected:
      *
      * @param ctx Execute context with task-bound input/output access
      *
-     * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
+     * NOTE: TypedNode overrides this with TypedExecuteContext variant.
+     * Default: no-op (TypedNode provides implementation).
      */
-    virtual void ExecuteImpl(ExecuteContext& ctx) = 0;
+    virtual void ExecuteImpl(ExecuteContext& ctx) {
+        // Default: no-op (TypedNode hierarchy provides override)
+    }
 
     /**
      * @brief Cleanup implementation for derived classes
@@ -527,10 +537,12 @@ protected:
      *
      * @param ctx Cleanup context (no input/output access during cleanup)
      *
-     * IMPORTANT: This is pure virtual - all nodes MUST implement cleanup.
+     * Default: no-op (some nodes don't allocate resources).
      * Always null out VulkanDevice pointers and handles after destroying resources.
      */
-    virtual void CleanupImpl(CleanupContext& ctx) = 0;
+    virtual void CleanupImpl(CleanupContext& ctx) {
+        // Default: no-op (some nodes don't allocate resources)
+    }
 
     // ============================================================================
     // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
@@ -688,8 +700,12 @@ protected:
      */
     void SetState(NodeState newState) { state = newState; }
 
-    // Grant RenderGraph access to SetState for lifecycle orchestration
+    // Grant access to internal state management
     friend class RenderGraph;
+
+    // Grant TypedNode access to bundles (it's a derived class needing direct access)
+    template<typename ConfigType>
+    friend class TypedNode;
 
     // Instance identification
     std::string instanceName;
@@ -717,11 +733,12 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
-private:
+protected:
     // Phase F: Resources organized as bundles (one bundle per task/array index)
     // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
     std::vector<Bundle> bundles;
 
+private:
     // Parameter management (encapsulated)
     NodeParameterManager parameterManager;
 

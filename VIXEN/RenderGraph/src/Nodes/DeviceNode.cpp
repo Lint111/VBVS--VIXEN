@@ -111,8 +111,8 @@ void DeviceNode::CompileImpl(TypedNode<DeviceNodeConfig>::TypedCompileContext& c
     // This ensures all nodes have registered their cachers first
 
     // Store outputs - output VulkanDevice pointer (contains device, gpu, memory properties, queues, etc.)
-    Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());
-    Out(DeviceNodeConfig::INSTANCE, instance);
+    ctx.Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());
+    ctx.Out(DeviceNodeConfig::INSTANCE, instance);
 
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }

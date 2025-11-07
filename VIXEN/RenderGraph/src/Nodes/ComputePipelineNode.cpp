@@ -52,7 +52,7 @@ void ComputePipelineNode::CompileImpl(TypedNode<ComputePipelineNodeConfig>::Type
     std::cout << "[ComputePipelineNode::CompileImpl] Compiling compute pipeline..." << std::endl;
 
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ctx.In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[ComputePipelineNode::CompileImpl] VULKAN_DEVICE_IN is null");
     }
@@ -276,7 +276,7 @@ void ComputePipelineNode::CleanupImpl(TypedNode<ComputePipelineNodeConfig>::Type
 
     // Destroy shader module (we own this, not the cacher)
     if (shaderModule_ != VK_NULL_HANDLE) {
-        VulkanDevicePtr devicePtr = In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+        VulkanDevicePtr devicePtr = GetDevice();
         if (devicePtr) {
             vkDestroyShaderModule(devicePtr->device, shaderModule_, nullptr);
             std::cout << "[ComputePipelineNode::CleanupImpl] Destroyed shader module" << std::endl;

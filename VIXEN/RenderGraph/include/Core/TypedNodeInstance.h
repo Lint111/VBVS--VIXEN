@@ -365,16 +365,19 @@ private:
 
     /**
      * @brief Get input value by slot (automatic type deduction from slot!)
-     * 
+     *
      * The slot definition tells us the exact type, so no template parameters needed!
      * Automatically extracts the correct type from the resource variant.
-     * 
+     *
      * Usage:
      *   VkImage img = In(MyConfig::ALBEDO_INPUT);  // Type auto-deduced!
      *   VkBuffer buf = In(MyConfig::VERTEX_BUFFER);
-     * 
+     *
      * For array slots:
      *   VkImage img = In(MyConfig::TEXTURES, 2);  // Get index 2
+     *
+     * DEPRECATED: Use context-based In() from TypedIOContext instead.
+     * This method remains for backward compatibility but should not be used.
      */
     template<typename SlotType>
     typename SlotType::Type In(SlotType slot) const {
