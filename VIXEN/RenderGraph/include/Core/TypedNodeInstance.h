@@ -308,7 +308,9 @@ protected:
      *
      * @param ctx Execute context with typed slot accessors
      */
-    virtual void ExecuteImpl(TypedExecuteContext& ctx) = 0;
+    virtual void ExecuteImpl(TypedExecuteContext& ctx) {
+        // Default: no-op (VariadicTypedNode and concrete nodes provide override)
+    }
 
     /**
      * @brief CleanupImpl with TypedCleanupContext - override this in derived classes

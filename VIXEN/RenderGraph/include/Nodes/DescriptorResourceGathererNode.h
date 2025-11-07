@@ -94,8 +94,10 @@ protected:
     void ExecuteImpl(VariadicExecuteContext& ctx) override;
     void CleanupImpl(VariadicCleanupContext& ctx) override;
 
-    // Variadic validation override - shader metadata-specific validation
-    bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx, size_t bundleIndex = 0) override;
+    // Variadic validation - shader metadata-specific validation at Compile time
+    // NOTE: Not an override - base class ValidateVariadicInputsImpl only exists for ExecuteContext
+    // Context automatically handles bundle access via taskIndex
+    bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx);
 
 private:
     // Discovered descriptor metadata from shader
@@ -105,9 +107,9 @@ private:
     std::vector<ResourceVariant> resourceArray_;
 
     // Helpers
-    void DiscoverDescriptors(Context& ctx);
-    void GatherResources(Context& ctx);
-    void ValidateTentativeSlotsAgainstShader(Context& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
+    void DiscoverDescriptors(VariadicCompileContext& ctx);
+    void GatherResources(VariadicCompileContext& ctx);
+    void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
 
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);

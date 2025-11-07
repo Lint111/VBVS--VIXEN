@@ -94,8 +94,8 @@ private:
         std::vector<VkVertexInputAttributeDescription>& outAttributes);
     void CreatePipelineCache();
     void CreatePipelineLayout();
-    void CreatePipeline();
-    void CreatePipelineWithCache();
+    void CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
+    void CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
 
     VkCullModeFlags ParseCullMode(const std::string& mode);
     VkPolygonMode ParsePolygonMode(const std::string& mode);

@@ -139,15 +139,15 @@ void DescriptorResourceGathererNode::CleanupImpl(VariadicTypedNode<DescriptorRes
 // Helper Methods
 //-----------------------------------------------------------------------------
 
-void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Context& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle) {
+void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle) {
     const auto* layoutSpec = shaderBundle->descriptorLayout.get();
     if (!layoutSpec) {
         std::cout << "[DescriptorResourceGathererNode::ValidateTentativeSlots] ERROR: No descriptor layout\n";
         return;
     }
 
-    size_t bundleIndex = 0;
-    size_t variadicCount = GetVariadicInputCount(bundleIndex);
+    // All bundle access goes through context
+    size_t variadicCount = ctx.InVariadicCount();
 
     std::cout << "[DescriptorResourceGathererNode::ValidateTentativeSlots] Validating " << variadicCount
               << " tentative slots against " << layoutSpec->bindings.size() << " shader bindings\n";
@@ -160,7 +160,7 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Context
 
     // Validate and update all tentative slots against shader requirements
     for (size_t i = 0; i < variadicCount; ++i) {
-        const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
+        const auto* slotInfo = ctx.InVariadicSlot(i);
         if (!slotInfo || slotInfo->state != SlotState::Tentative) {
             continue;  // Skip non-tentative slots
         }
@@ -186,8 +186,8 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Context
                 // Mark as validated
                 updatedSlot.state = SlotState::Validated;
 
-                // Update the slot
-                UpdateVariadicSlot(i, updatedSlot, bundleIndex);
+                // Update the slot via context
+                ctx.UpdateVariadicSlot(i, updatedSlot);
 
                 std::cout << "[DescriptorResourceGathererNode::ValidateTentativeSlots] Slot " << i
                           << " (binding=" << slotInfo->binding << ") validated and updated (state=Validated)\n";
@@ -200,33 +200,34 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Context
             std::cout << "[DescriptorResourceGathererNode::ValidateTentativeSlots] WARNING: Slot " << i
                       << " (binding=" << slotInfo->binding << ") has no matching shader binding\n";
 
-            // Mark as invalid
+            // Mark as invalid via context
             VariadicSlotInfo updatedSlot = *slotInfo;
             updatedSlot.state = SlotState::Invalid;
-            UpdateVariadicSlot(i, updatedSlot, bundleIndex);
+            ctx.UpdateVariadicSlot(i, updatedSlot);
         }
     }
 }
 
-void DescriptorResourceGathererNode::DiscoverDescriptors(Context& ctx) {
+void DescriptorResourceGathererNode::DiscoverDescriptors(VariadicCompileContext& ctx) {
     // DEPRECATED - slot discovery moved to Compile phase
     // This method kept for backward compatibility but should not be called
     std::cout << "[DescriptorResourceGathererNode::DiscoverDescriptors] DEPRECATED: Use CompileImpl validation instead\n";
 }
 
-bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx, size_t bundleIndex) {
-    // Call base class validation (count constraints, null checks, type validation)
-    if (!VariadicTypedNode<DescriptorResourceGathererNodeConfig>::ValidateVariadicInputsImpl(ctx, bundleIndex)) {
-        return false;  // Base validation failed
-    }
+bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext& ctx) {
+    // NOTE: Base class ValidateVariadicInputsImpl is only available for ExecuteContext
+    // Since we're validating at Compile time, we do our own validation here
+    // All bundle access goes through context - bundle index handled automatically
 
-    size_t inputCount = GetVariadicInputCount(bundleIndex);
+    size_t inputCount = ctx.InVariadicCount();
 
     // Shader-specific validation: descriptor type matching
     bool allValid = true;
     for (size_t i = 0; i < inputCount; ++i) {
-        Resource* res = GetVariadicInputResource(i, bundleIndex);
-        const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
+        const auto* slotInfo = ctx.InVariadicSlot(i);
+
+        // Access resource through context
+        Resource* res = ctx.InVariadicResource(i);
 
         if (!slotInfo) continue;
 
@@ -256,15 +257,15 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(Context& ctx, si
     return allValid;
 }
 
-void DescriptorResourceGathererNode::GatherResources(Context& ctx) {
+void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx) {
     // Gather validated variadic slots into resource array, indexed by binding
-    size_t bundleIndex = 0;
-    size_t inputCount = GetVariadicInputCount(bundleIndex);
+    // All bundle access goes through context - taskIndex handled automatically
+    size_t inputCount = ctx.InVariadicCount();
 
     std::cout << "[DescriptorResourceGathererNode::GatherResources] Gathering " << inputCount << " validated slots\n";
 
     for (size_t i = 0; i < inputCount; ++i) {
-        const auto* slotInfo = GetVariadicSlotInfo(i, bundleIndex);
+        const auto* slotInfo = ctx.InVariadicSlot(i);
         if (!slotInfo) {
             std::cout << "[DescriptorResourceGathererNode::GatherResources] WARNING: Null slot at index " << i << "\n";
             continue;

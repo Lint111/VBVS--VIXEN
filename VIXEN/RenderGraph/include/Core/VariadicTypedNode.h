@@ -136,6 +136,26 @@ public:
         size_t InVariadicCount() const {
             return variadicNode->GetVariadicInputCount(this->taskIndex);
         }
+
+        /**
+         * @brief Get raw resource pointer for variadic input (for internal validation)
+         *
+         * @param index Variadic input index (0-based)
+         * @return Resource pointer, or nullptr if invalid
+         */
+        Resource* InVariadicResource(size_t index) const {
+            return variadicNode->GetVariadicInputResource(index, this->taskIndex);
+        }
+
+        /**
+         * @brief Update variadic slot metadata (for validation/state updates)
+         *
+         * @param index Variadic input index (0-based)
+         * @param slotInfo Updated slot information
+         */
+        void UpdateVariadicSlot(size_t index, const VariadicSlotInfo& slotInfo) {
+            variadicNode->UpdateVariadicSlot(index, slotInfo, this->taskIndex);
+        }
     };
 
     // Type aliases for variadic contexts - extend each typed context

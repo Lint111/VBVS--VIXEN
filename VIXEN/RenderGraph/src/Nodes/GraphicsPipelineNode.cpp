@@ -141,7 +141,7 @@ void GraphicsPipelineNode::CompileImpl(TypedNode<GraphicsPipelineNodeConfig>::Ty
     BuildShaderStages(currentShaderBundle);
 
     // Create graphics pipeline with caching (cacher will create pipeline layout)
-    CreatePipelineWithCache();
+    CreatePipelineWithCache(ctx);
     
     // Set outputs
     ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
@@ -387,7 +387,7 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     }
 }
 
-void GraphicsPipelineNode::CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
+void GraphicsPipelineNode::CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
     VkRenderPass renderPass =  ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
     // Dynamic state
@@ -604,7 +604,7 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
     return VK_FRONT_FACE_COUNTER_CLOCKWISE; // Default
 }
 
-void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedSetupContext& ctx) {
+void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx) {
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
@@ -677,26 +677,26 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNod
         NODE_LOG_DEBUG("GraphicsPipelineNode: Shader stages: " + stageKeys);
 
         // Pipeline layout - Use the descriptor set layout (auto-generated or manual from CompileImpl)
-        params.descriptorSetLayout = descriptorSetLayout;  // Already set in CompileImpl
-        params.pushConstantRanges = pushConstantRanges;  // Phase 5: Use push constants from reflection
+        params.descriptorSetLayout = this->descriptorSetLayout;  // Already set in CompileImpl
+        params.pushConstantRanges = this->pushConstantRanges;  // Phase 5: Use push constants from reflection
         // Note: PipelineCacher will internally use PipelineLayoutCacher to create/cache the layout
 
-        params.renderPass = renderPass;
+        params.renderPass = renderPass;  // Local variable from ctx.In() above
 
         // Use semantic keys instead of handle addresses for stable caching across recompiles
         params.layoutKey = "main_pipeline_layout";
         params.renderPassKey = "main_render_pass";
-        params.enableDepthTest = enableDepthTest;
-        params.enableDepthWrite = enableDepthWrite;
-        params.cullMode = cullMode;
-        params.polygonMode = polygonMode;
-        params.topology = topology;
-        params.vertexBindings = vertexBindings;
-        params.vertexAttributes = vertexAttributes;
+        params.enableDepthTest = this->enableDepthTest;
+        params.enableDepthWrite = this->enableDepthWrite;
+        params.cullMode = this->cullMode;
+        params.polygonMode = this->polygonMode;
+        params.topology = this->topology;
+        params.vertexBindings = vertexBindings;  // Local variable built from reflection above
+        params.vertexAttributes = vertexAttributes;  // Local variable built from reflection above
 
-        std::cout << "[GraphicsPipelineNode] Pipeline params: depth=" << enableDepthTest
-                  << " depthWrite=" << enableDepthWrite << " cull=" << cullMode
-                  << " polyMode=" << polygonMode << " topo=" << topology << std::endl;
+        std::cout << "[GraphicsPipelineNode] Pipeline params: depth=" << this->enableDepthTest
+                  << " depthWrite=" << this->enableDepthWrite << " cull=" << this->cullMode
+                  << " polyMode=" << this->polygonMode << " topo=" << this->topology << std::endl;
 
         try {
             // Use cacher to get or create pipeline
@@ -717,7 +717,7 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedNode<GraphicsPipelineNod
 
     // Fallback: Create pipeline manually if cacher unavailable or failed
     NODE_LOG_WARNING("GraphicsPipelineNode: Creating pipeline without cacher");
-    CreatePipeline();
+    CreatePipeline(ctx);
 }
 
 } // namespace Vixen::RenderGraph

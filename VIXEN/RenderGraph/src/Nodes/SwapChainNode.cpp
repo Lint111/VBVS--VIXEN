@@ -313,7 +313,10 @@ void SwapChainNode::CleanupImpl(TypedNode<SwapChainNodeConfig>::TypedCleanupCont
 
         try {
             // Cleanup-time access only - use GetInput directly
-            instance = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE, 0);
+            Resource* res = NodeInstance::GetInput(SwapChainNodeConfig::INSTANCE.index, 0);
+            if (res) {
+                instance = res->GetHandle<VkInstance>();
+            }
         } catch (...) {
             // Instance might not be available during shutdown - that's ok
         }
