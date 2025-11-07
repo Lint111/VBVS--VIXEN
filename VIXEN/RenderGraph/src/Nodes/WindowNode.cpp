@@ -335,7 +335,7 @@ void WindowNode::CleanupImpl(TypedNode<WindowNodeConfig>::TypedCleanupContext& c
 
 #ifdef _WIN32
     // Destroy surface - access output directly via NodeInstance (CleanupContext has no I/O)
-    Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE, 0);
+    Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0);
     if (surfaceRes) {
         VkSurfaceKHR surface = surfaceRes->GetHandle<VkSurfaceKHR>();
         if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {

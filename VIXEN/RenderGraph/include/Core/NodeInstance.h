@@ -393,8 +393,8 @@ protected:
      * Override in derived classes to provide specialized setup contexts.
      * Default: Returns base SetupContext.
      */
-    virtual SetupContext CreateSetupContext() {
-        return SetupContext(this);
+    virtual SetupContext CreateSetupContext(uint32_t taskIndex) {
+        return SetupContext(this, taskIndex);
     }
 
     /**
@@ -403,8 +403,8 @@ protected:
      * Override in derived classes to provide specialized compile contexts.
      * Default: Returns base CompileContext.
      */
-    virtual CompileContext CreateCompileContext() {
-        return CompileContext(this);
+    virtual CompileContext CreateCompileContext(uint32_t taskIndex) {
+        return CompileContext(this, taskIndex);
     }
 
     /**
@@ -423,8 +423,8 @@ protected:
      * Override in derived classes to provide specialized cleanup contexts.
      * Default: Returns base CleanupContext.
      */
-    virtual CleanupContext CreateCleanupContext() {
-        return CleanupContext(this);
+    virtual CleanupContext CreateCleanupContext(uint32_t taskIndex) {
+        return CleanupContext(this, taskIndex);
     }
     /**
      * @brief Setup implementation for derived classes
@@ -437,7 +437,7 @@ protected:
     virtual void SetupImpl() {
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            SetupContext ctx = CreateSetupContext();
+            SetupContext ctx = CreateSetupContext(taskIndex);
             SetupImpl(ctx);
         }
     }
@@ -450,7 +450,7 @@ protected:
      *
      * @param ctx Setup context with phase-specific capabilities
      */
-    virtual void SetupImpl(SetupContext& ctx) {}
+    virtual void SetupImpl(SetupContext& ctx) = 0;
 
     /**
      * @brief Compile implementation for derived classes
@@ -463,7 +463,7 @@ protected:
     virtual void CompileImpl() {
         uint32_t taskCount = DetermineTaskCount();
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            CompileContext ctx = CreateCompileContext();
+            CompileContext ctx = CreateCompileContext(taskIndex);
             CompileImpl(ctx);
         }
     }
@@ -476,7 +476,7 @@ protected:
      *
      * @param ctx Compile context with phase-specific capabilities
      */
-    virtual void CompileImpl(CompileContext& ctx) {}
+    virtual void CompileImpl(CompileContext& ctx) = 0;
 
     /**
      * @brief Execute implementation for derived classes

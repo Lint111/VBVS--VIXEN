@@ -13,7 +13,7 @@ namespace Vixen::RenderGraph {
 std::unique_ptr<NodeInstance> VoxelGridNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
-    return std::make_unique<VoxelGridNode>(instanceName, const_cast<VoxelGridNodeType*>(this));
+    return std::unique_ptr<NodeInstance>(new VoxelGridNode(instanceName, const_cast<VoxelGridNodeType*>(this)));
 }
 
 // ============================================================================
