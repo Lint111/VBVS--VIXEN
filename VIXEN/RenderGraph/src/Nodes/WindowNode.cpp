@@ -24,7 +24,7 @@ WindowNode::WindowNode(
 {
 }
 
-void WindowNode::SetupImpl(Context& ctx) {
+void WindowNode::SetupImpl(SetupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Setup START - Testing incremental compilation");
 
 #ifdef _WIN32
@@ -58,7 +58,7 @@ void WindowNode::SetupImpl(Context& ctx) {
 #endif
 }
 
-void WindowNode::CompileImpl(Context& ctx) {
+void WindowNode::CompileImpl(CompileContext& ctx) {
     std::cout << "[WindowNode::Compile] START" << std::endl;
     
     // Get parameters using typed names from config
@@ -147,7 +147,7 @@ void WindowNode::CompileImpl(Context& ctx) {
 #endif
 }
 
-void WindowNode::ExecuteImpl(Context& ctx) {
+void WindowNode::ExecuteImpl(ExecuteContext& ctx) {
     // Phase F: Store slot index for use in message handlers
     slotIndex = ctx.taskIndex;
 
@@ -330,7 +330,7 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 #endif
 
-void WindowNode::CleanupImpl() {
+void WindowNode::CleanupImpl(CleanupContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Cleanup");
 
 #ifdef _WIN32

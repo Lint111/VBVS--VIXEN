@@ -426,22 +426,20 @@ protected:
     virtual CleanupContext CreateCleanupContext() {
         return CleanupContext(this);
     }
-
-    // ============================================================================
-    // TEMPLATE METHOD PATTERN - Override these *Impl() methods in derived classes
-    // ============================================================================
-
     /**
      * @brief Setup implementation for derived classes
      *
      * Task orchestration and context creation happens here.
-     * Override to create tasks and call SetupImpl(SetupContext&) for each.
+     * Creates tasks based on DetermineTaskCount() and calls SetupImpl(SetupContext&) for each.
      *
-     * Default: Creates single SetupContext and calls SetupImpl(ctx).
+     * Override this if you need custom task orchestration logic.
      */
     virtual void SetupImpl() {
-        SetupContext ctx = CreateSetupContext();
-        SetupImpl(ctx);
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            SetupContext ctx = CreateSetupContext();
+            SetupImpl(ctx);
+        }
     }
 
     /**
@@ -458,13 +456,16 @@ protected:
      * @brief Compile implementation for derived classes
      *
      * Task orchestration and context creation happens here.
-     * Override to create tasks and call CompileImpl(CompileContext&) for each.
+     * Creates tasks based on DetermineTaskCount() and calls CompileImpl(CompileContext&) for each.
      *
-     * Default: Creates single CompileContext and calls CompileImpl(ctx).
+     * Override this if you need custom task orchestration logic.
      */
     virtual void CompileImpl() {
-        CompileContext ctx = CreateCompileContext();
-        CompileImpl(ctx);
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CompileContext ctx = CreateCompileContext();
+            CompileImpl(ctx);
+        }
     }
 
     /**
@@ -481,13 +482,20 @@ protected:
      * @brief Execute implementation for derived classes
      *
      * Task orchestration and context creation happens here.
-     * Override to determine task count and call ExecuteImpl(ExecuteContext&) for each.
+     * Creates tasks based on DetermineTaskCount() and executes them.
+     * For task-based nodes, executes tasks in parallel if supported.
      *
-     * Default: Creates single ExecuteContext(0) and calls ExecuteImpl(ctx).
+     * Override this if you need custom task orchestration logic.
      */
     virtual void ExecuteImpl() {
-        ExecuteContext ctx = CreateExecuteContext(0);
-        ExecuteImpl(ctx);
+        uint32_t taskCount = DetermineTaskCount();
+
+        // TODO: Add parallel execution support for arrayable nodes
+        // For now, execute sequentially
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            ExecuteContext ctx = CreateExecuteContext(taskIndex);
+            ExecuteImpl(ctx);
+        }
     }
 
     /**
@@ -505,14 +513,17 @@ protected:
     /**
      * @brief Cleanup implementation for derived classes
      *
-     * Task orchestration and context creation happens here (if needed).
-     * Override to create tasks and call CleanupImpl(CleanupContext&) for each.
+     * Task orchestration and context creation happens here.
+     * Creates tasks based on DetermineTaskCount() and calls CleanupImpl(CleanupContext&) for each.
      *
-     * Default: Creates single CleanupContext and calls CleanupImpl(ctx).
+     * Override this if you need custom task orchestration logic.
      */
     virtual void CleanupImpl() {
-        CleanupContext ctx = CreateCleanupContext();
-        CleanupImpl(ctx);
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CleanupContext ctx = CreateCleanupContext();
+            CleanupImpl(ctx);
+        }
     }
 
     /**

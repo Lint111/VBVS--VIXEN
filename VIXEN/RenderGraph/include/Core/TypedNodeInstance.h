@@ -142,93 +142,93 @@ public:
      * }
      * ```
      */
-    struct Context {
-        TypedNode<ConfigType>* node;
-        uint32_t taskIndex;
 
-        Context(TypedNode<ConfigType>* n, uint32_t idx)
-            : node(n), taskIndex(idx) {}
+    // ============================================================================
+    // TYPED CONTEXT SPECIALIZATIONS
+    // ============================================================================
+
+    /**
+     * @brief Base mixin for typed In/Out access
+     *
+     * Provides compile-time type-safe slot access for contexts that support I/O.
+     */
+    template<typename ContextBase>
+    struct TypedIOContext : public ContextBase {
+        TypedNode<ConfigType>* typedNode;
+
+        template<typename... Args>
+        TypedIOContext(TypedNode<ConfigType>* n, Args&&... args)
+            : ContextBase(n, std::forward<Args>(args)...)
+            , typedNode(n) {}
 
         /**
          * @brief Get input value bound to this task's index
-         *
-         * Automatically uses taskIndex for array slot access.
-         * Type is deduced from SlotType::Type.
-         *
-         * @param slot Slot definition from config
-         * @return Typed handle value
          */
         template<typename SlotType>
         typename SlotType::Type In(SlotType slot) const {
             static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
-            Resource* res = node->NodeInstance::GetInput(SlotType::index, taskIndex);
+            Resource* res = typedNode->NodeInstance::GetInput(SlotType::index, this->taskIndex);
             if (!res) return typename SlotType::Type{};
             return res->GetHandle<typename SlotType::Type>();
         }
 
         /**
          * @brief Set output value bound to this task's index
-         *
-         * Automatically uses taskIndex for array slot access.
-         * Type is validated against SlotType::Type at compile time.
-         *
-         * @param slot Slot definition from config
-         * @param value Typed handle value
          */
         template<typename SlotType>
         void Out(SlotType slot, typename SlotType::Type value) {
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
-            node->EnsureOutputSlot(SlotType::index, taskIndex);
-            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);
+            Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
             res->SetHandle<typename SlotType::Type>(std::move(value));
         }
 
         /**
          * @brief Get input descriptor bound to this task's index
-         *
-         * @param slot Slot definition from config
-         * @return Descriptor pointer (auto-deduced type)
          */
         template<typename SlotType>
         const auto* InDesc(SlotType slot) const {
             using HandleType = typename SlotType::Type;
             using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
-            Resource* res = node->NodeInstance::GetInput(SlotType::index, taskIndex);
+            Resource* res = typedNode->NodeInstance::GetInput(SlotType::index, this->taskIndex);
             if (!res) return static_cast<const DescriptorType*>(nullptr);
             return res->GetDescriptor<DescriptorType>();
         }
 
         /**
          * @brief Get mutable output descriptor bound to this task's index
-         *
-         * @param slot Slot definition from config
-         * @return Mutable descriptor pointer (auto-deduced type)
          */
         template<typename SlotType>
         auto* OutDescMut(SlotType slot) {
             using HandleType = typename SlotType::Type;
             using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
-            node->EnsureOutputSlot(SlotType::index, taskIndex);
-            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);
+            Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
             if (!res) return static_cast<DescriptorType*>(nullptr);
             return res->GetDescriptorMutable<DescriptorType>();
         }
 
         /**
          * @brief Get const output descriptor bound to this task's index
-         *
-         * @param slot Slot definition from config
-         * @return Const descriptor pointer (auto-deduced type)
          */
         template<typename SlotType>
         const auto* OutDesc(SlotType slot) const {
             using HandleType = typename SlotType::Type;
             using DescriptorType = typename ResourceTypeTraits<HandleType>::DescriptorT;
-            Resource* res = node->NodeInstance::GetOutput(SlotType::index, taskIndex);
+            Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
             if (!res) return static_cast<const DescriptorType*>(nullptr);
             return res->GetDescriptor<DescriptorType>();
         }
     };
+
+    // Specialized context types for each lifecycle phase
+    using TypedSetupContext = SetupContext;  // Setup has no I/O
+    using TypedCompileContext = TypedIOContext<CompileContext>;
+    using TypedExecuteContext = TypedIOContext<ExecuteContext>;
+    using TypedCleanupContext = CleanupContext;  // Cleanup has no I/O
+
+    // Legacy alias for backwards compatibility during migration
+    using Context = TypedExecuteContext;
 
     TypedNode(
         const std::string& instanceName,
@@ -245,93 +245,60 @@ public:
 
     virtual ~TypedNode() = default;
 
-    // ===== PHASE F: CONTEXT SYSTEM =====
+protected:
+    // ============================================================================
+    // CONTEXT FACTORY OVERRIDES - Return typed contexts
+    // ============================================================================
 
-
-
-
-    /**
-     * @brief Cleanup override - creates Context for cleanup phase
-     *
-     * Phase F: Executes cleanup for each task that was created during execution.
-     * Follows the exact same pattern as Execute() for consistency.
-     */
-    void Cleanup() override final {
-        if (cleanedUp) {
-            return;  // Already cleaned up
-        }
-
-        // Determine task count (same as execution)
-        uint32_t taskCount = DetermineTaskCount();
-
-        if (taskCount == 0) {
-            cleanedUp = true;
-            return;
-        }
-
-        if (taskCount == 1) {
-            // Single task - cleanup directly without threading overhead
-            Context ctx(this, 0);
-            currentTaskIndex = 0;
-            CleanupImpl(ctx);
-            cleanedUp = true;
-            return;
-        }
-
-        // Multiple tasks - cleanup in parallel
-        std::vector<std::future<void>> futures;
-        futures.reserve(taskCount);
-
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            futures.push_back(std::async(std::launch::async, [this, taskIndex]() {
-                Context ctx(this, taskIndex);
-                currentTaskIndex = taskIndex;
-                CleanupImpl(ctx);
-            }));
-        }
-
-        // Wait for all cleanup tasks to complete
-        for (auto& future : futures) {
-            future.get();
-        }
-
-        // Reset task index after cleanup
-        currentTaskIndex = 0;
-        cleanedUp = true;
+    SetupContext CreateSetupContext() override {
+        return TypedSetupContext(this);
     }
+
+    CompileContext CreateCompileContext() override {
+        return TypedCompileContext(this);
+    }
+
+    ExecuteContext CreateExecuteContext(uint32_t taskIndex) override {
+        return TypedExecuteContext(this, taskIndex);
+    }
+
+    CleanupContext CreateCleanupContext() override {
+        return TypedCleanupContext(this);
+    }
+
+public:
+    // ===== PHASE F: CONTEXT SYSTEM =====
 
 protected:
     /**
-     * @brief SetupImpl with Context - override this in derived classes
+     * @brief SetupImpl with SetupContext - override this in derived classes
      *
-     * Called during Setup phase. Context provides clean In() access.
-     * Context uses index 0 (non-task-based).
+     * Called during Setup phase. No I/O access in Setup.
      *
-     * @param ctx Setup context with bound slot accessors
+     * @param ctx Setup context (no I/O access)
      */
-    virtual void SetupImpl(Context& ctx) {}
+    virtual void SetupImpl(SetupContext& ctx) {}
 
     /**
-     * @brief CompileImpl with Context - override this in derived classes
+     * @brief CompileImpl with CompileContext - override this in derived classes
      *
-     * Called during Compile phase. Context provides clean In()/Out() access.
-     * Context uses index 0 (non-task-based).
+     * Called during Compile phase. Context provides typed In()/Out() access.
      *
-     * @param ctx Compile context with bound slot accessors
+     * @param ctx Compile context with typed slot accessors
      */
-    virtual void CompileImpl(Context& ctx) {}
+    virtual void CompileImpl(CompileContext& ctx) {}
 
     /**
-     * @brief ExecuteImpl with Context - override this in derived classes
+     * @brief ExecuteImpl with ExecuteContext - override this in derived classes
      *
-     * **Phase F: New signature for task-based execution.**
+     * **Phase F: Context-based execution.**
      *
-     * Derived classes override this method instead of ExecuteImpl(uint32_t).
-     * The Context provides bound In()/Out() accessors for clean slot access.
+     * Derived classes override this method for task execution.
+     * The Context provides typed In()/Out() accessors for clean slot access.
      *
      * Example:
      * ```cpp
-     * void MyNode::ExecuteImpl(Context& ctx) override {
+     * void MyNode::ExecuteImpl(ExecuteContext& ctx) override {
      *     auto device = ctx.In(MyConfig::DEVICE);
      *     auto input = ctx.In(MyConfig::INPUT_DATA);
      *     auto result = Process(device, input);
@@ -339,61 +306,21 @@ protected:
      * }
      * ```
      *
-     * @param ctx Task context with bound slot accessors
+     * @param ctx Execute context with typed slot accessors
      */
-    virtual void ExecuteImpl(Context& ctx) = 0;
+    virtual void ExecuteImpl(ExecuteContext& ctx) = 0;
 
     /**
-     * @brief CleanupImpl with Context - override this in derived classes
+     * @brief CleanupImpl with CleanupContext - override this in derived classes
      *
-     * Called during Cleanup phase. Context provides clean In()/Out() access
-     * for reading final state or accessing resources before destruction.
-     * Context uses index 0 (non-task-based).
+     * Called during Cleanup phase. No I/O access during cleanup.
      *
-     * @param ctx Cleanup context with bound slot accessors
+     * @param ctx Cleanup context (no I/O access)
      */
-    virtual void CleanupImpl(Context& ctx) {}
+    virtual void CleanupImpl(CleanupContext& ctx) {}
 
-    /**
-     * @brief Override base class SetupImpl() to create Context
-     */
-    void SetupImpl() final override {
-        uint32_t taskCount = DetermineTaskCount();
-        if (taskCount == 0) {
-            return;
-        }
-
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            Context ctx(this, taskIndex);
-            SetupImpl(ctx);
-        }
-    }
-
-    /**
-     * @brief Override base class CompileImpl() to create Context
-     */
-    void CompileImpl() final override {
-        uint32_t taskCount = DetermineTaskCount();
-        if (taskCount == 0) {
-            return;
-        }
-
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            Context ctx(this, taskIndex);
-            CompileImpl(ctx);
-        }
-    }
-
-    /**
-     * @brief Override base class ExecuteImpl(uint32_t) to create Context
-     *
-     * NodeInstance::Execute() calls this with taskIndex for task-based execution
-     */
-    void ExecuteImpl() final override {
-        Context ctx(this, taskIndex);
-        currentTaskIndex = taskIndex;
-        ExecuteImpl(ctx);
-    }
+    // Task orchestration is handled at NodeInstance level
+    // TypedNode only provides *Impl(Context&) virtual methods for downstream nodes
 
 private:
     // ===== INDEX-BASED ACCESS =====

@@ -59,10 +59,10 @@ public:
     ~ComputePipelineNode() override = default;
 
 protected:
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(SetupContext& ctx) override;
+    void CompileImpl(CompileContext& ctx) override;
+    void ExecuteImpl(ExecuteContext& ctx) override;
+    void CleanupImpl(CleanupContext& ctx) override;
 
 private:
     // Cached outputs (for multi-frame stability)
