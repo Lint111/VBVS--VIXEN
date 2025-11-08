@@ -1,8 +1,6 @@
 #include "ILoggable.h"
 #include "Logger.h"
 
-namespace Vixen::RenderGraph {
-
 void ILoggable::InitializeLogger(const std::string& subsystemName, bool enabled) {
     logger = std::make_unique<Logger>(subsystemName, enabled);
 }
@@ -30,5 +28,3 @@ void ILoggable::SetLoggerTerminalOutput(bool enabled) {
         logger->SetTerminalOutput(enabled);
     }
 }
-
-} // namespace Vixen::RenderGraph

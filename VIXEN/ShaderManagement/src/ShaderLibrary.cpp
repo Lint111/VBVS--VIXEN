@@ -1,5 +1,6 @@
 #include "ShaderManagement/ShaderLibrary.h"
 #include "ShaderManagement/SPIRVReflection.h"
+#include "Logger.h"
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
@@ -29,6 +30,7 @@ public:
 ShaderLibrary::ShaderLibrary()
     : backgroundCompiler(std::make_unique<BackgroundCompiler>())
 {
+    InitializeLogger("ShaderLibrary");
 }
 
 ShaderLibrary::~ShaderLibrary() {
@@ -59,6 +61,8 @@ uint32_t ShaderLibrary::RegisterProgram(const ShaderProgramDefinition& definitio
 
     // Update file timestamps for watching
     UpdateFileTimestamps(programId);
+
+    LOG_DEBUG("Registered shader program '" + def.name + "' with ID " + std::to_string(programId));
 
     return programId;
 }
@@ -95,6 +99,7 @@ void ShaderLibrary::RemoveProgram(uint32_t programId) {
     // Remove from name mapping
     auto defIt = definitions.find(programId);
     if (defIt != definitions.end() && !defIt->second.name.empty()) {
+        LOG_DEBUG("Removing shader program '" + defIt->second.name + "' (ID " + std::to_string(programId) + ")");
         nameToId.erase(defIt->second.name);
     }
 

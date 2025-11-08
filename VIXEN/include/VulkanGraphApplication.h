@@ -133,6 +133,7 @@ private:
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
     HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
+    bool deinitialized = false;                      // Prevent double DeInitialize
 
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz

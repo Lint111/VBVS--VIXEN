@@ -46,13 +46,14 @@ int main(int argc, char** argv) {
 
         std::cout << "[main] Cleaning up..." << std::endl;
         appObj -> DeInitialize();
+        std::cout << "[main] DeInitialize complete" << std::endl;
     }
     catch(const std::exception& e) {
-        std::cerr << "Exception caught: " << e.what() << std::endl;
+        std::cerr << "[main] Exception caught: " << e.what() << std::endl;
         return -1;
     }
     catch(...) {
-        std::cerr << "Unknown exception caught!" << std::endl;
+        std::cerr << "[main] Unknown exception caught!" << std::endl;
         return -1;
     }
 

@@ -72,36 +72,51 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
 }
 
 void VulkanGraphApplication::Initialize() {
+    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - START\n" << std::flush;
     mainLogger->Info("VulkanGraphApplication Initialize START");
 
+    std::cout << "[DEBUG] About to call VulkanApplicationBase::Initialize()\n" << std::flush;
     // Initialize base Vulkan core (instance, device)
     VulkanApplicationBase::Initialize();
+    std::cout << "[DEBUG] VulkanApplicationBase::Initialize() returned\n" << std::flush;
 
     mainLogger->Info("VulkanGraphApplication Base initialized");
 
+    std::cout << "[DEBUG] About to export instance globally\n" << std::flush;
     // PHASE 1: Export instance globally for nodes to access
     g_VulkanInstance = instanceObj.instance;
+    std::cout << "[DEBUG] Instance exported globally\n" << std::flush;
 
     mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
+    std::cout << "[DEBUG] Creating node type registry\n" << std::flush;
     // Create node type registry
     nodeRegistry = std::make_unique<NodeTypeRegistry>();
+    std::cout << "[DEBUG] Node type registry created\n" << std::flush;
 
+    std::cout << "[DEBUG] About to register node types\n" << std::flush;
     // Register all node types
     RegisterNodeTypes();
+    std::cout << "[DEBUG] Node types registered\n" << std::flush;
 
+    std::cout << "[DEBUG] Creating MessageBus\n" << std::flush;
     // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
+    std::cout << "[DEBUG] MessageBus created\n" << std::flush;
 
+    std::cout << "[DEBUG] Initializing MainCacher\n" << std::flush;
     // Initialize MainCacher and connect it to MessageBus for device invalidation events
     auto& mainCacher = CashSystem::MainCacher::Instance();
+    std::cout << "[DEBUG] MainCacher instance obtained\n" << std::flush;
     mainCacher.Initialize(messageBus.get());
+    std::cout << "[DEBUG] MainCacher initialized\n" << std::flush;
     mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
 
     // NOTE: Cache loading will happen automatically when devices request cached resources
     // This is because we need VulkanDevice to be created first before we can load caches
 
+    std::cout << "[DEBUG] Creating RenderGraph\n" << std::flush;
     // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
     renderGraph = std::make_unique<RenderGraph>(
         nodeRegistry.get(),
@@ -109,7 +124,9 @@ void VulkanGraphApplication::Initialize() {
         mainLogger.get(),
         &mainCacher
     );
+    std::cout << "[DEBUG] RenderGraph created\n" << std::flush;
 
+    std::cout << "[DEBUG] Subscribing to WindowCloseEvent\n" << std::flush;
     // Subscribe to shutdown events
     messageBus->Subscribe(
         Vixen::EventBus::WindowCloseEvent::TYPE,
@@ -118,7 +135,9 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
+    std::cout << "[DEBUG] WindowCloseEvent subscription complete\n" << std::flush;
 
+    std::cout << "[DEBUG] Subscribing to ShutdownAckEvent\n" << std::flush;
     messageBus->Subscribe(
         Vixen::EventBus::ShutdownAckEvent::TYPE,
         [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
@@ -135,11 +154,13 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
+    std::cout << "[DEBUG] ShutdownAckEvent subscription complete\n" << std::flush;
 
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
 
+    std::cout << "[DEBUG] Registering physics loop\n" << std::flush;
     // Phase 0.4: Register loops with the graph
     // Physics loop at 60Hz with multiple-step catchup
     physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
@@ -148,11 +169,13 @@ void VulkanGraphApplication::Initialize() {
         LoopCatchupMode::MultipleSteps,
         0.25  // Max 250ms catchup
     });
+    std::cout << "[DEBUG] Physics loop registered with ID: " << physicsLoopID << "\n" << std::flush;
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
     }
+    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - COMPLETE\n" << std::flush;
 }
 
 void VulkanGraphApplication::Prepare() {
@@ -272,6 +295,11 @@ void VulkanGraphApplication::Update() {
 }
 
 void VulkanGraphApplication::DeInitialize() {
+    // Prevent double cleanup (called from both main and destructor)
+    if (deinitialized) {
+        return;
+    }
+    deinitialized = true;
 
     // Before destroying the render graph, extract logs from the main logger.
     // Node instances register child loggers with the main logger; if we
@@ -315,7 +343,13 @@ void VulkanGraphApplication::DeInitialize() {
     // Graph nodes handle their own cleanup (including window)
 
     // Call base class cleanup (destroys device and instance)
+    if (mainLogger) {
+        mainLogger->Info("[DeInitialize] Calling base class DeInitialize...");
+    }
     VulkanApplicationBase::DeInitialize();
+    if (mainLogger) {
+        mainLogger->Info("[DeInitialize] Base class DeInitialize complete");
+    }
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication deinitialized");
