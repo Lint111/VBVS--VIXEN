@@ -705,9 +705,12 @@ private:
                 std::cout << "[ConnectVariadic PostCompile Hook] Populating resource for binding "
                           << bindingIndex << std::endl;
 
-                Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint32_t>(sourceSlotIndex), 0);
-                if (!sourceRes) {
-                    throw std::runtime_error("ConnectVariadic: Source output not found after Compile");
+                Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
+                if (!sourceRes || !sourceRes->IsValid()) {
+                    std::cout << "[ConnectVariadic PostCompile Hook] WARNING: Source output " << sourceSlotIndex
+                              << " not yet available or invalid for binding " << bindingIndex
+                              << " (source node may not be fully compiled yet)\n";
+                    return;  // Skip for now, will be populated when source node compiles
                 }
 
                 const VariadicSlotInfo* existingSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);

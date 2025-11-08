@@ -104,6 +104,27 @@ protected:
 	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    // Node state flags (bitwise combinable)
+    enum class NodeFlags : uint8_t {
+        None                = 0,
+        Paused              = 1 << 0,  // Rendering paused (swapchain recreation)
+        NeedsInitialBind    = 1 << 1,  // Needs to bind Dependency descriptors on first Execute
+        // Add more flags here as needed
+    };
+
+    // State helper functions
+    inline bool HasFlag(NodeFlags flag) const {
+        return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
+    }
+    inline void SetFlag(NodeFlags flag) {
+        flags = static_cast<NodeFlags>(static_cast<uint8_t>(flags) | static_cast<uint8_t>(flag));
+    }
+    inline void ClearFlag(NodeFlags flag) {
+        flags = static_cast<NodeFlags>(static_cast<uint8_t>(flags) & ~static_cast<uint8_t>(flag));
+    }
+    inline bool IsPaused() const { return HasFlag(NodeFlags::Paused); }
+    inline bool IsRendering() const { return !IsPaused(); }
+
     // Configuration
     const ShaderManagement::DescriptorLayoutSpec* layoutSpec = nullptr;
 
@@ -114,13 +135,9 @@ private:
 
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
 
-    // Phase 0.1: Per-frame resources to prevent CPU-GPU race conditions
-    PerFrameResources perFrameResources;
-    float rotationAngle = 0.0f;
-
     // CashSystem integration - cached during Compile()
     CashSystem::DescriptorCacher* descriptorCacher = nullptr;
-    
+
     // Pipeline layout for binding descriptor sets
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
@@ -128,15 +145,15 @@ private:
     std::vector<std::vector<VkDescriptorImageInfo>> perFrameImageInfos;
     std::vector<std::vector<VkDescriptorBufferInfo>> perFrameBufferInfos;
 
-    // Rendering pause state tracking (for swapchain recreation)
-    bool isRenderingPaused = false;
+    // Consolidated node flags (replaces individual bools)
+    NodeFlags flags = NodeFlags::None;
 
-    // Helpers
-    void ValidateLayoutSpec();
-    void CreateDescriptorSetLayout();
-    void CreateDescriptorPool();
-    void AllocateDescriptorSets();
-    void CreateDescriptorSetLayoutManually();
+    // Helpers for CompileImpl
+    void SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<ShaderManagement::ShaderDataBundle>& outShaderBundle);
+    void RegisterDescriptorCacher();
+    void CreateDescriptorSetLayout(const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings);
+    void CreateDescriptorPool(const ShaderManagement::ShaderDataBundle& shaderBundle, uint32_t imageCount);
+    void AllocateDescriptorSets(uint32_t imageCount);
 
     /**
      * @brief Update descriptor sets from resource array using shader metadata

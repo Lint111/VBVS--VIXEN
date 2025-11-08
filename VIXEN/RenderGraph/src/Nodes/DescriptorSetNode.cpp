@@ -52,19 +52,20 @@ void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
         [this](const EventBus::BaseEventMessage& msg) {
             const auto& event = static_cast<const EventTypes::RenderPauseEvent&>(msg);
             if (event.pauseReason == EventTypes::RenderPauseEvent::Reason::SwapChainRecreation) {
-                isRenderingPaused = (event.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
-                NODE_LOG_DEBUG(isRenderingPaused
-                    ? "DescriptorSetNode: Rendering paused (swapchain recreation)"
-                    : "DescriptorSetNode: Rendering resumed");
+                if (event.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START) {
+                    SetFlag(NodeFlags::Paused);
+                    NODE_LOG_DEBUG("DescriptorSetNode: Rendering paused (swapchain recreation)");
+                } else {
+                    ClearFlag(NodeFlags::Paused);
+                    NODE_LOG_DEBUG("DescriptorSetNode: Rendering resumed");
+                }
             }
             return false;  // Don't consume message
         }
     );
 }
 
-void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
-    NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
-
+void DescriptorSetNode::SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<ShaderManagement::ShaderDataBundle>& outShaderBundle) {
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
@@ -75,13 +76,15 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     SetDevice(devicePtr);
 
     // Phase 2: Read ShaderDataBundle from input
-    auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
-    if (!shaderBundle) {
+    outShaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+    if (!outShaderBundle) {
         throw std::runtime_error("DescriptorSetNode: ShaderDataBundle input is null");
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Received ShaderDataBundle: " + shaderBundle->GetProgramName());
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Received ShaderDataBundle: " + outShaderBundle->GetProgramName());
+}
 
+void DescriptorSetNode::RegisterDescriptorCacher() {
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
@@ -106,84 +109,60 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         CashSystem::DescriptorCreateParams
     >(typeid(CashSystem::DescriptorWrapper), device);
 
-    bool useCache = false;
     if (descriptorCacher) {
         NODE_LOG_INFO("DescriptorSetNode: Descriptor cache ready");
         // TODO: Implement descriptor caching
-        // auto cachedDescriptor = descriptorCacher->GetOrCreate(params);
-        useCache = false;  // Not yet implemented
+    }
+}
+
+void DescriptorSetNode::CreateDescriptorSetLayout(const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings) {
+    // Phase 2: Generate descriptor set layout from shader reflection data
+    // Convert SpirvDescriptorBinding to VkDescriptorSetLayoutBinding
+    std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+    vkBindings.reserve(descriptorBindings.size());
+
+    for (const auto& spirvBinding : descriptorBindings) {
+        VkDescriptorSetLayoutBinding vkBinding{};
+        vkBinding.binding = spirvBinding.binding;
+        vkBinding.descriptorType = spirvBinding.descriptorType;
+        vkBinding.descriptorCount = spirvBinding.descriptorCount;
+        vkBinding.stageFlags = spirvBinding.stageFlags;
+        vkBinding.pImmutableSamplers = nullptr;
+
+        vkBindings.push_back(vkBinding);
+
+        NODE_LOG_DEBUG("[DescriptorSetNode::CreateLayout] Binding " + std::to_string(vkBinding.binding) +
+                      ": type=" + std::to_string(vkBinding.descriptorType) +
+                      ", count=" + std::to_string(vkBinding.descriptorCount) +
+                      ", stages=0x" + std::to_string(vkBinding.stageFlags) +
+                      ", name=" + spirvBinding.name);
     }
 
-    // Phase 2: Extract descriptor sets from reflection (we'll use set 0 for now)
-    auto descriptorBindings = shaderBundle->GetDescriptorSet(0);
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+    layoutInfo.pBindings = vkBindings.data();
 
-    if (descriptorBindings.empty()) {
-        throw std::runtime_error("DescriptorSetNode: No descriptor bindings found in ShaderDataBundle set 0");
+    VkResult result = vkCreateDescriptorSetLayout(
+        device->device,
+        &layoutInfo,
+        nullptr,
+        &descriptorSetLayout
+    );
+
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout from reflection");
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Found " + std::to_string(descriptorBindings.size()) + " descriptor bindings in set 0");
+    NODE_LOG_INFO("[DescriptorSetNode::CreateLayout] Created descriptor set layout from reflection");
+    NODE_LOG_DEBUG("[DescriptorSetNode::CreateLayout] Layout handle: " + std::to_string(reinterpret_cast<uint64_t>(descriptorSetLayout)));
+}
 
-    if (!useCache) {
-        // Phase 2: Generate descriptor set layout from shader reflection data
-        // Convert SpirvDescriptorBinding to VkDescriptorSetLayoutBinding
-        std::vector<VkDescriptorSetLayoutBinding> vkBindings;
-        vkBindings.reserve(descriptorBindings.size());
-
-        for (const auto& spirvBinding : descriptorBindings) {
-            VkDescriptorSetLayoutBinding vkBinding{};
-            vkBinding.binding = spirvBinding.binding;
-            vkBinding.descriptorType = spirvBinding.descriptorType;
-            vkBinding.descriptorCount = spirvBinding.descriptorCount;
-            vkBinding.stageFlags = spirvBinding.stageFlags;
-            vkBinding.pImmutableSamplers = nullptr;
-
-            vkBindings.push_back(vkBinding);
-
-            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Binding " + std::to_string(vkBinding.binding) +
-                          ": type=" + std::to_string(vkBinding.descriptorType) +
-                          ", count=" + std::to_string(vkBinding.descriptorCount) +
-                          ", stages=0x" + std::to_string(vkBinding.stageFlags) +
-                          ", name=" + spirvBinding.name);
-        }
-
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
-        layoutInfo.pBindings = vkBindings.data();
-
-        VkResult result = vkCreateDescriptorSetLayout(
-            device->device,
-            &layoutInfo,
-            nullptr,
-            &descriptorSetLayout
-        );
-
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout from reflection");
-        }
-
-        NODE_LOG_INFO("[DescriptorSetNode::Compile] Successfully created descriptor set layout from reflection");
-    }
-
-    // Continue with pool creation and descriptor allocation...
-
-    NODE_LOG_INFO("Compile: Descriptor set layout created from reflection");
-    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Created layout: " + std::to_string(reinterpret_cast<uint64_t>(descriptorSetLayout)));
-
-    // Phase 0.4: Get swapchain image count for per-image resource allocation
-    // Phase H: SWAPCHAIN_IMAGE_COUNT directly provides the extracted imageCount value
-    uint32_t imageCount = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT);
-
-    if (imageCount == 0) {
-        throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
-    }
-
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating per-frame resources for " + std::to_string(imageCount) + " swapchain images");
-
+void DescriptorSetNode::CreateDescriptorPool(const ShaderManagement::ShaderDataBundle& shaderBundle, uint32_t imageCount) {
     // Phase 5: Use helper function to calculate descriptor pool sizes from reflection
     // Phase 0.4: Multiply maxSets by imageCount for per-image descriptor sets
     std::vector<VkDescriptorPoolSize> poolSizes = CashSystem::CalculateDescriptorPoolSizes(
-        *shaderBundle,
+        shaderBundle,
         0,  // setIndex
         imageCount   // maxSets (per-image)
     );
@@ -205,8 +184,10 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: Failed to create descriptor pool");
     }
 
-    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Created descriptor pool: " + std::to_string(reinterpret_cast<uint64_t>(descriptorPool)));
+    NODE_LOG_DEBUG("[DescriptorSetNode::CreatePool] Created descriptor pool: " + std::to_string(reinterpret_cast<uint64_t>(descriptorPool)));
+}
 
+void DescriptorSetNode::AllocateDescriptorSets(uint32_t imageCount) {
     // Phase 0.4: Allocate per-swapchain-image descriptor sets to prevent invalidation
     // This avoids the validation error: "vkUpdateDescriptorSets invalidates command buffers"
     descriptorSets.resize(imageCount);
@@ -218,7 +199,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     allocInfo.descriptorSetCount = imageCount;
     allocInfo.pSetLayouts = layouts.data();
 
-    result = vkAllocateDescriptorSets(
+    VkResult result = vkAllocateDescriptorSets(
         device->device,
         &allocInfo,
         descriptorSets.data()
@@ -228,32 +209,45 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: Failed to allocate descriptor sets");
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Allocated " + std::to_string(imageCount) + " descriptor sets (per-image)");
+    NODE_LOG_INFO("[DescriptorSetNode::AllocateSets] Allocated " + std::to_string(imageCount) + " descriptor sets (per-image)");
+}
 
-    // Phase 0.4: Initialize per-frame resources (ring buffer pattern)
-    perFrameResources.Initialize(device, imageCount);
+void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("Compile: DescriptorSetNode (Phase 2: using reflection data from ShaderDataBundle)");
 
-    // Create UBO for each frame to prevent race conditions
-    for (uint32_t i = 0; i < imageCount; i++) {
-        perFrameResources.CreateUniformBuffer(i, sizeof(Draw_Shader::bufferVals));
+    // Setup device and get shader bundle
+    std::shared_ptr<ShaderManagement::ShaderDataBundle> shaderBundle;
+    SetupDeviceAndShaderBundle(ctx, shaderBundle);
 
-        // Write initial MVP transformation using type-safe SDI struct
-        glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
-        glm::mat4 View = glm::lookAt(
-            glm::vec3(10.0f, 3.0f, 10.0f),  // Camera in World Space
-            glm::vec3(0.0f, 0.0f, 0.0f),     // Look at origin
-            glm::vec3(0.0f, -1.0f, 0.0f)     // Up vector (Y-axis down)
-        );
-        glm::mat4 Model = glm::mat4(1.0f);
+    // Register descriptor cacher
+    RegisterDescriptorCacher();
 
-        Draw_Shader::bufferVals ubo;
-        ubo.mvp = Projection * View * Model;
+    // Phase 2: Extract descriptor sets from reflection (we'll use set 0 for now)
+    auto descriptorBindings = shaderBundle->GetDescriptorSet(0);
 
-        void* mappedData = perFrameResources.GetUniformBufferMapped(i);
-        memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
+    if (descriptorBindings.empty()) {
+        throw std::runtime_error("DescriptorSetNode: No descriptor bindings found in ShaderDataBundle set 0");
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Created " + std::to_string(imageCount) + " per-frame UBOs");
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Found " + std::to_string(descriptorBindings.size()) + " descriptor bindings in set 0");
+
+    // Create descriptor set layout from shader reflection
+    CreateDescriptorSetLayout(descriptorBindings);
+
+    // Get swapchain image count for per-image resource allocation
+    uint32_t imageCount = ctx.In(DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT);
+
+    if (imageCount == 0) {
+        throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
+    }
+
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating per-frame resources for " + std::to_string(imageCount) + " swapchain images");
+
+    // Create descriptor pool
+    CreateDescriptorPool(*shaderBundle, imageCount);
+
+    // Allocate descriptor sets
+    AllocateDescriptorSets(imageCount);
 
     // Phase H: Bind Dependency (static) descriptors in Compile
     // Execute (transient) descriptors bound per-frame in Execute
@@ -273,22 +267,16 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     perFrameImageInfos.resize(imageCount);
     perFrameBufferInfos.resize(imageCount);
 
-    // Bind static descriptors once for all frames
-    for (uint32_t i = 0; i < imageCount; i++) {
-        auto writes = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
-                                           perFrameImageInfos[i], perFrameBufferInfos[i],
-                                           slotRoles, SlotRole::Dependency);
+    // Defer ALL descriptor binding to Execute phase
+    // PostCompile hooks populate resources AFTER CompileImpl completes,
+    // so resources aren't available yet during Compile phase
+    // First Execute will bind both Dependency and Execute descriptors together
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Deferring ALL descriptor binding to Execute phase (resources populated by PostCompile hooks)");
 
-        if (!writes.empty()) {
-            vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Bound " + std::to_string(writes.size()) +
-                          " static descriptor(s) for frame " + std::to_string(i));
-        } else {
-            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] No Dependency descriptors to bind for frame " + std::to_string(i));
-        }
-    }
+    // Mark that we need to bind Dependency descriptors on first Execute
+    SetFlag(NodeFlags::NeedsInitialBind);
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] Static descriptors bound (transient bindings deferred to Execute)");
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Descriptor sets created (binding deferred to Execute)");
 
     // Set outputs
     ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
@@ -301,57 +289,15 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
 
 void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Skip execution during swapchain recreation to prevent descriptor access violations
-    if (isRenderingPaused) {
+    if (IsPaused()) {
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Skipping frame (rendering paused)");
         return;
     }
 
-    // Phase 0.4: Get current image index to select correct per-frame buffer
+    // Get current image index to select correct per-frame descriptor set
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
-    if (!perFrameResources.IsInitialized()) {
-        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: PerFrameResources not initialized!");
-        return;
-    }
-
-    // Get delta time from graph's centralized time system
-    RenderGraph* graph = GetOwningGraph();
-    if (!graph) {
-        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: No graph context!");
-        return;
-    }
-
-    float deltaTime = graph->GetTime().GetDeltaTime();
-
-    // Increment rotation angle (0.03 rad/sec for frame-rate independence)
-    rotationAngle += 0.03f * deltaTime;
-
-    // Recalculate MVP with rotation
-    glm::mat4 Projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 100.0f);
-    glm::mat4 View = glm::lookAt(
-        glm::vec3(0.0f, 0.0f, 5.0f),     // Camera position
-        glm::vec3(0.0f, 0.0f, 0.0f),     // Look at origin
-        glm::vec3(0.0f, 1.0f, 0.0f)      // Up vector (Y-axis up)
-    );
-    glm::mat4 Model = glm::mat4(1.0f);
-    Model = glm::rotate(Model, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f))      // Rotate around Y
-          * glm::rotate(Model, rotationAngle, glm::vec3(1.0f, 1.0f, 1.0f));    // Rotate around diagonal
-
-    // Phase 0.4: Update per-frame UBO (no descriptor set update needed)
-    // Each image index has its own descriptor set pre-bound to its UBO
-    Draw_Shader::bufferVals ubo;
-    ubo.mvp = Projection * View * Model;
-
-    void* mappedData = perFrameResources.GetUniformBufferMapped(imageIndex);
-    if (!mappedData) {
-        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: Frame " + std::to_string(imageIndex) + " UBO not mapped!");
-        return;
-    }
-
-    memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
-
-    // Update transient (Execute) descriptor bindings only
-    // Dependency bindings updated in first Execute call (they persist across frames)
+    // Get descriptor inputs
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
     auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
@@ -365,15 +311,31 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Build writes for Execute (transient) bindings
+    // On first execute after Compile, bind all Dependency descriptors for all frames
+    if (HasFlag(NodeFlags::NeedsInitialBind)) {
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] First execute - binding Dependency descriptors for all frames");
+        for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
+            auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
+                                                         perFrameImageInfos[i], perFrameBufferInfos[i],
+                                                         slotRoles, SlotRole::Dependency);
+            if (!dependencyWrites.empty()) {
+                vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
+                NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) +
+                              " Dependency descriptor(s) for frame " + std::to_string(i));
+            }
+        }
+        ClearFlag(NodeFlags::NeedsInitialBind);
+    }
+
+    // Build writes for Execute (transient) bindings for current frame
     auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
                                        perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
                                        slotRoles, SlotRole::Execute);
 
     if (!writes.empty()) {
-        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint8_t>(writes.size()), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Updated " + std::to_string(writes.size()) +
-                      " transient descriptor(s) for frame " + std::to_string(imageIndex));
+                      " Execute descriptor(s) for frame " + std::to_string(imageIndex));
     }
 }
 
@@ -679,12 +641,6 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 void DescriptorSetNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: DescriptorSetNode");
 
-    // Phase 0.1: Cleanup per-frame resources (UBOs for all frames)
-    if (perFrameResources.IsInitialized()) {
-        perFrameResources.Cleanup();
-        NODE_LOG_DEBUG("Cleanup: Per-frame resources cleaned up");
-    }
-
     // Destroy descriptor pool (this also frees descriptor sets)
     if (descriptorPool != VK_NULL_HANDLE && device) {
         vkDestroyDescriptorPool(
@@ -735,29 +691,6 @@ void DescriptorSetNode::UpdateBinding(
 ) {
     // MVP STUB: Descriptor sets not implemented yet
     NODE_LOG_WARNING("UpdateBinding (image): MVP stub - not implemented");
-}
-
-// ===== PRIVATE HELPERS (MVP STUBS) =====
-
-void DescriptorSetNode::ValidateLayoutSpec() {
-    // MVP STUB: No validation in MVP
-}
-
-void DescriptorSetNode::CreateDescriptorSetLayout() {
-    // MVP STUB: No descriptor layout in MVP
-}
-
-void DescriptorSetNode::CreateDescriptorPool() {
-    // MVP STUB: No descriptor pool in MVP
-}
-
-void DescriptorSetNode::AllocateDescriptorSets() {
-    // MVP STUB: No descriptor sets in MVP
-}
-
-void DescriptorSetNode::CreateDescriptorSetLayoutManually() {
-    // This method is no longer used - inlined into Compile()
-    // Keeping stub for API compatibility
 }
 
 } // namespace Vixen::RenderGraph
