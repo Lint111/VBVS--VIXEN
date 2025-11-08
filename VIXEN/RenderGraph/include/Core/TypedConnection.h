@@ -649,10 +649,8 @@ private:
         uint32_t bindingIndex,
         SlotRole slotRole
     ) {
-        // Only register dependency if slot has Dependency role (check bitwise)
-        bool isDependency = static_cast<uint8_t>(slotRole) & static_cast<uint8_t>(SlotRole::Dependency);
-
-        if (isDependency) {
+        // Only register dependency if slot has Dependency role
+        if (HasDependency(slotRole)) {
             std::cout << "[ConnectVariadic] Adding dependency: " << variadicNode->GetInstanceName()
                       << " -> " << sourceNodeInst->GetInstanceName() << std::endl;
             variadicNode->AddDependency(sourceNodeInst);
@@ -695,10 +693,11 @@ private:
             [=](NodeInstance* compiledNode) {
                 if (compiledNode != sourceNodeInst) return;
 
-                // Check if slot is transient (Execute) - skip population if so
+                // Check if slot is Execute-ONLY (not Dependency) - skip population if so
+                // Slots with Dependency flag (including Dependency|Execute) need initial population here
                 const VariadicSlotInfo* currentSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
-                if (currentSlot && (currentSlot->slotRole & SlotRole::Execute) != SlotRole::None) {
-                    std::cout << "[ConnectVariadic PostCompile Hook] Skipping transient slot at binding "
+                if (currentSlot && !HasDependency(currentSlot->slotRole)) {
+                    std::cout << "[ConnectVariadic PostCompile Hook] Skipping Execute-only slot at binding "
                               << bindingIndex << " (will populate in Execute phase)\n";
                     return;
                 }

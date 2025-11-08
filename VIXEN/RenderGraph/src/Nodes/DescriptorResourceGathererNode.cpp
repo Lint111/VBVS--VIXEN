@@ -98,8 +98,8 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
     for (size_t i = 0; i < variadicCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo || !(static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute))) {
-            continue;  // Skip Dependency slots (already gathered in Compile)
+        if (!slotInfo || !HasExecute(slotInfo->slotRole)) {
+            continue;  // Skip Dependency-only slots (already gathered in Compile)
         }
 
         hasTransients = true;
@@ -229,7 +229,7 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
         if (!slotInfo) continue;
 
         // Skip validation for transient slots (Execute) - validated in Execute phase
-        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute)) {
+        if (HasExecute(slotInfo->slotRole)) {
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping transient slot " + std::to_string(i) + " (" + slotInfo->slotName + ") - will be validated in Execute phase");
             continue;
         }
@@ -275,13 +275,13 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
         // Store slot role even for Execute slots (needed for filtering in DescriptorSetNode)
         slotRoleArray_[binding] = slotInfo->slotRole;
 
-        // For transient slots (marked Execute), initialize placeholder and skip resource gathering in Compile
-        // Resources will be fetched in Execute phase when they exist
-        if (slotInfo->slotRole & SlotRole::Execute) {
+        // For Execute-ONLY slots (no Dependency flag), skip resource gathering in Compile
+        // Slots with Dependency flag (including Dependency|Execute) need initial gather here
+        if (!HasDependency(slotInfo->slotRole)) {
             // Initialize placeholder entry to prevent accessing uninitialized memory
             // This ensures resourceArray_[binding] exists even before Execute phase
             resourceArray_[binding] = std::monostate{};
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - placeholder initialized, resource will be gathered in Execute phase");
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute-only slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - placeholder initialized, resource will be gathered in Execute phase");
             continue;
         }
 

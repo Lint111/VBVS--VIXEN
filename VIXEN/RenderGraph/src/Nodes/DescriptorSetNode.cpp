@@ -457,6 +457,13 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
         const auto& resourceVariant = descriptorResources[binding.binding];
 
+        // Skip placeholder entries (std::monostate) - these are transient resources not yet populated
+        if (std::holds_alternative<std::monostate>(resourceVariant)) {
+            NODE_LOG_DEBUG("[BuildDescriptorWrites] Skipping binding " + std::to_string(binding.binding) +
+                          " - placeholder not yet populated (transient resource)");
+            continue;
+        }
+
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptorSets[imageIndex];

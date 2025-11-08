@@ -97,6 +97,27 @@ inline SlotRole operator~(SlotRole a) {
     return static_cast<SlotRole>(~static_cast<uint8_t>(a));
 }
 
+// Helper functions for cleaner SlotRole checks
+inline bool HasRole(SlotRole role, SlotRole flag) {
+    return (static_cast<uint8_t>(role) & static_cast<uint8_t>(flag)) != 0;
+}
+
+inline bool HasDependency(SlotRole role) {
+    return HasRole(role, SlotRole::Dependency);
+}
+
+inline bool HasExecute(SlotRole role) {
+    return HasRole(role, SlotRole::Execute);
+}
+
+inline bool IsDependencyOnly(SlotRole role) {
+    return role == SlotRole::Dependency;
+}
+
+inline bool IsExecuteOnly(SlotRole role) {
+    return role == SlotRole::Execute;
+}
+
 inline bool operator&(SlotRole a, uint8_t b) {
     return (static_cast<uint8_t>(a) & b) != 0;
 }
