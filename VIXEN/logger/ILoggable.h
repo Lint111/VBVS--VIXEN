@@ -21,13 +21,31 @@ namespace Vixen::RenderGraph {
  *     GraphTopology() { InitializeLogger("Topology"); }
  *
  *     void AddEdge(const GraphEdge& edge) {
- *         if (auto* log = GetLogger()) {
- *             log->Debug("Adding edge...");
- *         }
+ *         LOG_DEBUG("Adding edge...");
  *     }
  * };
  * @endcode
  */
+
+/**
+ * @brief Logging macros for ILoggable-derived classes
+ *
+ * These macros automatically check if logger exists before calling.
+ * Use these instead of manual GetLogger() checks for cleaner code.
+ *
+ * Available macros:
+ * - LOG_TRACE(msg)   - Trace-level logging
+ * - LOG_DEBUG(msg)   - Debug-level logging
+ * - LOG_INFO(msg)    - Info-level logging
+ * - LOG_WARNING(msg) - Warning-level logging
+ * - LOG_ERROR(msg)   - Error-level logging
+ */
+#define LOG_TRACE(msg)   do { if (auto* log = GetLogger()) { log->Trace(msg); } } while(0)
+#define LOG_DEBUG(msg)   do { if (auto* log = GetLogger()) { log->Debug(msg); } } while(0)
+#define LOG_INFO(msg)    do { if (auto* log = GetLogger()) { log->Info(msg); } } while(0)
+#define LOG_WARNING(msg) do { if (auto* log = GetLogger()) { log->Warning(msg); } } while(0)
+#define LOG_ERROR(msg)   do { if (auto* log = GetLogger()) { log->Error(msg); } } while(0)
+
 class ILoggable {
 public:
     virtual ~ILoggable() = default;

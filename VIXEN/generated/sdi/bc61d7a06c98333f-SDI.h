@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: bc61d7a06c98333f
-// Generated: 2025-11-07 19:54:49
+// Generated: 2025-11-08 11:23:48
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.

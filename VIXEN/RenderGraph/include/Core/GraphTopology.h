@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NodeInstance.h"
-#include "logger/ILoggable.h"
+#include "ILoggable.h"
 #include <vector>
 #include <set>
 #include <map>

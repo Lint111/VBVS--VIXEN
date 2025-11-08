@@ -1,6 +1,6 @@
 #pragma once
 
-#include "logger/ILoggable.h"
+#include "ILoggable.h"
 #include <functional>
 #include <vector>
 #include <string>
