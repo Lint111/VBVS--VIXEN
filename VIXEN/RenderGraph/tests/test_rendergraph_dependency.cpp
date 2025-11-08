@@ -21,7 +21,7 @@ public:
 
 protected:
     // Provide minimal Execute implementation to satisfy abstract base (uses template method pattern)
-    void ExecuteImpl(uint32_t taskIndex) override {}
+    void ExecuteImpl(ExecuteContext& ctx) override {}
 };
 
 class DummyNodeType : public NodeType {
@@ -77,7 +77,7 @@ TEST(RenderGraph_Dependency, InputMarkedAsDependency_IsIncluded) {
     EXPECT_EQ(deps.size(), 0u);
 
     // Now mark input as used during compile and verify producer appears
-    consumer->MarkInputUsedInCompile(0);
+    consumer->MarkInputUsedInCompile(0, 0);
     auto deps2 = tracker.GetDependenciesForNode(consumer.get());
     ASSERT_EQ(deps2.size(), 1u);
     EXPECT_EQ(deps2[0], producer.get());

@@ -23,7 +23,7 @@ public:
 
 protected:
     // Provide minimal Execute implementation to satisfy abstract base
-    void ExecuteImpl(uint32_t taskIndex) override {}
+    void ExecuteImpl(ExecuteContext& ctx) override {}
 };
 
 class DummyNodeType : public NodeType {
@@ -75,17 +75,15 @@ TEST(TypedNode_ActiveBundleIndex, MarkInputUsedRespectsActiveIndex) {
     // Ensure reset
     consumer->ResetInputsUsedInCompile();
 
-    // Set active bundle to 1 and mark input used
-    consumer->SetActiveBundleIndex(1);
-    consumer->MarkInputUsedInCompile(0);
+    // Mark array index 1 as used
+    consumer->MarkInputUsedInCompile(0, 1);
 
     // Only index 1 should be marked
     EXPECT_FALSE(consumer->IsInputUsedInCompile(0, 0));
     EXPECT_TRUE(consumer->IsInputUsedInCompile(0, 1));
 
-    // Now mark index 0 by changing active bundle
-    consumer->SetActiveBundleIndex(0);
-    consumer->MarkInputUsedInCompile(0);
+    // Now mark index 0 as well
+    consumer->MarkInputUsedInCompile(0, 0);
 
     EXPECT_TRUE(consumer->IsInputUsedInCompile(0, 0));
     EXPECT_TRUE(consumer->IsInputUsedInCompile(0, 1));

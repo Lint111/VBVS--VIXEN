@@ -12,7 +12,7 @@ public:
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
 protected:
-    void ExecuteImpl(uint32_t taskIndex) override {}
+    void ExecuteImpl(ExecuteContext& ctx) override {}
 };
 
 class DummyNodeType : public NodeType {
@@ -70,10 +70,9 @@ TEST(RenderGraph_MultiProducer, OrderAndUniqueness) {
     tracker.RegisterResourceProducer(r2, prod2.get(), 0);
     tracker.RegisterResourceProducer(r3, prod3.get(), 0);
 
-    // Mark all three indices
+    // Mark all three array indices as used
     for (uint32_t i = 0; i < 3; ++i) {
-        consumer->SetActiveBundleIndex(i);
-        consumer->MarkInputUsedInCompile(0);
+        consumer->MarkInputUsedInCompile(0, i);
     }
 
     auto deps = tracker.GetDependenciesForNode(consumer.get());

@@ -20,7 +20,7 @@ public:
     using NodeInstance::SetInput;
     using NodeInstance::SetOutput;
 protected:
-    void ExecuteImpl(uint32_t taskIndex) override {}
+    void ExecuteImpl(ExecuteContext& ctx) override {}
 };
 
 class DummyNodeType : public NodeType {
@@ -76,13 +76,10 @@ TEST(RenderGraph_ArraySlot, DedupProducerList) {
     tracker.RegisterResourceProducer(a1, producerA.get(), 1);
     tracker.RegisterResourceProducer(b0, producerB.get(), 0);
 
-    // Mark both indices used in compile
-    cons->SetActiveBundleIndex(0);
-    cons->MarkInputUsedInCompile(0);
-    cons->SetActiveBundleIndex(1);
-    cons->MarkInputUsedInCompile(0);
-    cons->SetActiveBundleIndex(2);
-    cons->MarkInputUsedInCompile(0);
+    // Mark all array indices as used in compile
+    cons->MarkInputUsedInCompile(0, 0);
+    cons->MarkInputUsedInCompile(0, 1);
+    cons->MarkInputUsedInCompile(0, 2);
 
     auto deps = tracker.GetDependenciesForNode(consumer.get());
 
