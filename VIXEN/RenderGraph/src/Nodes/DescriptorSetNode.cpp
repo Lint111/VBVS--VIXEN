@@ -237,35 +237,29 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[DescriptorSetNode::Compile] Created " + std::to_string(imageCount) + " per-frame UBOs");
 
-    // Phase 0.4: Update each descriptor set with its corresponding per-frame resources
-    // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
-
-    // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
+    // Phase H: Bind Dependency (static) descriptors in Compile
+    // ExecuteOnly (transient) descriptors bound per-frame in Execute
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
-    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Using DESCRIPTOR_RESOURCES array (" + std::to_string(descriptorResources.size()) + " resources)");
+    auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
 
-    // Phase H: Initialize persistent descriptor info storage (node scope for lifetime)
+    // Initialize persistent descriptor info storage (node scope for lifetime)
     perFrameImageInfos.resize(imageCount);
     perFrameBufferInfos.resize(imageCount);
 
+    // Bind static descriptors once for all frames
     for (uint32_t i = 0; i < imageCount; i++) {
-        // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
-        perFrameImageInfos[i].reserve(descriptorBindings.size());
-        perFrameBufferInfos[i].reserve(descriptorBindings.size());
-
-        // Use helper method to build descriptor writes
         auto writes = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
-                                           perFrameImageInfos[i], perFrameBufferInfos[i]);
-
-        NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Bound " + std::to_string(writes.size()) +
-                      " descriptors for frame " + std::to_string(i) + " (data-driven)");
+                                           perFrameImageInfos[i], perFrameBufferInfos[i],
+                                           slotRoles, SlotRole::Dependency);
 
         if (!writes.empty()) {
             vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Bound " + std::to_string(writes.size()) +
+                          " static descriptor(s) for frame " + std::to_string(i));
         }
     }
 
-    NODE_LOG_INFO("[DescriptorSetNode::Compile] All descriptor sets updated (data-driven)");
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Static descriptors bound (transient bindings deferred to Execute)");
 
     // Set outputs
     ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
@@ -321,31 +315,28 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
 
-    // Update descriptor sets for transient resources in Execute phase
-    // Read fresh shader bundle and resource array
+    // Update transient (ExecuteOnly) descriptor bindings only
+    // Dependency bindings updated in first Execute call (they persist across frames)
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+    auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
 
     if (!shaderBundle || descriptorResources.empty()) {
-        return;  // No transient updates needed
+        return;
     }
 
-    // Get descriptor bindings from shader reflection
     auto descriptorBindings = shaderBundle->GetDescriptorSet(0);
     if (descriptorBindings.empty()) {
         return;
     }
 
-    // Reuse BuildDescriptorWrites helper for transient descriptor updates
-    // Use temporary storage for info structures (they must outlive vkUpdateDescriptorSets call)
-    std::vector<VkDescriptorImageInfo> transientImageInfos;
-    std::vector<VkDescriptorBufferInfo> transientBufferInfos;
-
+    // Build writes for ExecuteOnly (transient) bindings
     auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
-                                       transientImageInfos, transientBufferInfos);
+                                       perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
+                                       slotRoles, SlotRole::ExecuteOnly);
 
     if (!writes.empty()) {
-        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint8_t>(writes.size()), writes.data(), 0, nullptr);
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Updated " + std::to_string(writes.size()) +
                       " transient descriptor(s) for frame " + std::to_string(imageIndex));
     }
@@ -356,7 +347,9 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     const std::vector<ResourceVariant>& descriptorResources,
     const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
     std::vector<VkDescriptorImageInfo>& imageInfos,
-    std::vector<VkDescriptorBufferInfo>& bufferInfos
+    std::vector<VkDescriptorBufferInfo>& bufferInfos,
+    const std::vector<SlotRole>& slotRoles,
+    SlotRole roleFilter
 ) {
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(descriptorBindings.size());
@@ -402,6 +395,18 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                           std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
                           std::to_string(descriptorResources.size()));
             continue;
+        }
+
+        // Filter by slot role if provided
+        if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
+            SlotRole bindingRole = slotRoles[binding.binding];
+            // Skip if role doesn't match filter (check bitwise for ExecuteOnly flag)
+            bool isExecuteOnly = static_cast<uint8_t>(bindingRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly);
+            bool filterIsExecuteOnly = static_cast<uint8_t>(roleFilter) & static_cast<uint8_t>(SlotRole::ExecuteOnly);
+
+            if (isExecuteOnly != filterIsExecuteOnly) {
+                continue;  // Skip this binding - doesn't match filter
+            }
         }
 
         const auto& resourceVariant = descriptorResources[binding.binding];

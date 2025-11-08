@@ -39,7 +39,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 // Compile-time slot counts
 namespace DescriptorResourceGathererNodeCounts {
     static constexpr size_t INPUTS = 1;   // SHADER_DATA_BUNDLE (+ dynamic variadic resources)
-    static constexpr size_t OUTPUTS = 2;  // DESCRIPTOR_RESOURCES array + SHADER_DATA_BUNDLE_OUT pass-through
+    static constexpr size_t OUTPUTS = 3;  // DESCRIPTOR_RESOURCES array + SLOT_ROLES + SHADER_DATA_BUNDLE_OUT pass-through
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -55,12 +55,16 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    // ===== OUTPUTS (3) =====
     OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderDataBundlePtr, 1,
+    OUTPUT_SLOT(DESCRIPTOR_SLOT_ROLES, std::vector<SlotRoleEnum>, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderDataBundlePtr, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -74,6 +78,11 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
         INIT_OUTPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources",
             ResourceLifetime::Transient, descriptorResourcesDesc);
+
+        // SlotRole array is metadata, not a Vulkan resource
+        HandleDescriptor slotRolesDesc{"std::vector<SlotRoleEnum>"};
+        INIT_OUTPUT_DESC(DESCRIPTOR_SLOT_ROLES, "descriptor_slot_roles",
+            ResourceLifetime::Transient, slotRolesDesc);
 
         INIT_OUTPUT_DESC(SHADER_DATA_BUNDLE_OUT, "shader_data_bundle_out",
             ResourceLifetime::Persistent, shaderDataBundleDesc);
@@ -90,12 +99,16 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(DESCRIPTOR_RESOURCES_Slot::index == 0, "DESCRIPTOR_RESOURCES must be at index 0");
     static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
 
-    static_assert(SHADER_DATA_BUNDLE_OUT_Slot::index == 1, "SHADER_DATA_BUNDLE_OUT must be at index 1");
+    static_assert(DESCRIPTOR_SLOT_ROLES_Slot::index == 1, "DESCRIPTOR_SLOT_ROLES must be at index 1");
+    static_assert(!DESCRIPTOR_SLOT_ROLES_Slot::nullable, "DESCRIPTOR_SLOT_ROLES is required");
+
+    static_assert(SHADER_DATA_BUNDLE_OUT_Slot::index == 2, "SHADER_DATA_BUNDLE_OUT must be at index 2");
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
+    static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderDataBundlePtr>);
 };
 

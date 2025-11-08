@@ -59,20 +59,22 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
         return;
     }
 
-    // Find max binding to size output array
+    // Find max binding to size output arrays
     uint32_t maxBinding = 0;
     for (const auto& binding : layoutSpec->bindings) {
         maxBinding = std::max(maxBinding, binding.binding);
     }
     resourceArray_.resize(maxBinding + 1);
+    slotRoleArray_.resize(maxBinding + 1, SlotRole::Dependency);  // Default to Dependency
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
 
     // Gather resources from validated slots
     GatherResources(ctx);
 
-    // Output resource array and pass through shader bundle
+    // Output resource array, slot roles, and pass through shader bundle
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
+    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleArray_);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries");
@@ -317,7 +319,8 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
         // Regular resources - store directly at binding index
         else {
             resourceArray_[binding] = variant;
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " + std::to_string(binding) + " (" + slotInfo->slotName + "), variant index=" + std::to_string(variant.index()));
+            slotRoleArray_[binding] = slotInfo->slotRole;  // Store role for filtering
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " + std::to_string(binding) + " (" + slotInfo->slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(slotInfo->slotRole)));
         }
     }
 

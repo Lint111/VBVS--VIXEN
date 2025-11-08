@@ -864,9 +864,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
          // Phase H: Shader bundle → Gatherer for descriptor discovery
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
-         // Phase H: Gatherer → DescriptorSet (data-driven resources)
+         // Phase H: Gatherer → DescriptorSet (data-driven resources + slot roles)
          .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
                   computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES)
          // Pass shader bundle directly to descriptor set and pipeline (needed during Compile)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)

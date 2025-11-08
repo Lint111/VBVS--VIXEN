@@ -56,7 +56,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DescriptorSetNodeCounts {
-    static constexpr size_t INPUTS = 5;  // DEVICE, SHADER_BUNDLE, SWAPCHAIN_PUBLIC, DESCRIPTOR_RESOURCES, IMAGE_INDEX
+    static constexpr size_t INPUTS = 6;  // DEVICE, SHADER_BUNDLE, SWAPCHAIN_COUNT, DESCRIPTOR_RESOURCES, SLOT_ROLES, IMAGE_INDEX
     static constexpr size_t OUTPUTS = 4;  // LAYOUT, POOL, SETS, DEVICE_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -92,7 +92,14 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(IMAGE_INDEX, uint32_t, 4,
+    // Slot roles array (parallel to DESCRIPTOR_RESOURCES) for filtering
+    INPUT_SLOT(DESCRIPTOR_SLOT_ROLES, std::vector<SlotRoleEnum>, 4,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    INPUT_SLOT(IMAGE_INDEX, uint32_t, 5,
         SlotNullability::Required,
         SlotRole::ExecuteOnly,
         SlotMutability::ReadOnly,
@@ -127,6 +134,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
         HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
         INIT_INPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources", ResourceLifetime::Transient, descriptorResourcesDesc);
+
+        HandleDescriptor slotRolesDesc{"std::vector<SlotRoleEnum>"};
+        INIT_INPUT_DESC(DESCRIPTOR_SLOT_ROLES, "descriptor_slot_roles", ResourceLifetime::Transient, slotRolesDesc);
 
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
 
@@ -169,7 +179,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(DESCRIPTOR_RESOURCES_Slot::index == 3, "DESCRIPTOR_RESOURCES must be at index 3");
     static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
 
-    static_assert(IMAGE_INDEX_Slot::index == 4, "IMAGE_INDEX must be at index 4");
+    static_assert(DESCRIPTOR_SLOT_ROLES_Slot::index == 4, "DESCRIPTOR_SLOT_ROLES must be at index 4");
+    static_assert(!DESCRIPTOR_SLOT_ROLES_Slot::nullable, "DESCRIPTOR_SLOT_ROLES is required");
+
+    static_assert(IMAGE_INDEX_Slot::index == 5, "IMAGE_INDEX must be at index 5");
     static_assert(!IMAGE_INDEX_Slot::nullable, "IMAGE_INDEX is required");
 
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 0, "DESCRIPTOR_SET_LAYOUT must be at index 0");

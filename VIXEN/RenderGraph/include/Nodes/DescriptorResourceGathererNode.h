@@ -105,6 +105,7 @@ private:
 
     // Output resource array (indexed by binding)
     std::vector<ResourceVariant> resourceArray_;
+    std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
 
     // Helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);

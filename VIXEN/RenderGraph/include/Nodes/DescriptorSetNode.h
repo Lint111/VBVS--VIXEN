@@ -149,7 +149,9 @@ private:
         const std::vector<ResourceVariant>& descriptorResources,
         const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
         std::vector<VkDescriptorImageInfo>& imageInfos,
-        std::vector<VkDescriptorBufferInfo>& bufferInfos
+        std::vector<VkDescriptorBufferInfo>& bufferInfos,
+        const std::vector<SlotRole>& slotRoles = {},
+        SlotRole roleFilter = SlotRole::Dependency  // Filter to process (Dependency or ExecuteOnly)
     );
 };
 

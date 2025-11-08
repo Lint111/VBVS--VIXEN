@@ -94,6 +94,47 @@
         "codecvt": "cpp",
         "shared_mutex": "cpp"
     },
-    "C_Cpp.errorSquiggles": "disabled",
-    "CodeGPT.apiKey": "Ollama"
+    "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
+    "CodeGPT.apiKey": "Ollama",
+    "C_Cpp.exclusionPolicy": "checkFolders",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "build/**": true,
+        ".vs/**": true,
+        ".cache/**": true,
+        "binaries/**": true,
+        "builtAssets/**": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "build/**": true,
+        ".vs/**": true,
+        ".cache/**": true,
+        "binaries/**": true,
+        "builtAssets/**": true
+    },
+    "C_Cpp.files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "build/**": true,
+        ".vs/**": true,
+        ".cache/**": true,
+        "binaries/**": true,
+        "builtAssets/**": true,
+        "CashSystem/**": true,
+        "docs/**": true,
+        "documentation/**": true,
+        "memory-bank/**": true
+    }
 }
