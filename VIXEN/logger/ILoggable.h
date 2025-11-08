@@ -6,8 +6,6 @@
 // Forward declaration
 class Logger;
 
-namespace Vixen::RenderGraph {
-
 /**
  * @brief Interface for graph subsystems that support logging
  *
@@ -93,5 +91,3 @@ protected:
 private:
     std::unique_ptr<Logger> logger;
 };
-
-} // namespace Vixen::RenderGraph

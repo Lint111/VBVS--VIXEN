@@ -54,6 +54,9 @@ target_link_libraries(ShaderManagement PRIVATE ProjectHash)
 # Link to EventBus for shader events
 target_link_libraries(ShaderManagement PUBLIC EventBus)
 
+# Link to Logger for ILoggable support
+target_link_libraries(ShaderManagement PUBLIC Logger)
+
 # Find dependencies
 # Find Vulkan (optional in trimmed build mode)
 if(VULKAN_TRIMMED_BUILD_ACTIVE)
