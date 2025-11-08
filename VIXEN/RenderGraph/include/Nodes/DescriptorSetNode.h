@@ -128,6 +128,9 @@ private:
     std::vector<std::vector<VkDescriptorImageInfo>> perFrameImageInfos;
     std::vector<std::vector<VkDescriptorBufferInfo>> perFrameBufferInfos;
 
+    // Rendering pause state tracking (for swapchain recreation)
+    bool isRenderingPaused = false;
+
     // Helpers
     void ValidateLayoutSpec();
     void CreateDescriptorSetLayout();

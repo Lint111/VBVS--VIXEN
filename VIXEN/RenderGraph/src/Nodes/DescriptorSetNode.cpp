@@ -15,6 +15,9 @@
 // Phase 5: Type-safe UBO updates with generated SDI headers
 #include "generated/sdi/Draw_ShaderNames.h"
 
+// Event subscription
+#include "EventTypes/RenderGraphEvents.h"
+
 namespace Vixen::RenderGraph {
 
 // ===== NODE TYPE =====
@@ -42,6 +45,21 @@ DescriptorSetNode::DescriptorSetNode(
 void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("DescriptorSetNode: Setup (graph-scope initialization)");
+
+    // Subscribe to RenderPauseEvent to track swapchain recreation
+    auto* bus = GetOwningGraph()->GetMessageBus();
+    bus->Subscribe(EventTypes::RenderPauseEvent::TYPE,
+        [this](const EventBus::BaseEventMessage& msg) {
+            const auto& event = static_cast<const EventTypes::RenderPauseEvent&>(msg);
+            if (event.pauseReason == EventTypes::RenderPauseEvent::Reason::SwapChainRecreation) {
+                isRenderingPaused = (event.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START);
+                NODE_LOG_DEBUG(isRenderingPaused
+                    ? "DescriptorSetNode: Rendering paused (swapchain recreation)"
+                    : "DescriptorSetNode: Rendering resumed");
+            }
+            return false;  // Don't consume message
+        }
+    );
 }
 
 void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
@@ -271,6 +289,12 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
 }
 
 void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
+    // Skip execution during swapchain recreation to prevent descriptor access violations
+    if (isRenderingPaused) {
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Skipping frame (rendering paused)");
+        return;
+    }
+
     // Phase 0.4: Get current image index to select correct per-frame buffer
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 

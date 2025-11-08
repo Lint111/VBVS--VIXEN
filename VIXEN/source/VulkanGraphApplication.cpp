@@ -907,15 +907,15 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage (swapchain image view)
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, VoxelRayMarch::outputImage);
+                          descriptorGatherer, VoxelRayMarch::outputImage, SlotRole::ExecuteOnly);
 
     // Binding 1: camera (uniform buffer)
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::camera);
+                          descriptorGatherer, VoxelRayMarch::camera, SlotRole::ExecuteOnly);
 
     // Binding 2: voxelGrid (combined image sampler)
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER,
-                          descriptorGatherer, VoxelRayMarch::voxelGrid);
+                          descriptorGatherer, VoxelRayMarch::voxelGrid, SlotRole::ExecuteOnly);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
