@@ -315,6 +315,10 @@ endif()
 # Specify a suitable project name
 project(${Recipe_Name})
 
+# Suppress warnings from external dependencies
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecation warnings" FORCE)
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "Suppress developer warnings" FORCE)
+
 # Add any required preprocessor definitions here
 add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
 

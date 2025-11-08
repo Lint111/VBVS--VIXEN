@@ -85,7 +85,7 @@ if(OpenSSL_FOUND)
     target_compile_definitions(ShaderManagement PRIVATE HAS_OPENSSL)
     target_include_directories(ShaderManagement PRIVATE ${OPENSSL_INCLUDE_DIR})
 else()
-    message(WARNING "OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available")
+    message(STATUS "OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available")
 endif()
 
 # Link Vulkan and glslang (conditional)
