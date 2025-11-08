@@ -1,9 +1,9 @@
 #pragma once
 
+#include "logger/ILoggable.h"
 #include <functional>
 #include <vector>
 #include <string>
-#include <iostream>
 
 namespace Vixen::RenderGraph {
 
@@ -57,9 +57,9 @@ using NodeLifecycleCallback = std::function<void(NodeInstance*)>;
  * Centralized hook management for render graph lifecycle events.
  * Callbacks are executed in registration order within each phase.
  */
-class GraphLifecycleHooks {
+class GraphLifecycleHooks : public ILoggable {
 public:
-    GraphLifecycleHooks() = default;
+    GraphLifecycleHooks();
     ~GraphLifecycleHooks() = default;
 
     // Prevent copying (hooks are tied to specific graph instance)

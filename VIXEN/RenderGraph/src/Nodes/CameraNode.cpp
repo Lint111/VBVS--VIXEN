@@ -59,35 +59,36 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     SetDevice(devicePtr);
     vulkanDevice = devicePtr;
 
-    // Get swapchain info
+    // Get swapchain info for initial aspect ratio
     SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainInfo) {
         throw std::runtime_error("[CameraNode] SWAPCHAIN_PUBLIC is null");
     }
 
-    uint32_t imageCount = swapchainInfo->swapChainImageCount;
-    NODE_LOG_INFO("Creating " + std::to_string(imageCount) + " camera UBOs");
+    // Create a SINGLE camera UBO shared by all frames
+    // This is safe because frame-in-flight synchronization ensures the GPU
+    // has finished reading frame N before the CPU updates it for frame N+3
+    // All descriptor sets will point to this one buffer
+    NODE_LOG_INFO("Creating single shared camera UBO");
 
-    // Initialize per-frame resources
-    perFrameResources.Initialize(vulkanDevice, imageCount);
+    perFrameResources.Initialize(vulkanDevice, 1);  // Only 1 buffer
 
     VkDeviceSize bufferSize = sizeof(CameraData);
+    perFrameResources.CreateUniformBuffer(0, bufferSize);
 
-    for (uint32_t i = 0; i < imageCount; ++i) {
-        perFrameResources.CreateUniformBuffer(i, bufferSize);
-    }
+    // Initialize with valid camera data
+    float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
+                        static_cast<float>(swapchainInfo->Extent.height);
+    UpdateCameraMatrices(0, 0, aspectRatio);
 
-    // Output the first buffer (descriptor set will index into array)
+    // Output the buffer (same for all descriptor sets)
     ctx.Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(0));
     ctx.Out(CameraNodeConfig::CAMERA_BUFFER_SIZE, static_cast<uint64_t>(bufferSize));
 
-    NODE_LOG_INFO("Created " + std::to_string(imageCount) + " camera UBOs successfully");
+    NODE_LOG_INFO("Created shared camera UBO successfully");
 }
 
 void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // Get current image index
-    uint32_t imageIndex = ctx.In(CameraNodeConfig::IMAGE_INDEX);
-
     // Get swapchain info for aspect ratio
     SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
     if (!swapchainInfo) {
@@ -97,11 +98,10 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
                         static_cast<float>(swapchainInfo->Extent.height);
 
-    // Update camera matrices for this frame
-    UpdateCameraMatrices(0, imageIndex, aspectRatio);
-
-    // Output the buffer for this frame
-    ctx.Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(imageIndex));
+    // Update the shared camera UBO for this frame
+    // Always use buffer index 0 (the only buffer)
+    // Frame-in-flight sync ensures GPU finished reading before we write
+    UpdateCameraMatrices(0, 0, aspectRatio);
 }
 
 void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio) {

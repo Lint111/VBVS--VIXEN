@@ -98,13 +98,13 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error(errorMsg);
     }
 
-    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: VulkanDevice retrieved: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr.get())));
+    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: VulkanDevice retrieved: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr)));
     SetDevice(devicePtr);
 
     // Get ShaderModuleCacher (registered during Setup)
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
     NODE_LOG_DEBUG("ShaderLibraryNode: Getting ShaderModuleCacher from MainCacher...");
-    NODE_LOG_DEBUG("ShaderLibraryNode: Device pointer value: " + std::to_string(reinterpret_cast<uint64_t>(device.get())));
+    NODE_LOG_DEBUG("ShaderLibraryNode: Device pointer value: " + std::to_string(reinterpret_cast<uint64_t>(device)));
     NODE_LOG_DEBUG("ShaderLibraryNode: IsDeviceDependent: " + std::string(mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) ? "true" : "false"));
 
     shaderModuleCacher = mainCacher.GetCacher<
@@ -116,12 +116,12 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
     if (!shaderModuleCacher) {
         std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
         NODE_LOG_ERROR(errorMsg);
-        NODE_LOG_ERROR("ShaderLibraryNode: device=" + std::to_string(reinterpret_cast<uint64_t>(device.get())));
+        NODE_LOG_ERROR("ShaderLibraryNode: device=" + std::to_string(reinterpret_cast<uint64_t>(device)));
         throw std::runtime_error(errorMsg);
     }
     NODE_LOG_DEBUG("ShaderLibraryNode: Got ShaderModuleCacher successfully");
     NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->IsInitialized()=" + std::string(shaderModuleCacher->IsInitialized() ? "true" : "false"));
-    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->GetDevice()=" + std::to_string(reinterpret_cast<uint64_t>(shaderModuleCacher->GetDevice().get())));
+    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->GetDevice()=" + std::to_string(reinterpret_cast<uint64_t>(shaderModuleCacher->GetDevice())));
 
     // Check if any builder functions were registered
     if (shaderBuilderFuncs.empty()) {
