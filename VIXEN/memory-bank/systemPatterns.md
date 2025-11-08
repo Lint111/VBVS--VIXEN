@@ -655,6 +655,225 @@ struct ImageLoaderConfig : public ResourceConfigBase<2, 1> {
 
 **Location**: `RenderGraph/include/Core/NodeInstance.h`, `RenderGraph/include/Core/ResourceConfig.h`
 
+---
+
+### 13. SlotRole Bitwise Flags Pattern (November 8, 2025 - Phase G)
+**Classes**: `SlotRole` enum, descriptor binding infrastructure
+
+**Implementation**:
+```cpp
+// Bitwise combinable flags for slot access semantics
+enum class SlotRole : uint8_t {
+    None         = 0u,
+    Dependency   = 1u << 0,  // Accessed during Compile (creates dependency)
+    Execute      = 1u << 1,  // Accessed during Execute (can combine with Dependency)
+    CleanupOnly  = 1u << 2,  // Only accessed during Cleanup
+    Output       = 1u << 3   // Output slot (role only applies to inputs)
+};
+
+// Helper functions for clean role checks
+inline bool HasDependency(SlotRole role) {
+    return (static_cast<uint8_t>(role) & static_cast<uint8_t>(SlotRole::Dependency)) != 0;
+}
+
+inline bool HasExecute(SlotRole role) {
+    return (static_cast<uint8_t>(role) & static_cast<uint8_t>(SlotRole::Execute)) != 0;
+}
+
+inline bool IsDependencyOnly(SlotRole role) {
+    return role == SlotRole::Dependency;
+}
+
+inline bool IsExecuteOnly(SlotRole role) {
+    return role == SlotRole::Execute;
+}
+
+// Combined role example: descriptor used in both Compile and Execute
+SlotRole descriptorRole = SlotRole::Dependency | SlotRole::Execute;
+if (HasDependency(descriptorRole)) {
+    // Bind descriptor in Compile phase
+}
+if (HasExecute(descriptorRole)) {
+    // Re-bind descriptor in Execute phase (transient resources)
+}
+```
+
+**Purpose**: Flexible descriptor binding semantics - enables slots used in multiple lifecycle phases
+
+**Key Insight**: Bitwise flags enable combined roles (Dependency | Execute) for descriptors that need compile-time dependency tracking AND runtime rebinding (e.g., per-frame resources).
+
+**Location**: `RenderGraph/include/Data/Core/ResourceConfig.h`
+
+---
+
+### 14. Deferred Descriptor Binding Pattern (November 8, 2025 - Phase G)
+**Classes**: `DescriptorSetNode`, `TypedConnection` (PostCompile hooks)
+
+**Implementation**:
+```cpp
+// DescriptorSetNode splits descriptor binding across lifecycle phases
+class DescriptorSetNode {
+    void CompileImpl(Context& ctx) override {
+        // 1. Create descriptor resources
+        CreateDescriptorSetLayout();
+        CreateDescriptorPool();
+        AllocateDescriptorSets();
+
+        // 2. Bind Dependency-role descriptors (static resources)
+        PopulateDependencyDescriptors();
+
+        // 3. Mark node for initial Execute binding
+        SetFlag(NodeFlags::NeedsInitialBind);
+    }
+
+    void ExecuteImpl(Context& ctx) override {
+        // 4. Bind Execute-role descriptors (transient/per-frame resources)
+        if (HasFlag(NodeFlags::NeedsInitialBind)) {
+            PopulateExecuteDescriptors();
+            ClearFlag(NodeFlags::NeedsInitialBind);
+        }
+    }
+};
+
+// PostCompile hooks enable resource population before binding
+// TypedConnection.h invokes PostCompile after Compile completes
+void TypedConnection::PostCompileImpl() {
+    // Node populates output resources here
+    // DescriptorSetNode can now safely bind descriptors to these resources
+}
+```
+
+**Purpose**: Clean separation - Compile creates resources, Execute binds them. Enables PostCompile hooks to populate resources before descriptor binding.
+
+**Key Features**:
+1. **Dependency descriptors**: Bound once in Compile (static resources like textures, samplers)
+2. **Execute descriptors**: Bound every Execute (transient resources like per-frame UBOs)
+3. **PostCompile hooks**: Populate outputs after Compile, before Execute
+4. **Per-frame descriptor sets**: Allocated once, bound every frame
+
+**Benefits**:
+- Zero validation errors (resources exist before binding)
+- Generalized architecture (no hardcoded UBO/MVP logic)
+- Supports dynamic resource updates (swapchain recreation)
+
+**Location**: `RenderGraph/src/Nodes/DescriptorSetNode.cpp`, `RenderGraph/include/Core/TypedConnection.h`
+
+---
+
+### 15. NodeFlags Enum Pattern (November 8, 2025 - Phase G)
+**Classes**: `DescriptorSetNode` (example implementation)
+
+**Implementation**:
+```cpp
+// Node state flags (bitwise combinable)
+enum class NodeFlags : uint8_t {
+    None                = 0,
+    Paused              = 1 << 0,  // Rendering paused (swapchain recreation)
+    NeedsInitialBind    = 1 << 1,  // Needs to bind Dependency descriptors on first Execute
+    // Add more flags as needed
+};
+
+// State helper functions (inline for zero overhead)
+inline bool HasFlag(NodeFlags flag) const {
+    return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
+}
+
+inline void SetFlag(NodeFlags flag) {
+    flags = static_cast<NodeFlags>(static_cast<uint8_t>(flags) | static_cast<uint8_t>(flag));
+}
+
+inline void ClearFlag(NodeFlags flag) {
+    flags = static_cast<NodeFlags>(static_cast<uint8_t>(flags) & ~static_cast<uint8_t>(flag));
+}
+
+// Semantic accessors built on flags
+inline bool IsPaused() const { return HasFlag(NodeFlags::Paused); }
+inline bool IsRendering() const { return !IsPaused(); }
+
+// Single consolidated member variable
+NodeFlags flags = NodeFlags::None;
+```
+
+**Purpose**: Consolidated state management - replaces scattered bool member variables with single bitwise flag field
+
+**Benefits**:
+- Memory efficient (1 byte vs N bools)
+- Cache-friendly (single memory location)
+- Easy to extend (add new flags without member variables)
+- Clear semantics (flag names are self-documenting)
+
+**Example Usage**:
+```cpp
+// Before: bool isPaused; bool needsInitialBind; bool isDirty; (3+ bytes)
+// After: NodeFlags flags; (1 byte for 8 flags)
+
+SetFlag(NodeFlags::Paused);  // Pause rendering
+if (IsRendering()) {
+    // Only execute when not paused
+}
+```
+
+**Location**: `RenderGraph/include/Nodes/DescriptorSetNode.h` (lines 108-126)
+
+---
+
+### 16. Modularized CompileImpl Pattern (November 8, 2025 - Phase G)
+**Classes**: `DescriptorSetNode` (refactoring example)
+
+**Implementation**:
+```cpp
+// Before: Monolithic CompileImpl (~230 lines)
+void CompileImpl(Context& ctx) override {
+    // 200+ lines of descriptor layout creation, pool creation,
+    // descriptor set allocation, binding, UBO logic, etc.
+}
+
+// After: Focused helper methods (~80 lines in CompileImpl)
+void CompileImpl(Context& ctx) override {
+    CreateDescriptorSetLayout();       // ~20 lines
+    CreateDescriptorPool();            // ~15 lines
+    AllocateDescriptorSets();          // ~10 lines
+    PopulateDependencyDescriptors();   // ~20 lines
+    SetFlag(NodeFlags::NeedsInitialBind);
+}
+
+// Private helper methods (single responsibility)
+void CreateDescriptorSetLayout() {
+    // Only handles VkDescriptorSetLayout creation
+}
+
+void CreateDescriptorPool() {
+    // Only handles VkDescriptorPool creation with size calculation
+}
+
+void AllocateDescriptorSets() {
+    // Only handles descriptor set allocation from pool
+}
+
+void PopulateDependencyDescriptors() {
+    // Only handles binding Dependency-role descriptors
+}
+
+void PopulateExecuteDescriptors() {
+    // Only handles binding Execute-role descriptors (called from Execute)
+}
+```
+
+**Purpose**: Decompose monolithic lifecycle methods into focused, single-responsibility helper functions
+
+**Benefits**:
+- Improved readability (method names document intent)
+- Easier testing (test individual helpers)
+- Reduced cognitive load (each helper <20 lines)
+- Better error isolation (stack trace shows which helper failed)
+- Adheres to cpp-programming-guidelines.md (<20 instructions per function)
+
+**Key Insight**: Extract each conceptual step into a private helper method. CompileImpl becomes high-level orchestration, helpers contain implementation details.
+
+**Location**: `RenderGraph/src/Nodes/DescriptorSetNode.cpp`
+
+---
+
 ## Legacy Design Patterns (Reference)
 
 ### 1. Singleton Pattern

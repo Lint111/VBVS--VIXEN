@@ -74,6 +74,8 @@ cmake --build build --config Release
 - **C Standard**: C23 (required)
 - **Output Directory**: `binaries/`
 - **Configurations**: Debug, Release, MinSizeRel, RelWithDebInfo
+- **Precompiled Headers**: RenderGraph (15 headers), ShaderManagement (9 headers)
+- **Build Optimizations**: Ccache/sccache support, Ninja generator, Unity builds
 
 ### IDE Configuration
 
@@ -81,6 +83,9 @@ cmake --build build --config Release
 - **IntelliSense**: Configured with Vulkan SDK include paths
 - **File Associations**: C++ headers and sources
 - **Build Tasks**: CMake integration
+- **Testing**: Test Explorer integration with GoogleTest
+- **Coverage**: LCOV visualization with Coverage Gutters extension
+- **Test Discovery**: `testMate.cpp.test.executables` pattern matching
 
 ## Dependencies
 
@@ -150,9 +155,11 @@ cmake --build build --config Debug
 - **Visual Studio Debugger**: Attach to executable in `binaries/`
 
 ### Testing Approach
-- Manual testing with console output verification
-- Validation layer error checking
-- Visual confirmation of rendering (when applicable)
+- **Automated Testing**: GoogleTest framework with 10 test suites
+- **Coverage Analysis**: 40% coverage target, LCOV visualization
+- **VS Code Integration**: Test Explorer, one-click debugging
+- **Validation Layers**: Comprehensive Vulkan API error checking
+- **Visual Confirmation**: Rendering output verification
 
 ## Tool Usage Patterns
 
@@ -161,6 +168,15 @@ cmake --build build --config Debug
 - Generates Visual Studio solution files
 - Configures include/link directories automatically
 - Handles debug/release configurations
+- **Modular Library Structure**: RenderGraph, EventBus, ShaderManagement, CashSystem, ResourceManagement, Logger, VulkanResources
+- **Testing Support**: GoogleTest framework, CTest integration, ENABLE_COVERAGE option for LCOV
+
+### Testing Framework (November 2025)
+- **GoogleTest**: Unit testing framework (10 test suites)
+- **Coverage**: 40% achieved (ResourceBudgetManager 90%, DeferredDestruction 95%, StatefulContainer 85%, SlotTask 90%, GraphTopology 90%)
+- **VS Code Integration**: Test Explorer hierarchical view, coverage gutters (green/orange/red)
+- **Test Suites**: ResourceManagement, GraphTopology, ShaderManagement, CashSystem, EventBus, NodeInstance, TypedConnection, SlotTask, StatefulContainer, DeferredDestruction
+- **Documentation**: `docs/TEST_COVERAGE.md` (~400 pages), `docs/VS_CODE_TESTING_SETUP.md` (~800 pages)
 
 ### GLSL Compiler
 - **Runtime**: Uses glslang library for on-the-fly compilation

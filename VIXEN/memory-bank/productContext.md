@@ -2,91 +2,125 @@
 
 ## Why This Project Exists
 
-This project exists to provide a structured, hands-on learning path for mastering Vulkan graphics programming. Unlike tutorials that abstract away complexity, this project builds understanding from the ground up by implementing every step of the Vulkan initialization pipeline.
+**Primary Mission** (November 2025): VIXEN is a **voxel ray tracing research platform** for comparative pipeline analysis targeting academic publication (May 2026).
+
+**Secondary Mission**: Provide a structured, production-quality implementation of modern graph-based rendering architecture demonstrating industry-standard patterns (Unity HDRP, Unreal RDG).
+
+**Legacy Origin**: Originally a hands-on learning path for Vulkan fundamentals, now evolved into a research-grade codebase.
 
 ## Problem It Solves
 
-### Learning Challenge
-Vulkan has a steep learning curve due to its explicit, low-level nature. Many developers struggle to:
-- Understand the initialization sequence
-- Manage the verbose API correctly
-- Handle resources and memory properly
-- Debug validation layer errors
-- Bridge the gap between theory and practice
+### Research Challenge
+**Question**: How do different Vulkan ray tracing/marching pipeline architectures affect rendering performance, GPU bandwidth utilization, and scalability for data-driven voxel rendering?
+
+**Gap in Literature**: Limited comparative analysis of Vulkan-specific pipelines (compute shader, fragment shader, hardware RT, hybrid) for voxel rendering at scale.
+
+**Test Matrix**: 180 configurations (4 pipelines × 5 resolutions × 3 densities × 3 algorithms)
+
+### Engineering Challenge
+Production-quality graph-based rendering requires:
+- **Type-safe resource management** - Compile-time validation eliminates runtime errors
+- **Automated testing** - 40% coverage ensures correctness
+- **Comprehensive logging** - ILoggable interface enables debugging
+- **Flexible architecture** - Variadic nodes, lifecycle hooks, context system
+- **Performance profiling** - Timestamp queries, bandwidth monitoring, CSV export
 
 ### Solution Approach
-This project provides:
-- **Step-by-step implementation** following chapter progression
-- **Clear architecture** with separation of concerns
-- **Proper error handling** and validation from the start
-- **Well-documented code** with explanatory comments
-- **Foundation for expansion** - each chapter builds on the previous
+VIXEN provides:
+- **Research-Grade Infrastructure** - Testing, logging, profiling built-in from the start
+- **Reproducible Results** - Deterministic execution, fixed timestep loops
+- **Automated Testing** - Headless rendering, 180-config test matrix
+- **Open Source Research** - All code, data, and analysis tools publicly available
+- **Academic Rigor** - 24-paper bibliography, validated metrics
 
 ## How It Should Work
 
-### User Experience (Developer Learning Journey)
+### Research Workflow
 
-1. **Chapter-by-Chapter Progression**
-   - Each chapter introduces new Vulkan concepts
-   - Code builds incrementally
-   - Previous chapters remain as reference
+**Test Execution**:
+1. Configure test matrix (JSON specification)
+2. Run automated benchmark suite (headless rendering)
+3. Collect metrics (frame time, GPU time, bandwidth, VRAM)
+4. Export results (CSV with 300 frames per configuration)
+5. Analyze data (statistical summaries, visualizations)
 
-2. **Clear Code Organization**
-   - Each Vulkan subsystem has its own class
-   - Responsibilities are well-defined
-   - Easy to locate and understand specific functionality
+**Development Workflow**:
+1. **Write tests first** - GoogleTest suites with expected behavior
+2. **Implement nodes** - TypedNode with compile-time slot validation
+3. **Run coverage** - LCOV visualization in VS Code
+4. **Check logs** - ILoggable interface with LOG_* macros
+5. **Profile performance** - Timestamp queries, bandwidth counters
 
-3. **Immediate Feedback**
-   - Validation layers provide detailed error information
-   - Build system catches errors early
-   - Code runs and produces visible results
+### Current Platform Capabilities
 
-4. **Reference Implementation**
-   - Can be used as template for future projects
-   - Demonstrates best practices
-   - Shows correct API usage patterns
+**Graph Construction**:
+- 19+ node types (Window, Device, SwapChain, RenderPass, Framebuffer, Pipeline, etc.)
+- TypedNode API with `In()`/`Out()` compile-time validation
+- Variadic nodes for dynamic slot arrays
+- ConnectVariadic API for runtime wiring
 
-## Current Chapter Focus: Device Handshake
+**Execution Model**:
+- Multi-rate loop system (per-frame, fixed 60Hz, fixed 120Hz)
+- Frame-in-flight synchronization (4 concurrent frames)
+- Two-tier sync (CPU-GPU fences, GPU-GPU semaphores)
+- Present fences (VK_EXT_swapchain_maintenance1)
 
-### What Users Should Experience
+**Infrastructure**:
+- Testing framework (40% coverage, 10 test suites)
+- Logging system (LOG_TRACE/DEBUG/INFO/WARNING/ERROR)
+- Context system (SetupContext, CompileContext, ExecuteContext, CleanupContext)
+- Lifecycle hooks (6 graph phases + 8 node phases = 14 hooks)
 
-Running the application should:
-1. Initialize Vulkan instance successfully
-2. Enumerate available physical devices (GPUs)
-3. Display device information (optional, for learning)
-4. Select appropriate physical device
-5. Create logical device with required queues
-6. Exit cleanly with proper resource destruction
+**Performance**:
+- Persistent cache (9 cachers with async save/load)
+- Precompiled headers (2-3× build speedup)
+- Zero-overhead abstractions (std::variant, templates)
+- Zero validation errors
 
-### Expected Output
-- Console output showing initialization steps
-- Validation layer messages (if enabled)
-- Successful completion or clear error messages
-- No memory leaks or resource leaks
+### Expected Output (Automated Testing)
+- CSV files with per-frame metrics (frame_time, gpu_time, bandwidth, vram)
+- Statistical summaries (min, max, mean, stddev, percentiles)
+- Performance comparisons (pipeline A vs B at resolution X)
+- Visualization-ready data (JSON export)
 
 ## Design Philosophy
 
-### Explicitness Over Convenience
-- Show all Vulkan calls explicitly
-- Don't hide complexity in helper functions too early
-- Make the learning visible in the code
+### Research-Grade Quality
+- **Reproducible Results** - Deterministic execution, fixed timestep loops
+- **Validated Metrics** - Compare bandwidth measurements against Nsight Graphics
+- **Statistical Rigor** - Rolling window statistics, percentile analysis
+- **Open Source** - All code, data, and methodology publicly available
 
-### Correctness Over Performance
-- Prioritize proper API usage
-- Implement validation and error checking
-- Performance optimization comes later
+### Type Safety First
+- Compile-time slot validation (`In()`/`Out()` API)
+- Zero-overhead abstractions (std::variant, templates)
+- RAII throughout (smart pointers, no raw new/delete)
+- Const-correctness on member functions
 
-### Incrementalism Over Completeness
-- Build working code at each chapter
-- Each addition is testable
-- Refactor as understanding grows
+### Test-Driven Architecture
+- Write tests before implementation
+- 40% coverage target (critical paths)
+- GoogleTest integration with VS Code Test Explorer
+- LCOV visualization for coverage gaps
+
+### Infrastructure-First Development
+- Testing framework (GoogleTest, LCOV)
+- Logging system (ILoggable, LOG_* macros)
+- Context system (phase-specific typed contexts)
+- Lifecycle hooks (14 hooks for fine-grained control)
 
 ## Future Vision
 
-As chapters progress, this project should evolve into:
-- A rendering engine with swapchain and presentation
-- Shader pipeline implementation
-- Texture and buffer management
-- Advanced Vulkan features (compute shaders, ray tracing, etc.)
+**Short-Term** (Phases H-N, by May 2026):
+- Complete 4 ray tracing/marching pipelines
+- Automated testing framework (180 configurations)
+- Performance profiling system
+- Research paper submission
 
-Each addition maintains the core philosophy: clear, correct, educational code.
+**Long-Term** (Phases N+1, N+2, by August 2026):
+- Hybrid RTX surface-skin pipeline (publication-worthy innovation)
+- GigaVoxels streaming (128× memory reduction)
+- Extended research (270 configurations total)
+- Journal publication
+
+Each addition maintains research focus: reproducible, validated, publishable results.

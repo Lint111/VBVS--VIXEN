@@ -1,8 +1,8 @@
 # Progress
 
-## Current State: Phase G COMPLETE ✅ → Phase H Starting
+## Current State: Phases 0-G + Testing/Infrastructure COMPLETE ✅ → Phase H 60% Complete
 
-**Last Updated**: November 5, 2025
+**Last Updated**: November 8, 2025
 
 **Phase 0.1 Per-Frame Resources**: ✅ COMPLETE
 - Created PerFrameResources helper class (ring buffer pattern)
@@ -118,15 +118,27 @@
 - All 17 nodes compile successfully
 - Build successful with zero errors
 
-**Phase G (Compute Shader Pipeline)**: ✅ COMPLETE (November 2, 2025)
-- ComputePipelineNode implemented with automatic descriptor layout generation
-- ComputeDispatchNode created for generic compute shader dispatch
-- Ray marching compute shader (ComputeTest.comp) rendering animated gradients
-- Dynamic dispatch calculation from swapchain extent (8x8 workgroups)
-- Per-frame push constants (time, frame) for animation
-- Command buffer re-recording every frame with updated push constants
-- Performance logger cleanup (proper parent-child hierarchy destruction)
-- **Known Issue**: Minor time stutter on swapchain rebuild (tracked for future optimization)
+**Phase G (SlotRole System & Descriptor Binding Refactor)**: ✅ COMPLETE (November 8, 2025)
+- **SlotRole Bitwise Flags**: Dependency | Execute flags enable combined roles
+- **Helper Functions**: HasDependency(), HasExecute(), IsDependencyOnly(), IsExecuteOnly()
+- **DescriptorSetNode Refactor**: CompileImpl reduced from ~230 lines to ~80 lines
+- **Helper Methods**: 5 focused methods extracted (CreateDescriptorSetLayout, CreateDescriptorPool, etc.)
+- **NodeFlags Enum**: Consolidated state management pattern (replaces scattered bool flags)
+- **Deferred Descriptor Binding**: Execute phase binding instead of Compile phase
+- **PostCompile Hooks**: Resource population before descriptor binding
+- **Per-Frame Descriptor Sets**: Generalized binding infrastructure (kept perFrameImageInfos/BufferInfos)
+- **Validation Errors**: Zero Vulkan validation errors (fixed descriptor binding issues)
+- **Generalization**: Removed hardcoded MVP/rotation/UBO logic from DescriptorSetNode
+
+## Infrastructure Systems Completed (October-November 2025)
+
+| System | Date | Key Features |
+|--------|------|--------------|
+| **Testing Infrastructure** | November 5, 2025 | 40% coverage, 10 test suites (ResourceBudgetManager, DeferredDestruction, StatefulContainer, SlotTask, GraphTopology), VS Code Test Explorer integration, LCOV coverage visualization |
+| **Logging System Refactor** | November 8, 2025 | ILoggable interface (namespace-independent), LOG_TRACE/DEBUG/INFO/WARNING/ERROR macros, NODE_LOG_* variants, integrated with GraphLifecycleHooks/GraphTopology/ShaderLibrary |
+| **Variadic Node System** | November 5-8, 2025 | VariadicTypedNode base class, dynamic slot discovery, ConnectVariadic API, input/output slot arrays, used by GraphLifecycleHooks and context nodes |
+| **Context System Refactor** | November 8, 2025 | Phase-specific typed contexts (SetupContext, CompileContext, ExecuteContext, CleanupContext), safe cross-phase data passing, replaces void* pattern |
+| **GraphLifecycleHooks System** | November 8, 2025 | 6 graph lifecycle phases (PreSetup, PostSetup, PreCompile, PostCompile, PreExecute, PostExecute), 8 node lifecycle phases, 14 total hooks, slot role metadata integration |
 
 **Testing Infrastructure (November 5, 2025)**: ✅ COMPLETE
 - Test coverage improved from 25% → 40%
@@ -153,12 +165,19 @@
 - ShaderManagement Phases 0-5 (reflection automation, descriptor layouts, push constants) ✅
 - Phase 0.1-0.7 (Synchronization infrastructure) ✅
 
-**Next**: Phase H (Voxel Data Infrastructure) - 3-4 weeks
-- Sparse voxel octree (SVO) data structure
-- Procedural generation (Cornell Box, Cave, Urban Grid)
-- GPU buffer upload utilities
-- Design complete: OctreeDesign.md (~25 pages)
-- Target completion: Week of December 2, 2025
+**Phase H (Voxel Data Infrastructure)**: 60% COMPLETE (November 8, 2025)
+- ✅ CameraNode implementation (view/projection matrices)
+- ✅ VoxelGridNode implementation (3D grid data structure)
+- ✅ Research shader (VoxelRayMarch.comp - 245 lines, DDA traversal)
+- ⏳ Sparse voxel octree (SVO) data structure (pending)
+- ⏳ Procedural scene generation (Cornell Box, Cave, Urban Grid) (pending)
+- Design complete: OctreeDesign.md (~25 pages), TestScenes.md (~120 pages)
+- Target completion: Week of November 18, 2025
+
+**Next**: Complete Phase H remaining tasks (40%)
+- Implement octree data structure (2-3 days)
+- Implement procedural scene generators (2-3 days)
+- GPU buffer upload utilities (1 day)
 
 ---
 

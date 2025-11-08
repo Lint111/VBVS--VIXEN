@@ -12,11 +12,18 @@ A learning-focused Vulkan graphics engine implementing a **graph-based rendering
 The core architecture is a **node-based render graph** where rendering operations are modular, composable nodes connected into a directed acyclic graph (DAG).
 
 ### Key Achievements
-1. **Variant Resource System** - 25+ Vulkan types with macro-based registry, zero-overhead type safety
+1. **Variant Resource System** - 29+ Vulkan types with macro-based registry, zero-overhead type safety
 2. **Typed Node API** - `In()`/`Out()` methods with compile-time slot validation
 3. **EventBus Integration** - Decoupled invalidation cascade (WindowResize → SwapChainInvalidated → Framebuffer rebuild)
 4. **Clean Build State** - Zero warnings, professional codebase quality
 5. **Protected API Enforcement** - Nodes use only high-level typed API, graph manages low-level wiring
+6. **Testing Infrastructure** - 40% coverage, 10 test suites, VS Code integration with LCOV visualization
+7. **Logging System** - ILoggable interface with LOG_*/NODE_LOG_* macros, namespace-independent
+8. **Variadic Node System** - Dynamic slot discovery, ConnectVariadic API for runtime slot arrays
+9. **Context System** - Phase-specific typed contexts (SetupContext, CompileContext, ExecuteContext, CleanupContext)
+10. **Lifecycle Hooks** - 6 graph phases + 8 node phases = 14 total hooks for fine-grained control
+11. **SlotRole Bitwise Flags** - Dependency | Execute combined roles for flexible descriptor binding
+12. **Phase G Complete** - Descriptor binding refactored, generalized architecture, zero validation errors
 
 ## Goals
 
@@ -40,16 +47,25 @@ The core architecture is a **node-based render graph** where rendering operation
 ## Scope
 ### Completed Systems ✅
 - **Core RenderGraph Infrastructure** - Graph compilation, execution, topology analysis
-- **Resource Variant System** - Type-safe `std::variant` replacing manual type-punning
+- **Resource Variant System** - Type-safe `std::variant` replacing manual type-punning (29+ types)
 - **Typed Node Base Classes** - `TypedNode<Config>` with macro-generated storage
-- **EventBus** - Queue-based event system for node invalidation
-- **Node Implementations** - 15+ nodes (Window, SwapChain, DepthBuffer, RenderPass, etc.)
-- **Build System** - Modular CMake libraries with incremental compilation
+- **EventBus** - Queue-based event system for node invalidation, auto-incrementing message types
+- **Node Implementations** - 19+ nodes (Window, SwapChain, DepthBuffer, RenderPass, FrameSync, LoopBridge, BoolOp, etc.)
+- **Build System** - Modular CMake libraries with incremental compilation, PCH support
+- **Testing Framework** - GoogleTest, 40% coverage, VS Code integration, LCOV visualization
+- **Logging Infrastructure** - ILoggable interface, LOG_* macros, subsystem integration
+- **Variadic Nodes** - VariadicTypedNode base class, dynamic slot arrays
+- **Context System** - Phase-specific typed contexts (Setup/Compile/Execute/Cleanup)
+- **Lifecycle Hooks** - GraphLifecycleHooks with 14 hooks (6 graph + 8 node phases)
+- **ShaderManagement** - SPIRV reflection, SDI generation, descriptor automation (Phases 0-5)
+- **CashSystem** - 9 cachers with persistent cache, lazy deserialization, async save/load
+- **Synchronization** - Frame-in-flight, two-tier sync (fences/semaphores), present fences
+- **Phase G Complete** - SlotRole bitwise flags, deferred descriptor binding, generalized architecture
 
 ### In Progress 🔨
-- **Node Expansion** - Adding GeometryRender, Present, Pipeline nodes
-- **Graph Wiring** - Connecting nodes for complete rendering pipeline
-- **Architectural Refinement** - Addressing review recommendations (validation, encapsulation)
+- **Phase H: Voxel Infrastructure** - 60% complete (CameraNode ✓, VoxelGridNode ✓, VoxelRayMarch.comp ✓)
+- **Octree Data Structure** - Pending (design complete in OctreeDesign.md)
+- **Procedural Scene Generation** - Pending (design complete in TestScenes.md)
 
 ### Future Enhancements 🚀
 - **Parallelization** - Wave-based execution for multi-threaded rendering
