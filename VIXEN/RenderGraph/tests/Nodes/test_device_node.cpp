@@ -28,6 +28,11 @@
 #include "../../include/Data/Nodes/DeviceNodeConfig.h"
 #include <memory>
 
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
+
 using namespace Vixen::RenderGraph;
 
 // ============================================================================

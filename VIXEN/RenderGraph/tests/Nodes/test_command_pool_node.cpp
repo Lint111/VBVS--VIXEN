@@ -16,6 +16,11 @@
 
 using namespace Vixen::RenderGraph;
 
+// Define globals required by WindowNode and DeviceNode
+VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
+
 class CommandPoolNodeTest : public ::testing::Test {};
 
 // Configuration Tests
