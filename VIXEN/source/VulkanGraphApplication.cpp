@@ -905,17 +905,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
-    // Binding 0: outputImage (swapchain image view)
+    // Use Dependency|Execute to bind initially in Compile and update per-frame in Execute
+    // Binding 0: outputImage (swapchain image view) - changes per frame
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, VoxelRayMarch::outputImage, SlotRole::ExecuteOnly);
+                          descriptorGatherer, VoxelRayMarch::outputImage,
+                          SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 1: camera (uniform buffer)
+    // Binding 1: camera (uniform buffer) - updated per frame
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::camera, SlotRole::ExecuteOnly);
+                          descriptorGatherer, VoxelRayMarch::camera,
+                          SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 2: voxelGrid (combined image sampler)
+    // Binding 2: voxelGrid (combined image sampler) - static but bind in both phases for consistency
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER,
-                          descriptorGatherer, VoxelRayMarch::voxelGrid, SlotRole::ExecuteOnly);
+                          descriptorGatherer, VoxelRayMarch::voxelGrid,
+                          SlotRole::Dependency | SlotRole::Execute);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings

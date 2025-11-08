@@ -354,10 +354,10 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Build writes for ExecuteOnly (transient) bindings
+    // Build writes for Execute (transient) bindings
     auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
                                        perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
-                                       slotRoles, SlotRole::ExecuteOnly);
+                                       slotRoles, SlotRole::Execute);
 
     if (!writes.empty()) {
         vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint8_t>(writes.size()), writes.data(), 0, nullptr);
@@ -422,13 +422,19 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         }
 
         // Filter by slot role if provided
+        // Support combined roles (e.g., Dependency | ExecuteOnly)
+        // A binding matches the filter if it has ANY of the filter's flags set
         if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
             SlotRole bindingRole = slotRoles[binding.binding];
-            // Skip if role doesn't match filter (check bitwise for ExecuteOnly flag)
-            bool isExecuteOnly = static_cast<uint8_t>(bindingRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly);
-            bool filterIsExecuteOnly = static_cast<uint8_t>(roleFilter) & static_cast<uint8_t>(SlotRole::ExecuteOnly);
+            uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
+            uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
 
-            if (isExecuteOnly != filterIsExecuteOnly) {
+            // Check if binding has any of the filter flags
+            // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|ExecuteOnly)
+            // For ExecuteOnly filter (2): matches roles 2 (ExecuteOnly) or 3 (Dependency|ExecuteOnly)
+            bool matchesFilter = (bindingFlags & filterFlags) != 0;
+
+            if (!matchesFilter) {
                 continue;  // Skip this binding - doesn't match filter
             }
         }
