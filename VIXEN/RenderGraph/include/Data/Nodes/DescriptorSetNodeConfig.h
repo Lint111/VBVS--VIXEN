@@ -101,7 +101,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     INPUT_SLOT(IMAGE_INDEX, uint32_t, 5,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

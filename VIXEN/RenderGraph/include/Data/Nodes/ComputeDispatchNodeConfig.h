@@ -105,7 +105,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      */
     INPUT_SLOT(IMAGE_INDEX, uint32_t, 6,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
@@ -114,7 +114,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      */
     INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 7,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
@@ -123,7 +123,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      */
     INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 8,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

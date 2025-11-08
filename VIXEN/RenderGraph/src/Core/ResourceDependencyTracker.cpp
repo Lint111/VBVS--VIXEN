@@ -47,7 +47,7 @@ std::vector<NodeInstance*> ResourceDependencyTracker::GetDependenciesForNode(
 
             // Only consider this input for compile-time dependencies if the
             // consumer marked it as used during the last Compile() call. This
-            // allows ExecuteOnly/CleanupOnly accesses to be ignored for
+            // allows Execute/CleanupOnly accesses to be ignored for
             // compile-order dependency construction.
             if (!consumer->IsInputUsedInCompile(static_cast<uint32_t>(slotIndex), static_cast<uint32_t>(bundleIndex))) {
                 continue;

@@ -55,6 +55,9 @@ if(MSVC)
     message(STATUS "MSVC multi-processor compilation enabled")
 endif()
 
+# Generate compile_commands.json for better IDE integration
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Precompiled headers option
 option(USE_PRECOMPILED_HEADERS "Use precompiled headers" ON)
 

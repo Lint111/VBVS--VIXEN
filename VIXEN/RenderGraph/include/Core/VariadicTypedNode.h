@@ -503,7 +503,7 @@ protected:
             const auto& slotInfo = variadicSlots[i];
 
             // Skip validation for transient slots (ExecuteOnly) - they're populated in Execute phase
-            if (static_cast<uint8_t>(slotInfo.slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
+            if (slotInfo.slotRole & SlotRole::Execute) {
                 std::cout << "[VariadicTypedNode::ValidateVariadicInputsImpl] Skipping validation for transient slot "
                           << i << " (" << slotInfo.slotName << ") - will be populated in Execute phase\n";
                 continue;

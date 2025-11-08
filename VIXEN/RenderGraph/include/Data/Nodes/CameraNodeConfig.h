@@ -42,7 +42,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 
     INPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

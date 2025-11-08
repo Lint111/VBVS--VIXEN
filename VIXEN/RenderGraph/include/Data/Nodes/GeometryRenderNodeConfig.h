@@ -128,19 +128,19 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
 
     INPUT_SLOT(IMAGE_INDEX, uint32_t, 10,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 11,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 12,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

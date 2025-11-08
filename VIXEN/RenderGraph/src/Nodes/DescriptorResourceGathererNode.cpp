@@ -72,6 +72,13 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     // Gather resources from validated slots
     GatherResources(ctx);
 
+    // Debug: Log slot roles being output
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Outputting slot roles:");
+    for (size_t i = 0; i < slotRoleArray_.size(); ++i) {
+        uint8_t roleVal = static_cast<uint8_t>(slotRoleArray_[i]);
+        NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal));
+    }
+
     // Output resource array, slot roles, and pass through shader bundle
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleArray_);
@@ -91,7 +98,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
     for (size_t i = 0; i < variadicCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo || !(static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly))) {
+        if (!slotInfo || !(static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute))) {
             continue;  // Skip Dependency slots (already gathered in Compile)
         }
 
@@ -221,8 +228,8 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
 
         if (!slotInfo) continue;
 
-        // Skip validation for transient slots (ExecuteOnly) - validated in Execute phase
-        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
+        // Skip validation for transient slots (Execute) - validated in Execute phase
+        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute)) {
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping transient slot " + std::to_string(i) + " (" + slotInfo->slotName + ") - will be validated in Execute phase");
             continue;
         }
@@ -263,20 +270,24 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
             continue;
         }
 
-        // For transient slots (marked ExecuteOnly), fetch resource from source node
-        // These don't exist during Compile phase, so skip them here (will be fetched in Execute)
-        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::ExecuteOnly)) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Skipping transient slot " + std::to_string(i) + " (binding=" + std::to_string(slotInfo->binding) + ") - will fetch in Execute phase");
+        uint32_t binding = slotInfo->binding;
+
+        // Store slot role even for Execute slots (needed for filtering in DescriptorSetNode)
+        slotRoleArray_[binding] = slotInfo->slotRole;
+
+        // For transient slots (marked Execute), skip resource gathering in Compile
+        // Resources will be fetched in Execute phase when they exist
+        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute)) {
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - resource will be gathered in Execute phase");
             continue;
         }
 
         // Slot should have valid resource after validation (for non-transient)
         if (!slotInfo->resource) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Validated slot " + std::to_string(i) + " (binding=" + std::to_string(slotInfo->binding) + ") has null resource");
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Validated slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ") has null resource");
             continue;
         }
 
-        uint32_t binding = slotInfo->binding;
         auto variant = slotInfo->resource->GetHandleVariant();
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Slot " + std::to_string(i) + " variant index=" + std::to_string(variant.index()) + ", resource type=" + std::to_string(static_cast<int>(slotInfo->resource->GetType())) + ", isValid=" + std::to_string(slotInfo->resource->IsValid()) + ", hasFieldExtraction=" + std::to_string(slotInfo->hasFieldExtraction));
@@ -319,7 +330,7 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
         // Regular resources - store directly at binding index
         else {
             resourceArray_[binding] = variant;
-            slotRoleArray_[binding] = slotInfo->slotRole;  // Store role for filtering
+            // Note: slotRoleArray_[binding] already set earlier in this function
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " + std::to_string(binding) + " (" + slotInfo->slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(slotInfo->slotRole)));
         }
     }

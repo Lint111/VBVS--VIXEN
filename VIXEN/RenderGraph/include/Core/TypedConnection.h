@@ -623,9 +623,7 @@ private:
         const ResourceDescriptor* outputDesc = sourceNodeInst->GetNodeType()->GetOutputDescriptor(sourceSlotIndex);
         if (outputDesc && outputDesc->lifetime == ResourceLifetime::Transient) {
             std::cout << "[ConnectVariadic] Detected transient output - marking slot as Dependency|ExecuteOnly\n";
-            return static_cast<SlotRole>(
-                static_cast<uint8_t>(SlotRole::Dependency) | static_cast<uint8_t>(SlotRole::ExecuteOnly)
-            );
+            return SlotRole::Dependency | SlotRole::Execute;
         } else {
             std::cout << "[ConnectVariadic] Marking slot as Dependency (static resource)\n";
             return SlotRole::Dependency;

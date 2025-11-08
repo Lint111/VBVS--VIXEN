@@ -44,7 +44,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     // ===== INPUTS (6) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
@@ -56,13 +56,13 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
 
     INPUT_SLOT(IMAGE_INDEX, uint32_t, 2,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 3,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
@@ -74,7 +74,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
 
     INPUT_SLOT(PRESENT_FENCE_ARRAY, std::vector<VkFence>, 5,
         SlotNullability::Optional,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

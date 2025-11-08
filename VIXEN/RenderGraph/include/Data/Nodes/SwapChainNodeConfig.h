@@ -93,13 +93,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
     INPUT_SLOT(CURRENT_FRAME_INDEX, uint32_t, 8,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(PRESENT_FENCES_ARRAY, std::vector<VkFence>, 9,
         SlotNullability::Required,
-        SlotRole::ExecuteOnly,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

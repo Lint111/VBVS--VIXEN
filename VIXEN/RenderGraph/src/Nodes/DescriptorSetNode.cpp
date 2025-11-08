@@ -256,9 +256,18 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DescriptorSetNode::Compile] Created " + std::to_string(imageCount) + " per-frame UBOs");
 
     // Phase H: Bind Dependency (static) descriptors in Compile
-    // ExecuteOnly (transient) descriptors bound per-frame in Execute
+    // Execute (transient) descriptors bound per-frame in Execute
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
     auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
+
+    // Debug: Log received slot roles
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Received " + std::to_string(slotRoles.size()) + " slot roles:");
+    for (size_t i = 0; i < slotRoles.size(); ++i) {
+        uint8_t roleVal = static_cast<uint8_t>(slotRoles[i]);
+        NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal) +
+                      " (Dependency=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Dependency)) +
+                      ", Execute=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Execute)) + ")");
+    }
 
     // Initialize persistent descriptor info storage (node scope for lifetime)
     perFrameImageInfos.resize(imageCount);
@@ -274,6 +283,8 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
             vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
             NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Bound " + std::to_string(writes.size()) +
                           " static descriptor(s) for frame " + std::to_string(i));
+        } else {
+            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] No Dependency descriptors to bind for frame " + std::to_string(i));
         }
     }
 
@@ -339,7 +350,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
 
-    // Update transient (ExecuteOnly) descriptor bindings only
+    // Update transient (Execute) descriptor bindings only
     // Dependency bindings updated in first Execute call (they persist across frames)
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
@@ -422,7 +433,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         }
 
         // Filter by slot role if provided
-        // Support combined roles (e.g., Dependency | ExecuteOnly)
+        // Support combined roles (e.g., Dependency | Execute)
         // A binding matches the filter if it has ANY of the filter's flags set
         if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
             SlotRole bindingRole = slotRoles[binding.binding];
@@ -430,9 +441,14 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
             uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
 
             // Check if binding has any of the filter flags
-            // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|ExecuteOnly)
-            // For ExecuteOnly filter (2): matches roles 2 (ExecuteOnly) or 3 (Dependency|ExecuteOnly)
+            // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
+            // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
             bool matchesFilter = (bindingFlags & filterFlags) != 0;
+
+            NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) +
+                          " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
+                          ", filter=" + std::to_string(filterFlags) +
+                          ", matches=" + (matchesFilter ? "YES" : "NO"));
 
             if (!matchesFilter) {
                 continue;  // Skip this binding - doesn't match filter
