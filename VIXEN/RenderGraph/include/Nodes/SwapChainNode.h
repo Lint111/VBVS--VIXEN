@@ -3,7 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "VulkanSwapChain.h"
-#include "Nodes/SwapChainNodeConfig.h"
+#include "Data/Nodes/SwapChainNodeConfig.h"
 #include <memory>
 #include <vector>
 
@@ -41,9 +41,11 @@ public:
  * - swapchain: VkSwapchainKHR handle
  * - colorImageViews: Array of swapchain image views
  * - currentImageIndex: Currently acquired image index
+ * - currentFrameImageView: VkImageView for the current frame's swapchain image
  */
 class SwapChainNode : public TypedNode<SwapChainNodeConfig> {
 public:
+
     SwapChainNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -70,10 +72,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 
 private:

@@ -22,11 +22,22 @@ target_include_directories(CashSystem PUBLIC
 
 # Link dependencies here if/when required
 target_link_libraries(CashSystem PUBLIC
-    Vulkan::Vulkan
     Logger
     EventBus  # For device invalidation event subscription
     ShaderManagement  # For ShaderDataBundle and reflection data
 )
+
+# Link Vulkan (conditional on build mode)
+if(VULKAN_TRIMMED_BUILD_ACTIVE)
+    # Trimmed build: headers only
+    if(TARGET Vulkan::Headers)
+        target_link_libraries(CashSystem PUBLIC Vulkan::Headers)
+    endif()
+    target_include_directories(CashSystem PUBLIC ${VULKAN_HEADERS_INCLUDE_DIR})
+else()
+    # Full build: Vulkan runtime library
+    target_link_libraries(CashSystem PUBLIC Vulkan::Vulkan)
+endif()
 
 # Link ProjectHash so CashSystem uses the same hash provider includes/links
 target_link_libraries(CashSystem PRIVATE ProjectHash)

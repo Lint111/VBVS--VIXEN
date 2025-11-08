@@ -29,9 +29,16 @@ VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 #include "Nodes/PresentNode.h"
 #include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
 #include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
-#include "Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
+#include "Data/Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
 #include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
 #include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
+#include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
+#include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
+#include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
+#include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
+#include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
+#include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
+#include "../generated/sdi/VoxelRayMarchNames.h"  // Generated shader binding constants
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -47,7 +54,10 @@ VulkanGraphApplication::VulkanGraphApplication()
       width(500),
       height(500) {
 
+    // Enable main logger for application-level logging
     if (mainLogger) {
+        mainLogger->SetEnabled(true);
+        mainLogger->SetTerminalOutput(false);  // Set to true to see logs in real-time
         mainLogger->Info("VulkanGraphApplication (Graph-based) Starting");
     }
 }
@@ -62,36 +72,51 @@ VulkanGraphApplication* VulkanGraphApplication::GetInstance() {
 }
 
 void VulkanGraphApplication::Initialize() {
+    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - START\n" << std::flush;
     mainLogger->Info("VulkanGraphApplication Initialize START");
 
+    std::cout << "[DEBUG] About to call VulkanApplicationBase::Initialize()\n" << std::flush;
     // Initialize base Vulkan core (instance, device)
     VulkanApplicationBase::Initialize();
+    std::cout << "[DEBUG] VulkanApplicationBase::Initialize() returned\n" << std::flush;
 
     mainLogger->Info("VulkanGraphApplication Base initialized");
 
+    std::cout << "[DEBUG] About to export instance globally\n" << std::flush;
     // PHASE 1: Export instance globally for nodes to access
     g_VulkanInstance = instanceObj.instance;
+    std::cout << "[DEBUG] Instance exported globally\n" << std::flush;
 
     mainLogger->Info("VulkanGraphApplication Instance exported globally");
 
+    std::cout << "[DEBUG] Creating node type registry\n" << std::flush;
     // Create node type registry
     nodeRegistry = std::make_unique<NodeTypeRegistry>();
+    std::cout << "[DEBUG] Node type registry created\n" << std::flush;
 
+    std::cout << "[DEBUG] About to register node types\n" << std::flush;
     // Register all node types
     RegisterNodeTypes();
+    std::cout << "[DEBUG] Node types registered\n" << std::flush;
 
+    std::cout << "[DEBUG] Creating MessageBus\n" << std::flush;
     // Create render graph
     // Create a MessageBus for event-driven coordination and inject into RenderGraph
     messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
+    std::cout << "[DEBUG] MessageBus created\n" << std::flush;
 
+    std::cout << "[DEBUG] Initializing MainCacher\n" << std::flush;
     // Initialize MainCacher and connect it to MessageBus for device invalidation events
     auto& mainCacher = CashSystem::MainCacher::Instance();
+    std::cout << "[DEBUG] MainCacher instance obtained\n" << std::flush;
     mainCacher.Initialize(messageBus.get());
+    std::cout << "[DEBUG] MainCacher initialized\n" << std::flush;
     mainLogger->Info("MainCacher initialized and subscribed to device invalidation events");
 
     // NOTE: Cache loading will happen automatically when devices request cached resources
     // This is because we need VulkanDevice to be created first before we can load caches
 
+    std::cout << "[DEBUG] Creating RenderGraph\n" << std::flush;
     // Create RenderGraph with all dependencies (registry, messageBus, logger, mainCacher)
     renderGraph = std::make_unique<RenderGraph>(
         nodeRegistry.get(),
@@ -99,7 +124,9 @@ void VulkanGraphApplication::Initialize() {
         mainLogger.get(),
         &mainCacher
     );
+    std::cout << "[DEBUG] RenderGraph created\n" << std::flush;
 
+    std::cout << "[DEBUG] Subscribing to WindowCloseEvent\n" << std::flush;
     // Subscribe to shutdown events
     messageBus->Subscribe(
         Vixen::EventBus::WindowCloseEvent::TYPE,
@@ -108,7 +135,9 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
+    std::cout << "[DEBUG] WindowCloseEvent subscription complete\n" << std::flush;
 
+    std::cout << "[DEBUG] Subscribing to ShutdownAckEvent\n" << std::flush;
     messageBus->Subscribe(
         Vixen::EventBus::ShutdownAckEvent::TYPE,
         [this](const Vixen::EventBus::BaseEventMessage& msg) -> bool {
@@ -125,11 +154,13 @@ void VulkanGraphApplication::Initialize() {
             return true;
         }
     );
+    std::cout << "[DEBUG] ShutdownAckEvent subscription complete\n" << std::flush;
 
     if (mainLogger) {
         mainLogger->Info("RenderGraph created successfully");
     }
 
+    std::cout << "[DEBUG] Registering physics loop\n" << std::flush;
     // Phase 0.4: Register loops with the graph
     // Physics loop at 60Hz with multiple-step catchup
     physicsLoopID = renderGraph->RegisterLoop(LoopConfig{
@@ -138,49 +169,63 @@ void VulkanGraphApplication::Initialize() {
         LoopCatchupMode::MultipleSteps,
         0.25  // Max 250ms catchup
     });
+    std::cout << "[DEBUG] Physics loop registered with ID: " << physicsLoopID << "\n" << std::flush;
     mainLogger->Info("Registered PhysicsLoop (60Hz) with ID: " + std::to_string(physicsLoopID));
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication initialized successfully");
     }
+    std::cout << "[DEBUG] VulkanGraphApplication::Initialize() - COMPLETE\n" << std::flush;
 }
 
 void VulkanGraphApplication::Prepare() {
-    std::cout << "[VulkanGraphApplication::Prepare] START" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[VulkanGraphApplication::Prepare] START");
+    }
     isPrepared = false;
 
     try {
         // PHASE 1: Nodes manage their own resources
         // Build the render graph - nodes allocate their own resources
-        std::cout << "[VulkanGraphApplication::Prepare] Calling BuildRenderGraph..." << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling BuildRenderGraph...");
+        }
         BuildRenderGraph();
-        std::cout << "[VulkanGraphApplication::Prepare] BuildRenderGraph complete" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] BuildRenderGraph complete");
+        }
 
-        // Cache window handle for graceful shutdown
-        if (windowNodeHandle.IsValid()) {
-            auto* windowInst = renderGraph->GetInstance(windowNodeHandle);
-            if (windowInst) {
-                auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
-                if (windowNode) {
-                    windowHandle = windowNode->GetWindow();
-                }
+        // Get window handle for graceful shutdown
+        auto* windowInst = renderGraph->GetInstanceByName("main_window");
+        if (windowInst) {
+            auto* windowNode = dynamic_cast<Vixen::RenderGraph::WindowNode*>(windowInst);
+            if (windowNode) {
+                windowHandle = windowNode->GetWindow();
             }
         }
 
         // Compile the render graph - nodes set up their pipelines
-        std::cout << "[VulkanGraphApplication::Prepare] Calling CompileRenderGraph..." << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] Calling CompileRenderGraph...");
+        }
         CompileRenderGraph();
-        std::cout << "[VulkanGraphApplication::Prepare] CompileRenderGraph complete" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] CompileRenderGraph complete");
+        }
 
         isPrepared = true;
 
         if (mainLogger) {
             mainLogger->Info("VulkanGraphApplication prepared and ready to render");
         }
-        std::cout << "[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[VulkanGraphApplication::Prepare] SUCCESS - isPrepared = true");
+        }
     }
     catch (const std::exception& e) {
-        std::cerr << "[VulkanGraphApplication::Prepare] EXCEPTION: " << e.what() << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error(std::string("[VulkanGraphApplication::Prepare] EXCEPTION: ") + e.what());
+        }
         isPrepared = false;
         throw;  // Re-throw to let main() handle it
     }
@@ -250,12 +295,17 @@ void VulkanGraphApplication::Update() {
 }
 
 void VulkanGraphApplication::DeInitialize() {
+    // Prevent double cleanup (called from both main and destructor)
+    if (deinitialized) {
+        return;
+    }
+    deinitialized = true;
 
     // Before destroying the render graph, extract logs from the main logger.
     // Node instances register child loggers with the main logger; if we
     // destroy the graph first those child loggers are destroyed and their
     // entries won't appear in the aggregated log output.
-    if (mainLogger) {
+    if (mainLogger && mainLogger->IsEnabled()) {
         try {
             std::string logs = mainLogger->ExtractLogs();
             // Write logs into the binaries folder so logs are colocated with the build artifacts.
@@ -263,12 +313,12 @@ void VulkanGraphApplication::DeInitialize() {
             if (logFile.is_open()) {
                 logFile << logs;
                 logFile.close();
-                std::cout << "Logs written to binaries\\vulkan_app_log.txt" << std::endl;
+                mainLogger->Info("Logs written to binaries\\vulkan_app_log.txt");
             }
         } catch (...) {
             // Best-effort: don't throw during cleanup
         }
-        
+
         // Clear all child logger pointers before destroying nodes
         // This prevents dangling pointer access during final cleanup
         mainLogger->ClearChildren();
@@ -279,9 +329,13 @@ void VulkanGraphApplication::DeInitialize() {
     // This ensures all node-owned Vulkan resources (buffers, images, views, shaders) are destroyed
     // while the VkDevice is still valid.
     // Note: ConstantNode's cleanup callback will destroy the shader via registered callback
-    std::cout << "[DeInitialize] Destroying render graph..." << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[DeInitialize] Destroying render graph...");
+    }
     renderGraph.reset();
-    std::cout << "[DeInitialize] Render graph destroyed" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[DeInitialize] Render graph destroyed");
+    }
 
     // Destroy node registry
     nodeRegistry.reset();
@@ -289,7 +343,13 @@ void VulkanGraphApplication::DeInitialize() {
     // Graph nodes handle their own cleanup (including window)
 
     // Call base class cleanup (destroys device and instance)
+    if (mainLogger) {
+        mainLogger->Info("[DeInitialize] Calling base class DeInitialize...");
+    }
     VulkanApplicationBase::DeInitialize();
+    if (mainLogger) {
+        mainLogger->Info("[DeInitialize] Base class DeInitialize complete");
+    }
 
     if (mainLogger) {
         mainLogger->Info("VulkanGraphApplication deinitialized");
@@ -297,57 +357,38 @@ void VulkanGraphApplication::DeInitialize() {
 }
 
 void VulkanGraphApplication::CompileRenderGraph() {
-    std::cout << "[CompileRenderGraph] START" << std::endl;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] START");
+    }
     if (!renderGraph) {
         mainLogger->Error("Cannot compile render graph: RenderGraph not initialized");
-        std::cerr << "[CompileRenderGraph] ERROR: renderGraph is null" << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("[CompileRenderGraph] ERROR: renderGraph is null");
+        }
         return;
     }
 
-    // NOTE: Legacy Phase 1 wiring removed - nodes now use typed slots.
-    // All connections should be established via Connect() API during BuildRenderGraph().
-    // Example:
-    // Connect(deviceNode, DeviceNodeConfig::QUEUE, presentNode, PresentNodeConfig::QUEUE);
-    // Connect(deviceNode, DeviceNodeConfig::PRESENT_FUNCTION, presentNode, PresentNodeConfig::PRESENT_FUNCTION);
-
-
-    // MVP: Load shaders BEFORE compilation
-    // We need to inject the shader into ConstantNode before Compile() is called
-    // Strategy: Compile device first, load shaders, inject into ConstantNode, then compile rest
-    
-    std::cout << "[CompileRenderGraph] Pre-compiling device node..." << std::endl;
-    auto* deviceNode = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNodeHandle));
-    deviceNode->Setup();
-    deviceNode->Compile();
-    deviceNode->SetState(NodeState::Compiled);  // CRITICAL: Mark as compiled to prevent re-compilation
-    std::cout << "[CompileRenderGraph] Device node compiled and marked as Compiled" << std::endl;
-    
-    // Phase 1 Integration: Shaders now loaded by ShaderLibraryNode
-    // - ShaderLibraryNode compiles GLSL → SPIR-V via ShaderManagement
-    // - Creates VkShaderModules via CashSystem (with caching)
-    // - Outputs VulkanShader wrapper directly to GraphicsPipelineNode
-    // - Cleanup handled automatically by node cleanup system
-    mainLogger->Info("Shaders will be compiled by ShaderLibraryNode during graph compilation...");
-
-    // Now compile the full graph (all nodes including pipeline with shaders ready)
-    std::cout << "[CompileRenderGraph] Calling graph.Compile()..." << std::endl;
+    // Field extraction now integrated into RenderGraph::Compile() via post-node-compile callbacks
+    // Callbacks are registered during RegisterAll() and executed automatically as nodes compile
     renderGraph->Compile();
     graphCompiled = true;
-    std::cout << "[CompileRenderGraph] Graph compilation complete" << std::endl;
 
-    // Validate final graph (should pass with shaders connected)
-    std::cout << "[CompileRenderGraph] Validating graph..." << std::endl;
+    // Validate final graph
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] Validating graph...");
+    }
     std::string errorMessage;
     if (!renderGraph->Validate(errorMessage)) {
         mainLogger->Error("Render graph validation failed: " + errorMessage);
-        std::cerr << "[CompileRenderGraph] VALIDATION FAILED: " << errorMessage << std::endl;
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("[CompileRenderGraph] VALIDATION FAILED: " + errorMessage);
+        }
         return;
     }
-    std::cout << "[CompileRenderGraph] Validation passed" << std::endl;
-
-    mainLogger->Info("Render graph compiled successfully");
-    mainLogger->Info("Node count: " + std::to_string(renderGraph->GetNodeCount()));
-    std::cout << "[CompileRenderGraph] SUCCESS" << std::endl;
+    mainLogger->Info("Render graph compiled and validated successfully");
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[CompileRenderGraph] Complete - " + std::to_string(renderGraph->GetNodeCount()) + " nodes");
+    }
 }
 
 void VulkanGraphApplication::RegisterNodeTypes() {
@@ -378,8 +419,13 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
     nodeRegistry->RegisterNodeType(std::make_unique<LoopBridgeNodeType>());  // Phase 0.4: Loop system
     nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
+    nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
+    nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
+    nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
+    nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
 
-    mainLogger->Info("Successfully registered 19 node types");
+    mainLogger->Info("Successfully registered 24 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -396,14 +442,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // --- Infrastructure Nodes ---
     NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
-    windowNodeHandle = windowNode; // Cache for shutdown handling
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
-    deviceNodeHandle = deviceNode; // MVP: Cache for post-compile shader loading
-    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");  // Phase 0.2
+    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");
     NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
     NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
 
     // --- Resource Nodes ---
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
+    /*
     NodeHandle depthBufferNode = renderGraph->AddNode("DepthBuffer", "depth_buffer");
     NodeHandle vertexBufferNode = renderGraph->AddNode("VertexBuffer", "triangle_vb");
     NodeHandle textureNode = renderGraph->AddNode("TextureLoader", "main_texture");
@@ -414,20 +460,31 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle shaderLibNode = renderGraph->AddNode("ShaderLibrary", "shader_lib");
     NodeHandle descriptorSetNode = renderGraph->AddNode("DescriptorSet", "main_descriptors");
     NodeHandle pipelineNode = renderGraph->AddNode("GraphicsPipeline", "triangle_pipeline");
-    pipelineNodeHandle = pipelineNode; // MVP: Cache for post-compile shader connection
-    
+
     // Phase 1: ShaderLibraryNode replaces manual shader loading
     // Removed ConstantNode - ShaderLibraryNode outputs VulkanShader directly
 
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
+    */
     NodeHandle presentNode = renderGraph->AddNode("Present", "present");
+
+    // --- Phase G: Compute Pipeline Nodes ---
+    NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
+    NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
+    NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
+    NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
+    NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
+
+    // --- Ray Marching Nodes ---
+    NodeHandle cameraNode = renderGraph->AddNode("Camera", "raymarch_camera");
+    NodeHandle voxelGridNode = renderGraph->AddNode("VoxelGrid", "voxel_grid");
 
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 16 node instances (Phase 0.4: added LoopBridgeNode + ConstantNode)");
+    mainLogger->Info("Created 22 node instances (including camera and voxel grid)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -442,6 +499,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* device = static_cast<DeviceNode*>(renderGraph->GetInstance(deviceNode));
     device->SetParameter(DeviceNodeConfig::PARAM_GPU_INDEX, 0u);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline parameters
+    /*
     // Vertex buffer parameters (simple triangle)
     auto* vertexBuffer = static_cast<VertexBufferNode*>(renderGraph->GetInstance(vertexBufferNode));
     vertexBuffer->SetParameter(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 36u);
@@ -501,15 +560,114 @@ void VulkanGraphApplication::BuildRenderGraph() {
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_DEPTH, 1.0f);
     geometryRender->SetParameter(GeometryRenderNodeConfig::CLEAR_STENCIL, 0u);
 
-    // Present parameters
+    // Phase G: Configure shader libraries with builder functions
+
+    // Graphics shader library (Draw.vert + Draw.frag)
+    auto* graphicsShaderLib = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(shaderLibNode));
+    graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find shader paths
+        std::vector<std::filesystem::path> possiblePaths = {
+            "Draw.vert", "Shaders/Draw.vert", "../Shaders/Draw.vert", "binaries/Draw.vert"
+        };
+        std::filesystem::path vertPath, fragPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                vertPath = path;
+                fragPath = path.parent_path() / "Draw.frag";
+                break;
+            }
+        }
+
+        // Configure SDI generation
+        ShaderManagement::SdiGeneratorConfig sdiConfig;
+        sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
+        sdiConfig.namespacePrefix = "ShaderInterface";
+        sdiConfig.generateComments = true;
+
+        builder.SetProgramName("Draw_Shader")
+               .SetSdiConfig(sdiConfig)
+               .EnableSdiGeneration(true)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragPath, "main");
+
+        return builder;
+    });
+    */
+
+    // Present parameters (needed for both graphics and compute)
     auto* present = static_cast<PresentNode*>(renderGraph->GetInstance(presentNode));
     present->SetParameter(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
-    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode)
+    // Phase 0.4: Loop ID constant (connects to LoopBridgeNode) - needed for both graphics and compute
     auto* loopIDConst = static_cast<ConstantNode*>(renderGraph->GetInstance(physicsLoopIDConstant));
     loopIDConst->SetValue<uint32_t>(physicsLoopID);
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Loop ID set, moving to shader library...");
+    }
 
-    mainLogger->Info("Configured all node parameters (including PhysicsLoop ID constant)");
+    // Voxel ray marching compute shader (VoxelRayMarch.comp)
+    auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
+    computeShaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Find voxel ray march shader path
+        std::vector<std::filesystem::path> possiblePaths = {
+            "VoxelRayMarch.comp", "Shaders/VoxelRayMarch.comp", "../Shaders/VoxelRayMarch.comp", "binaries/VoxelRayMarch.comp"
+        };
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                compPath = path;
+                break;
+            }
+        }
+
+        builder.SetProgramName("VoxelRayMarch")
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+
+        return builder;
+    });
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Configured voxel ray marching compute shader");
+    }
+
+    // Phase G: Compute dispatch parameters
+    auto* dispatch = static_cast<ComputeDispatchNode*>(renderGraph->GetInstance(computeDispatch));
+    uint32_t dispatchX = width / 8;
+    uint32_t dispatchY = height / 8;
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Setting dispatch dims: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x1 (from window " + std::to_string(width) + "x" + std::to_string(height) + ")");
+    }
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_X, dispatchX);  // Workgroup size 8x8
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Y, dispatchY);
+    dispatch->SetParameter(ComputeDispatchNodeConfig::DISPATCH_Z, 1u);
+
+    // Ray marching: Camera parameters
+    auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode));
+    camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
+    camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 80.0f);  // Closer to see sphere (radius ~38 units)
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
+
+    // Ray marching: Voxel grid parameters
+    auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_RESOLUTION, 128u);
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));
+
+    mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
 
     // ===================================================================
     // PHASE 3: Wire connections using TypedConnection API
@@ -558,6 +716,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   commandPoolNode, CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
+    // DISABLED FOR COMPUTE TEST: Graphics pipeline connections
+    /*
     // --- Device → DepthBuffer device connection (for Vulkan operations) ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   depthBufferNode, DepthBufferNodeConfig::VULKAN_DEVICE_IN);
@@ -593,7 +753,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
             framebufferNode, FramebufferNodeConfig::SWAPCHAIN_INFO)
         .Connect(depthBufferNode, DepthBufferNodeConfig::DEPTH_IMAGE_VIEW,
             framebufferNode, FramebufferNodeConfig::DEPTH_ATTACHMENT);
-         
+
 
     // --- Device → ShaderLibrary device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -669,18 +829,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   geometryRenderNode, GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)  // Phase 0.5: Array of per-flight semaphores (indexed by frameIndex)
          .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);  // Phase 0.5: Array of per-image semaphores (indexed by imageIndex)
+    */
 
     // --- Device → Present device connection ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   presentNode, PresentNodeConfig::VULKAN_DEVICE_IN);
 
-    // --- SwapChain + GeometryRender → Present connections (Phase 0.2) ---
+    // --- SwapChain → Present connections (for compute-only rendering) ---
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(geometryRenderNode, GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Phase 0.2: Wait on GeometryRender's output
+         .Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Wait on ComputeDispatch's output
 
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
@@ -691,6 +852,102 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase 0.4: Loop System Connections ---
     batch.Connect(physicsLoopIDConstant, ConstantNodeConfig::OUTPUT,
                   physicsLoopBridge, LoopBridgeNodeConfig::LOOP_ID);
+
+    // --- Phase G: Compute Pipeline Connections ---
+    // Pipeline setup
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeShaderLib, ShaderLibraryNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDescriptorSet, DescriptorSetNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computePipeline, ComputePipelineNodeConfig::VULKAN_DEVICE_IN)
+         // Phase H: Shader bundle → Gatherer for descriptor discovery
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  descriptorGatherer, DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE)
+         // Phase H: Gatherer → DescriptorSet (data-driven resources + slot roles)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES)
+         // Pass shader bundle directly to descriptor set and pipeline (needed during Compile)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computePipeline, ComputePipelineNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  computeDispatch, ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  computePipeline, ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
+         .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  computeDispatch, ComputeDispatchNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE,
+                  computeDispatch, ComputeDispatchNodeConfig::COMPUTE_PIPELINE)
+         .Connect(computePipeline, ComputePipelineNodeConfig::PIPELINE_LAYOUT,
+                  computeDispatch, ComputeDispatchNodeConfig::PIPELINE_LAYOUT)
+         .Connect(computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  computeDispatch, ComputeDispatchNodeConfig::DESCRIPTOR_SETS)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  computeDispatch, ComputeDispatchNodeConfig::COMMAND_POOL);
+
+    // --- Ray Marching Resource Connections ---
+    // Camera node connections
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  cameraNode, CameraNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  cameraNode, CameraNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  cameraNode, CameraNodeConfig::IMAGE_INDEX);
+
+    // Voxel grid node connections
+    batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  voxelGridNode, VoxelGridNodeConfig::VULKAN_DEVICE_IN)
+         .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
+                  voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
+
+    // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
+    // Use Dependency|Execute to bind initially in Compile and update per-frame in Execute
+    // Binding 0: outputImage (swapchain image view) - changes per frame
+    batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+                          descriptorGatherer, VoxelRayMarch::outputImage,
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 1: camera (uniform buffer) - updated per frame
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
+                          descriptorGatherer, VoxelRayMarch::camera,
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 2: voxelGrid (combined image sampler) - static but bind in both phases for consistency
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER,
+                          descriptorGatherer, VoxelRayMarch::voxelGrid,
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Swapchain connections to descriptor set and dispatch
+    // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
+    batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDescriptorSet, DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
+                  &SwapChainPublicVariables::swapChainImageCount)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
+         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
+         .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_INDEX);
+
+    // Sync connections
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  computeDispatch, ComputeDispatchNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  computeDispatch, ComputeDispatchNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // Connect compute output to Present
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();
@@ -759,5 +1016,42 @@ void VulkanGraphApplication::CompleteShutdown() {
         }
         DestroyWindow(windowHandle);
         windowHandle = nullptr;
+    }
+}
+
+void VulkanGraphApplication::EnableNodeLogger(NodeHandle handle, bool enableTerminal) {
+    // Handle-based API not yet implemented - use string-based version
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Warning("EnableNodeLogger(NodeHandle) not yet implemented - use string version");
+    }
+}
+
+void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool enableTerminal) {
+    if (!renderGraph) {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: RenderGraph not initialized");
+        }
+        return;
+    }
+
+    NodeInstance* node = renderGraph->GetNodeByName(nodeName);
+    if (!node) {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: Node '" + nodeName + "' not found");
+        }
+        return;
+    }
+
+    Logger* logger = node->GetLogger();
+    if (logger) {
+        logger->SetEnabled(true);
+        logger->SetTerminalOutput(enableTerminal);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("Enabled logger for node '" + nodeName + "' (terminal=" + std::to_string(enableTerminal) + ")");
+        }
+    } else {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Warning("Node '" + nodeName + "' has no logger");
+        }
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NodeInstance.h"
+#include "ILoggable.h"
 #include <vector>
 #include <set>
 #include <map>
@@ -26,13 +27,13 @@ struct GraphEdge {
 
 /**
  * @brief Graph topology analysis and manipulation
- * 
+ *
  * Handles dependency analysis, cycle detection, and topological sorting
  * of the render graph.
  */
-class GraphTopology {
+class GraphTopology : public ILoggable {
 public:
-    GraphTopology() = default;
+    GraphTopology();
     ~GraphTopology() = default;
 
     // Graph construction

@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/GraphicsPipelineNodeConfig.h"
+#include "Data/Nodes/GraphicsPipelineNodeConfig.h"
 #include <memory>
 #include <unordered_map>
 
@@ -48,6 +48,7 @@ public:
  */
 class GraphicsPipelineNode : public TypedNode<GraphicsPipelineNodeConfig> {
 public:
+
     GraphicsPipelineNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -56,10 +57,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
@@ -93,8 +94,8 @@ private:
         std::vector<VkVertexInputAttributeDescription>& outAttributes);
     void CreatePipelineCache();
     void CreatePipelineLayout();
-    void CreatePipeline();
-    void CreatePipelineWithCache();
+    void CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
+    void CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
 
     VkCullModeFlags ParseCullMode(const std::string& mode);
     VkPolygonMode ParsePolygonMode(const std::string& mode);

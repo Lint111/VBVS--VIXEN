@@ -27,7 +27,13 @@ FrameSyncNode::FrameSyncNode(
 {
 }
 
-void FrameSyncNode::SetupImpl(Context& ctx) {
+void FrameSyncNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("FrameSyncNode: Setup (graph-scope initialization)");
+}
+
+void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
     if (devicePtr == nullptr) {
@@ -38,9 +44,6 @@ void FrameSyncNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
-
-void FrameSyncNode::CompileImpl(Context& ctx) {
     // Phase 0.4: Separate concerns - fences for CPU-GPU, semaphores for GPU-GPU
     constexpr uint32_t flightCount = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
     constexpr uint32_t imageCount = FrameSyncNodeConfig::MAX_SWAPCHAIN_IMAGES;
@@ -117,9 +120,9 @@ void FrameSyncNode::CompileImpl(Context& ctx) {
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores.data());
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores.data());
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, &presentFences);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences);
 
     NODE_LOG_INFO("Synchronization primitives created successfully");
     NODE_LOG_INFO("Created " + std::to_string(imageAvailableSemaphores.size()) + " imageAvailable semaphores (per-flight)");
@@ -127,7 +130,7 @@ void FrameSyncNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Created " + std::to_string(presentFences.size()) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
 }
 
-void FrameSyncNode::ExecuteImpl(Context& ctx) {
+void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Advance frame index (ring buffer for CPU-GPU sync)
     currentFrameIndex = (currentFrameIndex + 1) % FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
@@ -147,7 +150,7 @@ void FrameSyncNode::ExecuteImpl(Context& ctx) {
     // SwapChainNode will index into these arrays using the current frame index
 }
 
-void FrameSyncNode::CleanupImpl() {
+void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated && device != nullptr && device->device != VK_NULL_HANDLE) {
         NODE_LOG_INFO("Destroying frame synchronization primitives");
 

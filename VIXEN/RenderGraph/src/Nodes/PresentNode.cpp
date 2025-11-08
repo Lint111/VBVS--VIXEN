@@ -25,8 +25,13 @@ PresentNode::PresentNode(
 {
 }
 
-void PresentNode::SetupImpl(Context& ctx) {
-    // Read and validate device input
+void PresentNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("PresentNode: Setup (graph-scope initialization)");
+}
+
+void PresentNode::CompileImpl(TypedCompileContext& ctx) {
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("PresentNode: Invalid device handle");
@@ -34,9 +39,7 @@ void PresentNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
 
-void PresentNode::CompileImpl(Context& ctx) {
     // Get parameters using config constants
     waitForIdle = GetParameterValue<bool>(PresentNodeConfig::WAIT_FOR_IDLE, true);
 
@@ -49,11 +52,11 @@ void PresentNode::CompileImpl(Context& ctx) {
     // Note: PRESENT_FUNCTION input is optional - if not provided, we use vkQueuePresentKHR directly
 }
 
-void PresentNode::ExecuteImpl(Context& ctx) {
+void PresentNode::ExecuteImpl(TypedExecuteContext& ctx) {
     Present(ctx);
 }
 
-void PresentNode::CleanupImpl() {
+void PresentNode::CleanupImpl(TypedCleanupContext& ctx) {
     // No resources to clean up
 }
 
@@ -62,7 +65,7 @@ VkResult PresentNode::Present(Context& ctx) {
     VkSwapchainKHR swapchain = ctx.In(PresentNodeConfig::SWAPCHAIN);
     uint32_t imageIndex = ctx.In(PresentNodeConfig::IMAGE_INDEX);
     VkSemaphore renderCompleteSemaphore = ctx.In(PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
-    VkFenceVector presentFenceArray = ctx.In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
+    const std::vector<VkFence>& presentFenceArray = ctx.In(PresentNodeConfig::PRESENT_FENCE_ARRAY);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX) {
@@ -86,12 +89,12 @@ VkResult PresentNode::Present(Context& ctx) {
     VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
     presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
     presentFenceInfo.pNext = nullptr;
-    if (presentFenceArray != nullptr && !presentFenceArray->empty()) {
-        presentFenceInfo.swapchainCount = 1;
-        presentFenceInfo.pFences = &((*presentFenceArray)[imageIndex]);
-    } else {
+    if (presentFenceArray.empty()) {
         presentFenceInfo.swapchainCount = 0;
         presentFenceInfo.pFences = nullptr;
+    } else {
+        presentFenceInfo.swapchainCount = 1;
+        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
     }
 
     // Setup present info

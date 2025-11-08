@@ -1,8 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "BoolOpNodeConfig.h"
-#include <memory>
+#include "Data/Nodes/BoolOpNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 
@@ -48,6 +47,7 @@ public:
  */
 class BoolOpNode : public TypedNode<BoolOpNodeConfig> {
 public:
+
     BoolOpNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -56,10 +56,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     BoolOp operation = BoolOp::AND;

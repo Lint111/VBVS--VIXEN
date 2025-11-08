@@ -415,6 +415,35 @@ struct ShaderDataBundle {
     bool HasIdenticalInterface(const ShaderDataBundle& other) const {
         return descriptorInterfaceHash == other.descriptorInterfaceHash;
     }
+
+    /**
+     * @brief Validate descriptor bindings for dangling samplers/textures
+     *
+     * Checks each descriptor set for:
+     * - Samplers without corresponding sampled images (dangling samplers)
+     * - Sampled images without corresponding samplers (dangling textures)
+     * - Ambiguous naming patterns that prevent automatic pairing
+     *
+     * Throws std::runtime_error with detailed message if validation fails.
+     * Convention: sampler should be named "<textureName>Sampler" (e.g., "colorTexture" + "colorTextureSampler")
+     *
+     * @throws std::runtime_error If dangling descriptors found
+     */
+    void ValidateDescriptorPairing() const;
+
+    /**
+     * @brief Find sampler binding that pairs with a given texture
+     *
+     * Searches the same descriptor set for a sampler binding that corresponds
+     * to the given texture binding. Uses naming convention:
+     * - Texture: "colorTexture" → Sampler: "colorTextureSampler"
+     * - Fallback: finds any sampler in the same set
+     *
+     * @param setIndex Descriptor set index
+     * @param textureBinding Texture binding to find sampler for
+     * @return Pointer to sampler binding, or nullptr if not found
+     */
+    const SpirvDescriptorBinding* FindPairedSampler(uint32_t setIndex, const SpirvDescriptorBinding& textureBinding) const;
 };
 
 /**

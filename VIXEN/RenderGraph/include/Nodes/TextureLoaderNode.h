@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "Nodes/TextureLoaderNodeConfig.h"
+#include "Data/Nodes/TextureLoaderNodeConfig.h"
 
 // Forward declarations
 namespace CashSystem {
@@ -23,6 +23,7 @@ namespace Vixen::RenderGraph {
  */
 class TextureLoaderNode : public TypedNode<TextureLoaderNodeConfig> {
 public:
+
     TextureLoaderNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -32,10 +33,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Loaded texture resources (output via typed slots)

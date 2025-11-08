@@ -43,8 +43,14 @@ CommandPoolNode::CommandPoolNode(
 {
 }
 
-void CommandPoolNode::SetupImpl(Context& ctx) {
-    VulkanDevicePtr devicePtr = In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+void CommandPoolNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("CommandPoolNode: Setup (graph-scope initialization)");
+}
+
+void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
+    // Access device input (compile-time dependency)
+    VulkanDevicePtr devicePtr = ctx.In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "CommandPoolNode: VkDevice input is null";
@@ -54,9 +60,6 @@ void CommandPoolNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-}
-
-void CommandPoolNode::CompileImpl(Context& ctx) {
 
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
@@ -81,18 +84,18 @@ void CommandPoolNode::CompileImpl(Context& ctx) {
     isCreated = true;
 
     // Store command pool handle in output resource (NEW VARIANT API)
-    Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
-    Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
+    ctx.Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
 }
 
-void CommandPoolNode::ExecuteImpl(Context& ctx) {
+void CommandPoolNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Command pool creation happens in Compile phase
     // Execute is a no-op
 }
 
-void CommandPoolNode::CleanupImpl() {
+void CommandPoolNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated && commandPool != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
         vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;

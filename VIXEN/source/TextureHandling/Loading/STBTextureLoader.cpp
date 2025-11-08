@@ -8,26 +8,21 @@ namespace Vixen::TextureHandling {
 
 STBTextureLoader::STBTextureLoader(VulkanDevice* device, VkCommandPool commandPool)
     : TextureLoader(device, commandPool) {
-    printf("[STBTextureLoader] Constructor called\n");
-    fflush(stdout);
+    // Constructor - removed debug output
 }
 
 PixelData STBTextureLoader::LoadPixelData(const char* fileName) {
-    printf("[STB] LoadPixelData ENTRY\n");
-    fflush(stdout);
     PixelData data;
 
-    std::cout << "[STB] Loading: " << fileName << std::endl;
     int width, height, channels;
     stbi_uc* pixels = stbi_load(fileName, &width, &height, &channels, STBI_rgb_alpha);
 
     if (!pixels) {
-        std::cerr << "Failed to load texture file: " << fileName << std::endl;
-        std::cerr << "STB Error: " << stbi_failure_reason() << std::endl;
+        // TODO: Add logger - texture load failure
+        std::cerr << "[STBTextureLoader] ERROR: Failed to load texture file: " << fileName << std::endl;
+        std::cerr << "[STBTextureLoader]        STB Error: " << stbi_failure_reason() << std::endl;
         exit(1);
     }
-
-    std::cout << "[STB] Loaded " << width << "x" << height << ", " << channels << " channels" << std::endl;
     data.pixels = pixels;
     data.width = static_cast<uint32_t>(width);
     data.height = static_cast<uint32_t>(height);

@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "LoopBridgeNodeConfig.h"
+#include "Data/Nodes/LoopBridgeNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -41,6 +41,7 @@ public:
  */
 class LoopBridgeNode : public TypedNode<LoopBridgeNodeConfig> {
 public:
+
     LoopBridgeNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -49,10 +50,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     uint32_t loopID = 0;

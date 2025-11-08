@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/WindowNodeConfig.h"
+#include "Data/Nodes/WindowNodeConfig.h"
 #include <memory>
 
 #ifdef _WIN32
@@ -37,6 +37,8 @@ public:
  */
 class WindowNode : public TypedNode<WindowNodeConfig> {
 public:
+    using Base = TypedNode<WindowNodeConfig>;
+
     WindowNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -47,10 +49,6 @@ public:
 #ifdef _WIN32
     HWND GetWindow() const { return window; }
 #endif
-    VkSurfaceKHR GetSurface() const {
-        // Type-safe access using named slot from config (NEW VARIANT API)
-        return GetOut(WindowNodeConfig::SURFACE);
-    }
 
     // State queries
     bool ShouldClose() const { return shouldClose; }
@@ -60,15 +58,25 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
 #ifdef _WIN32
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #endif
+
+    // Window event queue for deferred processing in Execute()
+    struct WindowEvent {
+        enum class Type { Resize, Close, Minimize, Maximize, Restore, Focus, Unfocus };
+        Type type;
+        uint32_t width = 0;   // For Resize events
+        uint32_t height = 0;  // For Resize events
+    };
+    std::vector<WindowEvent> pendingEvents;
+    std::recursive_mutex eventMutex;  // Protect event queue (recursive for nested WndProc calls)
 
     uint32_t width = 0;
     uint32_t height = 0;

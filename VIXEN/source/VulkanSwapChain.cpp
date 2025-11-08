@@ -349,8 +349,7 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     scInfo.oldSwapchain = VK_NULL_HANDLE;
     scInfo.clipped = VK_TRUE;
     scInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                        VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    scInfo.imageUsage = imageUsageFlags;
     scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     scInfo.queueFamilyIndexCount = 0;
     scInfo.pQueueFamilyIndices = nullptr;
@@ -378,6 +377,10 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
     if (result != VK_SUCCESS) {
         throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed: ") + std::to_string(static_cast<int>(result)));
     }
+}
+
+void VulkanSwapChain::SetImageUsageFlags(VkImageUsageFlags flags) {
+    imageUsageFlags = flags;
 }
 
 void VulkanSwapChain::CreateColorImageView(VkDevice device, const VkCommandBuffer &cmd)

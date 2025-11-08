@@ -1,0 +1,141 @@
+{
+  // ============================================================================
+  // VS Code Test Debugging Configuration
+  // ============================================================================
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C++ Test (Debug)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--gtest_break_on_failure"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Set Disassembly Flavor to Intel",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "cmake: build",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "logging": {
+        "engineLogging": false
+      }
+    },
+    {
+      "name": "RenderGraph: Array Type Validation",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_array_type_validation",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "RenderGraph: Field Extraction",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_field_extraction",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    },
+    {
+      "name": "RenderGraph: Resource Gatherer",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_resource_gatherer",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    },
+    {
+      "name": "RenderGraph: Resource Management",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_resource_management",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    },
+    {
+      "name": "RenderGraph: Graph Topology",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/VIXEN/build/tests/RenderGraph/test_graph_topology",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    },
+    {
+      "name": "RenderGraph: All Tests (Specific)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/usr/bin/ctest",
+      "args": [
+        "-R",
+        "RenderGraph",
+        "--verbose",
+        "--output-on-failure"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb"
+    },
+    {
+      "name": "Test with Coverage",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "environment": [
+        {
+          "name": "GCOV_PREFIX",
+          "value": "${workspaceFolder}/VIXEN/build"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "cmake: build coverage"
+    }
+  ]
+}

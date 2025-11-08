@@ -3,7 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
 #include "Core/StatefulContainer.h"
-#include "GeometryRenderNodeConfig.h"
+#include "Data/Nodes/GeometryRenderNodeConfig.h"
 #include <memory>
 #include <vector>
 
@@ -44,6 +44,7 @@ public:
  */
 class GeometryRenderNode : public TypedNode<GeometryRenderNodeConfig> {
 public:
+
     GeometryRenderNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -55,10 +56,10 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Draw parameters (from node parameters)

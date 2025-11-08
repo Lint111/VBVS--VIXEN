@@ -35,8 +35,13 @@ GeometryRenderNode::GeometryRenderNode(
     clearDepthStencil.depthStencil.stencil = 0;
 }
 
-void GeometryRenderNode::SetupImpl(Context& ctx) {
-    // Get device and command pool from inputs
+void GeometryRenderNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("GeometryRenderNode: Setup (graph-scope initialization)");
+}
+
+void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
+    // Access device and command pool inputs (compile-time dependencies)
     vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
         throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
@@ -46,9 +51,7 @@ void GeometryRenderNode::SetupImpl(Context& ctx) {
     if (commandPool == VK_NULL_HANDLE) {
         throw std::runtime_error("GeometryRenderNode: CommandPool input is null");
     }
-}
 
-void GeometryRenderNode::CompileImpl(Context& ctx) {
     // Get parameters
     vertexCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::VERTEX_COUNT, 0);
     instanceCount = GetParameterValue<uint32_t>(GeometryRenderNodeConfig::INSTANCE_COUNT, 1);
@@ -75,7 +78,7 @@ void GeometryRenderNode::CompileImpl(Context& ctx) {
     }
 
     uint32_t imageCount = swapchainInfo->swapChainImageCount;
-    std::cout << "[GeometryRenderNode::Compile] Swapchain has " << imageCount << " images, allocating command buffers" << std::endl;
+    NODE_LOG_INFO("[GeometryRenderNode::Compile] Swapchain has " + std::to_string(imageCount) + " images, allocating command buffers");
     commandBuffers.resize(imageCount);
 
     // Allocate raw command buffers
@@ -101,7 +104,7 @@ void GeometryRenderNode::CompileImpl(Context& ctx) {
     // No need to create per-swapchain-image semaphores anymore
 }
 
-void GeometryRenderNode::ExecuteImpl(Context& ctx) {
+void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get current image index from SwapChainNode
     uint32_t imageIndex = ctx.In(GeometryRenderNodeConfig::IMAGE_INDEX);
 
@@ -109,8 +112,8 @@ void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     uint32_t currentFrameIndex = ctx.In(GeometryRenderNodeConfig::CURRENT_FRAME_INDEX);
 
     // Phase 0.5: Get semaphore arrays from FrameSyncNode
-    const VkSemaphore* imageAvailableSemaphores = ctx.In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
-    const VkSemaphore* renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& imageAvailableSemaphores = ctx.In(GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY);
+    const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(GeometryRenderNodeConfig::IN_FLIGHT_FENCE);
 
     // Phase 0.6: CORRECT per Vulkan guide - Two-tier indexing
@@ -195,7 +198,7 @@ void GeometryRenderNode::ExecuteImpl(Context& ctx) {
     ctx.Out(GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
 }
 
-void GeometryRenderNode::CleanupImpl() {
+void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Free command buffers
     if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && vulkanDevice) {
         // Extract raw command buffer handles for vkFreeCommandBuffers
@@ -326,7 +329,6 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     if(descriptorSets.size() == 0) {
         std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
         NODE_LOG_WARNING(errorMsg);
-        std::cout << errorMsg << std::endl;
 	}
 
     if (descriptorSets[0] != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
@@ -343,7 +345,6 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     } else {
         std::string errorMsg = "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!";
         NODE_LOG_WARNING(errorMsg);
-        std::cout << errorMsg << std::endl;
     }
     
 

@@ -1,6 +1,28 @@
 #include "Core/NodeTypeRegistry.h"
 #include <algorithm>
 
+// Phase F+ node types
+#include "Nodes/WindowNode.h"
+#include "Nodes/DeviceNode.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/DepthBufferNode.h"
+#include "Nodes/RenderPassNode.h"
+#include "Nodes/FramebufferNode.h"
+#include "Nodes/FrameSyncNode.h"
+#include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/GraphicsPipelineNode.h"
+#include "Nodes/DescriptorSetNode.h"
+#include "Nodes/VertexBufferNode.h"
+#include "Nodes/TextureLoaderNode.h"
+#include "Nodes/CommandPoolNode.h"
+#include "Nodes/GeometryRenderNode.h"
+#include "Nodes/PresentNode.h"
+#include "Nodes/LoopBridgeNode.h"
+
+// Phase G node types
+#include "Nodes/ComputePipelineNode.h"
+#include "Nodes/ComputeDispatchNode.h"
+
 namespace Vixen::RenderGraph {
 
 bool NodeTypeRegistry::RegisterNodeType(std::unique_ptr<NodeType> nodeType) {
@@ -123,14 +145,28 @@ void NodeTypeRegistry::Clear() {
 }
 
 void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
-    // TODO: Register built-in node types
-    // This will be implemented as we create specific node types
-    // Examples:
-    // - GeometryPassNode
-    // - ShadowMapNode
-    // - PostProcessNode
-    // - ComputeNode
-    // - DeviceTransferNode
+    // Register built-in node types
+    // Phase F+ nodes:
+    registry.RegisterNodeType(std::make_unique<WindowNodeType>());
+    registry.RegisterNodeType(std::make_unique<DeviceNodeType>());
+    registry.RegisterNodeType(std::make_unique<SwapChainNodeType>());
+    registry.RegisterNodeType(std::make_unique<DepthBufferNodeType>());
+    registry.RegisterNodeType(std::make_unique<RenderPassNodeType>());
+    registry.RegisterNodeType(std::make_unique<FramebufferNodeType>());
+    registry.RegisterNodeType(std::make_unique<FrameSyncNodeType>());
+    registry.RegisterNodeType(std::make_unique<ShaderLibraryNodeType>());
+    registry.RegisterNodeType(std::make_unique<GraphicsPipelineNodeType>());
+    registry.RegisterNodeType(std::make_unique<DescriptorSetNodeType>());
+    registry.RegisterNodeType(std::make_unique<VertexBufferNodeType>());
+    registry.RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
+    registry.RegisterNodeType(std::make_unique<CommandPoolNodeType>());
+    registry.RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
+    registry.RegisterNodeType(std::make_unique<PresentNodeType>());
+    registry.RegisterNodeType(std::make_unique<LoopBridgeNodeType>());
+
+    // Phase G nodes:
+    registry.RegisterNodeType(std::make_unique<ComputePipelineNodeType>());
+    registry.RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());
 }
 
 } // namespace Vixen::RenderGraph

@@ -3,7 +3,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
-#include "Core/ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include <sstream>
 #include "VulkanSwapChain.h"
 
@@ -31,30 +31,30 @@ DepthBufferNode::DepthBufferNode(
 {
 }
 
-void DepthBufferNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
-    
-    vulkanDevice = In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
+void DepthBufferNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("DepthBufferNode: Setup (graph-scope initialization)");
+}
+
+void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("Compile: Creating depth buffer");
+
+    // Access device input (compile-time dependency)
+    vulkanDevice = ctx.In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
     deviceHandle = vulkanDevice; // Keep for legacy code
-    
+
     if (!vulkanDevice) {
         std::string errorMsg = "DepthBufferNode: VulkanDevice input is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
-    NODE_LOG_INFO("Setup complete");
-}
-
-void DepthBufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating depth buffer");
-
     // Helper macro for VkDevice
     #define VK_DEVICE (vulkanDevice->device)
 
     // Get typed inputs
-    SwapChainPublicVariablesPtr swapChainVars = In(DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
-    VkCommandPool cmdPool = In(DepthBufferNodeConfig::COMMAND_POOL);
+    SwapChainPublicVariablesPtr swapChainVars = ctx.In(DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
+    VkCommandPool cmdPool = ctx.In(DepthBufferNodeConfig::COMMAND_POOL);
 
 	uint32_t width = swapChainVars ? swapChainVars->Extent.width : 0;
 	uint32_t height = swapChainVars ? swapChainVars->Extent.height : 0;
@@ -119,19 +119,19 @@ void DepthBufferNode::CompileImpl(Context& ctx) {
     #undef VK_DEVICE
 
     // Set typed outputs (NEW VARIANT API)
-    Out(DepthBufferNodeConfig::DEPTH_IMAGE, depthImage.image);
-    Out(DepthBufferNodeConfig::DEPTH_IMAGE_VIEW, depthImage.view);
-    Out(DepthBufferNodeConfig::DEPTH_FORMAT, depthImage.format);
+    ctx.Out(DepthBufferNodeConfig::DEPTH_IMAGE, depthImage.image);
+    ctx.Out(DepthBufferNodeConfig::DEPTH_IMAGE_VIEW, depthImage.view);
+    ctx.Out(DepthBufferNodeConfig::DEPTH_FORMAT, depthImage.format);
 
     isCreated = true;
     NODE_LOG_INFO("Compile complete: Depth buffer created successfully");
 }
 
-void DepthBufferNode::ExecuteImpl(Context& ctx) {
+void DepthBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // No-op - depth buffer is created in Compile phase
 }
 
-void DepthBufferNode::CleanupImpl() {
+void DepthBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated) {
         VkDevice device = vulkanDevice ? vulkanDevice->device : VK_NULL_HANDLE;
         if (!device) return;

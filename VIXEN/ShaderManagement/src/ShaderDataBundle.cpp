@@ -292,4 +292,143 @@ ShaderDirtyFlags CompareBundles(
     return flags;
 }
 
+void ShaderDataBundle::ValidateDescriptorPairing() const {
+    if (!reflectionData) {
+        return;  // No reflection data to validate
+    }
+
+    for (const auto& [setIndex, bindings] : reflectionData->descriptorSets) {
+        // Collect samplers and sampled images
+        std::vector<const SpirvDescriptorBinding*> samplers;
+        std::vector<const SpirvDescriptorBinding*> sampledImages;
+        std::vector<const SpirvDescriptorBinding*> combinedImageSamplers;
+        std::vector<const SpirvDescriptorBinding*> storageImages;  // Output images
+
+        for (const auto& binding : bindings) {
+            switch (binding.descriptorType) {
+                case VK_DESCRIPTOR_TYPE_SAMPLER:
+                    samplers.push_back(&binding);
+                    break;
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                    sampledImages.push_back(&binding);
+                    break;
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                    combinedImageSamplers.push_back(&binding);
+                    break;
+                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                    storageImages.push_back(&binding);  // Typically outputs, don't need samplers
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Combined image samplers are self-contained, no validation needed
+        // Only validate separate samplers + sampled images when BOTH are present
+
+        if (samplers.empty() || sampledImages.empty()) {
+            // If only samplers or only images are present, that's fine:
+            // - Samplers alone: used with samplerless images elsewhere
+            // - Images alone: storage images, compute shader outputs, etc.
+            continue;
+        }
+
+        // BOTH samplers and sampled images present → must pair correctly
+        // Check for dangling samplers (sampler without corresponding texture)
+        for (const auto* sampler : samplers) {
+            bool foundPair = false;
+            std::string expectedTextureName;
+
+            // Convention: "colorTextureSampler" → "colorTexture"
+            if (sampler->name.size() > 7 && sampler->name.substr(sampler->name.size() - 7) == "Sampler") {
+                expectedTextureName = sampler->name.substr(0, sampler->name.size() - 7);
+
+                for (const auto* texture : sampledImages) {
+                    if (texture->name == expectedTextureName) {
+                        foundPair = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!foundPair) {
+                std::ostringstream oss;
+                oss << "Shader '" << program.name << "' validation error:\n";
+                oss << "  Dangling sampler at set " << setIndex << ", binding " << sampler->binding
+                    << " ('" << sampler->name << "')\n";
+                oss << "  Expected paired texture: '" << expectedTextureName << "'\n";
+                oss << "  Available textures in set " << setIndex << ":\n";
+                for (const auto* tex : sampledImages) {
+                    oss << "    - " << tex->name << " (binding " << tex->binding << ")\n";
+                }
+                oss << "\nConvention: sampler should be named '<textureName>Sampler'\n";
+                oss << "Example: 'colorTexture' + 'colorTextureSampler'";
+                throw std::runtime_error(oss.str());
+            }
+        }
+
+        // Check for dangling textures (texture without corresponding sampler)
+        for (const auto* texture : sampledImages) {
+            bool foundPair = false;
+            std::string expectedSamplerName = texture->name + "Sampler";
+
+            for (const auto* sampler : samplers) {
+                if (sampler->name == expectedSamplerName) {
+                    foundPair = true;
+                    break;
+                }
+            }
+
+            if (!foundPair) {
+                std::ostringstream oss;
+                oss << "Shader '" << program.name << "' validation error:\n";
+                oss << "  Dangling texture at set " << setIndex << ", binding " << texture->binding
+                    << " ('" << texture->name << "')\n";
+                oss << "  Expected paired sampler: '" << expectedSamplerName << "'\n";
+                oss << "  Available samplers in set " << setIndex << ":\n";
+                for (const auto* samp : samplers) {
+                    oss << "    - " << samp->name << " (binding " << samp->binding << ")\n";
+                }
+                oss << "\nConvention: sampler should be named '<textureName>Sampler'\n";
+                oss << "Example: 'colorTexture' + 'colorTextureSampler'";
+                throw std::runtime_error(oss.str());
+            }
+        }
+    }
+}
+
+const SpirvDescriptorBinding* ShaderDataBundle::FindPairedSampler(
+    uint32_t setIndex,
+    const SpirvDescriptorBinding& textureBinding
+) const {
+    if (!reflectionData) {
+        return nullptr;
+    }
+
+    auto it = reflectionData->descriptorSets.find(setIndex);
+    if (it == reflectionData->descriptorSets.end()) {
+        return nullptr;
+    }
+
+    const auto& bindings = it->second;
+
+    // First pass: look for naming convention match
+    std::string expectedSamplerName = textureBinding.name + "Sampler";
+    for (const auto& binding : bindings) {
+        if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER &&
+            binding.name == expectedSamplerName) {
+            return &binding;
+        }
+    }
+
+    // Second pass: fallback to any sampler in the same set
+    for (const auto& binding : bindings) {
+        if (binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER) {
+            return &binding;
+        }
+    }
+
+    return nullptr;
+}
+
 } // namespace ShaderManagement

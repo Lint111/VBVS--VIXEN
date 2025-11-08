@@ -1,0 +1,143 @@
+{
+  // ============================================================================
+  // VS Code Testing Framework Configuration
+  // ============================================================================
+
+  // C++ Test Explorer Configuration
+  "testMate.cpp.test.executables": "{build,Build,BUILD,out}/**/*{test,Test,TEST}*",
+  "testMate.cpp.test.workingDirectory": "${workspaceFolder}/VIXEN/build",
+
+  // GoogleTest Adapter Configuration
+  "gtest-adapter.debugConfig": "C++ Test (Debug)",
+  "gtest-adapter.testTimeout": 60000,
+
+  // Test Explorer UI
+  "testExplorer.useNativeTesting": true,
+  "testExplorer.onStart": null,
+  "testExplorer.onReload": null,
+  "testExplorer.codeLens": true,
+  "testExplorer.gutterDecoration": true,
+  "testExplorer.errorDecoration": true,
+  "testExplorer.showCollapseButton": true,
+  "testExplorer.showExpandButton": true,
+
+  // Test Discovery Patterns (organized by module)
+  "cmake.testExplorer.enabled": true,
+  "cmake.ctest.testExplorerIntegrationEnabled": true,
+
+  // Coverage Configuration
+  "coverage-gutters.coverageFileNames": [
+    "lcov.info",
+    "coverage.info",
+    "cov.xml",
+    "coverage.xml",
+    "jacoco.xml"
+  ],
+  "coverage-gutters.coverageBaseDir": "${workspaceFolder}/VIXEN/build",
+  "coverage-gutters.showLineCoverage": true,
+  "coverage-gutters.showRulerCoverage": true,
+  "coverage-gutters.highlightdark": "rgba(0, 128, 0, 0.3)",
+  "coverage-gutters.highlightlight": "rgba(0, 128, 0, 0.3)",
+  "coverage-gutters.partialHighlightDark": "rgba(255, 165, 0, 0.3)",
+  "coverage-gutters.partialHighlightLight": "rgba(255, 165, 0, 0.3)",
+  "coverage-gutters.noHighlightDark": "rgba(255, 0, 0, 0.3)",
+  "coverage-gutters.noHighlightLight": "rgba(255, 0, 0, 0.3)",
+
+  // CMake Configuration
+  "cmake.buildDirectory": "${workspaceFolder}/VIXEN/build",
+  "cmake.sourceDirectory": "${workspaceFolder}/VIXEN",
+  "cmake.configureArgs": [
+    "-DVULKAN_TRIMMED_BUILD=ON",
+    "-DCMAKE_BUILD_TYPE=Debug",
+    "-DENABLE_COVERAGE=ON"
+  ],
+
+  // C++ Configuration
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/VIXEN/build/compile_commands.json",
+
+  // File Associations
+  "files.associations": {
+    "*.cmake": "cmake",
+    "**/CMakeLists.txt": "cmake",
+    "*.h": "cpp",
+    "*.cpp": "cpp",
+    "*.hpp": "cpp"
+  },
+
+  // Test Output
+  "cmake.testExplorer.showAllOutput": true,
+  "cmake.testExplorer.addToEditorContextMenu": true,
+
+  // Exclude build artifacts from search
+  "search.exclude": {
+    "**/build": true,
+    "**/Build": true,
+    "**/.cache": true,
+    "**/compile_commands.json": true
+  },
+
+  // ============================================================================
+  // RenderGraph-Specific Test Organization
+  // ============================================================================
+
+  "testExplorer.sort": "alphabetically",
+  "testExplorer.showOnRun": true,
+
+  // Custom test patterns for our structure
+  "cmake.ctest.parallelJobs": 4,
+  "cmake.ctest.allowParallelJobs": true,
+
+  // Test categories (for filtering)
+  "testMate.cpp.test.advancedExecutables": [
+    {
+      "pattern": "{build,Build,BUILD}/**/test_array_*",
+      "name": "Type System Tests",
+      "description": "Array and type validation tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_field_*",
+      "name": "Field Extraction Tests",
+      "description": "Struct field extraction tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_resource_*",
+      "name": "Resource Tests",
+      "description": "Resource management and gatherer tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_graph_*",
+      "name": "Graph Tests",
+      "description": "Graph topology and dependency tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_descriptor_*",
+      "name": "Descriptor Tests",
+      "description": "Descriptor resource gatherer tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_rendergraph_*",
+      "name": "Core RenderGraph Tests",
+      "description": "Basic RenderGraph functionality tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    },
+    {
+      "pattern": "{build,Build,BUILD}/**/test_typednode_*",
+      "name": "TypedNode Tests",
+      "description": "TypedNode helper tests",
+      "cwd": "${workspaceFolder}/VIXEN/build",
+      "env": {}
+    }
+  ]
+}

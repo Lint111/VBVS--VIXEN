@@ -70,6 +70,10 @@ DeviceRegistry& MainCacher::GetOrCreateDeviceRegistry(::Vixen::Vulkan::Resources
     // Check if registry already exists for this device
     auto it = m_deviceRegistries.find(deviceId);
     if (it != m_deviceRegistries.end()) {
+        // Ensure registry is initialized with the device pointer
+        if (device && !it->second.IsInitialized()) {
+            it->second.Initialize(device);
+        }
         return it->second;
     }
 

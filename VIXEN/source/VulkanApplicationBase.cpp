@@ -8,8 +8,8 @@ VulkanApplicationBase::VulkanApplicationBase()
     : debugFlag(true), isPrepared(false) {
     instanceObj.layerExtension.GetInstanceLayerProperties();
 
-    // Create main logger
-    mainLogger = std::make_shared<Logger>("VulkanAppBase", true);
+    // Create main logger (disabled by default, enable in derived class as needed)
+    mainLogger = std::make_shared<Logger>("VulkanAppBase", false);
     mainLogger->Info("Vulkan Application Base Starting");
 }
 

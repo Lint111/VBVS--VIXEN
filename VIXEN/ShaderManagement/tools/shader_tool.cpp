@@ -234,15 +234,18 @@ private:
 
 void PrintUsage() {
     std::cout << R"(
-Shader Tool - Build-time shader compiler and SDI generator
+SDI Tool - Shader compiler and descriptor interface generator
 
 Usage:
-  shader_tool compile <input.vert> <input.frag> [options]
-  shader_tool compile-compute <input.comp> [options]
-  shader_tool generate-sdi <bundle.json> [options]
-  shader_tool build-registry <bundle1.json> <bundle2.json> ... [options]
-  shader_tool batch <config.json> [options]
-  shader_tool cleanup <output-dir> [options]
+  sdi_tool <shader.comp> [options]                 (auto-detect compute shader)
+  sdi_tool <shader.vert> <shader.frag> [options]   (auto-detect graphics shader)
+  sdi_tool compile <input.vert> <input.frag> [options]
+  sdi_tool compile-compute <input.comp> [options]
+  sdi_tool generate-sdi <bundle.json> [options]
+  sdi_tool build-registry <bundle1.json> <bundle2.json> ... [options]
+  sdi_tool batch <config.json> [options]
+  sdi_tool cleanup <output-dir> [options]
+  sdi_tool /help                                    (show this help)
 
 Commands:
   compile           Compile shader stages into bundle
@@ -264,20 +267,22 @@ Options:
   --help                   Show this help
 
 Examples:
-  # Compile graphics shader
-  shader_tool compile shader.vert shader.frag --name MyShader --output-dir ./out
+  # Auto-detect and compile (easiest)
+  sdi_tool Shaders/ComputeTest.comp
+  sdi_tool shader.vert shader.frag --name MyShader
 
-  # Compile compute shader
-  shader_tool compile-compute compute.comp --name MyCompute --output-dir ./out
+  # Explicit commands
+  sdi_tool compile shader.vert shader.frag --name MyShader --output-dir ./out
+  sdi_tool compile-compute compute.comp --name MyCompute --output-dir ./out
 
   # Build registry from existing bundles
-  shader_tool build-registry shader1.json shader2.json --output SDI_Registry.h
+  sdi_tool build-registry shader1.json shader2.json --output SDI_Registry.h
 
   # Batch process from config
-  shader_tool batch shaders.json --output-dir ./generated
+  sdi_tool batch shaders.json --output-dir ./generated
 
   # Clean up orphaned SPIRV files
-  shader_tool cleanup ./generated --verbose
+  sdi_tool cleanup ./generated --verbose
 )" << std::endl;
 }
 
@@ -286,31 +291,100 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
         return false;
     }
 
-    options.command = argv[1];
+    std::string firstArg = argv[1];
 
-    for (int i = 2; i < argc; ++i) {
-        std::string arg = argv[i];
+    // Support /help, --help, -h, help
+    if (firstArg == "/help" || firstArg == "--help" || firstArg == "-h" || firstArg == "help") {
+        return false;
+    }
 
-        if (arg == "--help" || arg == "-h") {
+    // Smart default: if first arg is a file path, auto-detect command
+    if (firstArg[0] != '-' && (firstArg.find('/') != std::string::npos ||
+                                firstArg.find('\\') != std::string::npos ||
+                                firstArg.find('.') != std::string::npos)) {
+        // Looks like a file path - auto-detect based on extension
+        fs::path filePath(firstArg);
+        std::string ext = filePath.extension().string();
+
+        if (ext == ".comp") {
+            options.command = "compile-compute";
+        } else if (ext == ".vert" || ext == ".frag" || ext == ".tesc" ||
+                   ext == ".tese" || ext == ".geom") {
+            options.command = "compile";
+        } else if (ext == ".json") {
+            options.command = "batch";
+        } else {
+            std::cerr << "Error: Unable to auto-detect command for file: " << firstArg << "\n";
+            std::cerr << "Please specify command explicitly (compile, compile-compute, batch)\n";
             return false;
-        } else if (arg == "--output") {
-            if (i + 1 < argc) options.outputPath = argv[++i];
-        } else if (arg == "--output-dir") {
-            if (i + 1 < argc) options.outputDir = argv[++i];
-        } else if (arg == "--name") {
-            if (i + 1 < argc) options.programName = argv[++i];
-        } else if (arg == "--sdi-namespace") {
-            if (i + 1 < argc) options.sdiConfig.namespacePrefix = argv[++i];
-        } else if (arg == "--sdi-dir") {
-            if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
-        } else if (arg == "--no-sdi") {
-            options.generateSdi = false;
-        } else if (arg == "--embed-spirv") {
-            options.embedSpirv = true;
-        } else if (arg == "--verbose" || arg == "-v") {
-            options.verbose = true;
-        } else if (arg[0] != '-') {
-            options.inputFiles.push_back(arg);
+        }
+
+        // Parse remaining args as if command was specified
+        options.inputFiles.push_back(firstArg);
+
+        // Auto-generate name from filename if not specified
+        if (options.programName.empty()) {
+            options.programName = filePath.stem().string();
+        }
+
+        // Default output directory
+        if (options.outputDir.empty()) {
+            options.outputDir = "./generated";
+        }
+
+        // Parse remaining args
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--help" || arg == "-h" || arg == "/help") {
+                return false;
+            } else if (arg == "--output") {
+                if (i + 1 < argc) options.outputPath = argv[++i];
+            } else if (arg == "--output-dir") {
+                if (i + 1 < argc) options.outputDir = argv[++i];
+            } else if (arg == "--name") {
+                if (i + 1 < argc) options.programName = argv[++i];
+            } else if (arg == "--sdi-namespace") {
+                if (i + 1 < argc) options.sdiConfig.namespacePrefix = argv[++i];
+            } else if (arg == "--sdi-dir") {
+                if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
+            } else if (arg == "--no-sdi") {
+                options.generateSdi = false;
+            } else if (arg == "--embed-spirv") {
+                options.embedSpirv = true;
+            } else if (arg == "--verbose" || arg == "-v") {
+                options.verbose = true;
+            } else if (arg[0] != '-') {
+                options.inputFiles.push_back(arg);
+            }
+        }
+    } else {
+        // Traditional explicit command mode
+        options.command = argv[1];
+
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+
+            if (arg == "--help" || arg == "-h" || arg == "/help") {
+                return false;
+            } else if (arg == "--output") {
+                if (i + 1 < argc) options.outputPath = argv[++i];
+            } else if (arg == "--output-dir") {
+                if (i + 1 < argc) options.outputDir = argv[++i];
+            } else if (arg == "--name") {
+                if (i + 1 < argc) options.programName = argv[++i];
+            } else if (arg == "--sdi-namespace") {
+                if (i + 1 < argc) options.sdiConfig.namespacePrefix = argv[++i];
+            } else if (arg == "--sdi-dir") {
+                if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
+            } else if (arg == "--no-sdi") {
+                options.generateSdi = false;
+            } else if (arg == "--embed-spirv") {
+                options.embedSpirv = true;
+            } else if (arg == "--verbose" || arg == "-v") {
+                options.verbose = true;
+            } else if (arg[0] != '-') {
+                options.inputFiles.push_back(arg);
+            }
         }
     }
 

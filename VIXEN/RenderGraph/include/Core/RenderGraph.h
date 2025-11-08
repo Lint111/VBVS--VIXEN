@@ -5,7 +5,7 @@
 #include "NodeInstance.h"
 #include "NodeTypeRegistry.h"
 #include "GraphTopology.h"
-#include "ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include "CleanupStack.h"
 #include "ResourceDependencyTracker.h"
 #include "DeferredDestruction.h"
@@ -15,6 +15,7 @@
 #include "Time/EngineTime.h"
 #include "CashSystem/MainCacher.h"
 #include "LoopManager.h"
+#include "GraphLifecycleHooks.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -131,7 +132,7 @@ public:
 
     /**
      * @brief Compile the graph
-     * 
+     *
      * Performs:
      * - Dependency analysis
      * - Resource allocation
@@ -139,6 +140,17 @@ public:
      * - Command buffer generation
      */
     void Compile();
+
+    /**
+     * @brief Register a callback to be executed after each node compiles
+     *
+     * Callbacks are invoked during Compile() after each node's Compile() method succeeds.
+     * Use this for field extraction or other operations that need compiled node outputs.
+     *
+     * @param callback Function taking the just-compiled NodeInstance
+     */
+    using PostNodeCompileCallback = std::function<void(NodeInstance*)>;
+    void RegisterPostNodeCompileCallback(PostNodeCompileCallback callback);
 
     /**
      * @brief Check if graph is compiled
@@ -199,6 +211,11 @@ public:
     size_t GetNodeCount() const { return instances.size(); }
 
     /**
+     * @brief Get node by name (for logger configuration)
+     */
+    NodeInstance* GetNodeByName(const std::string& name) const;
+
+    /**
      * @brief Get execution order (after compilation)
      */
     const std::vector<NodeInstance*>& GetExecutionOrder() const { return executionOrder; }
@@ -206,6 +223,7 @@ public:
     /**
      * @brief Get the graph topology
      */
+    GraphTopology& GetTopology() { return topology; }
     const GraphTopology& GetTopology() const { return topology; }
 
     // ====== Cleanup Management ======
@@ -387,7 +405,29 @@ public:
      */
     bool Validate(std::string& errorMessage) const;
 
-    
+    // ====== Lifecycle Hooks ======
+
+    /**
+     * @brief Get the lifecycle hooks manager
+     */
+    GraphLifecycleHooks& GetLifecycleHooks() { return lifecycleHooks; }
+    const GraphLifecycleHooks& GetLifecycleHooks() const { return lifecycleHooks; }
+
+    // ====== Resource Dependency Tracking ======
+
+    /**
+     * @brief Register a resource producer for recompile dependency tracking
+     *
+     * This is used by variadic connections with field extraction to register
+     * dynamically-populated resources after PostSetup hooks execute.
+     *
+     * @param resource The resource being produced
+     * @param producer The node that produces this resource
+     * @param outputIndex The output slot index on the producer node
+     */
+    void RegisterResourceProducer(Resource* resource, NodeInstance* producer, size_t outputIndex);
+
+
 private:
     // Core components
     NodeTypeRegistry* typeRegistry;
@@ -401,14 +441,13 @@ private:
     EventBus::EventSubscriptionID windowCloseSubscription = 0;
     // Vixen::Vulkan::Resources::VulkanDevice* primaryDevice;  // Removed - nodes access device directly
 
-    #ifdef _DEBUG
-    // Debug logger (non-owning pointer — application owns the logger)
+    // Logger (non-owning pointer — application owns the logger)
     Logger* mainLogger = nullptr;
-    #endif
 
     // Graph data
     std::vector<std::unique_ptr<NodeInstance>> instances;
     std::map<std::string, NodeHandle> nameToHandle;
+    std::vector<PostNodeCompileCallback> postNodeCompileCallbacks;  // Callbacks executed after each node compiles
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
     
     // Resources (lifetime management only - nodes are the logical containers)
@@ -444,6 +483,9 @@ private:
 
     // Phase F: Resource budget manager (optional)
     std::unique_ptr<ResourceBudgetManager> budgetManager;
+
+    // Lifecycle hook system
+    GraphLifecycleHooks lifecycleHooks;
 
     // Compilation phases
     void AnalyzeDependencies();

@@ -34,19 +34,8 @@ ShaderLibraryNode::ShaderLibraryNode(
     // MVP STUB: No shader library initialized
 }
 
-void ShaderLibraryNode::SetupImpl(Context& ctx) {
-    std::cout << "[ShaderLibraryNode::Setup] Called" << std::endl;
-
-    VulkanDevicePtr devicePtr = In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-
-    if (devicePtr == nullptr) {
-        std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null";
-        std::cout << "[ShaderLibraryNode::Setup] ERROR: " << errorMsg << std::endl;
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Set base class device member for cleanup tracking
-    SetDevice(devicePtr);
+void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
+    NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Called - graph-scope initialization");
 
     // Subscribe to DeviceMetadataEvent for shader version validation
     auto* messageBus = GetOwningGraph()->GetMessageBus();
@@ -63,55 +52,83 @@ void ShaderLibraryNode::SetupImpl(Context& ctx) {
         NODE_LOG_WARNING("ShaderLibraryNode: MessageBus not available - cannot subscribe to device metadata");
     }
 
-    std::cout << "[ShaderLibraryNode::Setup] Complete" << std::endl;
+    // Register ShaderModuleCacher (idempotent) - graph-scope setup
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    NODE_LOG_DEBUG("ShaderLibraryNode: Checking if ShaderModuleCacher is registered...");
+    bool wasRegistered = mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper));
+    NODE_LOG_DEBUG("ShaderLibraryNode: Is registered: " + std::string(wasRegistered ? "true" : "false"));
+
+    if (!wasRegistered) {
+        NODE_LOG_DEBUG("ShaderLibraryNode: Registering ShaderModuleCacher...");
+        mainCacher.RegisterCacher<
+            CashSystem::ShaderModuleCacher,
+            CashSystem::ShaderModuleWrapper,
+            CashSystem::ShaderModuleCreateParams
+        >(
+            typeid(CashSystem::ShaderModuleWrapper),
+            "ShaderModule",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher registered");
+    } else {
+        NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher already registered");
+    }
+
+    NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Complete");
 }
 
-void ShaderLibraryNode::CompileImpl(Context& ctx) {
-    std::cout << "[ShaderLibraryNode::Compile] START - Phase 1 integration" << std::endl;
+void ShaderLibraryNode::RegisterShaderBuilder(
+    std::function<ShaderManagement::ShaderBundleBuilder(int, int)> builderFunc
+) {
+    shaderBuilderFuncs.push_back(builderFunc);
+    NODE_LOG_DEBUG("ShaderLibraryNode::RegisterShaderBuilder: Builder function registered (total: " +
+                  std::to_string(shaderBuilderFuncs.size()) + ")");
+}
 
-    // Step 1: Build shader bundle from GLSL source using ShaderManagement
-    // Check current working directory
-    auto cwd = std::filesystem::current_path();
-    std::cout << "[ShaderLibraryNode] Current working directory: " << cwd << std::endl;
+void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: START - Phase G shader builder");
 
-    // Try multiple possible paths
-    std::vector<std::filesystem::path> possibleVertPaths = {
-        "Draw.vert",
-        "Shaders/Draw.vert",
-        "../Shaders/Draw.vert",
-        "binaries/Draw.vert"
-    };
+    // Access VulkanDevice input (compile-time dependency)
+    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: Retrieving VulkanDevice input...");
+    VulkanDevicePtr devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
 
-    std::filesystem::path vertPath;
-    std::filesystem::path fragPath;
-
-    for (const auto& path : possibleVertPaths) {
-        if (std::filesystem::exists(path)) {
-            vertPath = path;
-            // Assume frag is in same directory
-            auto dir = path.parent_path();
-            fragPath = dir / "Draw.frag";
-            std::cout << "[ShaderLibraryNode] Found shaders at: " << dir << std::endl;
-            break;
-        }
-    }
-
-    std::cout << "[ShaderLibraryNode] Checking for shader files..." << std::endl;
-    std::cout << "[ShaderLibraryNode] Vertex path: " << vertPath << " exists=" << std::filesystem::exists(vertPath) << std::endl;
-    std::cout << "[ShaderLibraryNode] Fragment path: " << fragPath << " exists=" << std::filesystem::exists(fragPath) << std::endl;
-
-    if (!std::filesystem::exists(vertPath)) {
-        std::string errorMsg = "ShaderLibraryNode: Vertex shader not found: " + vertPath.string();
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        throw std::runtime_error(errorMsg);
-    }
-    if (!std::filesystem::exists(fragPath)) {
-        std::string errorMsg = "ShaderLibraryNode: Fragment shader not found: " + fragPath.string();
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
+    if (devicePtr == nullptr) {
+        std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null during Compile";
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
-    std::cout << "[ShaderLibraryNode] Creating ShaderBundleBuilder..." << std::endl;
+    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: VulkanDevice retrieved: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr)));
+    SetDevice(devicePtr);
+
+    // Get ShaderModuleCacher (registered during Setup)
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    NODE_LOG_DEBUG("ShaderLibraryNode: Getting ShaderModuleCacher from MainCacher...");
+    NODE_LOG_DEBUG("ShaderLibraryNode: Device pointer value: " + std::to_string(reinterpret_cast<uint64_t>(device)));
+    NODE_LOG_DEBUG("ShaderLibraryNode: IsDeviceDependent: " + std::string(mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) ? "true" : "false"));
+
+    shaderModuleCacher = mainCacher.GetCacher<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(typeid(CashSystem::ShaderModuleWrapper), device);
+
+    if (!shaderModuleCacher) {
+        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
+        NODE_LOG_ERROR(errorMsg);
+        NODE_LOG_ERROR("ShaderLibraryNode: device=" + std::to_string(reinterpret_cast<uint64_t>(device)));
+        throw std::runtime_error(errorMsg);
+    }
+    NODE_LOG_DEBUG("ShaderLibraryNode: Got ShaderModuleCacher successfully");
+    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->IsInitialized()=" + std::string(shaderModuleCacher->IsInitialized() ? "true" : "false"));
+    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->GetDevice()=" + std::to_string(reinterpret_cast<uint64_t>(shaderModuleCacher->GetDevice())));
+
+    // Check if any builder functions were registered
+    if (shaderBuilderFuncs.empty()) {
+        std::string errorMsg = "ShaderLibraryNode: No shader builders registered. Call RegisterShaderBuilder() before compilation.";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
 
     // Use device metadata for shader compilation if available
     int targetVulkan = deviceVulkanVersion;
@@ -127,40 +144,23 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
         NODE_LOG_WARNING("  - Default SPIR-V: " + std::to_string(targetSpirv));
     }
 
-    // Configure SDI generation to write to binaries/generated/sdi (runtime shaders only)
-    ShaderManagement::SdiGeneratorConfig sdiConfig;
-    sdiConfig.outputDirectory = std::filesystem::current_path() / "generated" / "sdi";
-    sdiConfig.namespacePrefix = "ShaderInterface";
-    sdiConfig.generateComments = true;
+    // MVP: Compile only first registered shader program
+    // TODO Phase G.1: Support multiple programs with indexed outputs
+    NODE_LOG_DEBUG("ShaderLibraryNode: Registered builders: " + std::to_string(shaderBuilderFuncs.size()) +
+                  " (compiling first only)");
 
-    ShaderManagement::ShaderBundleBuilder builder;
-    builder.SetProgramName("Draw_Shader")
-           // UUID will be auto-generated from content hash (deterministic)
-           .SetSdiConfig(sdiConfig)
-           .EnableSdiGeneration(true)  // Phase 3: Enable SDI generation
-           .SetTargetVulkanVersion(targetVulkan)  // Use device capability
-           .SetTargetSpirvVersion(targetSpirv)    // Use device capability
-           .AddStageFromFile(
-               ShaderManagement::ShaderStage::Vertex,
-               vertPath,
-               "main"
-           )
-           .AddStageFromFile(
-               ShaderManagement::ShaderStage::Fragment,
-               fragPath,
-               "main"
-           );
+    NODE_LOG_DEBUG("ShaderLibraryNode: Calling shader builder function...");
+    ShaderManagement::ShaderBundleBuilder builder = shaderBuilderFuncs[0](targetVulkan, targetSpirv);
 
-    std::cout << "[ShaderLibraryNode] Stages added (SDI enabled), calling Build()..." << std::endl;
+    NODE_LOG_DEBUG("ShaderLibraryNode: Builder configured, calling Build()...");
 
     auto result = builder.Build();
     if (!result.success) {
         std::string errorMsg = "ShaderLibraryNode: Shader compilation failed: " + result.errorMessage;
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
+        NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
-    std::cout << "[ShaderLibraryNode] Shader bundle built successfully" << std::endl;
     NODE_LOG_INFO("ShaderLibraryNode: Shader bundle built successfully");
     NODE_LOG_INFO("  - Compile time: " + std::to_string(result.compileTime.count()) + "ms");
     NODE_LOG_INFO("  - Reflect time: " + std::to_string(result.reflectTime.count()) + "ms");
@@ -168,65 +168,8 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
     // Store bundle for future descriptor automation (Phase 2)
     shaderBundle_ = std::move(result.bundle);
 
-    // Use device from base class (set in Setup via SetDevice)
-    if (!device) {
-        std::string errorMsg = "ShaderLibraryNode: device member is null during Compile";
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-    std::cout << "[ShaderLibraryNode] Using device: " << device << std::endl;
-
     // Step 2: Create VkShaderModules using CashSystem caching
-    std::cout << "[ShaderLibraryNode] Creating VkShaderModules via CashSystem..." << std::endl;
     NODE_LOG_INFO("ShaderLibraryNode: Creating VkShaderModules via CashSystem");
-
-    // Get MainCacher from owning graph
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-
-    // Register ShaderModuleCacher (idempotent)
-    std::cout << "[ShaderLibraryNode] Checking if ShaderModuleCacher is registered..." << std::endl;
-    bool wasRegistered = mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper));
-    std::cout << "[ShaderLibraryNode] Is registered: " << wasRegistered << std::endl;
-
-    if (!wasRegistered) {
-        std::cout << "[ShaderLibraryNode] Registering ShaderModuleCacher..." << std::endl;
-        mainCacher.RegisterCacher<
-            CashSystem::ShaderModuleCacher,
-            CashSystem::ShaderModuleWrapper,
-            CashSystem::ShaderModuleCreateParams
-        >(
-            typeid(CashSystem::ShaderModuleWrapper),
-            "ShaderModule",
-            true  // device-dependent
-        );
-        std::cout << "[ShaderLibraryNode] ShaderModuleCacher registered" << std::endl;
-        NODE_LOG_DEBUG("ShaderLibraryNode: Registered ShaderModuleCacher");
-    } else {
-        std::cout << "[ShaderLibraryNode] ShaderModuleCacher already registered" << std::endl;
-    }
-
-    // Get cacher reference (using base class device member)
-    std::cout << "[ShaderLibraryNode] Getting ShaderModuleCacher from MainCacher..." << std::endl;
-    std::cout << "[ShaderLibraryNode] Device pointer value: " << device << std::endl;
-    std::cout << "[ShaderLibraryNode] IsDeviceDependent: " << mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) << std::endl;
-
-    shaderModuleCacher = mainCacher.GetCacher<
-        CashSystem::ShaderModuleCacher,
-        CashSystem::ShaderModuleWrapper,
-        CashSystem::ShaderModuleCreateParams
-    >(typeid(CashSystem::ShaderModuleWrapper), device);
-
-    if (!shaderModuleCacher) {
-        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
-        std::cout << "[ShaderLibraryNode] ERROR: " << errorMsg << std::endl;
-        std::cout << "[ShaderLibraryNode] ERROR: device=" << device << std::endl;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-    std::cout << "[ShaderLibraryNode] Got ShaderModuleCacher successfully" << std::endl;
-    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->IsInitialized()=" << shaderModuleCacher->IsInitialized() << std::endl;
-    std::cout << "[ShaderLibraryNode] ShaderModuleCacher->GetDevice()=" << shaderModuleCacher->GetDevice() << std::endl;
 
     // Step 3: Create shader modules from ShaderDataBundle SPIR-V
     try {
@@ -271,17 +214,17 @@ void ShaderLibraryNode::CompileImpl(Context& ctx) {
     }
 
     // Output device and shader data bundle
-    Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
-    Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
+    ctx.Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
 
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
 
-void ShaderLibraryNode::ExecuteImpl(Context& ctx) {
+void ShaderLibraryNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // MVP STUB: No-op - shaders loaded directly in application
 }
 
-void ShaderLibraryNode::CleanupImpl() {
+void ShaderLibraryNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_DEBUG("Cleanup: ShaderLibraryNode - releasing resources");
 
     // Release shared_ptrs (cacher owns the VkShaderModule handles and will destroy them)

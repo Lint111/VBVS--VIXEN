@@ -1,0 +1,39 @@
+{
+  // ============================================================================
+  // C++ IntelliSense Configuration
+  // ============================================================================
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}/VIXEN/**",
+        "${workspaceFolder}/VIXEN/include",
+        "${workspaceFolder}/VIXEN/RenderGraph/include",
+        "${workspaceFolder}/VIXEN/ShaderManagement/include",
+        "${workspaceFolder}/VIXEN/EventBus/include",
+        "${workspaceFolder}/VIXEN/CashSystem/include",
+        "${workspaceFolder}/VIXEN/logger",
+        "${workspaceFolder}/VIXEN/tests",
+        "${workspaceFolder}/VIXEN/build/_deps/googletest-src/googletest/include",
+        "${workspaceFolder}/VIXEN/build/_deps/googletest-src/googlemock/include",
+        "${workspaceFolder}/VIXEN/build/_deps/vulkanheaders-src/include"
+      ],
+      "defines": [
+        "VIXEN_DEBUG_BUILD=1"
+      ],
+      "compilerPath": "/usr/bin/g++",
+      "cStandard": "c17",
+      "cppStandard": "c++23",
+      "intelliSenseMode": "linux-gcc-x64",
+      "compileCommands": "${workspaceFolder}/VIXEN/build/compile_commands.json",
+      "configurationProvider": "ms-vscode.cmake-tools",
+      "browse": {
+        "path": [
+          "${workspaceFolder}/VIXEN"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    }
+  ]
+}

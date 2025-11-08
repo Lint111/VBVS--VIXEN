@@ -61,6 +61,11 @@ std::string GetRelativePath(
 
 // ===== SdiRegistryManager Implementation =====
 
+SdiRegistryManager::SdiRegistryManager()
+    : SdiRegistryManager(Config{})
+{
+}
+
 SdiRegistryManager::SdiRegistryManager(const Config& config)
     : config_(config)
     , lastRegeneration_(std::chrono::system_clock::now())

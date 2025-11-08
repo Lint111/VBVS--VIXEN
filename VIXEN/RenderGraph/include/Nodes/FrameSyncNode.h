@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Nodes/FrameSyncNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <vector>
 
@@ -45,6 +45,7 @@ public:
  */
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
 public:
+
     FrameSyncNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -54,10 +55,10 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override;
-    void CompileImpl(Context& ctx) override;
-    void ExecuteImpl(Context& ctx) override;
-    void CleanupImpl() override;
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Per-flight synchronization data (for CPU-GPU sync)

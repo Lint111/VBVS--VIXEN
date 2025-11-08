@@ -1,0 +1,30 @@
+{
+  // ============================================================================
+  // Recommended VS Code Extensions for Testing
+  // ============================================================================
+  "recommendations": [
+    // CMake support
+    "ms-vscode.cmake-tools",
+    "twxs.cmake",
+
+    // C++ support
+    "ms-vscode.cpptools",
+    "ms-vscode.cpptools-extension-pack",
+
+    // Test Explorer
+    "hbenl.vscode-test-explorer",
+    "matepek.vscode-catch2-test-adapter",
+
+    // Coverage visualization
+    "ryanluker.vscode-coverage-gutters",
+
+    // GoogleTest support
+    "DavidSchuldenfrei.gtest-adapter",
+
+    // Additional utilities
+    "ms-vscode.makefile-tools",
+    "jeff-hykin.better-cpp-syntax"
+  ],
+
+  "unwantedRecommendations": []
+}

@@ -1,6 +1,8 @@
 #include "Core/NodeInstance.h"
 #include "Core/RenderGraph.h"
 #include "Core/ResourceDependencyTracker.h"
+#include "Core/GraphLifecycleHooks.h"
+#include "Core/NodeLogging.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <algorithm>
 #include <functional>
@@ -19,9 +21,6 @@ namespace Vixen::RenderGraph {
 // Static counter for unique instance IDs
 static std::atomic<uint64_t> nextInstanceId{1};
 
-// Phase F: Thread-local task index for parallel-safe slot access
-thread_local uint32_t NodeInstance::currentTaskIndex = 0;
-
 NodeInstance::NodeInstance(
     const std::string& instanceName,
     NodeType* nodeType
@@ -39,10 +38,8 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-// Initialize logger in debug builds (MSVC: _DEBUG, GCC/Clang: DEBUG or !NDEBUG)
-#if defined(_DEBUG) || defined(DEBUG) || !defined(NDEBUG)
-    nodeLogger = std::make_unique<Logger>(instanceName);
-#endif
+    // Initialize logger (disabled by default)
+    nodeLogger = std::make_unique<Logger>(instanceName, false);
 }
 
 NodeInstance::~NodeInstance() {
@@ -141,20 +138,7 @@ size_t NodeInstance::GetOutputCount(uint32_t slotIndex) const {
     return count;
 }
 
-void NodeInstance::SetParameter(const std::string& name, const ParamTypeValue& value) {
-    parameters[name] = value;
-    
-    // Invalidate cache when parameters change
-    cacheKey = 0;
-}
-
-const ParamTypeValue* NodeInstance::GetParameter(const std::string& name) const {
-    auto it = parameters.find(name);
-    if (it != parameters.end()) {
-        return &it->second;
-    }
-    return nullptr;
-}
+// Parameter management now delegated to NodeParameterManager (inline in header)
 
 void NodeInstance::AddDependency(NodeInstance* node) {
     if (node && !DependsOn(node)) {
@@ -173,79 +157,29 @@ bool NodeInstance::DependsOn(NodeInstance* node) const {
     return std::find(dependencies.begin(), dependencies.end(), node) != dependencies.end();
 }
 
-void NodeInstance::UpdatePerformanceStats(uint64_t executionTimeNs, uint64_t cpuTimeNs) {
-    performanceStats.executionTimeNs = executionTimeNs;
-    performanceStats.cpuTimeNs = cpuTimeNs;
-    performanceStats.executionCount++;
-    
-    // Calculate running average
-    float currentMs = executionTimeNs / 1000000.0f;
-    if (performanceStats.executionCount == 1) {
-        performanceStats.averageExecutionTimeMs = currentMs;
-    } else {
-        // Exponential moving average with alpha = 0.1
-        performanceStats.averageExecutionTimeMs = 
-            performanceStats.averageExecutionTimeMs * 0.9f + currentMs * 0.1f;
-    }
-}
+// Dead code removed: UpdatePerformanceStats, ComputeCacheKey
 
-uint64_t NodeInstance::ComputeCacheKey() const {
-    // Simple hash combining type, parameters, and resource descriptions
-    // This is a simplified version - production code would use proper hashing
-    
-    std::hash<std::string> hasher;
-    uint64_t hash = hasher(instanceName);
-    
-    // Hash type ID
-    hash ^= static_cast<uint64_t>(GetTypeId()) << 1;
-    
-    // Hash parameters
-    for (const auto& [name, value] : parameters) {
-        hash ^= hasher(name) << 2;
-        
-        // Hash parameter value based on type
-        std::visit([&hash](const auto& val) {
-            using T = std::decay_t<decltype(val)>;
-            if constexpr (std::is_same_v<T, std::string>) {
-                hash ^= std::hash<std::string>{}(val);
-            } else if constexpr (std::is_arithmetic_v<T>) {
-                hash ^= std::hash<T>{}(val);
-            }
-        }, value);
-    }
-    
-    // Phase F: Hash input resource descriptors from bundles
-    for (const auto& bundle : bundles) {
-        for (const auto* input : bundle.inputs) {
-            if (input) {
-                // Try to get image descriptor for hashing
-                if (const auto* imgDesc = input->GetDescriptor<ImageDescriptor>()) {
-                    hash ^= static_cast<uint64_t>(imgDesc->format) << 3;
-                    hash ^= (static_cast<uint64_t>(imgDesc->width) << 4) |
-                            (static_cast<uint64_t>(imgDesc->height) << 5);
-                }
-                // Could add more descriptor types if needed for better hash distribution
-            }
-        }
-    }
-
-    return hash;
-}
-
-#ifdef _DEBUG
 void NodeInstance::RegisterToParentLogger(Logger* parentLogger)
 {
-    if (parentLogger) {
+    if (parentLogger && nodeLogger) {
         parentLogger->AddChild(nodeLogger.get());
     }
 }
 void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)
 {
-    if (parentLogger) {
+    if (parentLogger && nodeLogger) {
         parentLogger->RemoveChild(nodeLogger.get());
     }
 }
-#endif
+
+void NodeInstance::ExecuteNodeHook(NodeLifecyclePhase phase) {
+    if (!owningGraph) {
+        NODE_LOG_WARNING("[NodeInstance::ExecuteNodeHook] WARNING: No owning graph for node: " + GetInstanceName());
+        return; // No graph - can't execute hooks
+    }
+
+    owningGraph->GetLifecycleHooks().ExecuteNodeHooks(phase, this);
+}
 
 void NodeInstance::RegisterCleanup() {
     if (!owningGraph) {

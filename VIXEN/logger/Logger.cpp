@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include <iostream>
 
 Logger::Logger(const std::string& name, bool enabled)
     : name(name), enabled(enabled)
@@ -40,7 +41,13 @@ void Logger::Log(LogLevel level, const std::string& message)
         << "[" << LogLevelToString(level) << "] "
         << message;
 
-    logEntries.push_back(oss.str());
+    std::string logEntry = oss.str();
+    logEntries.push_back(logEntry);
+
+    // Print to terminal if enabled
+    if (terminalOutput) {
+        std::cout << logEntry << std::endl;
+    }
 }
 
 void Logger::Debug(const std::string& message)
@@ -118,7 +125,11 @@ std::string Logger::GetTimestamp() const
 
     std::ostringstream oss;
     std::tm tm_buf;
+#ifdef _WIN32
     localtime_s(&tm_buf, &time);
+#else
+    localtime_r(&time, &tm_buf);
+#endif
     oss << std::put_time(&tm_buf, "%H:%M:%S")
         << '.' << std::setfill('0') << std::setw(3) << ms.count();
 

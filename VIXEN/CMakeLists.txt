@@ -8,15 +8,111 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 set(Recipe_Name "7e_ShadersWithSPIRV")
 
+# ============================================================================
+# Build Performance Optimizations
+# ============================================================================
+
+# Use Ninja generator for faster builds (if available)
+# Run: cmake -G Ninja -B build
+if(NOT CMAKE_GENERATOR)
+    find_program(NINJA_EXECUTABLE ninja)
+    if(NINJA_EXECUTABLE)
+        set(CMAKE_GENERATOR "Ninja" CACHE STRING "CMake generator" FORCE)
+        message(STATUS "Ninja found, using Ninja generator for faster builds")
+    endif()
+endif()
+
+# Ccache/sccache support for faster rebuilds
+option(USE_CCACHE "Use ccache/sccache for compilation caching" ON)
+if(USE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    find_program(SCCACHE_PROGRAM sccache)
+
+    if(SCCACHE_PROGRAM)
+        message(STATUS "Found sccache: ${SCCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_PROGRAM})
+    elseif(CCACHE_PROGRAM)
+        message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    else()
+        message(STATUS "ccache/sccache not found - install for faster rebuilds")
+    endif()
+endif()
+
+# Unity builds - combine source files for faster compilation
+option(USE_UNITY_BUILD "Use Unity builds for faster compilation" OFF)
+if(USE_UNITY_BUILD)
+    message(STATUS "Unity builds enabled - faster initial compilation")
+    set(CMAKE_UNITY_BUILD ON)
+    set(CMAKE_UNITY_BUILD_BATCH_SIZE 16)
+endif()
+
+# Parallel compilation (MSVC)
+if(MSVC)
+    add_compile_options(/MP)  # Multi-processor compilation
+    message(STATUS "MSVC multi-processor compilation enabled")
+endif()
+
+# Generate compile_commands.json for better IDE integration
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Precompiled headers option
+option(USE_PRECOMPILED_HEADERS "Use precompiled headers" ON)
+
+# Link-time optimization option (disable by default for faster debug builds)
+option(USE_LTO "Enable link-time optimization (slower builds, faster runtime)" OFF)
+if(USE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+    if(ipo_supported)
+        message(STATUS "Link-time optimization enabled")
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(WARNING "LTO not supported: ${ipo_error}")
+    endif()
+endif()
+
+# ============================================================================
+# Build Configuration
+# ============================================================================
+
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
 # OFF - Vulkan SDK path can be specified manually. This is helpful to test the build on various Vulkan version.
 option(AUTO_LOCATE_VULKAN "AUTO_LOCATE_VULKAN" ON)
 
+# VULKAN_TRIMMED_BUILD - Build without full Vulkan SDK (headers only)
+# ON  - Auto-fetch Vulkan headers if SDK not found, build only header-only components
+# OFF - Require full Vulkan SDK with runtime libraries
+option(VULKAN_TRIMMED_BUILD "Build with Vulkan headers only (no runtime libs)" OFF)
+
 # Enable testing early so subprojects can use BUILD_TESTING
 option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
     set(BUILD_TESTING ON CACHE BOOL "Build tests" FORCE)
+endif()
+
+# Enable code coverage (requires Debug build and GCC/Clang)
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+if(ENABLE_COVERAGE)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(STATUS "Code coverage enabled")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+    else()
+        message(WARNING "Coverage requires Debug build type. Set CMAKE_BUILD_TYPE=Debug")
+    endif()
+endif()
+
+# Centralized debug build macro
+# Automatically defined for Debug builds, can be used consistently across all code
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_CONFIGURATION_TYPES)
+    add_compile_definitions(VIXEN_DEBUG_BUILD=1)
+else()
+    add_compile_definitions(VIXEN_DEBUG_BUILD=0)
 endif()
 
 if(AUTO_LOCATE_VULKAN)
@@ -34,17 +130,34 @@ if(AUTO_LOCATE_VULKAN)
 	endif()
 		 
 	if(NOT Vulkan_FOUND)
-		# CMake may fail to locate the libraries but could be able to 
+		# CMake may fail to locate the libraries but could be able to
 		# provide some path in Vulkan SDK include directory variable
 		# 'Vulkan_INCLUDE_DIRS', try to extract path from this.
 		message(STATUS "Failed to locate Vulkan SDK, retrying again...")
 		if(EXISTS "${VULKAN_PATH}")
 			message(STATUS "Successfully located the Vulkan SDK: ${VULKAN_PATH}")
 		else()
-			message("Error: Unable to locate Vulkan SDK. Please turn off auto locate option by specifying 'AUTO_LOCATE_VULKAN' as 'OFF'")
-			message("and specify manually path using 'VULKAN_SDK' and 'VULKAN_VERSION' variables in the CMakeLists.txt.")
-			return()
+			# Vulkan SDK not found - offer trimmed build option
+			if(VULKAN_TRIMMED_BUILD)
+				message(STATUS "==========================================================")
+				message(STATUS "Vulkan SDK not found, enabling TRIMMED BUILD mode")
+				message(STATUS "Fetching Vulkan headers (no runtime libraries)")
+				message(STATUS "Only header-only components will be built")
+				message(STATUS "==========================================================")
+				include(cmake/VulkanHeaders.cmake)
+				set(VULKAN_TRIMMED_BUILD_ACTIVE TRUE)
+			else()
+				message(WARNING "Unable to locate Vulkan SDK.")
+				message(WARNING "Options:")
+				message(WARNING "  1. Install Vulkan SDK")
+				message(WARNING "  2. Use -DVULKAN_TRIMMED_BUILD=ON to fetch headers only")
+				message(WARNING "  3. Turn off auto locate: -DAUTO_LOCATE_VULKAN=OFF")
+				message(FATAL_ERROR "Vulkan SDK required or use VULKAN_TRIMMED_BUILD")
+			endif()
 		endif()
+	else()
+		message(STATUS "Vulkan SDK found: ${VULKAN_PATH}")
+		set(VULKAN_TRIMMED_BUILD_ACTIVE FALSE)
 	endif()
 else()
 	message(STATUS "Attempting to locate Vulkan SDK using manual path......")
@@ -55,10 +168,24 @@ else()
 
 	# Check if manual set path exists
 	if(NOT EXISTS "${VULKAN_PATH}")
-		message("Error: Unable to locate this Vulkan SDK path VULKAN_PATH: ${VULKAN_PATH}, please specify correct path.
-		For more information on correct installation process, please refer to subsection 'Getting started with Lunar-G SDK'
-		and 'Setting up first project with CMake' in Chapter 3, 'Shaking hands with the device' in this book 'Learning Vulkan', ISBN - 9781786469809.")
-	   return()
+		if(VULKAN_TRIMMED_BUILD)
+			message(STATUS "==========================================================")
+			message(STATUS "Manual Vulkan path not found, enabling TRIMMED BUILD mode")
+			message(STATUS "Fetching Vulkan headers (no runtime libraries)")
+			message(STATUS "Only header-only components will be built")
+			message(STATUS "==========================================================")
+			include(cmake/VulkanHeaders.cmake)
+			set(VULKAN_TRIMMED_BUILD_ACTIVE TRUE)
+		else()
+			message(WARNING "Unable to locate this Vulkan SDK path VULKAN_PATH: ${VULKAN_PATH}")
+			message(WARNING "Options:")
+			message(WARNING "  1. Install Vulkan SDK at correct path")
+			message(WARNING "  2. Use -DVULKAN_TRIMMED_BUILD=ON to fetch headers only")
+			message(WARNING "  3. Use AUTO_LOCATE_VULKAN=ON for automatic detection")
+			message(FATAL_ERROR "Vulkan SDK required or use VULKAN_TRIMMED_BUILD")
+		endif()
+	else()
+		set(VULKAN_TRIMMED_BUILD_ACTIVE FALSE)
 	endif()
 endif()
 
@@ -69,9 +196,16 @@ endif()
 # OFF - Only reads .spv files, which need to be compiled offline using
 # glslangValidator.exe.
 # For example: glslangValidator.exe <GLSL file name> -V -o <output fileneame in SPIR-V(.spv) form>
-option(BUILD_SPV_ON_COMPILE_TIME "BUILD_SPV_ON_COMPILE_TIME" ON)
 
-if(BUILD_SPV_ON_COMPILE_TIME)
+# Disable SPV compile in trimmed mode (requires glslang libraries)
+if(VULKAN_TRIMMED_BUILD_ACTIVE)
+	set(BUILD_SPV_ON_COMPILE_TIME OFF)
+	message(STATUS "BUILD_SPV_ON_COMPILE_TIME disabled (trimmed build mode)")
+else()
+	option(BUILD_SPV_ON_COMPILE_TIME "BUILD_SPV_ON_COMPILE_TIME" ON)
+endif()
+
+if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# Preprocessor flag allows the solution to use glslang library functions
 	add_definitions(-DAUTO_COMPILE_GLSL_TO_SPV)
 
@@ -184,9 +318,21 @@ endif()
 # Specify a suitable project name
 project(${Recipe_Name})
 
+# Suppress warnings from external dependencies
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecation warnings" FORCE)
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "Suppress developer warnings" FORCE)
+
 # Add any required preprocessor definitions here
-add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
-add_definitions(-DVK_ENABLE_BETA_EXTENSIONS -DVK_USE_PLATFORM_WIN32_KHR)
+add_definitions(-DVK_ENABLE_BETA_EXTENSIONS)
+
+# Platform-specific Vulkan defines
+if(WIN32)
+    add_definitions(-DVK_USE_PLATFORM_WIN32_KHR)
+elseif(UNIX AND NOT APPLE)
+    add_definitions(-DVK_USE_PLATFORM_XCB_KHR)
+elseif(APPLE)
+    add_definitions(-DVK_USE_PLATFORM_MACOS_MVK)
+endif()
 
 # vulkan-1 library for build Vulkan application.
 # Note: Do NOT use set() here as it would overwrite glslang libraries if they were added above
@@ -350,4 +496,29 @@ if(BUILD_TESTS)
     message(STATUS "Unit tests enabled - use 'ctest' or 'make test' to run")
 else()
     message(STATUS "Unit tests disabled - use -DBUILD_TESTS=ON to enable")
+endif()
+# ============================================================================
+# Code Coverage Target (for VS Code Coverage Gutters)
+# ============================================================================
+if(ENABLE_COVERAGE)
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E echo "Running tests with coverage..."
+        COMMAND ${CMAKE_CTEST_COMMAND} --verbose --output-on-failure
+        COMMAND ${CMAKE_COMMAND} -E echo "Generating coverage report..."
+        COMMAND lcov --capture --directory . --output-file coverage.info
+        COMMAND lcov --remove coverage.info '/usr/*' '*/build/_deps/*' --output-file coverage.info
+        COMMAND genhtml coverage.info --output-directory coverage_html
+        COMMAND ${CMAKE_COMMAND} -E echo "Coverage report generated in coverage_html/"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Generating code coverage report"
+    )
+    
+    add_custom_target(coverage-clean
+        COMMAND find . -name "*.gcda" -delete
+        COMMAND find . -name "*.gcno" -delete
+        COMMAND rm -f coverage.info
+        COMMAND rm -rf coverage_html
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Cleaning coverage data"
+    )
 endif()

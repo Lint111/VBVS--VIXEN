@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/DeviceNodeConfig.h"
+#include "Data/Nodes/DeviceNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <memory>
 #include <vector>
@@ -47,6 +47,7 @@ public:
  */
 class DeviceNode : public TypedNode<DeviceNodeConfig> {
 public:
+
     DeviceNode(
         const std::string& instanceName,
         NodeType* nodeType,
@@ -61,10 +62,10 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // VkInstance from global (Phase 1 temporary)

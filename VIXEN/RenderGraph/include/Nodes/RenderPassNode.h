@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "RenderPassNodeConfig.h"
+#include "Data/Nodes/RenderPassNodeConfig.h"
 #include <memory>
 
 // Forward declarations
@@ -27,6 +27,7 @@ namespace Vixen::RenderGraph {
  */
 class RenderPassNode : public TypedNode<RenderPassNodeConfig> {
 public:
+
     RenderPassNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -40,10 +41,10 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;

@@ -3,6 +3,7 @@
 #include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
+#include "Core/TypedConnection.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
 #include "EventBus/MessageBus.h"
@@ -64,8 +65,22 @@ public:
     inline NodeTypeRegistry* GetNodeTypeRegistry() const { return nodeRegistry.get(); }
 
     /**
+     * @brief Enable logging for a specific node (by handle)
+     * @param handle Node handle
+     * @param enableTerminal If true, also prints logs to console in real-time
+     */
+    void EnableNodeLogger(NodeHandle handle, bool enableTerminal = true);
+
+    /**
+     * @brief Enable logging for a specific node (by instance name)
+     * @param nodeName Name of the node instance
+     * @param enableTerminal If true, also prints logs to console in real-time
+     */
+    void EnableNodeLogger(const std::string& nodeName, bool enableTerminal = true);
+
+    /**
      * @brief Build the render graph
-     * 
+     *
      * Override this method to construct your specific render graph.
      * Called during Prepare() phase.
      */
@@ -118,13 +133,7 @@ private:
     bool shutdownRequested = false;                  // User requested shutdown
     std::unordered_set<std::string> shutdownAcksPending;  // Systems that need to acknowledge
     HWND windowHandle = nullptr;                     // Cached for destruction during shutdown
-    NodeHandle windowNodeHandle;                     // Cached for accessing window HWND
-
-    // ====== Phase 1: Shader Management via ShaderLibraryNode ======
-    // triangleShader and shaderConstantNodeHandle removed
-    // Shaders now managed by ShaderLibraryNode
-    NodeHandle deviceNodeHandle;                     // Cached for pre-compilation
-    NodeHandle pipelineNodeHandle;                   // Cached for pipeline access (if needed)
+    bool deinitialized = false;                      // Prevent double DeInitialize
 
     // ====== Phase 0.4: Loop System ======
     uint32_t physicsLoopID = 0;                      // Physics loop at 60Hz

@@ -3,7 +3,7 @@
 #include "Headers.h"
 #include <variant>
 
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "Data/DeviceHandles.h"
 
 // Forward declarations (outside Vixen::RenderGraph to avoid nesting)

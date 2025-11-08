@@ -25,10 +25,16 @@ FramebufferNode::FramebufferNode(
 {
 }
 
-void FramebufferNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
+void FramebufferNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("FramebufferNode: Setup (graph-scope initialization)");
+}
 
-    VulkanDevicePtr devicePtr = In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
+void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("Compile: Creating framebuffers");
+
+    // Access device input (compile-time dependency)
+    VulkanDevicePtr devicePtr = ctx.In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "FramebufferNode: VkDevice input is null";
@@ -39,17 +45,11 @@ void FramebufferNode::SetupImpl(Context& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    NODE_LOG_INFO("Setup: Framebuffer node ready");
-}
-
-void FramebufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating framebuffers");
-
     // Get typed inputs
-    VkRenderPass renderPass = In(FramebufferNodeConfig::RENDER_PASS);   
+    VkRenderPass renderPass =  ctx.In(FramebufferNodeConfig::RENDER_PASS);
 
     // Check for depth attachment
-    VkImageView depthView = In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
+    VkImageView depthView = ctx.In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
     hasDepth = (depthView != VK_NULL_HANDLE);
 
     NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
@@ -59,7 +59,7 @@ void FramebufferNode::CompileImpl(Context& ctx) {
         FramebufferNodeConfig::PARAM_LAYERS, 1);
 
     // Get swapchain public variables to access ALL color buffers
-    SwapChainPublicVariables* swapchainInfo = In(FramebufferNodeConfig::SWAPCHAIN_INFO);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(FramebufferNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("FramebufferNode: SwapChain info is null");
     }
@@ -72,7 +72,7 @@ void FramebufferNode::CompileImpl(Context& ctx) {
     }
 
     NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
-    std::cout << "[FramebufferNode::Compile] Creating " << colorAttachmentCount << " framebuffers from swapchain" << std::endl;
+    NODE_LOG_INFO("[FramebufferNode::Compile] Creating " + std::to_string(colorAttachmentCount) + " framebuffers from swapchain");
 
     // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
     // Clear the framebuffer vector to prepare for new framebuffers
@@ -85,7 +85,7 @@ void FramebufferNode::CompileImpl(Context& ctx) {
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         // Get color attachment from swapchain public variables
         VkImageView colorView = swapchainInfo->colorBuffers[i].view;
-        std::cout << "[FramebufferNode::Compile] Processing attachment " << i << ", view=" << colorView << std::endl;
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i) + ", view=" + std::to_string(reinterpret_cast<uint64_t>(colorView)));
 
         // Setup attachments array
         std::vector<VkImageView> attachments;
@@ -129,25 +129,25 @@ void FramebufferNode::CompileImpl(Context& ctx) {
             throw std::runtime_error(error.toString());
         }
 
-        std::cout << "[FramebufferNode::Compile] Created framebuffer[" << i << "]=" << framebuffers[i] << std::endl;
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
         NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " +
                       std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
 
     // Output all framebuffers as a vector in ONE bundle
-    Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
-    std::cout << "[FramebufferNode::Compile] Output " << framebuffers.size() << " framebuffers as vector" << std::endl;
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
+    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebuffers.size()) + " framebuffers as vector");
 
-    Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
 }
 
-void FramebufferNode::ExecuteImpl(Context& ctx) {
+void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // No-op - framebuffers are created in Compile phase
 }
 
-void FramebufferNode::CleanupImpl() {
+void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (!framebuffers.empty() && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
 

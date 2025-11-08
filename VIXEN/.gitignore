@@ -93,5 +93,6 @@ build/**/CMakeFiles/
 
 # Transient / generated files that should not be committed
 build_output.txt
+build_*.txt
 nul
 memory-bank/

@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "ConstantNode.h"
-#include "ConstantNodeConfig.h"
+#include "Data/Nodes/ConstantNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 

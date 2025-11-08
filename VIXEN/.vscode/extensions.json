@@ -1,3 +1,7 @@
 {
-    "recommendations": []
+    "recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "fredericbonnet.cmake-test-adapter"
+    ]
 }

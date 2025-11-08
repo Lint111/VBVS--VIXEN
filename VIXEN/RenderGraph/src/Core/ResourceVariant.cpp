@@ -1,4 +1,4 @@
-#include "Core/ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 
 namespace Vixen::RenderGraph {
 
@@ -13,11 +13,17 @@ Resource Resource::CreateFromType(ResourceType type, std::unique_ptr<ResourceDes
     res.type = type;
     res.lifetime = ResourceLifetime::Transient;
 
+    // Initialize handleStorage with a ResourceVariant for Case 1
+    ResourceVariant tempVariant;
+
     // Use macro-generated dispatch (defined in ResourceVariant.h)
-    if (!InitializeResourceFromType(type, desc.get(), res.handle, res.descriptor)) {
+    if (!InitializeResourceFromType(type, desc.get(), tempVariant, res.descriptor)) {
         // Fallback for unknown types
         res.descriptor = HandleDescriptor("UnknownType");
-        res.handle = std::monostate{};
+        res.handleStorage = std::monostate{};
+    } else {
+        // Store the initialized variant in handleStorage (Case 1)
+        res.handleStorage = std::move(tempVariant);
     }
 
     return res;

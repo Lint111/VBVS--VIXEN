@@ -35,10 +35,14 @@ GraphicsPipelineNode::GraphicsPipelineNode(
 {
 }
 
-void GraphicsPipelineNode::SetupImpl(Context& ctx) {
-    NODE_LOG_DEBUG("Setup: Reading device input");
+void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("GraphicsPipelineNode: Setup (graph-scope initialization)");
+}
 
-    VulkanDevicePtr devicePtr = In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
+    // Access device input (compile-time dependency)
+    VulkanDevicePtr devicePtr = ctx.In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "GraphicsPipelineNode: VkDevice input is null";
@@ -49,10 +53,6 @@ void GraphicsPipelineNode::SetupImpl(Context& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // Pipeline cache will be created by PipelineCacher during Compile()
-}
-
-void GraphicsPipelineNode::CompileImpl(Context& ctx) {
     // Get parameters using typed config constants
     enableDepthTest = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, true);
     enableDepthWrite = GetParameterValue<bool>(GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, true);
@@ -69,10 +69,10 @@ void GraphicsPipelineNode::CompileImpl(Context& ctx) {
     frontFace = ParseFrontFace(frontFaceStr);
 
     // Get inputs
-    currentShaderBundle = In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
-    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
-    VkDescriptorSetLayout manualDescriptorSetLayout = In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-    SwapChainPublicVariables* swapchainInfo = In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+    currentShaderBundle =  ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
+    VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
+    VkDescriptorSetLayout manualDescriptorSetLayout = ctx.In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    SwapChainPublicVariables* swapchainInfo = ctx.In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
 
     // Validate inputs
     if (!currentShaderBundle) {
@@ -141,25 +141,25 @@ void GraphicsPipelineNode::CompileImpl(Context& ctx) {
     BuildShaderStages(currentShaderBundle);
 
     // Create graphics pipeline with caching (cacher will create pipeline layout)
-    CreatePipelineWithCache();
+    CreatePipelineWithCache(ctx);
     
     // Set outputs
-    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
-void GraphicsPipelineNode::ExecuteImpl(Context& ctx) {
+void GraphicsPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Pipeline creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void GraphicsPipelineNode::CleanupImpl() {
+void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     // If we have a cached pipeline wrapper, just release the shared_ptr
     // The cacher owns VkPipeline, VkPipelineLayout, and VkPipelineCache - will destroy when appropriate
     if (cachedPipelineWrapper) {
-        std::cout << "[GraphicsPipelineNode::CleanupImpl] Releasing cached pipeline wrapper (cacher owns all resources)" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Releasing cached pipeline wrapper (cacher owns all resources)");
         cachedPipelineWrapper.reset();
         pipeline = VK_NULL_HANDLE;
         pipelineLayout = VK_NULL_HANDLE;
@@ -167,19 +167,19 @@ void GraphicsPipelineNode::CleanupImpl() {
     } else {
         // Fallback: cleanup locally-created resources (if created without cacher)
         if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline");
             vkDestroyPipeline(device->device, pipeline, nullptr);
             pipeline = VK_NULL_HANDLE;
         }
 
         if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline layout" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline layout");
             vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
             pipelineLayout = VK_NULL_HANDLE;
         }
 
         if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline cache" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline cache");
             vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
             pipelineCache = VK_NULL_HANDLE;
         }
@@ -189,7 +189,7 @@ void GraphicsPipelineNode::CleanupImpl() {
 void GraphicsPipelineNode::CreatePipelineCache() {
     // Only create if not already created
     if (pipelineCache != VK_NULL_HANDLE) {
-        std::cout << "[GraphicsPipelineNode] Pipeline cache already exists, reusing" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline cache already exists, reusing");
         return;
     }
 
@@ -215,7 +215,7 @@ void GraphicsPipelineNode::CreatePipelineCache() {
 void GraphicsPipelineNode::CreatePipelineLayout() {
     // Destroy old layout if exists (happens during recompile)
     if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        std::cout << "[GraphicsPipelineNode] Destroying old pipeline layout before recompile" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Destroying old pipeline layout before recompile");
         vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
@@ -308,10 +308,10 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     // Check if reflection data is available
     bool hasReflection = (bundle && bundle->reflectionData && !bundle->GetVertexInputs().empty());
 
-    std::cout << "[BuildVertexInputsFromReflection] bundle=" << (bundle ? "valid" : "null")
-              << " reflectionData=" << (bundle && bundle->reflectionData ? "valid" : "null")
-              << " vertexInputCount=" << (bundle ? bundle->GetVertexInputs().size() : 0)
-              << " hasReflection=" << hasReflection << std::endl;
+    NODE_LOG_DEBUG("BuildVertexInputsFromReflection: bundle=" + std::string(bundle ? "valid" : "null") +
+                   " reflectionData=" + std::string(bundle && bundle->reflectionData ? "valid" : "null") +
+                   " vertexInputCount=" + std::to_string(bundle ? bundle->GetVertexInputs().size() : 0) +
+                   " hasReflection=" + std::string(hasReflection ? "true" : "false"));
 
     if (hasReflection) {
         // Build from reflection
@@ -362,7 +362,6 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
                      std::to_string(currentOffset) + " bytes");
     } else {
         // Hardcoded fallback for current Draw shader (vec4 pos + vec2 uv)
-        std::cout << "[GraphicsPipelineNode::BuildVertexInputsFromReflection] No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)" << std::endl;
         NODE_LOG_WARNING("GraphicsPipelineNode: No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)");
 
         VkVertexInputBindingDescription binding{};
@@ -387,8 +386,8 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     }
 }
 
-void GraphicsPipelineNode::CreatePipeline() {
-    VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+void GraphicsPipelineNode::CreatePipeline(TypedCompileContext& ctx) {
+    VkRenderPass renderPass =  ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     
     // Dynamic state
     VkDynamicState dynamicStates[] = {
@@ -566,10 +565,10 @@ void GraphicsPipelineNode::CreatePipeline() {
     }
     
     // Output pipeline resources and device
-    Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
-    Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
-    Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
+    ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_CACHE, pipelineCache);
+    ctx.Out(GraphicsPipelineNodeConfig::VULKAN_DEVICE_OUT, device);
 }
 
 // Parse helper methods
@@ -604,7 +603,7 @@ VkFrontFace GraphicsPipelineNode::ParseFrontFace(const std::string& face) {
     return VK_FRONT_FACE_COUNTER_CLOCKWISE; // Default
 }
 
-void GraphicsPipelineNode::CreatePipelineWithCache() {
+void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
 
@@ -632,28 +631,28 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
     if (pipelineCacher) {
         NODE_LOG_INFO("GraphicsPipelineNode: Pipeline cache ready - attempting cached pipeline creation");
 
-        VkRenderPass renderPass = In(GraphicsPipelineNodeConfig::RENDER_PASS);
+        VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
 
         // Build vertex input descriptions from reflection data
         std::vector<VkVertexInputBindingDescription> vertexBindings;
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
 
-        std::cout << "[GraphicsPipelineNode] enableVertexInput=" << enableVertexInput << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: enableVertexInput=" + std::string(enableVertexInput ? "true" : "false"));
         if (enableVertexInput) {
-            std::cout << "[GraphicsPipelineNode] Calling BuildVertexInputsFromReflection..." << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode: Calling BuildVertexInputsFromReflection...");
             BuildVertexInputsFromReflection(currentShaderBundle, vertexBindings, vertexAttributes);
-            std::cout << "[GraphicsPipelineNode] BuildVertexInputsFromReflection complete: "
-                      << vertexBindings.size() << " bindings, "
-                      << vertexAttributes.size() << " attributes" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode: BuildVertexInputsFromReflection complete: " +
+                          std::to_string(vertexBindings.size()) + " bindings, " +
+                          std::to_string(vertexAttributes.size()) + " attributes");
 
             // Log details
             for (const auto& binding : vertexBindings) {
-                std::cout << "  Binding " << binding.binding << ": stride=" << binding.stride
-                          << " inputRate=" << binding.inputRate << std::endl;
+                NODE_LOG_DEBUG("  Binding " + std::to_string(binding.binding) + ": stride=" + std::to_string(binding.stride) +
+                              " inputRate=" + std::to_string(binding.inputRate));
             }
             for (const auto& attr : vertexAttributes) {
-                std::cout << "  Attribute location=" << attr.location << " binding=" << attr.binding
-                          << " format=" << attr.format << " offset=" << attr.offset << std::endl;
+                NODE_LOG_DEBUG("  Attribute location=" + std::to_string(attr.location) + " binding=" + std::to_string(attr.binding) +
+                              " format=" + std::to_string(attr.format) + " offset=" + std::to_string(attr.offset));
             }
         }
 
@@ -677,26 +676,26 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
         NODE_LOG_DEBUG("GraphicsPipelineNode: Shader stages: " + stageKeys);
 
         // Pipeline layout - Use the descriptor set layout (auto-generated or manual from CompileImpl)
-        params.descriptorSetLayout = descriptorSetLayout;  // Already set in CompileImpl
-        params.pushConstantRanges = pushConstantRanges;  // Phase 5: Use push constants from reflection
+        params.descriptorSetLayout = this->descriptorSetLayout;  // Already set in CompileImpl
+        params.pushConstantRanges = this->pushConstantRanges;  // Phase 5: Use push constants from reflection
         // Note: PipelineCacher will internally use PipelineLayoutCacher to create/cache the layout
 
-        params.renderPass = renderPass;
+        params.renderPass = renderPass;  // Local variable from ctx.In() above
 
         // Use semantic keys instead of handle addresses for stable caching across recompiles
         params.layoutKey = "main_pipeline_layout";
         params.renderPassKey = "main_render_pass";
-        params.enableDepthTest = enableDepthTest;
-        params.enableDepthWrite = enableDepthWrite;
-        params.cullMode = cullMode;
-        params.polygonMode = polygonMode;
-        params.topology = topology;
-        params.vertexBindings = vertexBindings;
-        params.vertexAttributes = vertexAttributes;
+        params.enableDepthTest = this->enableDepthTest;
+        params.enableDepthWrite = this->enableDepthWrite;
+        params.cullMode = this->cullMode;
+        params.polygonMode = this->polygonMode;
+        params.topology = this->topology;
+        params.vertexBindings = vertexBindings;  // Local variable built from reflection above
+        params.vertexAttributes = vertexAttributes;  // Local variable built from reflection above
 
-        std::cout << "[GraphicsPipelineNode] Pipeline params: depth=" << enableDepthTest
-                  << " depthWrite=" << enableDepthWrite << " cull=" << cullMode
-                  << " polyMode=" << polygonMode << " topo=" << topology << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline params: depth=" + std::string(this->enableDepthTest ? "true" : "false") +
+                      " depthWrite=" + std::string(this->enableDepthWrite ? "true" : "false") + " cull=" + std::to_string(this->cullMode) +
+                      " polyMode=" + std::to_string(this->polygonMode) + " topo=" + std::to_string(this->topology));
 
         try {
             // Use cacher to get or create pipeline
@@ -717,7 +716,7 @@ void GraphicsPipelineNode::CreatePipelineWithCache() {
 
     // Fallback: Create pipeline manually if cacher unavailable or failed
     NODE_LOG_WARNING("GraphicsPipelineNode: Creating pipeline without cacher");
-    CreatePipeline();
+    CreatePipeline(ctx);
 }
 
 } // namespace Vixen::RenderGraph

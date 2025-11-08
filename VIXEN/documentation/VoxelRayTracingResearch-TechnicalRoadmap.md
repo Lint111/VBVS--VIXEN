@@ -1,9 +1,9 @@
 # Technical Roadmap: Voxel Ray Tracing Research Integration
 
-**Date**: November 2, 2025
-**Status**: Planning Complete
+**Date**: November 2, 2025 (Updated: November 8, 2025)
+**Status**: Phase G + Infrastructure COMPLETE, Phase H 60% complete
 **Research Goal**: Compare Vulkan ray tracing/marching pipelines for voxel rendering
-**Timeline**: 18-24 weeks (post-Phase F completion)
+**Timeline**: 20-24 weeks remaining (Phase H completion → May 2026)
 
 ---
 
@@ -21,128 +21,117 @@ This document outlines the technical implementation roadmap for integrating voxe
 
 ### ✅ Completed (Ready for Research)
 1. **RenderGraph System** - Node-based pipeline with compile-time type safety
-2. **Resource Variant System** - Type-safe Vulkan resource management
-3. **Cache System** - Performance metrics tracking (ShaderModuleCacher, PipelineCacher)
-4. **SPIRV Reflection** - Automatic descriptor layout generation
+2. **Resource Variant System** - Type-safe Vulkan resource management (29+ types)
+3. **Cache System** - Performance metrics tracking (9 cachers, persistent cache)
+4. **SPIRV Reflection** - Automatic descriptor layout generation (ShaderManagement Phases 0-5)
 5. **Multi-Rate Loop System** - Fixed timestep support for deterministic timing
-6. **Synchronization** - Frame-in-flight, semaphores, fences
-7. **Event System** - Invalidation cascade for dynamic scene updates
-8. **CMake Build System** - Modular library structure
+6. **Synchronization** - Frame-in-flight, two-tier sync, present fences
+7. **Event System** - Invalidation cascade, auto-incrementing message types
+8. **CMake Build System** - Modular library structure, PCH support
+9. **Testing Infrastructure** (NEW) - 40% coverage, 10 test suites, VS Code integration
+10. **Logging System** (NEW) - ILoggable interface, LOG_*/NODE_LOG_* macros
+11. **Variadic Node System** (NEW) - VariadicTypedNode, dynamic slot discovery
+12. **Context System** (NEW) - Phase-specific typed contexts (Setup/Compile/Execute/Cleanup)
+13. **Lifecycle Hooks** (NEW) - 6 graph + 8 node phases = 14 hooks
+14. **Phase G Complete** (NEW) - SlotRole bitwise flags, deferred descriptor binding
 
 ### 🔄 In Progress
-- **Phase F** - Slot task system for array processing (16-21h remaining)
+- **Phase H** - Voxel data infrastructure (60% complete)
+  - ✅ CameraNode, VoxelGridNode, VoxelRayMarch.comp
+  - ⏳ Octree data structure, procedural scene generation
 
 ### ❌ Missing (Required for Research)
-Critical gaps identified in 6 major phases (G-L) outlined below.
+Critical gaps identified in 5 major phases (I-M) outlined below.
 
 ---
 
 ## Implementation Phases
 
-### Phase F: Slot Task System (IN PROGRESS) ⚡
-**Duration**: 16-21 hours
-**Status**: Planning complete, ready for implementation
+### Phase F: Bundle-First Organization ✅ COMPLETE
+**Duration**: Completed November 2, 2025
+**Status**: COMPLETE
 
 **Deliverables**:
-- Slot metadata consolidation (SlotScope, SlotNullability, SlotMutability)
-- Resource budget manager (device capability tracking)
-- Three-tier lifecycle (Node → Task → Instance)
-- Budget-based parallelism (hybrid allocation)
+- Bundle struct consolidation (inputs/outputs aligned per task)
+- TypedNodeInstance updated for bundle-first indexing
+- ResourceDependencyTracker updated for bundle iteration
+- All nodes compile successfully
 
-**Relevance to Research**: Enables parallel voxel loading/processing with automatic resource scaling.
-
-**DO NOT INTERRUPT** - Complete Phase F before starting research phases.
+**Impact**: Foundation for task-based parallelism and proper resource tracking.
 
 ---
 
-### Phase G: Compute Shader Pipeline (RESEARCH FOUNDATION) 🎯
-**Duration**: 2-3 weeks
-**Priority**: HIGHEST - Simplest ray marching implementation
-**Dependencies**: Phase F complete
+### Phase G: SlotRole System & Descriptor Refactor ✅ COMPLETE
+**Duration**: Completed November 8, 2025
+**Status**: COMPLETE
+**Priority**: HIGHEST - Foundation for descriptor management
 
-#### Objectives
-1. Validate profiling methodology with simplest pipeline
-2. Establish baseline metrics before tackling hardware RT complexity
-3. Test timestamp query accuracy and overhead
+#### Completed Objectives
+1. ✅ SlotRole bitwise flags system (Dependency | Execute)
+2. ✅ Deferred descriptor binding architecture
+3. ✅ Generalized DescriptorSetNode (no hardcoded UBO logic)
+4. ✅ NodeFlags enum for state management
+5. ✅ Zero Vulkan validation errors
 
-#### Implementation Tasks
+#### Deliverables
+**G.1: SlotRole Bitwise Flags** ✅
+- `SlotRole::Dependency | SlotRole::Execute` combined roles
+- Helper functions: HasDependency(), HasExecute(), IsDependencyOnly(), IsExecuteOnly()
+- Location: `RenderGraph/include/Data/Core/ResourceConfig.h`
 
-**G.1: ComputePipelineNode** (8-10h)
-```cpp
-// Files to create:
-RenderGraph/include/Nodes/ComputePipelineNodeConfig.h
-RenderGraph/src/Nodes/ComputePipelineNode.cpp
-CashSystem/include/CashSystem/ComputePipelineCacher.h
-CashSystem/src/ComputePipelineCacher.cpp
-```
+**G.2: DescriptorSetNode Refactor** ✅
+- CompileImpl reduced from ~230 lines to ~80 lines
+- 5 helper methods extracted: CreateDescriptorSetLayout(), CreateDescriptorPool(), AllocateDescriptorSets(), PopulateDependencyDescriptors(), PopulateExecuteDescriptors()
+- NodeFlags enum replaces scattered bool flags
+- Location: `RenderGraph/src/Nodes/DescriptorSetNode.cpp`
 
-**Key Features**:
-- VkComputePipeline creation and caching
-- Descriptor set layout auto-generation (reuse ShaderManagement)
-- Push constant support
-- Workgroup size extraction from SPIRV reflection
+**G.3: Deferred Descriptor Binding** ✅
+- Descriptor binding moved from Compile to Execute phase
+- PostCompile hooks populate resources before binding
+- Per-frame descriptor sets (not per-frame UBOs)
+- Dependency-role descriptors bound once in Compile
+- Execute-role descriptors bound every Execute (transient resources)
 
-**G.2: Storage Resource Support** (4-6h)
-```cpp
-// Extend ResourceVariant.h:
-REGISTER_RESOURCE_TYPE(VkBufferView, BufferViewDescriptor)
-// Storage buffer/image binding slots
-```
+**G.4: PostCompile Hook Logic** ✅
+- TypedConnection.h updated with PostCompile invocation
+- Nodes populate outputs after Compile completes
+- Enables descriptor binding after resources exist
 
-**Add to ResourceVariant**:
-- `VkBufferView` (storage buffer views)
-- Storage image layouts (VK_IMAGE_LAYOUT_GENERAL)
-
-**G.3: Compute Ray Marching Implementation** (8-12h)
-```cpp
-// Shaders to create:
-Shaders/VoxelRayMarch.comp  // Simple DDA ray marching
-
-// Node to create:
-RenderGraph/include/Nodes/ComputeRayMarchNodeConfig.h
-RenderGraph/src/Nodes/ComputeRayMarchNode.cpp
-```
-
-**Shader Features**:
-- Screen-space ray generation (inverse projection matrix)
-- DDA voxel traversal algorithm
-- Output to storage image (VK_FORMAT_R8G8B8A8_UNORM)
-- Basic voxel lookup (3D texture sampling)
-
-**G.4: Timestamp Query Integration** (6-8h)
-```cpp
-// Files to create:
-RenderGraph/include/Nodes/TimestampQueryNodeConfig.h
-RenderGraph/src/Nodes/TimestampQueryNode.cpp
-```
-
-**Key Features**:
-- VkQueryPool creation (VK_QUERY_TYPE_TIMESTAMP)
-- Begin/End query wrapping around compute dispatch
-- Result readback with proper synchronization
-- Double-buffered query pools (per-frame rotation)
-
-**Success Criteria**:
-- ✅ Compute shader renders voxel cube to screen
-- ✅ Timestamp queries measure dispatch time (<0.1ms overhead)
-- ✅ Manually adjustable voxel resolution (32³, 64³, 128³)
-- ✅ Zero validation errors
+**Impact**:
+- Eliminated validation errors (descriptor binding after resource creation)
+- Generalized architecture (supports any descriptor layout)
+- NodeFlags pattern reusable for all node state management
 
 ---
 
 ### Phase H: Voxel Data Infrastructure 📦
-**Duration**: 3-4 weeks
+**Duration**: 3-4 weeks (1 week remaining)
+**Status**: 60% COMPLETE
 **Priority**: HIGH - Required for all pipelines
-**Dependencies**: Phase G complete (storage resource support)
+**Dependencies**: Phase G complete ✅
 
-#### Objectives
-1. Implement sparse voxel octree (SVO) data structure
-2. Create voxel data generation/loading system
-3. Support multiple density levels (sparse, medium, dense)
+#### Completed Tasks ✅
+**H.0: CameraNode** ✅ (November 8, 2025)
+- View/projection matrix generation
+- Camera state management
+- Input integration for camera control
 
-#### Implementation Tasks
+**H.0.5: VoxelGridNode** ✅ (November 8, 2025)
+- 3D grid data structure
+- Voxel data storage and access
+- GPU buffer preparation
 
-**H.1: Octree Data Structure** (10-14h)
+**H.0.75: VoxelRayMarch.comp** ✅ (November 8, 2025)
+- Research shader (245 lines)
+- Amanatides & Woo DDA traversal (baseline algorithm)
+- Screen-space ray generation
+- 3D texture sampling
+- Simple diffuse shading
+- SPIRV compilation verified
+- Location: `Shaders/VoxelRayMarch.comp`
+
+#### Remaining Tasks ⏳
+**H.1: Octree Data Structure** (10-14h) - PENDING
 ```cpp
 // Files to create:
 ResourceManagement/include/VoxelStructures/SparseVoxelOctree.h
@@ -193,10 +182,15 @@ Shaders/Include/VoxelTraversal.glsl  // Shared utilities
 ```
 
 **Success Criteria**:
-- ✅ Octree stores 256³ voxel grid efficiently (<50MB for sparse)
-- ✅ GPU buffer upload completes in <100ms
-- ✅ Compute ray marching uses octree traversal
-- ✅ Test scenes: sphere, terrain, architectural
+- ✅ CameraNode implemented
+- ✅ VoxelGridNode implemented
+- ✅ VoxelRayMarch.comp shader complete (245 lines, DDA traversal)
+- ⏳ Octree stores 256³ voxel grid efficiently (<50MB for sparse)
+- ⏳ GPU buffer upload completes in <100ms
+- ⏳ Compute ray marching uses octree traversal
+- ⏳ Test scenes: sphere, terrain, architectural
+
+**Estimated Completion**: Week of November 18, 2025
 
 ---
 
@@ -604,20 +598,21 @@ tests/Benchmarks/ResultAggregator.cpp
 
 ## Timeline Summary
 
-| Phase | Duration | Cumulative | Dependencies | Priority |
-|-------|----------|-----------|--------------|----------|
-| F (Slot Tasks) | 16-21h | 3 weeks | None | HIGH |
-| G (Compute Pipeline) | 2-3 weeks | 6 weeks | F | HIGHEST |
-| H (Voxel Data) | 3-4 weeks | 10 weeks | G | HIGH |
-| I (Profiling) | 2-3 weeks | 13 weeks | G | HIGH |
-| J (Fragment Shader) | 1-2 weeks | 15 weeks | H | MEDIUM |
-| K (Hardware RT) | 4-5 weeks | 20 weeks | H | HIGH |
-| L (Optimizations) | 3-4 weeks | 24 weeks | G,J,K | HIGH |
-| M (Automation) | 3-4 weeks | 28 weeks | G,J,K,L | CRITICAL |
-| N (Research) | 2-3 weeks | 31 weeks | M | FINAL |
+| Phase | Duration | Cumulative | Dependencies | Status |
+|-------|----------|-----------|--------------|--------|
+| F (Bundle Refactor) | ~20h | - | None | ✅ COMPLETE (Nov 2) |
+| G (SlotRole + Descriptor) | 2-3 weeks | - | F | ✅ COMPLETE (Nov 8) |
+| Infrastructure | ~80h | - | None | ✅ COMPLETE (Nov 5-8) |
+| H (Voxel Data) | 3-4 weeks | 1 week left | G | 🔄 60% (Nov 8) |
+| I (Profiling) | 2-3 weeks | 3 weeks | G,H | ⏳ PENDING |
+| J (Fragment Shader) | 1-2 weeks | 5 weeks | H | ⏳ PENDING |
+| K (Hardware RT) | 4-5 weeks | 10 weeks | H | ⏳ PENDING |
+| L (Optimizations) | 3-4 weeks | 14 weeks | G,J,K | ⏳ PENDING |
+| M (Automation) | 3-4 weeks | 18 weeks | G,J,K,L | ⏳ PENDING |
+| N (Research) | 2-3 weeks | 21 weeks | M | ⏳ PENDING |
 
-**Total Timeline**: 28-31 weeks (~7 months)
-**With scope reduction**: 20-24 weeks (~5-6 months) - skip hybrid pipeline, reduce resolution levels
+**Total Timeline Remaining**: 20-24 weeks (~5-6 months from Phase H completion)
+**Target Completion**: May 2026 (research paper submission)
 
 ---
 
@@ -1039,13 +1034,17 @@ vec4 SampleWithFallback(OctreeNode node, vec3 pos) {
 
 ## Next Immediate Steps
 
-1. ✅ **Complete Phase F** (slot task system) - DO NOT START RESEARCH YET
-2. ⏳ **Read Phase G detailed spec** - Review compute pipeline requirements
-3. ⏳ **Implement G.1** - ComputePipelineNode + cacher
-4. ⏳ **Implement G.2** - Storage resource types
-5. ⏳ **Implement G.3** - Basic ray marching shader
-6. ⏳ **Implement G.4** - Timestamp queries
-7. ⏳ **Validate Phase G** - Render test cube, measure timing
+1. ✅ **Complete Phase F** (bundle refactor) - DONE (November 2, 2025)
+2. ✅ **Complete Phase G** (SlotRole + descriptor refactor) - DONE (November 8, 2025)
+3. ✅ **Complete Infrastructure** (testing, logging, context, hooks) - DONE (November 5-8, 2025)
+4. 🔄 **Complete Phase H** (60% done, 40% remaining)
+   - ✅ CameraNode implementation
+   - ✅ VoxelGridNode implementation
+   - ✅ VoxelRayMarch.comp shader (245 lines)
+   - ⏳ Implement octree data structure (2-3 days)
+   - ⏳ Implement procedural scene generators (2-3 days)
+   - ⏳ GPU buffer upload utilities (1 day)
+5. ⏳ **Begin Phase I** (Performance Profiling) - After Phase H complete
 
 ---
 

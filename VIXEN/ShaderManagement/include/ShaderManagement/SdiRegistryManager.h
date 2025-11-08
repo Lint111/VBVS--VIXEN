@@ -78,7 +78,8 @@ public:
         uint32_t regenerationThreshold = 1;
     };
 
-    explicit SdiRegistryManager(const Config& config = {});
+    explicit SdiRegistryManager(const Config& config);
+    SdiRegistryManager(); // Default constructor with default config
     ~SdiRegistryManager();
 
     // ===== Registration Methods =====

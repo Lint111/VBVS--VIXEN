@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Core/ResourceVariant.h"
-#include "Nodes/ConstantNodeConfig.h"
+#include "Data/Core/ResourceVariant.h"
+#include "Data/Nodes/ConstantNodeConfig.h"
 #include <optional>
 #include <functional>
 #include <cstdint>
@@ -81,7 +81,7 @@ public:
 
         // Create a Resource with the typed value using the variant system
         storedResource = Resource::Create<T>(HandleDescriptor("Constant"));
-        storedResource->SetHandle<T>(value);
+        storedResource->SetHandle<T>(std::move(value));
 
         std::cout << "[ConstantNode::SetValue] Value set successfully" << std::endl;
     }
@@ -111,11 +111,11 @@ public:
 
 protected:
     // Template method pattern - override *Impl() methods
-    void SetupImpl(Context& ctx) override {
+    void SetupImpl(TypedSetupContext& ctx) override {
         // No setup needed - graph will allocate output Resource
     }
 
-    void CompileImpl(Context& ctx) override {
+    void CompileImpl(TypedCompileContext& ctx) override {
         std::cout << "[ConstantNode::Compile] START for node: " << GetInstanceName() << std::endl;
 
         // Ensure value has been set
@@ -165,11 +165,11 @@ protected:
         }
     }
 
-    void ExecuteImpl(Context& ctx) override {
+    void ExecuteImpl(TypedExecuteContext& ctx) override {
         // No execution needed - this is a data node
     }
 
-    void CleanupImpl() override {
+    void CleanupImpl(TypedCleanupContext& ctx) override {
         // Invoke custom cleanup callback if set (for externally-managed resources)
         if (cleanupCallback) {
             std::cout << "[ConstantNode::CleanupImpl] Invoking cleanup callback for: " 

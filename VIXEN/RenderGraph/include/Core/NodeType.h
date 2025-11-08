@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -54,8 +54,8 @@ public:
     void SetParameterBundle(const ParameterBundle& params);
 
     // Slot information
-    size_t GetInputCount() const { return inputSchema.size(); }
-    size_t GetOutputCount() const { return outputSchema.size(); }
+    virtual size_t GetInputCount() const { return inputSchema.size(); }
+    virtual size_t GetOutputCount() const { return outputSchema.size(); }
     size_t GetParameterCount() const { return parameterBundle.size(); }
 
     const ResourceDescriptor* GetInputDescriptor(uint32_t slotIndex) const;
@@ -114,10 +114,8 @@ protected:
     Schema outputSchema;
     ParameterBundle parameterBundle;
 
-#ifdef _DEBUG
     // Performance hints
     WorkloadMetrics workloadMetrics;
-#endif
 
     // Node-level flag: allow array-shaped inputs (IA<I>) for nodes that can process arrays
     bool allowInputArrays = false;

@@ -2,7 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "FramebufferNodeConfig.h"
+#include "Data/Nodes/FramebufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
 
@@ -21,6 +21,7 @@ namespace Vixen::RenderGraph {
  */
 class FramebufferNode : public TypedNode<FramebufferNodeConfig> {
 public:
+
     FramebufferNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -37,10 +38,10 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;

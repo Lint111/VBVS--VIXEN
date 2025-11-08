@@ -1,13 +1,16 @@
 #pragma once
 
-#include "ResourceVariant.h"
+#include "Data/Core/ResourceVariant.h"
 #include "NodeType.h"
 #include "Data/ParameterDataTypes.h"
+#include "Data/NodeParameterManager.h"
 #include "CleanupStack.h"
 #include "LoopManager.h"
 #include "INodeWiring.h"
 #include "SlotTask.h"
 #include "ResourceBudgetManager.h"
+#include "GraphLifecycleHooks.h"
+#include "NodeContext.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -52,8 +55,8 @@ public:
     // Phase F: Bundle structure - ensures inputs/outputs stay aligned
     // Each bundle represents one task/array index with all its slots
     struct Bundle {
-        std::vector<Resource*> inputs;   // One entry per input slot
-        std::vector<Resource*> outputs;  // One entry per output slot
+        std::vector<Resource*> inputs;   // One entry per static input slot
+        std::vector<Resource*> outputs;  // One entry per static output slot
     };
 
 public:
@@ -77,6 +80,9 @@ public:
     const std::string& GetInstanceName() const { return instanceName; }
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
+
+    // Logger access
+    Logger* GetLogger() const { return nodeLogger.get(); }
     uint64_t GetInstanceId() const { return instanceId; }
     NodeHandle GetHandle() const { return nodeHandle; }
     void SetHandle(NodeHandle handle) { nodeHandle = handle; }
@@ -89,8 +95,6 @@ public:
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* GetDevice() const { return device; }
-    uint32_t GetDeviceIndex() const { return deviceIndex; }
-    void SetDeviceIndex(uint32_t index) { deviceIndex = index; }
 
     // Owning graph access (for cleanup registration)
     RenderGraph* GetOwningGraph() const { return owningGraph; }
@@ -100,18 +104,21 @@ public:
     bool AllowsInputArrays() const { return allowInputArrays; }
     void SetAllowInputArrays(bool allow) { allowInputArrays = allow; }
 
-    // Phase F: Bundle access (for graph-level operations)
-    const std::vector<Bundle>& GetBundles() const { return bundles; }
-
     // Get array size for a slot
     size_t GetInputCount(uint32_t slotIndex) const;
     size_t GetOutputCount(uint32_t slotIndex) const;
 
-    // Parameters
-    void SetParameter(const std::string& name, const ParamTypeValue& value);
-    const ParamTypeValue* GetParameter(const std::string& name) const;
+    // Parameters (delegated to NodeParameterManager)
+    void SetParameter(const std::string& name, const ParamTypeValue& value) {
+        parameterManager.SetParameter(name, value);
+    }
+    const ParamTypeValue* GetParameter(const std::string& name) const {
+        return parameterManager.GetParameter(name);
+    }
     template<typename T>
-    T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const;
+    T GetParameterValue(const std::string& name, const T& defaultValue = T{}) const {
+        return parameterManager.GetParameterValue<T>(name, defaultValue);
+    }
 
     // Dependencies
     const std::vector<NodeInstance*>& GetDependencies() const { return dependencies; }
@@ -119,9 +126,8 @@ public:
     void RemoveDependency(NodeInstance* node);
     bool DependsOn(NodeInstance* node) const;
 
-    // State
+    // State (read-only access - lifecycle methods manage state internally)
     NodeState GetState() const { return state; }
-    void SetState(NodeState newState) { state = newState; }
 
     // Execution order (set during compilation)
     uint32_t GetExecutionOrder() const { return executionOrder; }
@@ -130,13 +136,6 @@ public:
     // Workload metrics
     size_t GetInputMemoryFootprint() const { return inputMemoryFootprint; }
     void SetInputMemoryFootprint(size_t size) { inputMemoryFootprint = size; }
-    const PerformanceStats& GetPerformanceStats() const { return performanceStats; }
-    void UpdatePerformanceStats(uint64_t executionTimeNs, uint64_t cpuTimeNs);
-
-    // Caching
-    uint64_t GetCacheKey() const { return cacheKey; }
-    void SetCacheKey(uint64_t key) { cacheKey = key; }
-    uint64_t ComputeCacheKey() const;
 
     // Cleanup registration helper
     /**
@@ -148,10 +147,8 @@ public:
     void RegisterCleanup();
 
     // Logger Registration
-    #ifdef _DEBUG
     void RegisterToParentLogger(Logger* parentLogger);
     void DeregisterFromParentLogger(Logger* parentLogger);
-    #endif
 
     // EventBus Integration
     /**
@@ -301,26 +298,37 @@ public:
      *
      * Automatically handles:
      * - Reset compile-time input tracking
+     * - Execute PreSetup hooks
      * - Calls SetupImpl() for derived class logic
+     * - Execute PostSetup hooks
      *
      * Derived classes should override SetupImpl(), NOT this method.
      */
     virtual void Setup() {
         ResetInputsUsedInCompile();
+        std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
+        ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
         SetupImpl();
+        std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
+        ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
     }
 
     /**
      * @brief Compile lifecycle method with automatic cleanup registration
      *
      * Automatically handles:
+     * - Execute PreCompile hooks
      * - Calls CompileImpl() for derived class logic
+     * - Execute PostCompile hooks
      * - Registers node in CleanupStack (prevents forgetting RegisterCleanup())
      *
      * Derived classes should override CompileImpl(), NOT this method.
      */
-    virtual void Compile() {
+    virtual void Compile() final {
+        ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
         CompileImpl();
+        
+        ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
         RegisterCleanup();
     }
 
@@ -328,115 +336,214 @@ public:
      * @brief Execute lifecycle method with automatic task orchestration
      *
      * Automatically handles:
+     * - Execute PreExecute hooks
      * - Analyzes slot configuration to determine task count
      * - Generates tasks based on SlotScope and array sizes
      * - Sets up task-local In()/Out() context for each task
      * - Calls ExecuteImpl() for each task with pre-bound slot access
      * - Node implementations use In()/Out() without knowing about indices
+     * - Execute PostExecute hooks
      *
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
-    virtual void Execute() {
-        // Analyze slot configuration to determine task generation strategy
-        uint32_t taskCount = DetermineTaskCount();
-
-        if (taskCount == 0) {
-            // No tasks to execute (e.g., no inputs connected)
-            return;
-        }
-
-        // Execute each task with task-local context
-        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
-            // Set current task index for In()/Out() binding
-            currentTaskIndex = taskIndex;
-
-            // Execute with task-bound slot access
-            ExecuteImpl(taskIndex);
-        }
-
-        // Reset task index after execution
-        currentTaskIndex = 0;
+    virtual void Execute() final {
+        ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
+        ExecuteImpl();
+        ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
     }
 
     /**
-     * @brief Final cleanup method with double-cleanup protection
+     * @brief Cleanup method with double-cleanup protection
      *
      * This is the public interface for cleanup. It ensures CleanupImpl()
      * is only called once, even if Cleanup() is called multiple times
      * (e.g., from CleanupStack and from destructor).
      *
-     * Derived classes should override CleanupImpl(), NOT this method.
+     * Automatically handles:
+     * - Execute PreCleanup hooks
+     * - Calls CleanupImpl() for derived class logic
+     * - Execute PostCleanup hooks
+     *
+     * Derived classes (like TypedNode) can override this method to implement
+     * task-based cleanup, following the same pattern as Execute().
      */
     virtual void Cleanup() final {
         if (cleanedUp) {
             return;  // Already cleaned up
         }
+        ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
         CleanupImpl();
+        ExecuteNodeHook(NodeLifecyclePhase::PostCleanup);
         cleanedUp = true;
     }
 
 protected:
     // ============================================================================
-    // TEMPLATE METHOD PATTERN - Override these *Impl() methods in derived classes
+    // CONTEXT FACTORY METHODS - Override to provide specialized contexts
     // ============================================================================
 
     /**
+     * @brief Create SetupContext for this node
+     *
+     * Override in derived classes to provide specialized setup contexts.
+     * Default: Returns base SetupContext.
+     */
+    virtual SetupContext CreateSetupContext(uint32_t taskIndex) {
+        return SetupContext(this, taskIndex);
+    }
+
+    /**
+     * @brief Create CompileContext for this node
+     *
+     * Override in derived classes to provide specialized compile contexts.
+     * Default: Returns base CompileContext.
+     */
+    virtual CompileContext CreateCompileContext(uint32_t taskIndex) {
+        return CompileContext(this, taskIndex);
+    }
+
+    /**
+     * @brief Create ExecuteContext for this node
+     *
+     * Override in derived classes to provide specialized execute contexts.
+     * Default: Returns base ExecuteContext.
+     */
+    virtual ExecuteContext CreateExecuteContext(uint32_t taskIndex) {
+        return ExecuteContext(this, taskIndex);
+    }
+
+    /**
+     * @brief Create CleanupContext for this node
+     *
+     * Override in derived classes to provide specialized cleanup contexts.
+     * Default: Returns base CleanupContext.
+     */
+    virtual CleanupContext CreateCleanupContext(uint32_t taskIndex) {
+        return CleanupContext(this, taskIndex);
+    }
+    /**
      * @brief Setup implementation for derived classes
      *
-     * Override this to implement setup logic (reading config, connecting to managers, etc.).
-     * Called automatically by Setup() after resetting input tracking.
+     * Task orchestration and context creation happens here.
+     * Creates tasks based on DetermineTaskCount() and calls SetupImpl(SetupContext&) for each.
      *
-     * Default: No-op (some nodes don't need setup).
+     * Override this if you need custom task orchestration logic.
      */
-    virtual void SetupImpl() {}
+    virtual void SetupImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            SetupContext ctx = CreateSetupContext(taskIndex);
+            SetupImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Setup implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual setup logic.
+     * Access inputs/outputs via context methods (if context supports them).
+     *
+     * @param ctx Setup context with phase-specific capabilities
+     */
+    virtual void SetupImpl(SetupContext& ctx) {
+        // Default: no-op (many nodes don't need setup)
+    }
 
     /**
      * @brief Compile implementation for derived classes
      *
-     * Override this to implement compilation logic (creating Vulkan resources, pipelines, etc.).
-     * Called automatically by Compile(). RegisterCleanup() is called automatically after this.
+     * Task orchestration and context creation happens here.
+     * Creates tasks based on DetermineTaskCount() and calls CompileImpl(CompileContext&) for each.
      *
-     * IMPORTANT: Do NOT call RegisterCleanup() manually - it happens automatically!
-     *
-     * Default: No-op (must override in most nodes).
+     * Override this if you need custom task orchestration logic.
      */
-    virtual void CompileImpl() {}
+    virtual void CompileImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CompileContext ctx = CreateCompileContext(taskIndex);
+            CompileImpl(ctx);
+        }
+    }
 
     /**
-     * @brief Execute implementation for derived classes (task-aware)
+     * @brief Compile implementation with context (final implementation)
      *
-     * Override this to implement execution logic for ONE task's worth of work.
-     * Called automatically by Execute() for each generated task.
+     * Override this in concrete nodes to implement actual compilation logic.
+     * Access inputs/outputs via context methods.
      *
-     * @param taskIndex The index of the current task being executed (0-based)
+     * @param ctx Compile context with phase-specific capabilities
      *
-     * IMPORTANT: This is pure virtual - all nodes MUST implement execution.
-     *
-     * Phase F: Execute() automatically determines task count based on slot configuration.
-     * Node implementations just handle one task. Use In()/Out() normally - they are
-     * context-aware of currentTaskIndex.
-     *
-     * For most nodes with NodeLevel slots, taskIndex will always be 0 (single task).
-     * For nodes with TaskLevel/ParameterizedInput slots, taskIndex indicates which
-     * element/task to process.
-     *
-     * Note: Nodes that need VkCommandBuffer should read it from their input slots.
+     * NOTE: TypedNode overrides this with TypedCompileContext variant.
+     * Default: no-op (TypedNode provides implementation).
      */
-    virtual void ExecuteImpl(uint32_t taskIndex) = 0;
+    virtual void CompileImpl(CompileContext& ctx) {
+        // Default: no-op (TypedNode hierarchy provides override)
+    }
+
+    /**
+     * @brief Execute implementation for derived classes
+     *
+     * Task orchestration and context creation happens here.
+     * Creates tasks based on DetermineTaskCount() and executes them.
+     * For task-based nodes, executes tasks in parallel if supported.
+     *
+     * Override this if you need custom task orchestration logic.
+     */
+    virtual void ExecuteImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+
+        // TODO: Add parallel execution support for arrayable nodes
+        // For now, execute sequentially
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            ExecuteContext ctx = CreateExecuteContext(taskIndex);
+            ExecuteImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Execute implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual execution logic.
+     * Access inputs/outputs via context methods with automatic task binding.
+     *
+     * @param ctx Execute context with task-bound input/output access
+     *
+     * NOTE: TypedNode overrides this with TypedExecuteContext variant.
+     * Default: no-op (TypedNode provides implementation).
+     */
+    virtual void ExecuteImpl(ExecuteContext& ctx) {
+        // Default: no-op (TypedNode hierarchy provides override)
+    }
 
     /**
      * @brief Cleanup implementation for derived classes
      *
-     * Override this to implement cleanup logic (destroying Vulkan resources, etc.).
-     * Guaranteed to be called exactly once per node lifetime.
-     * Called automatically by Cleanup() with double-cleanup protection.
+     * Task orchestration and context creation happens here.
+     * Creates tasks based on DetermineTaskCount() and calls CleanupImpl(CleanupContext&) for each.
      *
-     * IMPORTANT: Always null out VulkanDevice pointers and handles
-     * after destroying Vulkan resources to prevent dangling references.
-     *
-     * Default: No-op (some nodes don't allocate resources).
+     * Override this if you need custom task orchestration logic.
      */
-    virtual void CleanupImpl() {}
+    virtual void CleanupImpl() {
+        uint32_t taskCount = DetermineTaskCount();
+        for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
+            CleanupContext ctx = CreateCleanupContext(taskIndex);
+            CleanupImpl(ctx);
+        }
+    }
+
+    /**
+     * @brief Cleanup implementation with context (final implementation)
+     *
+     * Override this in concrete nodes to implement actual cleanup logic.
+     *
+     * @param ctx Cleanup context (no input/output access during cleanup)
+     *
+     * Default: no-op (some nodes don't allocate resources).
+     * Always null out VulkanDevice pointers and handles after destroying resources.
+     */
+    virtual void CleanupImpl(CleanupContext& ctx) {
+        // Default: no-op (some nodes don't allocate resources)
+    }
 
     // ============================================================================
     // PHASE F: SLOT TASK SYSTEM - Task-based array processing with budget awareness
@@ -516,6 +623,16 @@ protected:
      */
     SlotScope GetSlotScope(uint32_t slotIndex) const;
 
+    /**
+     * @brief Execute node-level lifecycle hooks
+     *
+     * Called automatically during Setup/Compile/Execute/Cleanup lifecycle methods.
+     * Delegates to RenderGraph's hook system if graph is available.
+     *
+     * @param phase Lifecycle phase to execute hooks for
+     */
+    void ExecuteNodeHook(NodeLifecyclePhase phase);
+
 public:
     // ============================================================================
     // INodeWiring interface implementation (graph wiring methods)
@@ -574,6 +691,22 @@ public:
     void SetOutput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) override;
 
 protected:
+    /**
+     * @brief Set node state (internal use only)
+     *
+     * State transitions managed automatically by lifecycle methods and RenderGraph.
+     * External code should not manually change state.
+     *
+     * @param newState New state to transition to
+     */
+    void SetState(NodeState newState) { state = newState; }
+
+    // Grant access to internal state management
+    friend class RenderGraph;
+
+    // Grant TypedNode access to bundles (it's a derived class needing direct access)
+    template<typename ConfigType>
+    friend class TypedNode;
 
     // Instance identification
     std::string instanceName;
@@ -581,11 +714,10 @@ protected:
     NodeHandle nodeHandle;  // Handle to this node in the graph
     NodeType* nodeType;
     std::vector<std::string> tags;  // Tags for bulk operations (e.g., "shadow-maps", "post-process")
-    
+
 
     // Device affinity
     Vixen::Vulkan::Resources::VulkanDevice* device;
-    uint32_t deviceIndex = 0;
 
     // Owning graph pointer (for cleanup registration)
     RenderGraph* owningGraph = nullptr;
@@ -602,9 +734,14 @@ protected:
     // Default false to preserve existing behavior.
     bool allowInputArrays = false;
 
+protected:
     // Phase F: Resources organized as bundles (one bundle per task/array index)
     // bundles[taskIndex].inputs[slotIndex] -> Resource for that task and slot
     std::vector<Bundle> bundles;
+
+private:
+    // Parameter management (encapsulated)
+    NodeParameterManager parameterManager;
 
     // Runtime tracking: which input slots were used during the last Compile() call.
     // This is transient runtime state (not serialized). It is mutable so that
@@ -612,28 +749,12 @@ protected:
     mutable std::vector<std::vector<bool>> inputUsedInCompile;
 
 public:
-    // Slot role flags used by TypedNode::In() to indicate the access semantics.
-    // Implemented as bitflags so callers can combine roles (e.g., ExecuteOnly | CleanupOnly).
-    enum class SlotRole : uint8_t {
-        Dependency   = 1u << 0,
-        ExecuteOnly  = 1u << 1,
-        CleanupOnly  = 1u << 2
-    };
+    // Phase F: Bundle access (for graph-level operations)
+    const std::vector<Bundle>& GetBundles() const { return bundles; }
 
-    // NOTE: bitwise operator helpers for SlotRole are declared at namespace scope
-    // after the class definition so they behave as non-member operators.
-
-    // Active bundle index for this node instance. This lets In()/Out() use a
-    // per-instance "current bundle" instead of requiring callers to pass an
-    // explicit array index everywhere. Default = 0.
-    void SetActiveBundleIndex(size_t idx) { activeBundleIndex = idx; }
-    size_t GetActiveBundleIndex() const { return activeBundleIndex; }
-
-    // Mark that a specific input slot (slotIndex) was used during compile.
-    // The array/bundle index is resolved using the node's active bundle index.
+    // Mark that a specific input slot (slotIndex) was used during compile at given arrayIndex.
     // This method is const so it can be called from const accessors.
-    void MarkInputUsedInCompile(uint32_t slotIndex) const {
-        uint32_t arrayIndex = static_cast<uint32_t>(activeBundleIndex);
+    void MarkInputUsedInCompile(uint32_t slotIndex, uint32_t arrayIndex) const {
         // Ensure the vector dimensions
         if (inputUsedInCompile.size() <= slotIndex) {
             inputUsedInCompile.resize(slotIndex + 1);
@@ -660,12 +781,7 @@ public:
         }
     }
 
-    // Instance-specific parameters
-    std::map<std::string, ParamTypeValue> parameters;
-
-    // Current active bundle index used by In()/Out() when callers omit explicit array index
-    size_t activeBundleIndex = 0;
-
+protected:
     // Phase 0.4: Loop connections (zero or more loops)
     std::vector<const LoopReference*> connectedLoops;
 
@@ -680,46 +796,13 @@ public:
 
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
-    PerformanceStats performanceStats;
 
-    // Phase F: Thread-local task index for parallel-safe slot access
-    static thread_local uint32_t currentTaskIndex;
-
-    // Caching
-    uint64_t cacheKey = 0;
-
-#ifdef _DEBUG
-    // Debug-only hierarchical logger (zero overhead in release builds)
+    // Hierarchical logger (disabled by default, enable in VulkanGraphApplication as needed)
     std::unique_ptr<Logger> nodeLogger;
-#endif
 
     // Helper methods
     void AllocateResources();
     void DeallocateResources();
 };
-
-// Template implementation
-template<typename T>
-T NodeInstance::GetParameterValue(const std::string& name, const T& defaultValue) const {
-    auto it = parameters.find(name);
-    if (it == parameters.end()) {
-        return defaultValue;
-    }
-    
-    if (auto* value = std::get_if<T>(&it->second)) {
-        return *value;
-    }
-    
-    return defaultValue;
-}
-
-// Bitwise operators for SlotRole (non-member) so callers can combine flags naturally.
-inline NodeInstance::SlotRole operator|(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
-    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
-}
-
-inline NodeInstance::SlotRole operator&(NodeInstance::SlotRole a, NodeInstance::SlotRole b) {
-    return static_cast<NodeInstance::SlotRole>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
-}
 
 } // namespace Vixen::RenderGraph

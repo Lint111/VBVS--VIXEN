@@ -2,6 +2,7 @@
 
 #include "ShaderProgram.h"
 #include "ShaderSwapPolicy.h"
+#include "ILoggable.h"
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -21,8 +22,11 @@ class BackgroundCompiler;
  * Graph side (ShaderLibraryNode) converts SPIRV to Vulkan objects.
  *
  * Thread-safe: All public methods can be called from any thread.
+ *
+ * Logging: Inherits from ILoggable for external logging control.
+ * Use SetLoggerEnabled() and SetLoggerTerminalOutput() to configure logging.
  */
-class ShaderLibrary {
+class ShaderLibrary : public ILoggable {
 public:
     ShaderLibrary();
     ~ShaderLibrary();

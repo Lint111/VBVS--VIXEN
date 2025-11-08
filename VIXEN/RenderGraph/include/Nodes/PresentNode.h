@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
-#include "Nodes/PresentNodeConfig.h"
+#include "Data/Nodes/PresentNodeConfig.h"
 #include <memory>
 
 namespace Vixen::RenderGraph {
@@ -35,6 +35,7 @@ public:
  */
 class PresentNode : public TypedNode<PresentNodeConfig> {
 public:
+
     PresentNode(
         const std::string& instanceName,
         NodeType* nodeType
@@ -46,10 +47,10 @@ public:
 
 protected:
 	// Template method pattern - override *Impl() methods
-	void SetupImpl(Context& ctx) override;
-	void CompileImpl(Context& ctx) override;
-	void ExecuteImpl(Context& ctx) override;
-	void CleanupImpl() override;
+	void SetupImpl(TypedSetupContext& ctx) override;
+	void CompileImpl(TypedCompileContext& ctx) override;
+	void ExecuteImpl(TypedExecuteContext& ctx) override;
+	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Configuration from parameters

@@ -29,7 +29,15 @@ RenderPassNode::RenderPassNode(
 {
 }
 
-void RenderPassNode::SetupImpl(Context& ctx) {
+void RenderPassNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("RenderPassNode: Setup (graph-scope initialization)");
+}
+
+void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("Compile: Getting or creating cached render pass");
+
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
@@ -40,12 +48,6 @@ void RenderPassNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-
-    NODE_LOG_INFO("Setup: Render pass node ready");
-}
-
-void RenderPassNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Get swapchain info bundle and extract format
     SwapChainPublicVariables* swapchainInfo = ctx.In(RenderPassNodeConfig::SWAPCHAIN_INFO);
@@ -134,14 +136,14 @@ void RenderPassNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile complete: Render pass retrieved from cache");
 }
 
-void RenderPassNode::ExecuteImpl(Context& ctx) {
+void RenderPassNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // No-op - render pass is created in Compile phase
 }
 
-void RenderPassNode::CleanupImpl() {
+void RenderPassNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Release cached wrapper - cacher owns VkRenderPass and destroys when appropriate
     if (cachedRenderPassWrapper) {
-        std::cout << "[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)" << std::endl;
+        NODE_LOG_DEBUG("[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)");
         cachedRenderPassWrapper.reset();
         renderPass = VK_NULL_HANDLE;
     }

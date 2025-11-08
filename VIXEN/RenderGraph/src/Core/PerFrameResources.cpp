@@ -1,7 +1,6 @@
 #include "Core/PerFrameResources.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <stdexcept>
-#include <iostream>
 
 namespace Vixen::RenderGraph {
 
@@ -16,8 +15,6 @@ void PerFrameResources::Initialize(Vixen::Vulkan::Resources::VulkanDevice* devic
 
     device = devicePtr;
     frames.resize(frameCount);
-
-    std::cout << "[PerFrameResources] Initialized for " << frameCount << " frames" << std::endl;
 }
 
 VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSize bufferSize) {
@@ -85,9 +82,6 @@ VkBuffer PerFrameResources::CreateUniformBuffer(uint32_t frameIndex, VkDeviceSiz
     }
 
     frame.uniformBufferSize = bufferSize;
-
-    std::cout << "[PerFrameResources] Created UBO for frame " << frameIndex
-              << " (buffer=" << frame.uniformBuffer << ", size=" << bufferSize << ")" << std::endl;
 
     return frame.uniformBuffer;
 }
@@ -166,8 +160,6 @@ void PerFrameResources::Cleanup() {
 
     frames.clear();
     device = nullptr;
-
-    std::cout << "[PerFrameResources] Cleaned up all per-frame resources" << std::endl;
 }
 
 uint32_t PerFrameResources::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {

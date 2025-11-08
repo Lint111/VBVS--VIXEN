@@ -26,8 +26,15 @@ VertexBufferNode::VertexBufferNode(
 {
 }
 
-void VertexBufferNode::SetupImpl(Context& ctx) {
-    // Read and validate device input
+void VertexBufferNode::SetupImpl(TypedSetupContext& ctx) {
+    // Graph-scope initialization only (no input access)
+    NODE_LOG_DEBUG("VertexBufferNode: Setup (graph-scope initialization)");
+}
+
+void VertexBufferNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
+
+    // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
@@ -35,12 +42,6 @@ void VertexBufferNode::SetupImpl(Context& ctx) {
 
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
-
-    NODE_LOG_INFO("Setup: Vertex buffer node ready");
-}
-
-void VertexBufferNode::CompileImpl(Context& ctx) {
-    NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Get typed parameters
     vertexCount = GetParameterValue<uint32_t>(
@@ -124,10 +125,10 @@ void VertexBufferNode::CompileImpl(Context& ctx) {
     SetupVertexInputDescription();
 
     // Set outputs
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     ctx.Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     if (hasIndices) {
         NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
         ctx.Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
@@ -137,12 +138,12 @@ void VertexBufferNode::CompileImpl(Context& ctx) {
     NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
 }
 
-void VertexBufferNode::ExecuteImpl(Context& ctx) {
+void VertexBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Vertex buffer creation happens in Compile phase
     // Execute is a no-op for this node
 }
 
-void VertexBufferNode::CleanupImpl() {
+void VertexBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Release cached wrapper - cacher owns VkBuffer and VkDeviceMemory and destroys when appropriate
     if (cachedMeshWrapper) {
         NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper (cacher owns resources)");

@@ -5,7 +5,6 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
-#include <iostream>
 
 namespace ShaderManagement {
 
@@ -672,11 +671,7 @@ void SpirvReflector::ReflectVertexInputs(
         // SPIRV-Reflect provides VkFormat directly - use it!
         vertexInput.format = static_cast<VkFormat>(input->format);
 
-        std::cout << "[SpirvReflector::ReflectVertexInputs] location=" << input->location
-                  << " name=" << (input->name ? input->name : "unnamed")
-                  << " format=" << vertexInput.format
-                  << " (from SPIRV-Reflect)" << std::endl;
-
+        // Vertex input reflected: location, name, and format extracted from SPIRV
         data.vertexInputs.push_back(vertexInput);
     }
 }
