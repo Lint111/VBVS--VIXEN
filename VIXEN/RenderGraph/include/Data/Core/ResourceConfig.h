@@ -60,10 +60,12 @@ enum class SlotNullability : uint8_t {
  * Used for dependency tracking and compile-time validation.
  */
 enum class SlotRole : uint8_t {
-    Output       = 0,        // Output slot (role only applies to inputs)
+	None         = 0u,        // No role assigned
     Dependency   = 1u << 0,  // Accessed during Compile (creates dependency)
     Execute      = 1u << 1,  // Accessed during Execute (can be combined with Dependency)
-    CleanupOnly  = 1u << 2   // Only accessed during Cleanup
+    CleanupOnly  = 1u << 2,   // Only accessed during Cleanup
+    Output       = 1u << 3        // Output slot (role only applies to inputs)
+
 };
 
 // Bitwise operators for SlotRole
@@ -75,9 +77,43 @@ inline SlotRole operator&(SlotRole a, SlotRole b) {
     return static_cast<SlotRole>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
 }
 
+inline bool operator==(SlotRole a, uint8_t b) {
+    return static_cast<uint8_t>(a) == b;
+}
+
+inline bool operator!=(SlotRole a, uint8_t b) {
+    return static_cast<uint8_t>(a) != b;
+}
+
 inline SlotRole& operator|=(SlotRole& a, SlotRole b) {
     return a = a | b;
 }
+
+inline SlotRole& operator&=(SlotRole& a, SlotRole b) {
+    return a = a & b;
+}
+
+inline SlotRole operator~(SlotRole a) {
+    return static_cast<SlotRole>(~static_cast<uint8_t>(a));
+}
+
+inline bool operator&(SlotRole a, uint8_t b) {
+    return (static_cast<uint8_t>(a) & b) != 0;
+}
+
+inline bool operator|(SlotRole a, uint8_t b) {
+    return (static_cast<uint8_t>(a) | b) != 0;
+}
+
+// implicit conversion to bool
+inline bool operator!(SlotRole a) {
+    return static_cast<uint8_t>(a) == 0;
+}
+inline bool ToBool(SlotRole a) {
+    return static_cast<uint8_t>(a) != 0;
+}
+
+
 
 /**
  * @brief Slot mutability enum (Phase F: parallel safety)

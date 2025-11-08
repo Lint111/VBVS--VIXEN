@@ -275,10 +275,13 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
         // Store slot role even for Execute slots (needed for filtering in DescriptorSetNode)
         slotRoleArray_[binding] = slotInfo->slotRole;
 
-        // For transient slots (marked Execute), skip resource gathering in Compile
+        // For transient slots (marked Execute), initialize placeholder and skip resource gathering in Compile
         // Resources will be fetched in Execute phase when they exist
-        if (static_cast<uint8_t>(slotInfo->slotRole) & static_cast<uint8_t>(SlotRole::Execute)) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - resource will be gathered in Execute phase");
+        if (slotInfo->slotRole & SlotRole::Execute) {
+            // Initialize placeholder entry to prevent accessing uninitialized memory
+            // This ensures resourceArray_[binding] exists even before Execute phase
+            resourceArray_[binding] = std::monostate{};
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - placeholder initialized, resource will be gathered in Execute phase");
             continue;
         }
 
