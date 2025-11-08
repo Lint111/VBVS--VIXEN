@@ -143,7 +143,7 @@ void RenderPassNode::ExecuteImpl(TypedExecuteContext& ctx) {
 void RenderPassNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Release cached wrapper - cacher owns VkRenderPass and destroys when appropriate
     if (cachedRenderPassWrapper) {
-        std::cout << "[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)" << std::endl;
+        NODE_LOG_DEBUG("[RenderPassNode::CleanupImpl] Releasing cached render pass wrapper (cacher owns resource)");
         cachedRenderPassWrapper.reset();
         renderPass = VK_NULL_HANDLE;
     }

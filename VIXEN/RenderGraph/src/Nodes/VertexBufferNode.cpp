@@ -125,10 +125,10 @@ void VertexBufferNode::CompileImpl(TypedCompileContext& ctx) {
     SetupVertexInputDescription();
 
     // Set outputs
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     ctx.Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
-    std::cout << "[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " << reinterpret_cast<uint64_t>(vertexBuffer) << std::endl;
+    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     if (hasIndices) {
         NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
         ctx.Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);

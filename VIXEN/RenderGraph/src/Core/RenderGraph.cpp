@@ -1460,4 +1460,16 @@ void RenderGraph::RegisterResourceProducer(Resource* resource, NodeInstance* pro
     dependencyTracker.RegisterResourceProducer(resource, producer, static_cast<uint32_t>(outputIndex));
 }
 
+NodeInstance* RenderGraph::GetNodeByName(const std::string& name) const {
+    auto it = nameToHandle.find(name);
+    if (it == nameToHandle.end()) {
+        return nullptr;
+    }
+    NodeHandle handle = it->second;
+    if (handle.index >= instances.size()) {
+        return nullptr;
+    }
+    return instances[handle.index].get();
+}
+
 } // namespace Vixen::RenderGraph

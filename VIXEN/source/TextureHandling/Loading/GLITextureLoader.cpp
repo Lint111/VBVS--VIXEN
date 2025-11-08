@@ -8,8 +8,9 @@ PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
 
     gli::texture2d image2D(gli::load(fileName));
     if (image2D.empty()) {
-        std::cerr << "Failed to load texture file: " << fileName << std::endl;
-        std::cerr << "GLI only supports DDS, KTX 1.0, and KMG formats" << std::endl;
+        // TODO: Add logger - texture load failure
+        std::cerr << "[GLITextureLoader] ERROR: Failed to load texture file: " << fileName << std::endl;
+        std::cerr << "[GLITextureLoader]        GLI only supports DDS, KTX 1.0, and KMG formats" << std::endl;
         exit(1);
     }
 
@@ -21,7 +22,8 @@ PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
     // GLI stores data contiguously - copy it for ownership
     void* pixelsCopy = malloc(data.size);
     if (!pixelsCopy) {
-        std::cerr << "Failed to allocate memory for pixel data!" << std::endl;
+        // TODO: Add logger - memory allocation failure
+        std::cerr << "[GLITextureLoader] ERROR: Failed to allocate memory for pixel data!" << std::endl;
         exit(1);
     }
     memcpy(pixelsCopy, image2D.data(), data.size);

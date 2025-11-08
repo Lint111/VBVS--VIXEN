@@ -1,6 +1,6 @@
 #include "Nodes/VoxelGridNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include <iostream>
+#include "Core/NodeLogging.h"
 #include <cmath>
 #include <cstring>
 
@@ -29,7 +29,7 @@ VoxelGridNode::VoxelGridNode(
 }
 
 void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
-    std::cout << "[VoxelGridNode::SetupImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::SetupImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     NODE_LOG_INFO("VoxelGridNode setup");
 
     // Read parameters
@@ -37,19 +37,19 @@ void VoxelGridNode::SetupImpl(TypedSetupContext& ctx) {
     sceneType = GetParameterValue<std::string>(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));
 
     NODE_LOG_INFO("Voxel grid: " + std::to_string(resolution) + "^3, scene=" + sceneType);
-    std::cout << "[VoxelGridNode::SetupImpl] COMPLETED" << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::SetupImpl] COMPLETED");
 }
 
 void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
-    std::cout << "[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     NODE_LOG_INFO("=== VoxelGridNode::CompileImpl START ===");
 
-    std::cout << "[VoxelGridNode::CompileImpl] Getting device..." << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Getting device...");
     // Get device
     VulkanDevicePtr devicePtr = ctx.In(VoxelGridNodeConfig::VULKAN_DEVICE_IN);
-    std::cout << "[VoxelGridNode::CompileImpl] Device ptr: " << (void*)devicePtr << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Device ptr: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr)));
     if (!devicePtr) {
-        std::cout << "[VoxelGridNode::CompileImpl] ERROR: Device is null!" << std::endl;
+        NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] ERROR: Device is null!");
         throw std::runtime_error("[VoxelGridNode] VULKAN_DEVICE_IN is null");
     }
 
@@ -161,18 +161,21 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     // Output resources
+    std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
+    std::cout << "  NEW voxelImage=" << voxelImage << ", voxelImageView=" << voxelImageView << ", voxelSampler=" << voxelSampler << std::endl;
     ctx.Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
 
     // Create combined image/sampler pair
     ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
     ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
+    std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTS SET !!!!" << std::endl;
 
     NODE_LOG_INFO("Created 3D voxel texture successfully");
-    std::cout << "[VoxelGridNode::CompileImpl] COMPLETED" << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
 }
 
 void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    std::cout << "[VoxelGridNode::ExecuteImpl] ENTERED with taskIndex=" << ctx.taskIndex << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] ENTERED with taskIndex=" + std::to_string(ctx.taskIndex));
     // Re-output persistent resources every frame for variadic connections
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
 
@@ -187,7 +190,7 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
-    std::cout << "[VoxelGridNode::ExecuteImpl] COMPLETED" << std::endl;
+    NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
 }
 
 void VoxelGridNode::GenerateTestPattern(std::vector<uint8_t>& voxelData) {
@@ -355,6 +358,8 @@ void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
 }
 
 void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
+    std::cout << "!!!! [VoxelGridNode::CleanupImpl] DESTROYING RESOURCES !!!!" << std::endl;
+    std::cout << "  voxelImage=" << voxelImage << ", voxelImageView=" << voxelImageView << ", voxelSampler=" << voxelSampler << std::endl;
     NODE_LOG_INFO("VoxelGridNode cleanup");
 
     if (!vulkanDevice) {
@@ -365,23 +370,28 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     if (voxelSampler != VK_NULL_HANDLE) {
         vkDestroySampler(vulkanDevice->device, voxelSampler, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelSampler" << std::endl;
         voxelSampler = VK_NULL_HANDLE;
     }
 
     if (voxelImageView != VK_NULL_HANDLE) {
         vkDestroyImageView(vulkanDevice->device, voxelImageView, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelImageView" << std::endl;
         voxelImageView = VK_NULL_HANDLE;
     }
 
     if (voxelImage != VK_NULL_HANDLE) {
         vkDestroyImage(vulkanDevice->device, voxelImage, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelImage" << std::endl;
         voxelImage = VK_NULL_HANDLE;
     }
 
     if (voxelMemory != VK_NULL_HANDLE) {
         vkFreeMemory(vulkanDevice->device, voxelMemory, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelMemory" << std::endl;
         voxelMemory = VK_NULL_HANDLE;
     }
+    std::cout << "!!!! [VoxelGridNode::CleanupImpl] CLEANUP COMPLETE !!!!" << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

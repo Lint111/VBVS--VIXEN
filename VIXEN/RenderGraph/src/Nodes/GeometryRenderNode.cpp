@@ -78,7 +78,7 @@ void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     uint32_t imageCount = swapchainInfo->swapChainImageCount;
-    std::cout << "[GeometryRenderNode::Compile] Swapchain has " << imageCount << " images, allocating command buffers" << std::endl;
+    NODE_LOG_INFO("[GeometryRenderNode::Compile] Swapchain has " + std::to_string(imageCount) + " images, allocating command buffers");
     commandBuffers.resize(imageCount);
 
     // Allocate raw command buffers
@@ -329,7 +329,6 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     if(descriptorSets.size() == 0) {
         std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
         NODE_LOG_WARNING(errorMsg);
-        std::cout << errorMsg << std::endl;
 	}
 
     if (descriptorSets[0] != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
@@ -346,7 +345,6 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     } else {
         std::string errorMsg = "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!";
         NODE_LOG_WARNING(errorMsg);
-        std::cout << errorMsg << std::endl;
     }
     
 

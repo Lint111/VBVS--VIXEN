@@ -159,7 +159,7 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     // If we have a cached pipeline wrapper, just release the shared_ptr
     // The cacher owns VkPipeline, VkPipelineLayout, and VkPipelineCache - will destroy when appropriate
     if (cachedPipelineWrapper) {
-        std::cout << "[GraphicsPipelineNode::CleanupImpl] Releasing cached pipeline wrapper (cacher owns all resources)" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Releasing cached pipeline wrapper (cacher owns all resources)");
         cachedPipelineWrapper.reset();
         pipeline = VK_NULL_HANDLE;
         pipelineLayout = VK_NULL_HANDLE;
@@ -167,19 +167,19 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     } else {
         // Fallback: cleanup locally-created resources (if created without cacher)
         if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline");
             vkDestroyPipeline(device->device, pipeline, nullptr);
             pipeline = VK_NULL_HANDLE;
         }
 
         if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline layout" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline layout");
             vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
             pipelineLayout = VK_NULL_HANDLE;
         }
 
         if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-            std::cout << "[GraphicsPipelineNode::CleanupImpl] Destroying locally-created pipeline cache" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline cache");
             vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
             pipelineCache = VK_NULL_HANDLE;
         }
@@ -189,7 +189,7 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
 void GraphicsPipelineNode::CreatePipelineCache() {
     // Only create if not already created
     if (pipelineCache != VK_NULL_HANDLE) {
-        std::cout << "[GraphicsPipelineNode] Pipeline cache already exists, reusing" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline cache already exists, reusing");
         return;
     }
 
@@ -215,7 +215,7 @@ void GraphicsPipelineNode::CreatePipelineCache() {
 void GraphicsPipelineNode::CreatePipelineLayout() {
     // Destroy old layout if exists (happens during recompile)
     if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
-        std::cout << "[GraphicsPipelineNode] Destroying old pipeline layout before recompile" << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Destroying old pipeline layout before recompile");
         vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
@@ -308,10 +308,10 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
     // Check if reflection data is available
     bool hasReflection = (bundle && bundle->reflectionData && !bundle->GetVertexInputs().empty());
 
-    std::cout << "[BuildVertexInputsFromReflection] bundle=" << (bundle ? "valid" : "null")
-              << " reflectionData=" << (bundle && bundle->reflectionData ? "valid" : "null")
-              << " vertexInputCount=" << (bundle ? bundle->GetVertexInputs().size() : 0)
-              << " hasReflection=" << hasReflection << std::endl;
+    NODE_LOG_DEBUG("BuildVertexInputsFromReflection: bundle=" + std::string(bundle ? "valid" : "null") +
+                   " reflectionData=" + std::string(bundle && bundle->reflectionData ? "valid" : "null") +
+                   " vertexInputCount=" + std::to_string(bundle ? bundle->GetVertexInputs().size() : 0) +
+                   " hasReflection=" + std::string(hasReflection ? "true" : "false"));
 
     if (hasReflection) {
         // Build from reflection
@@ -362,7 +362,6 @@ void GraphicsPipelineNode::BuildVertexInputsFromReflection(
                      std::to_string(currentOffset) + " bytes");
     } else {
         // Hardcoded fallback for current Draw shader (vec4 pos + vec2 uv)
-        std::cout << "[GraphicsPipelineNode::BuildVertexInputsFromReflection] No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)" << std::endl;
         NODE_LOG_WARNING("GraphicsPipelineNode: No vertex input reflection - using hardcoded fallback (vec4 pos + vec2 uv)");
 
         VkVertexInputBindingDescription binding{};
@@ -638,22 +637,22 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
         std::vector<VkVertexInputBindingDescription> vertexBindings;
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
 
-        std::cout << "[GraphicsPipelineNode] enableVertexInput=" << enableVertexInput << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: enableVertexInput=" + std::string(enableVertexInput ? "true" : "false"));
         if (enableVertexInput) {
-            std::cout << "[GraphicsPipelineNode] Calling BuildVertexInputsFromReflection..." << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode: Calling BuildVertexInputsFromReflection...");
             BuildVertexInputsFromReflection(currentShaderBundle, vertexBindings, vertexAttributes);
-            std::cout << "[GraphicsPipelineNode] BuildVertexInputsFromReflection complete: "
-                      << vertexBindings.size() << " bindings, "
-                      << vertexAttributes.size() << " attributes" << std::endl;
+            NODE_LOG_DEBUG("GraphicsPipelineNode: BuildVertexInputsFromReflection complete: " +
+                          std::to_string(vertexBindings.size()) + " bindings, " +
+                          std::to_string(vertexAttributes.size()) + " attributes");
 
             // Log details
             for (const auto& binding : vertexBindings) {
-                std::cout << "  Binding " << binding.binding << ": stride=" << binding.stride
-                          << " inputRate=" << binding.inputRate << std::endl;
+                NODE_LOG_DEBUG("  Binding " + std::to_string(binding.binding) + ": stride=" + std::to_string(binding.stride) +
+                              " inputRate=" + std::to_string(binding.inputRate));
             }
             for (const auto& attr : vertexAttributes) {
-                std::cout << "  Attribute location=" << attr.location << " binding=" << attr.binding
-                          << " format=" << attr.format << " offset=" << attr.offset << std::endl;
+                NODE_LOG_DEBUG("  Attribute location=" + std::to_string(attr.location) + " binding=" + std::to_string(attr.binding) +
+                              " format=" + std::to_string(attr.format) + " offset=" + std::to_string(attr.offset));
             }
         }
 
@@ -694,9 +693,9 @@ void GraphicsPipelineNode::CreatePipelineWithCache(TypedCompileContext& ctx) {
         params.vertexBindings = vertexBindings;  // Local variable built from reflection above
         params.vertexAttributes = vertexAttributes;  // Local variable built from reflection above
 
-        std::cout << "[GraphicsPipelineNode] Pipeline params: depth=" << this->enableDepthTest
-                  << " depthWrite=" << this->enableDepthWrite << " cull=" << this->cullMode
-                  << " polyMode=" << this->polygonMode << " topo=" << this->topology << std::endl;
+        NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline params: depth=" + std::string(this->enableDepthTest ? "true" : "false") +
+                      " depthWrite=" + std::string(this->enableDepthWrite ? "true" : "false") + " cull=" + std::to_string(this->cullMode) +
+                      " polyMode=" + std::to_string(this->polygonMode) + " topo=" + std::to_string(this->topology));
 
         try {
             // Use cacher to get or create pipeline

@@ -62,7 +62,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: ShaderDataBundle input is null");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Received ShaderDataBundle: " << shaderBundle->GetProgramName() << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Received ShaderDataBundle: " + shaderBundle->GetProgramName());
 
     // Get MainCacher from owning graph
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
@@ -103,8 +103,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: No descriptor bindings found in ShaderDataBundle set 0");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Found " << descriptorBindings.size()
-              << " descriptor bindings in set 0" << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Found " + std::to_string(descriptorBindings.size()) + " descriptor bindings in set 0");
 
     if (!useCache) {
         // Phase 2: Generate descriptor set layout from shader reflection data
@@ -122,11 +121,11 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
 
             vkBindings.push_back(vkBinding);
 
-            std::cout << "[DescriptorSetNode::Compile] Binding " << vkBinding.binding
-                      << ": type=" << vkBinding.descriptorType
-                      << ", count=" << vkBinding.descriptorCount
-                      << ", stages=" << std::hex << vkBinding.stageFlags << std::dec
-                      << ", name=" << spirvBinding.name << std::endl;
+            NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Binding " + std::to_string(vkBinding.binding) +
+                          ": type=" + std::to_string(vkBinding.descriptorType) +
+                          ", count=" + std::to_string(vkBinding.descriptorCount) +
+                          ", stages=0x" + std::to_string(vkBinding.stageFlags) +
+                          ", name=" + spirvBinding.name);
         }
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -145,13 +144,13 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
             throw std::runtime_error("DescriptorSetNode: Failed to create descriptor set layout from reflection");
         }
 
-        std::cout << "[DescriptorSetNode::Compile] Successfully created descriptor set layout from reflection" << std::endl;
+        NODE_LOG_INFO("[DescriptorSetNode::Compile] Successfully created descriptor set layout from reflection");
     }
 
     // Continue with pool creation and descriptor allocation...
 
     NODE_LOG_INFO("Compile: Descriptor set layout created from reflection");
-    std::cout << "[DescriptorSetNode::Compile] Created layout: " << descriptorSetLayout << std::endl;
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Created layout: " + std::to_string(reinterpret_cast<uint64_t>(descriptorSetLayout)));
 
     // Phase 0.4: Get swapchain image count for per-image resource allocation
     // Phase H: SWAPCHAIN_IMAGE_COUNT directly provides the extracted imageCount value
@@ -161,7 +160,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: swapChainImageCount is 0");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Creating per-frame resources for " << imageCount << " swapchain images" << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Creating per-frame resources for " + std::to_string(imageCount) + " swapchain images");
 
     // Phase 5: Use helper function to calculate descriptor pool sizes from reflection
     // Phase 0.4: Multiply maxSets by imageCount for per-image descriptor sets
@@ -188,7 +187,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: Failed to create descriptor pool");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Created descriptor pool: " << descriptorPool << std::endl;
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Created descriptor pool: " + std::to_string(reinterpret_cast<uint64_t>(descriptorPool)));
 
     // Phase 0.4: Allocate per-swapchain-image descriptor sets to prevent invalidation
     // This avoids the validation error: "vkUpdateDescriptorSets invalidates command buffers"
@@ -211,7 +210,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("DescriptorSetNode: Failed to allocate descriptor sets");
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Allocated " << imageCount << " descriptor sets (per-image)" << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Allocated " + std::to_string(imageCount) + " descriptor sets (per-image)");
 
     // Phase 0.4: Initialize per-frame resources (ring buffer pattern)
     perFrameResources.Initialize(device, imageCount);
@@ -236,14 +235,14 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         memcpy(mappedData, &ubo, sizeof(Draw_Shader::bufferVals));
     }
 
-    std::cout << "[DescriptorSetNode::Compile] Created " << imageCount << " per-frame UBOs" << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] Created " + std::to_string(imageCount) + " per-frame UBOs");
 
     // Phase 0.4: Update each descriptor set with its corresponding per-frame resources
     // This avoids the need to update descriptor sets in Execute(), preventing command buffer invalidation
 
     // Phase H: Data-driven descriptor binding from DESCRIPTOR_RESOURCES array
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
-    std::cout << "[DescriptorSetNode::Compile] Using DESCRIPTOR_RESOURCES array (" << descriptorResources.size() << " resources)" << std::endl;
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Using DESCRIPTOR_RESOURCES array (" + std::to_string(descriptorResources.size()) + " resources)");
 
     // Phase H: Initialize persistent descriptor info storage (node scope for lifetime)
     perFrameImageInfos.resize(imageCount);
@@ -258,15 +257,15 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
         auto writes = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
                                            perFrameImageInfos[i], perFrameBufferInfos[i]);
 
-        std::cout << "[DescriptorSetNode::Compile] Bound " << writes.size()
-                  << " descriptors for frame " << i << " (data-driven)" << std::endl;
+        NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Bound " + std::to_string(writes.size()) +
+                      " descriptors for frame " + std::to_string(i) + " (data-driven)");
 
         if (!writes.empty()) {
             vkUpdateDescriptorSets(device->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
         }
     }
 
-    std::cout << "[DescriptorSetNode::Compile] All descriptor sets updated (data-driven)" << std::endl;
+    NODE_LOG_INFO("[DescriptorSetNode::Compile] All descriptor sets updated (data-driven)");
 
     // Set outputs
     ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT, descriptorSetLayout);
@@ -274,7 +273,7 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(DescriptorSetNodeConfig::DESCRIPTOR_SETS, descriptorSets); 
     ctx.Out(DescriptorSetNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    std::cout << "[DescriptorSetNode::Compile] Outputs set successfully" << std::endl;
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Outputs set successfully");
 }
 
 void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -282,14 +281,14 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
     if (!perFrameResources.IsInitialized()) {
-        std::cout << "[DescriptorSetNode::Execute] WARNING: PerFrameResources not initialized!" << std::endl;
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: PerFrameResources not initialized!");
         return;
     }
 
     // Get delta time from graph's centralized time system
     RenderGraph* graph = GetOwningGraph();
     if (!graph) {
-        std::cout << "[DescriptorSetNode::Execute] WARNING: No graph context!" << std::endl;
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: No graph context!");
         return;
     }
 
@@ -316,7 +315,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     void* mappedData = perFrameResources.GetUniformBufferMapped(imageIndex);
     if (!mappedData) {
-        std::cout << "[DescriptorSetNode::Execute] WARNING: Frame " << imageIndex << " UBO not mapped!" << std::endl;
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] WARNING: Frame " + std::to_string(imageIndex) + " UBO not mapped!");
         return;
     }
 
@@ -347,8 +346,8 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     if (!writes.empty()) {
         vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-        std::cout << "[DescriptorSetNode::Execute] Updated " << writes.size()
-                  << " transient descriptor(s) for frame " << imageIndex << std::endl;
+        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Updated " + std::to_string(writes.size()) +
+                      " transient descriptor(s) for frame " + std::to_string(imageIndex));
     }
 }
 
@@ -399,9 +398,9 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
         // Use binding.binding (shader binding number) to index into resources, not loop index
         if (binding.binding >= descriptorResources.size()) {
-            std::cout << "[DescriptorSetNode::BuildDescriptorWrites] WARNING: "
-                      << "Binding " << binding.binding << " (" << binding.name << ") "
-                      << "exceeds resource array size " << descriptorResources.size() << std::endl;
+            NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] WARNING: Binding " +
+                          std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
+                          std::to_string(descriptorResources.size()));
             continue;
         }
 
@@ -472,9 +471,9 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
 
-                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound SAMPLED_IMAGE '"
-                              << binding.name << "' at binding " << binding.binding
-                              << " (sampler should be separate)" << std::endl;
+                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound SAMPLED_IMAGE '" +
+                                  binding.name + "' at binding " + std::to_string(binding.binding) +
+                                  " (sampler should be separate)");
                 }
                 break;
             }
@@ -515,14 +514,16 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
             case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
                 // Handle combined image sampler (image + sampler)
                 // Check for ImageSamplerPair first (new type-safe approach)
-                std::cout << "[DescriptorSetNode::BuildDescriptorWrites] COMBINED_IMAGE_SAMPLER binding "
-                          << binding.binding << " (" << binding.name << "), variant index=" << resourceVariant.index() << std::endl;
+                NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] COMBINED_IMAGE_SAMPLER binding " +
+                              std::to_string(binding.binding) + " (" + binding.name + "), variant index=" +
+                              std::to_string(resourceVariant.index()));
 
                 if (std::holds_alternative<ImageSamplerPair>(resourceVariant)) {
                     const ImageSamplerPair& pair = std::get<ImageSamplerPair>(resourceVariant);
 
-                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Extracted ImageSamplerPair: "
-                              << "imageView=" << pair.imageView << ", sampler=" << pair.sampler << std::endl;
+                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Extracted ImageSamplerPair: imageView=" +
+                                  std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) + ", sampler=" +
+                                  std::to_string(reinterpret_cast<uint64_t>(pair.sampler)));
 
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.imageView = pair.imageView;
@@ -532,9 +533,10 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
 
-                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '"
-                              << binding.name << "' at binding " << binding.binding
-                              << " (imageView=" << pair.imageView << ", sampler=" << pair.sampler << ")" << std::endl;
+                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '" +
+                                  binding.name + "' at binding " + std::to_string(binding.binding) +
+                                  " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) +
+                                  ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(pair.sampler)) + ")");
                 }
                 // Fallback: Legacy approach with separate ImageView and Sampler resources
                 else if (std::holds_alternative<VkImageView>(resourceVariant)) {
@@ -551,14 +553,14 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                     write.pImageInfo = &imageInfos.back();
                     writes.push_back(write);
 
-                    std::cout << "[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '"
-                              << binding.name << "' at binding " << binding.binding
-                              << " (imageView=" << imageView << ", sampler=" << sampler << ") [legacy]" << std::endl;
+                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '" +
+                                  binding.name + "' at binding " + std::to_string(binding.binding) +
+                                  " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(imageView)) +
+                                  ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(sampler)) + ") [legacy]");
 
                     if (sampler == VK_NULL_HANDLE) {
-                        std::cout << "[DescriptorSetNode::BuildDescriptorWrites] WARNING: "
-                                  << "Combined image sampler at binding " << binding.binding
-                                  << " has no sampler (VK_NULL_HANDLE)" << std::endl;
+                        NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] WARNING: Combined image sampler at binding " +
+                                      std::to_string(binding.binding) + " has no sampler (VK_NULL_HANDLE)");
                     }
                 }
                 // Handle array of combined image samplers

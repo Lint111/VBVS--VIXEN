@@ -2,7 +2,6 @@
 #include <fstream>
 #include <sstream>
 #include <regex>
-#include <iostream>
 
 namespace ShaderManagement {
 
@@ -15,7 +14,7 @@ std::vector<DiscoveredStructLayout> SdiDiscoveryScanner::ScanAll() {
     std::vector<DiscoveredStructLayout> allLayouts;
 
     if (!std::filesystem::exists(sdiDirectory_)) {
-        std::cout << "[SdiDiscoveryScanner] SDI directory not found: " << sdiDirectory_ << "\n";
+        // SDI directory not found - silently return empty results
         return allLayouts;
     }
 
@@ -34,9 +33,7 @@ std::vector<DiscoveredStructLayout> SdiDiscoveryScanner::ScanAll() {
         allLayouts.insert(allLayouts.end(), layouts.begin(), layouts.end());
     }
 
-    std::cout << "[SdiDiscoveryScanner] Discovered " << allLayouts.size()
-              << " struct layouts from " << sdiDirectory_ << "\n";
-
+    // Discovery complete - allLayouts contains all discovered struct layouts
     return allLayouts;
 }
 
@@ -47,7 +44,7 @@ std::vector<DiscoveredStructLayout> SdiDiscoveryScanner::ScanFile(
 
     std::ifstream file(sdiFilePath);
     if (!file.is_open()) {
-        std::cerr << "[SdiDiscoveryScanner] Failed to open: " << sdiFilePath << "\n";
+        // Failed to open SDI file - return empty layouts
         return layouts;
     }
 

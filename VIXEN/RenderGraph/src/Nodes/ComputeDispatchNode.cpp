@@ -4,8 +4,8 @@
 #include "Core/ComputePerformanceLogger.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderManagement/ShaderDataBundle.h"
+#include "Core/NodeLogging.h"
 #include <stdexcept>
-#include <iostream>
 #include <chrono>
 
 namespace Vixen::RenderGraph {
@@ -29,7 +29,7 @@ ComputeDispatchNode::ComputeDispatchNode(
     NodeType* nodeType
 ) : TypedNode<ComputeDispatchNodeConfig>(instanceName, nodeType)
 {
-    std::cout << "[ComputeDispatchNode] Constructor called for " << instanceName << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode] Constructor called for " + instanceName);
 }
 
 // ============================================================================
@@ -38,7 +38,7 @@ ComputeDispatchNode::ComputeDispatchNode(
 
 void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
-    std::cout << "[ComputeDispatchNode::SetupImpl] Graph-scope initialization" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::SetupImpl] Graph-scope initialization");
 
 #if VIXEN_DEBUG_BUILD
     // Create specialized performance logger and register to node logger
@@ -54,7 +54,7 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
 // ============================================================================
 
 void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
-    std::cout << "[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers");
 
     // Access device input (compile-time dependency)
     VulkanDevicePtr devicePtr = ctx.In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
@@ -74,7 +74,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     uint32_t imageCount = swapchainInfo->swapChainImageCount;
-    std::cout << "[ComputeDispatchNode::CompileImpl] Allocating " << imageCount << " command buffers" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating " + std::to_string(imageCount) + " command buffers");
 
     // Allocate command buffers (one per swapchain image)
     commandBuffers.resize(imageCount);
@@ -97,7 +97,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
         commandBuffers.MarkDirty(i);  // Initial state: needs recording
     }
 
-    std::cout << "[ComputeDispatchNode::CompileImpl] Allocated " << imageCount << " command buffers successfully" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers successfully");
 }
 
 // ============================================================================
@@ -226,8 +226,8 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     static int logCount = 0;
     if (logCount++ < 3) {
-        std::cout << "[ComputeDispatchNode] Dispatch: " << dispatchX << "x" << dispatchY << "x" << dispatchZ
-                  << " for swapchain " << swapchainInfo->Extent.width << "x" << swapchainInfo->Extent.height << std::endl;
+        NODE_LOG_INFO("[ComputeDispatchNode] Dispatch: " + std::to_string(dispatchX) + "x" + std::to_string(dispatchY) + "x" + std::to_string(dispatchZ) +
+                      " for swapchain " + std::to_string(swapchainInfo->Extent.width) + "x" + std::to_string(swapchainInfo->Extent.height));
     }
 
     // Validate descriptor sets
@@ -299,8 +299,8 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
         static int pcLogCount = 0;
         if (pcLogCount++ < 3) {
-            std::cout << "[ComputeDispatchNode] Setting push constants: offset=" << pc.offset
-                      << ", size=" << pc.size << std::endl;
+            NODE_LOG_INFO("[ComputeDispatchNode] Setting push constants: offset=" + std::to_string(pc.offset) +
+                          ", size=" + std::to_string(pc.size));
         }
     }
 
@@ -329,7 +329,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
     }
 
-    std::cout << "[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " << imageIndex << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
 }
 
 // ============================================================================
@@ -337,7 +337,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 // ============================================================================
 
 void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
-    std::cout << "[ComputeDispatchNode::CleanupImpl] Cleaning up resources" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleaning up resources");
 
 #if VIXEN_DEBUG_BUILD
     // Unregister performance logger from parent before destruction
@@ -366,7 +366,7 @@ void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
         }
     }
 
-    std::cout << "[ComputeDispatchNode::CleanupImpl] Cleanup complete" << std::endl;
+    NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleanup complete");
 }
 
 } // namespace Vixen::RenderGraph

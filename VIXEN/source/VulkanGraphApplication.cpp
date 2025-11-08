@@ -994,28 +994,24 @@ void VulkanGraphApplication::EnableNodeLogger(const std::string& nodeName, bool 
         return;
     }
 
-    // Find node by iterating instances
-    const auto& instances = renderGraph->GetAllNodes();
-    for (const auto& instancePtr : instances) {
-        if (instancePtr->GetInstanceName() == nodeName) {
-            Logger* logger = instancePtr->GetLogger();
-            if (logger) {
-                logger->SetEnabled(true);
-                logger->SetTerminalOutput(enableTerminal);
-                if (mainLogger && mainLogger->IsEnabled()) {
-                    mainLogger->Info("Enabled logger for node '" + nodeName + "' (terminal=" + std::to_string(enableTerminal) + ")");
-                }
-                return;
-            } else {
-                if (mainLogger && mainLogger->IsEnabled()) {
-                    mainLogger->Warning("Node '" + nodeName + "' has no logger");
-                }
-                return;
-            }
+    NodeInstance* node = renderGraph->GetNodeByName(nodeName);
+    if (!node) {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Error("EnableNodeLogger: Node '" + nodeName + "' not found");
         }
+        return;
     }
 
-    if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Error("EnableNodeLogger: Node '" + nodeName + "' not found");
+    Logger* logger = node->GetLogger();
+    if (logger) {
+        logger->SetEnabled(true);
+        logger->SetTerminalOutput(enableTerminal);
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("Enabled logger for node '" + nodeName + "' (terminal=" + std::to_string(enableTerminal) + ")");
+        }
+    } else {
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Warning("Node '" + nodeName + "' has no logger");
+        }
     }
 }

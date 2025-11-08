@@ -72,7 +72,7 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
-    std::cout << "[FramebufferNode::Compile] Creating " << colorAttachmentCount << " framebuffers from swapchain" << std::endl;
+    NODE_LOG_INFO("[FramebufferNode::Compile] Creating " + std::to_string(colorAttachmentCount) + " framebuffers from swapchain");
 
     // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
     // Clear the framebuffer vector to prepare for new framebuffers
@@ -85,7 +85,7 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         // Get color attachment from swapchain public variables
         VkImageView colorView = swapchainInfo->colorBuffers[i].view;
-        std::cout << "[FramebufferNode::Compile] Processing attachment " << i << ", view=" << colorView << std::endl;
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i) + ", view=" + std::to_string(reinterpret_cast<uint64_t>(colorView)));
 
         // Setup attachments array
         std::vector<VkImageView> attachments;
@@ -129,14 +129,14 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
             throw std::runtime_error(error.toString());
         }
 
-        std::cout << "[FramebufferNode::Compile] Created framebuffer[" << i << "]=" << framebuffers[i] << std::endl;
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
         NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " +
                       std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
 
     // Output all framebuffers as a vector in ONE bundle
     ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
-    std::cout << "[FramebufferNode::Compile] Output " << framebuffers.size() << " framebuffers as vector" << std::endl;
+    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebuffers.size()) + " framebuffers as vector");
 
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 

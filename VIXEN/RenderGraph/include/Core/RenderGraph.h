@@ -211,6 +211,11 @@ public:
     size_t GetNodeCount() const { return instances.size(); }
 
     /**
+     * @brief Get node by name (for logger configuration)
+     */
+    NodeInstance* GetNodeByName(const std::string& name) const;
+
+    /**
      * @brief Get execution order (after compilation)
      */
     const std::vector<NodeInstance*>& GetExecutionOrder() const { return executionOrder; }
