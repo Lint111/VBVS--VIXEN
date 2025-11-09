@@ -399,7 +399,7 @@ struct ShaderDataBundle {
      * @param other Bundle to compare against
      * @return Compatibility level
      */
-    HotReloadCompatibility GetHotReloadCompatibility(const ShaderDataBundle& other) const {
+    HotReloadCompatibility GetHotReloadCompatibility([[maybe_unused]] const ShaderDataBundle& other) const {
         return ShaderManagement::GetHotReloadCompatibility(dirtyFlags);
     }
 

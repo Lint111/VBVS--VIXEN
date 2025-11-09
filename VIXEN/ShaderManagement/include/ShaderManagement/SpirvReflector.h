@@ -2,6 +2,7 @@
 
 #include "SpirvReflectionData.h"
 #include "ShaderProgram.h"
+#include "../../logger/ILoggable.h"
 #include <memory>
 
 // Forward declare SPIRV-Reflect types from global namespace
@@ -23,7 +24,7 @@ namespace ShaderManagement {
  * Uses SPIRV-Reflect library for analysis.
  * Pure function - no state, no Vulkan objects.
  */
-class SpirvReflector {
+class SpirvReflector : public ILoggable {
 public:
     /**
      * @brief Reflect complete shader program interface

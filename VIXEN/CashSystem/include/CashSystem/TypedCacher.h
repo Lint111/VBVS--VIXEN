@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CacherBase.h"
+#include "../../logger/ILoggable.h"
 
 #include <shared_mutex>
 #include <unordered_map>
@@ -21,7 +22,7 @@ namespace CashSystem {
 // D: resource wrapper type (e.g., PipelineWrapper)
 // CI: creation-info struct used to create D
 template<typename D, typename CI>
-class TypedCacher : public CacherBase {
+class TypedCacher : public CacherBase, public ILoggable {
 public:
     using ResourceT = D;
     using CreateInfoT = CI;

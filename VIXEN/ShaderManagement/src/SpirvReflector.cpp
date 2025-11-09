@@ -369,6 +369,7 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::Reflect(const CompiledProgr
         return data;
 
     } catch (const std::exception& e) {
+        LOG_ERROR(std::string("SPIRV reflection failed: ") + e.what());
         // Return nullptr on error
         return nullptr;
     }
@@ -413,6 +414,7 @@ std::unique_ptr<SpirvReflectionData> SpirvReflector::ReflectStage(
         return data;
 
     } catch (const std::exception& e) {
+        LOG_ERROR(std::string("SPIRV stage reflection failed: ") + e.what());
         return nullptr;
     }
 }

@@ -252,7 +252,9 @@ private:
         // Default logger: print to stderr with timestamp
         auto time = std::chrono::system_clock::to_time_t(msg.timestamp);
         char timeStr[64];
-        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", std::localtime(&time));
+        std::tm timeInfo;
+        localtime_s(&timeInfo, &time);
+        std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeInfo);
 
         fprintf(stderr, "[%s] [%s]", timeStr, LogLevelToString(msg.level));
 

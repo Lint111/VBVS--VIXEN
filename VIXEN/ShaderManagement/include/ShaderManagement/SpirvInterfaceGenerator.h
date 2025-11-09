@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SpirvReflectionData.h"
+#include "../../logger/ILoggable.h"
 #include <filesystem>
 #include <string>
 
@@ -46,7 +47,7 @@ struct SdiGeneratorConfig {
  * // Include generated file: #include "abc123-SDI.h"
  * @endcode
  */
-class SpirvInterfaceGenerator {
+class SpirvInterfaceGenerator : public ILoggable {
 public:
     explicit SpirvInterfaceGenerator(const SdiGeneratorConfig& config = {});
 

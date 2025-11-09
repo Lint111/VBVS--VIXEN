@@ -222,6 +222,7 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
         wrapper.pixelData.clear(); // Placeholder - enhance later
 
     } catch (const std::exception& e) {
+        LOG_ERROR(std::string("Texture loading failed: ") + e.what());
         // Cleanup command pool on error
         vkDestroyCommandPool(devicePtr->device, commandPool, nullptr);
         throw;

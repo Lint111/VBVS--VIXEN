@@ -250,6 +250,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glm)
 
+# Suppress warnings from glm
+if(TARGET glm)
+    target_compile_options(glm INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+    )
+endif()
+
 # Fetch the latest Khronos Vulkan header files only if not already provided (e.g., by Vulkan SDK)
 if(NOT TARGET Vulkan::Headers)
 	FetchContent_Declare(
@@ -270,6 +279,15 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(gli)
+
+# Suppress warnings from gli
+if(TARGET gli)
+    target_compile_options(gli INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+        $<$<CXX_COMPILER_ID:GNU>:-w>
+        $<$<CXX_COMPILER_ID:Clang>:-w>
+    )
+endif()
 
 # STB Setup - header-only library for uncompressed image loading (PNG/JPG/etc)
 FetchContent_Declare(

@@ -15,8 +15,10 @@ namespace {
 std::string GetTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
+    std::tm timeInfo;
+    localtime_s(&timeInfo, &time);
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+    oss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
     return oss.str();
 }
 

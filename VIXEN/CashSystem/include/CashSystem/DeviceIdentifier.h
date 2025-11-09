@@ -157,8 +157,8 @@ public:
      */
     template<typename CacherT>
     CacherT* GetOrCreateCacher(
-        std::type_index typeIndex,
-        std::function<CacherT*(std::unique_ptr<CacherT>)> factory
+        [[maybe_unused]] std::type_index typeIndex,
+        [[maybe_unused]] std::function<CacherT*(std::unique_ptr<CacherT>)> factory
     ) {
         // Check if already cached
         for (auto& cacher : m_deviceCachers) {

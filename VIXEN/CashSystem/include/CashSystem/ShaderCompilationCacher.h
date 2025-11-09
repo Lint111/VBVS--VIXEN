@@ -57,8 +57,7 @@ public:
         const std::vector<std::string>& macros = {},
         VkShaderStageFlagBits stage = VK_SHADER_STAGE_VERTEX_BIT,
         const std::string& compilerVersion = "1.0",
-        const std::vector<std::string>& compileFlags = {},
-        const std::string& shaderName = ""
+        const std::vector<std::string>& compileFlags = {}
     ) {
         ShaderCompilationParams params;
         params.sourcePath = sourcePath;

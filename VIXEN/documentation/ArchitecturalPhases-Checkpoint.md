@@ -74,18 +74,24 @@
 - **Deliverables**: SPIRV reflection, SDI generation, descriptor automation
 - **Note**: Compute-specific nodes pending Phase H completion
 
-**Phase H**: Voxel Data Infrastructure - 60% COMPLETE ⚡
-- **Duration**: 3-4 weeks (1 week remaining)
+**Phase H**: Voxel Data Infrastructure - IN PROGRESS ⚡
+- **Duration**: 3-4 weeks (started November 8, 2025)
 - **Goal**: Sparse voxel octree (SVO) data structure + procedural generation
+- **Status**: Implementation phase with 24-task roadmap
 - **Completed** ✅:
   - CameraNode implementation
-  - VoxelGridNode implementation
+  - VoxelGridNode implementation (60%)
   - Research shader (VoxelRayMarch.comp - 245 lines, DDA traversal)
-- **Pending** ⏳:
-  - Sparse voxel octree data structure (design complete: OctreeDesign.md ~25 pages)
-  - Procedural scene generators (design complete: TestScenes.md ~120 pages)
-  - GPU buffer upload utilities
-- **Target Completion**: Week of November 18, 2025
+  - Design documents (OctreeDesign.md ~25 pages, TestScenes.md ~120 pages)
+- **In Progress** 🔄 (24 tasks):
+  - **H.1 (5 tasks)**: Octree structures (OctreeNode 36B + VoxelBrick 512B, construction, Morton codes, serialization, tests)
+  - **H.2 (5 tasks)**: Procedural scenes (Cornell Box 64³/10%, Cave 128³/50%, Urban 256³/90%, materials, validation)
+  - **H.3 (5 tasks)**: GPU upload (VoxelGridNode completion, linearization, SSBO, descriptor binding, shader update)
+  - **H.4 (5 tasks)**: Traversal (Ray-AABB, DDA, empty skip, GLSL helpers, tests)
+  - **H.5-H.7 (4 tasks)**: Integration testing, performance validation, documentation
+- **Bibliography References**: [6] Aleksandrov SVO, [16] Derin BlockWalk, [2] Fang SVDAG streaming
+- **Performance Targets**: <100ms octree build, <16ms render, <512MB memory, 9:1 compression
+- **Target Completion**: December 6, 2025
 
 **Phase I**: Performance Profiling System
 - **Duration**: 2-3 weeks
