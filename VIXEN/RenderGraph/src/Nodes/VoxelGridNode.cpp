@@ -190,7 +190,7 @@ void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
         for (uint32_t z = 0; z < resolution; ++z) {
             for (uint32_t y = 0; y < resolution; ++y) {
                 for (uint32_t x = 0; x < resolution; ++x) {
-                    grid.Set(x, y, z, 255);
+                    grid.Set(x, y, z, 1);  // Material ID 1 (not 255 - would be out of bounds)
                 }
             }
         }

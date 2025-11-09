@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch
-// UUID: bc61d7a06c98333f
-// Generated: 2025-11-09 15:07:00
+// UUID: e146191ab2725571
+// Generated: 2025-11-09 17:17:26
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "bc61d7a06c98333f-SDI.h"
+#include "e146191ab2725571-SDI.h"
 
 namespace VoxelRayMarch {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::bc61d7a06c98333f;
+namespace SDI = ShaderInterface::e146191ab2725571;
 
 // ============================================================================
 // Descriptor Binding Constants
@@ -48,20 +48,43 @@ struct camera_Ref {
 };
 inline constexpr camera_Ref camera{};
 
-// voxelGrid (Set 0, Binding 2)
-struct voxelGrid_Ref {
-    using SDI_Type = SDI::Set0::voxelGrid;
+// octreeNodes (Set 0, Binding 2)
+struct octreeNodes_Ref {
+    using SDI_Type = SDI::Set0::octreeNodes;
     static constexpr uint32_t set = SDI_Type::SET;
     static constexpr uint32_t binding = SDI_Type::BINDING;
     static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "voxelGrid";
+    static constexpr const char* name = "octreeNodes";
 };
-inline constexpr voxelGrid_Ref voxelGrid{};
+inline constexpr octreeNodes_Ref octreeNodes{};
+
+// voxelBricks (Set 0, Binding 3)
+struct voxelBricks_Ref {
+    using SDI_Type = SDI::Set0::voxelBricks;
+    static constexpr uint32_t set = SDI_Type::SET;
+    static constexpr uint32_t binding = SDI_Type::BINDING;
+    static constexpr VkDescriptorType type = SDI_Type::TYPE;
+    static constexpr const char* name = "voxelBricks";
+};
+inline constexpr voxelBricks_Ref voxelBricks{};
+
+// materialPalette (Set 0, Binding 4)
+struct materialPalette_Ref {
+    using SDI_Type = SDI::Set0::materialPalette;
+    static constexpr uint32_t set = SDI_Type::SET;
+    static constexpr uint32_t binding = SDI_Type::BINDING;
+    static constexpr VkDescriptorType type = SDI_Type::TYPE;
+    static constexpr const char* name = "materialPalette";
+};
+inline constexpr materialPalette_Ref materialPalette{};
 
 // ============================================================================
 // UBO/SSBO Struct Type Aliases
 // ============================================================================
 
 using CameraData = SDI::CameraData;
+using OctreeNodesBuffer = SDI::OctreeNodesBuffer;
+using VoxelBricksBuffer = SDI::VoxelBricksBuffer;
+using MaterialPaletteBuffer = SDI::MaterialPaletteBuffer;
 
 } // namespace VoxelRayMarch

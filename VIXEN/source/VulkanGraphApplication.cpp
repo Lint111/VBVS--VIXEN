@@ -653,11 +653,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 80.0f);  // Closer to see sphere (radius ~38 units)
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    // Position camera at (200, 150, 200) for diagonal view of 128³ voxel grid centered at origin
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 200.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 150.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 200.0f);
+    // Yaw: 225° (look toward origin from +X,+Y,+Z), Pitch: -28° (look down at center)
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 225.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_PITCH, -28.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
@@ -924,7 +926,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Binding 2: octreeNodes (SSBO) - octree node data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::OctreeNodes,
+                          descriptorGatherer, VoxelRayMarch::octreeNodes,
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Binding 3: voxelBricks (SSBO) - voxel brick data
