@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: bc61d7a06c98333f
-// Generated: 2025-11-08 22:18:56
+// Generated: 2025-11-09 15:07:00
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -15,6 +15,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
