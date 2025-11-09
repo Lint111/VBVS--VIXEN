@@ -13,6 +13,7 @@
 VkInstance g_VulkanInstance = VK_NULL_HANDLE;
 
 // Include all node types
+#include "Nodes/InstanceNode.h"  // Phase 1.1: Separated instance creation
 #include "Nodes/WindowNode.h"
 #include "Nodes/DeviceNode.h"
 #include "Nodes/CommandPoolNode.h"
@@ -402,6 +403,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     mainLogger->Info("Registering all built-in node types");
 
     // Register all node types
+    nodeRegistry->RegisterNodeType(std::make_unique<InstanceNodeType>());  // Phase 1.1: Instance creation
     nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<DeviceNodeType>());
     nodeRegistry->RegisterNodeType(std::make_unique<CommandPoolNodeType>());
@@ -427,7 +429,7 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
     nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
 
-    mainLogger->Info("Successfully registered 24 node types");
+    mainLogger->Info("Successfully registered 25 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -443,6 +445,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
 
     // --- Infrastructure Nodes ---
+    NodeHandle instanceNode = renderGraph->AddNode("InstanceNode", "main_instance");  // Phase 1.1
     NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
     NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
     NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");
@@ -682,8 +685,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Use ConnectionBatch for atomic registration
     ConnectionBatch batch(renderGraph.get());
 
-    // --- Device → Window connection (proper dependency injection) ---
-    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE,
+    // --- Instance → Device connection (Phase 1.1: Dependency injection) ---
+    batch.Connect(instanceNode, InstanceNodeConfig::INSTANCE,
+                  deviceNode, DeviceNodeConfig::INSTANCE_IN);
+
+    // --- Device → Window connection (VkInstance passthrough) ---
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
                   windowNode, WindowNodeConfig::INSTANCE);
 
     // --- Window → SwapChain connections ---
@@ -697,7 +704,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::HEIGHT);
 
     // --- Device → SwapChain connections ---
-    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE,
+    batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,
                   swapChainNode, SwapChainNodeConfig::INSTANCE)
          .Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   swapChainNode, SwapChainNodeConfig::VULKAN_DEVICE_IN);
