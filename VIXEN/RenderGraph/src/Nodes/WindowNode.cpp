@@ -61,6 +61,13 @@ void WindowNode::SetupImpl(TypedSetupContext& ctx) {
 void WindowNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Compile START");
 
+    // Get VkInstance from input slot (proper dependency injection)
+    VkInstance instance = ctx.In(WindowNodeConfig::INSTANCE);
+    if (instance == VK_NULL_HANDLE) {
+        NODE_LOG_ERROR("[WindowNode] ERROR: VkInstance input is VK_NULL_HANDLE!");
+        throw std::runtime_error("WindowNode: VkInstance not provided via input slot");
+    }
+
     // Get parameters using typed names from config
     width = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_WIDTH, 800);
     height = GetParameterValue<uint32_t>(WindowNodeConfig::PARAM_HEIGHT, 600);
@@ -108,21 +115,6 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
     surfaceCreateInfo.pNext = nullptr;
     surfaceCreateInfo.hinstance = hInstance;
     surfaceCreateInfo.hwnd = window;
-
-    // Get instance from device (hack: we need VkInstance but only have device)
-    // We'll get it from global app
-    VulkanApplicationBase* app = static_cast<VulkanApplicationBase*>(
-        reinterpret_cast<void*>(GetWindowLongPtrW(window, GWLP_USERDATA))
-    );
-
-    // HACK: Use external variables - instance should be passed properly
-    extern VkInstance g_VulkanInstance;
-    VkInstance instance = g_VulkanInstance;
-
-    if (instance == VK_NULL_HANDLE) {
-        NODE_LOG_ERROR("[WindowNode] ERROR: g_VulkanInstance is VK_NULL_HANDLE!");
-        throw std::runtime_error("WindowNode: VkInstance not initialized");
-    }
 
     NODE_LOG_INFO("[WindowNode] Creating Win32 surface...");
 

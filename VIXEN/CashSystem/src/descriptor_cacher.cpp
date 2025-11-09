@@ -1,19 +1,12 @@
 #include "CashSystem/DescriptorCacher.h"
 #include "Hash.h"
-#include "../../../ShaderManagement/include/ShaderManagement/DescriptorLayoutSpec.h"
+#include "ShaderManagement/DescriptorLayoutSpec.h"
 #include <sstream>
 #include <stdexcept>
 #include <typeindex>
 #include <map>
 
-// Helper function to compute SHA256 - BEFORE including Hash to ensure proper namespace
-inline std::string ComputeLayoutHash_Helper_Impl(const void* data, size_t len) {
-    // TODO: Fix Hash namespace issue - for now return empty string
-    // return ::Vixen::Hash::ComputeSHA256Hex(data, len);
-    return "";
-}
-
-// Helper function to compute SHA256 outside of namespace context
+// Helper function to compute descriptor layout hash using project Hash library
 static std::string ComputeLayoutHash_Helper(const ShaderManagement::DescriptorLayoutSpec* spec) {
     std::ostringstream hashStream;
     if (spec) {
@@ -24,7 +17,9 @@ static std::string ComputeLayoutHash_Helper(const ShaderManagement::DescriptorLa
                        << binding.stageFlags;
         }
     }
-    return ComputeLayoutHash_Helper_Impl(hashStream.str().data(), hashStream.str().size());
+    std::string hashData = hashStream.str();
+    // Use project-wide hash function with proper namespace
+    return ::Vixen::Hash::ComputeSHA256Hex(hashData.data(), hashData.size());
 }
 
 namespace CashSystem {

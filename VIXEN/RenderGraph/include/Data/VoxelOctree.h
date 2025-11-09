@@ -147,8 +147,9 @@ struct OctreeNode {
     }
 };
 
-// Static assert to ensure correct size (36 bytes - compact design)
-static_assert(sizeof(OctreeNode) == 36, "OctreeNode must be exactly 36 bytes");
+// Static assert to ensure correct size (40 bytes with padding)
+// Layout: 32 bytes (childOffsets) + 1 (childMask) + 1 (leafMask) + 2 (padding) + 4 (brickOffset) = 40 bytes
+static_assert(sizeof(OctreeNode) == 40, "OctreeNode must be exactly 40 bytes");
 
 /**
  * @brief Dense voxel brick for fine levels (depth 5-8)

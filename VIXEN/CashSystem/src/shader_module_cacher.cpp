@@ -1,5 +1,6 @@
 #include "CashSystem/ShaderModuleCacher.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "Hash.h"  // Project-wide hash library (Vixen::Hash namespace)
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -8,24 +9,23 @@
 #include <iostream>
 #include <shared_mutex>
 
-// Helper function to compute basic checksum for file contents
-// TODO: Restore SHA256 after resolving namespace conflict with stbrumme_hash
+// Helper function to compute checksum for file contents using project Hash library
 static std::string ComputeSourceChecksum_Helper(const std::string& sourcePath) {
     try {
-        std::ifstream file(sourcePath, std::ios::binary);
+        std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
         if (!file.is_open()) {
             return "";
         }
-        // Simple FNV-1a hash for now
-        std::uint64_t hash = 14695981039346656037ULL;
-        char byte;
-        while (file.get(byte)) {
-            hash ^= static_cast<std::uint64_t>(static_cast<unsigned char>(byte));
-            hash *= 1099511628211ULL;
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<uint8_t> buffer(size);
+        if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+            return "";
         }
-        std::ostringstream oss;
-        oss << std::hex << hash;
-        return oss.str();
+
+        // Use project-wide hash function with proper namespace
+        return ::Vixen::Hash::ComputeSHA256Hex(buffer.data(), buffer.size());
     } catch (const std::exception&) {
         return "";
     }

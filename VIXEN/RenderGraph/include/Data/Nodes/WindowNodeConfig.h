@@ -6,7 +6,7 @@ namespace Vixen::RenderGraph {
 
 // Compile-time slot counts (declared early for reuse)
 namespace WindowNodeCounts {
-    static constexpr size_t INPUTS = 0;
+    static constexpr size_t INPUTS = 1;   // INSTANCE
     static constexpr size_t OUTPUTS = 5;  // SURFACE, HWND, HINSTANCE, WIDTH, HEIGHT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -17,7 +17,8 @@ namespace WindowNodeCounts {
  * ALL type information is resolved at compile time.
  * Runtime code is just array[0] access - zero overhead.
  *
- * Inputs: 0
+ * Inputs: 1
+ *   - INSTANCE (VkInstance) - Vulkan instance (from DeviceNode)
  * Outputs: 5
  *   - SURFACE (VkSurfaceKHR) - Vulkan surface
  *   - HWND (::HWND) - Windows window handle
@@ -30,6 +31,11 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
                       WindowNodeCounts::INPUTS,
                       WindowNodeCounts::OUTPUTS,
                       WindowNodeCounts::ARRAY_MODE) {
+    // Phase F: Input slots with full metadata
+    INPUT_SLOT(INSTANCE, VkInstance, 0,
+        SlotNullability::Required,
+        SlotMutability::ReadOnly);
+
     // Phase F: Output slots with full metadata
     OUTPUT_SLOT(SURFACE, VkSurfaceKHR, 0,
         SlotNullability::Required,
@@ -59,6 +65,12 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
     // (descriptors contain strings which can't be fully constexpr)
     WindowNodeConfig() {
         // Runtime descriptor initialization
+
+        // Instance handle input
+        HandleDescriptor instanceDesc{"VkInstance"};
+        INIT_INPUT_DESC(INSTANCE, "instance", ResourceLifetime::Persistent, instanceDesc);
+
+        // Output descriptors
         ImageDescription surfaceDesc{};
         surfaceDesc.width = 0;
         surfaceDesc.height = 0;
@@ -84,15 +96,21 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
     }
 
     // Optional: Compile-time validation
+    // Input validation
+    static_assert(INSTANCE_Slot::index == 0, "INSTANCE must be at index 0");
+    static_assert(!INSTANCE_Slot::nullable, "INSTANCE must not be nullable");
+    static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>, "INSTANCE must be VkInstance");
+
+    // Output validation
     static_assert(SURFACE_Slot::index == 0, "SURFACE must be at index 0");
     static_assert(!SURFACE_Slot::nullable, "SURFACE must not be nullable");
     static_assert(std::is_same_v<SURFACE_Slot::Type, VkSurfaceKHR>, "SURFACE must be VkSurfaceKHR");
-    
+
     static_assert(HWND_OUT_Slot::index == 1, "HWND_OUT must be at index 1");
     static_assert(HINSTANCE_OUT_Slot::index == 2, "HINSTANCE_OUT must be at index 2");
     static_assert(WIDTH_OUT_Slot::index == 3, "WIDTH_OUT must be at index 3");
     static_assert(HEIGHT_OUT_Slot::index == 4, "HEIGHT_OUT must be at index 4");
-    
+
     // Validate counts match expectations
     static_assert(INPUT_COUNT == WindowNodeCounts::INPUTS, "Input count mismatch");
     static_assert(OUTPUT_COUNT == WindowNodeCounts::OUTPUTS, "Output count mismatch");

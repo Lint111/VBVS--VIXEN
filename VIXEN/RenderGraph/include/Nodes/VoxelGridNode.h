@@ -12,6 +12,11 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+namespace VIXEN::RenderGraph {
+    class VoxelGrid;
+    class SparseVoxelOctree;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -29,18 +34,19 @@ public:
 };
 
 /**
- * @brief Voxel grid 3D texture node for raymarching
+ * @brief Voxel grid generation node with sparse octree support
  *
- * Creates 3D texture (VK_IMAGE_TYPE_3D) with procedural voxel data.
- * Outputs image view and sampler for compute shader binding.
+ * Generates procedural voxel scenes and uploads to GPU as:
+ * 1. Legacy 3D texture (VkImage) for basic raymarching
+ * 2. Sparse octree SSBO buffers for optimized traversal
  *
- * Phase: Research implementation (voxel raymarching)
+ * Phase H: Voxel Data Infrastructure
  *
  * Scene types:
- * - "test": Simple test pattern (spheres)
- * - "cornell": Cornell Box (Phase H)
- * - "cave": Cave system (Phase H)
- * - "urban": Urban grid (Phase H)
+ * - "test": Simple test pattern (all solid voxels for debug)
+ * - "cornell": Cornell Box (10% density - sparse)
+ * - "cave": Cave system (50% density - medium)
+ * - "urban": Urban grid (90% density - dense)
  */
 class VoxelGridNode : public TypedNode<VoxelGridNodeConfig> {
 public:
@@ -59,17 +65,25 @@ protected:
 
 private:
     void GenerateTestPattern(std::vector<uint8_t>& voxelData);
+    void GenerateProceduralScene(VIXEN::RenderGraph::VoxelGrid& grid);
     void UploadVoxelData(const std::vector<uint8_t>& voxelData);
+    void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
 
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Voxel grid resources
+    // Voxel grid resources (legacy 3D texture)
     VkImage voxelImage = VK_NULL_HANDLE;
     VkDeviceMemory voxelMemory = VK_NULL_HANDLE;
     VkImageView voxelImageView = VK_NULL_HANDLE;
     VkSampler voxelSampler = VK_NULL_HANDLE;
+
+    // Octree SSBO buffers
+    VkBuffer octreeNodesBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory octreeNodesMemory = VK_NULL_HANDLE;
+    VkBuffer octreeBricksBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory octreeBricksMemory = VK_NULL_HANDLE;
 
     // Staging buffer for upload
     VkBuffer stagingBuffer = VK_NULL_HANDLE;

@@ -25,6 +25,8 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/LayerAndExtensionRequirementData.h
     include/Data/ParameterDataTypes.h
     include/Data/VariantDescriptors.h
+    include/Data/SceneGenerator.h
+    include/Data/VoxelOctree.h
     include/Data/Core/GraphMessages.h
     include/Data/Core/ResourceConfig.h
     include/Data/Core/ResourceTypeTraits.h
@@ -89,6 +91,11 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
     include/Core/VariadicTypedNode.h
+)
+
+set(RENDERGRAPH_DATA_CORE_SOURCES
+    src/Data/SceneGenerator.cpp
+    src/Data/VoxelOctree.cpp
 )
 
 set(RENDERGRAPH_CORE_SOURCES
@@ -182,6 +189,7 @@ set(RENDERGRAPH_EVENT_HEADERS
 
 add_library(RenderGraph STATIC
     ${RENDERGRAPH_DATA_CORE_HEADERS}
+    ${RENDERGRAPH_DATA_CORE_SOURCES}
     ${RENDERGRAPH_DATA_NODE_CONFIGS}
     ${RENDERGRAPH_CORE_HEADERS}
     ${RENDERGRAPH_CORE_SOURCES}
@@ -251,7 +259,8 @@ endif()
 # Source Groups for IDE Organization
 # ============================================================================
 
-source_group("Data\\Core" FILES ${RENDERGRAPH_DATA_CORE_HEADERS})
+source_group("Data\\Core\\Headers" FILES ${RENDERGRAPH_DATA_CORE_HEADERS})
+source_group("Data\\Core\\Sources" FILES ${RENDERGRAPH_DATA_CORE_SOURCES})
 source_group("Data\\Nodes" FILES ${RENDERGRAPH_DATA_NODE_CONFIGS})
 source_group("Core\\Headers" FILES ${RENDERGRAPH_CORE_HEADERS})
 source_group("Core\\Sources" FILES ${RENDERGRAPH_CORE_SOURCES})
