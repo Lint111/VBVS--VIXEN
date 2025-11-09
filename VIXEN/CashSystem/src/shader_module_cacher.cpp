@@ -1,6 +1,6 @@
 #include "CashSystem/ShaderModuleCacher.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Hash.h"  // Project-wide hash library (Vixen::Hash namespace)
+#include "VixenHash.h"  // Project-wide hash library (Vixen::Hash namespace)
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -8,6 +8,9 @@
 #include <vulkan/vulkan.h>
 #include <iostream>
 #include <shared_mutex>
+
+// Namespace alias for nested namespace
+namespace VH = Vixen::Hash;
 
 // Helper function to compute checksum for file contents using project Hash library
 static std::string ComputeSourceChecksum_Helper(const std::string& sourcePath) {
@@ -24,8 +27,8 @@ static std::string ComputeSourceChecksum_Helper(const std::string& sourcePath) {
             return "";
         }
 
-        // Use project-wide hash function with proper namespace
-        return ::Vixen::Hash::ComputeSHA256Hex(buffer.data(), buffer.size());
+        // Use project-wide hash function
+        return VH::ComputeSHA256Hex(buffer.data(), buffer.size());
     } catch (const std::exception&) {
         return "";
     }

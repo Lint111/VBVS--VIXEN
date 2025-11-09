@@ -1,7 +1,7 @@
 #include "CashSystem/DeviceIdentifier.h"
 #include "CashSystem/MainCacher.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Hash.h"
+#include "VixenHash.h"
 #include <sstream>
 #include <iostream>
 #include <fstream>
