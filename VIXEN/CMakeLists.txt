@@ -454,6 +454,11 @@ add_executable(${Recipe_Name}
     ${HPP_FILES}
 )
 
+# Add include directory for generated SDI headers
+target_include_directories(${Recipe_Name} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/builtAssets/GeneratedIncludes
+)
+
 # Link libraries to main executable
 target_link_libraries(${Recipe_Name}
     RenderGraph

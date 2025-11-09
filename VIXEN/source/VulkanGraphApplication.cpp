@@ -36,7 +36,7 @@
 #include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
-#include "../generated/sdi/VoxelRayMarchNames.h"  // Generated shader binding constants
+#include "VoxelRayMarchNames.h"  // Generated shader binding constants
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -924,7 +924,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Binding 2: octreeNodes (SSBO) - octree node data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::octreeNodes,
+                          descriptorGatherer, VoxelRayMarch::OctreeNodes,
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Binding 3: voxelBricks (SSBO) - voxel brick data

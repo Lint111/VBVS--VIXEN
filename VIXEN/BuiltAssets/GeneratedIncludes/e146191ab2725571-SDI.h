@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: e146191ab2725571
-// Generated: 2025-11-09 16:43:20
+// Generated: 2025-11-09 17:10:44
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -51,42 +51,42 @@ struct CameraData {
  * @brief OctreeNodesBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x4bae5012e4845d2b (for runtime discovery)
+ * Layout VixenHash: 0x2db79363c03e9b68 (for runtime discovery)
  */
 struct OctreeNodesBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x4bae5012e4845d2bULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x2db79363c03e9b68ULL;
 
     // Offset: 0 bytes
-    Array[0] data;
+    uint32_t data[];
 };
 
 /**
  * @brief VoxelBricksBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0xf73ce70d31ab63b2 (for runtime discovery)
+ * Layout VixenHash: 0x31ac6aa8883c945 (for runtime discovery)
  */
 struct VoxelBricksBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0xf73ce70d31ab63b2ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x31ac6aa8883c945ULL;
 
     // Offset: 0 bytes
-    Array[0] data;
+    uint32_t data[];
 };
 
 /**
  * @brief MaterialPaletteBuffer
  * Size: 0 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x39827c97f582021c (for runtime discovery)
+ * Layout VixenHash: 0xbdb98922562d2e1b (for runtime discovery)
  */
 struct MaterialPaletteBuffer {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x39827c97f582021cULL;
+    static constexpr uint64_t LAYOUT_HASH = 0xbdb98922562d2e1bULL;
 
     // Offset: 0 bytes
-    Array[0] data;
+    uint32_t data[];
 };
 
 // ============================================================================

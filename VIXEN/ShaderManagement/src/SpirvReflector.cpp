@@ -45,9 +45,21 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
             info.structName = typeDesc->type_name ? typeDesc->type_name : "AnonymousStruct";
             break;
         case SPV_REFLECT_TYPE_FLAG_ARRAY:
-            info.baseType = SpirvTypeInfo::BaseType::Array;
+            // For arrays, we need to check if it's runtime-sized (dims_count == 0)
+            // If runtime-sized, use the element type instead of Array base type
             info.arraySize = typeDesc->traits.array.dims_count > 0 ?
                 typeDesc->traits.array.dims[0] : 0;
+
+            // If runtime-sized array (SSBO), extract element type from array element
+            if (info.arraySize == 0 && typeDesc->traits.array.dims_count == 0) {
+                // Runtime-sized array - use uint32_t as generic element type
+                // The actual element type would require recursively parsing typeDesc members
+                // For SSBOs with runtime arrays, uint32_t provides safe generic access
+                info.baseType = SpirvTypeInfo::BaseType::UInt;
+                info.width = 32;
+            } else {
+                info.baseType = SpirvTypeInfo::BaseType::Array;
+            }
             break;
         case SPV_REFLECT_TYPE_FLAG_VECTOR:
             info.baseType = SpirvTypeInfo::BaseType::Vector;
@@ -75,9 +87,16 @@ SpirvTypeInfo ConvertType(const ::SpvReflectTypeDescription* typeDesc) {
         default:
             // Handle combinations (e.g., ARRAY | VECTOR)
             if (typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_ARRAY) {
-                info.baseType = SpirvTypeInfo::BaseType::Array;
                 info.arraySize = typeDesc->traits.array.dims_count > 0 ?
                     typeDesc->traits.array.dims[0] : 0;
+
+                // If runtime-sized array (SSBO), use uint32_t as element type
+                if (info.arraySize == 0 && typeDesc->traits.array.dims_count == 0) {
+                    info.baseType = SpirvTypeInfo::BaseType::UInt;
+                    info.width = 32;
+                } else {
+                    info.baseType = SpirvTypeInfo::BaseType::Array;
+                }
             } else if (typeDesc->type_flags & SPV_REFLECT_TYPE_FLAG_VECTOR) {
                 info.baseType = SpirvTypeInfo::BaseType::Vector;
                 info.vecSize = typeDesc->traits.numeric.vector.component_count;
@@ -263,7 +282,13 @@ std::string SpirvTypeInfo::ToCppType() const {
             oss << structName;
             break;
         case BaseType::Array:
-            oss << "Array[" << arraySize << "]";
+            // For runtime-sized arrays (arraySize == 0), return generic element type
+            // The [] will be added by the generator code based on arrayStride
+            if (arraySize == 0) {
+                oss << "uint32_t";  // Generic element type for runtime arrays
+            } else {
+                oss << "Array[" << arraySize << "]";
+            }
             break;
         case BaseType::Sampler:
             oss << "VkSampler";

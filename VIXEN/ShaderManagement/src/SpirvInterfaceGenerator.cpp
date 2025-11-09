@@ -461,13 +461,21 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinition(
             if (member.arrayStride > 0) {
                 code << ", Array stride: " << member.arrayStride;
             }
+            if (member.type.arraySize == 0 && member.arrayStride > 0) {
+                code << " (runtime-sized array)";
+            }
             code << "\n";
         }
 
         code << Indent(1) << member.type.ToCppType() << " " << member.name;
 
+        // Array handling:
+        // arraySize > 0: Fixed-size array [N]
+        // arraySize == 0 && baseType was Array: Runtime-sized array [] (flexible array member)
         if (member.type.arraySize > 0) {
             code << "[" << member.type.arraySize << "]";
+        } else if (member.type.arraySize == 0 && member.type.baseType == SpirvTypeInfo::BaseType::Array) {
+            code << "[]";  // Flexible array member for SSBOs
         }
 
         code << ";\n";
