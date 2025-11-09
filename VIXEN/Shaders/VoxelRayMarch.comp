@@ -1,13 +1,16 @@
 // VoxelRayMarch.comp
-// Compute shader for voxel ray marching (baseline implementation)
+// Hierarchical octree-based voxel ray marching with empty-space skipping and brick-local DDA
 //
 // Research References:
 // - [1] Nousiainen: "Performance comparison on rendering methods for voxel data"
 // - [5] Voetter: "Volumetric Ray Tracing with Vulkan"
-// - [16] Derin et al.: "BlockWalk" (target for Phase L optimization)
+// - [16] Derin et al.: "BlockWalk" (target for later block-level optimization)
 //
-// Algorithm: Naive DDA (Digital Differential Analyzer) voxel traversal
-// Future: BlockWalk optimization in Phase L for coherent block traversal
+// Notes:
+// - Traversal: Ray-guided descent; if child octant empty, jump to exit plane (skipDistance)
+// - Leaves: 8^3 bricks; inside-brick traversal uses parametric 3D DDA for exact face stepping
+// - Debug: Optional overlays via VOXEL_RAY_DEBUG_* macros; default path returns shaded material
+// - Background: Dark blue-gray; can be replaced with sky or GI later
 
 #version 460
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
@@ -55,7 +58,7 @@ layout(std430, set = 0, binding = 4) readonly buffer MaterialPaletteBuffer {
 // CONSTANTS
 // ============================================================================
 
-const int MAX_STEPS = 1024;          // Maximum ray marching steps (increased for full grid diagonal)
+const int MAX_STEPS = 1024;          // Safety cap for outer traversal iterations
 const float EPSILON = 0.001;         // Small value for floating-point comparisons
 const vec3 BACKGROUND_COLOR = vec3(0.1, 0.1, 0.2);  // Dark blue-gray
 const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
@@ -205,10 +208,9 @@ uint getChildOctant(vec3 posInNode) {
 // OCTREE TRAVERSAL
 // ============================================================================
 
-// Octree-based ray traversal with DDA optimization
-// Combines hierarchical octree descent with empty-space skipping (childMask)
-// Based on [16] Derin et al. BlockWalk algorithm
-// Modified for proper hierarchical traversal with empty-space skipping
+// Octree traversal & brick DDA
+// Combines hierarchical descent (child masks) with precise voxel stepping in leaf bricks.
+// Empty-space skipping implemented by advancing ray directly to node AABB exit.
 
 // Ray-AABB intersection helper
 // Returns (tEnter, tExit) for ray-box intersection, or (-1, -1) if no hit
@@ -229,50 +231,82 @@ vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) 
     return vec2(max(tEnter, 0.0), tExit);
 }
 
-// DDA march through 8³ brick voxels
-// Returns true if hit solid voxel, fills hitColor and hitNormal
+// DDA march through 8^3 brick using parametric voxel traversal.
+// Returns true if hit solid voxel and fills hitColor/hitNormal.
 bool marchBrick(vec3 rayOrigin, vec3 rayDir, vec3 brickMin, vec3 brickMax,
                 uint brickOffset, out vec3 hitColor, out vec3 hitNormal) {
-    // Intersect ray with brick AABB
     vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
-    if (brickT.x < 0.0) return false;  // Ray missed brick
+    if (brickT.x < 0.0) return false; // Missed brick
 
-    // Start marching from brick entry point
-    vec3 rayPos = rayOrigin + rayDir * brickT.x;
+    // Compute voxel size (uniform cube assumed)
     vec3 brickSize = brickMax - brickMin;
-    float voxelSize = brickSize.x / 8.0;  // Brick is 8³ voxels
-    float stepSize = voxelSize * 0.5;  // Half-voxel steps for safety
+    float voxelSize = brickSize.x / 8.0;
 
-    int maxSteps = int(length(brickSize) / stepSize) + 1;
+    // Start position: ray entry (clamped to current global t)
+    vec3 startPos = rayOrigin + rayDir * brickT.x;
+    ivec3 voxelPos = ivec3(floor((startPos - brickMin) / voxelSize));
+    voxelPos = clamp(voxelPos, ivec3(0), ivec3(7));
 
-    for (int step = 0; step < maxSteps && step < 64; step++) {
-        // Check if exited brick
-        if (any(lessThan(rayPos, brickMin)) || any(greaterThanEqual(rayPos, brickMax))) {
-            break;
-        }
+    // Step direction per axis
+    ivec3 step = ivec3(sign(rayDir));
+    // If rayDir component == 0, prevent division by zero by treating tDelta as huge
+    vec3 tDelta = vec3(
+        (rayDir.x != 0.0) ? abs(voxelSize / rayDir.x) : 1e30,
+        (rayDir.y != 0.0) ? abs(voxelSize / rayDir.y) : 1e30,
+        (rayDir.z != 0.0) ? abs(voxelSize / rayDir.z) : 1e30);
 
-        // Convert to brick-local voxel coordinates [0, 8)
-        vec3 posInBrick = (rayPos - brickMin) / brickSize * 8.0;
-        ivec3 voxelPos = ivec3(floor(clamp(posInBrick, vec3(0.0), vec3(7.999))));
-
-        // Sample voxel
-        if (all(greaterThanEqual(voxelPos, ivec3(0))) && all(lessThan(voxelPos, ivec3(8)))) {
-            uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
-
-            if (voxelValue > 0u) {
-                // Hit solid voxel
-                Material mat = getMaterial(voxelValue);
-                vec3 localPos = posInBrick - vec3(voxelPos);
-                hitNormal = calculateVoxelNormal(localPos, ivec3(0));
-                hitColor = shadeVoxel(hitNormal, mat.albedo);
-                return true;
-            }
-        }
-
-        rayPos += rayDir * stepSize;
+    // Distances to first voxel boundary along each axis
+    vec3 voxelMin = brickMin + vec3(voxelPos) * voxelSize;
+    vec3 voxelMax = voxelMin + vec3(voxelSize);
+    vec3 tMax;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (rayDir[axis] > 0.0)
+            tMax[axis] = (voxelMax[axis] - startPos[axis]) / rayDir[axis];
+        else if (rayDir[axis] < 0.0)
+            tMax[axis] = (voxelMin[axis] - startPos[axis]) / rayDir[axis];
+        else
+            tMax[axis] = 1e30; // Parallel axis
     }
 
-    return false;  // No hit in brick
+    // Traverse up to reasonable limit (8^3 worst-case)
+    for (int iter = 0; iter < 128; ++iter) {
+        // Bounds check
+        if (any(lessThan(voxelPos, ivec3(0))) || any(greaterThan(voxelPos, ivec3(7)))) {
+            break; // Exited brick
+        }
+
+        // Sample voxel
+        uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
+        if (voxelValue > 0u) {
+            Material mat = getMaterial(voxelValue);
+            // Approximate local position for normal; use center approach
+            vec3 worldPosCenter = brickMin + (vec3(voxelPos) + 0.5) * voxelSize;
+            vec3 localPos = (worldPosCenter - voxelMin) / voxelSize; // [0,1]
+            hitNormal = calculateVoxelNormal(localPos, ivec3(0));
+            hitColor = shadeVoxel(hitNormal, mat.albedo);
+            return true;
+        }
+
+        // Advance to next voxel boundary
+        if (tMax.x < tMax.y) {
+            if (tMax.x < tMax.z) {
+                voxelPos.x += step.x;
+                tMax.x += tDelta.x;
+            } else {
+                voxelPos.z += step.z;
+                tMax.z += tDelta.z;
+            }
+        } else {
+            if (tMax.y < tMax.z) {
+                voxelPos.y += step.y;
+                tMax.y += tDelta.y;
+            } else {
+                voxelPos.z += step.z;
+                tMax.z += tDelta.z;
+            }
+        }
+    }
+    return false; // No hit inside brick
 }
 
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
@@ -294,12 +328,8 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
     const int MAX_RAY_STEPS = 1024;
 
-    // DEBUG: Accumulate traversal depth for visualization
-    vec3 accumColor = vec3(0.0);
-    float accumAlpha = 0.0;
-    const float alphaPerStep = 0.05;  // Opacity added per traversal step
-
     for (int rayStep = 0; rayStep < MAX_RAY_STEPS && t < tMax; rayStep++) {
+
         vec3 rayPos = rayOrigin + rayDir * t;
 
         // Transform to grid-local space [0, gridRes]
@@ -307,8 +337,8 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         // Normalize to [0, 1] for octree traversal
         vec3 normalizedPos = gridLocalPos / float(camera.gridResolution);
 
-        // Ensure we're still within grid bounds
-        if (any(lessThan(normalizedPos, vec3(0.0))) || any(greaterThanEqual(normalizedPos, vec3(1.0)))) {
+        // Ensure we're still within grid bounds (allow boundary voxels)
+        if (any(lessThan(normalizedPos, vec3(0.0))) || any(greaterThan(normalizedPos, vec3(1.0)))) {
             break;
         }
 
@@ -367,7 +397,7 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
             // Check if child is a leaf brick
             if (isLeaf(leafMask, octantIndex)) {
-                // Leaf brick - DDA march through voxels
+                // Leaf brick - DDA march inside brick
                 uint brickOffset = getChildOffset(nodeIndex, octantIndex);
                 if (brickOffset == 0u) {
                     // Invalid brick - treat as empty, skip this node
@@ -379,58 +409,15 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
                     }
                     break;
                 }
-
-                // Convert normalized bounds to world space
                 vec3 brickWorldMin = gridMin + childMin * (gridMax - gridMin);
                 vec3 brickWorldMax = gridMin + childMax * (gridMax - gridMin);
-
-                // Intersect ray with brick to find entry point
-                vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickWorldMin, brickWorldMax);
-                if (brickT.x < 0.0) {
-                    // Ray doesn't intersect brick (shouldn't happen since we're inside it)
-                    break;
+                if (marchBrick(rayOrigin, rayDir, brickWorldMin, brickWorldMax, brickOffset, hitColor, hitNormal)) {
+                    return vec4(hitColor, 1.0);
                 }
-
-                // DDA march through brick starting from brick entry point
-                vec3 brickSize = brickWorldMax - brickWorldMin;
-                float voxelSize = brickSize.x / 8.0;
-                float stepSize = voxelSize * 0.5;
-
-                // Start marching from brick entry point (or current position if already inside)
-                vec3 marchPos = rayOrigin + rayDir * max(brickT.x, t);
-                int maxBrickSteps = int(length(brickSize) / stepSize) + 1;
-
-                for (int step = 0; step < maxBrickSteps && step < 64; step++) {
-                    // Check if exited brick
-                    if (any(lessThan(marchPos, brickWorldMin)) || any(greaterThanEqual(marchPos, brickWorldMax))) {
-                        break;
-                    }
-
-                    // Convert to brick-local voxel coordinates [0, 8)
-                    vec3 posInBrick = (marchPos - brickWorldMin) / brickSize * 8.0;
-
-                    if (all(greaterThanEqual(posInBrick, vec3(0.0))) && all(lessThan(posInBrick, vec3(8.0)))) {
-                        ivec3 voxelPos = ivec3(floor(posInBrick));
-                        uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
-
-                        if (voxelValue > 0u) {
-                            // Hit solid voxel
-                            Material mat = getMaterial(voxelValue);
-                            vec3 localPos = posInBrick - vec3(voxelPos);
-                            hitNormal = calculateVoxelNormal(localPos, ivec3(0));
-                            hitColor = shadeVoxel(hitNormal, mat.albedo);
-                            return vec4(hitColor, 1.0);  // Hit!
-                        }
-                    }
-
-                    marchPos += rayDir * stepSize;
-                }
-
-                // No hit in brick - skip to brick exit (reuse brickT from above)
-                if (brickT.y > t) {
-                    skipDistance = brickT.y - t + EPSILON;
-                }
-                break;  // Exit octree descent
+                // Skip to brick exit if no hit
+                vec2 bT = rayAABBIntersection(rayOrigin, rayDir, brickWorldMin, brickWorldMax);
+                if (bT.y > t) skipDistance = bT.y - t + EPSILON;
+                break;
             } else {
                 // Internal node - descend into child
                 uint childOffset = getChildOffset(nodeIndex, octantIndex);
@@ -456,11 +443,7 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         }  // End octree descent
 
         // Advance ray
-        if (skipDistance > 0.0) {
-            t += skipDistance;  // Skip to node boundary
-        } else {
-            t += 0.25;  // Conservative step if no skip computed
-        }
+        if (skipDistance > 0.0) t += skipDistance; else t += EPSILON * 2.0;
     }  // End ray march loop
 
     // No hit - return background
