@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
-TEST(VulkanResources_Basic, Placeholder) {
+// Placeholder test - VulkanResources require full Vulkan initialization
+// which is complex for unit testing. These tests pass to allow build.
+
+TEST(VulkanResources_Basic, PlaceholderPasses) {
     EXPECT_TRUE(true);
 }
 
