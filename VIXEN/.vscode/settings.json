@@ -156,10 +156,12 @@
         "documentation/**": true,
         "memory-bank/**": true
     },
-    "testExplorer.useNativeTesting": true,
     "cmake.options.statusBarVisibility": "visible",
     "cmake.buildDirectory": "${workspaceFolder}/build",
-    "cmakeExplorer.suiteDelimiter": "/",
-    "testExplorer.sort": "byLocation",
-    "testExplorer.groupByLocation": true
+    "cmake.ctest.allowParallelJobs": true,
+    "cmakeExplorer.suiteDelimiter": ".",
+    "cmakeExplorer.testExplorer.enabled": true,
+    "cmakeExplorer.testExplorer.treeMode": "byTestSuite",
+    "testExplorer.useNativeTesting": false,
+    "testExplorer.sort": "byLocation"
 }
