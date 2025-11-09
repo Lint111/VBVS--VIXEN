@@ -2,6 +2,7 @@
 #include "CashSystem/SamplerCacher.h"
 #include "VixenHash.h"
 #include "TextureHandling/Loading/TextureLoader.h"
+#include "VulkanResources/VulkanDevice.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -15,9 +16,9 @@ std::shared_ptr<TextureWrapper> TextureCacher::GetOrCreate(const TextureCreatePa
     auto wrapper = TypedCacher<TextureWrapper, TextureCreateParams>::GetOrCreate(ci);
 
     if (wrapper) {
-        Log("[TextureCacher::GetOrCreate] Cache hit for texture: " + ci.filePath);
+        LOG_INFO("[TextureCacher::GetOrCreate] Cache hit for texture: " + ci.filePath);
     } else {
-        Log("[TextureCacher::GetOrCreate] Cache miss for texture: " + ci.filePath);
+        LOG_INFO("[TextureCacher::GetOrCreate] Cache miss for texture: " + ci.filePath);
     }
 
     return wrapper;
@@ -105,12 +106,12 @@ void TextureCacher::LoadTextureFromFile(const TextureCreateParams& ci, TextureWr
     // TODO: Integrate with TextureLoader to load actual texture data
     // For now, create a simple fallback texture
 
-    Log("[TextureCacher::LoadTextureFromFile] Loading texture from file: " + ci.filePath);
+    LOG_INFO("[TextureCacher::LoadTextureFromFile] Loading texture from file: " + ci.filePath);
 
     // Use fallback for now - full TextureLoader integration requires concrete loader implementation
     CreateFallbackTexture(ci, wrapper);
 
-    Log("[TextureCacher::LoadTextureFromFile] Texture loaded successfully");
+    LOG_INFO("[TextureCacher::LoadTextureFromFile] Texture loaded successfully");
 }
 
 void TextureCacher::CreateFallbackTexture(const TextureCreateParams& ci, TextureWrapper& wrapper) {
@@ -130,7 +131,7 @@ void TextureCacher::CreateFallbackTexture(const TextureCreateParams& ci, Texture
     // TODO: Create actual Vulkan resources (VkImage, VkImageView, VkDeviceMemory)
     // This requires VulkanDevice integration which should be added when connecting to RenderGraph
 
-    Log("[TextureCacher::CreateFallbackTexture] Created fallback 1x1 white texture");
+    LOG_INFO("[TextureCacher::CreateFallbackTexture] Created fallback 1x1 white texture");
 }
 
 bool TextureCacher::SerializeToFile(const std::filesystem::path& path) const {
@@ -276,7 +277,7 @@ void TextureCacher::Cleanup() {
 
         if (!wrapper) continue;
 
-        VkDevice device = GetDevice() ? GetDevice()->GetLogicalDevice() : VK_NULL_HANDLE;
+        VkDevice device = GetDevice() ? GetDevice()->device : VK_NULL_HANDLE;
 
         if (device != VK_NULL_HANDLE) {
             // Destroy Vulkan resources
@@ -304,7 +305,7 @@ void TextureCacher::Cleanup() {
     m_entries.clear();
     m_pending.clear();
 
-    Log("[TextureCacher::Cleanup] Cleaned up all texture resources");
+    LOG_INFO("[TextureCacher::Cleanup] Cleaned up all texture resources");
 }
 
 } // namespace CashSystem
