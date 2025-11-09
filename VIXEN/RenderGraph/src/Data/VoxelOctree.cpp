@@ -12,6 +12,10 @@ SparseVoxelOctree::SparseVoxelOctree()
     // Reserve root node
     nodes_.reserve(4096); // Reasonable initial capacity for depth 0-4
     bricks_.reserve(1024); // Reasonable initial capacity for bricks
+
+    // Initialize material palette with default white material at ID 0
+    materialPalette_.reserve(256); // Max 256 materials
+    materialPalette_.emplace_back(); // Default white diffuse material
 }
 
 void SparseVoxelOctree::BuildFromGrid(
@@ -169,6 +173,167 @@ bool SparseVoxelOctree::IsRegionEmpty(
 // NOTE: PopulateChildMetadata removed - childMask already provides occupancy tracking
 //       When voxel added: propagate bit=1 to all parent nodes
 //       When voxel removed: propagate bit=0 to all parent nodes (if child becomes empty)
+
+// ============================================================================
+// SERIALIZATION / DESERIALIZATION (H.1.4)
+// ============================================================================
+
+bool SparseVoxelOctree::SaveToFile(const std::string& filepath) const {
+    std::vector<uint8_t> buffer;
+    SerializeToBuffer(buffer);
+
+    std::ofstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+    file.close();
+
+    return file.good();
+}
+
+bool SparseVoxelOctree::LoadFromFile(const std::string& filepath) {
+    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> buffer(size);
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+        return false;
+    }
+
+    return DeserializeFromBuffer(buffer);
+}
+
+void SparseVoxelOctree::SerializeToBuffer(std::vector<uint8_t>& outBuffer) const {
+    // Binary format:
+    // Header (20 bytes):
+    //   - Magic number (4 bytes): "SVOC" (Sparse Voxel Octree Cache)
+    //   - Version (4 bytes): 1
+    //   - maxDepth (4 bytes)
+    //   - gridSize (4 bytes)
+    //   - nodeCount (4 bytes)
+    //   - brickCount (4 bytes)
+    // Nodes data (nodeCount * sizeof(OctreeNode))
+    // Bricks data (brickCount * sizeof(VoxelBrick))
+
+    const uint32_t magic = 0x53564F43; // "SVOC" in little-endian
+    const uint32_t version = 1;
+    const uint32_t nodeCount = static_cast<uint32_t>(nodes_.size());
+    const uint32_t brickCount = static_cast<uint32_t>(bricks_.size());
+
+    size_t headerSize = 24;
+    size_t nodesSize = nodeCount * sizeof(OctreeNode);
+    size_t bricksSize = brickCount * sizeof(VoxelBrick);
+    size_t totalSize = headerSize + nodesSize + bricksSize;
+
+    outBuffer.resize(totalSize);
+    uint8_t* ptr = outBuffer.data();
+
+    // Write header
+    std::memcpy(ptr, &magic, sizeof(magic)); ptr += sizeof(magic);
+    std::memcpy(ptr, &version, sizeof(version)); ptr += sizeof(version);
+    std::memcpy(ptr, &maxDepth_, sizeof(maxDepth_)); ptr += sizeof(maxDepth_);
+    std::memcpy(ptr, &gridSize_, sizeof(gridSize_)); ptr += sizeof(gridSize_);
+    std::memcpy(ptr, &nodeCount, sizeof(nodeCount)); ptr += sizeof(nodeCount);
+    std::memcpy(ptr, &brickCount, sizeof(brickCount)); ptr += sizeof(brickCount);
+
+    // Write nodes
+    if (nodeCount > 0) {
+        std::memcpy(ptr, nodes_.data(), nodesSize);
+        ptr += nodesSize;
+    }
+
+    // Write bricks
+    if (brickCount > 0) {
+        std::memcpy(ptr, bricks_.data(), bricksSize);
+    }
+}
+
+bool SparseVoxelOctree::DeserializeFromBuffer(const std::vector<uint8_t>& buffer) {
+    if (buffer.size() < 24) {
+        return false; // Header too small
+    }
+
+    const uint8_t* ptr = buffer.data();
+
+    // Read header
+    uint32_t magic, version, nodeCount, brickCount;
+    std::memcpy(&magic, ptr, sizeof(magic)); ptr += sizeof(magic);
+    std::memcpy(&version, ptr, sizeof(version)); ptr += sizeof(version);
+    std::memcpy(&maxDepth_, ptr, sizeof(maxDepth_)); ptr += sizeof(maxDepth_);
+    std::memcpy(&gridSize_, ptr, sizeof(gridSize_)); ptr += sizeof(gridSize_);
+    std::memcpy(&nodeCount, ptr, sizeof(nodeCount)); ptr += sizeof(nodeCount);
+    std::memcpy(&brickCount, ptr, sizeof(brickCount)); ptr += sizeof(brickCount);
+
+    // Validate magic number
+    const uint32_t expectedMagic = 0x53564F43; // "SVOC"
+    if (magic != expectedMagic) {
+        return false;
+    }
+
+    // Validate version
+    if (version != 1) {
+        return false;
+    }
+
+    // Validate buffer size
+    size_t expectedSize = 24 + nodeCount * sizeof(OctreeNode) + brickCount * sizeof(VoxelBrick);
+    if (buffer.size() != expectedSize) {
+        return false;
+    }
+
+    // Read nodes
+    nodes_.resize(nodeCount);
+    if (nodeCount > 0) {
+        std::memcpy(nodes_.data(), ptr, nodeCount * sizeof(OctreeNode));
+        ptr += nodeCount * sizeof(OctreeNode);
+    }
+
+    // Read bricks
+    bricks_.resize(brickCount);
+    if (brickCount > 0) {
+        std::memcpy(bricks_.data(), ptr, brickCount * sizeof(VoxelBrick));
+    }
+
+    return true;
+}
+
+// ============================================================================
+// MATERIAL PALETTE MANAGEMENT (H.2.4)
+// ============================================================================
+
+uint8_t SparseVoxelOctree::RegisterMaterial(const VoxelMaterial& material) {
+    // Check if palette is full
+    if (materialPalette_.size() >= 256) {
+        // Return default material ID (0) if palette full
+        return 0;
+    }
+
+    // Add material to palette and return its ID
+    uint8_t materialID = static_cast<uint8_t>(materialPalette_.size());
+    materialPalette_.push_back(material);
+    return materialID;
+}
+
+const VoxelMaterial& SparseVoxelOctree::GetMaterial(uint8_t materialID) const {
+    // Bounds check - return default material (ID 0) if invalid
+    if (materialID >= materialPalette_.size()) {
+        return materialPalette_[0];
+    }
+    return materialPalette_[materialID];
+}
+
+void SparseVoxelOctree::ClearMaterials() {
+    materialPalette_.clear();
+    materialPalette_.reserve(256);
+    materialPalette_.emplace_back(); // Re-add default white material at ID 0
+}
 
 } // namespace RenderGraph
 } // namespace VIXEN

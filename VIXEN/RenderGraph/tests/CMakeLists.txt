@@ -173,3 +173,12 @@ if(TARGET GTest::gtest_main)
 else()
     message(STATUS "⊗ test_resourcevariant_handles skipped (GoogleTest not available)")
 endif()
+
+# ===========================================================================
+# Voxel Octree Tests (Phase H)
+# ===========================================================================
+# This test suite validates SparseVoxelOctree functionality:
+# - Octree construction, compression, serialization
+# - Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+include(test_voxel_octree.cmake)

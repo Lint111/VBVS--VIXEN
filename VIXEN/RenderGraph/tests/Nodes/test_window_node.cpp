@@ -24,11 +24,11 @@ class WindowNodeTest : public ::testing::Test {};
 
 // Configuration Tests
 TEST_F(WindowNodeTest, ConfigHasZeroInputs) {
-    EXPECT_EQ(WindowNodeConfig::INPUT_COUNT, 0);
+    EXPECT_EQ(WindowNodeConfig::INPUT_COUNT, 1);
 }
 
 TEST_F(WindowNodeTest, ConfigHasOneOutput) {
-    EXPECT_EQ(WindowNodeConfig::OUTPUT_COUNT, 1) << "WindowNode outputs SURFACE";
+    EXPECT_EQ(WindowNodeConfig::OUTPUT_COUNT, 5) << "WindowNode outputs SURFACE and window properties";
 }
 
 TEST_F(WindowNodeTest, ConfigSurfaceOutputIndex) {

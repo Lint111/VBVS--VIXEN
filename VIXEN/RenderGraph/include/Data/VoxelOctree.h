@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
+#include <fstream>
 #include <glm/glm.hpp>
 
 namespace VIXEN {
@@ -242,6 +244,44 @@ struct VoxelBrick {
 static_assert(sizeof(VoxelBrick) == 512, "VoxelBrick must be exactly 512 bytes");
 
 /**
+ * @brief PBR material properties for voxels
+ *
+ * Memory layout: 32 bytes per material (GPU-friendly alignment)
+ *
+ * albedo:     RGB color (sRGB space, 0-1 range per channel)
+ * roughness:  Surface roughness (0 = mirror, 1 = diffuse)
+ * metallic:   Metalness (0 = dielectric, 1 = metal)
+ * emissive:   Emissive intensity multiplier
+ */
+struct VoxelMaterial {
+    glm::vec3 albedo;      // RGB albedo color (12 bytes)
+    float roughness;       // Surface roughness [0-1] (4 bytes)
+    float metallic;        // Metalness [0-1] (4 bytes)
+    float emissive;        // Emissive intensity (4 bytes)
+    float padding[2];      // Align to 32 bytes (8 bytes)
+
+    // Default constructor - white diffuse non-metal
+    VoxelMaterial()
+        : albedo(1.0f, 1.0f, 1.0f)
+        , roughness(0.8f)
+        , metallic(0.0f)
+        , emissive(0.0f)
+        , padding{0.0f, 0.0f}
+    {}
+
+    VoxelMaterial(glm::vec3 col, float rough, float metal, float emis = 0.0f)
+        : albedo(col)
+        , roughness(rough)
+        , metallic(metal)
+        , emissive(emis)
+        , padding{0.0f, 0.0f}
+    {}
+};
+
+// Static assert to ensure GPU-friendly alignment
+static_assert(sizeof(VoxelMaterial) == 32, "VoxelMaterial must be 32 bytes for GPU alignment");
+
+/**
  * @brief Sparse Voxel Octree container
  *
  * Manages octree nodes and voxel bricks for efficient sparse voxel storage.
@@ -249,6 +289,7 @@ static_assert(sizeof(VoxelBrick) == 512, "VoxelBrick must be exactly 512 bytes")
  * Design:
  * - Depth 0-4: Pointer-based octree nodes (coarse spatial hierarchy)
  * - Depth 5-8: Dense 8³ voxel bricks (fine voxel detail)
+ * - Material palette: uint8_t voxel value → material ID lookup
  *
  * Target resolution: 256³ voxels (depth 8 octree)
  * Memory efficiency: 9:1 compression for 10% density scenes
@@ -278,10 +319,28 @@ public:
     const std::vector<VoxelBrick>& GetBricks() const { return bricks_; }
 
     /**
+     * @brief Get number of nodes
+     * @return Total octree node count
+     */
+    uint32_t GetNodeCount() const { return static_cast<uint32_t>(nodes_.size()); }
+
+    /**
+     * @brief Get number of bricks
+     * @return Total brick count
+     */
+    uint32_t GetBrickCount() const { return static_cast<uint32_t>(bricks_.size()); }
+
+    /**
      * @brief Get maximum octree depth
      * @return Maximum depth (typically 8 for 256³)
      */
     uint32_t GetMaxDepth() const { return maxDepth_; }
+
+    /**
+     * @brief Get grid size
+     * @return Original grid size used for construction
+     */
+    uint32_t GetGridSize() const { return gridSize_; }
 
     /**
      * @brief Get total memory usage in bytes
@@ -293,20 +352,97 @@ public:
     }
 
     /**
-     * @brief Calculate compression ratio vs dense grid
+     * @brief Calculate compression ratio vs dense grid (uses stored gridSize_)
+     * @return Compression ratio (e.g., 9.0 = 9:1 compression)
+     */
+    float GetCompressionRatio() const {
+        if (gridSize_ == 0) return 0.0f;
+        size_t denseSize = gridSize_ * gridSize_ * gridSize_ * sizeof(uint8_t);
+        size_t memUsage = GetMemoryUsage();
+        if (memUsage == 0) return 1000.0f; // Extreme compression for empty
+        return static_cast<float>(denseSize) / static_cast<float>(memUsage);
+    }
+
+    /**
+     * @brief Calculate compression ratio vs dense grid (explicit size)
      * @param gridSize Original grid size
      * @return Compression ratio (e.g., 9.0 = 9:1 compression)
      */
     float GetCompressionRatio(uint32_t gridSize) const {
         size_t denseSize = gridSize * gridSize * gridSize * sizeof(uint8_t);
-        return static_cast<float>(denseSize) / static_cast<float>(GetMemoryUsage());
+        size_t memUsage = GetMemoryUsage();
+        if (memUsage == 0) return 1000.0f;
+        return static_cast<float>(denseSize) / static_cast<float>(memUsage);
     }
 
+    /**
+     * @brief Serialize octree to binary file
+     * @param filepath Path to output file
+     * @return true if successful, false otherwise
+     */
+    bool SaveToFile(const std::string& filepath) const;
+
+    /**
+     * @brief Deserialize octree from binary file
+     * @param filepath Path to input file
+     * @return true if successful, false otherwise
+     */
+    bool LoadFromFile(const std::string& filepath);
+
+    /**
+     * @brief Serialize octree to binary buffer
+     * @param outBuffer Output buffer (will be resized)
+     */
+    void SerializeToBuffer(std::vector<uint8_t>& outBuffer) const;
+
+    /**
+     * @brief Deserialize octree from binary buffer
+     * @param buffer Input buffer
+     * @return true if successful, false otherwise
+     */
+    bool DeserializeFromBuffer(const std::vector<uint8_t>& buffer);
+
+    // ===========================================================================
+    // Material Palette Management
+    // ===========================================================================
+
+    /**
+     * @brief Register a new material in the palette
+     * @param material Material properties
+     * @return Material ID (uint8_t index, 0-255)
+     */
+    uint8_t RegisterMaterial(const VoxelMaterial& material);
+
+    /**
+     * @brief Get material by ID
+     * @param materialID Material index [0-255]
+     * @return Material properties (returns default white if invalid ID)
+     */
+    const VoxelMaterial& GetMaterial(uint8_t materialID) const;
+
+    /**
+     * @brief Get all materials in palette
+     * @return Vector of all registered materials
+     */
+    const std::vector<VoxelMaterial>& GetMaterialPalette() const { return materialPalette_; }
+
+    /**
+     * @brief Get number of materials in palette
+     * @return Material count (1-256, ID 0 is always default white)
+     */
+    uint32_t GetMaterialCount() const { return static_cast<uint32_t>(materialPalette_.size()); }
+
+    /**
+     * @brief Clear all materials and reset to default
+     */
+    void ClearMaterials();
+
 private:
-    std::vector<OctreeNode> nodes_;    // Octree node hierarchy
-    std::vector<VoxelBrick> bricks_;   // Voxel brick storage
-    uint32_t maxDepth_;                // Maximum octree depth
-    uint32_t gridSize_;                // Original grid size
+    std::vector<OctreeNode> nodes_;       // Octree node hierarchy
+    std::vector<VoxelBrick> bricks_;      // Voxel brick storage
+    uint32_t maxDepth_;                   // Maximum octree depth
+    uint32_t gridSize_;                   // Original grid size
+    std::vector<VoxelMaterial> materialPalette_;  // Material lookup table (max 256 entries)
 
     // Private helper methods (to be implemented in H.1.2)
     uint32_t BuildRecursive(

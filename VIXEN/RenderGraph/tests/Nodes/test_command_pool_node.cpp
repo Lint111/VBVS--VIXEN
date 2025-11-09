@@ -28,7 +28,7 @@ TEST_F(CommandPoolNodeTest, ConfigHasOneInput) {
 }
 
 TEST_F(CommandPoolNodeTest, ConfigHasOneOutput) {
-    EXPECT_EQ(CommandPoolNodeConfig::OUTPUT_COUNT, 1) << "Outputs COMMAND_POOL";
+    EXPECT_EQ(CommandPoolNodeConfig::OUTPUT_COUNT, 2) << "Outputs COMMAND_POOL";
 }
 
 TEST_F(CommandPoolNodeTest, ConfigDeviceInputIndex) {

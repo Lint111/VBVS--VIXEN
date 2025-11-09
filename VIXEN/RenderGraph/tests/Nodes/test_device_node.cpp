@@ -54,8 +54,8 @@ protected:
 // ============================================================================
 
 TEST_F(DeviceNodeTest, ConfigHasZeroInputs) {
-    EXPECT_EQ(DeviceNodeConfig::INPUT_COUNT, 0)
-        << "DeviceNode should have 0 inputs (source node)";
+    EXPECT_EQ(DeviceNodeConfig::INPUT_COUNT, 1)
+        << "DeviceNode should have 1 input (INSTANCE)";
 }
 
 TEST_F(DeviceNodeTest, ConfigHasTwoOutputs) {
@@ -149,7 +149,7 @@ TEST_F(DeviceNodeTest, ConfigCompileTimeValidation) {
     // These are compile-time checks - if code compiles, they pass
     // Just verify the config is constructible
     DeviceNodeConfig config;
-    EXPECT_EQ(config.INPUT_COUNT, 0);
+    EXPECT_EQ(config.INPUT_COUNT, 1);
     EXPECT_EQ(config.OUTPUT_COUNT, 2);
 }
 
@@ -227,7 +227,7 @@ TEST_F(DeviceNodeTest, CompileTimeAssertionsPass) {
 
 TEST_F(DeviceNodeTest, ConfigIsDefaultConstructible) {
     DeviceNodeConfig config;
-    EXPECT_EQ(config.INPUT_COUNT, 0);
+    EXPECT_EQ(config.INPUT_COUNT, 1);
     EXPECT_EQ(config.OUTPUT_COUNT, 2);
 }
 

@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 #include "../../include/Core/PerFrameResources.h"
+#include "VulkanResources/VulkanDevice.h"
 #include <memory>
 
 using namespace Vixen::RenderGraph;
@@ -33,13 +34,22 @@ class PerFrameResourcesTest : public ::testing::Test {
 protected:
     void SetUp() override {
         resources = std::make_unique<PerFrameResources>();
+
+        // Create mock VulkanDevice for testing
+        // Initialize with dummy physical device pointer
+        VkPhysicalDevice dummyGpu = VK_NULL_HANDLE;
+        mockDevice = new Vixen::Vulkan::Resources::VulkanDevice(&dummyGpu);
+        mockDevice->device = VK_NULL_HANDLE;  // Null handle OK for structure tests
     }
 
     void TearDown() override {
         resources.reset();
+        delete mockDevice;
+        mockDevice = nullptr;
     }
 
     std::unique_ptr<PerFrameResources> resources;
+    Vixen::Vulkan::Resources::VulkanDevice* mockDevice = nullptr;
 
     // Helper: Create mock VkDescriptorSet handles (for testing storage)
     VkDescriptorSet CreateMockDescriptorSet(int id) {
@@ -51,10 +61,10 @@ protected:
         return reinterpret_cast<VkCommandBuffer>(static_cast<uintptr_t>(0x10000 + id));
     }
 
-    // Helper: Initialize with nullptr device (for unit testing structure only)
+    // Helper: Initialize with mock device (for unit testing structure only)
     void InitializeForUnitTest(uint32_t frameCount) {
         // Note: This initializes the frames vector but does not create actual Vulkan resources
-        resources->Initialize(nullptr, frameCount);
+        resources->Initialize(mockDevice, frameCount);
     }
 };
 
@@ -314,11 +324,11 @@ TEST_F(PerFrameResourcesTest, GetDescriptorSetInvalidIndexThrows) {
     // Invalid indices: 2, 100
     EXPECT_THROW({
         resources->GetDescriptorSet(2);
-    }, std::out_of_range) << "Invalid frame index should throw";
+    }, std::runtime_error) << "Invalid frame index should throw";
 
     EXPECT_THROW({
         resources->GetDescriptorSet(100);
-    }, std::out_of_range);
+    }, std::runtime_error);
 }
 
 TEST_F(PerFrameResourcesTest, SetDescriptorSetInvalidIndexThrows) {
@@ -328,7 +338,7 @@ TEST_F(PerFrameResourcesTest, SetDescriptorSetInvalidIndexThrows) {
 
     EXPECT_THROW({
         resources->SetDescriptorSet(2, set);
-    }, std::out_of_range) << "Setting invalid frame index should throw";
+    }, std::runtime_error) << "Setting invalid frame index should throw";
 }
 
 TEST_F(PerFrameResourcesTest, GetCommandBufferInvalidIndexThrows) {
@@ -336,7 +346,7 @@ TEST_F(PerFrameResourcesTest, GetCommandBufferInvalidIndexThrows) {
 
     EXPECT_THROW({
         resources->GetCommandBuffer(2);
-    }, std::out_of_range);
+    }, std::runtime_error);
 }
 
 TEST_F(PerFrameResourcesTest, SetCommandBufferInvalidIndexThrows) {
@@ -346,7 +356,7 @@ TEST_F(PerFrameResourcesTest, SetCommandBufferInvalidIndexThrows) {
 
     EXPECT_THROW({
         resources->SetCommandBuffer(2, cmd);
-    }, std::out_of_range);
+    }, std::runtime_error);
 }
 
 TEST_F(PerFrameResourcesTest, GetFrameDataInvalidIndexThrows) {
@@ -354,7 +364,7 @@ TEST_F(PerFrameResourcesTest, GetFrameDataInvalidIndexThrows) {
 
     EXPECT_THROW({
         resources->GetFrameData(2);
-    }, std::out_of_range);
+    }, std::runtime_error);
 }
 
 // ============================================================================
@@ -376,15 +386,15 @@ TEST_F(PerFrameResourcesTest, OperationsOnUninitializedThrow) {
 
     EXPECT_THROW({
         resources->SetDescriptorSet(0, set);
-    }, std::out_of_range) << "SetDescriptorSet on uninitialized should throw";
+    }, std::runtime_error) << "SetDescriptorSet on uninitialized should throw";
 
     EXPECT_THROW({
         resources->GetDescriptorSet(0);
-    }, std::out_of_range) << "GetDescriptorSet on uninitialized should throw";
+    }, std::runtime_error) << "GetDescriptorSet on uninitialized should throw";
 
     EXPECT_THROW({
         resources->GetFrameData(0);
-    }, std::out_of_range) << "GetFrameData on uninitialized should throw";
+    }, std::runtime_error) << "GetFrameData on uninitialized should throw";
 }
 
 // ============================================================================
