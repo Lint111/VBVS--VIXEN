@@ -86,6 +86,7 @@ private:
     HWND window = nullptr;
 #endif
 
+    VkInstance vkInstance = VK_NULL_HANDLE;  // Cached from input slot for surface cleanup
     PFN_vkDestroySurfaceKHR fpDestroySurfaceKHR = nullptr;
 
     // Window state

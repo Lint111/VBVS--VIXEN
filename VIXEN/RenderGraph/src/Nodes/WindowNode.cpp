@@ -62,8 +62,8 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[WindowNode] Compile START");
 
     // Get VkInstance from input slot (proper dependency injection)
-    VkInstance instance = ctx.In(WindowNodeConfig::INSTANCE);
-    if (instance == VK_NULL_HANDLE) {
+    vkInstance = ctx.In(WindowNodeConfig::INSTANCE);
+    if (vkInstance == VK_NULL_HANDLE) {
         NODE_LOG_ERROR("[WindowNode] ERROR: VkInstance input is VK_NULL_HANDLE!");
         throw std::runtime_error("WindowNode: VkInstance not provided via input slot");
     }
@@ -118,14 +118,14 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[WindowNode] Creating Win32 surface...");
 
-    VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
+    VkResult result = vkCreateWin32SurfaceKHR(vkInstance, &surfaceCreateInfo, nullptr, &surface);
     if (result != VK_SUCCESS) {
         NODE_LOG_ERROR("[WindowNode] ERROR: Failed to create Win32 surface: " + std::to_string(result));
         throw std::runtime_error("WindowNode: Failed to create surface");
     }
 
     // Get destroy function
-    fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
+    fpDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(vkInstance, "vkDestroySurfaceKHR");
 
     // Store all outputs in type-safe slots (NEW VARIANT API)
     ctx.Out(WindowNodeConfig::SURFACE, surface);
@@ -329,9 +329,8 @@ void WindowNode::CleanupImpl(TypedCleanupContext& ctx) {
     Resource* surfaceRes = NodeInstance::GetOutput(WindowNodeConfig::SURFACE.index, 0);
     if (surfaceRes) {
         VkSurfaceKHR surface = surfaceRes->GetHandle<VkSurfaceKHR>();
-        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR) {
-            extern VkInstance g_VulkanInstance;
-            fpDestroySurfaceKHR(g_VulkanInstance, surface, nullptr);
+        if (surface != VK_NULL_HANDLE && fpDestroySurfaceKHR && vkInstance != VK_NULL_HANDLE) {
+            fpDestroySurfaceKHR(vkInstance, surface, nullptr);
             surfaceRes->SetHandle<VkSurfaceKHR>(VK_NULL_HANDLE);  // Clear typed storage
         }
     }

@@ -8,10 +8,6 @@
 #include "CashSystem/MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
 
-// DEPRECATED: Global VkInstance - Use DeviceNode::INSTANCE output instead
-// TODO: Remove after updating all tests to use proper dependency injection
-VkInstance g_VulkanInstance = VK_NULL_HANDLE;
-
 // Include all node types
 #include "Nodes/InstanceNode.h"  // Phase 1.1: Separated instance creation
 #include "Nodes/WindowNode.h"
@@ -84,10 +80,7 @@ void VulkanGraphApplication::Initialize() {
 
     mainLogger->Info("VulkanGraphApplication Base initialized");
 
-    std::cout << "[DEBUG] About to export instance globally\n" << std::flush;
-    // PHASE 1: Export instance globally for nodes to access
-    // DEPRECATED: Remove this line after updating tests
-    g_VulkanInstance = instanceObj.instance;
+    
     std::cout << "[DEBUG] Instance exported globally\n" << std::flush;
 
     mainLogger->Info("VulkanGraphApplication Instance exported globally");

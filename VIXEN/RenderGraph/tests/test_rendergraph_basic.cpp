@@ -2,8 +2,7 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
-// Define globals required by WindowNode and DeviceNode
-VkInstance g_VulkanInstance = VK_NULL_HANDLE;
+// Define globals required by DeviceNode
 std::vector<const char*> deviceExtensionNames;
 std::vector<const char*> layerNames;
 

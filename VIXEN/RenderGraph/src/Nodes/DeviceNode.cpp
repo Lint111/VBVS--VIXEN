@@ -12,7 +12,6 @@
 #include "CashSystem/DescriptorSetLayoutCacher.h"
 #include "CashSystem/TextureCacher.h"
 
-extern VkInstance g_VulkanInstance;
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 
