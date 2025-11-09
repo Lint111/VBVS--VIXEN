@@ -1,4 +1,5 @@
 #include "ShaderManagement/SpirvReflector.h"
+#include "Logger.h"
 #include "spirv_reflect.h"
 #include "ShaderManagement/Hash.h"
 #include <algorithm>

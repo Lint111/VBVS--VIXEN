@@ -1,4 +1,5 @@
 #include "ShaderManagement/SpirvInterfaceGenerator.h"
+#include "Logger.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -162,6 +163,7 @@ uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
 SpirvInterfaceGenerator::SpirvInterfaceGenerator(const SdiGeneratorConfig& config)
     : config_(config)
 {
+    InitializeLogger("SpirvInterfaceGenerator", false);
     // Ensure output directory exists
     std::filesystem::create_directories(config_.outputDirectory);
 }

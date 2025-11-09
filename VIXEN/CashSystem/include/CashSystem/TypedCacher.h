@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CacherBase.h"
-#include "../../logger/ILoggable.h"
+#include "ILoggable.h"
 
 #include <shared_mutex>
 #include <unordered_map>

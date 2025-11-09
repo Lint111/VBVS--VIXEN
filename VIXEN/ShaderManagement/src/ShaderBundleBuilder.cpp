@@ -3,6 +3,7 @@
 #include "ShaderManagement/SdiRegistryManager.h"
 #include "ShaderManagement/ShaderLogger.h"
 #include "ShaderManagement/Hash.h"
+#include "Logger.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -565,7 +566,8 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
 
     // 1. Reflect SPIRV
     auto reflectStart = std::chrono::steady_clock::now();
-    auto reflectionData = SpirvReflector::Reflect(program);
+    SpirvReflector reflector;
+    auto reflectionData = reflector.Reflect(program);
     auto reflectEnd = std::chrono::steady_clock::now();
     result.reflectTime = std::chrono::duration_cast<std::chrono::milliseconds>(
         reflectEnd - reflectStart);

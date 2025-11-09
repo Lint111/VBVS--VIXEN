@@ -510,7 +510,7 @@ uint32_t SdiRegistryManager::ValidateRegistry() {
 uint32_t SdiRegistryManager::ClearAll(bool deleteFromDisk) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    uint32_t count = entries_.size();
+    uint32_t count = static_cast<uint32_t>(entries_.size());
 
     if (deleteFromDisk) {
         for (const auto& [uuid, entry] : entries_) {

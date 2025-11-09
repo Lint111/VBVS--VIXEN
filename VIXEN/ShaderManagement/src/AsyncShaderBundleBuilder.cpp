@@ -1,4 +1,5 @@
 #include "ShaderManagement/AsyncShaderBundleBuilder.h"
+#include "Logger.h"
 #include <algorithm>
 
 namespace ShaderManagement {
@@ -262,7 +263,7 @@ void AsyncShaderBundleBuilder::ExecuteBuild(
 
     std::string uuid = builder.GetUuid();
     std::string programName = builder.GetProgramName();
-    uint32_t stageCount = builder.GetStageCount();
+    uint32_t stageCount = static_cast<uint32_t>(builder.GetStageCount());
 
     // Check if cancelled
     {

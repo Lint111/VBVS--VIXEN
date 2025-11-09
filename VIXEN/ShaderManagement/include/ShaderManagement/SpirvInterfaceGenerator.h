@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SpirvReflectionData.h"
-#include "../../logger/ILoggable.h"
+#include "ILoggable.h"
 #include <filesystem>
 #include <string>
 
@@ -41,7 +41,8 @@ struct SdiGeneratorConfig {
  * Example usage:
  * @code
  * SpirvInterfaceGenerator generator(config);
- * auto reflectionData = SpirvReflector::Reflect(program);
+ * SpirvReflector reflector;
+ * auto reflectionData = reflector.Reflect(program);
  * std::string uuid = "abc123";  // From shader program
  * std::string filePath = generator.Generate(uuid, *reflectionData);
  * // Include generated file: #include "abc123-SDI.h"

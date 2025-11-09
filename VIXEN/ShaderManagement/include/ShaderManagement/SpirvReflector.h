@@ -2,7 +2,7 @@
 
 #include "SpirvReflectionData.h"
 #include "ShaderProgram.h"
-#include "../../logger/ILoggable.h"
+#include "ILoggable.h"
 #include <memory>
 
 // Forward declare SPIRV-Reflect types from global namespace
@@ -26,6 +26,10 @@ namespace ShaderManagement {
  */
 class SpirvReflector : public ILoggable {
 public:
+    SpirvReflector() {
+        InitializeLogger("SpirvReflector", false);
+    }
+
     /**
      * @brief Reflect complete shader program interface
      *
@@ -35,7 +39,7 @@ public:
      * @param program Compiled shader program with SPIRV bytecode
      * @return Complete reflection data, or nullptr on error
      */
-    static std::unique_ptr<SpirvReflectionData> Reflect(const CompiledProgram& program);
+    std::unique_ptr<SpirvReflectionData> Reflect(const CompiledProgram& program);
 
     /**
      * @brief Reflect single shader stage
@@ -47,7 +51,7 @@ public:
      * @param stage Shader stage
      * @return Stage reflection data, or nullptr on error
      */
-    static std::unique_ptr<SpirvReflectionData> ReflectStage(
+    std::unique_ptr<SpirvReflectionData> ReflectStage(
         const std::vector<uint32_t>& spirvCode,
         ShaderStage stage
     );
@@ -61,7 +65,7 @@ public:
      * @param program Compiled shader program
      * @return Hex-encoded SHA-256 hash
      */
-    static std::string ComputeInterfaceHash(const CompiledProgram& program);
+    std::string ComputeInterfaceHash(const CompiledProgram& program);
 
     /**
      * @brief Validate that two reflection data structures are compatible
@@ -73,44 +77,44 @@ public:
      * @param b Second reflection data
      * @return True if compatible, false otherwise
      */
-    static bool AreInterfacesCompatible(
+    bool AreInterfacesCompatible(
         const SpirvReflectionData& a,
         const SpirvReflectionData& b
     );
 
 private:
     // Internal helpers
-    static void ReflectDescriptors(
+    void ReflectDescriptors(
         struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
-    static void ReflectPushConstants(
+    void ReflectPushConstants(
         struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
-    static void ReflectVertexInputs(
+    void ReflectVertexInputs(
         struct ::SpvReflectShaderModule& module,
         SpirvReflectionData& data
     );
 
-    static void ReflectStageInputsOutputs(
+    void ReflectStageInputsOutputs(
         struct ::SpvReflectShaderModule& module,
         ShaderStage stage,
         SpirvReflectionData& data
     );
 
-    static void ReflectSpecializationConstants(
+    void ReflectSpecializationConstants(
         struct ::SpvReflectShaderModule& module,
         SpirvReflectionData& data
     );
 
-    static SpirvTypeInfo ConvertTypeInfo(const struct ::SpvReflectTypeDescription* typeDesc);
-    static SpirvStructDefinition ConvertStructDefinition(const struct ::SpvReflectTypeDescription* typeDesc);
-    static void MergeReflectionData(SpirvReflectionData& dest, const SpirvReflectionData& src);
+    SpirvTypeInfo ConvertTypeInfo(const struct ::SpvReflectTypeDescription* typeDesc);
+    SpirvStructDefinition ConvertStructDefinition(const struct ::SpvReflectTypeDescription* typeDesc);
+    void MergeReflectionData(SpirvReflectionData& dest, const SpirvReflectionData& src);
 };
 
 } // namespace ShaderManagement

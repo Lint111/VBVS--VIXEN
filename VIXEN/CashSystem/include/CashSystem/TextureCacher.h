@@ -116,7 +116,9 @@ struct TextureCreateParams {
  */
 class TextureCacher : public TypedCacher<TextureWrapper, TextureCreateParams> {
 public:
-    TextureCacher() = default;
+    TextureCacher() {
+        InitializeLogger("TextureCacher", false);
+    }
     ~TextureCacher() override = default;
 
     // Override to add cache hit/miss logging

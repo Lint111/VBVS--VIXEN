@@ -2,9 +2,7 @@
 
 #include <memory>
 #include <string>
-
-// Forward declaration
-class Logger;
+#include "Logger.h"
 
 /**
  * @brief Interface for graph subsystems that support logging
