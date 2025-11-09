@@ -73,17 +73,13 @@ private:
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Voxel grid resources (legacy 3D texture)
-    VkImage voxelImage = VK_NULL_HANDLE;
-    VkDeviceMemory voxelMemory = VK_NULL_HANDLE;
-    VkImageView voxelImageView = VK_NULL_HANDLE;
-    VkSampler voxelSampler = VK_NULL_HANDLE;
-
     // Octree SSBO buffers
     VkBuffer octreeNodesBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeNodesMemory = VK_NULL_HANDLE;
     VkBuffer octreeBricksBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeBricksMemory = VK_NULL_HANDLE;
+    VkBuffer octreeMaterialsBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory octreeMaterialsMemory = VK_NULL_HANDLE;
 
     // Staging buffer for upload
     VkBuffer stagingBuffer = VK_NULL_HANDLE;

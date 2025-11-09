@@ -185,18 +185,12 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
-    std::cout << "  NEW voxelImage=" << voxelImage << ", voxelImageView=" << voxelImageView << ", voxelSampler=" << voxelSampler << std::endl;
-    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << std::endl;
-
-    ctx.Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
-
-    // Create combined image/sampler pair
-    ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
-    ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
+    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << std::endl;
 
     // Output octree buffers
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
+    ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
 
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTS SET !!!!" << std::endl;
 
@@ -210,19 +204,13 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // When swapchain recompiles, descriptor gatherer re-queries these outputs
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl START ===");
-    NODE_LOG_INFO("  voxelImage handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelImage)));
-    NODE_LOG_INFO("  voxelImageView handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelImageView)));
-    NODE_LOG_INFO("  voxelSampler handle: " + std::to_string(reinterpret_cast<uint64_t>(voxelSampler)));
     NODE_LOG_INFO("  octreeNodesBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeNodesBuffer)));
     NODE_LOG_INFO("  octreeBricksBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeBricksBuffer)));
-
-    ctx.Out(VoxelGridNodeConfig::VOXEL_IMAGE, voxelImage);
-
-    ImageSamplerPair combinedSampler(voxelImageView, voxelSampler);
-    ctx.Out(VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER, combinedSampler);
+    NODE_LOG_INFO("  octreeMaterialsBuffer handle: " + std::to_string(reinterpret_cast<uint64_t>(octreeMaterialsBuffer)));
 
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
+    ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
@@ -405,6 +393,18 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     vkDeviceWaitIdle(vulkanDevice->device);
 
     // Cleanup octree buffers
+    if (octreeMaterialsBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsBuffer" << std::endl;
+        octreeMaterialsBuffer = VK_NULL_HANDLE;
+    }
+
+    if (octreeMaterialsMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsMemory" << std::endl;
+        octreeMaterialsMemory = VK_NULL_HANDLE;
+    }
+
     if (octreeBricksBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer, nullptr);
         std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeBricksBuffer" << std::endl;
@@ -429,30 +429,18 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
         octreeNodesMemory = VK_NULL_HANDLE;
     }
 
-    // Cleanup voxel texture
-    if (voxelSampler != VK_NULL_HANDLE) {
-        vkDestroySampler(vulkanDevice->device, voxelSampler, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelSampler" << std::endl;
-        voxelSampler = VK_NULL_HANDLE;
+    if (octreeMaterialsBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsBuffer" << std::endl;
+        octreeMaterialsBuffer = VK_NULL_HANDLE;
     }
 
-    if (voxelImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(vulkanDevice->device, voxelImageView, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelImageView" << std::endl;
-        voxelImageView = VK_NULL_HANDLE;
+    if (octreeMaterialsMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
+        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsMemory" << std::endl;
+        octreeMaterialsMemory = VK_NULL_HANDLE;
     }
 
-    if (voxelImage != VK_NULL_HANDLE) {
-        vkDestroyImage(vulkanDevice->device, voxelImage, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelImage" << std::endl;
-        voxelImage = VK_NULL_HANDLE;
-    }
-
-    if (voxelMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, voxelMemory, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed voxelMemory" << std::endl;
-        voxelMemory = VK_NULL_HANDLE;
-    }
     std::cout << "!!!! [VoxelGridNode::CleanupImpl] CLEANUP COMPLETE !!!!" << std::endl;
 }
 
@@ -571,6 +559,64 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     }
 
     vkBindBufferMemory(vulkanDevice->device, octreeBricksBuffer, octreeBricksMemory, 0);
+
+    // === CREATE MATERIALS BUFFER ===
+    // TODO: Extract materials from octree. For now, create minimal default material palette.
+    struct GPUMaterial {
+        float albedo[3];
+        float roughness;
+        float metallic;
+        float emissive;
+        float padding[2];
+    };
+
+    std::vector<GPUMaterial> defaultMaterials(2);
+    // Material 0: Default white diffuse
+    defaultMaterials[0] = {{0.8f, 0.8f, 0.8f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 1: Red diffuse (for solid voxels)
+    defaultMaterials[1] = {{0.8f, 0.1f, 0.1f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
+
+    VkDeviceSize materialsBufferSize = defaultMaterials.size() * sizeof(GPUMaterial);
+
+    VkBufferCreateInfo materialsBufferInfo{};
+    materialsBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    materialsBufferInfo.size = materialsBufferSize;
+    materialsBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    materialsBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    result = vkCreateBuffer(vulkanDevice->device, &materialsBufferInfo, nullptr, &octreeMaterialsBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to create octree materials buffer: " + std::to_string(result));
+    }
+
+    // Allocate device-local memory for materials
+    VkMemoryRequirements materialsMemReq;
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeMaterialsBuffer, &materialsMemReq);
+
+    VkMemoryAllocateInfo materialsAllocInfo{};
+    materialsAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    materialsAllocInfo.allocationSize = materialsMemReq.size;
+
+    memoryTypeIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((materialsMemReq.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    if (memoryTypeIndex == UINT32_MAX) {
+        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for octree materials");
+    }
+
+    materialsAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(vulkanDevice->device, &materialsAllocInfo, nullptr, &octreeMaterialsMemory);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octree materials memory: " + std::to_string(result));
+    }
+
+    vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer, octreeMaterialsMemory, 0);
 
     // === UPLOAD DATA VIA STAGING BUFFER ===
 
@@ -724,6 +770,82 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
         vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);
         vkDestroyBuffer(vulkanDevice->device, bricksStagingBuffer, nullptr);
         vkFreeMemory(vulkanDevice->device, bricksStagingMemory, nullptr);
+    }
+
+    // Upload materials
+    if (materialsBufferSize > 0) {
+        // Create staging buffer for materials
+        VkBufferCreateInfo materialsStagingInfo{};
+        materialsStagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        materialsStagingInfo.size = materialsBufferSize;
+        materialsStagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        materialsStagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer materialsStagingBuffer;
+        vkCreateBuffer(vulkanDevice->device, &materialsStagingInfo, nullptr, &materialsStagingBuffer);
+
+        VkMemoryRequirements materialsStagingMemReq;
+        vkGetBufferMemoryRequirements(vulkanDevice->device, materialsStagingBuffer, &materialsStagingMemReq);
+
+        VkMemoryAllocateInfo materialsStagingAllocInfo{};
+        materialsStagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        materialsStagingAllocInfo.allocationSize = materialsStagingMemReq.size;
+
+        memoryTypeIndex = UINT32_MAX;
+        VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+            if ((materialsStagingMemReq.memoryTypeBits & (1 << i)) &&
+                (memProperties.memoryTypes[i].propertyFlags & stagingProps) == stagingProps) {
+                memoryTypeIndex = i;
+                break;
+            }
+        }
+
+        materialsStagingAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+        VkDeviceMemory materialsStagingMemory;
+        vkAllocateMemory(vulkanDevice->device, &materialsStagingAllocInfo, nullptr, &materialsStagingMemory);
+        vkBindBufferMemory(vulkanDevice->device, materialsStagingBuffer, materialsStagingMemory, 0);
+
+        // Copy data to staging buffer
+        void* data;
+        vkMapMemory(vulkanDevice->device, materialsStagingMemory, 0, materialsBufferSize, 0, &data);
+        std::memcpy(data, defaultMaterials.data(), materialsBufferSize);
+        vkUnmapMemory(vulkanDevice->device, materialsStagingMemory);
+
+        // Copy from staging to device buffer
+        VkCommandBufferAllocateInfo cmdAllocInfo{};
+        cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmdAllocInfo.commandPool = commandPool;
+        cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmdAllocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer cmdBuffer;
+        vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, &cmdBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.size = materialsBufferSize;
+        vkCmdCopyBuffer(cmdBuffer, materialsStagingBuffer, octreeMaterialsBuffer, 1, &copyRegion);
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+
+        vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(vulkanDevice->queue);
+
+        vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);
+        vkDestroyBuffer(vulkanDevice->device, materialsStagingBuffer, nullptr);
+        vkFreeMemory(vulkanDevice->device, materialsStagingMemory, nullptr);
     }
 
     NODE_LOG_INFO("Uploaded octree buffers to GPU");

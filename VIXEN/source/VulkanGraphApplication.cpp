@@ -922,9 +922,19 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, VoxelRayMarch::camera,
                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 2: voxelGrid (combined image sampler) - static but bind in both phases for consistency
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::VOXEL_COMBINED_SAMPLER,
-                          descriptorGatherer, VoxelRayMarch::voxelGrid,
+    // Binding 2: octreeNodes (SSBO) - octree node data
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+                          descriptorGatherer, VoxelRayMarch::octreeNodes,
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 3: voxelBricks (SSBO) - voxel brick data
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+                          descriptorGatherer, VoxelRayMarch::voxelBricks,
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 4: materialPalette (SSBO) - material data
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+                          descriptorGatherer, VoxelRayMarch::materialPalette,
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Swapchain connections to descriptor set and dispatch
