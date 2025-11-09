@@ -382,6 +382,7 @@ std::string SpirvInterfaceGenerator::GenerateHeader(
     code << "#pragma once\n";
     code << "\n";
     code << "#include <cstdint>\n";
+    code << "#include <string>\n";
     code << "#include <vector>\n";
     code << "#include <vulkan/vulkan.h>\n";
     code << "#include <glm/glm.hpp>\n";

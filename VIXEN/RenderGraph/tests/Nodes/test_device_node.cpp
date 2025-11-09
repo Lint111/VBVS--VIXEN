@@ -75,8 +75,8 @@ TEST_F(DeviceNodeTest, ConfigVulkanDeviceOutputIndex) {
 }
 
 TEST_F(DeviceNodeTest, ConfigInstanceOutputIndex) {
-    EXPECT_EQ(DeviceNodeConfig::INSTANCE_Slot::index, 1)
-        << "INSTANCE output should be at index 1";
+    EXPECT_EQ(DeviceNodeConfig::INSTANCE_OUT_Slot::index, 1)
+        << "INSTANCE_OUT output should be at index 1";
 }
 
 TEST_F(DeviceNodeTest, ConfigVulkanDeviceIsRequired) {
@@ -85,8 +85,8 @@ TEST_F(DeviceNodeTest, ConfigVulkanDeviceIsRequired) {
 }
 
 TEST_F(DeviceNodeTest, ConfigInstanceIsRequired) {
-    EXPECT_FALSE(DeviceNodeConfig::INSTANCE_Slot::nullable)
-        << "INSTANCE output must not be nullable (Required)";
+    EXPECT_FALSE(DeviceNodeConfig::INSTANCE_OUT_Slot::nullable)
+        << "INSTANCE_OUT output must not be nullable (Required)";
 }
 
 TEST_F(DeviceNodeTest, ConfigVulkanDeviceTypeIsCorrect) {
@@ -100,11 +100,11 @@ TEST_F(DeviceNodeTest, ConfigVulkanDeviceTypeIsCorrect) {
 
 TEST_F(DeviceNodeTest, ConfigInstanceTypeIsCorrect) {
     bool isCorrectType = std::is_same_v<
-        DeviceNodeConfig::INSTANCE_Slot::Type,
+        DeviceNodeConfig::INSTANCE_OUT_Slot::Type,
         VkInstance
     >;
     EXPECT_TRUE(isCorrectType)
-        << "INSTANCE output type should be VkInstance";
+        << "INSTANCE_OUT output type should be VkInstance";
 }
 
 // ============================================================================
@@ -128,9 +128,9 @@ TEST_F(DeviceNodeTest, ConfigVulkanDeviceIsWriteOnly) {
 }
 
 TEST_F(DeviceNodeTest, ConfigInstanceIsWriteOnly) {
-    EXPECT_EQ(DeviceNodeConfig::INSTANCE_Slot::mutability,
+    EXPECT_EQ(DeviceNodeConfig::INSTANCE_OUT_Slot::mutability,
               SlotMutability::WriteOnly)
-        << "INSTANCE output should be WriteOnly";
+        << "INSTANCE_OUT output should be WriteOnly";
 }
 
 TEST_F(DeviceNodeTest, ConfigOutputSlotsArePersistent) {
@@ -187,9 +187,9 @@ TEST_F(DeviceNodeTest, ConfigVulkanDeviceDescriptorName) {
 TEST_F(DeviceNodeTest, ConfigInstanceDescriptorName) {
     DeviceNodeConfig config;
 
-    // The output name should be "instance" as per config
+    // The output name should be "instance_out" as per config
     // This would be verified through the config's descriptor system
-    EXPECT_EQ(DeviceNodeConfig::INSTANCE_Slot::index, 1);
+    EXPECT_EQ(DeviceNodeConfig::INSTANCE_OUT_Slot::index, 1);
 }
 
 // ============================================================================
