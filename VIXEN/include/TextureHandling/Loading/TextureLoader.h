@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Headers.h"
+#include "ILoggable.h"
 
 // Forward declaration
 namespace Vixen::Vulkan::Resources {
@@ -52,7 +53,7 @@ struct TextureLoadConfig {
 };
 
 // Base class for texture loaders - handles all Vulkan operations
-class TextureLoader {
+class TextureLoader : public ILoggable {
 public:
     // Constructor takes device and command pool references
     TextureLoader(VulkanDevice* device, VkCommandPool commandPool);

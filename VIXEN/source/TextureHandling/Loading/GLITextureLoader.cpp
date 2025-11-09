@@ -1,4 +1,5 @@
 #include "TextureHandling/Loading/GLITextureLoader.h"
+#include "Logger.h"
 #include <iostream>
 
 namespace Vixen::TextureHandling {
@@ -8,9 +9,7 @@ PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
 
     gli::texture2d image2D(gli::load(fileName));
     if (image2D.empty()) {
-        // TODO: Add logger - texture load failure
-        std::cerr << "[GLITextureLoader] ERROR: Failed to load texture file: " << fileName << std::endl;
-        std::cerr << "[GLITextureLoader]        GLI only supports DDS, KTX 1.0, and KMG formats" << std::endl;
+        LOG_ERROR(std::string("Failed to load texture file: ") + fileName + ". GLI only supports DDS, KTX 1.0, and KMG formats");
         exit(1);
     }
 
@@ -22,8 +21,7 @@ PixelData GLITextureLoader::LoadPixelData(const char* fileName) {
     // GLI stores data contiguously - copy it for ownership
     void* pixelsCopy = malloc(data.size);
     if (!pixelsCopy) {
-        // TODO: Add logger - memory allocation failure
-        std::cerr << "[GLITextureLoader] ERROR: Failed to allocate memory for pixel data!" << std::endl;
+        LOG_ERROR("Failed to allocate memory for pixel data!");
         exit(1);
     }
     memcpy(pixelsCopy, image2D.data(), data.size);

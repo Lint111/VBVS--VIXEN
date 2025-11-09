@@ -98,20 +98,6 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 // RESOURCE USAGE OPERATORS (bitwise for flags)
 // ============================================================================
-
-inline ResourceUsage operator|(ResourceUsage a, ResourceUsage b) {
-    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
-}
-
-inline ResourceUsage operator&(ResourceUsage a, ResourceUsage b) {
-    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
-}
-
-inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
-    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(check)) != 0;
-}
-
-// ============================================================================
 // PLATFORM-SPECIFIC TYPE COMPATIBILITY
 // ============================================================================
 

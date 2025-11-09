@@ -5,9 +5,11 @@
 #include "VulkanShader.h"
 #include "VulkanDrawable.h"
 #include "VulkanRenderer.h"
+#include "Logger.h"
 
 VulkanPipeline::VulkanPipeline()
 {
+    InitializeLogger("VulkanPipeline", false);
     //appObj = VulkanApplication::GetInstance();
     //deviceObj = appObj->deviceObj.get();
     pipelineCache = VK_NULL_HANDLE;
@@ -54,17 +56,16 @@ bool VulkanPipeline::CreatePipeline(
 )
 {
     if(shaderObj->shaderStages == nullptr || shaderObj->stagesCount == 0) {
-        // TODO: Add logger - shader stages not initialized
-        std::cerr << "[VulkanPipeline] ERROR: Shader stages not initialized" << std::endl;
+        LOG_ERROR("Shader stages not initialized");
         return false;
     }
 
 
     if(pipelineCache == VK_NULL_HANDLE) {
-        // TODO: Add logger - creating pipeline cache
+        LOG_INFO("Creating pipeline cache");
         CreatePipelineCache(device);
         if(pipelineCache == VK_NULL_HANDLE) {
-            std::cerr << "[VulkanPipeline] ERROR: Failed to create pipeline cache" << std::endl;
+            LOG_ERROR("Failed to create pipeline cache");
             return false;
         }
     }
@@ -96,9 +97,7 @@ bool VulkanPipeline::CreatePipeline(
 
         // Validate that vertex buffer was created (stride > 0 indicates initialization)
         if(drawableObj->viIpBind.stride == 0) {
-            // TODO: Add logger - vertex buffer not created
-            std::cerr << "[VulkanPipeline] ERROR: Vertex input enabled but vertex buffer not created (stride is 0)" << std::endl;
-            std::cerr << "[VulkanPipeline]        Make sure CreateVertexBuffer() is called before CreatePipeline()" << std::endl;
+            LOG_ERROR("Vertex input enabled but vertex buffer not created (stride is 0). Make sure CreateVertexBuffer() is called before CreatePipeline()");
             return false;
         }
     } else {
@@ -198,8 +197,7 @@ bool VulkanPipeline::CreatePipeline(
     // Use the drawable's pipeline layout (which includes descriptor set layouts)
     VkPipelineLayout drawablePipelineLayout = drawableObj->pipelineLayout;
     if (drawablePipelineLayout == VK_NULL_HANDLE) {
-        // TODO: Add logger - pipeline layout is null
-        std::cerr << "[VulkanPipeline] ERROR: Drawable pipelineLayout is VK_NULL_HANDLE" << std::endl;
+        LOG_ERROR("Drawable pipelineLayout is VK_NULL_HANDLE");
         return false;
     }
 
@@ -235,8 +233,7 @@ bool VulkanPipeline::CreatePipeline(
     );
 
     if(result != VK_SUCCESS) {
-        // TODO: Add logger - failed to create graphics pipeline
-        std::cerr << "[VulkanPipeline] ERROR: Failed to create graphics pipeline" << std::endl;
+        LOG_ERROR("Failed to create graphics pipeline");
         return false;
     }
 

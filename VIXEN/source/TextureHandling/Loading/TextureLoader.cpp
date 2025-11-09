@@ -1,13 +1,14 @@
 #include "TextureHandling/Loading/TextureLoader.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "wrapper.h"
+#include "Logger.h"
 #include <iostream>
 
 namespace Vixen::TextureHandling {
 
 TextureLoader::TextureLoader(VulkanDevice* device, VkCommandPool commandPool)
     : deviceObj(device), cmdPool(commandPool) {
-    // Constructor - removed debug output
+    InitializeLogger("TextureLoader", false);
 }
 
 TextureData TextureLoader::Load(const char* fileName, const TextureLoadConfig& config) {
@@ -57,8 +58,7 @@ void TextureLoader::UploadLinear(
     void* data;
     VkResult result = vkMapMemory(deviceObj->device, texture->mem, 0, texture->memAllocInfo.allocationSize, 0, &data);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - memory mapping failure
-        std::cerr << "[TextureLoader] ERROR: Failed to map image memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to map image memory! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -93,8 +93,7 @@ void TextureLoader::UploadLinear(
     fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - fence creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create fence! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -105,15 +104,13 @@ void TextureLoader::UploadLinear(
 
     result = vkQueueSubmit(deviceObj->queue, 1, &submitInfo, fence);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - queue submit failure
-        std::cerr << "[TextureLoader] ERROR: Failed to submit queue! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to submit queue! VkResult: " + std::to_string(result));
         exit(1);
     }
 
     result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - fence wait timeout
-        std::cerr << "[TextureLoader] ERROR: Wait for fence timeout! VkResult: " << result << std::endl;
+        LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -141,8 +138,7 @@ void TextureLoader::UploadOptimal(
 
     VkResult result = vkCreateBuffer(deviceObj->device, &bufferCI, nullptr, &stagingBuffer);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - staging buffer creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create staging buffer! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create staging buffer! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -157,8 +153,7 @@ void TextureLoader::UploadOptimal(
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
     if (!memTypeResult.has_value()) {
-        // TODO: Add logger - memory type not found
-        std::cerr << "[TextureLoader] ERROR: Failed to find suitable memory type!" << std::endl;
+        LOG_ERROR("Failed to find suitable memory type!");
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
         exit(1);
     }
@@ -166,16 +161,14 @@ void TextureLoader::UploadOptimal(
 
     result = vkAllocateMemory(deviceObj->device, &allocInfo, nullptr, &stagingMemory);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - staging memory allocation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to allocate staging memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to allocate staging memory! VkResult: " + std::to_string(result));
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
         exit(1);
     }
 
     result = vkBindBufferMemory(deviceObj->device, stagingBuffer, stagingMemory, 0);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - buffer binding failure
-        std::cerr << "[TextureLoader] ERROR: Failed to bind staging buffer memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to bind staging buffer memory! VkResult: " + std::to_string(result));
         vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
         exit(1);
@@ -185,8 +178,7 @@ void TextureLoader::UploadOptimal(
     void* data;
     result = vkMapMemory(deviceObj->device, stagingMemory, 0, pixelData.size, 0, &data);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - staging memory mapping failure
-        std::cerr << "[TextureLoader] ERROR: Failed to map staging memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to map staging memory! VkResult: " + std::to_string(result));
         vkFreeMemory(deviceObj->device, stagingMemory, nullptr);
         vkDestroyBuffer(deviceObj->device, stagingBuffer, nullptr);
         exit(1);
@@ -274,8 +266,7 @@ void TextureLoader::UploadOptimal(
     fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     result = vkCreateFence(deviceObj->device, &fenceCI, nullptr, &fence);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - fence creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create fence! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create fence! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -288,8 +279,7 @@ void TextureLoader::UploadOptimal(
 
     result = vkWaitForFences(deviceObj->device, 1, &fence, VK_TRUE, 10000000000);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - fence wait timeout
-        std::cerr << "[TextureLoader] ERROR: Wait for fence timeout! VkResult: " << result << std::endl;
+        LOG_ERROR("Wait for fence timeout! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -330,8 +320,7 @@ void TextureLoader::CreateImage(
 
     VkResult result = vkCreateImage(deviceObj->device, &imageCI, nullptr, &texture->image);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - image creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create image! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create image! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -348,8 +337,7 @@ void TextureLoader::CreateImage(
 
     auto memTypeResult = deviceObj->MemoryTypeFromProperties(memReqs.memoryTypeBits, memProps);
     if (!memTypeResult.has_value()) {
-        // TODO: Add logger - memory type not found
-        std::cerr << "[TextureLoader] ERROR: Failed to find suitable memory type!" << std::endl;
+        LOG_ERROR("Failed to find suitable memory type!");
         vkDestroyImage(deviceObj->device, texture->image, nullptr);
         exit(1);
     }
@@ -357,15 +345,13 @@ void TextureLoader::CreateImage(
 
     result = vkAllocateMemory(deviceObj->device, &texture->memAllocInfo, nullptr, &texture->mem);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - image memory allocation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to allocate image memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to allocate image memory! VkResult: " + std::to_string(result));
         exit(1);
     }
 
     result = vkBindImageMemory(deviceObj->device, texture->image, texture->mem, 0);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - image memory binding failure
-        std::cerr << "[TextureLoader] ERROR: Failed to bind image memory! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to bind image memory! VkResult: " + std::to_string(result));
         exit(1);
     }
 
@@ -396,8 +382,7 @@ void TextureLoader::CreateImageView(
 
     VkResult result = vkCreateImageView(deviceObj->device, &viewCI, nullptr, &texture->view);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - image view creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create image view! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create image view! VkResult: " + std::to_string(result));
         exit(1);
     }
 }
@@ -426,8 +411,7 @@ void TextureLoader::CreateSampler(
 
     VkResult result = vkCreateSampler(deviceObj->device, &samplerCI, nullptr, &texture->sampler);
     if (result != VK_SUCCESS) {
-        // TODO: Add logger - sampler creation failure
-        std::cerr << "[TextureLoader] ERROR: Failed to create sampler! VkResult: " << result << std::endl;
+        LOG_ERROR("Failed to create sampler! VkResult: " + std::to_string(result));
         exit(1);
     }
 

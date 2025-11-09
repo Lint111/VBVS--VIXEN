@@ -37,6 +37,41 @@ enum class ResourceUsage : uint32_t {
     ShaderModuleType      = 1 << 13
 };
 
+// Bitwise operators for ResourceUsage flags
+constexpr inline ResourceUsage operator|(ResourceUsage a, ResourceUsage b) {
+    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
+constexpr inline ResourceUsage operator&(ResourceUsage a, ResourceUsage b) {
+    return static_cast<ResourceUsage>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+
+constexpr inline ResourceUsage operator~(ResourceUsage a) {
+    return static_cast<ResourceUsage>(~static_cast<uint32_t>(a));
+}
+
+constexpr inline ResourceUsage& operator|=(ResourceUsage& a, ResourceUsage b) {
+    a = a | b;
+    return a;
+}
+
+constexpr inline ResourceUsage& operator&=(ResourceUsage& a, ResourceUsage b) {
+    a = a & b;
+    return a;
+}
+
+constexpr inline bool operator==(ResourceUsage a, ResourceUsage b) {
+    return static_cast<uint32_t>(a) == static_cast<uint32_t>(b);
+}
+
+constexpr inline bool operator!=(ResourceUsage a, ResourceUsage b) {
+    return static_cast<uint32_t>(a) != static_cast<uint32_t>(b);
+}
+
+constexpr inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
+    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(check)) != 0;
+}
+
 /**
  * @brief Resource lifetime hint
  */

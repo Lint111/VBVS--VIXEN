@@ -2,6 +2,7 @@
 
 #include "Headers.h"
 #include "VulkanResources/VulkanDevice.h"
+#include "ILoggable.h"
 
 using namespace Vixen::Vulkan::Resources;
 
@@ -12,7 +13,7 @@ class VulkanApplication;
 #define NUMBER_OF_VIEWPORTS 1
 #define NUMBER_OF_SCISSORS NUMBER_OF_VIEWPORTS
 
-class VulkanPipeline {
+class VulkanPipeline : public ILoggable {
 public:
     // Configuration structure for creating pipeline
     struct Config {

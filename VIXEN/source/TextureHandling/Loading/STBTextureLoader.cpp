@@ -2,6 +2,7 @@
 #include <stb_image.h>
 
 #include "TextureHandling/Loading/STBTextureLoader.h"
+#include "Logger.h"
 #include <iostream>
 
 namespace Vixen::TextureHandling {
@@ -18,9 +19,7 @@ PixelData STBTextureLoader::LoadPixelData(const char* fileName) {
     stbi_uc* pixels = stbi_load(fileName, &width, &height, &channels, STBI_rgb_alpha);
 
     if (!pixels) {
-        // TODO: Add logger - texture load failure
-        std::cerr << "[STBTextureLoader] ERROR: Failed to load texture file: " << fileName << std::endl;
-        std::cerr << "[STBTextureLoader]        STB Error: " << stbi_failure_reason() << std::endl;
+        LOG_ERROR(std::string("Failed to load texture file: ") + fileName + ". STB Error: " + stbi_failure_reason());
         exit(1);
     }
     data.pixels = pixels;
