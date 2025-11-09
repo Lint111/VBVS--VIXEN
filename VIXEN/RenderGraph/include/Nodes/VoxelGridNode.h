@@ -36,9 +36,7 @@ public:
 /**
  * @brief Voxel grid generation node with sparse octree support
  *
- * Generates procedural voxel scenes and uploads to GPU as:
- * 1. Legacy 3D texture (VkImage) for basic raymarching
- * 2. Sparse octree SSBO buffers for optimized traversal
+ * Generates procedural voxel scenes and uploads to GPU as sparse octree SSBO buffers.
  *
  * Phase H: Voxel Data Infrastructure
  *
@@ -64,9 +62,7 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void GenerateTestPattern(std::vector<uint8_t>& voxelData);
     void GenerateProceduralScene(VIXEN::RenderGraph::VoxelGrid& grid);
-    void UploadVoxelData(const std::vector<uint8_t>& voxelData);
     void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
 
     // Device reference
@@ -80,10 +76,6 @@ private:
     VkDeviceMemory octreeBricksMemory = VK_NULL_HANDLE;
     VkBuffer octreeMaterialsBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeMaterialsMemory = VK_NULL_HANDLE;
-
-    // Staging buffer for upload
-    VkBuffer stagingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
 
     // Parameters
     uint32_t resolution = 128;
