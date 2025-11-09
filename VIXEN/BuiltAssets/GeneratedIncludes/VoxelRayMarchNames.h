@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch
-// UUID: e146191ab2725571
-// Generated: 2025-11-09 17:17:26
+// UUID: 806355c85ce11ca2
+// Generated: 2025-11-09 17:33:10
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "e146191ab2725571-SDI.h"
+#include "806355c85ce11ca2-SDI.h"
 
 namespace VoxelRayMarch {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::e146191ab2725571;
+namespace SDI = ShaderInterface::_806355c85ce11ca2;
 
 // ============================================================================
 // Descriptor Binding Constants

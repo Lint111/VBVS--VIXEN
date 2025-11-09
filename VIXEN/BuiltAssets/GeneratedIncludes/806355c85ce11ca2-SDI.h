@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: bc61d7a06c98333f
-// Generated: 2025-11-09 15:07:00
+// UUID: 806355c85ce11ca2
+// Generated: 2025-11-09 17:33:10
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,7 +21,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace bc61d7a06c98333f {
+namespace _806355c85ce11ca2 {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -45,6 +45,48 @@ struct CameraData {
     glm::dvec3 cameraPos;
     // Offset: 140 bytes
     int32_t gridResolution;
+};
+
+/**
+ * @brief OctreeNodesBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x2db79363c03e9b68 (for runtime discovery)
+ */
+struct OctreeNodesBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x2db79363c03e9b68ULL;
+
+    // Offset: 0 bytes
+    uint32_t data[];
+};
+
+/**
+ * @brief VoxelBricksBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x31ac6aa8883c945 (for runtime discovery)
+ */
+struct VoxelBricksBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x31ac6aa8883c945ULL;
+
+    // Offset: 0 bytes
+    uint32_t data[];
+};
+
+/**
+ * @brief MaterialPaletteBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0xbdb98922562d2e1b (for runtime discovery)
+ */
+struct MaterialPaletteBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0xbdb98922562d2e1bULL;
+
+    // Offset: 0 bytes
+    uint32_t data[];
 };
 
 // ============================================================================
@@ -83,17 +125,48 @@ namespace Set0 {
     };
 
     /**
-     * @brief voxelGrid
-     * Type: COMBINED_IMAGE_SAMPLER
+     * @brief octreeNodes
+     * Type: STORAGE_BUFFER
      * Stages: COMPUTE
      * Count: 1
      */
-    struct voxelGrid {
+    struct octreeNodes {
         static constexpr uint32_t SET = 0;
         static constexpr uint32_t BINDING = 2;
-        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         static constexpr uint32_t COUNT = 1;
         static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = OctreeNodesBuffer;
+    };
+
+    /**
+     * @brief voxelBricks
+     * Type: STORAGE_BUFFER
+     * Stages: COMPUTE
+     * Count: 1
+     */
+    struct voxelBricks {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 3;
+        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = VoxelBricksBuffer;
+    };
+
+    /**
+     * @brief materialPalette
+     * Type: STORAGE_BUFFER
+     * Stages: COMPUTE
+     * Count: 1
+     */
+    struct materialPalette {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 4;
+        static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = MaterialPaletteBuffer;
     };
 
 } // namespace Set0
@@ -104,7 +177,7 @@ namespace Set0 {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "VoxelRayMarch";
-    static constexpr const char* INTERFACE_HASH = "b29aa325185be276";
+    static constexpr const char* INTERFACE_HASH = "eece0b9281c17826";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 0;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

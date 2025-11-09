@@ -302,11 +302,37 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
         float padding[2];
     };
 
-    std::vector<GPUMaterial> defaultMaterials(2);
+    // Cornell Box material palette (matching CornellBoxGenerator IDs)
+    std::vector<GPUMaterial> defaultMaterials(21);
     // Material 0: Default white diffuse
     defaultMaterials[0] = {{0.8f, 0.8f, 0.8f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
-    // Material 1: Red diffuse (for solid voxels)
-    defaultMaterials[1] = {{0.8f, 0.1f, 0.1f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 1: Red (left wall)
+    defaultMaterials[1] = {{0.75f, 0.1f, 0.1f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 2: Green (right wall)
+    defaultMaterials[2] = {{0.1f, 0.75f, 0.1f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 3: White (back wall)
+    defaultMaterials[3] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 4: White (floor)
+    defaultMaterials[4] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 5: White (ceiling)
+    defaultMaterials[5] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 6: Light gray (checker floor)
+    defaultMaterials[6] = {{0.7f, 0.7f, 0.7f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 7: Dark gray (checker floor)
+    defaultMaterials[7] = {{0.3f, 0.3f, 0.3f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 8-9: Reserved
+    defaultMaterials[8] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    defaultMaterials[9] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 10: Left cube (beige diffuse)
+    defaultMaterials[10] = {{0.8f, 0.7f, 0.5f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 11: Right cube (light blue)
+    defaultMaterials[11] = {{0.4f, 0.6f, 0.8f}, 0.7f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    // Material 12-19: Reserved
+    for (uint32_t i = 12; i < 20; ++i) {
+        defaultMaterials[i] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    }
+    // Material 20: Ceiling light (emissive white)
+    defaultMaterials[20] = {{1.0f, 1.0f, 0.9f}, 0.0f, 0.0f, 5.0f, {0.0f, 0.0f}};
 
     VkDeviceSize materialsBufferSize = defaultMaterials.size() * sizeof(GPUMaterial);
 

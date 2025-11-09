@@ -208,19 +208,20 @@ uint getChildOctant(vec3 posInNode) {
 // Based on [16] Derin et al. BlockWalk algorithm
 
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
-    // Transform ray from world space to grid space
-    // Grid is centered at origin in world space, spans [-gridRes/2, gridRes/2]
-    // In grid space, coordinates are [0, gridRes]
+    // Grid positioning in world space:
+    // - Grid center at Z = -200 (200 units in front of camera at origin)
+    // - 128³ grid spans [-64, 64] in local space
+    // - World space bounds: X=[-64, 64], Y=[-64, 64], Z=[-264, -136]
     float halfGrid = float(camera.gridResolution) * 0.5;
-    vec3 gridSpaceOrigin = rayOrigin + vec3(halfGrid);  // Shift to [0, gridRes]
+    vec3 gridWorldCenter = vec3(0.0, 0.0, -200.0);  // Grid center position in world space
 
-    // Ray-box intersection with grid bounds
-    vec3 gridMin = vec3(0.0);
-    vec3 gridMax = vec3(float(camera.gridResolution));
+    // Ray-box intersection in world space
+    vec3 gridMin = gridWorldCenter - vec3(halfGrid);  // World space min
+    vec3 gridMax = gridWorldCenter + vec3(halfGrid);  // World space max
 
     vec3 invDir = 1.0 / (rayDir + vec3(EPSILON));
-    vec3 t0 = (gridMin - gridSpaceOrigin) * invDir;
-    vec3 t1 = (gridMax - gridSpaceOrigin) * invDir;
+    vec3 t0 = (gridMin - rayOrigin) * invDir;
+    vec3 t1 = (gridMax - rayOrigin) * invDir;
     vec3 tmin = min(t0, t1);
     vec3 tmax = max(t0, t1);
 
@@ -232,34 +233,50 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         return vec4(BACKGROUND_COLOR, 1.0);  // Ray missed grid
     }
 
-    // Start ray at grid entry point (or current position if inside)
-    vec3 rayPos = gridSpaceOrigin;
-    if (tEnter > 0.0) {
-        rayPos += rayDir * (tEnter + EPSILON);
-    }
+    // DDA ray marching through grid
+    // Start at grid entry or camera position if inside grid
+    float t = max(tEnter, 0.0);
+    vec3 rayPos = rayOrigin + rayDir * t;
 
-    // Normalize position to [0, 1] for octree traversal
-    vec3 normalizedPos = rayPos / float(camera.gridResolution);
+    // March through grid in voxel-sized steps
+    float voxelSize = 1.0;  // World-space voxel size (grid units)
+    float stepSize = voxelSize * 0.25;  // March at quarter-voxel increments to avoid missing thin walls
+    int maxSteps = int(length(gridMax - gridMin) / stepSize) + 1;
 
-    // Traversal stack: stores (nodeIndex, nodeMin, nodeSize) for each depth level
-    // Maximum depth = 8 (256³ grid = 2^8), so we need 8+1 = 9 stack levels (depth 0-8)
-    const int MAX_DEPTH = 9;
-    uint nodeStack[MAX_DEPTH];
-    vec3 minStack[MAX_DEPTH];
-    float sizeStack[MAX_DEPTH];
-    int stackPtr = 0;
+    int finalStepCount = 0;
+    for (int step = 0; step < maxSteps && step < MAX_STEPS; step++) {
+        finalStepCount = step;
 
-    // Push root node (depth 0, full grid)
-    nodeStack[0] = 0u;  // Root node index
-    minStack[0] = vec3(0.0);
-    sizeStack[0] = 1.0;
+        // Check if we've exited the grid
+        if (any(lessThan(rayPos, gridMin)) || any(greaterThanEqual(rayPos, gridMax))) {
+            break;
+        }
 
-    // Ray marching loop
-    bool hit = false;
-    vec3 hitColor = vec3(1.0, 0.0, 1.0);  // Magenta debug color
-    vec3 hitNormal = vec3(0.0, 1.0, 0.0);
+        // Transform to grid-local space [0, gridRes]
+        vec3 gridLocalPos = rayPos - (gridWorldCenter - vec3(halfGrid));
 
-    for (int iter = 0; iter < MAX_STEPS && stackPtr >= 0; iter++) {
+        // Normalize to [0, 1] for octree traversal
+        vec3 normalizedPos = gridLocalPos / float(camera.gridResolution);
+
+        // Sample octree at this position using stack-based traversal
+        // Traversal stack: stores (nodeIndex, nodeMin, nodeSize) for each depth level
+        const int MAX_DEPTH = 9;
+        uint nodeStack[MAX_DEPTH];
+        vec3 minStack[MAX_DEPTH];
+        float sizeStack[MAX_DEPTH];
+        int stackPtr = 0;
+
+        // Push root node
+        nodeStack[0] = 0u;
+        minStack[0] = vec3(0.0);
+        sizeStack[0] = 1.0;
+
+        bool hitVoxel = false;
+        vec3 hitColor = vec3(1.0, 0.0, 1.0);
+        vec3 hitNormal = vec3(0.0, 1.0, 0.0);
+
+        // Octree traversal loop for this ray position
+        for (int iter = 0; iter < 64 && stackPtr >= 0; iter++) {
         // Pop current node from stack
         uint nodeIndex = nodeStack[stackPtr];
         vec3 nodeMin = minStack[stackPtr];
@@ -297,15 +314,17 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
             // Convert normalized position to brick-local coordinates [0, 8)
             vec3 posInBrick = (normalizedPos - octantMin) / childSize * 8.0;
+            // Clamp to avoid floating-point edge case where posInBrick == 8.0
+            posInBrick = clamp(posInBrick, vec3(0.0), vec3(7.999));
             ivec3 voxelPos = ivec3(floor(posInBrick));
 
-            // Bounds check within brick
+            // Bounds check within brick (should always pass after clamp, but keep for safety)
             if (all(greaterThanEqual(voxelPos, ivec3(0))) && all(lessThan(voxelPos, ivec3(8)))) {
                 uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
 
                 // Check if voxel is solid (non-zero = solid)
                 if (voxelValue > 0u) {
-                    hit = true;
+                    hitVoxel = true;
 
                     // Get material and apply shading
                     Material mat = getMaterial(voxelValue);
@@ -315,7 +334,7 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
                     hitNormal = calculateVoxelNormal(localPos, ivec3(0));
 
                     hitColor = shadeVoxel(hitNormal, mat.albedo);
-                    break;
+                    break;  // Exit octree traversal loop
                 }
             }
         } else {
@@ -331,21 +350,19 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
             minStack[stackPtr] = octantMin;
             sizeStack[stackPtr] = childSize;
         }
+        }  // End octree traversal loop
 
-        // Advance ray position slightly to avoid re-hitting same voxel
-        normalizedPos += rayDir * (EPSILON / float(camera.gridResolution));
-
-        // Exit if we left the grid
-        if (any(lessThan(normalizedPos, vec3(0.0))) || any(greaterThanEqual(normalizedPos, vec3(1.0)))) {
-            break;
+        // If we hit a voxel, return shaded material color
+        if (hitVoxel) {
+            return vec4(hitColor, 1.0);
         }
-    }
 
-    if (hit) {
-        return vec4(hitColor, 1.0);
-    } else {
-        return vec4(BACKGROUND_COLOR, 1.0);
-    }
+        // Advance ray to next sample point
+        rayPos += rayDir * stepSize;
+    }  // End ray marching loop
+
+    // No hit - return background
+    return vec4(BACKGROUND_COLOR, 1.0);
 }
 
 // ============================================================================
