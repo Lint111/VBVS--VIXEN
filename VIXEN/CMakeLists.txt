@@ -78,6 +78,12 @@ endif()
 # Build Configuration
 # ============================================================================
 
+# Configure build output directories to use temp for intermediate files
+# Keep final binaries in project directory
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# Note: RUNTIME_OUTPUT_DIRECTORY is overridden per-target below to use binaries/
+
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
 # OFF - Vulkan SDK path can be specified manually. This is helpful to test the build on various Vulkan version.

@@ -1,1 +1,0 @@
-/usr/bin/bash: line 1: binaries7e_ShadersWithSPIRV.exe: command not found

@@ -320,12 +320,10 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
         ownsCompiler_ = true;
     }
 
-    // Generate UUID if not set
-    if (uuid_.empty()) {
-        uuid_ = GenerateUuid();
-    }
+    // UUID will be generated after reflection (to use descriptor-only hash)
+    // Moved from here to after line 631 where ComputeDescriptorInterfaceHash() is called
 
-    ShaderLogger::LogDebug("Generated UUID: " + uuid_, "Builder");
+    ShaderLogger::LogDebug("Deferring UUID generation until after reflection", "Builder");
 
     // Validate pipeline constraints
     if (validatePipeline_) {
@@ -486,10 +484,8 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::BuildFromCompiled(
     CompiledProgram mutableProgram = program;
     mutableProgram.name = programName_;
 
-    // Generate UUID if not set
-    if (uuid_.empty()) {
-        uuid_ = GenerateUuid();
-    }
+    // UUID will be generated after reflection in PerformBuild()
+    // (deferred to use descriptor-only hash instead of source hash)
 
     // Perform reflection and SDI generation
     BuildResult result = PerformBuild(mutableProgram);
@@ -577,13 +573,20 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::PerformBuild(CompiledProgr
         return result;
     }
 
-    // 2. Extract descriptor layout (legacy compatibility)
+    // 2. Generate UUID from descriptor hash if not set (MUST happen after reflection)
+    // Use descriptor-only hash so shaders with same interface share UUID/SDI file
+    if (uuid_.empty()) {
+        uuid_ = ComputeDescriptorInterfaceHash(*reflectionData);
+        ShaderLogger::LogDebug("Generated descriptor-based UUID: " + uuid_, "Builder");
+    }
+
+    // 3. Extract descriptor layout (legacy compatibility)
     auto descriptorLayout = ReflectDescriptorLayout(program);
     if (!descriptorLayout) {
         result.warnings.push_back("Failed to extract descriptor layout");
     }
 
-    // 3. Generate SDI if enabled
+    // 4. Generate SDI if enabled
     std::filesystem::path sdiPath;
     std::string sdiNamespace;
 

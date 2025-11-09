@@ -333,7 +333,15 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
                     vec3 localPos = posInBrick - vec3(voxelPos);
                     hitNormal = calculateVoxelNormal(localPos, ivec3(0));
 
+                    // DEBUG: Visualize brick boundaries with subtle grid overlay
+                    vec3 brickFrac = fract(normalizedPos * 16.0);  // 16 bricks in 128^3 grid (128/8=16)
+                    bool onBrickEdge = any(lessThan(brickFrac, vec3(0.02))) || any(greaterThan(brickFrac, vec3(0.98)));
+
                     hitColor = shadeVoxel(hitNormal, mat.albedo);
+
+                    if (onBrickEdge) {
+                        hitColor = mix(hitColor, vec3(1.0, 1.0, 0.0), 0.3);  // Subtle yellow tint at brick boundaries
+                    }
                     break;  // Exit octree traversal loop
                 }
             }
