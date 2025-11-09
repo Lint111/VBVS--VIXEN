@@ -8,9 +8,11 @@ namespace RenderGraph {
 SparseVoxelOctree::SparseVoxelOctree()
     : maxDepth_(0)
     , gridSize_(0)
+    , nodeFormat_(NodeFormat::ESVO)  // Default to ESVO format
 {
     // Reserve root node
-    nodes_.reserve(4096); // Reasonable initial capacity for depth 0-4
+    nodes_.reserve(4096); // Reasonable initial capacity for depth 0-4 (Legacy)
+    esvoNodes_.reserve(4096); // Reasonable initial capacity for ESVO format
     bricks_.reserve(1024); // Reasonable initial capacity for bricks
 
     // Initialize material palette with default white material at ID 0
@@ -20,7 +22,8 @@ SparseVoxelOctree::SparseVoxelOctree()
 
 void SparseVoxelOctree::BuildFromGrid(
     const std::vector<uint8_t>& voxelData,
-    uint32_t gridSize)
+    uint32_t gridSize,
+    NodeFormat format)
 {
     // Validate input
     assert((gridSize & (gridSize - 1)) == 0 && "Grid size must be power of 2");
@@ -28,9 +31,11 @@ void SparseVoxelOctree::BuildFromGrid(
 
     // Clear existing data
     nodes_.clear();
+    esvoNodes_.clear();
     bricks_.clear();
 
     gridSize_ = gridSize;
+    nodeFormat_ = format;
 
     // Calculate maximum depth (log2 of grid size)
     maxDepth_ = 0;
@@ -41,7 +46,11 @@ void SparseVoxelOctree::BuildFromGrid(
     }
 
     // Build octree recursively starting from root
-    BuildRecursive(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
+    if (format == NodeFormat::ESVO) {
+        BuildRecursiveESVO(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
+    } else {
+        BuildRecursive(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
+    }
 }
 
 uint32_t SparseVoxelOctree::BuildRecursive(
@@ -168,6 +177,139 @@ bool SparseVoxelOctree::IsRegionEmpty(
     }
 
     return true; // All voxels are empty
+}
+
+bool SparseVoxelOctree::IsRegionConstant(
+    const std::vector<uint8_t>& voxelData,
+    const glm::ivec3& origin,
+    uint32_t size,
+    uint8_t& outConstantValue) const
+{
+    // Check first voxel
+    glm::ivec3 firstPos = origin;
+    if (firstPos.x >= static_cast<int>(gridSize_) ||
+        firstPos.y >= static_cast<int>(gridSize_) ||
+        firstPos.z >= static_cast<int>(gridSize_))
+    {
+        outConstantValue = 0;
+        return true; // Out of bounds = constant empty
+    }
+
+    uint32_t firstIndex = firstPos.z * gridSize_ * gridSize_ +
+                          firstPos.y * gridSize_ +
+                          firstPos.x;
+    uint8_t firstValue = voxelData[firstIndex];
+    outConstantValue = firstValue;
+
+    // Check if all voxels match first value
+    for (uint32_t z = 0; z < size; ++z) {
+        for (uint32_t y = 0; y < size; ++y) {
+            for (uint32_t x = 0; x < size; ++x) {
+                glm::ivec3 globalPos = origin + glm::ivec3(x, y, z);
+
+                // Bounds check
+                if (globalPos.x >= static_cast<int>(gridSize_) ||
+                    globalPos.y >= static_cast<int>(gridSize_) ||
+                    globalPos.z >= static_cast<int>(gridSize_))
+                {
+                    if (firstValue != 0) return false; // Different from first
+                    continue;
+                }
+
+                uint32_t index = globalPos.z * gridSize_ * gridSize_ +
+                                 globalPos.y * gridSize_ +
+                                 globalPos.x;
+
+                if (voxelData[index] != firstValue) {
+                    return false; // Found different value
+                }
+            }
+        }
+    }
+
+    return true; // All voxels are constant
+}
+
+uint32_t SparseVoxelOctree::BuildRecursiveESVO(
+    const std::vector<uint8_t>& voxelData,
+    const glm::ivec3& origin,
+    uint32_t size,
+    uint32_t depth)
+{
+    // Check if this region is completely empty (early out)
+    uint8_t constantValue = 0;
+    if (IsRegionEmpty(voxelData, origin, size)) {
+        return 0; // Return 0 to indicate no node created
+    }
+
+    // If we've reached brick level (depth 4) or minimum size (8³), create a brick
+    if (depth >= 4 || size <= 8) {
+        // Check if region is constant (homogeneous)
+        if (IsRegionConstant(voxelData, origin, size, constantValue)) {
+            // Don't create brick - mark parent node as constant
+            // Return special value (brick offset with constant flag)
+            // Note: This will be handled in parent node's descriptor1
+            return 0xFFFFFFFF; // Special marker for constant region
+        }
+        return CreateBrick(voxelData, origin);
+    }
+
+    // Otherwise, create an internal ESVO node
+    uint32_t nodeIndex = static_cast<uint32_t>(esvoNodes_.size());
+    esvoNodes_.emplace_back(); // Add new node
+    ESVONode& node = esvoNodes_[nodeIndex];
+
+    uint32_t childSize = size / 2;
+
+    // Allocate child block (8 consecutive nodes for N³=8 children)
+    // ESVO stores single base offset, not individual pointers
+    uint32_t childBlockBase = static_cast<uint32_t>(esvoNodes_.size());
+    std::vector<uint32_t> childOffsets(8, 0); // Track which children exist
+
+    // Recursively build 8 children
+    for (uint32_t childIdx = 0; childIdx < 8; ++childIdx) {
+        // Calculate child octant offset
+        glm::ivec3 childOrigin = origin;
+        childOrigin.x += (childIdx & 1) ? childSize : 0;
+        childOrigin.y += (childIdx & 2) ? childSize : 0;
+        childOrigin.z += (childIdx & 4) ? childSize : 0;
+
+        // Build child subtree
+        uint32_t childOffset = BuildRecursiveESVO(voxelData, childOrigin, childSize, depth + 1);
+
+        // Record child offset
+        childOffsets[childIdx] = childOffset;
+
+        if (childOffset != 0 && childOffset != 0xFFFFFFFF) {
+            // Child exists
+            node.SetChild(childIdx);
+
+            // Mark as non-leaf if child has children (not a brick/constant)
+            if (depth < 3) {  // Depth 3 children are always bricks/leaves
+                node.SetNonLeaf(childIdx);
+            }
+        } else if (childOffset == 0xFFFFFFFF) {
+            // Constant region - set child bit but mark as constant
+            node.SetChild(childIdx);
+            // No non-leaf bit (it's a leaf)
+        }
+    }
+
+    // Set child offset (base of 8-child block)
+    // ESVO uses population count to find actual child index
+    uint32_t firstChildOffset = 0;
+    for (uint32_t i = 0; i < 8; ++i) {
+        if (childOffsets[i] != 0 && childOffsets[i] != 0xFFFFFFFF) {
+            firstChildOffset = childOffsets[i];
+            break;
+        }
+    }
+
+    if (firstChildOffset != 0) {
+        node.SetChildOffset(firstChildOffset);
+    }
+
+    return nodeIndex;
 }
 
 // NOTE: PopulateChildMetadata removed - childMask already provides occupancy tracking

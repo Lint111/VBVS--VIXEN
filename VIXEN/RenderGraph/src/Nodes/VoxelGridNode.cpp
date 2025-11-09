@@ -80,12 +80,16 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Generated " + std::to_string(voxelCount) + " voxels, density=" +
                   std::to_string(grid.GetDensityPercent()) + "%");
 
-    // Build sparse voxel octree
+    // Build sparse voxel octree (ESVO format for 5× memory reduction)
     SparseVoxelOctree octree;
-    octree.BuildFromGrid(grid.GetData(), resolution);
+    octree.BuildFromGrid(grid.GetData(), resolution, VIXEN::RenderGraph::NodeFormat::ESVO);
 
-    NODE_LOG_INFO("Built octree: " +
-                  std::to_string(octree.GetNodes().size()) + " nodes, " +
+    size_t nodeCount = (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO)
+                       ? octree.GetESVONodes().size()
+                       : octree.GetNodes().size();
+
+    NODE_LOG_INFO("Built ESVO octree: " +
+                  std::to_string(nodeCount) + " nodes (8 bytes/node), " +
                   std::to_string(octree.GetBricks().size()) + " bricks, " +
                   "compression=" + std::to_string(octree.GetCompressionRatio(resolution)) + ":1");
 
@@ -199,10 +203,26 @@ void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
 }
 
 void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
-    const auto& nodes = octree.GetNodes();
     const auto& bricks = octree.GetBricks();
 
-    VkDeviceSize nodesBufferSize = nodes.size() * sizeof(OctreeNode);
+    // Determine buffer size based on node format
+    VkDeviceSize nodesBufferSize = 0;
+    const void* nodesData = nullptr;
+
+    if (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO) {
+        const auto& esvoNodes = octree.GetESVONodes();
+        nodesBufferSize = esvoNodes.size() * sizeof(VIXEN::RenderGraph::ESVONode);  // 8 bytes per node
+        nodesData = esvoNodes.data();
+        NODE_LOG_INFO("Using ESVO format: " + std::to_string(esvoNodes.size()) + " nodes × 8 bytes = " +
+                      std::to_string(nodesBufferSize) + " bytes");
+    } else {
+        const auto& legacyNodes = octree.GetNodes();
+        nodesBufferSize = legacyNodes.size() * sizeof(VIXEN::RenderGraph::OctreeNode);  // 40 bytes per node
+        nodesData = legacyNodes.data();
+        NODE_LOG_INFO("Using Legacy format: " + std::to_string(legacyNodes.size()) + " nodes × 40 bytes = " +
+                      std::to_string(nodesBufferSize) + " bytes");
+    }
+
     VkDeviceSize bricksBufferSize = bricks.size() * sizeof(VoxelBrick);
 
     NODE_LOG_INFO("Uploading octree: " +
@@ -327,10 +347,12 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     defaultMaterials[10] = {{0.8f, 0.7f, 0.5f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};
     // Material 11: Right cube (light blue)
     defaultMaterials[11] = {{0.4f, 0.6f, 0.8f}, 0.7f, 0.0f, 0.0f, {0.0f, 0.0f}};
-    // Material 12-19: Reserved
-    for (uint32_t i = 12; i < 20; ++i) {
+    // Material 12-18: Reserved
+    for (uint32_t i = 12; i < 19; ++i) {
         defaultMaterials[i] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};
     }
+    // Material 19: DEBUG corner marker (bright magenta)
+    defaultMaterials[19] = {{1.0f, 0.0f, 1.0f}, 0.0f, 0.0f, 0.0f, {0.0f, 0.0f}};
     // Material 20: Ceiling light (emissive white)
     defaultMaterials[20] = {{1.0f, 1.0f, 0.9f}, 0.0f, 0.0f, 5.0f, {0.0f, 0.0f}};
 
@@ -413,10 +435,10 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
         vkAllocateMemory(vulkanDevice->device, &nodesStagingAllocInfo, nullptr, &nodesStagingMemory);
         vkBindBufferMemory(vulkanDevice->device, nodesStagingBuffer, nodesStagingMemory, 0);
 
-        // Copy data to staging buffer
+        // Copy data to staging buffer (use nodesData pointer determined earlier)
         void* data;
         vkMapMemory(vulkanDevice->device, nodesStagingMemory, 0, nodesBufferSize, 0, &data);
-        std::memcpy(data, nodes.data(), nodesBufferSize);
+        std::memcpy(data, nodesData, nodesBufferSize);  // Changed: nodes.data() → nodesData
         vkUnmapMemory(vulkanDevice->device, nodesStagingMemory);
 
         // Copy from staging to device buffer
