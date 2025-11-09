@@ -95,13 +95,13 @@ uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
     uint64_t hash = 0xcbf29ce484222325ULL;  // FNV-1a offset basis
     const uint64_t prime = 0x100000001b3ULL;
 
-    // Hash struct name
+    // VixenHash struct name
     for (char c : structDef.name) {
         hash ^= static_cast<uint64_t>(c);
         hash *= prime;
     }
 
-    // Hash total size
+    // VixenHash total size
     {
         const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&structDef.sizeInBytes);
         for (size_t i = 0; i < sizeof(structDef.sizeInBytes); ++i) {
@@ -110,15 +110,15 @@ uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
         }
     }
 
-    // Hash each field
+    // VixenHash each field
     for (const auto& member : structDef.members) {
-        // Hash field name
+        // VixenHash field name
         for (char c : member.name) {
             hash ^= static_cast<uint64_t>(c);
             hash *= prime;
         }
 
-        // Hash offset
+        // VixenHash offset
         {
             const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.offset);
             for (size_t i = 0; i < sizeof(member.offset); ++i) {
@@ -127,7 +127,7 @@ uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
             }
         }
 
-        // Hash size
+        // VixenHash size
         {
             const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.type.sizeInBytes);
             for (size_t i = 0; i < sizeof(member.type.sizeInBytes); ++i) {
@@ -136,14 +136,14 @@ uint64_t ComputeStructLayoutHash(const SpirvStructDefinition& structDef) {
             }
         }
 
-        // Hash type string (simplified - real implementation would hash base type enum)
+        // VixenHash type string (simplified - real implementation would hash base type enum)
         std::string typeStr = member.type.ToCppType();
         for (char c : typeStr) {
             hash ^= static_cast<uint64_t>(c);
             hash *= prime;
         }
 
-        // Hash array size
+        // VixenHash array size
         {
             const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&member.type.arraySize);
             for (size_t i = 0; i < sizeof(member.type.arraySize); ++i) {
@@ -442,7 +442,7 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinition(
     if (config_.generateLayoutInfo) {
         code << " * Size: " << structDef.sizeInBytes << " bytes\n";
         code << " * Alignment: " << structDef.alignment << " bytes\n";
-        code << " * Layout Hash: 0x" << std::hex << layoutHash << std::dec << " (for runtime discovery)\n";
+        code << " * Layout VixenHash: 0x" << std::hex << layoutHash << std::dec << " (for runtime discovery)\n";
     }
     code << " */\n";
     code << "struct " << structDef.name << " {\n";
@@ -668,14 +668,14 @@ std::string SpirvInterfaceGenerator::GenerateInterfaceHashValidator(
     std::ostringstream code;
 
     code << "// ============================================================================\n";
-    code << "// Interface Hash Validation\n";
+    code << "// Interface VixenHash Validation\n";
     code << "// ============================================================================\n";
     code << "\n";
 
     code << "/**\n";
     code << " * @brief Validate that runtime shader matches this interface\n";
     code << " *\n";
-    code << " * @param runtimeHash Hash computed from runtime SPIRV bytecode\n";
+    code << " * @param runtimeHash VixenHash computed from runtime SPIRV bytecode\n";
     code << " * @return True if interface matches\n";
     code << " */\n";
     code << "inline bool ValidateInterfaceHash(const char* runtimeHash) {\n";

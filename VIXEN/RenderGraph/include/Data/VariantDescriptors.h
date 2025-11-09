@@ -208,7 +208,7 @@ struct RuntimeStructDescriptor : ResourceDescriptorBase {
     uint32_t totalSize = 0;
     std::vector<RuntimeFieldInfo> fields;
     std::unordered_map<std::string, size_t> fieldIndexByName;
-    uint64_t layoutHash = 0;  // Hash of (name, offset, size, type) for discovery
+    uint64_t layoutHash = 0;  // VixenHash of (name, offset, size, type) for discovery
 
     /**
      * @brief Build field lookup map (call after adding fields)

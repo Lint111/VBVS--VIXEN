@@ -142,13 +142,13 @@ struct Metadata {
 };
 
 // ============================================================================
-// Interface Hash Validation
+// Interface VixenHash Validation
 // ============================================================================
 
 /**
  * @brief Validate that runtime shader matches this interface
  *
- * @param runtimeHash Hash computed from runtime SPIRV bytecode
+ * @param runtimeHash VixenHash computed from runtime SPIRV bytecode
  * @return True if interface matches
  */
 inline bool ValidateInterfaceHash(const char* runtimeHash) {

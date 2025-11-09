@@ -58,7 +58,7 @@ std::string GenerateContentBasedUuid(
 ) {
     std::ostringstream contentStream;
 
-    // Hash inputs: sources, entry points, options, pipeline type
+    // VixenHash inputs: sources, entry points, options, pipeline type
     // Sorted by stage to ensure consistent ordering
 
     std::vector<std::pair<ShaderStage, const ShaderBundleBuilder::StageSource*>> sortedStages;

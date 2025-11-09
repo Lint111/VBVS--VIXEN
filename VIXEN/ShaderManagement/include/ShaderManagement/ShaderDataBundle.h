@@ -129,7 +129,7 @@ struct ShaderDataBundle {
     /**
      * @brief Descriptor-only interface hash
      *
-     * Hash based ONLY on descriptor layout, NOT on:
+     * VixenHash based ONLY on descriptor layout, NOT on:
      * - Program name, UUID, or unique identifiers
      * - Timestamp or file paths
      *
@@ -268,7 +268,7 @@ struct ShaderDataBundle {
      * Compares interface hashes to ensure compatibility.
      * Useful for hot-reload validation.
      *
-     * @param runtimeHash Hash computed from runtime SPIRV
+     * @param runtimeHash VixenHash computed from runtime SPIRV
      * @return True if compatible, false if interface has changed
      */
     bool ValidateInterface(const std::string& runtimeHash) const {
@@ -387,8 +387,8 @@ struct ShaderDataBundle {
         }
         oss << "  SDI: " << (HasValidSdi() ? "Generated" : "Missing") << "\n";
         oss << "  SDI Path: " << sdiHeaderPath << "\n";
-        oss << "  Interface Hash: " << GetInterfaceHash().substr(0, 16) << "...\n";
-        oss << "  Descriptor Hash: " << descriptorInterfaceHash.substr(0, 16) << "...\n";
+        oss << "  Interface VixenHash: " << GetInterfaceHash().substr(0, 16) << "...\n";
+        oss << "  Descriptor VixenHash: " << descriptorInterfaceHash.substr(0, 16) << "...\n";
         oss << "  Age: " << GetAge().count() << "ms\n";
         return oss.str();
     }
@@ -464,7 +464,7 @@ ShaderDirtyFlags CompareBundles(
 /**
  * @brief Compute descriptor-only interface hash
  *
- * Hash based ONLY on descriptor layout (generalized, reusable).
+ * VixenHash based ONLY on descriptor layout (generalized, reusable).
  * Two shaders with identical descriptors will have the same hash.
  *
  * Includes:

@@ -22,7 +22,7 @@ struct NodeHandle {
 
 } // namespace Vixen::RenderGraph
 
-// Hash function for NodeHandle to enable use in unordered_set/unordered_map
+// VixenHash function for NodeHandle to enable use in unordered_set/unordered_map
 namespace std {
     template<>
     struct hash<Vixen::RenderGraph::NodeHandle> {

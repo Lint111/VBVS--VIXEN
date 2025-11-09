@@ -43,7 +43,7 @@ private:
 };
 
 /**
- * @brief Hash descriptor binding (binary - optimized)
+ * @brief VixenHash descriptor binding (binary - optimized)
  */
 void HashDescriptorBinding(BinaryHashBuilder& builder, const SpirvDescriptorBinding& binding) {
     // Include ONLY descriptor layout data
@@ -70,7 +70,7 @@ void HashDescriptorBinding(BinaryHashBuilder& builder, const SpirvDescriptorBind
 }
 
 /**
- * @brief Hash push constant range (binary - optimized)
+ * @brief VixenHash push constant range (binary - optimized)
  */
 void HashPushConstant(BinaryHashBuilder& builder, const SpirvPushConstantRange& pc) {
     builder.Append(pc.name);
@@ -89,7 +89,7 @@ void HashPushConstant(BinaryHashBuilder& builder, const SpirvPushConstantRange& 
 }
 
 /**
- * @brief Hash vertex input (binary - optimized)
+ * @brief VixenHash vertex input (binary - optimized)
  */
 void HashVertexInput(BinaryHashBuilder& builder, const SpirvVertexInput& input) {
     builder.Append(input.location);
@@ -103,7 +103,7 @@ void HashVertexInput(BinaryHashBuilder& builder, const SpirvVertexInput& input) 
 std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflectionData) {
     BinaryHashBuilder builder;
 
-    // Hash descriptor sets (sorted by set index for consistency)
+    // VixenHash descriptor sets (sorted by set index for consistency)
     std::vector<uint32_t> setIndices;
     for (const auto& [setIdx, _] : reflectionData.descriptorSets) {
         setIndices.push_back(setIdx);
@@ -123,12 +123,12 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
         }
     }
 
-    // Hash push constants
+    // VixenHash push constants
     for (const auto& pc : reflectionData.pushConstants) {
         HashPushConstant(builder, pc);
     }
 
-    // Hash vertex inputs (sorted by location)
+    // VixenHash vertex inputs (sorted by location)
     std::vector<SpirvVertexInput> sortedInputs = reflectionData.vertexInputs;
     std::sort(sortedInputs.begin(), sortedInputs.end(),
         [](const auto& a, const auto& b) { return a.location < b.location; });
@@ -137,7 +137,7 @@ std::string ComputeDescriptorInterfaceHash(const SpirvReflectionData& reflection
         HashVertexInput(builder, input);
     }
 
-    // Hash struct definitions (sorted by name for consistency)
+    // VixenHash struct definitions (sorted by name for consistency)
     std::vector<SpirvStructDefinition> sortedStructs = reflectionData.structDefinitions;
     std::sort(sortedStructs.begin(), sortedStructs.end(),
         [](const auto& a, const auto& b) { return a.name < b.name; });

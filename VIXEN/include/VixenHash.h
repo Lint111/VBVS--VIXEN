@@ -10,7 +10,8 @@
 // header-only hash library fetched by CMake, else fall back to a deterministic
 // non-cryptographic hash. This header is intentionally small and header-only.
 
-namespace Vixen::Hash {
+namespace Vixen {
+namespace Hash {
 
 inline std::string ToHex(const unsigned char* bytes, size_t len) {
     std::ostringstream oss;
@@ -90,4 +91,5 @@ inline std::string ComputeSHA256HexFromUint32Vec(const std::vector<uint32_t>& da
     return ComputeSHA256Hex(reinterpret_cast<const void*>(data.data()), data.size() * sizeof(uint32_t));
 }
 
-} // namespace Vixen::Hash
+} // namespace Hash
+} // namespace Vixen

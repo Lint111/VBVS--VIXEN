@@ -9,7 +9,7 @@
 namespace Vixen::RenderGraph {
 
 /**
- * @brief Hash computation for struct layouts
+ * @brief VixenHash computation for struct layouts
  *
  * Computes deterministic hash from field metadata (name, offset, size, type).
  * Used for discovering unknown types at startup.
@@ -22,13 +22,13 @@ public:
     static uint64_t ComputeHash(const RuntimeStructDescriptor& desc) {
         uint64_t hash = 0xcbf29ce484222325ULL;  // FNV-1a offset basis
 
-        // Hash struct name
+        // VixenHash struct name
         hash = HashString(hash, desc.structName);
 
-        // Hash total size
+        // VixenHash total size
         hash = HashValue(hash, desc.totalSize);
 
-        // Hash each field
+        // VixenHash each field
         for (const auto& field : desc.fields) {
             hash = HashString(hash, field.name);
             hash = HashValue(hash, field.offset);

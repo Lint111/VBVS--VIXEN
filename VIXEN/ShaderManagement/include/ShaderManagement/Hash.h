@@ -6,7 +6,7 @@
 #include <sstream>
 #include <iomanip>
 
-// ShaderManagement standalone hash implementation (avoids global Hash.h namespace conflicts)
+// ShaderManagement standalone hash implementation (avoids global VixenHash.h namespace conflicts)
 // Uses simple FNV-1a hash for cache keys - adequate for shader cache invalidation
 
 namespace ShaderManagement {

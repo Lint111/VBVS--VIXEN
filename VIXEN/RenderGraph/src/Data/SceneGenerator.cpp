@@ -262,7 +262,7 @@ float PerlinNoise3D::Sample(float x, float y, float z) const {
     float v = Fade(y);
     float w = Fade(z);
 
-    // Hash coordinates of cube corners
+    // VixenHash coordinates of cube corners
     int A = permutation_[X] + Y;
     int AA = permutation_[A] + Z;
     int AB = permutation_[A + 1] + Z;

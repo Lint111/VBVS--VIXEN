@@ -6,8 +6,7 @@
 #include <typeindex>
 #include <map>
 
-// Namespace alias for nested namespace
-namespace VH = Vixen::Hash;
+using namespace Vixen::VixenHash;
 
 // Helper function to compute descriptor layout hash using project Hash library
 static std::string ComputeLayoutHash_Helper(const ShaderManagement::DescriptorLayoutSpec* spec) {
@@ -22,7 +21,7 @@ static std::string ComputeLayoutHash_Helper(const ShaderManagement::DescriptorLa
     }
     std::string hashData = hashStream.str();
     // Use project-wide hash function
-    return VH::ComputeSHA256Hex(hashData.data(), hashData.size());
+    return ComputeSHA256Hex(hashData.data(), hashData.size());
 }
 
 namespace CashSystem {

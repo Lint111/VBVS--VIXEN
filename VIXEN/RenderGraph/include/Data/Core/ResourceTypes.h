@@ -50,12 +50,12 @@ constexpr inline ResourceUsage operator~(ResourceUsage a) {
     return static_cast<ResourceUsage>(~static_cast<uint32_t>(a));
 }
 
-constexpr inline ResourceUsage& operator|=(ResourceUsage& a, ResourceUsage b) {
+inline ResourceUsage& operator|=(ResourceUsage& a, ResourceUsage b) {
     a = a | b;
     return a;
 }
 
-constexpr inline ResourceUsage& operator&=(ResourceUsage& a, ResourceUsage b) {
+inline ResourceUsage& operator&=(ResourceUsage& a, ResourceUsage b) {
     a = a & b;
     return a;
 }
