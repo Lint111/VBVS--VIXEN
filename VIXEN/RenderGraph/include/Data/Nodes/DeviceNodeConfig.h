@@ -14,8 +14,8 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  * Creates and manages Vulkan device (wraps VulkanDevice class).
  * Handles both physical device selection and logical device creation.
  *
- * Inputs: 0
- * Outputs: 2 (VULKAN_DEVICE: VulkanDevice* composite, INSTANCE: VkInstance)
+ * Inputs: 1 (INSTANCE: VkInstance from InstanceNode)
+ * Outputs: 2 (VULKAN_DEVICE: VulkanDevice* composite, INSTANCE: VkInstance passthrough)
  * Parameters: gpu_index (which GPU to select)
  *
  * VulkanDevice pointer provides access to:
@@ -27,7 +27,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace DeviceNodeCounts {
-    static constexpr size_t INPUTS = 0;
+    static constexpr size_t INPUTS = 1;   // INSTANCE input
     static constexpr size_t OUTPUTS = 2;  // VULKAN_DEVICE, INSTANCE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -36,12 +36,19 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
                       DeviceNodeCounts::INPUTS,
                       DeviceNodeCounts::OUTPUTS,
                       DeviceNodeCounts::ARRAY_MODE) {
+    // Phase F: Input slots with full metadata
+    INPUT_SLOT(INSTANCE_IN, VkInstance, 0,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // Phase F: Output slots with full metadata
     OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(INSTANCE, VkInstance, 1,
+    OUTPUT_SLOT(INSTANCE_OUT, VkInstance, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -50,13 +57,17 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
 
     // Constructor for runtime descriptor initialization
     DeviceNodeConfig() {
+        // Instance input
+        HandleDescriptor instanceInputDesc{"VkInstance"};
+        INIT_INPUT_DESC(INSTANCE_IN, "instance_in", ResourceLifetime::Persistent, instanceInputDesc);
+
         // VulkanDevice pointer (composite wrapper)
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
-        // Instance handle
-        HandleDescriptor instanceDesc{"VkInstance"};
-        INIT_OUTPUT_DESC(INSTANCE, "instance", ResourceLifetime::Persistent, instanceDesc);
+        // Instance handle (passthrough)
+        HandleDescriptor instanceOutputDesc{"VkInstance"};
+        INIT_OUTPUT_DESC(INSTANCE_OUT, "instance_out", ResourceLifetime::Persistent, instanceOutputDesc);
     }
 
     // Compile-time validation
@@ -64,19 +75,22 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
     static_assert(OUTPUT_COUNT == DeviceNodeCounts::OUTPUTS, "Output count mismatch");
     static_assert(ARRAY_MODE == DeviceNodeCounts::ARRAY_MODE, "Array mode mismatch");
 
+    static_assert(INSTANCE_IN_Slot::index == 0, "INSTANCE_IN must be at index 0");
+    static_assert(!INSTANCE_IN_Slot::nullable, "INSTANCE_IN must not be nullable");
     static_assert(VULKAN_DEVICE_OUT_Slot::index == 0, "VULKAN_DEVICE must be at index 0");
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE must not be nullable");
-    static_assert(INSTANCE_Slot::index == 1, "INSTANCE must be at index 1");
-    static_assert(!INSTANCE_Slot::nullable, "INSTANCE must not be nullable");
+    static_assert(INSTANCE_OUT_Slot::index == 1, "INSTANCE_OUT must be at index 1");
+    static_assert(!INSTANCE_OUT_Slot::nullable, "INSTANCE_OUT must not be nullable");
 
     // Type validations
+    static_assert(std::is_same_v<INSTANCE_IN_Slot::Type, VkInstance>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
+    static_assert(std::is_same_v<INSTANCE_OUT_Slot::Type, VkInstance>);
 };
 
 // Compile-time verification
 static_assert(DeviceNodeConfig::INPUT_COUNT == DeviceNodeCounts::INPUTS,
-              "DeviceNode should have no inputs");
+              "DeviceNode should have 1 input");
 static_assert(DeviceNodeConfig::OUTPUT_COUNT == DeviceNodeCounts::OUTPUTS,
               "DeviceNode should have 2 outputs");
 

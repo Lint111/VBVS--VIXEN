@@ -34,7 +34,9 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
     // Phase F: Input slots with full metadata
     INPUT_SLOT(INSTANCE, VkInstance, 0,
         SlotNullability::Required,
-        SlotMutability::ReadOnly);
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
 
     // Phase F: Output slots with full metadata
     OUTPUT_SLOT(SURFACE, VkSurfaceKHR, 0,

@@ -6,7 +6,7 @@
 #include <typeindex>
 #include <map>
 
-using namespace Vixen::VixenHash;
+using namespace Vixen::Hash;
 
 // Helper function to compute descriptor layout hash using project Hash library
 static std::string ComputeLayoutHash_Helper(const ShaderManagement::DescriptorLayoutSpec* spec) {
