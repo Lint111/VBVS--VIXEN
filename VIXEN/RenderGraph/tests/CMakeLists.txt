@@ -189,3 +189,10 @@ include(test_voxel_octree.cmake)
 # This test suite validates scene density targets and reproducibility.
 
 include(test_scene_generators.cmake)
+
+# ===========================================================================
+# Voxel Traversal Tests (Phase H.4.5)
+# ===========================================================================
+# This test suite validates Ray-AABB intersection and DDA voxel traversal.
+
+include(test_voxel_traversal.cmake)
