@@ -41,10 +41,13 @@ public:
  * };
  */
 struct CameraData {
-    glm::mat4 invProjection;
-    glm::mat4 invView;
-    glm::vec3 cameraPos;
-    uint32_t gridResolution;
+    glm::mat4 invProjection;     // Offset 0, 64 bytes
+    glm::mat4 invView;           // Offset 64, 64 bytes
+    glm::vec3 cameraPos;         // Offset 128, 12 bytes
+    float _padding0;             // Offset 140, 4 bytes (vec3 aligns to 16)
+    uint32_t gridResolution;     // Offset 144, 4 bytes
+    float lodBias;               // Offset 148, 4 bytes
+    float _padding1[2];          // Offset 152, 8 bytes (align struct to 16)
 };
 
 /**

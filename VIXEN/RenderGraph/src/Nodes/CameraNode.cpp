@@ -35,7 +35,7 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     // Read parameters
     fov = GetParameterValue<float>(CameraNodeConfig::PARAM_FOV, 45.0f);
     nearPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
-    farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 100.0f);
+    farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
 
     cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
@@ -119,10 +119,11 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     );
 
     // Create view matrix from camera position and orientation
+    // Standard convention: yaw=0, pitch=0 looks toward -Z (forward)
     glm::vec3 forward;
-    forward.x = cos(pitch) * cos(yaw);
+    forward.x = cos(pitch) * sin(yaw);
     forward.y = sin(pitch);
-    forward.z = cos(pitch) * sin(yaw);
+    forward.z = -cos(pitch) * cos(yaw);  // Negative Z for forward
     forward = glm::normalize(forward);
 
     glm::vec3 target = cameraPosition + forward;
@@ -137,7 +138,11 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     cameraData.invProjection = invProjection;
     cameraData.invView = invView;
     cameraData.cameraPos = cameraPosition;
+    cameraData._padding0 = 0.0f;
     cameraData.gridResolution = gridResolution;
+    cameraData.lodBias = 1.0f;  // Default LOD bias
+    cameraData._padding1[0] = 0.0f;
+    cameraData._padding1[1] = 0.0f;
 
     std::memcpy(mappedPtr, &cameraData, sizeof(CameraData));
 }

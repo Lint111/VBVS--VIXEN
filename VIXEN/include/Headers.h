@@ -21,6 +21,7 @@
 
 // GLM Header files
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE  // Vulkan uses [0,1] depth range
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>

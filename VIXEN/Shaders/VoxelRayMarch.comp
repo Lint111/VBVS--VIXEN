@@ -97,7 +97,8 @@ vec3 generateRayDirection(ivec2 pixelCoords, ivec2 screenSize) {
     ndc.y = -ndc.y;  // Flip Y-axis for correct orientation
 
     // Unproject near and far planes to clip space
-    vec4 clipNear = vec4(ndc, -1.0, 1.0);  // Near plane (z = -1)
+    // Vulkan uses [0, 1] for depth, not [-1, 1] like OpenGL
+    vec4 clipNear = vec4(ndc, 0.0, 1.0);  // Near plane (z = 0 in Vulkan)
     vec4 clipFar = vec4(ndc, 1.0, 1.0);    // Far plane (z = 1)
 
     // Transform to view space
@@ -722,9 +723,18 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
 }
 
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
+    // DEBUG: Visualize ray direction
+    // If ray points toward -Z, it should have negative Z component
+    if (rayDir.z < 0.0) {
+        return vec4(0.0, 1.0, 1.0, 1.0);  // Cyan = ray pointing -Z (correct)
+    } else {
+        return vec4(1.0, 1.0, 0.0, 1.0);  // Yellow = ray pointing +Z (wrong)
+    }
+
     // Grid positioning in world space
+    // Camera at (0,0,3) with yaw=0 looks toward -Z
     float halfGrid = float(camera.gridResolution) * 0.5;
-    vec3 gridWorldCenter = vec3(0.0, 0.0, -200.0);
+    vec3 gridWorldCenter = vec3(0.0, 0.0, -100.0);  // Place grid closer - centered at Z=-100
     vec3 gridMin = gridWorldCenter - vec3(halfGrid);
     vec3 gridMax = gridWorldCenter + vec3(halfGrid);
 
@@ -734,6 +744,9 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         if (gridT.x < 0.0) {
             return vec4(BACKGROUND_COLOR, 1.0);  // Ray missed grid
         }
+
+        // DEBUG: Visualize grid hit
+        return vec4(1.0, 0.0, 1.0, 1.0);  // Magenta = grid hit test
 
         // Compute parametric t-bounds for Revelles algorithm
         // Transform grid intersection to normalized [0,1] space

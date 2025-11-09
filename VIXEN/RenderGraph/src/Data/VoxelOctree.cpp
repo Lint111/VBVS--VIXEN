@@ -241,22 +241,28 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         return 0; // Return 0 to indicate no node created
     }
 
-    // If we've reached brick level (depth 4) or minimum size (8³), create a brick
-    if (depth >= 4 || size <= 8) {
-        // For Phase H baseline, always create brick (skip constant optimization)
-        // Phase I will add constant region detection
-        return CreateBrick(voxelData, origin);
-    }
-
-    // Otherwise, create an internal ESVO node
+    // Create ESVO node at this level
     uint32_t nodeIndex = static_cast<uint32_t>(esvoNodes_.size());
     esvoNodes_.emplace_back(); // Add new node
     ESVONode& node = esvoNodes_[nodeIndex];
 
+    // If we've reached brick level (depth 4) or minimum size (8³), this is a leaf
+    if (depth >= 4 || size <= 8) {
+        // Leaf node: create brick and store offset in descriptor1
+        uint32_t brickOffset = CreateBrick(voxelData, origin);
+        node.SetBrickOffset(brickOffset);
+        // No children, so childMask stays 0 (leaf indicator)
+        return nodeIndex;
+    }
+
     uint32_t childSize = size / 2;
 
-    // Track first child offset for this node
-    uint32_t firstChildOffset = 0;
+    // Allocate space for all 8 potential child nodes
+    // ESVO expects consecutive child node allocation
+    uint32_t childBlockStart = static_cast<uint32_t>(esvoNodes_.size());
+
+    // Pre-allocate 8 child slots (will fill in recursively)
+    std::vector<uint32_t> childIndices(8, 0);
     bool hasAnyChild = false;
 
     // Recursively build 8 children
@@ -268,30 +274,34 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         childOrigin.z += (childIdx & 4) ? childSize : 0;
 
         // Build child subtree
-        uint32_t childOffset = BuildRecursiveESVO(voxelData, childOrigin, childSize, depth + 1);
+        uint32_t childNodeIndex = BuildRecursiveESVO(voxelData, childOrigin, childSize, depth + 1);
 
-        if (childOffset != 0) {
+        if (childNodeIndex != 0) {
             // Child exists
             node.SetChild(childIdx);
             hasAnyChild = true;
+            childIndices[childIdx] = childNodeIndex;
 
-            // Store first child offset (for ESVO child pointer)
-            if (firstChildOffset == 0) {
-                firstChildOffset = childOffset;
-            }
-
-            // Mark as non-leaf if child is an internal node (not a brick)
-            // Bricks are at depth 4+, so depth < 4 children are internal nodes
-            if (depth < 3) {
+            // Check if child is non-leaf (has its own children)
+            const ESVONode& childNode = esvoNodes_[childNodeIndex];
+            if (childNode.GetChildMask() != 0) {
+                // Child has children, so it's not a leaf
                 node.SetNonLeaf(childIdx);
             }
         }
     }
 
-    // Set child offset to first existing child
-    // ESVO uses this as base offset + child index during traversal
-    if (hasAnyChild && firstChildOffset != 0) {
-        node.SetChildOffset(firstChildOffset);
+    // Store first child node index (ESVO uses this as base for child lookups)
+    if (hasAnyChild && childIndices[0] != 0) {
+        node.SetChildOffset(childIndices[0]);
+    } else if (hasAnyChild) {
+        // Find first non-zero child
+        for (uint32_t i = 0; i < 8; ++i) {
+            if (childIndices[i] != 0) {
+                node.SetChildOffset(childIndices[i]);
+                break;
+            }
+        }
     }
 
     return nodeIndex;
