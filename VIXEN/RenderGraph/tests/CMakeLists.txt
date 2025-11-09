@@ -182,3 +182,10 @@ endif()
 # - Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
 include(test_voxel_octree.cmake)
+
+# ===========================================================================
+# Scene Generator Tests (Phase H.2.5)
+# ===========================================================================
+# This test suite validates scene density targets and reproducibility.
+
+include(test_scene_generators.cmake)
