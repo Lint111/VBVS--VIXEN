@@ -78,7 +78,7 @@ void InstanceNode::CompileImpl(TypedCompileContext& ctx) {
     CreateVulkanInstance();
 
     // Output the instance handle
-    ctx.Out(InstanceNodeConfig::INSTANCE_Slot{}, instance);
+    ctx.Out(InstanceNodeConfig::INSTANCE, instance);
 
     NODE_LOG_INFO("[InstanceNode] Instance created and output set");
 }

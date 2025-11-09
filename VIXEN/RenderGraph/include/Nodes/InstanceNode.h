@@ -11,9 +11,10 @@ namespace Vixen::RenderGraph {
 /**
  * @brief NodeType for InstanceNode
  */
-class InstanceNodeType : public NodeType {
+class InstanceNodeType : public TypedNodeType<InstanceNodeConfig> {
 public:
-    InstanceNodeType() : NodeType("InstanceNode", InstanceNodeConfig{}) {}
+    InstanceNodeType(const std::string& typeName = "InstanceNode")
+        : TypedNodeType<InstanceNodeConfig>(typeName) {}
 
     std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override;
 };

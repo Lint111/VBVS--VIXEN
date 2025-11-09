@@ -49,6 +49,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/FramebufferNodeConfig.h
     include/Data/Nodes/GeometryRenderNodeConfig.h
     include/Data/Nodes/GraphicsPipelineNodeConfig.h
+    include/Data/Nodes/InstanceNodeConfig.h
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
@@ -135,6 +136,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/FramebufferNode.h
     include/Nodes/GeometryRenderNode.h
     include/Nodes/GraphicsPipelineNode.h
+    include/Nodes/InstanceNode.h
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
     include/Nodes/RenderPassNode.h
@@ -163,6 +165,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/FramebufferNode.cpp
     src/Nodes/GeometryRenderNode.cpp
     src/Nodes/GraphicsPipelineNode.cpp
+    src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
     src/Nodes/PresentNode.cpp
     src/Nodes/RenderPassNode.cpp

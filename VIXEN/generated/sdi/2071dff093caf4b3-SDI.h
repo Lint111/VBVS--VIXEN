@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 

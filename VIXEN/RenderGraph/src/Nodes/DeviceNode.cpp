@@ -63,7 +63,7 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[DeviceNode] Compile: Creating Vulkan device");
 
     // Read VkInstance from input slot (dependency injection from InstanceNode)
-    instance = ctx.In(DeviceNodeConfig::INSTANCE_IN_Slot{});
+    instance = ctx.In(DeviceNodeConfig::INSTANCE_IN);
 
     if (instance == VK_NULL_HANDLE) {
         NODE_LOG_ERROR("[DeviceNode] ERROR: VkInstance is null!");
@@ -117,9 +117,9 @@ void DeviceNode::CompileImpl(TypedCompileContext& ctx) {
     // This ensures all nodes have registered their cachers first
 
     // Store outputs - output VulkanDevice pointer (contains device, gpu, memory properties, queues, etc.)
-    ctx.Out(DeviceNodeConfig::VULKAN_DEVICE_OUT_Slot, vulkanDevice.get());
+    ctx.Out(DeviceNodeConfig::VULKAN_DEVICE_OUT, vulkanDevice.get());
     // Passthrough VkInstance to downstream nodes
-    ctx.Out(DeviceNodeConfig::INSTANCE_OUT_Slot, instance);
+    ctx.Out(DeviceNodeConfig::INSTANCE_OUT, instance);
 
     NODE_LOG_INFO("[DeviceNode] Compile complete - VulkanDevice* and instance stored in outputs");
 }
