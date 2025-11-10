@@ -100,6 +100,15 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(octree.GetBricks().size()) + " bricks, " +
                   "compression=" + std::to_string(octree.GetCompressionRatio(resolution)) + ":1");
 
+    // DEBUG: Sample voxel material IDs from first brick
+    if (octree.GetBricks().size() > 0) {
+        const auto& bricks = octree.GetBricks();
+        std::cout << "[VoxelGridNode] DEBUG: First brick voxel samples (Z=0, Y=0):" << std::endl;
+        for (int x = 0; x < 8; ++x) {
+            std::cout << "  voxel[0][0][" << x << "] = " << static_cast<int>(bricks[0].voxels[0][0][x]) << std::endl;
+        }
+    }
+
     // Upload octree buffers
     UploadOctreeBuffers(octree);
 
@@ -362,6 +371,14 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     defaultMaterials[19] = {{1.0f, 0.0f, 1.0f}, 0.0f, 0.0f, 0.0f, {0.0f, 0.0f}};
     // Material 20: Ceiling light (emissive white)
     defaultMaterials[20] = {{1.0f, 1.0f, 0.9f}, 0.0f, 0.0f, 5.0f, {0.0f, 0.0f}};
+
+    // DEBUG: Print first few materials
+    std::cout << "[VoxelGridNode] DEBUG: Material palette (first 3):" << std::endl;
+    for (int i = 0; i < 3 && i < defaultMaterials.size(); ++i) {
+        std::cout << "  Mat[" << i << "]: albedo=(" << defaultMaterials[i].albedo[0] << ", "
+                  << defaultMaterials[i].albedo[1] << ", " << defaultMaterials[i].albedo[2]
+                  << "), r=" << defaultMaterials[i].roughness << std::endl;
+    }
 
     VkDeviceSize materialsBufferSize = defaultMaterials.size() * sizeof(GPUMaterial);
 

@@ -102,6 +102,15 @@ private:
  * - Two cubes (one axis-aligned, one rotated)
  * - Ceiling light (emissive patch)
  *
+ * Material IDs:
+ * - 0: Empty (default white)
+ * - 1: Red (left wall)
+ * - 2: Green (right wall)
+ * - 3-5: White (back wall, floor, ceiling)
+ * - 6-7: Light/dark gray (checkerboard)
+ * - 10-11: Cube materials
+ * - 20: Emissive ceiling light
+ *
  * Target density: 10% (±5%)
  * Purpose: Sparse traversal, empty space skipping optimization test
  */

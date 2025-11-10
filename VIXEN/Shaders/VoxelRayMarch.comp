@@ -323,11 +323,6 @@ vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) 
 bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                           out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    // DEBUG: If we enter this function, show magenta
-    hitColor = vec3(1.0, 0.0, 1.0);
-    hitT = 0.0;
-    return true;
-
     // ESVO traversal state
     const int S_MAX = 23;
     const float EPSILON_ESVO = exp2(-float(S_MAX));
@@ -382,6 +377,31 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     if (1.5 * tx_coef - tx_bias > t_min) { idx ^= 1; pos.x = 1.5; }
     if (1.5 * ty_coef - ty_bias > t_min) { idx ^= 2; pos.y = 1.5; }
     if (1.5 * tz_coef - tz_bias > t_min) { idx ^= 4; pos.z = 1.5; }
+
+    // DEBUG: Check if buffer is bound by checking array length
+    uint bufferSize = octreeNodes.data.length();
+
+    if (bufferSize == 0) {
+        // Buffer not bound or empty - show red
+        hitColor = vec3(1.0, 0.0, 0.0);
+    } else if (bufferSize < 2) {
+        // Buffer too small - show orange
+        hitColor = vec3(1.0, 0.5, 0.0);
+    } else {
+        // Buffer bound - read first two values and visualize
+        uint val0 = octreeNodes.data[0];
+        uint val1 = octreeNodes.data[1];
+
+        float r = float(val0 & 0xFFu) / 255.0;
+        float g = float((val0 >> 8) & 0xFFu) / 255.0;
+        float b = float(val1 & 0xFFu) / 255.0;
+
+        hitColor = vec3(r, g, b);
+    }
+
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = t_min;
+    return true;
 
     // Main traversal loop (PUSH/POP/ADVANCE)
     const int MAX_ITERS = 250;

@@ -474,6 +474,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
 
+    // Enable debug logging for descriptor nodes
+    renderGraph->GetNodeInstance(descriptorGatherer)->SetLoggerEnabled(true);
+    renderGraph->GetNodeInstance(descriptorGatherer)->SetLogLevel(Logger::LogLevel::DEBUG);
+    renderGraph->GetNodeInstance(computeDescriptorSet)->SetLoggerEnabled(true);
+    renderGraph->GetNodeInstance(computeDescriptorSet)->SetLogLevel(Logger::LogLevel::DEBUG);
+
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode("Camera", "raymarch_camera");
     NodeHandle voxelGridNode = renderGraph->AddNode("VoxelGrid", "voxel_grid");

@@ -383,11 +383,20 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         return VK_NULL_HANDLE;
     };
 
+    std::cout << "[DESCRIPTOR DEBUG] BuildDescriptorWrites: frame=" << imageIndex
+              << ", roleFilter=" << static_cast<int>(roleFilter)
+              << ", totalBindings=" << descriptorBindings.size() << std::endl;
+
     for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size(); bindingIdx++) {
         const auto& binding = descriptorBindings[bindingIdx];
 
+        std::cout << "[DESCRIPTOR DEBUG]   Binding[" << bindingIdx << "]: slot=" << binding.binding
+                  << ", name=" << binding.name << std::endl;
+
         // Use binding.binding (shader binding number) to index into resources, not loop index
         if (binding.binding >= descriptorResources.size()) {
+            std::cout << "[DESCRIPTOR DEBUG]     SKIP: binding " << binding.binding
+                      << " >= resourceArray size " << descriptorResources.size() << std::endl;
             NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] WARNING: Binding " +
                           std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
                           std::to_string(descriptorResources.size()));
@@ -407,20 +416,43 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
             // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
             bool matchesFilter = (bindingFlags & filterFlags) != 0;
 
+            std::cout << "[DESCRIPTOR DEBUG]     Role: binding=" << (int)bindingFlags
+                      << ", filter=" << (int)filterFlags
+                      << ", match=" << (matchesFilter ? "YES" : "NO") << std::endl;
+
             NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) +
                           " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
                           ", filter=" + std::to_string(filterFlags) +
                           ", matches=" + (matchesFilter ? "YES" : "NO"));
 
             if (!matchesFilter) {
+                std::cout << "[DESCRIPTOR DEBUG]     SKIP: role filter mismatch" << std::endl;
                 continue;  // Skip this binding - doesn't match filter
             }
         }
 
         const auto& resourceVariant = descriptorResources[binding.binding];
 
+        // Debug: Log resource type
+        std::string resourceType = "unknown";
+        if (std::holds_alternative<std::monostate>(resourceVariant)) {
+            resourceType = "monostate(placeholder)";
+        } else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+            resourceType = "VkImageView";
+        } else if (std::holds_alternative<VkBuffer>(resourceVariant)) {
+            resourceType = "VkBuffer";
+        } else if (std::holds_alternative<VkSampler>(resourceVariant)) {
+            resourceType = "VkSampler";
+        }
+
+        std::cout << "[DESCRIPTOR DEBUG]     ResourceType: " << resourceType << std::endl;
+
+        NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) +
+                      " (" + binding.name + ") resource type: " + resourceType);
+
         // Skip placeholder entries (std::monostate) - these are transient resources not yet populated
         if (std::holds_alternative<std::monostate>(resourceVariant)) {
+            std::cout << "[DESCRIPTOR DEBUG]     SKIP: placeholder (monostate)" << std::endl;
             NODE_LOG_DEBUG("[BuildDescriptorWrites] Skipping binding " + std::to_string(binding.binding) +
                           " - placeholder not yet populated (transient resource)");
             continue;
