@@ -66,7 +66,7 @@ cmake --build build --config Debug
 cmake --build build --config Release
 
 # Alternative: Open Visual Studio solution
-# build/7e_ShadersWithSPIRV.sln
+# build/VIXEN.sln
 ```
 
 ### Compiler Settings
@@ -137,7 +137,7 @@ VULKAN_LIB_LIST:
 2. Install Visual Studio with C++ support
 3. Clone repository
 4. Run `cmake -B build` from project root
-5. Open `build/7e_ShadersWithSPIRV.sln` or use command line build
+5. Open `build/VIXEN.sln` or use command line build
 
 ### Build Process
 ```bash
@@ -185,7 +185,7 @@ cmake --build build --config Debug
 
 ### Visual Studio
 - Full IDE support for editing and debugging
-- Solution file: `build/7e_ShadersWithSPIRV.sln`
+- Solution file: `build/VIXEN.sln`
 - Project organization: source/ and include/ groups
 
 ## Common Commands
@@ -238,7 +238,7 @@ git commit -m "Description"
 ### Active Settings
 - `AUTO_LOCATE_VULKAN`: ON
 - `BUILD_SPV_ON_COMPILE_TIME`: ON
-- Executable Name: `7e_ShadersWithSPIRV.exe`
+- Executable Name: `VIXEN.exe`
 - Output Directory: `binaries/`
 - Validation Layers: Enabled
 
