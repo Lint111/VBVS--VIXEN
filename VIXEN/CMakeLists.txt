@@ -1,12 +1,13 @@
 #
-# Chapter 3 - Device Hand Shake CMake file.
+# VIXEN - Vulkan Interactive eXample Engine
+# Graph-Based Rendering Environment
 #
 
 cmake_minimum_required(VERSION 3.11..4.0 FATAL_ERROR)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
-set(Recipe_Name "7e_ShadersWithSPIRV")
+set(Recipe_Name "VIXEN")
 
 # ============================================================================
 # Build Performance Optimizations
