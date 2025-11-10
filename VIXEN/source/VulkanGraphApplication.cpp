@@ -653,13 +653,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
-    // Position camera slightly back from origin
+    // Position camera in front of Cornell box to look INTO the opening
+    // Cornell box opening is on -Z face, so camera should be at positive Z
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
-    // Yaw: 0° to look down -Z axis (forward), Pitch: 0° (level view)
-    // Camera forward = (cos(pitch)*sin(yaw), sin(pitch), -cos(pitch)*cos(yaw))
-    // At yaw=0°, pitch=0°: forward = (0, 0, -1) = -Z direction
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -3.0f);  // In front of box (box is at z=-8)
+    // Yaw: 0° to look down -Z axis (into the box)
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);

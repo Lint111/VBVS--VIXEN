@@ -331,10 +331,20 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     float raySizeCoef = camera.lodBias;  // 1.0 = default, 2.0 = coarser LOD
     float raySizeBias = 0.0;
 
+    // First, intersect ray with grid AABB in world space
+    vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    if (gridT.y < 0.0) {
+        return false;  // Ray missed grid entirely
+    }
+
+    // Advance ray to grid entry point
+    float worldT_enter = max(gridT.x, 0.0);
+    vec3 gridEntryWorld = rayOrigin + rayDir * worldT_enter;
+
     // Transform ray to [1,2] octree space (ESVO convention)
     vec3 gridSize = gridMax - gridMin;
-    vec3 p = ((rayOrigin - gridMin) / gridSize) + 1.0;  // [0,1] → [1,2]
-    vec3 d = rayDir;
+    vec3 p = ((gridEntryWorld - gridMin) / gridSize) + 1.0;  // Transform entry point to [1,2]
+    vec3 d = rayDir / gridSize;  // Scale direction by grid size for [1,2] space
 
     // Avoid division by zero
     if (abs(d.x) < EPSILON_ESVO) d.x = sign(d.x) * EPSILON_ESVO;
@@ -355,7 +365,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     if (d.y > 0.0) { octant_mask ^= 2; ty_bias = 3.0 * ty_coef - ty_bias; }
     if (d.z > 0.0) { octant_mask ^= 4; tz_bias = 3.0 * tz_coef - tz_bias; }
 
-    // Ray-octree intersection (active t-span)
+    // Ray-octree intersection (active t-span in [1,2] space)
     float t_min = max(max(2.0 * tx_coef - tx_bias, 2.0 * ty_coef - ty_bias), 2.0 * tz_coef - tz_bias);
     float t_max = min(min(tx_coef - tx_bias, ty_coef - ty_bias), tz_coef - tz_bias);
     t_min = max(t_min, 0.0);
@@ -378,13 +388,6 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     if (1.5 * ty_coef - ty_bias > t_min) { idx ^= 2; pos.y = 1.5; }
     if (1.5 * tz_coef - tz_bias > t_min) { idx ^= 4; pos.z = 1.5; }
 
-    // DEBUG: Visualize that we hit AABB and entered traversal setup
-    // This shows we're past AABB test - if you see this color, problem is in traversal logic
-    hitColor = vec3(1.0, 1.0, 0.0);  // Yellow = AABB hit, entering traversal
-    hitNormal = vec3(0.0, 1.0, 0.0);
-    hitT = t_min;
-    return true;
-
     // Main traversal loop (PUSH/POP/ADVANCE)
     const int MAX_ITERS = 250;
     for (int iter = 0; iter < MAX_ITERS && scale < S_MAX; ++iter) {
@@ -406,10 +409,18 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         if ((child_masks & 0x8000) != 0 && t_min <= t_max) {
             // LOD TERMINATION: Stop if voxel small enough
             if (tc_max * raySizeCoef + raySizeBias >= scale_exp2) {
-                // Hit! Found voxel at appropriate LOD
-                // For Phase H, we just return a test color
-                // Phase I will march bricks here
-                hitColor = vec3(0.8, 0.3, 0.3);  // Test red
+                // Hit! Read brick and get material (same as leaf path)
+                uint brickIndex = getBrickOffset(child_descriptor);
+
+                // Compute local voxel position within brick
+                vec3 hitPos = p + d * t_min;
+                vec3 localPos = fract(hitPos) * 8.0;
+                ivec3 voxelCoord = ivec3(floor(localPos));
+                voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));
+
+                uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
+                Material mat = getMaterial(materialID);
+                hitColor = mat.albedo;
                 hitNormal = vec3(0.0, 1.0, 0.0);
                 hitT = t_min;
                 return true;
@@ -426,8 +437,21 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
             if (t_min <= tv_max) {
                 // Check if node is non-leaf
                 if ((child_masks & 0x0080) == 0) {
-                    // Leaf node! This is a hit
-                    hitColor = vec3(0.3, 0.8, 0.3);  // Test green
+                    // Leaf node! Read brick and get material
+                    uint brickIndex = getBrickOffset(child_descriptor);
+
+                    // Compute local voxel position within brick (0-7 range)
+                    vec3 hitPos = p + d * t_min;  // Ray hit point in [1,2] space
+                    vec3 localPos = fract(hitPos) * 8.0;  // Map to [0,8) brick space
+                    ivec3 voxelCoord = ivec3(floor(localPos));
+                    voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));  // Safety clamp
+
+                    // Read voxel material ID
+                    uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
+
+                    // Look up material and get albedo
+                    Material mat = getMaterial(materialID);
+                    hitColor = mat.albedo;
                     hitNormal = vec3(0.0, 1.0, 0.0);
                     hitT = t_min;
                     return true;
@@ -767,11 +791,11 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     // Grid positioning in world space
     // Camera at (0,0,3) looking toward -Z
     // Grid: 10x10x10 world units, centered, 20 units from camera
-    const float gridWorldSize = 10.0;
-    float halfGrid = gridWorldSize * 0.5;  // 5
-    vec3 gridCenter = vec3(0.0, 0.0, -20.0);  // Centered, pushed back
-    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-5, -5, -25)
-    vec3 gridMax = gridCenter + vec3(halfGrid);  // (5, 5, -15)
+    const float gridWorldSize = 4.0;  // Reasonable size (4x4x4 world units)
+    float halfGrid = gridWorldSize * 0.5;  // 2.0
+    vec3 gridCenter = vec3(0.0, 0.0, -8.0);  // Push back to z=-8
+    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-2, -2, -10)
+    vec3 gridMax = gridCenter + vec3(halfGrid);  // (2, 2, -6)
 
     // Ray bounce loop (currently single bounce)
     for (int bounce = 0; bounce < RAY_MAX_BOUNCES; ++bounce) {
