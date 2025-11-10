@@ -89,32 +89,30 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 // ============================================================================
 
 // Generate ray direction from screen-space pixel coordinates
-// Maps pixel coords → NDC → clip space → world space
+// Use proper unprojection through inverse matrices
 vec3 generateRayDirection(ivec2 pixelCoords, ivec2 screenSize) {
     // Convert pixel coords to NDC [-1, 1]
-    // Flip Y to match Vulkan coordinate system (Y+ down in screen space, up in world space)
+    // Flip Y for Vulkan (Y+ down in framebuffer, up in NDC)
     vec2 ndc = (vec2(pixelCoords) + vec2(0.5)) / vec2(screenSize) * 2.0 - 1.0;
-    ndc.y = -ndc.y;  // Flip Y-axis for correct orientation
+    ndc.y = -ndc.y;
 
-    // Unproject near and far planes to clip space
-    // Vulkan uses [0, 1] for depth, not [-1, 1] like OpenGL
-    vec4 clipNear = vec4(ndc, 0.0, 1.0);  // Near plane (z = 0 in Vulkan)
-    vec4 clipFar = vec4(ndc, 1.0, 1.0);    // Far plane (z = 1)
+    // Create two points: one on near plane, one on far plane
+    // Vulkan NDC Z range is [0, 1]
+    vec4 nearPoint = vec4(ndc, 0.0, 1.0);  // Near plane
+    vec4 farPoint = vec4(ndc, 1.0, 1.0);   // Far plane
 
-    // Transform to view space
-    vec4 viewNear = camera.invProjection * clipNear;
-    vec4 viewFar = camera.invProjection * clipFar;
-
-    // Perspective divide
-    viewNear /= viewNear.w;
-    viewFar /= viewFar.w;
+    // Unproject through inverse projection
+    vec4 nearView = camera.invProjection * nearPoint;
+    vec4 farView = camera.invProjection * farPoint;
+    nearView /= nearView.w;
+    farView /= farView.w;
 
     // Transform to world space
-    vec4 worldNear = camera.invView * viewNear;
-    vec4 worldFar = camera.invView * viewFar;
+    vec3 nearWorld = (camera.invView * nearView).xyz;
+    vec3 farWorld = (camera.invView * farView).xyz;
 
-    // Calculate ray direction (from camera to far plane point)
-    return normalize(worldFar.xyz - worldNear.xyz);
+    // Ray direction from near to far
+    return normalize(farWorld - nearWorld);
 }
 
 // Calculate voxel face normal from hit position
@@ -264,30 +262,40 @@ uint getChildOctant(vec3 posInNode) {
 
 // Ray-AABB intersection helper
 // Returns (tEnter, tExit) for ray-box intersection, or (-1, -1) if no hit
+// Slab method ray-AABB intersection
 vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+    // Safe inverse: avoid division by near-zero
     vec3 invDir = vec3(
-        rayDir.x != 0.0 ? 1.0 / rayDir.x : 1e30,
-        rayDir.y != 0.0 ? 1.0 / rayDir.y : 1e30,
-        rayDir.z != 0.0 ? 1.0 / rayDir.z : 1e30);
+        abs(rayDir.x) > 1e-8 ? 1.0 / rayDir.x : 1e8 * sign(rayDir.x),
+        abs(rayDir.y) > 1e-8 ? 1.0 / rayDir.y : 1e8 * sign(rayDir.y),
+        abs(rayDir.z) > 1e-8 ? 1.0 / rayDir.z : 1e8 * sign(rayDir.z)
+    );
+
     vec3 t0 = (boxMin - rayOrigin) * invDir;
     vec3 t1 = (boxMax - rayOrigin) * invDir;
-    vec3 tmin = min(t0, t1);
-    vec3 tmax = max(t0, t1);
 
-    float tEnter = max(max(tmin.x, tmin.y), tmin.z);
-    float tExit = min(min(tmax.x, tmax.y), tmax.z);
+    vec3 tmin3 = min(t0, t1);
+    vec3 tmax3 = max(t0, t1);
 
-    if (tExit < 0.0 || tEnter > tExit) {
-        return vec2(-1.0, -1.0);  // No intersection
+    float tmin = max(max(tmin3.x, tmin3.y), tmin3.z);
+    float tmax = min(min(tmax3.x, tmax3.y), tmax3.z);
+
+    if (tmin > tmax || tmax < 0.0) {
+        return vec2(-1.0, -1.0);
     }
 
-    return vec2(max(tEnter, 0.0), tExit);
+    return vec2(max(tmin, 0.0), tmax);
 }
 
 // Full ESVO octree traversal (production algorithm)
 // Based on NVIDIA's Efficient Sparse Voxel Octree (Laine & Karras 2010)
 bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                           out vec3 hitColor, out vec3 hitNormal, out float hitT) {
+
+    // DEBUG: If we enter this function, show magenta
+    hitColor = vec3(1.0, 0.0, 1.0);
+    hitT = 0.0;
+    return true;
 
     // ESVO traversal state
     const int S_MAX = 23;
@@ -723,55 +731,37 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
 }
 
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
-    // DEBUG: Visualize ray direction
-    // If ray points toward -Z, it should have negative Z component
-    if (rayDir.z < 0.0) {
-        return vec4(0.0, 1.0, 1.0, 1.0);  // Cyan = ray pointing -Z (correct)
-    } else {
-        return vec4(1.0, 1.0, 0.0, 1.0);  // Yellow = ray pointing +Z (wrong)
-    }
-
     // Grid positioning in world space
-    // Camera at (0,0,3) with yaw=0 looks toward -Z
-    float halfGrid = float(camera.gridResolution) * 0.5;
-    vec3 gridWorldCenter = vec3(0.0, 0.0, -100.0);  // Place grid closer - centered at Z=-100
-    vec3 gridMin = gridWorldCenter - vec3(halfGrid);
-    vec3 gridMax = gridWorldCenter + vec3(halfGrid);
+    // Camera at (0,0,3) looking toward -Z
+    // Place 128^3 grid ENTIRELY IN FRONT of camera (in -Z direction)
+    float halfGrid = float(camera.gridResolution) * 0.5;  // 64
+    vec3 gridCenter = vec3(0.0, 0.0, -100.0);  // Center at Z=-100
+    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-64, -64, -164)
+    vec3 gridMax = gridCenter + vec3(halfGrid);  // (64, 64, -36)
 
+    // Ray bounce loop (currently single bounce)
     for (int bounce = 0; bounce < RAY_MAX_BOUNCES; ++bounce) {
         // Intersect ray with grid root AABB
         vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+
         if (gridT.x < 0.0) {
-            return vec4(BACKGROUND_COLOR, 1.0);  // Ray missed grid
+            return vec4(1.0, 0.0, 0.0, 1.0);  // Red = miss
         }
 
-        // DEBUG: Visualize grid hit
-        return vec4(1.0, 0.0, 1.0, 1.0);  // Magenta = grid hit test
+        // Hit! Show green
+        return vec4(0.0, 1.0, 0.0, 1.0);
 
-        // Compute parametric t-bounds for Revelles algorithm
-        // Transform grid intersection to normalized [0,1] space
-        vec3 invDir = vec3(
-            rayDir.x != 0.0 ? 1.0 / rayDir.x : 1e30,
-            rayDir.y != 0.0 ? 1.0 / rayDir.y : 1e30,
-            rayDir.z != 0.0 ? 1.0 / rayDir.z : 1e30
-        );
-        
-        vec3 t0 = (gridMin - rayOrigin) * invDir;
-        vec3 t1 = (gridMax - rayOrigin) * invDir;
-        
-        // Compute octant mask based on ray direction signs
-        // This XOR mask will flip octant indices to handle negative directions
+        // Compute octant mask for Revelles traversal
         uint octantMask = 0u;
-        if (rayDir.x < 0.0) { octantMask |= 1u; float tmp = t0.x; t0.x = t1.x; t1.x = tmp; }
-        if (rayDir.y < 0.0) { octantMask |= 2u; float tmp = t0.y; t0.y = t1.y; t1.y = tmp; }
-        if (rayDir.z < 0.0) { octantMask |= 4u; float tmp = t0.z; t0.z = t1.z; t1.z = tmp; }
-        
+        if (rayDir.x < 0.0) octantMask |= 1u;
+        if (rayDir.y < 0.0) octantMask |= 2u;
+        if (rayDir.z < 0.0) octantMask |= 4u;
+
         vec3 hitColor;
         vec3 hitNormal;
         float hitT;
-        
-        // Invoke ESVO octree traversal (simplified for Phase H baseline)
-        // Full ESVO algorithm with LOD and constant nodes in Phase I
+
+        // Invoke ESVO octree traversal
         if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax,
                                   hitColor, hitNormal, hitT)) {
             // Hit found - shade and return
@@ -784,9 +774,9 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
         // No hit this bounce
         break;
-    }  // End bounce loop
+    }
 
-    // No hit across bounces - return background
+    // No hit - return background
     return vec4(BACKGROUND_COLOR, 1.0);
 }
 

@@ -653,21 +653,27 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
-    // Position camera at origin
+    // Position camera slightly back from origin
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 0.0f);
-    // Yaw: -90° to look down -Z axis (forward), Pitch: 0° (level view)
-    // Camera forward = (cos(pitch)*cos(yaw), sin(pitch), cos(pitch)*sin(yaw))
-    // At yaw=-90°, pitch=0°: forward = (0, 0, -1) = -Z direction
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, -90.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+    // Yaw: 0° to look down -Z axis (forward), Pitch: 0° (level view)
+    // Camera forward = (cos(pitch)*sin(yaw), sin(pitch), -cos(pitch)*cos(yaw))
+    // At yaw=0°, pitch=0°: forward = (0, 0, -1) = -Z direction
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
     auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
     voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_RESOLUTION, 128u);
-    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("cornell"));
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));  // Fully solid grid for testing
+
+    // Enable logging for VoxelGridNode to see octree generation
+    if (auto* voxelLogger = voxelGrid->GetLogger()) {
+        voxelLogger->SetEnabled(true);
+        voxelLogger->SetTerminalOutput(true);
+    }
 
     mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
 

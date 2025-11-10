@@ -1,7 +1,7 @@
+#include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "Nodes/CameraNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanSwapChain.h"
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <cstring>
 
@@ -132,6 +132,17 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     // Compute inverse matrices
     glm::mat4 invProjection = glm::inverse(projection);
     glm::mat4 invView = glm::inverse(view);
+
+    // DEBUG: Log invView matrix once
+    static bool loggedInvView = false;
+    if (!loggedInvView) {
+        std::cout << "[CameraNode] Camera params: yaw=" << yaw << ", pitch=" << pitch << std::endl;
+        std::cout << "[CameraNode] Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
+        std::cout << "[CameraNode] forward = (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
+        std::cout << "[CameraNode] invView col2: (" << invView[0][2] << ", " << invView[1][2] << ", " << invView[2][2] << ")" << std::endl;
+        std::cout << "[CameraNode] -invView col2: (" << -invView[0][2] << ", " << -invView[1][2] << ", " << -invView[2][2] << ")" << std::endl;
+        loggedInvView = true;
+    }
 
     // Update uniform buffer
     CameraData cameraData;

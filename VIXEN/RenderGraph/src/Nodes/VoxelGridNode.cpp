@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include <cmath>
 #include <cstring>
+#include <fstream>
 
 using VIXEN::RenderGraph::VoxelGrid;
 using VIXEN::RenderGraph::SparseVoxelOctree;
@@ -73,14 +74,17 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     // Generate procedural voxel scene
+    std::cout << "[VoxelGridNode] Generating voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
     VoxelGrid grid(resolution);
     GenerateProceduralScene(grid);
 
     size_t voxelCount = resolution * resolution * resolution;
+    std::cout << "[VoxelGridNode] Generated " << voxelCount << " voxels, density=" << grid.GetDensityPercent() << "%" << std::endl;
     NODE_LOG_INFO("Generated " + std::to_string(voxelCount) + " voxels, density=" +
                   std::to_string(grid.GetDensityPercent()) + "%");
 
     // Build sparse voxel octree (ESVO format for 5× memory reduction)
+    std::cout << "[VoxelGridNode] Building ESVO octree..." << std::endl;
     SparseVoxelOctree octree;
     octree.BuildFromGrid(grid.GetData(), resolution, VIXEN::RenderGraph::NodeFormat::ESVO);
 
@@ -88,6 +92,9 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                        ? octree.GetESVONodes().size()
                        : octree.GetNodes().size();
 
+    std::cout << "[VoxelGridNode] Built ESVO octree: " << nodeCount << " nodes (8 bytes/node), "
+              << octree.GetBricks().size() << " bricks, compression="
+              << octree.GetCompressionRatio(resolution) << ":1" << std::endl;
     NODE_LOG_INFO("Built ESVO octree: " +
                   std::to_string(nodeCount) + " nodes (8 bytes/node), " +
                   std::to_string(octree.GetBricks().size()) + " bricks, " +
