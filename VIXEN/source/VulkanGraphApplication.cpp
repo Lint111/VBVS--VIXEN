@@ -667,7 +667,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Ray marching: Voxel grid parameters
     auto* voxelGrid = static_cast<VoxelGridNode*>(renderGraph->GetInstance(voxelGridNode));
     voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_RESOLUTION, 128u);
-    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("test"));  // Fully solid grid for testing
+    voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_SCENE_TYPE, std::string("cornell"));  // Cornell box scene
 
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {

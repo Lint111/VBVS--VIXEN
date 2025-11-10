@@ -92,27 +92,26 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 // Use proper unprojection through inverse matrices
 vec3 generateRayDirection(ivec2 pixelCoords, ivec2 screenSize) {
     // Convert pixel coords to NDC [-1, 1]
-    // Flip Y for Vulkan (Y+ down in framebuffer, up in NDC)
     vec2 ndc = (vec2(pixelCoords) + vec2(0.5)) / vec2(screenSize) * 2.0 - 1.0;
-    ndc.y = -ndc.y;
+    ndc.y = -ndc.y;  // Flip Y for Vulkan
 
-    // Create two points: one on near plane, one on far plane
-    // Vulkan NDC Z range is [0, 1]
-    vec4 nearPoint = vec4(ndc, 0.0, 1.0);  // Near plane
-    vec4 farPoint = vec4(ndc, 1.0, 1.0);   // Far plane
+    // Extract camera basis vectors from invView matrix
+    // invView transforms view space -> world space
+    // Columns are: right (X), up (Y), forward (Z), position (W)
+    vec3 right = camera.invView[0].xyz;
+    vec3 up = camera.invView[1].xyz;
+    vec3 forward = -camera.invView[2].xyz;  // Negate because +Z in view is backward
 
-    // Unproject through inverse projection
-    vec4 nearView = camera.invProjection * nearPoint;
-    vec4 farView = camera.invProjection * farPoint;
-    nearView /= nearView.w;
-    farView /= farView.w;
+    // For inverse projection matrix, the diagonal elements ARE tan(fov/2)
+    // invProjection[0][0] = aspect * tan(fov/2)
+    // invProjection[1][1] = tan(fov/2)
+    float tanHalfFov = camera.invProjection[1][1];
+    float aspectTanHalfFov = camera.invProjection[0][0];
 
-    // Transform to world space
-    vec3 nearWorld = (camera.invView * nearView).xyz;
-    vec3 farWorld = (camera.invView * farView).xyz;
+    // Construct ray direction in world space
+    vec3 rayDir = normalize(forward + ndc.x * aspectTanHalfFov * right + ndc.y * tanHalfFov * up);
 
-    // Ray direction from near to far
-    return normalize(farWorld - nearWorld);
+    return rayDir;
 }
 
 // Calculate voxel face normal from hit position
@@ -262,6 +261,38 @@ uint getChildOctant(vec3 posInNode) {
 
 // Ray-AABB intersection helper
 // Returns (tEnter, tExit) for ray-box intersection, or (-1, -1) if no hit
+// Optimized ray-AABB intersection (avoids division entirely)
+// Uses sign-aware multiplication instead of division by rayDir
+vec2 rayAABBIntersectionFast(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+    float tmin = 0.0;
+    float tmax = 1e30;
+
+    for (int i = 0; i < 3; ++i) {
+        float d = (i == 0) ? rayDir.x : (i == 1) ? rayDir.y : rayDir.z;
+        float o = (i == 0) ? rayOrigin.x : (i == 1) ? rayOrigin.y : rayOrigin.z;
+        float bmin = (i == 0) ? boxMin.x : (i == 1) ? boxMin.y : boxMin.z;
+        float bmax = (i == 0) ? boxMax.x : (i == 1) ? boxMax.y : boxMax.z;
+
+        if (abs(d) > 1e-8) {
+            float t1 = (bmin - o) / d;
+            float t2 = (bmax - o) / d;
+            tmin = max(tmin, min(t1, t2));
+            tmax = min(tmax, max(t1, t2));
+        } else {
+            // Ray parallel to slab - check if origin is inside
+            if (o < bmin || o > bmax) {
+                return vec2(-1.0, -1.0);
+            }
+        }
+    }
+
+    if (tmin > tmax || tmax < 0.0) {
+        return vec2(-1.0, -1.0);
+    }
+
+    return vec2(max(tmin, 0.0), tmax);
+}
+
 // Slab method ray-AABB intersection
 vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
     // Safe inverse: avoid division by near-zero
@@ -733,23 +764,21 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     // Grid positioning in world space
     // Camera at (0,0,3) looking toward -Z
-    // Place 128^3 grid ENTIRELY IN FRONT of camera (in -Z direction)
-    float halfGrid = float(camera.gridResolution) * 0.5;  // 64
-    vec3 gridCenter = vec3(0.0, 0.0, -100.0);  // Center at Z=-100
-    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-64, -64, -164)
-    vec3 gridMax = gridCenter + vec3(halfGrid);  // (64, 64, -36)
+    // Grid: 10x10x10 world units, centered, 20 units from camera
+    const float gridWorldSize = 10.0;
+    float halfGrid = gridWorldSize * 0.5;  // 5
+    vec3 gridCenter = vec3(0.0, 0.0, -20.0);  // Centered, pushed back
+    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-5, -5, -25)
+    vec3 gridMax = gridCenter + vec3(halfGrid);  // (5, 5, -15)
 
     // Ray bounce loop (currently single bounce)
     for (int bounce = 0; bounce < RAY_MAX_BOUNCES; ++bounce) {
         // Intersect ray with grid root AABB
-        vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+        vec2 gridT = rayAABBIntersectionFast(rayOrigin, rayDir, gridMin, gridMax);
 
-        if (gridT.x < 0.0) {
-            return vec4(1.0, 0.0, 0.0, 1.0);  // Red = miss
+        if (gridT.y < 0.0) {
+            break;  // Miss - exit to background
         }
-
-        // Hit! Show green
-        return vec4(0.0, 1.0, 0.0, 1.0);
 
         // Compute octant mask for Revelles traversal
         uint octantMask = 0u;
