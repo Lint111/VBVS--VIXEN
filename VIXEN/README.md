@@ -49,7 +49,7 @@ A production-quality Vulkan graphics engine featuring a **graph-based rendering 
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/VIXEN.git
+git clone https://github.com/lioryaari/VIXEN.git
 cd VIXEN
 
 # Generate build files
@@ -255,28 +255,36 @@ How do different Vulkan ray tracing/marching pipeline architectures affect rende
 
 ## Documentation
 
-### Memory Bank
-- `memory-bank/projectbrief.md` - Project overview and goals
-- `memory-bank/productContext.md` - Design philosophy and vision
-- `memory-bank/systemPatterns.md` - Architecture patterns (16+ patterns)
-- `memory-bank/techContext.md` - Technology stack and setup
-- `memory-bank/activeContext.md` - Current focus and recent changes
-- `memory-bank/progress.md` - Implementation status
+**📚 [Complete Documentation Index](DOCUMENTATION_INDEX.md)** - Full guide to all 90+ documentation files organized by topic
 
-### Technical Documentation
-- `documentation/cpp-programming-guidelins.md` - C++ coding standards
-- `documentation/Communication Guidelines.md` - Project communication style
-- `documentation/GraphArchitecture/` - 20+ render graph docs
-- `documentation/ShaderManagement/` - SPIRV reflection, SDI generation
-- `documentation/RayTracing/` - Hardware RT design (~150 pages)
-- `documentation/VoxelStructures/` - Octree design, GigaVoxels (~115 pages)
-- `documentation/Testing/` - Test scenes, automated testing
-- `documentation/Profiling/` - Performance profiling design
+### Quick Links
 
-### Setup Guides
-- `docs/VS_CODE_TESTING_SETUP.md` - Testing framework setup (~800 pages)
-- `docs/TEST_COVERAGE.md` - Coverage analysis (~400 pages)
-- `docs/CMAKE_BUILD_OPTIMIZATION.md` - Build optimizations (~600 pages)
+**Getting Started**:
+- [Project Brief](memory-bank/projectbrief.md) - Goals, scope, research context
+- [Product Context](memory-bank/productContext.md) - Design philosophy, research question
+- [System Patterns](memory-bank/systemPatterns.md) - 16+ architecture patterns
+- [Graph Architecture Start](documentation/GraphArchitecture/00-START-HERE.md) - Introduction to render graph
+
+**Core Systems**:
+- [Graph Architecture](documentation/GraphArchitecture/) - Node-based rendering (30+ docs, ~800 pages)
+- [Shader Management](documentation/ShaderManagement/) - SPIRV reflection, descriptor automation
+- [CashSystem](documentation/CashSystem/) - Persistent resource caching (9 cachers)
+- [EventBus](documentation/EventBus/) - Event-driven invalidation system
+
+**Research (Voxel Ray Tracing)**:
+- [Research Roadmap](documentation/ResearchPhases-ParallelTrack.md) - Phases H-N timeline
+- [Octree Design](documentation/VoxelStructures/OctreeDesign.md) - Sparse voxel octree
+- [Test Scenes](documentation/Testing/TestScenes.md) - Cornell Box, Cave, Urban Grid
+- [Performance Profiling](documentation/Profiling/PerformanceProfilerDesign.md) - Metrics & CSV export
+- [Hardware RT](documentation/RayTracing/HardwareRTDesign.md) - VK_KHR ray tracing pipeline
+- [Hybrid RTX](documentation/RayTracing/HybridRTX-SurfaceSkin-Architecture.md) - Advanced hybrid approach
+
+**Development**:
+- [C++ Coding Standards](documentation/Standards/cpp-programming-guidelins.md) - Required reading
+- [Build Optimizations](documentation/BuildSystem/CMAKE_BUILD_OPTIMIZATION.md) - Ccache, PCH, Ninja
+- [Communication Guidelines](documentation/Standards/Communication Guidelines.md) - Documentation style
+
+**Total**: ~3,200 pages across 90+ active files
 
 ## Performance Characteristics
 
@@ -302,7 +310,7 @@ For questions or collaboration inquiries, please open an issue.
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2025 [Your Name/Organization]
+Copyright (c) 2025 Lior Yaari
 
 ## Acknowledgments
 

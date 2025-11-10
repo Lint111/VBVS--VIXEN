@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Index
+
+**📚 [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Complete guide to all 90+ documentation files (~3,200 pages)
+
+Use this index to find architecture docs, implementation guides, research papers, and more. Files are organized by topic, difficulty level, and include recommended reading paths.
+
 ## Communication Style - MANDATORY
 
 **Read and follow `documentation/Communication Guidelines.md` for all communication.** Key principles:

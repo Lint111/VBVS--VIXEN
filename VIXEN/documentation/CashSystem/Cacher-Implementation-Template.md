@@ -371,10 +371,10 @@ cmake -S . -B build
 cmake --build build --config Debug --target CashSystem
 
 # Build full application
-cmake --build build --config Debug --target 7e_ShadersWithSPIRV
+cmake --build build --config Debug --target VIXEN
 
 # Run application
-cd binaries && ./7e_ShadersWithSPIRV.exe
+cd binaries && ./VIXEN.exe
 ```
 
 **Expected Log Output**:
