@@ -61,6 +61,9 @@ struct VisiblePoint {
 struct Frustum {
     vec4 planes[6];  // Each plane: (normal.xyz, distance)
     // Plane order: left, right, bottom, top, near, far
+    float thickness;  // Padding thickness (world units) for smooth edge falloff
+    // Purpose: Prevents visible artifacts at screen edges by creating
+    //          a smooth transition zone around the frustum
 };
 
 // Importance sampling context
@@ -86,8 +89,35 @@ struct PhotonMappingParams {
 // ============================================================================
 
 // Build frustum from inverse view-projection matrix
+// No padding (exact camera view)
 Frustum frustum_from_inverse_vp(mat4 inv_view_proj) {
+    return frustum_from_inverse_vp_padded(inv_view_proj, 0.0);
+}
+
+// Build frustum with padding/thickness for smooth edge falloff
+//
+// QUALITY IMPROVEMENT: Prevents visible artifacts at screen edges
+//
+// Without padding:
+//   ┌──────────────┐
+//   │   Screen     │  ← Photon weight drops sharply at edge
+//   └──────────────┘     Visible falloff artifacts!
+//
+// With padding (thickness = t):
+//   ┌──────────────┐  ← Inner frustum (weight = 1.0)
+//   │   Screen     │
+//   ├──────────────┤  ← Padding zone (weight = 1.0 → 0.0)
+//   │   Falloff    │     Smooth transition, no visible artifacts
+//   └──────────────┘  ← Outer boundary (weight = 0.0)
+//
+// Recommended thickness:
+//   - Small scenes: 0.5 - 1.0 units
+//   - Medium scenes: 2.0 - 5.0 units
+//   - Large scenes: 10.0 - 20.0 units
+//   - Rule of thumb: 5-10% of near plane distance
+Frustum frustum_from_inverse_vp_padded(mat4 inv_view_proj, float thickness) {
     Frustum f;
+    f.thickness = thickness;
 
     // Extract frustum corners in NDC, transform to world space
     vec4 corners_ndc[8] = vec4[8](
@@ -104,6 +134,8 @@ Frustum frustum_from_inverse_vp(mat4 inv_view_proj) {
     }
 
     // Compute plane equations (cross products of edges)
+    // Planes point inward (positive distance = inside)
+
     // Left plane: near-left-bottom, near-left-top, far-left-top
     vec3 p0 = corners_world[0];
     vec3 p1 = corners_world[2];
@@ -146,6 +178,17 @@ Frustum frustum_from_inverse_vp(mat4 inv_view_proj) {
     normal = normalize(cross(p1 - p0, p2 - p0));
     f.planes[5] = vec4(normal, -dot(normal, p0));
 
+    // Push planes outward by thickness to create padding zone
+    // This expands the frustum volume by 'thickness' units in all directions
+    if (thickness > EPSILON) {
+        for (int i = 0; i < 6; ++i) {
+            // Move plane outward along its normal
+            // plane: normal·x + d = 0
+            // new_plane: normal·x + (d - thickness) = 0
+            f.planes[i].w -= thickness;
+        }
+    }
+
     return f;
 }
 
@@ -170,12 +213,44 @@ float frustum_signed_distance(Frustum f, vec3 point) {
     return max_distance;
 }
 
-// Compute weight for point based on frustum proximity
-// Returns [0, 1]: 1.0 = inside frustum, 0.0 = far outside
-float frustum_weight(Frustum f, vec3 point, float falloff_distance) {
+// Compute weight for point based on frustum proximity with thickness
+// Returns [0, 1]: 1.0 = inside core frustum, smooth falloff in padding region
+//
+// Weight distribution:
+//   distance < 0 (inside):        weight = 1.0
+//   0 <= distance < thickness:    weight = smoothstep(1.0 → 0.0)
+//   distance >= thickness:        weight = 0.0
+//
+// This creates a smooth transition zone that prevents visible artifacts
+// at screen edges while maintaining full importance for visible photons
+float frustum_weight(Frustum f, vec3 point) {
+    float sd = frustum_signed_distance(f, point);
+
+    // Inside core frustum: full weight
+    if (sd <= 0.0) {
+        return 1.0;
+    }
+
+    // Outside padding zone: zero weight
+    if (f.thickness < EPSILON || sd >= f.thickness) {
+        return 0.0;
+    }
+
+    // Inside padding zone: smooth falloff
+    // Use smoothstep for C¹ continuity (smooth derivative)
+    float t = sd / f.thickness;  // [0, 1] in padding zone
+    return 1.0 - t * t * (3.0 - 2.0 * t);  // smoothstep falloff
+}
+
+// Legacy version with custom falloff distance
+// Deprecated: Use frustum_weight(f, point) with padded frustum instead
+float frustum_weight_custom_falloff(Frustum f, vec3 point, float falloff_distance) {
     float sd = frustum_signed_distance(f, point);
     if (sd <= 0.0) return 1.0;  // Inside
-    return exp(-sd / falloff_distance);  // Exponential falloff outside
+    if (falloff_distance < EPSILON) return 0.0;  // No falloff
+
+    // Exponential falloff
+    return exp(-sd / falloff_distance);
 }
 
 // ============================================================================
@@ -296,6 +371,8 @@ vec3 sample_direction_progressive_bias(
 // Sample direction with frustum bias (for photon tracing)
 // Early bounces: explore scene uniformly
 // Later bounces: concentrate photons towards visible regions
+//
+// Uses frustum thickness for smooth falloff - no hard edges!
 vec3 sample_direction_frustum_bias(
     vec3 surface_normal,
     vec3 current_position,
@@ -325,9 +402,13 @@ vec3 sample_direction_frustum_bias(
             candidate_dir = -candidate_dir;
         }
 
-        // Test point along ray (1 unit away)
-        vec3 test_point = current_position + candidate_dir * 1.0;
-        float weight = frustum_weight(frustum, test_point, 5.0);
+        // Test point along ray
+        // Use adaptive test distance based on scene scale
+        float test_distance = max(1.0, frustum.thickness * 2.0);
+        vec3 test_point = current_position + candidate_dir * test_distance;
+
+        // Use built-in thickness for smooth falloff
+        float weight = frustum_weight(frustum, test_point);
 
         if (weight > best_weight) {
             best_weight = weight;
