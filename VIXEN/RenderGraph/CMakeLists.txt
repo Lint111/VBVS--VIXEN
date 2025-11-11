@@ -65,6 +65,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
 # ============================================================================
 
 set(RENDERGRAPH_CORE_HEADERS
+    include/Core/AliasingEngine.h
     include/Core/ComputePerformanceLogger.h
     include/Core/DeferredDestruction.h
     include/Core/FieldExtractor.h
@@ -73,6 +74,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/IGraphCompilable.h
     include/Core/INodeWiring.h
     include/Core/InstanceGroup.h
+    include/Core/Logging.h
     include/Core/LoopManager.h
     include/Core/NodeInstance.h
     include/Core/NodeLogging.h
@@ -83,6 +85,8 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ResourceBudgetManager.h
     include/Core/ResourceDependencyTracker.h
     include/Core/ResourceLifetimeAnalyzer.h
+    include/Core/ResourcePool.h
+    include/Core/ResourceProfiler.h
     include/Core/SlotTask.h
     include/Core/StackResourceHandle.h
     include/Core/StackResourceTracker.h
@@ -96,6 +100,7 @@ set(RENDERGRAPH_CORE_HEADERS
 )
 
 set(RENDERGRAPH_CORE_SOURCES
+    src/Core/AliasingEngine.cpp
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
     src/Core/LoopManager.cpp
@@ -108,6 +113,8 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
     src/Core/ResourceLifetimeAnalyzer.cpp
+    src/Core/ResourcePool.cpp
+    src/Core/ResourceProfiler.cpp
     src/Core/ResourceVariant.cpp
     src/Core/SlotTask.cpp
     src/Core/StackResourceTracker.cpp
