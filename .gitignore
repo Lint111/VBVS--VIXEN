@@ -35,3 +35,4 @@
 *.vcxproj
 /VIXEN/build
 VIXEN/gatherer_test.txt
+build/
