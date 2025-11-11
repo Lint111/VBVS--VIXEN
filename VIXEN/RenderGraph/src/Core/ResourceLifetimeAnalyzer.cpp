@@ -121,7 +121,7 @@ void ResourceLifetimeAnalyzer::Clear() {
 // ============================================================================
 
 const ResourceTimeline* ResourceLifetimeAnalyzer::GetTimeline(
-    ResourceManagement::UnifiedRM_Base* resource
+    Resource* resource
 ) const {
     auto it = timelines_.find(resource);
     if (it != timelines_.end()) {
@@ -134,11 +134,11 @@ const ResourceTimeline* ResourceLifetimeAnalyzer::GetTimeline(
 // ALIASING ANALYSIS
 // ============================================================================
 
-std::vector<ResourceManagement::UnifiedRM_Base*>
+std::vector<Resource*>
 ResourceLifetimeAnalyzer::FindAliasingCandidates(
-    ResourceManagement::UnifiedRM_Base* resource
+    Resource* resource
 ) const {
-    std::vector<ResourceManagement::UnifiedRM_Base*> candidates;
+    std::vector<Resource*> candidates;
 
     auto it = timelines_.find(resource);
     if (it == timelines_.end()) {
@@ -163,12 +163,12 @@ ResourceLifetimeAnalyzer::FindAliasingCandidates(
     return candidates;
 }
 
-std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>>
+std::vector<std::vector<Resource*>>
 ResourceLifetimeAnalyzer::ComputeAliasingGroups() const {
-    std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>> groups;
+    std::vector<std::vector<Resource*>> groups;
 
     // Group resources by scope first (only alias within same scope)
-    std::unordered_map<LifetimeScope, std::vector<ResourceManagement::UnifiedRM_Base*>>
+    std::unordered_map<LifetimeScope, std::vector<Resource*>>
         scopeGroups;
 
     for (const auto& [resource, timeline] : timelines_) {
@@ -278,7 +278,7 @@ void ResourceLifetimeAnalyzer::PrintTimelines() const {
     LOG_INFO("");
 
     // Sort by birth index for readable output
-    std::vector<std::pair<ResourceManagement::UnifiedRM_Base*, ResourceTimeline>>
+    std::vector<std::pair<Resource*, ResourceTimeline>>
         sortedTimelines(timelines_.begin(), timelines_.end());
 
     std::sort(sortedTimelines.begin(), sortedTimelines.end(),
@@ -400,11 +400,11 @@ LifetimeScope ResourceLifetimeAnalyzer::DetermineScope(
     }
 }
 
-std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>>
+std::vector<std::vector<Resource*>>
 ResourceLifetimeAnalyzer::ComputeIntervalScheduling(
-    const std::vector<ResourceManagement::UnifiedRM_Base*>& resources
+    const std::vector<Resource*>& resources
 ) const {
-    std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>> groups;
+    std::vector<std::vector<Resource*>> groups;
 
     // Greedy interval scheduling algorithm
     // For each resource, try to fit into existing group that doesn't overlap
@@ -446,7 +446,7 @@ ResourceLifetimeAnalyzer::ComputeIntervalScheduling(
 }
 
 std::string ResourceLifetimeAnalyzer::GetResourceDebugName(
-    ResourceManagement::UnifiedRM_Base* resource
+    Resource* resource
 ) const {
     if (!resource) return "null";
 

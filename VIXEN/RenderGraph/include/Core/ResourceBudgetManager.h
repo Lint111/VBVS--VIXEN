@@ -5,8 +5,11 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <vector>
 #include <vulkan/vulkan.h>
 #include "../../ResourceManagement/include/ResourceManagement/UnifiedRM_TypeSafe.h"
+#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceTypeTraits.h"
 
 namespace Vixen::RenderGraph {
 
@@ -118,78 +121,65 @@ public:
     // ========================================================================
 
     /**
-     * @brief Resource key for identifying resources in the registry
+     * @brief Resource metadata for tracking allocations
      *
-     * Resources are identified by (owner node, slot index, array index) triple.
-     * This provides unique identification for all resources in the graph.
+     * Tracks metadata for each Resource* managed by URM.
+     * Resources are identified by Resource* identity (not by slot!).
      */
-    struct ResourceKey {
-        NodeInstance* owner;
-        uint32_t slotIndex;
-        uint32_t arrayIndex;
-
-        bool operator==(const ResourceKey& other) const {
-            return owner == other.owner &&
-                   slotIndex == other.slotIndex &&
-                   arrayIndex == other.arrayIndex;
-        }
-    };
-
-    struct ResourceKeyHash {
-        size_t operator()(const ResourceKey& key) const {
-            return std::hash<void*>{}(key.owner) ^
-                   (std::hash<uint32_t>{}(key.slotIndex) << 1) ^
-                   (std::hash<uint32_t>{}(key.arrayIndex) << 2);
-        }
+    struct ResourceMetadata {
+        Resource* resource;                                    // Back-pointer for validation
+        ResourceManagement::AllocStrategy strategy;
+        ResourceManagement::MemoryLocation location;
+        size_t allocatedBytes;
+        uint64_t allocationTimestamp;                          // For debugging/profiling
     };
 
     /**
-     * @brief Register a resource for unified tracking
+     * @brief Create and track a new resource (slot-agnostic!)
      *
-     * Called automatically when nodes write to ctx.Out() or explicitly via
-     * NodeInstance::CreateResource().
+     * This is the central resource creation API. All non-trivial allocations
+     * should go through this method for budget enforcement and lifetime tracking.
      *
-     * @param owner Owning node instance
-     * @param slotIndex Output slot index
-     * @param arrayIndex Array element index (0 for non-array slots)
-     * @param resourcePtr Pointer to resource storage
-     * @param strategy Allocation strategy hint
+     * The created Resource is owned by URM (stored in resource pool).
+     * Nodes receive Resource* which they can populate and wire to slots.
+     *
+     * @param descriptor Resource descriptor (ImageDescriptor, BufferDescriptor, etc.)
+     * @param strategy Allocation strategy (Stack/Heap/Device/Automatic)
+     * @return Resource* owned by URM, ready to be populated
+     *
+     * Usage:
+     * @code
+     * BufferDescriptor desc{.size = 1024, ...};
+     * Resource* buffer = budgetManager->CreateResource<VkBuffer>(desc, AllocStrategy::Device);
+     * // ... populate buffer ...
+     * // ... wire to slots via ctx.Out() ...
+     * @endcode
      */
     template<typename T>
-    void RegisterResource(
-        NodeInstance* owner,
-        uint32_t slotIndex,
-        uint32_t arrayIndex,
-        T* resourcePtr,
+    Resource* CreateResource(
+        const typename ResourceTypeTraits<T>::DescriptorT& descriptor,
         ResourceManagement::AllocStrategy strategy = ResourceManagement::AllocStrategy::Automatic
-    ) {
-        if (!owner || !resourcePtr) return;
-
-        ResourceKey key{owner, slotIndex, arrayIndex};
-
-        // Create UnifiedRM wrapper for this resource
-        // Note: Using LocalRM since we don't have owner class member pointer
-        auto rm = std::make_unique<ResourceManagement::LocalRM<T>>(strategy);
-
-        // Store in registry
-        resourceRegistry_[key] = std::move(rm);
-    }
+    );
 
     /**
-     * @brief Get tracked resource for lifetime analysis
+     * @brief Get metadata for a resource
      *
-     * Used by ResourceLifetimeAnalyzer to compute aliasing timelines.
+     * Used for budgeting, reporting, and lifetime analysis.
      *
-     * @param owner Owning node instance
-     * @param slotIndex Output slot index
-     * @param arrayIndex Array element index
-     * @return UnifiedRM_Base pointer, or nullptr if not registered
+     * @param resource Resource pointer
+     * @return ResourceMetadata pointer, or nullptr if not tracked
      */
-    ResourceManagement::UnifiedRM_Base* GetResource(
-        NodeInstance* owner,
-        uint32_t slotIndex,
-        uint32_t arrayIndex = 0
-    ) const;
+    const ResourceMetadata* GetResourceMetadata(Resource* resource) const;
+
+    /**
+     * @brief Update resource size after handle is set
+     *
+     * Called when the actual Vulkan/resource handle is created and size is known.
+     *
+     * @param resource Resource pointer
+     * @param newSize Actual allocated size in bytes
+     */
+    void UpdateResourceSize(Resource* resource, size_t newSize);
 
     /**
      * @brief Get all tracked resources (for reporting)
@@ -227,15 +217,18 @@ private:
     std::unordered_map<std::string, ResourceBudget> customBudgets_;
     std::unordered_map<std::string, BudgetResourceUsage> customUsage_;
 
-    // Phase H: Unified resource registry
-    std::unordered_map<ResourceKey, std::unique_ptr<ResourceManagement::UnifiedRM_Base>, ResourceKeyHash> resourceRegistry_;
+    // Phase H: Resource pool (URM owns all Resources)
+    std::vector<std::unique_ptr<Resource>> resources_;
+
+    // Phase H: Resource registry (track by Resource* identity, NOT by slot!)
+    std::unordered_map<Resource*, ResourceMetadata> resourceRegistry_;
 
     // Phase H: Aliasing pools
     struct AliasingPool {
         std::string poolID;
         size_t totalSize;
         void* sharedMemory;
-        std::vector<ResourceManagement::UnifiedRM_Base*> aliasedResources;
+        std::vector<Resource*> aliasedResources;                // Track by Resource*!
         std::vector<std::pair<uint32_t, uint32_t>> lifetimes;  // (birth, death) indices
     };
     std::unordered_map<std::string, AliasingPool> aliasingPools_;
@@ -244,6 +237,98 @@ private:
     bool TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes);
     void RecordAllocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
     void RecordDeallocationImpl(BudgetResourceUsage* usage, uint64_t bytes);
+
+    // Helper to determine memory location from type and strategy
+    template<typename T>
+    ResourceManagement::MemoryLocation DetermineMemoryLocation(
+        ResourceManagement::AllocStrategy strategy
+    ) const;
+
+    // Helper to estimate size from descriptor
+    template<typename T>
+    size_t EstimateSize(const typename ResourceTypeTraits<T>::DescriptorT& descriptor) const;
 };
+
+// ============================================================================
+// TEMPLATE IMPLEMENTATIONS
+// ============================================================================
+
+template<typename T>
+Resource* ResourceBudgetManager::CreateResource(
+    const typename ResourceTypeTraits<T>::DescriptorT& descriptor,
+    ResourceManagement::AllocStrategy strategy
+) {
+    // Create Resource object with descriptor
+    auto resource = Resource::Create<T>(descriptor);
+
+    // Store in pool (URM owns it)
+    Resource* resPtr = resource.get();
+    resources_.push_back(std::move(resource));
+
+    // Determine memory location based on type and strategy
+    auto location = DetermineMemoryLocation<T>(strategy);
+
+    // Estimate size from descriptor
+    size_t estimatedSize = EstimateSize<T>(descriptor);
+
+    // Track metadata
+    ResourceMetadata metadata{
+        .resource = resPtr,
+        .strategy = strategy,
+        .location = location,
+        .allocatedBytes = estimatedSize,
+        .allocationTimestamp = 0  // TODO: Add timestamp when needed
+    };
+    resourceRegistry_[resPtr] = metadata;
+
+    // Record budget allocation
+    BudgetResourceType budgetType = (location == ResourceManagement::MemoryLocation::DeviceLocal)
+        ? BudgetResourceType::DeviceMemory
+        : BudgetResourceType::HostMemory;
+
+    RecordAllocation(budgetType, estimatedSize);
+
+    return resPtr;
+}
+
+template<typename T>
+ResourceManagement::MemoryLocation ResourceBudgetManager::DetermineMemoryLocation(
+    ResourceManagement::AllocStrategy strategy
+) const {
+    // Simple heuristic for now
+    // TODO: Make this more sophisticated based on resource type
+    if (strategy == ResourceManagement::AllocStrategy::Device) {
+        return ResourceManagement::MemoryLocation::DeviceLocal;
+    } else if (strategy == ResourceManagement::AllocStrategy::Stack ||
+               strategy == ResourceManagement::AllocStrategy::Heap) {
+        return ResourceManagement::MemoryLocation::HostVisible;
+    }
+
+    // Automatic: decide based on type
+    // Vulkan handles typically go to device memory
+    return ResourceManagement::MemoryLocation::DeviceLocal;
+}
+
+template<typename T>
+size_t ResourceBudgetManager::EstimateSize(
+    const typename ResourceTypeTraits<T>::DescriptorT& descriptor
+) const {
+    // Estimate size from descriptor
+    // For images: width * height * bytesPerPixel
+    // For buffers: size field
+    // For handles: minimal overhead
+
+    if constexpr (std::is_same_v<typename ResourceTypeTraits<T>::DescriptorT, ImageDescriptor>) {
+        // Image: estimate based on dimensions and format
+        uint32_t bytesPerPixel = 4; // Default RGBA8
+        return descriptor.width * descriptor.height * bytesPerPixel;
+    } else if constexpr (std::is_same_v<typename ResourceTypeTraits<T>::DescriptorT, BufferDescriptor>) {
+        // Buffer: use size field
+        return descriptor.size;
+    } else {
+        // Handle types: minimal tracking overhead
+        return sizeof(T);
+    }
+}
 
 } // namespace Vixen::RenderGraph

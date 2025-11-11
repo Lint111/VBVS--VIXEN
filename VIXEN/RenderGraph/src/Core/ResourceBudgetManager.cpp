@@ -259,19 +259,41 @@ void ResourceBudgetManager::RecordDeallocationImpl(BudgetResourceUsage* usage, u
 // PHASE H: UNIFIED RESOURCE REGISTRY IMPLEMENTATION
 // ============================================================================
 
-ResourceManagement::UnifiedRM_Base* ResourceBudgetManager::GetResource(
-    NodeInstance* owner,
-    uint32_t slotIndex,
-    uint32_t arrayIndex
+const ResourceBudgetManager::ResourceMetadata* ResourceBudgetManager::GetResourceMetadata(
+    Resource* resource
 ) const {
-    ResourceKey key{owner, slotIndex, arrayIndex};
-
-    auto it = resourceRegistry_.find(key);
+    auto it = resourceRegistry_.find(resource);
     if (it != resourceRegistry_.end()) {
-        return it->second.get();
+        return &it->second;
     }
 
     return nullptr;
+}
+
+void ResourceBudgetManager::UpdateResourceSize(Resource* resource, size_t newSize) {
+    auto it = resourceRegistry_.find(resource);
+    if (it == resourceRegistry_.end()) {
+        return; // Resource not tracked
+    }
+
+    auto& metadata = it->second;
+    size_t oldSize = metadata.allocatedBytes;
+
+    // Update metadata
+    metadata.allocatedBytes = newSize;
+
+    // Update budget tracking
+    BudgetResourceType budgetType = (metadata.location == ResourceManagement::MemoryLocation::DeviceLocal)
+        ? BudgetResourceType::DeviceMemory
+        : BudgetResourceType::HostMemory;
+
+    // Adjust budget (deallocate old, allocate new)
+    if (oldSize > 0) {
+        RecordDeallocation(budgetType, oldSize);
+    }
+    if (newSize > 0) {
+        RecordAllocation(budgetType, newSize);
+    }
 }
 
 void ResourceBudgetManager::UpdateAliasingPoolsFromTopology(
@@ -295,7 +317,10 @@ void ResourceBudgetManager::UpdateAliasingPoolsFromTopology(
         // Find maximum size needed in this group
         size_t maxSize = 0;
         for (auto* resource : group) {
-            maxSize = (std::max)(maxSize, resource->GetAllocatedBytes());
+            const auto* metadata = GetResourceMetadata(resource);
+            if (metadata) {
+                maxSize = (std::max)(maxSize, metadata->allocatedBytes);
+            }
         }
 
         // TODO: Allocate shared device memory
@@ -310,13 +335,8 @@ void ResourceBudgetManager::UpdateAliasingPoolsFromTopology(
                 pool.aliasedResources.push_back(resource);
                 pool.lifetimes.push_back({timeline->birthIndex, timeline->deathIndex});
 
-                // Set metadata on resource
-                try {
-                    resource->SetMetadata("aliased_memory", static_cast<uint64_t>(0));  // Placeholder
-                    resource->SetMetadata("aliasing_pool", pool.poolID);
-                } catch (...) {
-                    // Metadata might not be supported
-                }
+                // TODO: Mark resource as aliased in metadata
+                // (Could add aliasingPoolID field to ResourceMetadata)
             }
         }
 
@@ -343,7 +363,10 @@ void ResourceBudgetManager::PrintAliasingReport() const {
         totalMemory += pool.totalSize;
 
         for (auto* resource : pool.aliasedResources) {
-            memoryIfNoAliasing += resource->GetAllocatedBytes();
+            const auto* metadata = GetResourceMetadata(resource);
+            if (metadata) {
+                memoryIfNoAliasing += metadata->allocatedBytes;
+            }
         }
     }
 

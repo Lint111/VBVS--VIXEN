@@ -88,19 +88,11 @@ Resource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const
     return nullptr;
 }
 
-ResourceManagement::UnifiedRM_Base* NodeInstance::GetOutputResource(uint32_t slotIndex) const {
-    if (!owningGraph) {
-        return nullptr;
-    }
-
-    // Query central UnifiedBudgetManager for resource at this node's output slot
-    // The resource registry is keyed by (NodeInstance*, slotIndex, arrayIndex)
-    // For now, we query array index 0 (non-array case)
-    return owningGraph->GetBudgetManager()->GetResource(
-        const_cast<NodeInstance*>(this),
-        slotIndex,
-        0  // arrayIndex - TODO: support array outputs
-    );
+Resource* NodeInstance::GetOutputResource(uint32_t slotIndex) const {
+    // Simply return the Resource* from the bundle slot
+    // Resources are stored in bundles[arrayIndex].outputs[slotIndex]
+    // For now, use arrayIndex = 0 (non-array case)
+    return GetOutput(slotIndex, 0);
 }
 
 void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {

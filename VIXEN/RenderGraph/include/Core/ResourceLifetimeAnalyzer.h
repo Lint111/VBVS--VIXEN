@@ -29,7 +29,7 @@ enum class LifetimeScope : uint8_t {
  * derived from GraphTopology execution order.
  */
 struct ResourceTimeline {
-    ResourceManagement::UnifiedRM_Base* resource = nullptr;
+    Resource* resource = nullptr;
     NodeInstance* producer = nullptr;
     std::vector<NodeInstance*> consumers;
 
@@ -156,13 +156,13 @@ public:
      * @return Pointer to timeline, or nullptr if not tracked
      */
     const ResourceTimeline* GetTimeline(
-        ResourceManagement::UnifiedRM_Base* resource
+        Resource* resource
     ) const;
 
     /**
      * @brief Get all tracked timelines
      */
-    const std::unordered_map<ResourceManagement::UnifiedRM_Base*, ResourceTimeline>&
+    const std::unordered_map<Resource*, ResourceTimeline>&
     GetAllTimelines() const {
         return timelines_;
     }
@@ -187,8 +187,8 @@ public:
      * @param resource Resource to find aliasing candidates for
      * @return Vector of resources that can share memory
      */
-    std::vector<ResourceManagement::UnifiedRM_Base*> FindAliasingCandidates(
-        ResourceManagement::UnifiedRM_Base* resource
+    std::vector<Resource*> FindAliasingCandidates(
+        Resource* resource
     ) const;
 
     /**
@@ -201,7 +201,7 @@ public:
      *
      * @return Vector of aliasing groups (each group = vector of resources)
      */
-    std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>>
+    std::vector<std::vector<Resource*>>
     ComputeAliasingGroups() const;
 
     /**
@@ -246,7 +246,7 @@ private:
     // ========================================================================
 
     /// Map: Resource → Timeline
-    std::unordered_map<ResourceManagement::UnifiedRM_Base*, ResourceTimeline> timelines_;
+    std::unordered_map<Resource*, ResourceTimeline> timelines_;
 
     /// Cached execution order (for index lookups)
     std::vector<NodeInstance*> executionOrder_;
@@ -287,16 +287,16 @@ private:
      * @param resources Resources to group
      * @return Vector of aliasing groups
      */
-    std::vector<std::vector<ResourceManagement::UnifiedRM_Base*>>
+    std::vector<std::vector<Resource*>>
     ComputeIntervalScheduling(
-        const std::vector<ResourceManagement::UnifiedRM_Base*>& resources
+        const std::vector<Resource*>& resources
     ) const;
 
     /**
      * @brief Get debug name for a resource (type + ID)
      */
     std::string GetResourceDebugName(
-        ResourceManagement::UnifiedRM_Base* resource
+        Resource* resource
     ) const;
 
     /**
