@@ -1,4 +1,6 @@
 #include "Core/ResourceBudgetManager.h"
+#include "Core/NodeInstance.h"
+#include "Core/ResourceLifetimeAnalyzer.h"
 #include <algorithm>
 #include <limits>
 
@@ -250,6 +252,113 @@ void ResourceBudgetManager::RecordDeallocationImpl(BudgetResourceUsage* usage, u
 
     if (usage->allocationCount > 0) {
         usage->allocationCount--;
+    }
+}
+
+// ============================================================================
+// PHASE H: UNIFIED RESOURCE REGISTRY IMPLEMENTATION
+// ============================================================================
+
+ResourceManagement::UnifiedRM_Base* ResourceBudgetManager::GetResource(
+    NodeInstance* owner,
+    uint32_t slotIndex,
+    uint32_t arrayIndex
+) const {
+    ResourceKey key{owner, slotIndex, arrayIndex};
+
+    auto it = resourceRegistry_.find(key);
+    if (it != resourceRegistry_.end()) {
+        return it->second.get();
+    }
+
+    return nullptr;
+}
+
+void ResourceBudgetManager::UpdateAliasingPoolsFromTopology(
+    const ResourceLifetimeAnalyzer& analyzer
+) {
+    // Clear existing pools
+    aliasingPools_.clear();
+
+    // Get computed aliasing groups from lifetime analyzer
+    auto groups = analyzer.ComputeAliasingGroups();
+
+    for (size_t groupIdx = 0; groupIdx < groups.size(); ++groupIdx) {
+        const auto& group = groups[groupIdx];
+
+        if (group.size() < 2) continue; // No aliasing benefit for single resource
+
+        // Create aliasing pool
+        AliasingPool pool;
+        pool.poolID = "auto_alias_" + std::to_string(groupIdx);
+
+        // Find maximum size needed in this group
+        size_t maxSize = 0;
+        for (auto* resource : group) {
+            maxSize = (std::max)(maxSize, resource->GetAllocatedBytes());
+        }
+
+        // TODO: Allocate shared device memory
+        // For now, just track the pool structure
+        pool.totalSize = maxSize;
+        pool.sharedMemory = nullptr;  // Will be allocated when needed
+
+        // Register resources in this pool
+        for (auto* resource : group) {
+            const auto* timeline = analyzer.GetTimeline(resource);
+            if (timeline) {
+                pool.aliasedResources.push_back(resource);
+                pool.lifetimes.push_back({timeline->birthIndex, timeline->deathIndex});
+
+                // Set metadata on resource
+                try {
+                    resource->SetMetadata("aliased_memory", static_cast<uint64_t>(0));  // Placeholder
+                    resource->SetMetadata("aliasing_pool", pool.poolID);
+                } catch (...) {
+                    // Metadata might not be supported
+                }
+            }
+        }
+
+        aliasingPools_[pool.poolID] = pool;
+    }
+}
+
+void ResourceBudgetManager::PrintResourceReport() const {
+    // TODO: Implement resource tracking report
+    // Will print all tracked resources, their sizes, and memory locations
+}
+
+void ResourceBudgetManager::PrintAliasingReport() const {
+    if (aliasingPools_.empty()) {
+        return;
+    }
+
+    size_t totalAliased = 0;
+    size_t totalMemory = 0;
+    size_t memoryIfNoAliasing = 0;
+
+    for (const auto& [poolID, pool] : aliasingPools_) {
+        totalAliased += pool.aliasedResources.size();
+        totalMemory += pool.totalSize;
+
+        for (auto* resource : pool.aliasedResources) {
+            memoryIfNoAliasing += resource->GetAllocatedBytes();
+        }
+    }
+
+    if (memoryIfNoAliasing > 0) {
+        float savings = 100.0f * (1.0f -
+            static_cast<float>(totalMemory) / static_cast<float>(memoryIfNoAliasing));
+
+        // TODO: Use proper logging system
+        // For now, basic output structure
+        // LOG_INFO("=== Automatic Aliasing Report ===");
+        // LOG_INFO("Aliasing Pools: " + std::to_string(aliasingPools_.size()));
+        // LOG_INFO("Aliased Resources: " + std::to_string(totalAliased));
+        // LOG_INFO("Memory Allocated: " + FormatBytes(totalMemory));
+        // LOG_INFO("Memory If No Aliasing: " + FormatBytes(memoryIfNoAliasing));
+        // LOG_INFO("Savings: " + std::to_string(static_cast<int>(savings)) + "%");
     }
 }
 

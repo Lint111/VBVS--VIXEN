@@ -4,9 +4,15 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include <vulkan/vulkan.h>
+#include "../../ResourceManagement/include/ResourceManagement/UnifiedRM_TypeSafe.h"
 
 namespace Vixen::RenderGraph {
+
+// Forward declarations
+class NodeInstance;
+class ResourceLifetimeAnalyzer;
 
 /**
  * @brief Resource type categories for budget tracking
@@ -107,6 +113,111 @@ public:
     void ResetUsage(BudgetResourceType type);
     void ResetUsage(const std::string& customType);
 
+    // ========================================================================
+    // PHASE H: UNIFIED RESOURCE REGISTRY
+    // ========================================================================
+
+    /**
+     * @brief Resource key for identifying resources in the registry
+     *
+     * Resources are identified by (owner node, slot index, array index) triple.
+     * This provides unique identification for all resources in the graph.
+     */
+    struct ResourceKey {
+        NodeInstance* owner;
+        uint32_t slotIndex;
+        uint32_t arrayIndex;
+
+        bool operator==(const ResourceKey& other) const {
+            return owner == other.owner &&
+                   slotIndex == other.slotIndex &&
+                   arrayIndex == other.arrayIndex;
+        }
+    };
+
+    struct ResourceKeyHash {
+        size_t operator()(const ResourceKey& key) const {
+            return std::hash<void*>{}(key.owner) ^
+                   (std::hash<uint32_t>{}(key.slotIndex) << 1) ^
+                   (std::hash<uint32_t>{}(key.arrayIndex) << 2);
+        }
+    };
+
+    /**
+     * @brief Register a resource for unified tracking
+     *
+     * Called automatically when nodes write to ctx.Out() or explicitly via
+     * NodeInstance::CreateResource().
+     *
+     * @param owner Owning node instance
+     * @param slotIndex Output slot index
+     * @param arrayIndex Array element index (0 for non-array slots)
+     * @param resourcePtr Pointer to resource storage
+     * @param strategy Allocation strategy hint
+     */
+    template<typename T>
+    void RegisterResource(
+        NodeInstance* owner,
+        uint32_t slotIndex,
+        uint32_t arrayIndex,
+        T* resourcePtr,
+        ResourceManagement::AllocStrategy strategy = ResourceManagement::AllocStrategy::Automatic
+    ) {
+        if (!owner || !resourcePtr) return;
+
+        ResourceKey key{owner, slotIndex, arrayIndex};
+
+        // Create UnifiedRM wrapper for this resource
+        // Note: Using LocalRM since we don't have owner class member pointer
+        auto rm = std::make_unique<ResourceManagement::LocalRM<T>>(strategy);
+
+        // Store in registry
+        resourceRegistry_[key] = std::move(rm);
+    }
+
+    /**
+     * @brief Get tracked resource for lifetime analysis
+     *
+     * Used by ResourceLifetimeAnalyzer to compute aliasing timelines.
+     *
+     * @param owner Owning node instance
+     * @param slotIndex Output slot index
+     * @param arrayIndex Array element index
+     * @return UnifiedRM_Base pointer, or nullptr if not registered
+     */
+    ResourceManagement::UnifiedRM_Base* GetResource(
+        NodeInstance* owner,
+        uint32_t slotIndex,
+        uint32_t arrayIndex = 0
+    ) const;
+
+    /**
+     * @brief Get all tracked resources (for reporting)
+     */
+    size_t GetTrackedResourceCount() const { return resourceRegistry_.size(); }
+
+    /**
+     * @brief Update aliasing pools from topology analysis
+     *
+     * Creates memory aliasing pools based on ResourceLifetimeAnalyzer's
+     * computed non-overlapping resource lifetimes.
+     *
+     * Called automatically from RenderGraph::Compile() after topology sort.
+     *
+     * @param analyzer Resource lifetime analyzer with computed timelines
+     */
+    void UpdateAliasingPoolsFromTopology(const ResourceLifetimeAnalyzer& analyzer);
+
+    /**
+     * @brief Print resource tracking report
+     */
+    void PrintResourceReport() const;
+
+    /**
+     * @brief Print aliasing efficiency report
+     */
+    void PrintAliasingReport() const;
+
 private:
     // Standard resource type budgets
     std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
@@ -115,6 +226,19 @@ private:
     // Custom/user-defined resource budgets
     std::unordered_map<std::string, ResourceBudget> customBudgets_;
     std::unordered_map<std::string, BudgetResourceUsage> customUsage_;
+
+    // Phase H: Unified resource registry
+    std::unordered_map<ResourceKey, std::unique_ptr<ResourceManagement::UnifiedRM_Base>, ResourceKeyHash> resourceRegistry_;
+
+    // Phase H: Aliasing pools
+    struct AliasingPool {
+        std::string poolID;
+        size_t totalSize;
+        void* sharedMemory;
+        std::vector<ResourceManagement::UnifiedRM_Base*> aliasedResources;
+        std::vector<std::pair<uint32_t, uint32_t>> lifetimes;  // (birth, death) indices
+    };
+    std::unordered_map<std::string, AliasingPool> aliasingPools_;
 
     // Internal helpers
     bool TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes);

@@ -89,18 +89,18 @@ Resource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const
 }
 
 ResourceManagement::UnifiedRM_Base* NodeInstance::GetOutputResource(uint32_t slotIndex) const {
-    // TODO: Implement when nodes migrate to UnifiedRM system
-    // For now, nodes use Resource* (variant-based) instead of UnifiedRM*
-    // This method will be properly implemented once nodes start wrapping
-    // their outputs in UnifiedRM for automatic lifetime tracking
+    if (!owningGraph) {
+        return nullptr;
+    }
 
-    // Future implementation sketch:
-    // 1. Check if output at slotIndex is UnifiedRM-wrapped
-    // 2. Extract UnifiedRM_Base* pointer
-    // 3. Return for lifetime analysis
-
-    // Current: Return nullptr (nodes don't use UnifiedRM yet)
-    return nullptr;
+    // Query central UnifiedBudgetManager for resource at this node's output slot
+    // The resource registry is keyed by (NodeInstance*, slotIndex, arrayIndex)
+    // For now, we query array index 0 (non-array case)
+    return owningGraph->GetBudgetManager()->GetResource(
+        const_cast<NodeInstance*>(this),
+        slotIndex,
+        0  // arrayIndex - TODO: support array outputs
+    );
 }
 
 void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
