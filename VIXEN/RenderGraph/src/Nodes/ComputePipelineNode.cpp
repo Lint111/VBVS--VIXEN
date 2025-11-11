@@ -37,11 +37,13 @@ ComputePipelineNode::ComputePipelineNode(
 void ComputePipelineNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Graph-scope initialization...");
 
-    // Create specialized performance logger and register to node logger (disabled by default)
-    perfLogger_ = std::make_unique<ComputePerformanceLogger>(instanceName);
-    perfLogger_->SetEnabled(false);  // Disabled by default
+    // Create specialized performance logger (disabled by default)
+    perfLogger_ = std::make_shared<ComputePerformanceLogger>(instanceName);
+    perfLogger_->SetEnabled(false);  // Enable manually when needed for debugging
+
+    // Register to node logger hierarchy for shared ownership
     if (nodeLogger) {
-        nodeLogger->AddChild(perfLogger_.get());
+        nodeLogger->AddChild(perfLogger_);
     }
 
     NODE_LOG_INFO("[ComputePipelineNode] Setup complete");
@@ -223,9 +225,8 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     pipelineParams.workgroupSizeY = workgroupY;
     pipelineParams.workgroupSizeZ = workgroupZ;
 
-#if VIXEN_DEBUG_BUILD
+    // Performance timing (only logged if perfLogger_ is enabled)
     auto pipelineCreateStart = std::chrono::high_resolution_clock::now();
-#endif
 
     pipelineWrapper_ = computeCacher->GetOrCreate(pipelineParams);
     shaderModule_ = shaderModule;  // Store for cleanup
@@ -234,7 +235,6 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     pipelineLayout_ = pipelineWrapper_->pipelineLayoutWrapper->layout;
     pipelineCache_ = pipelineWrapper_->cache;
 
-#if VIXEN_DEBUG_BUILD
     auto pipelineCreateEnd = std::chrono::high_resolution_clock::now();
     float pipelineCreateTimeMs = std::chrono::duration<float, std::milli>(pipelineCreateEnd - pipelineCreateStart).count();
 
@@ -245,7 +245,6 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
             pipelineCreateTimeMs
         );
     }
-#endif
 
     NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compute pipeline created successfully");
     NODE_LOG_INFO("[ComputePipelineNode::CompileImpl]   Pipeline: " +

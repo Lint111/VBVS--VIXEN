@@ -80,10 +80,8 @@ private:
     VkPipelineLayout lastPipelineLayout = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> lastDescriptorSets;
 
-#if VIXEN_DEBUG_BUILD
-    // Performance logging (debug only)
-    std::unique_ptr<class ComputePerformanceLogger> perfLogger_;
-#endif
+    // Performance logging (disabled by default, enable as needed)
+    std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
 };
 
 } // namespace Vixen::RenderGraph

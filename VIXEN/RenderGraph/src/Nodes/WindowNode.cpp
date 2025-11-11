@@ -279,6 +279,15 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 UINT newWidth = LOWORD(lParam);
                 UINT newHeight = HIWORD(lParam);
 
+                // Debug: Log ALL WM_SIZE events to detect spurious calls
+                static int wmSizeCounter = 0;
+                if (wmSizeCounter++ < 50) {  // Limit spam
+                    NODE_LOG_DEBUG_OBJ(windowNode, "[WindowNode] WM_SIZE #" + std::to_string(wmSizeCounter) +
+                                      ": " + std::to_string(newWidth) + "x" + std::to_string(newHeight) +
+                                      " (cached: " + std::to_string(windowNode->width) + "x" + std::to_string(windowNode->height) +
+                                      ", isResizing=" + std::to_string(windowNode->isResizing) + ")");
+                }
+
                 // If not actively resizing (e.g., maximize/restore), queue resize event
                 if (!windowNode->isResizing && (newWidth != windowNode->width || newHeight != windowNode->height)) {
                     NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - queuing resize event: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));

@@ -78,7 +78,7 @@ private:
     // Shared wrappers from cachers
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
     // Performance logging (disabled by default)
-    std::unique_ptr<class ComputePerformanceLogger> perfLogger_;
+    std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
 };
 
 } // namespace Vixen::RenderGraph

@@ -40,13 +40,14 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
     // Graph-scope initialization only (no input access)
     NODE_LOG_INFO("[ComputeDispatchNode::SetupImpl] Graph-scope initialization");
 
-#if VIXEN_DEBUG_BUILD
-    // Create specialized performance logger and register to node logger
-    perfLogger_ = std::make_unique<ComputePerformanceLogger>(instanceName);
+    // Create specialized performance logger (disabled by default)
+    perfLogger_ = std::make_shared<ComputePerformanceLogger>(instanceName);
+    perfLogger_->SetEnabled(false);  // Enable manually when needed for debugging
+
+    // Register to node logger hierarchy for shared ownership
     if (nodeLogger) {
-        nodeLogger->AddChild(perfLogger_.get());
+        nodeLogger->AddChild(perfLogger_);
     }
-#endif
 }
 
 // ============================================================================
@@ -339,13 +340,11 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleaning up resources");
 
-#if VIXEN_DEBUG_BUILD
-    // Unregister performance logger from parent before destruction
-    if (perfLogger_ && nodeLogger) {
-        nodeLogger->RemoveChild(perfLogger_.get());
-    }
+    // shared_ptr handles cleanup automatically:
+    // - Node drops reference when perfLogger_ destroyed
+    // - Parent (nodeLogger) keeps it alive until log extraction
+    // - No manual RemoveChild needed
     perfLogger_.reset();
-#endif
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
         // Free command buffers
