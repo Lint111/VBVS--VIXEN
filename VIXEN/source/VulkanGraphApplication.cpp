@@ -35,6 +35,7 @@
 #include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
 #include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
+#include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 
@@ -421,8 +422,9 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
     nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
     nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
+    nodeRegistry->RegisterNodeType(std::make_unique<InputNodeType>());  // Input polling and event publishing
 
-    mainLogger->Info("Successfully registered 25 node types");
+    mainLogger->Info("Successfully registered 26 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -477,6 +479,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Ray Marching Nodes ---
     NodeHandle cameraNode = renderGraph->AddNode("Camera", "raymarch_camera");
     NodeHandle voxelGridNode = renderGraph->AddNode("VoxelGrid", "voxel_grid");
+
+    // --- Input Node ---
+    NodeHandle inputNode = renderGraph->AddNode("Input", "input_handler");
 
     // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
@@ -653,14 +658,36 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
-    // Position camera in front of Cornell box to look INTO the opening
-    // Cornell box opening is on -Z face, so camera should be at positive Z
+    // Camera presets for Cornell box (grid center at z=-8, extends from -10 to -6)
+    // Uncomment one preset below:
+
+    // PRESET 1: Centered view into box opening
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -3.0f);  // In front of box (box is at z=-8)
-    // Yaw: 0° to look down -Z axis (into the box)
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -1.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+
+    // PRESET 2: Offset to see both left (red) and right (green) walls
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 1.5f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.5f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -0.5f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+
+    // PRESET 3: Far view of entire box
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 5.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
+
+    // PRESET 4: Side view
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 5.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -8.0f);
+    //camera->SetParameter(CameraNodeConfig::PARAM_YAW, -90.0f);  // Look left toward -X
+    //camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
     // Ray marching: Voxel grid parameters
@@ -704,6 +731,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   swapChainNode, SwapChainNodeConfig::WIDTH)
          .Connect(windowNode, WindowNodeConfig::HEIGHT_OUT,
                   swapChainNode, SwapChainNodeConfig::HEIGHT);
+
+    // --- Window → Input connection ---
+    batch.Connect(windowNode, WindowNodeConfig::HWND_OUT,
+                  inputNode, InputNodeConfig::HWND_IN);
 
     // --- Device → SwapChain connections ---
     batch.Connect(deviceNode, DeviceNodeConfig::INSTANCE_OUT,

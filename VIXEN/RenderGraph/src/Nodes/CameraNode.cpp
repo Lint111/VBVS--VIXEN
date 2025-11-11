@@ -2,6 +2,7 @@
 #include "Nodes/CameraNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanSwapChain.h"
+#include "EventBus/InputEvents.h"
 #include <iostream>
 #include <cstring>
 
@@ -45,6 +46,23 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
+
+    // Subscribe to input events
+    if (GetMessageBus()) {
+        keyEventSub = GetMessageBus()->Subscribe(
+            EventBus::KeyEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) { return OnKeyEvent(msg); }
+        );
+
+        mouseSub = GetMessageBus()->Subscribe(
+            EventBus::MouseMoveEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) { return OnMouseMove(msg); }
+        );
+
+        NODE_LOG_INFO("CameraNode subscribed to input events");
+    } else {
+        NODE_LOG_WARNING("CameraNode: MessageBus not available, input disabled");
+    }
 }
 
 void CameraNode::CompileImpl(TypedCompileContext& ctx) {
@@ -97,6 +115,11 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
                         static_cast<float>(swapchainInfo->Extent.height);
+
+    // Apply accumulated input deltas to camera state
+    // TODO: Get actual delta time from frame timing
+    float deltaTime = 1.0f / 60.0f;  // Assume 60fps for now
+    ApplyInputDeltas(deltaTime);
 
     // Update the shared camera UBO for this frame
     // Always use buffer index 0 (the only buffer)
@@ -161,6 +184,18 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
 void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
+    // Unsubscribe from events
+    if (GetMessageBus()) {
+        if (keyEventSub != 0) {
+            GetMessageBus()->Unsubscribe(keyEventSub);
+            keyEventSub = 0;
+        }
+        if (mouseSub != 0) {
+            GetMessageBus()->Unsubscribe(mouseSub);
+            mouseSub = 0;
+        }
+    }
+
     if (!vulkanDevice) {
         return;
     }
@@ -170,6 +205,107 @@ void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     // Cleanup per-frame resources
     perFrameResources.Cleanup();
+}
+
+// ============================================================================
+// INPUT HANDLING
+// ============================================================================
+
+bool CameraNode::OnKeyEvent(const EventBus::BaseEventMessage& msg) {
+    const auto& keyEvent = static_cast<const EventBus::KeyEvent&>(msg);
+
+    // Only handle Held events for continuous movement
+    if (keyEvent.eventType != EventBus::KeyEventType::Held) {
+        return false;  // Let other subscribers handle it
+    }
+
+    // WASD for local-space horizontal movement
+    // QE for global Y-axis vertical movement
+    switch (keyEvent.key) {
+        case EventBus::KeyCode::W:
+            movementDelta.z += 1.0f;  // Forward (local +Z)
+            break;
+        case EventBus::KeyCode::S:
+            movementDelta.z -= 1.0f;  // Backward (local -Z)
+            break;
+        case EventBus::KeyCode::A:
+            movementDelta.x -= 1.0f;  // Left (local -X)
+            break;
+        case EventBus::KeyCode::D:
+            movementDelta.x += 1.0f;  // Right (local +X)
+            break;
+        case EventBus::KeyCode::Q:
+            movementDelta.y -= 1.0f;  // Down (global -Y)
+            break;
+        case EventBus::KeyCode::E:
+            movementDelta.y += 1.0f;  // Up (global +Y)
+            break;
+        default:
+            break;
+    }
+
+    return false;  // Don't consume event
+}
+
+bool CameraNode::OnMouseMove(const EventBus::BaseEventMessage& msg) {
+    const auto& mouseEvent = static_cast<const EventBus::MouseMoveEvent&>(msg);
+
+    // Accumulate rotation delta (will be applied in ApplyInputDeltas)
+    rotationDelta.x += mouseEvent.deltaX;  // Yaw (horizontal)
+    rotationDelta.y += mouseEvent.deltaY;  // Pitch (vertical)
+
+    return false;  // Don't consume event
+}
+
+void CameraNode::ApplyInputDeltas(float deltaTime) {
+    // Apply rotation (mouse look)
+    yaw += rotationDelta.x * mouseSensitivity;
+    pitch += rotationDelta.y * mouseSensitivity;
+
+    // Clamp pitch to avoid gimbal lock
+    const float maxPitch = glm::radians(89.0f);
+    pitch = glm::clamp(pitch, -maxPitch, maxPitch);
+
+    // Clear rotation delta
+    rotationDelta = glm::vec2(0.0f);
+
+    // Apply movement (helicopter controls)
+    if (glm::length(movementDelta) > 0.0f) {
+        // Compute local-space forward/right vectors
+        glm::vec3 forward;
+        forward.x = cos(pitch) * sin(yaw);
+        forward.y = sin(pitch);
+        forward.z = -cos(pitch) * cos(yaw);
+        forward = glm::normalize(forward);
+
+        glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+        // For helicopter controls:
+        // - WASD movement uses local forward/right (XZ plane)
+        // - QE movement uses global Y-axis
+
+        // Local horizontal movement (WASD in camera-space, but keep Y=0 for helicopter feel)
+        glm::vec3 forwardHorizontal = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
+        glm::vec3 rightHorizontal = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
+
+        glm::vec3 moveVector = forwardHorizontal * movementDelta.z + rightHorizontal * movementDelta.x;
+
+        // Add global Y movement (QE)
+        moveVector.y = movementDelta.y;
+
+        // Normalize to prevent faster diagonal movement (only for horizontal)
+        float horizontalLength = glm::length(glm::vec2(moveVector.x, moveVector.z));
+        if (horizontalLength > 1.0f) {
+            moveVector.x /= horizontalLength;
+            moveVector.z /= horizontalLength;
+        }
+
+        // Apply movement with speed and delta time
+        cameraPosition += moveVector * moveSpeed * deltaTime;
+    }
+
+    // Clear movement delta
+    movementDelta = glm::vec3(0.0f);
 }
 
 } // namespace Vixen::RenderGraph

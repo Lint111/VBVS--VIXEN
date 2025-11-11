@@ -136,6 +136,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/FramebufferNode.h
     include/Nodes/GeometryRenderNode.h
     include/Nodes/GraphicsPipelineNode.h
+    include/Nodes/InputNode.h
     include/Nodes/InstanceNode.h
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
@@ -165,6 +166,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/FramebufferNode.cpp
     src/Nodes/GeometryRenderNode.cpp
     src/Nodes/GraphicsPipelineNode.cpp
+    src/Nodes/InputNode.cpp
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
     src/Nodes/PresentNode.cpp
