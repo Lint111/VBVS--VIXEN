@@ -197,9 +197,11 @@ void InputNode::PublishMouseEvents() {
     // Calculate delta
     float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
     float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
+    float deltaMagnitude = std::sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    // Only publish if mouse moved (avoid spam)
-    if (deltaX != 0.0f || deltaY != 0.0f) {
+    // Publish continuous MouseMoveEvent for camera control
+    // Always publish if there's any movement
+    if (deltaMagnitude > 0.01f) {
         auto event = std::make_unique<EventBus::MouseMoveEvent>(
             instanceId,
             cursorPos.x,
@@ -208,11 +210,63 @@ void InputNode::PublishMouseEvents() {
             deltaY
         );
         GetMessageBus()->Publish(std::move(event));
-
-        // Update last position
-        lastMouseX = cursorPos.x;
-        lastMouseY = cursorPos.y;
     }
+
+    // State-based event system: Start/End events for UI feedback
+    const float START_THRESHOLD = 0.5f;  // Start movement session
+    const float END_THRESHOLD = 0.1f;    // End movement session
+
+    static bool mouseMoving = false;
+    static int32_t moveStartX = 0, moveStartY = 0;
+    static float totalDeltaX = 0.0f, totalDeltaY = 0.0f;
+    static auto moveStartTime = std::chrono::steady_clock::now();
+
+    if (!mouseMoving && deltaMagnitude >= START_THRESHOLD) {
+        // Start movement session
+        mouseMoving = true;
+        moveStartX = lastMouseX;
+        moveStartY = lastMouseY;
+        totalDeltaX = deltaX;
+        totalDeltaY = deltaY;
+        moveStartTime = std::chrono::steady_clock::now();
+
+        auto event = std::make_unique<EventBus::MouseMoveStartEvent>(
+            instanceId,
+            cursorPos.x,
+            cursorPos.y,
+            deltaX,
+            deltaY
+        );
+        GetMessageBus()->Publish(std::move(event));
+    }
+    else if (mouseMoving && deltaMagnitude < END_THRESHOLD) {
+        // End movement session
+        mouseMoving = false;
+        auto moveEndTime = std::chrono::steady_clock::now();
+        float duration = std::chrono::duration<float>(moveEndTime - moveStartTime).count();
+
+        auto event = std::make_unique<EventBus::MouseMoveEndEvent>(
+            instanceId,
+            cursorPos.x,
+            cursorPos.y,
+            totalDeltaX,
+            totalDeltaY,
+            duration
+        );
+        GetMessageBus()->Publish(std::move(event));
+
+        totalDeltaX = 0.0f;
+        totalDeltaY = 0.0f;
+    }
+    else if (mouseMoving) {
+        // Accumulate deltas during session
+        totalDeltaX += deltaX;
+        totalDeltaY += deltaY;
+    }
+
+    // Always update last position (state is queryable)
+    lastMouseX = cursorPos.x;
+    lastMouseY = cursorPos.y;
 }
 
 } // namespace Vixen::RenderGraph

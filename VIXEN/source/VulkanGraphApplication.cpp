@@ -56,7 +56,7 @@ VulkanGraphApplication::VulkanGraphApplication()
     // Enable main logger for application-level logging
     if (mainLogger) {
         mainLogger->SetEnabled(true);
-        mainLogger->SetTerminalOutput(false);  // Set to true to see logs in real-time
+        mainLogger->SetTerminalOutput(true);  // Enable real-time logs to debug recompilation
         mainLogger->Info("VulkanGraphApplication (Graph-based) Starting");
     }
 }

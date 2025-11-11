@@ -93,27 +93,23 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 // ============================================================================
 
 // Generate ray direction from screen-space pixel coordinates
-// Use proper unprojection through inverse matrices
+// Simpler direct approach using view space ray construction
 vec3 generateRayDirection(ivec2 pixelCoords, ivec2 screenSize) {
     // Convert pixel coords to NDC [-1, 1]
-    vec2 ndc = (vec2(pixelCoords) + vec2(0.5)) / vec2(screenSize) * 2.0 - 1.0;
+    vec2 uv = (vec2(pixelCoords) + vec2(0.5)) / vec2(screenSize);
+    vec2 ndc = uv * 2.0 - 1.0;
     ndc.y = -ndc.y;  // Flip Y for Vulkan
 
-    // Extract camera basis vectors from invView matrix
-    // invView transforms view space -> world space
-    // Columns are: right (X), up (Y), forward (Z), position (W)
-    vec3 right = camera.invView[0].xyz;
-    vec3 up = camera.invView[1].xyz;
-    vec3 forward = -camera.invView[2].xyz;  // Negate because +Z in view is backward
+    // Create view-space ray direction
+    // For a perspective projection, the view-space ray goes from origin to a point on the near plane
+    // The xy coordinates on the near plane are determined by the NDC and the projection matrix
 
-    // For inverse projection matrix, the diagonal elements ARE tan(fov/2)
-    // invProjection[0][0] = aspect * tan(fov/2)
-    // invProjection[1][1] = tan(fov/2)
-    float tanHalfFov = camera.invProjection[1][1];
-    float aspectTanHalfFov = camera.invProjection[0][0];
+    // Method: Transform NDC through invProjection to get view-space direction
+    vec4 target = camera.invProjection * vec4(ndc.x, ndc.y, 1.0, 1.0);
+    vec3 viewDir = normalize(target.xyz / target.w);
 
-    // Construct ray direction in world space
-    vec3 rayDir = normalize(forward + ndc.x * aspectTanHalfFov * right + ndc.y * tanHalfFov * up);
+    // Transform view-space direction to world space using rotation part of invView
+    vec3 rayDir = normalize(mat3(camera.invView) * viewDir);
 
     return rayDir;
 }
@@ -336,7 +332,8 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     const float EPSILON_ESVO = exp2(-float(S_MAX));
 
     // LOD parameters (from camera uniform)
-    float raySizeCoef = camera.lodBias;  // 1.0 = default, 2.0 = coarser LOD
+    // Disable LOD termination for Phase H - show full detail everywhere
+    float raySizeCoef = 0.0;  // Disabled: was camera.lodBias
     float raySizeBias = 0.0;
 
     // World-space AABB test first
@@ -348,8 +345,16 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     // Transform ray to [1,2] octree space (ESVO convention)
     vec3 gridSize = gridMax - gridMin;
 
+    // CRITICAL: If camera is outside grid, advance ray to grid entry point
+    // This ensures we start ESVO traversal at the grid boundary, not from far outside
+    vec3 rayStartWorld = rayOrigin;
+    if (gridT.x > 0.0) {
+        // Camera outside grid - start ray at entry point
+        rayStartWorld = rayOrigin + rayDir * max(gridT.x, 0.0);
+    }
+
     // Transform ray origin to [0,1] normalized grid space, then shift to [1,2]
-    vec3 p = ((rayOrigin - gridMin) / gridSize) + 1.0;
+    vec3 p = ((rayStartWorld - gridMin) / gridSize) + 1.0;
 
     // ESVO requires normalized direction in the [1,2] cube space
     vec3 d = normalize(rayDir);
@@ -400,6 +405,12 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     // Main traversal loop (PUSH/POP/ADVANCE)
     const int MAX_ITERS = 250;
     for (int iter = 0; iter < MAX_ITERS && scale < S_MAX; ++iter) {
+        // Early exit if ray has left the grid entirely
+        // Check if t_min exceeds the grid exit point
+        if (t_min > t_max) {
+            break;  // Ray exited grid
+        }
+
         // FETCH: Load child descriptor if not cached
         if (child_descriptor.x == 0u) {
             child_descriptor = fetchESVONode(parentPtr);
@@ -488,10 +499,31 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         t_min = tc_max;
         idx ^= step_mask;
 
-        // Simplified POP (no explicit stack - limits depth for Phase H)
+        // POP: Ascend if we exited current parent node
+        // Check if we've moved outside parent bounds (would need stack in full ESVO)
+        // For Phase H baseline: if step takes us out of bounds, ascend one level
         if ((idx & step_mask) != 0) {
-            // Would pop from stack here in full implementation
-            break;  // For now, exit traversal
+            // Moved outside parent - ascend
+            scale++;
+            scale_exp2 *= 2.0;
+
+            // If we've popped back to root level, exit
+            if (scale >= S_MAX) {
+                break;
+            }
+
+            // Update position to parent level
+            pos.x = floor(pos.x / 2.0) * 2.0;
+            pos.y = floor(pos.y / 2.0) * 2.0;
+            pos.z = floor(pos.z / 2.0) * 2.0;
+
+            // Recompute index at parent level
+            idx = 0;
+            if (pos.x >= 1.5) idx ^= 1;
+            if (pos.y >= 1.5) idx ^= 2;
+            if (pos.z >= 1.5) idx ^= 4;
+
+            child_descriptor.x = 0u;  // Invalidate cache
         }
     }
 
@@ -798,13 +830,11 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
 
 vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     // Grid positioning in world space
-    // Camera at (0,0,3) looking toward -Z
-    // Grid: 10x10x10 world units, centered, 20 units from camera
-    const float gridWorldSize = 4.0;  // Reasonable size (4x4x4 world units)
-    float halfGrid = gridWorldSize * 0.5;  // 2.0
-    vec3 gridCenter = vec3(0.0, 0.0, -8.0);  // Push back to z=-8
-    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-2, -2, -10)
-    vec3 gridMax = gridCenter + vec3(halfGrid);  // (2, 2, -6)
+    const float gridWorldSize = 50.0;  // 50×50×50 world units (manageable size)
+    float halfGrid = gridWorldSize * 0.5;  // 25.0
+    vec3 gridCenter = vec3(0.0, 0.0, -22.0);  // Center 25 units from initial camera (z=3)
+    vec3 gridMin = gridCenter - vec3(halfGrid);  // (-25, -25, -47)
+    vec3 gridMax = gridCenter + vec3(halfGrid);  // (25, 25, 3)
 
     // Ray bounce loop (currently single bounce)
     for (int bounce = 0; bounce < RAY_MAX_BOUNCES; ++bounce) {
@@ -821,9 +851,10 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         if (rayDir.y < 0.0) octantMask |= 2u;
         if (rayDir.z < 0.0) octantMask |= 4u;
 
-        vec3 hitColor;
-        vec3 hitNormal;
-        float hitT;
+        // Initialize hit data (prevents uninitialized variable noise)
+        vec3 hitColor = vec3(0.0);
+        vec3 hitNormal = vec3(0.0);
+        float hitT = 0.0;
 
         // Invoke ESVO octree traversal
         if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax,

@@ -79,6 +79,7 @@ private:
     // Event handlers
     bool OnKeyEvent(const Vixen::EventBus::BaseEventMessage& msg);
     bool OnMouseMove(const Vixen::EventBus::BaseEventMessage& msg);
+    bool OnMouseMoveStart(const Vixen::EventBus::BaseEventMessage& msg);
 
     // Apply accumulated input deltas to camera state
     void ApplyInputDeltas(float deltaTime);
@@ -101,14 +102,16 @@ private:
     // Input subscription IDs
     Vixen::EventBus::EventSubscriptionID keyEventSub = 0;
     Vixen::EventBus::EventSubscriptionID mouseSub = 0;
+    Vixen::EventBus::EventSubscriptionID mouseStartSub = 0;
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse
 
     // Camera control parameters
-    float moveSpeed = 1.5f;       // Units per second (reduced from 5.0 for better control)
-    float mouseSensitivity = 0.0008f;  // Radians per pixel (reduced from 0.002 for smoother look)
+    float moveSpeed = 10.0f;      // Horizontal movement: units per second
+    float verticalSpeed = 10.0f;  // Vertical movement (QE): units per second
+    float mouseSensitivity = 0.0015f;  // Radians per pixel (increased for faster look)
 
     // Setup state tracking (prevent camera reset on recompilation)
     bool initialSetupComplete = false;

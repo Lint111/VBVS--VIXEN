@@ -164,23 +164,28 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
     for (const auto& event : eventsToProcess) {
         switch (event.type) {
             case WindowEvent::Type::Resize:
-                width = event.width;
-                height = event.height;
-                wasResized = true;
+                // Only process if dimensions ACTUALLY changed (double-check)
+                if (event.width != width || event.height != height) {
+                    width = event.width;
+                    height = event.height;
+                    wasResized = true;
 
-                // Update outputs using Context (proper phase-aware access)
-                ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
-                ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
+                    // Update outputs using Context (proper phase-aware access)
+                    ctx.Out(WindowNodeConfig::WIDTH_OUT, event.width);
+                    ctx.Out(WindowNodeConfig::HEIGHT_OUT, event.height);
 
-                // Publish event
-                if (GetMessageBus()) {
-                    GetMessageBus()->Publish(
-                        std::make_unique<EventTypes::WindowResizedMessage>(
-                            instanceId,
-                            event.width,
-                            event.height
-                        )
-                    );
+                    // Publish event
+                    if (GetMessageBus()) {
+                        GetMessageBus()->Publish(
+                            std::make_unique<EventTypes::WindowResizedMessage>(
+                                instanceId,
+                                event.width,
+                                event.height
+                            )
+                        );
+                    }
+
+                    NODE_LOG_INFO("[WindowNode] Processed resize: " + std::to_string(event.width) + "x" + std::to_string(event.height));
                 }
                 break;
 
@@ -279,16 +284,8 @@ LRESULT CALLBACK WindowNode::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
                 UINT newWidth = LOWORD(lParam);
                 UINT newHeight = HIWORD(lParam);
 
-                // Debug: Log ALL WM_SIZE events to detect spurious calls
-                static int wmSizeCounter = 0;
-                if (wmSizeCounter++ < 50) {  // Limit spam
-                    NODE_LOG_DEBUG_OBJ(windowNode, "[WindowNode] WM_SIZE #" + std::to_string(wmSizeCounter) +
-                                      ": " + std::to_string(newWidth) + "x" + std::to_string(newHeight) +
-                                      " (cached: " + std::to_string(windowNode->width) + "x" + std::to_string(windowNode->height) +
-                                      ", isResizing=" + std::to_string(windowNode->isResizing) + ")");
-                }
-
-                // If not actively resizing (e.g., maximize/restore), queue resize event
+                // Only queue resize event if dimensions ACTUALLY changed
+                // This prevents spurious recompilation from WM_SIZE messages that don't change size
                 if (!windowNode->isResizing && (newWidth != windowNode->width || newHeight != windowNode->height)) {
                     NODE_LOG_INFO_OBJ(windowNode, "[WindowNode] WM_SIZE - queuing resize event: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
 

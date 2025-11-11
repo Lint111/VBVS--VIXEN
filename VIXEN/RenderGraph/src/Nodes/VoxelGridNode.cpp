@@ -197,15 +197,20 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
+    std::cout << "[VoxelGridNode] GenerateProceduralScene: sceneType=\"" << sceneType << "\" (length=" << sceneType.length() << ")" << std::endl;
     NODE_LOG_INFO("Generating procedural scene: " + sceneType);
 
     if (sceneType == "cornell") {
+        std::cout << "[VoxelGridNode] Matched 'cornell' - calling CornellBoxGenerator::Generate" << std::endl;
         CornellBoxGenerator::Generate(grid);
     } else if (sceneType == "cave") {
+        std::cout << "[VoxelGridNode] Matched 'cave'" << std::endl;
         CaveSystemGenerator::Generate(grid);
     } else if (sceneType == "urban") {
+        std::cout << "[VoxelGridNode] Matched 'urban'" << std::endl;
         UrbanGridGenerator::Generate(grid);
     } else {
+        std::cout << "[VoxelGridNode] NO MATCH - using default test pattern (all solid)" << std::endl;
         // Default: test pattern (all solid)
         for (uint32_t z = 0; z < resolution; ++z) {
             for (uint32_t y = 0; y < resolution; ++y) {

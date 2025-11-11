@@ -62,6 +62,14 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
             [this](const EventBus::BaseEventMessage& msg) { return OnKeyEvent(msg); }
         );
 
+        // Subscribe to mouse start/end events (state-based input)
+        mouseStartSub = GetMessageBus()->Subscribe(
+            EventBus::MouseMoveStartEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) { return OnMouseMoveStart(msg); }
+        );
+
+        // Legacy: Still subscribe to continuous events for compatibility
+        // TODO: Remove once all systems use state-based input
         mouseSub = GetMessageBus()->Subscribe(
             EventBus::MouseMoveEvent::TYPE,
             [this](const EventBus::BaseEventMessage& msg) { return OnMouseMove(msg); }
@@ -255,6 +263,11 @@ bool CameraNode::OnKeyEvent(const EventBus::BaseEventMessage& msg) {
     return false;  // Don't consume event
 }
 
+bool CameraNode::OnMouseMoveStart(const EventBus::BaseEventMessage& msg) {
+    // Mouse movement session started - could log or prepare state
+    return false;  // Don't consume event
+}
+
 bool CameraNode::OnMouseMove(const EventBus::BaseEventMessage& msg) {
     const auto& mouseEvent = static_cast<const EventBus::MouseMoveEvent&>(msg);
 
@@ -298,9 +311,6 @@ void CameraNode::ApplyInputDeltas(float deltaTime) {
 
         glm::vec3 moveVector = forwardHorizontal * movementDelta.z + rightHorizontal * movementDelta.x;
 
-        // Add global Y movement (QE)
-        moveVector.y = movementDelta.y;
-
         // Normalize to prevent faster diagonal movement (only for horizontal)
         float horizontalLength = glm::length(glm::vec2(moveVector.x, moveVector.z));
         if (horizontalLength > 1.0f) {
@@ -308,8 +318,11 @@ void CameraNode::ApplyInputDeltas(float deltaTime) {
             moveVector.z /= horizontalLength;
         }
 
-        // Apply movement with speed and delta time
+        // Apply horizontal movement with speed and delta time
         cameraPosition += moveVector * moveSpeed * deltaTime;
+
+        // Apply vertical movement (QE) separately with its own speed
+        cameraPosition.y += movementDelta.y * verticalSpeed * deltaTime;
     }
 
     // Clear movement delta

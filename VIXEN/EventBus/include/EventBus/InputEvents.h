@@ -100,10 +100,53 @@ struct KeyEvent : public BaseEventMessage {
 };
 
 /**
- * @brief Mouse movement event
+ * @brief Mouse movement start event
  *
- * Published by InputNode when mouse moves.
- * Contains both absolute position and delta movement.
+ * Published when mouse movement exceeds sensitivity threshold.
+ * Signals beginning of continuous mouse input.
+ */
+struct MouseMoveStartEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    int32_t x;          // Initial position
+    int32_t y;
+    float initialDeltaX;  // Delta that triggered start
+    float initialDeltaY;
+
+    MouseMoveStartEvent(SenderID sender, int32_t posX, int32_t posY, float dx, float dy)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , x(posX), y(posY), initialDeltaX(dx), initialDeltaY(dy)
+    {}
+};
+
+/**
+ * @brief Mouse movement end event
+ *
+ * Published when mouse movement drops below sensitivity threshold.
+ * Signals end of continuous mouse input.
+ */
+struct MouseMoveEndEvent : public BaseEventMessage {
+    static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
+    static constexpr EventCategory CATEGORY = EventCategory::ApplicationState;
+
+    int32_t x;          // Final position
+    int32_t y;
+    float totalDeltaX;  // Total movement during session
+    float totalDeltaY;
+    float duration;     // Time spent moving (seconds)
+
+    MouseMoveEndEvent(SenderID sender, int32_t posX, int32_t posY, float totalDx, float totalDy, float dur)
+        : BaseEventMessage(CATEGORY, TYPE, sender)
+        , x(posX), y(posY), totalDeltaX(totalDx), totalDeltaY(totalDy), duration(dur)
+    {}
+};
+
+/**
+ * @brief Mouse movement event (DEPRECATED - kept for compatibility)
+ *
+ * State is now queryable via InputState. Start/End events signal transitions.
+ * Only subscribe to this for legacy compatibility.
  */
 struct MouseMoveEvent : public BaseEventMessage {
     static constexpr MessageType TYPE = AUTO_MESSAGE_TYPE();
