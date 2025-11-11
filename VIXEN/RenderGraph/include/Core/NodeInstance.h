@@ -305,12 +305,20 @@ public:
      * Derived classes should override SetupImpl(), NOT this method.
      */
     virtual void Setup() {
-        ResetInputsUsedInCompile();
-        std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
-        ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
-        SetupImpl();
-        std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
-        ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
+        try {
+            ResetInputsUsedInCompile();
+            std::cout << "[NodeInstance::Setup] Executing PreSetup hook for: " << GetInstanceName() << std::endl;
+            ExecuteNodeHook(NodeLifecyclePhase::PreSetup);
+            SetupImpl();
+            std::cout << "[NodeInstance::Setup] Executing PostSetup hook for: " << GetInstanceName() << std::endl;
+            ExecuteNodeHook(NodeLifecyclePhase::PostSetup);
+        } catch (const std::exception& e) {
+            std::cerr << "[NodeInstance::Setup] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
+            throw;
+        } catch (...) {
+            std::cerr << "[NodeInstance::Setup] UNKNOWN EXCEPTION in node '" << GetInstanceName() << "'" << std::endl;
+            throw;
+        }
     }
 
     /**
@@ -325,11 +333,19 @@ public:
      * Derived classes should override CompileImpl(), NOT this method.
      */
     virtual void Compile() final {
-        ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
-        CompileImpl();
-        
-        ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
-        RegisterCleanup();
+        try {
+            ExecuteNodeHook(NodeLifecyclePhase::PreCompile);
+            CompileImpl();
+
+            ExecuteNodeHook(NodeLifecyclePhase::PostCompile);
+            RegisterCleanup();
+        } catch (const std::exception& e) {
+            std::cerr << "[NodeInstance::Compile] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
+            throw;
+        } catch (...) {
+            std::cerr << "[NodeInstance::Compile] UNKNOWN EXCEPTION in node '" << GetInstanceName() << "'" << std::endl;
+            throw;
+        }
     }
 
     /**
@@ -347,9 +363,17 @@ public:
      * Derived classes should override ExecuteImpl(), NOT this method.
      */
     virtual void Execute() final {
-        ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
-        ExecuteImpl();
-        ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
+        try {
+            ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
+            ExecuteImpl();
+            ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
+        } catch (const std::exception& e) {
+            std::cerr << "[NodeInstance::Execute] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
+            throw;
+        } catch (...) {
+            std::cerr << "[NodeInstance::Execute] UNKNOWN EXCEPTION in node '" << GetInstanceName() << "'" << std::endl;
+            throw;
+        }
     }
 
     /**
@@ -371,10 +395,20 @@ public:
         if (cleanedUp) {
             return;  // Already cleaned up
         }
-        ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
-        CleanupImpl();
-        ExecuteNodeHook(NodeLifecyclePhase::PostCleanup);
-        cleanedUp = true;
+        try {
+            ExecuteNodeHook(NodeLifecyclePhase::PreCleanup);
+            CleanupImpl();
+            ExecuteNodeHook(NodeLifecyclePhase::PostCleanup);
+            cleanedUp = true;
+        } catch (const std::exception& e) {
+            std::cerr << "[NodeInstance::Cleanup] EXCEPTION in node '" << GetInstanceName() << "': " << e.what() << std::endl;
+            cleanedUp = true;  // Mark as cleaned up even if it failed
+            throw;
+        } catch (...) {
+            std::cerr << "[NodeInstance::Cleanup] UNKNOWN EXCEPTION in node '" << GetInstanceName() << "'" << std::endl;
+            cleanedUp = true;  // Mark as cleaned up even if it failed
+            throw;
+        }
     }
 
 protected:

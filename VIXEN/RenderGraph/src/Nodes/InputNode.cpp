@@ -59,21 +59,22 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Enable mouse capture on first frame for game mode
     if (!mouseCaptured && hwnd) {
-        // Capture mouse to window
-        SetCapture(hwnd);
-        // Hide cursor
-        ShowCursor(FALSE);
         // Get window center for re-centering
         RECT rect;
-        GetClientRect(hwnd, &rect);
-        int centerX = (rect.right - rect.left) / 2;
-        int centerY = (rect.bottom - rect.top) / 2;
-        POINT center = {centerX, centerY};
-        ClientToScreen(hwnd, &center);
-        SetCursorPos(center.x, center.y);
+        if (GetClientRect(hwnd, &rect)) {
+            int centerX = (rect.right - rect.left) / 2;
+            int centerY = (rect.bottom - rect.top) / 2;
+            POINT center = {centerX, centerY};
+            ClientToScreen(hwnd, &center);
+            SetCursorPos(center.x, center.y);
 
-        lastMouseX = centerX;
-        lastMouseY = centerY;
+            lastMouseX = centerX;
+            lastMouseY = centerY;
+        }
+
+        // Capture mouse to window
+        SetCapture(hwnd);
+
         mouseCaptured = true;
         NODE_LOG_INFO("[InputNode] Mouse captured for game mode");
     }
@@ -108,7 +109,6 @@ void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Release mouse capture
     if (mouseCaptured) {
         ReleaseCapture();
-        ShowCursor(TRUE);
         mouseCaptured = false;
     }
 

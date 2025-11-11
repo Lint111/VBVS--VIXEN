@@ -144,7 +144,19 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio) {
-    void* mappedPtr = perFrameResources.GetUniformBufferMapped(imageIndex);
+    // Safety check: perFrameResources might be cleaned up during recompilation
+    if (!vulkanDevice || vulkanDevice->device == VK_NULL_HANDLE) {
+        return;
+    }
+
+    void* mappedPtr = nullptr;
+    try {
+        mappedPtr = perFrameResources.GetUniformBufferMapped(imageIndex);
+    } catch (...) {
+        // During recompilation, perFrameResources might be in inconsistent state
+        return;
+    }
+
     if (!mappedPtr) {
         return;
     }
