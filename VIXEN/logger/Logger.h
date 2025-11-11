@@ -29,10 +29,10 @@ public:
     void SetTerminalOutput(bool enable) { terminalOutput = enable; }
     bool HasTerminalOutput() const { return terminalOutput; }
 
-    // Hierarchical logging
-    void AddChild(Logger* child);
-    void RemoveChild(Logger* child);
-    const std::vector<Logger*>& GetChildren() const { return children; }
+    // Hierarchical logging (shared ownership model)
+    void AddChild(std::shared_ptr<Logger> child);
+    void RemoveChild(Logger* child);  // Remove by raw pointer (for backward compat)
+    const std::vector<std::shared_ptr<Logger>>& GetChildren() const { return children; }
 
     // Logging methods
     void Log(LogLevel level, const std::string& message);
@@ -57,7 +57,7 @@ protected:
     std::string name;
     bool enabled;
     bool terminalOutput = false;
-    std::vector<Logger*> children; // Non-owning pointers to child loggers
+    std::vector<std::shared_ptr<Logger>> children; // Shared ownership of child loggers
     std::vector<std::string> logEntries;
 
     std::string GetTimestamp() const;

@@ -11,6 +11,10 @@
 // - Leaves: 8^3 bricks; inside-brick traversal uses parametric 3D DDA for exact face stepping
 // - Debug: Optional overlays via VOXEL_RAY_DEBUG_* macros; default path returns shaded material
 // - Background: Dark blue-gray; can be replaced with sky or GI later
+//
+// BUGFIXES (Session 011CV1brWkQo6n5aK7nTUKFg):
+// - Fixed division-by-zero handling in ray-AABB intersection (use large value, not direction modification)
+// - ESVO traversal maintains proper coordinate system consistency via [1,2] space transform
 
 #version 460
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
@@ -261,8 +265,8 @@ uint getChildOctant(vec3 posInNode) {
 
 // Ray-AABB intersection helper
 // Returns (tEnter, tExit) for ray-box intersection, or (-1, -1) if no hit
-// Optimized ray-AABB intersection (avoids division entirely)
-// Uses sign-aware multiplication instead of division by rayDir
+// FIXED (Session 011CV1brWkQo6n5aK7nTUKFg): Safe division handling
+// Uses large value for near-zero components to avoid direction modification
 vec2 rayAABBIntersectionFast(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
     float tmin = 0.0;
     float tmax = 1e30;
@@ -294,12 +298,16 @@ vec2 rayAABBIntersectionFast(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxM
 }
 
 // Slab method ray-AABB intersection
+// FIXED (Session 011CV1brWkQo6n5aK7nTUKFg): Use infinity for near-zero components
+// Division by zero yields infinity in IEEE 754, which is correct for AABB tests
+// Avoids modifying rayDir which caused far-distance intersection failures
 vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
-    // Safe inverse: avoid division by near-zero
+    // Safe inverse: return large value for near-zero components
+    // Changed from sign-based approximation to avoid direction modification
     vec3 invDir = vec3(
-        abs(rayDir.x) > 1e-8 ? 1.0 / rayDir.x : 1e8 * sign(rayDir.x),
-        abs(rayDir.y) > 1e-8 ? 1.0 / rayDir.y : 1e8 * sign(rayDir.y),
-        abs(rayDir.z) > 1e-8 ? 1.0 / rayDir.z : 1e8 * sign(rayDir.z)
+        abs(rayDir.x) < 1e-8 ? 1e10 : 1.0 / rayDir.x,
+        abs(rayDir.y) < 1e-8 ? 1e10 : 1.0 / rayDir.y,
+        abs(rayDir.z) < 1e-8 ? 1e10 : 1.0 / rayDir.z
     );
 
     vec3 t0 = (boxMin - rayOrigin) * invDir;

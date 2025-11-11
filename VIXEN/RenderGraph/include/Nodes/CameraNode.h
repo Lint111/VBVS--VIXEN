@@ -107,8 +107,11 @@ private:
     glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse
 
     // Camera control parameters
-    float moveSpeed = 5.0f;       // Units per second
-    float mouseSensitivity = 0.002f;  // Radians per pixel
+    float moveSpeed = 1.5f;       // Units per second (reduced from 5.0 for better control)
+    float mouseSensitivity = 0.0008f;  // Radians per pixel (reduced from 0.002 for smoother look)
+
+    // Setup state tracking (prevent camera reset on recompilation)
+    bool initialSetupComplete = false;
 };
 
 } // namespace Vixen::RenderGraph

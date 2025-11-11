@@ -2,12 +2,12 @@
 #include "Logger.h"
 
 void ILoggable::InitializeLogger(const std::string& subsystemName, bool enabled) {
-    logger = std::make_unique<Logger>(subsystemName, enabled);
+    logger = std::make_shared<Logger>(subsystemName, enabled);
 }
 
 void ILoggable::RegisterToParentLogger(Logger* parentLogger) {
     if (parentLogger && logger) {
-        parentLogger->AddChild(logger.get());
+        parentLogger->AddChild(logger);  // Pass shared_ptr for shared ownership
     }
 }
 

@@ -38,8 +38,8 @@ NodeInstance::NodeInstance(
         allowInputArrays = nodeType->GetAllowInputArrays();
     }
 
-    // Initialize logger (disabled by default)
-    nodeLogger = std::make_unique<Logger>(instanceName, false);
+    // Initialize logger with shared ownership (disabled by default)
+    nodeLogger = std::make_shared<Logger>(instanceName, false);
 }
 
 NodeInstance::~NodeInstance() {
@@ -50,8 +50,13 @@ NodeInstance::~NodeInstance() {
         }
         eventSubscriptions.clear();
     }
-    
+
     Cleanup();
+
+    // shared_ptr automatically handles cleanup:
+    // - This drops our reference (refcount 2→1 if parent still holds it)
+    // - Parent's reference keeps logger alive until log extraction completes
+    // - No manual removal needed
 }
 
 NodeTypeId NodeInstance::GetTypeId() const {
@@ -162,7 +167,8 @@ bool NodeInstance::DependsOn(NodeInstance* node) const {
 void NodeInstance::RegisterToParentLogger(Logger* parentLogger)
 {
     if (parentLogger && nodeLogger) {
-        parentLogger->AddChild(nodeLogger.get());
+        // Pass shared_ptr for shared ownership
+        parentLogger->AddChild(nodeLogger);
     }
 }
 void NodeInstance::DeregisterFromParentLogger(Logger* parentLogger)

@@ -10,7 +10,7 @@ Logger::~Logger()
 {
 }
 
-void Logger::AddChild(Logger* child)
+void Logger::AddChild(std::shared_ptr<Logger> child)
 {
     if (!child) {
         return;
@@ -23,7 +23,11 @@ void Logger::RemoveChild(Logger *child)
     if(!child) {
         return;
     }
-    auto it = std::find(children.begin(), children.end(), child);
+    // Remove by comparing raw pointers
+    auto it = std::find_if(children.begin(), children.end(),
+        [child](const std::shared_ptr<Logger>& ptr) {
+            return ptr.get() == child;
+        });
     if (it != children.end()) {
         children.erase(it);
     }
@@ -88,10 +92,12 @@ std::string Logger::ExtractLogs(int indentLevel) const
         result << indent << entry << "\n";
     }
 
-    // Recursively add children logs
+    // Recursively add children logs (shared_ptr guarantees validity)
     for (const auto& child : children) {
-        result << "\n";
-        result << child->ExtractLogs(indentLevel + 1);
+        if (child) {
+            result << "\n";
+            result << child->ExtractLogs(indentLevel + 1);
+        }
     }
 
     return result.str();
@@ -106,7 +112,9 @@ void Logger::ClearAll()
 {
     Clear();
     for (auto& child : children) {
-        child->ClearAll();
+        if (child) {
+            child->ClearAll();
+        }
     }
 }
 

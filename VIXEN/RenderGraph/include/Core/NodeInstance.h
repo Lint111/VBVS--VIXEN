@@ -797,8 +797,12 @@ protected:
     // Phase F: Task manager for array processing
     SlotTaskManager taskManager;
 
-    // Hierarchical logger (disabled by default, enable in VulkanGraphApplication as needed)
-    std::unique_ptr<Logger> nodeLogger;
+    // Hierarchical logger (shared ownership for lifecycle management)
+    // - Node holds shared_ptr (strong reference)
+    // - Parent logger also holds shared_ptr (strong reference)
+    // - When node destroyed: refcount 2→1, logger stays alive for extraction
+    // - After log extraction: parent clears children, refcount 1→0, cleanup
+    std::shared_ptr<Logger> nodeLogger;
 
     // Helper methods
     void AllocateResources();

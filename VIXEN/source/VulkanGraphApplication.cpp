@@ -298,10 +298,13 @@ void VulkanGraphApplication::DeInitialize() {
     }
     deinitialized = true;
 
-    // Before destroying the render graph, extract logs from the main logger.
-    // Node instances register child loggers with the main logger; if we
-    // destroy the graph first those child loggers are destroyed and their
-    // entries won't appear in the aggregated log output.
+    // Extract logs BEFORE destroying the render graph
+    // With shared_ptr ownership:
+    // 1. Nodes still alive → refcount = 2 (node + parent)
+    // 2. Extract logs safely
+    // 3. Destroy render graph → node destructors drop their refs (refcount 2→1)
+    // 4. Loggers stay alive under main logger (refcount = 1)
+    // 5. Clear children → refcount 1→0, automatic cleanup
     if (mainLogger && mainLogger->IsEnabled()) {
         try {
             std::string logs = mainLogger->ExtractLogs();
@@ -315,9 +318,10 @@ void VulkanGraphApplication::DeInitialize() {
         } catch (...) {
             // Best-effort: don't throw during cleanup
         }
+    }
 
-        // Clear all child logger pointers before destroying nodes
-        // This prevents dangling pointer access during final cleanup
+    // Clear all child logger references (drops refcount 1→0, automatic cleanup)
+    if (mainLogger) {
         mainLogger->ClearChildren();
     }
 
@@ -661,10 +665,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Camera presets for Cornell box (grid center at z=-8, extends from -10 to -6)
     // Uncomment one preset below:
 
-    // PRESET 1: Centered view into box opening
+    // PRESET 1: Front view looking into box (camera in front of grid)
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -1.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -4.0f);  // Changed from -1.0 to -4.0 (outside grid at z=-6)
     camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 

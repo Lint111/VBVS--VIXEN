@@ -33,19 +33,27 @@ CameraNode::CameraNode(
 void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("CameraNode setup");
 
-    // Read parameters
+    // Read parameters (always update FOV, near/far planes, and grid resolution)
     fov = GetParameterValue<float>(CameraNodeConfig::PARAM_FOV, 45.0f);
     nearPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
-
-    cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
-
-    yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
-    pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
-
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
+
+    // Only initialize camera position/orientation on FIRST setup
+    // After that, preserve user-controlled position from input
+    if (!initialSetupComplete) {
+        cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
+        cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+        cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+
+        yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
+        pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
+
+        initialSetupComplete = true;
+        NODE_LOG_INFO("Camera position initialized from parameters");
+    } else {
+        NODE_LOG_INFO("Camera position preserved from previous state (recompilation)");
+    }
 
     // Subscribe to input events
     if (GetMessageBus()) {

@@ -87,5 +87,5 @@ protected:
     void InitializeLogger(const std::string& subsystemName, bool enabled = false);
 
 private:
-    std::unique_ptr<Logger> logger;
+    std::shared_ptr<Logger> logger;  // Shared ownership for lifecycle management
 };

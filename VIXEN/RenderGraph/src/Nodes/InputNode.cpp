@@ -114,11 +114,8 @@ void InputNode::PollMouse() {
                 lastMouseX = cursorPos.x;
                 lastMouseY = cursorPos.y;
                 firstMousePoll = false;
-            } else {
-                // Subsequent frames: update last position
-                lastMouseX = cursorPos.x;
-                lastMouseY = cursorPos.y;
             }
+            // Don't update lastMouse here - let PublishMouseEvents do it after calculating delta
         }
     }
 }
