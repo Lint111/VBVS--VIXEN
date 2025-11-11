@@ -55,22 +55,22 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
         NODE_LOG_INFO("Camera position preserved from previous state (recompilation)");
     }
 
-    // Subscribe to input events
+    // Subscribe to input events using NodeInstance helper (automatic cleanup)
     if (GetMessageBus()) {
-        keyEventSub = GetMessageBus()->Subscribe(
+        SubscribeToMessage(
             EventBus::KeyEvent::TYPE,
             [this](const EventBus::BaseEventMessage& msg) { return OnKeyEvent(msg); }
         );
 
         // Subscribe to mouse start/end events (state-based input)
-        mouseStartSub = GetMessageBus()->Subscribe(
+        SubscribeToMessage(
             EventBus::MouseMoveStartEvent::TYPE,
             [this](const EventBus::BaseEventMessage& msg) { return OnMouseMoveStart(msg); }
         );
 
         // Legacy: Still subscribe to continuous events for compatibility
         // TODO: Remove once all systems use state-based input
-        mouseSub = GetMessageBus()->Subscribe(
+        SubscribeToMessage(
             EventBus::MouseMoveEvent::TYPE,
             [this](const EventBus::BaseEventMessage& msg) { return OnMouseMove(msg); }
         );
@@ -212,24 +212,11 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
 void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
-    // Unsubscribe from events
-    if (GetMessageBus()) {
-        if (keyEventSub != 0) {
-            GetMessageBus()->Unsubscribe(keyEventSub);
-            keyEventSub = 0;
-        }
-        if (mouseSub != 0) {
-            GetMessageBus()->Unsubscribe(mouseSub);
-            mouseSub = 0;
-        }
-    }
+    // Event unsubscription handled automatically by NodeInstance destructor
+    // (no manual Unsubscribe needed - avoids deadlock)
 
-    if (!vulkanDevice) {
-        return;
-    }
-
-    // Wait for device idle before cleanup
-    vkDeviceWaitIdle(vulkanDevice->device);
+    // Device wait handled by RenderGraph before cleanup
+    // (no need to wait here - prevents double-wait on invalid device)
 
     // Cleanup per-frame resources
     perFrameResources.Cleanup();

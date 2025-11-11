@@ -47,22 +47,24 @@ void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("DescriptorSetNode: Setup (graph-scope initialization)");
 
     // Subscribe to RenderPauseEvent to track swapchain recreation
-    auto* bus = GetOwningGraph()->GetMessageBus();
-    bus->Subscribe(EventTypes::RenderPauseEvent::TYPE,
-        [this](const EventBus::BaseEventMessage& msg) {
-            const auto& event = static_cast<const EventTypes::RenderPauseEvent&>(msg);
-            if (event.pauseReason == EventTypes::RenderPauseEvent::Reason::SwapChainRecreation) {
-                if (event.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START) {
-                    SetFlag(NodeFlags::Paused);
-                    NODE_LOG_DEBUG("DescriptorSetNode: Rendering paused (swapchain recreation)");
-                } else {
-                    ClearFlag(NodeFlags::Paused);
-                    NODE_LOG_DEBUG("DescriptorSetNode: Rendering resumed");
+    // Use NodeInstance::SubscribeToMessage for automatic cleanup (avoids subscription leaks)
+    if (GetMessageBus()) {
+        SubscribeToMessage(EventTypes::RenderPauseEvent::TYPE,
+            [this](const EventBus::BaseEventMessage& msg) {
+                const auto& event = static_cast<const EventTypes::RenderPauseEvent&>(msg);
+                if (event.pauseReason == EventTypes::RenderPauseEvent::Reason::SwapChainRecreation) {
+                    if (event.pauseAction == EventTypes::RenderPauseEvent::Action::PAUSE_START) {
+                        SetFlag(NodeFlags::Paused);
+                        NODE_LOG_DEBUG("DescriptorSetNode: Rendering paused (swapchain recreation)");
+                    } else {
+                        ClearFlag(NodeFlags::Paused);
+                        NODE_LOG_DEBUG("DescriptorSetNode: Rendering resumed");
+                    }
                 }
+                return false;  // Don't consume message
             }
-            return false;  // Don't consume message
-        }
-    );
+        );
+    }
 }
 
 void DescriptorSetNode::SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<ShaderManagement::ShaderDataBundle>& outShaderBundle) {

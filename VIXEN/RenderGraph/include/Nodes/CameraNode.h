@@ -99,10 +99,7 @@ private:
     float farPlane = 100.0f;
     uint32_t gridResolution = 128;
 
-    // Input subscription IDs
-    Vixen::EventBus::EventSubscriptionID keyEventSub = 0;
-    Vixen::EventBus::EventSubscriptionID mouseSub = 0;
-    Vixen::EventBus::EventSubscriptionID mouseStartSub = 0;
+    // Event subscriptions tracked automatically by NodeInstance base class
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE

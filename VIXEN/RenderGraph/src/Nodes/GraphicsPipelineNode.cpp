@@ -72,7 +72,8 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     currentShaderBundle =  ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
     VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     VkDescriptorSetLayout manualDescriptorSetLayout = ctx.In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
-    SwapChainPublicVariables* swapchainInfo = ctx.In(GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+    // Note: SWAPCHAIN_INFO not used during pipeline compilation (pipelines are swapchain-independent)
+    // Image views are bound at execute-time via descriptors, not baked into pipeline
 
     // Validate inputs
     if (!currentShaderBundle) {

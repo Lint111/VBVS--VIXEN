@@ -38,9 +38,9 @@ void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Called - graph-scope initialization");
 
     // Subscribe to DeviceMetadataEvent for shader version validation
-    auto* messageBus = GetOwningGraph()->GetMessageBus();
-    if (messageBus) {
-        messageBus->Subscribe(
+    // Use NodeInstance::SubscribeToMessage for automatic cleanup (avoids subscription leaks)
+    if (GetMessageBus()) {
+        SubscribeToMessage(
             Vixen::EventBus::DeviceMetadataEvent::TYPE,
             [this](const Vixen::EventBus::BaseEventMessage& msg) {
                 this->OnDeviceMetadata(msg);

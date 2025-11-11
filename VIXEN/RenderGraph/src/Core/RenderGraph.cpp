@@ -1163,36 +1163,10 @@ void RenderGraph::RecompileDirtyNodes() {
         dirtyNodes.clear();
 
         // Recompile each dirty node
-        // Before destroying resources, ensure any GPU work referencing them has finished.
-        // Collect unique VkDevice handles used by the nodes and wait for device idle.
-        std::unordered_set<VkDevice> devicesToWait;
-        for (NodeInstance* node : nodesToRecompile) {
-            if (!node) continue;
-            auto* vdev = node->GetDevice();
-            if (vdev && vdev->device != VK_NULL_HANDLE) {
-                devicesToWait.insert(vdev->device);
-            }
-        }
-
-        // If we didn't find any devices from the nodes-to-recompile, fall back to scanning
-        // all graph instances for any known devices. This covers cases where nodes don't
-        // store a VulkanDevice pointer directly but the graph contains a Device node.
-        if (devicesToWait.empty()) {
-            for (const auto& instPtr : instances) {
-                if (!instPtr) continue;
-                auto* vdev = instPtr->GetDevice();
-                if (vdev && vdev->device != VK_NULL_HANDLE) {
-                    devicesToWait.insert(vdev->device);
-                }
-            }
-        }
-
-        for (VkDevice dev : devicesToWait) {
-            if (dev != VK_NULL_HANDLE) {
-                // Best-effort wait; if device becomes lost this will return an error which we ignore here
-                vkDeviceWaitIdle(dev);
-            }
-        }
+        // Note: We skip vkDeviceWaitIdle during recompilation because:
+        // 1. FrameSyncNode already handles frame-in-flight synchronization
+        // 2. Node pointers may be stale during cleanup (accessing node->GetDevice() unsafe)
+        // 3. Individual nodes handle their own device waits in CleanupImpl if needed
 
         for (NodeInstance* node : nodesToRecompile) {
             if (!node) continue;
@@ -1308,13 +1282,17 @@ void RenderGraph::MarkNodeNeedsRecompile(NodeHandle nodeHandle) {
 void RenderGraph::HandleCleanupRequest(const EventTypes::CleanupRequestedMessage& msg) {
     GRAPH_LOG_INFO("[RenderGraph] Received cleanup request (ID: " + std::to_string(msg.requestId) + ")");
 
-    // Execute full cleanup for now - simplified from complex scope-based cleanup
-    ExecuteCleanup();
-    size_t cleanedCount = instances.size();
+    // NOTE: CleanupRequestedMessage should NOT trigger full ExecuteCleanup during runtime
+    // Recompilation handles selective cleanup via node->Cleanup() for dirty nodes only
+    // Full ExecuteCleanup is ONLY for application shutdown (via Cleanup() or WindowCloseEvent)
 
-    // Publish completion event
+    // Legacy behavior was: ExecuteCleanup() -> destroy entire graph including VkInstance/VkDevice
+    // New behavior: Do nothing - let recompilation handle selective cleanup
+    GRAPH_LOG_INFO("[RenderGraph] CleanupRequest ignored - recompilation handles selective cleanup");
+
+    // Still publish completion for backward compatibility
     if (messageBus) {
-        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, static_cast<uint32_t>(cleanedCount));
+        auto completionMsg = std::make_unique<EventTypes::CleanupCompletedMessage>(0, 0);
         messageBus->Publish(std::move(completionMsg));
     }
 }

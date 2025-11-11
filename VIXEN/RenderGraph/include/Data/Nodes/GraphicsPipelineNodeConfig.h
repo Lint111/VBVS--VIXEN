@@ -22,7 +22,6 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Shader reflection data from ShaderLibraryNode
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
- * - SWAPCHAIN_INFO (SwapChainPublicVariablesPtr) - Swapchain info for viewport/scissor
  *
  * Outputs:
  * - PIPELINE (VkPipeline) - Graphics pipeline handle
@@ -38,10 +37,12 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * - POLYGON_MODE (string) - Polygon mode: "Fill", "Line", "Point" (default: "Fill")
  * - TOPOLOGY (string) - Primitive topology: "TriangleList", "TriangleStrip", etc. (default: "TriangleList")
  * - FRONT_FACE (string) - Front face: "Clockwise", "CounterClockwise" (default: "CounterClockwise")
+ *
+ * Note: Pipelines are swapchain-independent. Viewport/scissor are set dynamically at execute-time.
  */
 // Compile-time slot counts
 namespace GraphicsPipelineNodeCounts {
-    static constexpr size_t INPUTS = 5;
+    static constexpr size_t INPUTS = 4;  // Removed SWAPCHAIN_INFO (pipelines are swapchain-independent)
     static constexpr size_t OUTPUTS = 4;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -59,7 +60,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* TOPOLOGY = "topology";
     static constexpr const char* FRONT_FACE = "frontFace";
 
-    // ===== INPUTS (5) =====
+    // ===== INPUTS (4) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
@@ -79,12 +80,6 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 4,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -117,9 +112,6 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         INIT_INPUT_DESC(RENDER_PASS, "render_pass", ResourceLifetime::Persistent, BufferDescription{});
         INIT_INPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout", ResourceLifetime::Persistent, BufferDescription{});
 
-        HandleDescriptor swapchainInfoDesc{"SwapChainPublicVariables*"};
-        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainInfoDesc);
-
         INIT_OUTPUT_DESC(PIPELINE, "pipeline", ResourceLifetime::Persistent, BufferDescription{});
         INIT_OUTPUT_DESC(PIPELINE_LAYOUT, "pipeline_layout", ResourceLifetime::Persistent, BufferDescription{});
         INIT_OUTPUT_DESC(PIPELINE_CACHE, "pipeline_cache", ResourceLifetime::Persistent, BufferDescription{});
@@ -139,8 +131,6 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(!RENDER_PASS_Slot::nullable);
     static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 3);
     static_assert(!DESCRIPTOR_SET_LAYOUT_Slot::nullable);
-    static_assert(SWAPCHAIN_INFO_Slot::index == 4);
-    static_assert(!SWAPCHAIN_INFO_Slot::nullable);
 
     static_assert(PIPELINE_Slot::index == 0);
     static_assert(!PIPELINE_Slot::nullable);
@@ -156,7 +146,6 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);

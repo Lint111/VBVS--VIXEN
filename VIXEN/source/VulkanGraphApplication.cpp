@@ -701,7 +701,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {
-        voxelLogger->SetEnabled(true);
+        voxelLogger->SetEnabled(false);
         voxelLogger->SetTerminalOutput(true);
     }
 
@@ -828,9 +828,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   descriptorSetNode, DescriptorSetNodeConfig::IMAGE_INDEX)
          .Connect(descriptorSetNode, DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
-                  pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT)
-         .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
-                  pipelineNode, GraphicsPipelineNodeConfig::SWAPCHAIN_INFO);
+                  pipelineNode, GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+         // Note: SWAPCHAIN_INFO removed from GraphicsPipelineNode (pipelines are swapchain-independent)
 
     // --- Device → TextureLoader device chain ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -955,11 +954,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
-    // Use Dependency|Execute to bind initially in Compile and update per-frame in Execute
+    // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
                           descriptorGatherer, VoxelRayMarch::outputImage,
-                          SlotRole::Dependency | SlotRole::Execute);
+                          SlotRole::Execute);
 
     // Binding 1: camera (uniform buffer) - updated per frame
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
