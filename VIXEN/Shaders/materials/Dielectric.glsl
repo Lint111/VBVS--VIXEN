@@ -238,4 +238,146 @@ DielectricMaterial dielectric_ice() {
 // Diamond: 2.42
 // Cubic Zirconia: 2.15
 
+// ============================================================================
+// SPECTRAL DISPERSION (CHROMATIC EFFECTS)
+// ============================================================================
+
+// Scatter with wavelength-dependent IOR (chromatic dispersion)
+// Creates rainbow/prism effects by separating colors
+// Requires SpectralUtils.glsl for wavelength-dependent IOR functions
+//
+// Usage:
+//   #include "common/SpectralUtils.glsl"
+//   For each wavelength in spectrum:
+//     dielectric_scatter_dispersive(..., wavelength_nm, ...)
+//
+// This creates different refraction angles for different wavelengths,
+// producing natural chromatic aberration and "fire" in diamonds
+bool dielectric_scatter_dispersive(
+    Ray r_in,
+    HitRecord rec,
+    float base_ir,           // Base IOR at reference wavelength (589.3nm)
+    float wavelength_nm,     // Wavelength for this ray (380-780nm)
+    float dispersion_strength, // 0.0 = no dispersion, 1.0 = full material dispersion
+    inout uint rng_state,
+    out ScatterRecord scatter
+) {
+    scatter.attenuation = vec3(1.0);
+    scatter.emitted = vec3(0.0);
+
+    // Calculate wavelength-dependent IOR
+    // Shorter wavelengths (blue) refract more than longer (red)
+    float lambda_ref = 589.3;  // Sodium D-line reference
+    float dispersion = dispersion_strength * (base_ir - 1.0) * 0.02;
+    float ior_delta = dispersion * (lambda_ref - wavelength_nm) / lambda_ref;
+    float ir_wavelength = base_ir + ior_delta;
+
+    // Clamp to physically reasonable values
+    ir_wavelength = max(ir_wavelength, 1.0);
+
+    // Standard dielectric scatter with wavelength-specific IOR
+    float refraction_ratio = rec.frontFace ? (1.0 / ir_wavelength) : ir_wavelength;
+
+    vec3 unit_direction = normalize(r_in.direction);
+    float cos_theta = min(dot(-unit_direction, rec.normal), 1.0);
+    float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+
+    bool cannot_refract = refraction_ratio * sin_theta > 1.0;
+    vec3 direction;
+
+    if (cannot_refract || reflectance_schlick(cos_theta, refraction_ratio) > random_float(rng_state)) {
+        direction = reflect_vector(unit_direction, rec.normal);
+    } else {
+        direction = refract_vector(unit_direction, rec.normal, refraction_ratio);
+    }
+
+    scatter.scattered = true;
+    scatter.scattered_ray.origin = rec.point;
+    scatter.scattered_ray.direction = normalize(direction);
+
+    return true;
+}
+
+// Scatter with full spectral dispersion using material-specific IOR curve
+// Uses actual dispersion equations (Cauchy, Sellmeier) from SpectralUtils.glsl
+//
+// material_type:
+//   0 = BK7 glass (low dispersion)
+//   1 = Flint glass (high dispersion)
+//   2 = Water
+//   3 = Diamond (very high dispersion, creates "fire")
+//   4 = Fused silica (very low dispersion)
+bool dielectric_scatter_spectral(
+    Ray r_in,
+    HitRecord rec,
+    int material_type,
+    float wavelength_nm,
+    inout uint rng_state,
+    out ScatterRecord scatter
+) {
+    // Get wavelength-specific IOR from SpectralUtils.glsl
+    // Note: These functions need to be declared or included
+    extern float ior_bk7_glass(float lambda);
+    extern float ior_flint_glass(float lambda);
+    extern float ior_water(float lambda);
+    extern float ior_diamond(float lambda);
+    extern float ior_fused_silica(float lambda);
+
+    float ir_wavelength;
+    if (material_type == 0) {
+        ir_wavelength = ior_bk7_glass(wavelength_nm);
+    } else if (material_type == 1) {
+        ir_wavelength = ior_flint_glass(wavelength_nm);
+    } else if (material_type == 2) {
+        ir_wavelength = ior_water(wavelength_nm);
+    } else if (material_type == 3) {
+        ir_wavelength = ior_diamond(wavelength_nm);
+    } else if (material_type == 4) {
+        ir_wavelength = ior_fused_silica(wavelength_nm);
+    } else {
+        ir_wavelength = 1.5;  // Default glass
+    }
+
+    scatter.attenuation = vec3(1.0);
+    scatter.emitted = vec3(0.0);
+
+    float refraction_ratio = rec.frontFace ? (1.0 / ir_wavelength) : ir_wavelength;
+
+    vec3 unit_direction = normalize(r_in.direction);
+    float cos_theta = min(dot(-unit_direction, rec.normal), 1.0);
+    float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+
+    bool cannot_refract = refraction_ratio * sin_theta > 1.0;
+    vec3 direction;
+
+    if (cannot_refract || reflectance_schlick(cos_theta, refraction_ratio) > random_float(rng_state)) {
+        direction = reflect_vector(unit_direction, rec.normal);
+    } else {
+        direction = refract_vector(unit_direction, rec.normal, refraction_ratio);
+    }
+
+    scatter.scattered = true;
+    scatter.scattered_ray.origin = rec.point;
+    scatter.scattered_ray.direction = normalize(direction);
+
+    return true;
+}
+
+// Dispersive dielectric presets
+DielectricMaterial dielectric_prism_glass() {
+    DielectricMaterial mat;
+    mat.ir = 1.52;  // BK7 glass at 589nm
+    mat.tint = vec3(1.0);
+    mat.absorption = 0.0;
+    return mat;
+}
+
+DielectricMaterial dielectric_diamond_fire() {
+    DielectricMaterial mat;
+    mat.ir = 2.417;  // Diamond at 589nm
+    mat.tint = vec3(1.0);
+    mat.absorption = 0.0;
+    return mat;
+}
+
 #endif // DIELECTRIC_GLSL

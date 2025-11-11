@@ -39,12 +39,14 @@
 // DATA STRUCTURES
 // ============================================================================
 
-// Photon representation (compact: 32 bytes)
+// Photon representation (36 bytes with phase)
 struct Photon {
     vec3 position;          // 12 bytes - World space position
     vec3 incident_direction; // 12 bytes - Direction photon was traveling
     vec3 power;             // 12 bytes - RGB flux (power)
-    // Optional: could add 4 bytes for flags/surface normal compression
+    float phase;            // 4 bytes - Wave phase at this position [0, 2π]
+                            // Calculated from optical path length: φ = (2π/λ) * distance
+                            // Enables wave interference in radiance estimation
 };
 
 // Visible point for camera ray tracing (SPPM hit points)
@@ -252,6 +254,296 @@ float frustum_weight_custom_falloff(Frustum f, vec3 point, float falloff_distanc
     // Exponential falloff
     return exp(-sd / falloff_distance);
 }
+
+// ============================================================================
+// PHASE TRACKING (WAVE INTERFERENCE)
+// ============================================================================
+
+// Calculate phase shift from optical path length
+// User's insight: Track phase in photons for wave interference effects
+//
+// Phase formula: φ = (2π/λ) * optical_path_length
+//   where optical_path_length = n * distance
+//   n = refractive index of medium
+//   distance = physical distance traveled
+//   λ = wavelength in same units as distance
+//
+// For spectral rendering with multiple wavelengths:
+//   - Each wavelength has its own phase
+//   - Phase differences create interference patterns
+//   - Enables thin-film effects, dispersion halos, etc.
+float calculate_phase_shift(float distance_meters, float wavelength_nm, float refractive_index) {
+    // Convert wavelength to meters
+    float wavelength_m = wavelength_nm * 1e-9;
+
+    // Optical path length
+    float optical_path = refractive_index * distance_meters;
+
+    // Wave number k = 2π/λ
+    float k = 2.0 * PI / wavelength_m;
+
+    // Phase shift Δφ = k * optical_path
+    float phase_shift = k * optical_path;
+
+    // Return phase modulo 2π
+    return mod(phase_shift, 2.0 * PI);
+}
+
+// Update photon phase after traveling distance
+// Call this each time photon bounces or travels
+void update_photon_phase(inout Photon photon, float distance_traveled, float wavelength_nm, float medium_ior) {
+    float phase_shift = calculate_phase_shift(distance_traveled, wavelength_nm, medium_ior);
+    photon.phase = mod(photon.phase + phase_shift, 2.0 * PI);
+}
+
+// Calculate phase difference between two photons
+// Used for interference calculations
+float phase_difference(Photon p1, Photon p2) {
+    float diff = abs(p1.phase - p2.phase);
+    // Map to [0, π] (phase difference is symmetric)
+    if (diff > PI) {
+        diff = 2.0 * PI - diff;
+    }
+    return diff;
+}
+
+// Interference factor from phase difference
+// Returns [0, 1]: 1 = constructive interference, 0 = destructive
+float interference_factor(float phase_diff) {
+    // Constructive when phase_diff ≈ 0
+    // Destructive when phase_diff ≈ π
+    // Factor = (1 + cos(phase_diff)) / 2
+    return 0.5 + 0.5 * cos(phase_diff);
+}
+
+// Coherent radiance estimation with wave interference
+// Combines photon contributions using phase information
+//
+// Instead of: L = Σ photon.power
+// Use:        L = |Σ sqrt(photon.power) * e^(i*photon.phase)|²
+//
+// This creates constructive/destructive interference patterns
+vec3 estimate_radiance_coherent(Photon photons[], int count, vec3 query_point) {
+    if (count == 0) {
+        return vec3(0.0);
+    }
+
+    // Complex accumulator (real, imaginary) per RGB channel
+    vec3 real_sum = vec3(0.0);
+    vec3 imag_sum = vec3(0.0);
+
+    for (int i = 0; i < count; ++i) {
+        Photon p = photons[i];
+
+        // Amplitude = sqrt(power) for each channel
+        vec3 amplitude = sqrt(max(p.power, vec3(0.0)));
+
+        // Complex amplitude: A * e^(i*φ) = A * (cos(φ) + i*sin(φ))
+        float cos_phase = cos(p.phase);
+        float sin_phase = sin(p.phase);
+
+        real_sum += amplitude * cos_phase;
+        imag_sum += amplitude * sin_phase;
+    }
+
+    // Intensity = |real + i*imag|² = real² + imag²
+    vec3 intensity = real_sum * real_sum + imag_sum * imag_sum;
+
+    return intensity;
+}
+
+// Legacy incoherent radiance estimation (no interference)
+// For comparison or when phase information is not needed
+vec3 estimate_radiance_incoherent(Photon photons[], int count) {
+    vec3 radiance = vec3(0.0);
+    for (int i = 0; i < count; ++i) {
+        radiance += photons[i].power;
+    }
+    return radiance / max(float(count), 1.0);
+}
+
+// Spectral radiance estimation with wavelength-specific interference
+// For full spectral rendering: evaluate interference per wavelength
+//
+// This is the most physically accurate approach:
+//   1. Each wavelength has its own phase
+//   2. Interference calculated per wavelength
+//   3. Final spectrum converted to RGB
+//
+// Note: Requires spectral photon map (photons tagged with wavelength)
+//       or separate photon maps per wavelength band
+
+// Calculate phase for specific wavelength (if photon stores RGB phase)
+// This is a helper for hybrid RGB/spectral rendering
+float get_wavelength_phase(Photon p, float wavelength_nm) {
+    // If photon.phase is for reference wavelength (e.g., 550nm green)
+    // Scale phase based on wavelength ratio
+    float reference_wavelength = 550.0;  // Green (middle of visible spectrum)
+    float phase_scale = reference_wavelength / wavelength_nm;
+
+    return mod(p.phase * phase_scale, 2.0 * PI);
+}
+
+// ============================================================================
+// LOD-AWARE PHOTON GATHERING
+// ============================================================================
+
+// User's insight: "Partial LOD rendering where further away in frustum
+//                  we use quicker light sampling, nearby use complex one"
+//
+// Adaptive photon gathering quality based on distance from camera:
+// - Near: Phase-coherent gathering with full wavelength interference
+// - Medium: Incoherent gathering with reduced spectral samples
+// - Far: RGB-only fast gathering
+
+// LOD quality levels (matches SpectralUtils.glsl)
+const int PHOTON_QUALITY_FULL = 0;     // Phase-coherent + full spectral
+const int PHOTON_QUALITY_MEDIUM = 1;   // Incoherent + reduced spectral
+const int PHOTON_QUALITY_LOW = 2;      // RGB only, no phase/spectral
+
+// Get photon gathering quality based on distance
+int get_photon_gathering_quality(float distance_from_camera) {
+    // Same thresholds as spectral LOD
+    extern int get_spectral_quality_lod(float distance);
+    return get_spectral_quality_lod(distance_from_camera);
+}
+
+// Adaptive radiance estimation with LOD
+// Automatically chooses gathering method based on quality level
+vec3 estimate_radiance_adaptive(
+    Photon photons[],
+    int count,
+    vec3 query_point,
+    vec3 camera_position,
+    int quality_override  // -1 = auto-detect, or override with specific quality
+) {
+    // Determine quality level
+    int quality;
+    if (quality_override >= 0) {
+        quality = quality_override;
+    } else {
+        float distance = length(query_point - camera_position);
+        quality = get_photon_gathering_quality(distance);
+    }
+
+    // Choose gathering method based on quality
+    if (quality == PHOTON_QUALITY_FULL) {
+        // Full quality: Phase-coherent interference
+        return estimate_radiance_coherent(photons, count, query_point);
+    } else {
+        // Medium/Low quality: Incoherent (fast)
+        return estimate_radiance_incoherent(photons, count);
+    }
+}
+
+// Calculate adaptive search radius based on distance
+// Near objects: Smaller radius (more precision, more photons available)
+// Far objects: Larger radius (gather more photons over larger area)
+float get_adaptive_search_radius(
+    float distance_from_camera,
+    float base_radius,
+    float near_plane,
+    float far_plane
+) {
+    // Normalize distance to [0, 1]
+    float normalized_distance = (distance_from_camera - near_plane) / (far_plane - near_plane);
+    normalized_distance = clamp(normalized_distance, 0.0, 1.0);
+
+    // Scale radius: 1× at near, 2× at far
+    // Compensates for lower photon density at distance
+    float radius_scale = 1.0 + normalized_distance;
+
+    return base_radius * radius_scale;
+}
+
+// Estimate photon count needed for quality level
+// Full quality needs more photons for accurate interference
+// Low quality can use fewer photons
+int get_adaptive_photon_count(int quality, int base_count) {
+    if (quality == PHOTON_QUALITY_FULL) {
+        return base_count;  // Full count for accurate interference
+    } else if (quality == PHOTON_QUALITY_MEDIUM) {
+        return base_count / 2;  // Half for medium quality
+    } else {
+        return base_count / 4;  // Quarter for low quality (RGB)
+    }
+}
+
+// Complete LOD-aware photon gathering workflow
+// This is the main function to use in rendering
+vec3 gather_photons_with_lod(
+    // Photon map query function (external)
+    // You must provide: int query_photon_map(vec3 pos, float radius, out Photon photons[])
+    vec3 query_position,
+    vec3 camera_position,
+    float near_plane,
+    float far_plane,
+    float base_search_radius,
+    int max_photon_count
+) {
+    // Calculate distance and quality
+    float distance = length(query_position - camera_position);
+    int quality = get_photon_gathering_quality(distance);
+
+    // Adaptive search radius
+    float search_radius = get_adaptive_search_radius(
+        distance, base_search_radius, near_plane, far_plane
+    );
+
+    // Adaptive photon count
+    int target_photon_count = get_adaptive_photon_count(quality, max_photon_count);
+
+    // Query photon map (NOTE: This requires photon map acceleration structure)
+    // Photon photons[256];  // Static array
+    // int count = query_photon_map(query_position, search_radius, photons);
+    // count = min(count, target_photon_count);
+
+    // Estimate radiance with appropriate method
+    // return estimate_radiance_adaptive(photons, count, query_position, camera_position, quality);
+
+    // Placeholder return (replace with actual photon gathering)
+    return vec3(0.0);
+}
+
+// Performance benefit estimation
+struct PhotonLODStats {
+    float near_ratio;    // Fraction of queries at full quality
+    float medium_ratio;  // Fraction at medium quality
+    float far_ratio;     // Fraction at low quality
+    float avg_speedup;   // Average speedup vs full quality everywhere
+};
+
+PhotonLODStats estimate_photon_lod_performance(float scene_depth_distribution[3]) {
+    PhotonLODStats stats;
+
+    // Depth distribution: [near, medium, far]
+    stats.near_ratio = scene_depth_distribution[0];
+    stats.medium_ratio = scene_depth_distribution[1];
+    stats.far_ratio = scene_depth_distribution[2];
+
+    // Cost multipliers
+    float full_cost = 1.0;       // Coherent gathering + interference
+    float medium_cost = 0.5;     // Incoherent + half photons
+    float low_cost = 0.25;       // RGB only + quarter photons
+
+    // Average cost
+    float avg_cost = stats.near_ratio * full_cost +
+                     stats.medium_ratio * medium_cost +
+                     stats.far_ratio * low_cost;
+
+    // Speedup
+    stats.avg_speedup = 1.0 / avg_cost;
+
+    return stats;
+}
+
+// Example: Typical indoor scene (close objects)
+// near: 40%, medium: 40%, far: 20%
+// Speedup: 1 / (0.4*1.0 + 0.4*0.5 + 0.2*0.25) = 1 / 0.65 ≈ 1.5×
+
+// Example: Typical outdoor scene (distant objects)
+// near: 10%, medium: 30%, far: 60%
+// Speedup: 1 / (0.1*1.0 + 0.3*0.5 + 0.6*0.25) = 1 / 0.4 ≈ 2.5×
 
 // ============================================================================
 // PROGRESSIVE PDF CONSTRUCTION
