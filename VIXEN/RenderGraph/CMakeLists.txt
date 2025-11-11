@@ -82,12 +82,14 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/RenderGraph.h
     include/Core/ResourceBudgetManager.h
     include/Core/ResourceDependencyTracker.h
+    include/Core/ResourceLifetimeAnalyzer.h
     include/Core/SlotTask.h
     include/Core/StatefulContainer.h
     include/Core/Timer.h
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
+    include/Core/VulkanLimits.h
     include/Core/VariadicTypedNode.h
 )
 
@@ -103,6 +105,7 @@ set(RENDERGRAPH_CORE_SOURCES
     # src/Core/Resource.cpp  # Excluded - replaced by variant system
     src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
+    src/Core/ResourceLifetimeAnalyzer.cpp
     src/Core/ResourceVariant.cpp
     src/Core/SlotTask.cpp
     src/Core/Timer.cpp
