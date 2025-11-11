@@ -51,7 +51,12 @@ void VulkanSwapChain::Destroy(VkDevice device, VkInstance instance) {
 }
 
 void VulkanSwapChain::CleanUp() {
-    scPrivateVars.swapChainImages.clear();
+    // Phase H: Reset array count instead of clear()
+    scPrivateVars.swapChainImageCount = 0;
+    for (auto& img : scPrivateVars.swapChainImages) {
+        img = VK_NULL_HANDLE;
+    }
+
     scPrivateVars.surfaceFormats.clear();
 	scPrivateVars.presentModes.clear();
 }
@@ -91,15 +96,22 @@ void VulkanSwapChain::DestroySwapChain(VkDevice device)
         return;
     }
 
-    // Destroy image views
-    for (uint32_t i = 0; i < scPublicVars.colorBuffers.size(); i++) {
+    // Phase H: Destroy image views using swapChainImageCount
+    for (uint32_t i = 0; i < scPublicVars.swapChainImageCount; i++) {
         if(scPublicVars.colorBuffers[i].view != VK_NULL_HANDLE) {
             vkDestroyImageView(device, scPublicVars.colorBuffers[i].view, nullptr);
             scPublicVars.colorBuffers[i].view = VK_NULL_HANDLE;
         }
     }
-    scPublicVars.colorBuffers.clear();
-    scPrivateVars.swapChainImages.clear();
+
+    // Reset arrays
+    for (auto& buf : scPublicVars.colorBuffers) {
+        buf = SwapChainBuffer{};
+    }
+    scPrivateVars.swapChainImageCount = 0;
+    for (auto& img : scPrivateVars.swapChainImages) {
+        img = VK_NULL_HANDLE;
+    }
 
     // Destroy swap chain (but not the surface - it stays alive)
     if(scPublicVars.swapChain != VK_NULL_HANDLE) {
@@ -366,10 +378,21 @@ void VulkanSwapChain::CreateSwapChainColorImages(VkDevice device)
         throw std::runtime_error(std::string("VulkanSwapChain::CreateSwapChainColorImages - fpGetSwapchainImagesKHR failed (count): ") + std::to_string(static_cast<int>(result)));
     }
 
-    scPrivateVars.swapChainImages.clear();
-    scPrivateVars.swapChainImages.resize(scPublicVars.swapChainImageCount);
-    if (scPrivateVars.swapChainImages.size() < 1) {
+    // Phase H: Validate swapchain image count against MAX_SWAPCHAIN_IMAGES
+    if (scPublicVars.swapChainImageCount == 0) {
         throw std::runtime_error("VulkanSwapChain::CreateSwapChainColorImages - no swapchain images returned");
+    }
+    if (scPublicVars.swapChainImageCount > Vixen::RenderGraph::MAX_SWAPCHAIN_IMAGES) {
+        throw std::runtime_error("VulkanSwapChain::CreateSwapChainColorImages - swapchain image count (" +
+                                 std::to_string(scPublicVars.swapChainImageCount) +
+                                 ") exceeds MAX_SWAPCHAIN_IMAGES (" +
+                                 std::to_string(Vixen::RenderGraph::MAX_SWAPCHAIN_IMAGES) + ")");
+    }
+
+    // Store count and clear array
+    scPrivateVars.swapChainImageCount = scPublicVars.swapChainImageCount;
+    for (auto& img : scPrivateVars.swapChainImages) {
+        img = VK_NULL_HANDLE;
     }
 
     // Retrieve the swapchain image surfaces
@@ -411,19 +434,19 @@ void VulkanSwapChain::CreateColorImageView(VkDevice device, const VkCommandBuffe
         result = vkCreateImageView(device, &imgViewInfo, nullptr, &sc_buffer.view);
 
         if (result != VK_SUCCESS) {
-            // Clean up any image views already created for this swapchain
-            for (auto& buf : scPublicVars.colorBuffers) {
-                if (buf.view != VK_NULL_HANDLE) {
-                    vkDestroyImageView(device, buf.view, nullptr);
-                    buf.view = VK_NULL_HANDLE;
+            // Phase H: Clean up any image views already created for this swapchain
+            for (uint32_t j = 0; j < i; j++) {
+                if (scPublicVars.colorBuffers[j].view != VK_NULL_HANDLE) {
+                    vkDestroyImageView(device, scPublicVars.colorBuffers[j].view, nullptr);
+                    scPublicVars.colorBuffers[j].view = VK_NULL_HANDLE;
                 }
             }
-            scPublicVars.colorBuffers.clear();
 
             throw std::runtime_error(std::string("VulkanSwapChain::CreateColorImageView - vkCreateImageView failed: ") + std::to_string(static_cast<int>(result)));
         }
 
-        scPublicVars.colorBuffers.push_back(sc_buffer);
+        // Phase H: Store in array at index instead of push_back
+        scPublicVars.colorBuffers[i] = sc_buffer;
     }
     scPublicVars.currentColorBuffer = 0;
 }

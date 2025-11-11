@@ -2,10 +2,11 @@
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
+#include "Core/VulkanLimits.h"
 #include "VulkanSwapChain.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
 #include <memory>
-#include <vector>
+#include <array>
 
 namespace Vixen::RenderGraph {
 
@@ -88,9 +89,10 @@ private:
     // Removed: std::vector<VkSemaphore> imageAvailableSemaphores
     uint32_t currentFrame = 0;
 
+    // Phase H: Convert to stack array (bounded by MAX_SWAPCHAIN_IMAGES)
     // Phase 0.4: Track semaphore availability to prevent reuse
     // Each semaphore is used with its corresponding image index
-    std::vector<bool> semaphoreInFlight;  // true if semaphore is currently in use
+    std::array<bool, MAX_SWAPCHAIN_IMAGES> semaphoreInFlight{};  // true if semaphore is currently in use
 
     // Current state
     uint32_t currentImageIndex = 0;

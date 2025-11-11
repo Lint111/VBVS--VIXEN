@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Headers.h"
+#include "RenderGraph/include/Core/VulkanLimits.h"
+#include <array>
 
 class VulkanApplication;
 class VulkanApplicationBase;
@@ -21,7 +23,7 @@ struct SwapChainPrivateVariables {
     uint32_t presentModeCount;
 
     // Array for retrived present modes
-    std::vector<VkPresentModeKHR> presentModes;
+    std::vector<VkPresentModeKHR> presentModes;  // Variable size, keep as vector
 
     // Size of the swwapChain color images
     VkExtent2D swapChainExtent;
@@ -29,14 +31,16 @@ struct SwapChainPrivateVariables {
     // Number of color images supported
     uint32_t desiredNumberOfSwapChainImages;
     VkSurfaceTransformFlagBitsKHR preTransform;
-    
+
     // Store present mode bitwise flag
     VkPresentModeKHR swapChainPresentMode;
 
+    // Phase H: Convert to stack array (bounded by MAX_SWAPCHAIN_IMAGES)
     // The retrived drawing color swapchain images
-    std::vector<VkImage> swapChainImages;
+    std::array<VkImage, Vixen::RenderGraph::MAX_SWAPCHAIN_IMAGES> swapChainImages{};
+    uint32_t swapChainImageCount = 0;  // Track actual count
 
-    std::vector<VkSurfaceFormatKHR> surfaceFormats;
+    std::vector<VkSurfaceFormatKHR> surfaceFormats;  // Variable size, keep as vector
 };
 
 struct SwapChainPublicVariables {
@@ -49,8 +53,9 @@ struct SwapChainPublicVariables {
     // SwapChain object
     VkSwapchainKHR swapChain;
 
+    // Phase H: Convert to stack array (bounded by MAX_SWAPCHAIN_IMAGES)
     // List of color swapchain images
-    std::vector<SwapChainBuffer> colorBuffers;
+    std::array<SwapChainBuffer, Vixen::RenderGraph::MAX_SWAPCHAIN_IMAGES> colorBuffers{};
 
     // Current drawing surface index in use
     uint32_t currentColorBuffer;
@@ -86,8 +91,9 @@ struct SwapChainPublicVariables {
         return swapChain;
     }
 
+    // Phase H: Convert array to vector for compatibility
     operator std::vector<SwapChainBuffer>() const {
-        return colorBuffers;
+        return std::vector<SwapChainBuffer>(colorBuffers.begin(), colorBuffers.begin() + swapChainImageCount);
     }
 
     operator VkFormat() const {
