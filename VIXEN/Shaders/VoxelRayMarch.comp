@@ -16,9 +16,14 @@
 // - Fixed coordinate system mismatch in grid entry calculation
 // - Fixed tMax initialization with proper ray inverse direction
 // - Removed debug red color that caused pixel noise
+// - Added modular utility library includes (GeometryUtils.glsl)
 
 #version 460
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Include common geometry utilities for AABB operations
+// Provides: AABB struct, ray_aabb_intersect_dist(), aabb_contains_point(), etc.
+#include "common/GeometryUtils.glsl"
 
 // Workgroup size: 8x8 threads per group (64 threads total)
 // Optimal for most GPUs, balances occupancy vs register pressure
@@ -137,31 +142,30 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     vec3 gridSpaceOrigin = rayOrigin + vec3(halfGrid);  // Shift to [0, gridRes]
 
     // If ray starts outside grid, compute intersection with grid bounds
-    vec3 gridMin = vec3(0.0);
-    vec3 gridMax = vec3(float(camera.gridResolution));
+    // Using GeometryUtils.glsl AABB intersection
+    AABB gridBounds;
+    gridBounds.minimum = vec3(0.0);
+    gridBounds.maximum = vec3(float(camera.gridResolution));
 
-    // Ray-box intersection (AABB)
-    // FIXED: Use safe division that returns large value instead of modifying rayDir
-    // Division by zero yields infinity in IEEE 754, which is correct for AABB tests
+    Ray ray;
+    ray.origin = gridSpaceOrigin;
+    ray.direction = rayDir;
+
+    float tEnter, tExit;
+    bool hit = ray_aabb_intersect_dist(ray, gridBounds, 0.0, INFINITY, tEnter, tExit);
+
+    // Check if ray intersects grid at all
+    if (!hit || tExit < 0.0) {
+        // Ray misses grid entirely - return background
+        return vec4(BACKGROUND_COLOR, 1.0);
+    }
+
+    // Compute inverse direction for DDA (safe division)
     vec3 invDir = vec3(
         abs(rayDir.x) < 1e-8 ? 1e10 : 1.0 / rayDir.x,
         abs(rayDir.y) < 1e-8 ? 1e10 : 1.0 / rayDir.y,
         abs(rayDir.z) < 1e-8 ? 1e10 : 1.0 / rayDir.z
     );
-
-    vec3 t0 = (gridMin - gridSpaceOrigin) * invDir;
-    vec3 t1 = (gridMax - gridSpaceOrigin) * invDir;
-    vec3 tmin = min(t0, t1);
-    vec3 tmax = max(t0, t1);
-
-    float tEnter = max(max(tmin.x, tmin.y), tmin.z);
-    float tExit = min(min(tmax.x, tmax.y), tmax.z);
-
-    // Check if ray intersects grid at all
-    if (tExit < 0.0 || tEnter > tExit) {
-        // Ray misses grid entirely - return background
-        return vec4(BACKGROUND_COLOR, 1.0);
-    }
 
     // FIXED: Move ray origin in world space, then transform to grid space
     // This maintains proper coordinate system consistency
