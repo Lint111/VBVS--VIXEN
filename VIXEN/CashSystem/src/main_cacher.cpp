@@ -36,6 +36,9 @@ MainCacher::~MainCacher() {
 }
 
 void MainCacher::Initialize(::Vixen::EventBus::MessageBus* messageBus) {
+    // Initialize logger (from ILoggable)
+    InitializeLogger("CashSystem", false);  // Disabled by default, enable as needed
+
     if (messageBus) {
         m_messageBus = messageBus;
 

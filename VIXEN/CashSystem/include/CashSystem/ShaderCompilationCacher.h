@@ -1,7 +1,6 @@
 #pragma once
 
 #include "TypedCacher.h"
-#include "MainCashLogger.h"
 
 #include <vulkan/vulkan.h>
 #include <cstdint>

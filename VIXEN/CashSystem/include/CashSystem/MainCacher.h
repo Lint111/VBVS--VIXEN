@@ -6,6 +6,7 @@
 #include "TypeRegistry.h"
 #include "TypedCacher.h"
 #include "DeviceIdentifier.h"
+#include "ILoggable.h"
 
 #include <typeindex>
 #include <typeinfo>
@@ -44,17 +45,18 @@ class PipelineCacher;
 
 /**
  * @brief MainCacher - Hybrid caching system supporting both device-dependent and device-independent caching
- * 
+ *
  * Manages multiple caching modes:
  * 1. Device-dependent: Device-specific registries for Vulkan resources
  * 2. Device-independent: Global shared registry for non-Vulkan resources
- * 
+ *
  * Benefits:
  * - Shader compilation caching can be shared across all devices
  * - Device-specific resources remain isolated per device
  * - Single unified API for both caching types
+ * - Integrated logging via ILoggable (sub-cachers can register as children)
  */
-class MainCacher {
+class MainCacher : public ILoggable {
 public:
     static MainCacher& Instance();
 

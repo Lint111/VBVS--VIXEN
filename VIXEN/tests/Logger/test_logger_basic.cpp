@@ -129,28 +129,28 @@ TEST_F(LoggerTest, ClearRemovesLogs) {
 // ============================================================================
 
 TEST_F(LoggerTest, AddChildLogger) {
-    Logger childLogger("ChildLogger", true);
-    logger->AddChild(&childLogger);
+    auto childLogger = std::make_shared<Logger>("ChildLogger", true);
+    logger->AddChild(childLogger);
 
     EXPECT_EQ(logger->GetChildren().size(), 1);
-    EXPECT_EQ(logger->GetChildren()[0], &childLogger);
+    EXPECT_EQ(logger->GetChildren()[0], childLogger);
 }
 
 TEST_F(LoggerTest, RemoveChildLogger) {
-    Logger childLogger("ChildLogger", true);
-    logger->AddChild(&childLogger);
+    auto childLogger = std::make_shared<Logger>("ChildLogger", true);
+    logger->AddChild(childLogger);
     EXPECT_EQ(logger->GetChildren().size(), 1);
 
-    logger->RemoveChild(&childLogger);
+    logger->RemoveChild(childLogger.get());
     EXPECT_EQ(logger->GetChildren().size(), 0);
 }
 
 TEST_F(LoggerTest, ExtractLogsIncludesChildren) {
     logger->Info("Parent message");
 
-    Logger childLogger("Child", true);
-    childLogger.Info("Child message");
-    logger->AddChild(&childLogger);
+    auto childLogger = std::make_shared<Logger>("Child", true);
+    childLogger->Info("Child message");
+    logger->AddChild(childLogger);
 
     std::string logs = logger->ExtractLogs();
     EXPECT_NE(logs.find("Parent message"), std::string::npos);
@@ -161,33 +161,33 @@ TEST_F(LoggerTest, ExtractLogsIncludesChildren) {
 TEST_F(LoggerTest, ClearAllClearsChildrenToo) {
     logger->Info("Parent message");
 
-    Logger childLogger("Child", true);
-    childLogger.Info("Child message");
-    logger->AddChild(&childLogger);
+    auto childLogger = std::make_shared<Logger>("Child", true);
+    childLogger->Info("Child message");
+    logger->AddChild(childLogger);
 
     logger->ClearAll();
 
     std::string parentLogs = logger->ExtractLogs();
-    std::string childLogs = childLogger.ExtractLogs();
+    std::string childLogs = childLogger->ExtractLogs();
 
     EXPECT_EQ(parentLogs.find("Parent message"), std::string::npos);
     EXPECT_EQ(childLogs.find("Child message"), std::string::npos);
 }
 
 TEST_F(LoggerTest, ClearChildrenRemovesReferences) {
-    Logger child1("Child1", true);
-    Logger child2("Child2", true);
+    auto child1 = std::make_shared<Logger>("Child1", true);
+    auto child2 = std::make_shared<Logger>("Child2", true);
 
-    logger->AddChild(&child1);
-    logger->AddChild(&child2);
+    logger->AddChild(child1);
+    logger->AddChild(child2);
     EXPECT_EQ(logger->GetChildren().size(), 2);
 
     logger->ClearChildren();
     EXPECT_EQ(logger->GetChildren().size(), 0);
 
     // Children themselves should still have their logs
-    child1.Info("Test");
-    std::string childLogs = child1.ExtractLogs();
+    child1->Info("Test");
+    std::string childLogs = child1->ExtractLogs();
     EXPECT_NE(childLogs.find("Test"), std::string::npos);
 }
 
