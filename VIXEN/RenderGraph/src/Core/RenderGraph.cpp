@@ -437,6 +437,11 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
         throw std::runtime_error("Graph must be compiled before execution");
     }
 
+    // Phase H: Begin stack tracking for this frame
+    if (budgetManager) {
+        budgetManager->BeginFrameStackTracking(globalFrameIndex);
+    }
+
     // Phase 0.4: Update loop states
     double frameTime = frameTimer.GetDeltaTime();
     loopManager.SetCurrentFrame(globalFrameIndex);
@@ -466,6 +471,11 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
                 node->SetState(NodeState::Complete);
             }
         }
+    }
+
+    // Phase H: End stack tracking and report usage
+    if (budgetManager) {
+        budgetManager->EndFrameStackTracking();
     }
 }
 
@@ -702,9 +712,12 @@ void RenderGraph::WaitForDevicesIdle(const std::unordered_set<VkDevice>& devices
 }
 
 Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outputIndex) {
+    // Phase H: DEPRECATED - This method is for backwards compatibility only
+    // New code should use ctx.RequestResource() which goes through URM
+
     NodeType* type = node->GetNodeType();
     const auto& outputSchema = type->GetOutputSchema();
-    
+
     if (outputIndex >= outputSchema.size()) {
         return nullptr;
     }
@@ -715,12 +728,11 @@ Resource* RenderGraph::CreateResourceForOutput(NodeInstance* node, uint32_t outp
     // The variant system allows nodes to set any registered type via SetHandle<T>()
     std::unique_ptr<Resource> resource = std::make_unique<Resource>();
     resource->SetLifetime(resourceDesc.lifetime);
-    
-    // Store in graph's resource vector for lifetime management
-    // The graph owns all resources; nodes access them via raw pointers
+
+    // Store in legacy resource vector (not tracked by URM - for backwards compat only)
     Resource* resourcePtr = resource.get();
-    resources.push_back(std::move(resource));
-    
+    legacyResources.push_back(std::move(resource));
+
     return resourcePtr;
 }
 

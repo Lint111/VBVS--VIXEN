@@ -449,12 +449,11 @@ private:
     std::map<std::string, NodeHandle> nameToHandle;
     std::vector<PostNodeCompileCallback> postNodeCompileCallbacks;  // Callbacks executed after each node compiles
     std::map<NodeTypeId, std::vector<NodeInstance*>> instancesByType;
-    
-    // Resources (lifetime management only - nodes are the logical containers)
-    // This vector owns all Resource objects created by the graph. Nodes hold raw
-    // pointers to these resources via their inputs/outputs vectors. This centralized
-    // ownership enables future optimizations like memory aliasing and resource pooling.
-    std::vector<std::unique_ptr<Resource>> resources;
+
+    // Phase H: Legacy resource storage (DEPRECATED - use URM for new code)
+    // Kept only for backwards compatibility with CreateResourceForOutput()
+    // New code should use ctx.RequestResource() which goes through URM
+    std::vector<std::unique_ptr<Resource>> legacyResources;
 
     // Topology
     GraphTopology topology;
