@@ -24,7 +24,8 @@ enum class AllocationError {
  */
 enum class ResourceLocation {
     Stack,  // Allocated on stack (fast, cache-friendly)
-    Heap    // Fell back to heap (slower, but safe)
+    Heap,   // Fell back to heap (slower, but safe)
+    VRAM    // GPU device memory (for render graph resources)
 };
 
 /**

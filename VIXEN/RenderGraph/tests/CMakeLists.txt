@@ -173,3 +173,59 @@ if(TARGET GTest::gtest_main)
 else()
     message(STATUS "⊗ test_resourcevariant_handles skipped (GoogleTest not available)")
 endif()
+
+# ===========================================================================
+# Phase H: Unified Resource Management Tests
+# ===========================================================================
+# These test suites validate Phase H resource management systems:
+# - ResourcePool: Central resource management hub
+# - AliasingEngine: Memory aliasing for 50-80% VRAM savings
+# - ResourceProfiler: Per-node, per-frame resource tracking
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
+
+if(TARGET GTest::gtest_main)
+    # ResourcePool tests
+    add_executable(test_resource_pool
+        Core/test_resource_pool.cpp
+    )
+
+    target_link_libraries(test_resource_pool PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    gtest_discover_tests(test_resource_pool)
+    message(STATUS "✓ test_resource_pool configured (Phase H)")
+
+    # AliasingEngine tests
+    add_executable(test_aliasing_engine
+        Core/test_aliasing_engine.cpp
+    )
+
+    target_link_libraries(test_aliasing_engine PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(test_aliasing_engine PRIVATE Vulkan::Vulkan)
+    endif()
+
+    gtest_discover_tests(test_aliasing_engine)
+    message(STATUS "✓ test_aliasing_engine configured (Phase H)")
+
+    # ResourceProfiler tests
+    add_executable(test_resource_profiler
+        Core/test_resource_profiler.cpp
+    )
+
+    target_link_libraries(test_resource_profiler PRIVATE
+        GTest::gtest_main
+        RenderGraph
+    )
+
+    gtest_discover_tests(test_resource_profiler)
+    message(STATUS "✓ test_resource_profiler configured (Phase H)")
+else()
+    message(STATUS "⊗ Phase H tests skipped (GoogleTest not available)")
+endif()

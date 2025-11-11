@@ -16,6 +16,7 @@
 #include "CashSystem/MainCacher.h"
 #include "LoopManager.h"
 #include "GraphLifecycleHooks.h"
+#include "Core/ResourcePool.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -294,13 +295,24 @@ public:
     /**
      * @brief Get resource budget manager for task execution
      *
-     * Returns nullptr if no budget manager has been configured.
+     * Returns the budget manager owned by the ResourcePool.
      * Nodes use this via ExecuteTasks() for budget-aware parallelism.
      *
-     * @return Pointer to ResourceBudgetManager, or nullptr
+     * @return Pointer to ResourceBudgetManager (never null)
      */
-    ResourceBudgetManager* GetBudgetManager() { return budgetManager.get(); }
-    const ResourceBudgetManager* GetBudgetManager() const { return budgetManager.get(); }
+    ResourceBudgetManager* GetBudgetManager() { return resourcePool_ ? resourcePool_->GetBudgetManager() : nullptr; }
+    const ResourceBudgetManager* GetBudgetManager() const { return resourcePool_ ? resourcePool_->GetBudgetManager() : nullptr; }
+
+    /**
+     * @brief Get the resource pool (Phase H: Unified Resource Management)
+     *
+     * Returns the central resource pool that manages all render graph resources.
+     * Nodes use this to request transient, per-frame, and persistent resources.
+     *
+     * @return Pointer to ResourcePool (never null)
+     */
+    ResourcePool* GetResourcePool() { return resourcePool_.get(); }
+    const ResourcePool* GetResourcePool() const { return resourcePool_.get(); }
 
     /**
      * @brief Process pending events from the message bus
@@ -480,8 +492,8 @@ private:
     Timer frameTimer;
     uint64_t globalFrameIndex = 0;
 
-    // Phase F: Resource budget manager (optional)
-    std::unique_ptr<ResourceBudgetManager> budgetManager;
+    // Phase H: Unified Resource Management
+    std::unique_ptr<ResourcePool> resourcePool_;
 
     // Lifecycle hook system
     GraphLifecycleHooks lifecycleHooks;

@@ -2,7 +2,9 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/FramebufferNodeConfig.h"
+#include <array>
 
 namespace Vixen::RenderGraph {
 
@@ -29,12 +31,14 @@ public:
 
     ~FramebufferNode() override = default;
 
-    // Access framebuffers for external use (legacy compatibility)
-    const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }
+    // Access framebuffers for external use
     VkFramebuffer GetFramebuffer(uint32_t index) const {
-        return (index < framebuffers.size()) ? framebuffers[index] : VK_NULL_HANDLE;
+        return (index < framebufferCount) ? framebuffers[index] : VK_NULL_HANDLE;
     }
-    uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
+    uint32_t GetFramebufferCount() const { return framebufferCount; }
+
+    // Phase H: Array-based access for zero-copy iteration
+    const std::array<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>& GetFramebufferArray() const { return framebuffers; }
 
 protected:
 	// Template method pattern - override *Impl() methods
@@ -45,7 +49,11 @@ protected:
 
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> framebuffers;
+
+    // Phase H: Fixed-size array instead of vector (zero heap allocations)
+    std::array<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers{};
+    uint32_t framebufferCount = 0;
+
     bool hasDepth = false;
 };
 

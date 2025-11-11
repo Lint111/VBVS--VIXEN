@@ -24,6 +24,7 @@ RenderGraph::RenderGraph(
     : typeRegistry(registry)
     , messageBus(messageBus)
     , mainCacher(mainCacher)
+    , resourcePool_(std::make_unique<ResourcePool>())
 {
     if (!registry) {
         throw std::runtime_error("Node type registry cannot be null");
@@ -306,7 +307,7 @@ void RenderGraph::Clear() {
     ExecuteCleanup();
 
     instances.clear();
-    resources.clear();  // Destroys all graph-owned resources (centralized cleanup)
+    legacyResources.clear();  // Destroys all graph-owned resources (centralized cleanup)
     nameToHandle.clear();
     instancesByType.clear();
     executionOrder.clear();
@@ -428,6 +429,13 @@ void RenderGraph::Compile() {
     // Hook: PostCompilation
     lifecycleHooks.ExecuteGraphHooks(GraphLifecyclePhase::PostCompilation, this);
 
+    // Phase H: Connect ResourcePool to lifetime analyzer (if available in future)
+    // Note: ResourceLifetimeAnalyzer integration is planned but not yet added to RenderGraph
+    // When lifetimeAnalyzer_ member is added, uncomment:
+    // if (resourcePool_ && lifetimeAnalyzer_) {
+    //     resourcePool_->SetLifetimeAnalyzer(lifetimeAnalyzer_.get());
+    // }
+
     GRAPH_LOG_INFO("[RenderGraph::Compile] Compilation complete!");
     isCompiled = true;
 }
@@ -437,9 +445,10 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
         throw std::runtime_error("Graph must be compiled before execution");
     }
 
-    // Phase H: Begin stack tracking for this frame
-    if (budgetManager) {
-        budgetManager->BeginFrameStackTracking(globalFrameIndex);
+    // Phase H: Begin frame profiling and stack tracking
+    if (resourcePool_) {
+        resourcePool_->BeginFrameProfiling(globalFrameIndex);
+        resourcePool_->BeginFrameStackTracking(globalFrameIndex);
     }
 
     // Phase 0.4: Update loop states
@@ -473,9 +482,10 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
         }
     }
 
-    // Phase H: End stack tracking and report usage
-    if (budgetManager) {
-        budgetManager->EndFrameStackTracking();
+    // Phase H: End frame tracking
+    if (resourcePool_) {
+        resourcePool_->EndFrameStackTracking();
+        resourcePool_->EndFrameProfiling();
     }
 }
 

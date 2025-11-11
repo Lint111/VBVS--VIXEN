@@ -75,12 +75,17 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("Creating " + std::to_string(colorAttachmentCount) + " framebuffers");
     NODE_LOG_INFO("[FramebufferNode::Compile] Creating " + std::to_string(colorAttachmentCount) + " framebuffers from swapchain");
 
-    // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
-    // Clear the framebuffer vector to prepare for new framebuffers
-    framebuffers.clear();
+    // Phase H: Validate framebuffer count against array size
+    if (colorAttachmentCount > MAX_SWAPCHAIN_IMAGES) {
+        throw std::runtime_error("FramebufferNode: Swapchain image count (" +
+                                 std::to_string(colorAttachmentCount) +
+                                 ") exceeds MAX_SWAPCHAIN_IMAGES (" +
+                                 std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
+    }
 
-    // Resize framebuffer array
-    framebuffers.resize(colorAttachmentCount);
+    // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
+    // Reset framebuffer count (array elements initialized to VK_NULL_HANDLE in Cleanup)
+    framebufferCount = static_cast<uint32_t>(colorAttachmentCount);
 
     // Create one framebuffer per color attachment (swapchain image)
     for (size_t i = 0; i < colorAttachmentCount; i++) {
@@ -130,9 +135,10 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
             for (size_t j = 0; j < i; j++) {
                 if (framebuffers[j] != VK_NULL_HANDLE) {
                     vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
+                    framebuffers[j] = VK_NULL_HANDLE;
                 }
             }
-            framebuffers.clear();
+            framebufferCount = 0;
 
             VulkanError error{result, "Failed to create framebuffer " + std::to_string(i)};
             NODE_LOG_ERROR(error.toString());
@@ -144,13 +150,15 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
                       std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
 
-    // Output all framebuffers as a vector in ONE bundle
-    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
-    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebuffers.size()) + " framebuffers as vector");
+    // Phase H: Convert array to vector for output (interface compatibility)
+    // Note: This is a one-time allocation at compile-time, not per-frame
+    std::vector<VkFramebuffer> framebuffersVector(framebuffers.begin(), framebuffers.begin() + framebufferCount);
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffersVector);
+    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebufferCount) + " framebuffers as vector");
 
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
+    NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebufferCount) + " framebuffers");
 }
 
 void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -158,15 +166,17 @@ void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (!framebuffers.empty() && device != nullptr) {
-        NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
+    // Phase H: Array-based cleanup with framebufferCount tracking
+    if (framebufferCount > 0 && device != nullptr) {
+        NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebufferCount) + " framebuffers");
 
-        for (VkFramebuffer framebuffer : framebuffers) {
-            if (framebuffer != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device->device, framebuffer, nullptr);
+        for (uint32_t i = 0; i < framebufferCount; i++) {
+            if (framebuffers[i] != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device->device, framebuffers[i], nullptr);
+                framebuffers[i] = VK_NULL_HANDLE;
             }
         }
-        framebuffers.clear();
+        framebufferCount = 0;
     }
 }
 

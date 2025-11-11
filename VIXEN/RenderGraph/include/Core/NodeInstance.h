@@ -11,6 +11,7 @@
 #include "ResourceBudgetManager.h"
 #include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
+#include "Core/ManagedResource.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -694,6 +695,41 @@ protected:
         return budgetManager->RequestStackResource<T, Capacity>(name, nodeId);
     }
 
+    // ========================================================================
+    // PHASE H: UNIFIED RM<T> TEMPLATE API
+    // ========================================================================
+
+    /**
+     * @brief Request a managed resource with RAII cleanup
+     *
+     * Returns an RM<T> wrapper that automatically releases the resource
+     * when it goes out of scope. Supports aliasing and profiling.
+     *
+     * @tparam T Resource type (e.g., VkImage, VkBuffer)
+     * @param descriptor Resource descriptor
+     * @param lifetime Resource lifetime for aliasing optimization
+     * @return RAII-managed resource
+     *
+     * Example:
+     * @code
+     * auto texture = RequestManagedResource<VkImage>(imageDesc, ResourceLifetime::FrameLocal);
+     * vkCmdBindImage(..., texture.Get(), ...);
+     * // Automatic cleanup when texture goes out of scope
+     * @endcode
+     */
+    template<typename T>
+    RM<T> RequestManagedResource(
+        const typename ResourceTypeTraits<T>::DescriptorT& descriptor,
+        ResourceLifetime lifetime = ResourceLifetime::FrameLocal
+    ) {
+        auto* pool = GetResourcePool();
+        if (!pool) {
+            // Return empty RM<T> if no pool available
+            return RM<T>();
+        }
+        return RM<T>::Request(*pool, descriptor, lifetime);
+    }
+
     /**
      * @brief Get SlotScope for an input slot
      *
@@ -840,6 +876,15 @@ private:
     // This is transient runtime state (not serialized). It is mutable so that
     // const accessors (like TypedNode::In()) can mark usage during Compile().
     mutable std::vector<std::vector<bool>> inputUsedInCompile;
+
+    /**
+     * @brief Helper to get ResourcePool from owning graph
+     * @return ResourcePool pointer, or nullptr if no graph/pool available
+     */
+    ResourcePool* GetResourcePool() const {
+        auto* graph = GetOwningGraph();
+        return graph ? graph->GetResourcePool() : nullptr;
+    }
 
 public:
     // Phase F: Bundle access (for graph-level operations)
