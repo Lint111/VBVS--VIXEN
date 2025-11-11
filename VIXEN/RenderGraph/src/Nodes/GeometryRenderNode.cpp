@@ -144,10 +144,11 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Phase 0.3: Detect if inputs changed (mark all command buffers dirty if so)
+    // Phase H: Use const references to avoid heap allocation for vector copies
     VkRenderPass currentRenderPass = ctx.In(GeometryRenderNodeConfig::RENDER_PASS);
     VkPipeline currentPipeline = ctx.In(GeometryRenderNodeConfig::PIPELINE);
     VkBuffer currentVertexBuffer = ctx.In(GeometryRenderNodeConfig::VERTEX_BUFFER);
-    std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+    const auto& descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
     VkDescriptorSet currentDescriptorSet = (descriptorSets.size() > 0) ? descriptorSets[0] : VK_NULL_HANDLE;
 
     if (currentRenderPass != lastRenderPass ||
@@ -233,8 +234,9 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     }
     
     // Get inputs via typed config API
+    // Phase H: Use const references to avoid heap allocation for vector copies
     VkRenderPass renderPass = ctx.In(GeometryRenderNodeConfig::RENDER_PASS);
-    std::vector<VkFramebuffer> framebuffers = ctx.In(GeometryRenderNodeConfig::FRAMEBUFFERS);
+    const auto& framebuffers = ctx.In(GeometryRenderNodeConfig::FRAMEBUFFERS);
     if(framebufferIndex >= framebuffers.size()) {
         std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) + " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
         NODE_LOG_ERROR(errorMsg);

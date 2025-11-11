@@ -1,6 +1,8 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/StackResourceTracker.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/WindowNodeConfig.h"
 #include <memory>
 

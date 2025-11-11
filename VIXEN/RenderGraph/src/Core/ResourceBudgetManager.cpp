@@ -385,4 +385,16 @@ void ResourceBudgetManager::PrintAliasingReport() const {
     }
 }
 
+// ============================================================================
+// PHASE H: STACK RESOURCE TRACKING
+// ============================================================================
+
+void ResourceBudgetManager::BeginFrameStackTracking(uint64_t frameNumber) {
+    stackTracker_.BeginFrame(frameNumber);
+}
+
+void ResourceBudgetManager::EndFrameStackTracking() {
+    stackTracker_.EndFrame();
+}
+
 } // namespace Vixen::RenderGraph

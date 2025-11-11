@@ -312,12 +312,14 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // On first execute after Compile, bind all Dependency descriptors for all frames
+    // Phase H: Stack-allocated descriptor writes (zero heap allocations)
     if (HasFlag(NodeFlags::NeedsInitialBind)) {
         NODE_LOG_DEBUG("[DescriptorSetNode::Execute] First execute - binding Dependency descriptors for all frames");
+        VIXEN::StackArray<VkWriteDescriptorSet, Vixen::RenderGraph::MAX_DESCRIPTOR_BINDINGS> dependencyWrites;
         for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
-            auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
-                                                         perFrameImageInfos[i], perFrameBufferInfos[i],
-                                                         slotRoles, SlotRole::Dependency);
+            BuildDescriptorWrites(dependencyWrites, i, descriptorResources, descriptorBindings,
+                                 perFrameImageInfos[i], perFrameBufferInfos[i],
+                                 slotRoles, SlotRole::Dependency);
             if (!dependencyWrites.empty()) {
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
                 NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) +
@@ -328,9 +330,11 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Build writes for Execute (transient) bindings for current frame
-    auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
-                                       perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
-                                       slotRoles, SlotRole::Execute);
+    // Phase H: Stack-allocated descriptor writes (zero heap allocations)
+    VIXEN::StackArray<VkWriteDescriptorSet, Vixen::RenderGraph::MAX_DESCRIPTOR_BINDINGS> writes;
+    BuildDescriptorWrites(writes, imageIndex, descriptorResources, descriptorBindings,
+                         perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
+                         slotRoles, SlotRole::Execute);
 
     if (!writes.empty()) {
         vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -339,7 +343,8 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
-std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
+void DescriptorSetNode::BuildDescriptorWrites(
+    VIXEN::StackArray<VkWriteDescriptorSet, Vixen::RenderGraph::MAX_DESCRIPTOR_BINDINGS>& outWrites,
     uint32_t imageIndex,
     const std::vector<ResourceVariant>& descriptorResources,
     const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
@@ -348,8 +353,8 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     const std::vector<SlotRole>& slotRoles,
     SlotRole roleFilter
 ) {
-    std::vector<VkWriteDescriptorSet> writes;
-    writes.reserve(descriptorBindings.size());
+    // Phase H: Stack-allocated descriptor writes array (zero heap allocations)
+    outWrites.clear();
 
     // CRITICAL: Reserve space to prevent reallocation during iteration
     // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo) become invalid
@@ -448,7 +453,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                         imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                         imageInfos.push_back(imageInfo);
                         write.pImageInfo = &imageInfos.back();
-                        writes.push_back(write);
+                        outWrites.push_back(write);
                     }
                 }
                 // Direct VkImageView (single image, same for all frames)
@@ -525,7 +530,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                         }
                         write.pImageInfo = &imageInfos[startIdx];
                         write.descriptorCount = static_cast<uint32_t>(samplerArray.size());
-                        writes.push_back(write);
+                        outWrites.push_back(write);
                     }
                 }
                 break;
@@ -608,7 +613,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                         }
                         write.pImageInfo = &imageInfos[startIdx];
                         write.descriptorCount = static_cast<uint32_t>(imageViewArray.size());
-                        writes.push_back(write);
+                        outWrites.push_back(write);
                     }
                 }
                 break;
@@ -635,7 +640,7 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         }
     }
 
-    return writes;
+    // outWrites is populated via reference parameter (stack-allocated in caller)
 }
 
 void DescriptorSetNode::CleanupImpl(TypedCleanupContext& ctx) {

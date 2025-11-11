@@ -2,6 +2,8 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
+#include "Core/StackResourceTracker.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/DescriptorSetNodeConfig.h"
 // TEMPORARILY REMOVED - MVP uses hardcoded descriptor layouts
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
@@ -156,15 +158,21 @@ private:
     void AllocateDescriptorSets(uint32_t imageCount);
 
     /**
-     * @brief Update descriptor sets from resource array using shader metadata
+     * @brief Build VkWriteDescriptorSet for updating descriptors (STACK-OPTIMIZED)
+     *
+     * Phase H: Zero-allocation hot-path using stack-based StackArray.
+     *
+     * @param outWrites Output stack array for descriptor writes (max MAX_DESCRIPTOR_BINDINGS)
      * @param imageIndex Swapchain image index (which descriptor set to update)
      * @param descriptorResources Resource array from DescriptorResourceGathererNode
      * @param descriptorBindings Shader bindings metadata
      * @param imageInfos Output vector for image infos (keep alive for vkUpdateDescriptorSets)
      * @param bufferInfos Output vector for buffer infos (keep alive for vkUpdateDescriptorSets)
-     * @return VkWriteDescriptorSet array ready for vkUpdateDescriptorSets
+     * @param slotRoles Slot role array
+     * @param roleFilter Filter to process (Dependency or ExecuteOnly)
      */
-    std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
+    void BuildDescriptorWrites(
+        VIXEN::StackArray<VkWriteDescriptorSet, MAX_DESCRIPTOR_BINDINGS>& outWrites,
         uint32_t imageIndex,
         const std::vector<ResourceVariant>& descriptorResources,
         const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,

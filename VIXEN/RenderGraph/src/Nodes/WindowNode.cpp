@@ -163,10 +163,15 @@ void WindowNode::ExecuteImpl(TypedExecuteContext& ctx) {
 #endif
 
     // Process queued events with proper Context access
-    std::vector<WindowEvent> eventsToProcess;
+    // Phase H: Use stack-allocated array for per-frame event processing (zero heap allocations)
+    VIXEN::StackArray<WindowEvent, Vixen::RenderGraph::MAX_WINDOW_EVENTS_PER_FRAME> eventsToProcess;
     {
         std::lock_guard<std::recursive_mutex> lock(eventMutex);
-        eventsToProcess.swap(pendingEvents);  // Take ownership of events
+        // Copy events to stack array and clear pending
+        for (const auto& event : pendingEvents) {
+            eventsToProcess.push_back(event);
+        }
+        pendingEvents.clear();
     }
 
     for (const auto& event : eventsToProcess) {

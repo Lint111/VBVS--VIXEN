@@ -10,6 +10,7 @@
 #include "../../ResourceManagement/include/ResourceManagement/UnifiedRM_TypeSafe.h"
 #include "Data/Core/ResourceVariant.h"
 #include "Data/Core/ResourceTypeTraits.h"
+#include "Core/StackResourceTracker.h"
 
 namespace Vixen::RenderGraph {
 
@@ -208,6 +209,44 @@ public:
      */
     void PrintAliasingReport() const;
 
+    // ========================================================================
+    // PHASE H: STACK RESOURCE TRACKING
+    // ========================================================================
+
+    /**
+     * @brief Get the stack resource tracker for per-frame monitoring
+     *
+     * Nodes can use this to track stack-based allocations:
+     * @code
+     * StackArray<VkWriteDescriptorSet, 32> writes;
+     * budgetManager->GetStackTracker().TrackAllocation("DescriptorWrites",
+     *     writes.data(), writes.capacity_bytes(), nodeId);
+     * @endcode
+     */
+    VIXEN::StackResourceTracker& GetStackTracker() { return stackTracker_; }
+    const VIXEN::StackResourceTracker& GetStackTracker() const { return stackTracker_; }
+
+    /**
+     * @brief Begin frame tracking for stack allocations
+     *
+     * Called at the start of each frame from RenderGraph::Execute()
+     */
+    void BeginFrameStackTracking(uint64_t frameNumber);
+
+    /**
+     * @brief End frame tracking and report stack usage
+     *
+     * Called at the end of each frame from RenderGraph::Execute()
+     */
+    void EndFrameStackTracking();
+
+    /**
+     * @brief Get stack usage statistics
+     */
+    VIXEN::StackResourceTracker::UsageStats GetStackUsageStats() const {
+        return stackTracker_.GetStats();
+    }
+
 private:
     // Standard resource type budgets
     std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
@@ -232,6 +271,9 @@ private:
         std::vector<std::pair<uint32_t, uint32_t>> lifetimes;  // (birth, death) indices
     };
     std::unordered_map<std::string, AliasingPool> aliasingPools_;
+
+    // Phase H: Stack resource tracker
+    VIXEN::StackResourceTracker stackTracker_;
 
     // Internal helpers
     bool TryAllocateImpl(const ResourceBudget* budget, BudgetResourceUsage* usage, uint64_t bytes);

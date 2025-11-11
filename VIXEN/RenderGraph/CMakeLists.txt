@@ -84,6 +84,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ResourceDependencyTracker.h
     include/Core/ResourceLifetimeAnalyzer.h
     include/Core/SlotTask.h
+    include/Core/StackResourceTracker.h
     include/Core/StatefulContainer.h
     include/Core/Timer.h
     include/Core/TypedConnection.h
@@ -108,6 +109,7 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/ResourceLifetimeAnalyzer.cpp
     src/Core/ResourceVariant.cpp
     src/Core/SlotTask.cpp
+    src/Core/StackResourceTracker.cpp
     src/Core/Timer.cpp
 )
 

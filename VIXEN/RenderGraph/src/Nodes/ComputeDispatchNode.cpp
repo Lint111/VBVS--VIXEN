@@ -134,20 +134,28 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Detect if inputs changed (mark all command buffers dirty if so)
+    // Phase H: Detect if inputs changed (mark all command buffers dirty if so)
+    // Optimization: Avoid heap allocation for descriptor set vector comparison
     VkPipeline currentPipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout currentPipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
-    std::vector<VkDescriptorSet> currentDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
 
-    if (currentPipeline != lastPipeline ||
-        currentPipelineLayout != lastPipelineLayout ||
-        currentDescriptorSets != lastDescriptorSets) {
-        // Inputs changed - mark all command buffers dirty
+    // Only copy descriptor sets if pipeline/layout changed (rare), otherwise compare inline
+    bool pipelineChanged = (currentPipeline != lastPipeline || currentPipelineLayout != lastPipelineLayout);
+
+    if (pipelineChanged) {
+        // Pipeline changed - mark dirty and update cache
         commandBuffers.MarkAllDirty();
-
         lastPipeline = currentPipeline;
         lastPipelineLayout = currentPipelineLayout;
-        lastDescriptorSets = currentDescriptorSets;
+        lastDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+    } else {
+        // Pipeline unchanged - check if descriptor sets changed
+        // Phase H: Use const auto& to avoid vector copy when possible
+        const auto& currentDescriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+        if (currentDescriptorSets != lastDescriptorSets) {
+            commandBuffers.MarkAllDirty();
+            lastDescriptorSets = currentDescriptorSets;
+        }
     }
 
     // Calculate push constants (time updates every frame)
@@ -214,9 +222,10 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     }
 
     // Get inputs
+    // Phase H: Use const references to avoid heap allocation for vector copies
     VkPipeline pipeline = ctx.In(ComputeDispatchNodeConfig::COMPUTE_PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(ComputeDispatchNodeConfig::PIPELINE_LAYOUT);
-    std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
+    const auto& descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
     SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
     // Get dispatch dimensions from swapchain extent (8x8 workgroup size)
