@@ -83,6 +83,7 @@ private:
     int32_t lastMouseX = 0;
     int32_t lastMouseY = 0;
     bool firstMousePoll = true;
+    bool mouseCaptured = false;  // Track if mouse is captured for game mode
 
     // Delta time for held duration calculation
     std::chrono::steady_clock::time_point lastFrameTime;

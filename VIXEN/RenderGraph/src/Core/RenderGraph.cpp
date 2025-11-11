@@ -1092,6 +1092,18 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // Nothing to recompile
     }
 
+    // Log which nodes triggered recompilation
+    GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====");
+    GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Dirty nodes count: " + std::to_string(dirtyNodes.size()));
+    for (NodeHandle handle : dirtyNodes) {
+        if (handle.IsValid() && handle.index < instances.size()) {
+            NodeInstance* node = instances[handle.index].get();
+            if (node) {
+                GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes]   - Node '" + node->GetInstanceName() + "' marked dirty");
+            }
+        }
+    }
+
     // Check if any dirty nodes are currently executing on GPU
     // If so, defer recompilation until they're complete
     std::vector<NodeHandle> deferredNodes;

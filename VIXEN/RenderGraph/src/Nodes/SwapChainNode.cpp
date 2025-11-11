@@ -57,6 +57,7 @@ void SwapChainNode::SetupImpl(TypedSetupContext& ctx) {
 }
 
 void SwapChainNode::CompileImpl(TypedCompileContext& ctx) {
+    NODE_LOG_INFO("[SwapChainNode::Compile] ===== RECOMPILATION TRIGGERED =====");
     NODE_LOG_INFO("[SwapChainNode::Compile] START");
 
     // Access device input (compile-time dependency)

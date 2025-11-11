@@ -36,6 +36,7 @@ InputNode::InputNode(
 void InputNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Setup");
     lastFrameTime = std::chrono::steady_clock::now();
+    mouseCaptured = false;
 }
 
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
@@ -56,6 +57,27 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
     lastFrameTime = now;
 
+    // Enable mouse capture on first frame for game mode
+    if (!mouseCaptured && hwnd) {
+        // Capture mouse to window
+        SetCapture(hwnd);
+        // Hide cursor
+        ShowCursor(FALSE);
+        // Get window center for re-centering
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        int centerX = (rect.right - rect.left) / 2;
+        int centerY = (rect.bottom - rect.top) / 2;
+        POINT center = {centerX, centerY};
+        ClientToScreen(hwnd, &center);
+        SetCursorPos(center.x, center.y);
+
+        lastMouseX = centerX;
+        lastMouseY = centerY;
+        mouseCaptured = true;
+        NODE_LOG_INFO("[InputNode] Mouse captured for game mode");
+    }
+
     // Poll input state
     PollKeyboard();
     PollMouse();
@@ -63,10 +85,33 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Publish events based on state changes
     PublishKeyEvents();
     PublishMouseEvents();
+
+    // Re-center mouse for continuous movement
+    if (mouseCaptured && hwnd) {
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        int centerX = (rect.right - rect.left) / 2;
+        int centerY = (rect.bottom - rect.top) / 2;
+        POINT center = {centerX, centerY};
+        ClientToScreen(hwnd, &center);
+        SetCursorPos(center.x, center.y);
+
+        // Update last position to center (avoid accumulated drift)
+        lastMouseX = centerX;
+        lastMouseY = centerY;
+    }
 }
 
 void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[InputNode] Cleanup");
+
+    // Release mouse capture
+    if (mouseCaptured) {
+        ReleaseCapture();
+        ShowCursor(TRUE);
+        mouseCaptured = false;
+    }
+
     keyStates.clear();
 }
 
@@ -141,6 +186,12 @@ void InputNode::PublishKeyEvents() {
 
         // KeyPressed: Key just went down
         if (!state.wasDown && state.isDown) {
+            // ESC to exit application
+            if (key == EventBus::KeyCode::Escape) {
+                PostQuitMessage(0);
+                return;  // Exit early
+            }
+
             auto event = std::make_unique<EventBus::KeyEvent>(
                 instanceId,
                 key,

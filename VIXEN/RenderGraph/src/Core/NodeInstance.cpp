@@ -277,7 +277,10 @@ void NodeInstance::UnsubscribeFromMessage(EventBus::EventSubscriptionID subscrip
 
 void NodeInstance::MarkNeedsRecompile() {
     needsRecompile = true;
-    
+
+    // Log who is requesting recompilation
+    NODE_LOG_INFO("[NodeInstance::MarkNeedsRecompile] Node '" + instanceName + "' requesting recompilation");
+
     // Notify the owning graph that this node is dirty
     if (owningGraph) {
         // Find our handle in the graph
@@ -286,8 +289,10 @@ void NodeInstance::MarkNeedsRecompile() {
                 // If currently executing, defer the dirty marking until execution completes
                 if (state == NodeState::Executing) {
                     deferredRecompile = true;
+                    NODE_LOG_INFO("[NodeInstance::MarkNeedsRecompile]   Deferred (currently executing)");
                 } else {
                     owningGraph->MarkNodeNeedsRecompile({static_cast<uint32_t>(i)});
+                    NODE_LOG_INFO("[NodeInstance::MarkNeedsRecompile]   Marked dirty in graph");
                 }
                 break;
             }

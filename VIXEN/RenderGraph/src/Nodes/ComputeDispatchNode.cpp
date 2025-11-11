@@ -70,6 +70,10 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     commandPool = ctx.In(ComputeDispatchNodeConfig::COMMAND_POOL);
     SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
+    if (commandPool == VK_NULL_HANDLE) {
+        throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Command pool is null/invalid");
+    }
+
     if (!swapchainInfo) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] SwapChain info is null");
     }
@@ -363,6 +367,9 @@ void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
             );
             commandBuffers.clear();
         }
+
+        // Reset command pool to avoid using stale handle during recompilation
+        commandPool = VK_NULL_HANDLE;
     }
 
     NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleanup complete");

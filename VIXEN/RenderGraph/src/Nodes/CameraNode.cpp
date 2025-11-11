@@ -281,7 +281,7 @@ bool CameraNode::OnMouseMove(const EventBus::BaseEventMessage& msg) {
 void CameraNode::ApplyInputDeltas(float deltaTime) {
     // Apply rotation (mouse look)
     yaw += rotationDelta.x * mouseSensitivity;
-    pitch += rotationDelta.y * mouseSensitivity;
+    pitch -= rotationDelta.y * mouseSensitivity;  // Invert Y: down = look down
 
     // Clamp pitch to avoid gimbal lock
     const float maxPitch = glm::radians(89.0f);
