@@ -4,6 +4,7 @@
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
+#include "Core/VulkanLimits.h"  // For MAX_FRAMEBUFFER_ATTACHMENTS
 
 namespace Vixen::RenderGraph {
 
@@ -87,13 +88,22 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         VkImageView colorView = swapchainInfo->colorBuffers[i].view;
         NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i) + ", view=" + std::to_string(reinterpret_cast<uint64_t>(colorView)));
 
-        // Setup attachments array
-        std::vector<VkImageView> attachments;
-        attachments.push_back(colorView);
+        // Phase H: Stack-allocated attachments array (compile-time, not hot path, but demonstrates URM pattern)
+        auto attachmentsResult = ctx.RequestStackResource<VkImageView, MAX_FRAMEBUFFER_ATTACHMENTS>(
+            "FramebufferAttachments_" + std::to_string(i)
+        );
+
+        if (!attachmentsResult) {
+            NODE_LOG_ERROR("Failed to allocate framebuffer attachments array");
+            throw std::runtime_error("FramebufferNode: Attachment allocation failed");
+        }
+
+        auto& attachments = *attachmentsResult;
+        attachments->push_back(colorView);
 
         // Add depth attachment if present
         if (hasDepth) {
-            attachments.push_back(depthView);
+            attachments->push_back(depthView);
         }
 
         // Create framebuffer info
@@ -101,8 +111,8 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.pNext = nullptr;
         framebufferInfo.renderPass = renderPass;
-        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments->size());
+        framebufferInfo.pAttachments = attachments->data();
         framebufferInfo.width = swapchainInfo->Extent.width;
         framebufferInfo.height = swapchainInfo->Extent.height;
         framebufferInfo.layers = layers;
