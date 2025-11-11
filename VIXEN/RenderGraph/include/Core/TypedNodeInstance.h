@@ -221,81 +221,30 @@ public:
         }
 
         // ====================================================================
-        // PHASE H: URM RESOURCE ALLOCATION
+        // PHASE H: URM RESOURCE ALLOCATION (Convenience Forwarding)
         // ====================================================================
+        // Note: These are convenience wrappers that forward to NodeInstance methods.
+        // Resource allocation is a universal utility, not context-specific.
+        // See NodeInstance::RequestResource and NodeInstance::RequestStackResource
+        // for full documentation and usage examples.
 
         /**
-         * @brief Request GPU/CPU resource through URM with budget tracking
-         *
-         * Phase H: Unified resource management for GPU buffers, images, etc.
-         * All allocations go through URM for tracking and aliasing.
-         *
-         * @tparam T Resource handle type (VkBuffer, VkImage, etc.)
-         * @param descriptor Resource descriptor (BufferDescriptor, ImageDescriptor, etc.)
-         * @param strategy Allocation strategy (Device/Heap/Stack/Automatic)
-         * @return Resource* tracked by URM, or nullptr on allocation failure
-         *
-         * Usage (GPU Buffer):
-         * @code
-         * BufferDescriptor desc{.size = 1024, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
-         * Resource* buffer = ctx.RequestResource<VkBuffer>(desc);
-         * if (buffer) {
-         *     VkBuffer vkBuffer;
-         *     vkCreateBuffer(device, &createInfo, nullptr, &vkBuffer);
-         *     buffer->SetHandle(vkBuffer);
-         *     ctx.Out(OUTPUT_BUFFER, vkBuffer);
-         * }
-         * @endcode
+         * @brief Request GPU/CPU resource (forwards to NodeInstance::RequestResource)
          */
         template<typename T>
         Resource* RequestResource(
             const typename ResourceTypeTraits<T>::DescriptorT& descriptor,
             ResourceManagement::AllocStrategy strategy = ResourceManagement::AllocStrategy::Automatic
         ) {
-            auto* budgetManager = typedNode->NodeInstance::GetBudgetManager();
-            if (!budgetManager) {
-                return nullptr;  // No URM available
-            }
-            return budgetManager->CreateResource<T>(descriptor, strategy);
+            return typedNode->RequestResource<T>(descriptor, strategy);
         }
 
         /**
-         * @brief Request stack-allocated resource with automatic heap fallback
-         *
-         * Phase H: Safe stack allocation for hot-path CPU resources.
-         * Automatically falls back to heap if stack budget exceeded.
-         *
-         * @tparam T Element type (VkWriteDescriptorSet, WindowEvent, etc.)
-         * @tparam Capacity Maximum capacity (stack array size)
-         * @param name Resource name for tracking
-         * @return std::expected with either:
-         *   - Success: StackResourceHandle<T, Capacity> (stack or heap)
-         *   - Failure: AllocationError
-         *
-         * Usage (Descriptor Writes):
-         * @code
-         * auto writes = ctx.RequestStackResource<VkWriteDescriptorSet, 32>("DescriptorWrites");
-         * if (!writes) {
-         *     LOG_ERROR("Allocation failed: " << AllocationErrorMessage(writes.error()));
-         *     return;
-         * }
-         *
-         * writes->push_back(write);
-         * vkUpdateDescriptorSets(device, writes->size(), writes->data(), 0, nullptr);
-         *
-         * if (writes->isHeap()) {
-         *     LOG_WARNING("Heap fallback occurred");
-         * }
-         * @endcode
+         * @brief Request stack resource with fallback (forwards to NodeInstance::RequestStackResource)
          */
         template<typename T, size_t Capacity>
         VIXEN::StackResourceResult<T, Capacity> RequestStackResource(std::string_view name) {
-            auto* budgetManager = typedNode->NodeInstance::GetBudgetManager();
-            if (!budgetManager) {
-                return std::unexpected(VIXEN::AllocationError::SystemError);
-            }
-            uint32_t nodeId = static_cast<uint32_t>(typedNode->NodeInstance::GetInstanceId());
-            return budgetManager->RequestStackResource<T, Capacity>(name, nodeId);
+            return typedNode->RequestStackResource<T, Capacity>(name);
         }
     };
 

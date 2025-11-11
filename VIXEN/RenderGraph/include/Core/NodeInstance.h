@@ -616,6 +616,84 @@ protected:
      */
     ResourceBudgetManager* GetBudgetManager() const;
 
+    // ========================================================================
+    // PHASE H: URM RESOURCE ALLOCATION (Universal Utilities)
+    // ========================================================================
+
+    /**
+     * @brief Request GPU/CPU resource through URM with budget tracking
+     *
+     * Phase H: Universal utility for resource allocation through URM.
+     * Not tied to bundle/task handling - available at node level.
+     *
+     * @tparam T Resource handle type (VkBuffer, VkImage, etc.)
+     * @param descriptor Resource descriptor (BufferDescriptor, ImageDescriptor, etc.)
+     * @param strategy Allocation strategy (Device/Heap/Stack/Automatic)
+     * @return Resource* tracked by URM, or nullptr on allocation failure
+     *
+     * Usage (GPU Buffer):
+     * @code
+     * BufferDescriptor desc{.size = 1024, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+     * Resource* buffer = RequestResource<VkBuffer>(desc);
+     * if (buffer) {
+     *     VkBuffer vkBuffer;
+     *     vkCreateBuffer(device, &createInfo, nullptr, &vkBuffer);
+     *     buffer->SetHandle(vkBuffer);
+     *     SetOutput(OUTPUT_SLOT, 0, buffer);
+     * }
+     * @endcode
+     */
+    template<typename T>
+    Resource* RequestResource(
+        const typename ResourceTypeTraits<T>::DescriptorT& descriptor,
+        ResourceManagement::AllocStrategy strategy = ResourceManagement::AllocStrategy::Automatic
+    ) {
+        auto* budgetManager = GetBudgetManager();
+        if (!budgetManager) {
+            return nullptr;  // No URM available
+        }
+        return budgetManager->CreateResource<T>(descriptor, strategy);
+    }
+
+    /**
+     * @brief Request stack-allocated resource with automatic heap fallback
+     *
+     * Phase H: Universal utility for safe stack allocation.
+     * Not tied to bundle/task handling - available at node level.
+     *
+     * @tparam T Element type (VkWriteDescriptorSet, WindowEvent, etc.)
+     * @tparam Capacity Maximum capacity (stack array size)
+     * @param name Resource name for tracking
+     * @return std::expected with either:
+     *   - Success: StackResourceHandle<T, Capacity> (stack or heap)
+     *   - Failure: AllocationError
+     *
+     * Usage (Descriptor Writes):
+     * @code
+     * auto writes = RequestStackResource<VkWriteDescriptorSet, 32>("DescriptorWrites");
+     * if (!writes) {
+     *     NODE_LOG_ERROR("Allocation failed: " << AllocationErrorMessage(writes.error()));
+     *     return;
+     * }
+     *
+     * writes->push_back(write);
+     * vkUpdateDescriptorSets(device, writes->size(), writes->data(), 0, nullptr);
+     *
+     * if (writes->isHeap()) {
+     *     NODE_LOG_WARNING("Heap fallback occurred");
+     * }
+     * @endcode
+     */
+    template<typename T, size_t Capacity>
+    VIXEN::StackResourceResult<T, Capacity> RequestStackResource(std::string_view name) {
+        auto* budgetManager = GetBudgetManager();
+        if (!budgetManager) {
+            return std::unexpected(VIXEN::AllocationError::SystemError);
+        }
+        uint32_t nodeId = static_cast<uint32_t>(GetInstanceId());
+        return budgetManager->RequestStackResource<T, Capacity>(name, nodeId);
+    }
+
     /**
      * @brief Get SlotScope for an input slot
      *
