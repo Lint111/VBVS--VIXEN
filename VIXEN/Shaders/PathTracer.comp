@@ -1,0 +1,284 @@
+// PathTracer.comp
+// Compute shader for path tracing with materials
+// Based on "Ray Tracing in One Weekend" by Peter Shirley et al.
+//
+// Features:
+// - Analytic ray-sphere intersection
+// - Multiple material types (Lambertian, Metal, Dielectric)
+// - Progressive multi-sample anti-aliasing
+// - Proper physically-based scattering
+
+#version 460
+
+// Use our common ray tracing utilities
+// NOTE: Requires shader preprocessor with include paths set to VIXEN/Shaders/
+#include "common/RayTracingUtils.glsl"
+
+// Workgroup size: 8x8 threads
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BINDINGS
+// ============================================================================
+
+// Output image
+layout(set = 0, binding = 0, rgba32f) uniform image2D outputImage;
+
+// Camera data
+layout(set = 0, binding = 1) uniform CameraData {
+    mat4 invProjection;
+    mat4 invView;
+    vec3 cameraPos;
+    uint frameIndex;           // For progressive rendering
+    float lensRadius;          // For depth of field
+    float focusDistance;       // For depth of field
+} camera;
+
+// Scene data (could be replaced with SSBO for dynamic scenes)
+layout(set = 0, binding = 2) uniform SceneData {
+    uint numSpheres;
+    uint maxBounces;
+    uint samplesPerPixel;
+    uint _pad;
+} scene;
+
+// Sphere array (hardcoded for now, could use SSBO)
+const int MAX_SPHERES = 10;
+
+// Material types
+const int MAT_LAMBERTIAN = 0;
+const int MAT_METAL = 1;
+const int MAT_DIELECTRIC = 2;
+
+// ============================================================================
+// SCENE SETUP
+// ============================================================================
+
+struct Material {
+    int type;
+    vec3 albedo;
+    float fuzz;  // For metal
+    float ir;    // Index of refraction for dielectric
+};
+
+// Hardcoded scene (Cornell Box style)
+void get_sphere(int index, out Sphere sphere) {
+    // Ground
+    if (index == 0) {
+        sphere.center = vec3(0.0, -100.5, -1.0);
+        sphere.radius = 100.0;
+        sphere.materialIndex = 0;  // Gray Lambertian
+    }
+    // Center sphere - Glass
+    else if (index == 1) {
+        sphere.center = vec3(0.0, 0.0, -1.0);
+        sphere.radius = 0.5;
+        sphere.materialIndex = 3;  // Glass
+    }
+    // Left sphere - Metal
+    else if (index == 2) {
+        sphere.center = vec3(-1.0, 0.0, -1.0);
+        sphere.radius = 0.5;
+        sphere.materialIndex = 1;  // Gold metal
+    }
+    // Right sphere - Lambertian
+    else if (index == 3) {
+        sphere.center = vec3(1.0, 0.0, -1.0);
+        sphere.radius = 0.5;
+        sphere.materialIndex = 2;  // Red Lambertian
+    }
+}
+
+void get_material(int index, out Material mat) {
+    if (index == 0) {
+        // Ground - Gray Lambertian
+        mat.type = MAT_LAMBERTIAN;
+        mat.albedo = vec3(0.5, 0.5, 0.5);
+    }
+    else if (index == 1) {
+        // Gold Metal
+        mat.type = MAT_METAL;
+        mat.albedo = vec3(0.8, 0.6, 0.2);
+        mat.fuzz = 0.3;
+    }
+    else if (index == 2) {
+        // Red Lambertian
+        mat.type = MAT_LAMBERTIAN;
+        mat.albedo = vec3(0.7, 0.3, 0.3);
+    }
+    else if (index == 3) {
+        // Glass
+        mat.type = MAT_DIELECTRIC;
+        mat.ir = 1.5;
+    }
+}
+
+// ============================================================================
+// RAY GENERATION
+// ============================================================================
+
+// Generate camera ray for pixel with depth of field
+Ray get_camera_ray(vec2 uv, inout uint rng_state) {
+    // Unproject to world space
+    vec4 clipNear = vec4(uv, -1.0, 1.0);
+    vec4 clipFar = vec4(uv, 1.0, 1.0);
+
+    vec4 viewNear = camera.invProjection * clipNear;
+    vec4 viewFar = camera.invProjection * clipFar;
+
+    viewNear /= viewNear.w;
+    viewFar /= viewFar.w;
+
+    vec4 worldNear = camera.invView * viewNear;
+    vec4 worldFar = camera.invView * viewFar;
+
+    // Ray from camera position through pixel
+    vec3 direction = normalize(worldFar.xyz - worldNear.xyz);
+
+    // Apply depth of field (defocus blur)
+    Ray ray;
+    if (camera.lensRadius > 0.0) {
+        vec2 rd = camera.lensRadius * random_in_unit_disk(rng_state);
+        vec3 offset = vec3(rd.x, rd.y, 0.0);  // In camera space
+
+        // Transform offset to world space
+        // (simplified - should use camera basis vectors)
+        ray.origin = camera.cameraPos + offset;
+        vec3 focus_point = camera.cameraPos + direction * camera.focusDistance;
+        ray.direction = normalize(focus_point - ray.origin);
+    } else {
+        ray.origin = camera.cameraPos;
+        ray.direction = direction;
+    }
+
+    return ray;
+}
+
+// ============================================================================
+// SCENE INTERSECTION
+// ============================================================================
+
+bool hit_world(Ray r, float t_min, float t_max, out HitRecord rec) {
+    HitRecord temp_rec;
+    bool hit_anything = false;
+    float closest_so_far = t_max;
+
+    // Test all spheres
+    for (int i = 0; i < 4; ++i) {  // Hardcoded 4 spheres
+        Sphere sphere;
+        get_sphere(i, sphere);
+
+        if (hit_sphere(sphere, r, t_min, closest_so_far, temp_rec)) {
+            hit_anything = true;
+            closest_so_far = temp_rec.t;
+            rec = temp_rec;
+        }
+    }
+
+    return hit_anything;
+}
+
+// ============================================================================
+// PATH TRACING
+// ============================================================================
+
+// Sky color (simple gradient)
+vec3 sky_color(Ray r) {
+    vec3 unit_direction = normalize(r.direction);
+    float t = 0.5 * (unit_direction.y + 1.0);
+    return mix(vec3(1.0, 1.0, 1.0), vec3(0.5, 0.7, 1.0), t);
+}
+
+// Trace single ray through scene
+vec3 trace_ray(Ray r, inout uint rng_state) {
+    vec3 accumulated_color = vec3(1.0);
+    Ray current_ray = r;
+
+    for (uint bounce = 0; bounce < scene.maxBounces; ++bounce) {
+        HitRecord rec;
+
+        if (hit_world(current_ray, 0.001, INFINITY, rec)) {
+            // Get material
+            Material mat;
+            get_material(rec.materialIndex, mat);
+
+            // Scatter ray based on material
+            Ray scattered;
+            vec3 attenuation;
+            bool did_scatter = false;
+
+            if (mat.type == MAT_LAMBERTIAN) {
+                did_scatter = scatter_lambertian(current_ray, rec, mat.albedo, rng_state, attenuation, scattered);
+            }
+            else if (mat.type == MAT_METAL) {
+                did_scatter = scatter_metal(current_ray, rec, mat.albedo, mat.fuzz, rng_state, attenuation, scattered);
+            }
+            else if (mat.type == MAT_DIELECTRIC) {
+                did_scatter = scatter_dielectric(current_ray, rec, mat.ir, rng_state, attenuation, scattered);
+            }
+
+            if (did_scatter) {
+                accumulated_color *= attenuation;
+                current_ray = scattered;
+            } else {
+                // Ray absorbed
+                return vec3(0.0);
+            }
+        } else {
+            // Ray escaped to sky
+            return accumulated_color * sky_color(current_ray);
+        }
+    }
+
+    // Exceeded max bounces - return black (absorbed)
+    return vec3(0.0);
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 screenSize = imageSize(outputImage);
+
+    if (pixelCoords.x >= screenSize.x || pixelCoords.y >= screenSize.y) {
+        return;
+    }
+
+    // Initialize RNG seed (unique per pixel and frame)
+    uint rng_state = pixelCoords.x + pixelCoords.y * screenSize.x + camera.frameIndex * screenSize.x * screenSize.y;
+    rng_state = pcg_hash(rng_state);
+
+    // Accumulate samples
+    vec3 pixel_color = vec3(0.0);
+
+    for (uint s = 0; s < scene.samplesPerPixel; ++s) {
+        // Random offset within pixel for anti-aliasing
+        vec2 offset = vec2(random_float(rng_state), random_float(rng_state));
+        vec2 uv = (vec2(pixelCoords) + offset) / vec2(screenSize);
+        uv = uv * 2.0 - 1.0;  // Convert to NDC [-1, 1]
+
+        // Generate camera ray
+        Ray ray = get_camera_ray(uv, rng_state);
+
+        // Trace ray and accumulate color
+        pixel_color += trace_ray(ray, rng_state);
+    }
+
+    // Average samples
+    pixel_color /= float(scene.samplesPerPixel);
+
+    // Gamma correction (gamma = 2.0)
+    pixel_color = sqrt(pixel_color);
+
+    // Progressive rendering: blend with previous frame
+    if (camera.frameIndex > 0) {
+        vec4 prev_color = imageLoad(outputImage, pixelCoords);
+        float blend = 1.0 / float(camera.frameIndex + 1);
+        pixel_color = mix(prev_color.rgb, pixel_color, blend);
+    }
+
+    // Write output
+    imageStore(outputImage, pixelCoords, vec4(pixel_color, 1.0));
+}

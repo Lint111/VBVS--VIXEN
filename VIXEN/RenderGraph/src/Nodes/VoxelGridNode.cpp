@@ -141,11 +141,14 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] Failed to create image view: " + std::to_string(result));
     }
 
-    // Create sampler (linear filtering)
+    // Create sampler (NEAREST filtering for binary voxel data)
+    // FIXED: Use NEAREST instead of LINEAR to avoid interpolation artifacts
+    // Linear filtering creates intermediate values at voxel boundaries,
+    // causing inconsistent hit detection with threshold-based sampling
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_LINEAR;
-    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.magFilter = VK_FILTER_NEAREST;  // Changed from LINEAR
+    samplerInfo.minFilter = VK_FILTER_NEAREST;  // Changed from LINEAR
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -153,7 +156,7 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
     samplerInfo.compareEnable = VK_FALSE;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;  // Changed from LINEAR
 
     result = vkCreateSampler(vulkanDevice->device, &samplerInfo, nullptr, &voxelSampler);
     if (result != VK_SUCCESS) {
@@ -194,12 +197,28 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void VoxelGridNode::GenerateTestPattern(std::vector<uint8_t>& voxelData) {
-    // DEBUG: Fill entire grid with solid voxels to test upload
-    for (size_t i = 0; i < voxelData.size(); ++i) {
-        voxelData[i] = 255;  // All voxels solid
+    // FIXED: Create a sphere in the center instead of solid grid
+    // This provides a better test for ray marching and reveals bugs
+    float halfRes = static_cast<float>(resolution) * 0.5f;
+    float radius = halfRes * 0.6f;  // 60% of half-resolution
+
+    for (uint32_t z = 0; z < resolution; ++z) {
+        for (uint32_t y = 0; y < resolution; ++y) {
+            for (uint32_t x = 0; x < resolution; ++x) {
+                // Calculate distance from center
+                float dx = static_cast<float>(x) - halfRes;
+                float dy = static_cast<float>(y) - halfRes;
+                float dz = static_cast<float>(z) - halfRes;
+                float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+                // Set voxel value based on distance
+                uint32_t idx = x + y * resolution + z * resolution * resolution;
+                voxelData[idx] = (dist < radius) ? 255 : 0;
+            }
+        }
     }
 
-    NODE_LOG_INFO("Generated FULL SOLID test pattern (all voxels = 255)");
+    NODE_LOG_INFO("Generated sphere test pattern (radius=" + std::to_string(radius) + " voxels)");
 }
 
 void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {

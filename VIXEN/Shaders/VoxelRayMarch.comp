@@ -5,9 +5,17 @@
 // - [1] Nousiainen: "Performance comparison on rendering methods for voxel data"
 // - [5] Voetter: "Volumetric Ray Tracing with Vulkan"
 // - [16] Derin et al.: "BlockWalk" (target for Phase L optimization)
+// - Amanatides & Woo: "A Fast Voxel Traversal Algorithm for Ray Tracing" (1987)
+// - Shirley et al.: "Ray Tracing in One Weekend" series
 //
 // Algorithm: Naive DDA (Digital Differential Analyzer) voxel traversal
 // Future: BlockWalk optimization in Phase L for coherent block traversal
+//
+// BUGFIXES (Session 011CV1brWkQo6n5aK7nTUKFg):
+// - Fixed division-by-zero handling (use infinity, not EPSILON modification)
+// - Fixed coordinate system mismatch in grid entry calculation
+// - Fixed tMax initialization with proper ray inverse direction
+// - Removed debug red color that caused pixel noise
 
 #version 460
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
@@ -133,7 +141,14 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     vec3 gridMax = vec3(float(camera.gridResolution));
 
     // Ray-box intersection (AABB)
-    vec3 invDir = 1.0 / (rayDir + vec3(EPSILON));
+    // FIXED: Use safe division that returns large value instead of modifying rayDir
+    // Division by zero yields infinity in IEEE 754, which is correct for AABB tests
+    vec3 invDir = vec3(
+        abs(rayDir.x) < 1e-8 ? 1e10 : 1.0 / rayDir.x,
+        abs(rayDir.y) < 1e-8 ? 1e10 : 1.0 / rayDir.y,
+        abs(rayDir.z) < 1e-8 ? 1e10 : 1.0 / rayDir.z
+    );
+
     vec3 t0 = (gridMin - gridSpaceOrigin) * invDir;
     vec3 t1 = (gridMax - gridSpaceOrigin) * invDir;
     vec3 tmin = min(t0, t1);
@@ -144,18 +159,27 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
 
     // Check if ray intersects grid at all
     if (tExit < 0.0 || tEnter > tExit) {
-        // Ray misses grid entirely (show red for debug)
-        return vec4(1.0, 0.0, 0.0, 1.0);  // DEBUG: Red = ray missed grid
+        // Ray misses grid entirely - return background
+        return vec4(BACKGROUND_COLOR, 1.0);
     }
 
-    // Start ray at grid entry point (or current position if inside)
+    // FIXED: Move ray origin in world space, then transform to grid space
+    // This maintains proper coordinate system consistency
+    vec3 worldEntryPoint = rayOrigin;
     if (tEnter > 0.0) {
-        gridSpaceOrigin += rayDir * (tEnter + EPSILON);  // Move to entry point
+        // Ray starts outside grid, move to entry point
+        worldEntryPoint = rayOrigin + rayDir * (tEnter + EPSILON);
     }
 
-    // Ray direction signs and inverse
+    // Transform entry point to grid space
+    gridSpaceOrigin = worldEntryPoint + vec3(halfGrid);
+
+    // Clamp to ensure we're inside grid bounds (handle floating-point edge cases)
+    gridSpaceOrigin = clamp(gridSpaceOrigin, vec3(0.0), vec3(float(camera.gridResolution) - 0.001));
+
+    // Ray direction signs and inverse for DDA
     vec3 raySign = sign(rayDir);
-    vec3 rayInvDir = 1.0 / (rayDir + vec3(EPSILON));  // Avoid division by zero
+    vec3 rayInvDir = invDir;  // Reuse the safely computed inverse direction
 
     // Starting voxel (integer coordinates in grid space)
     ivec3 voxelPos = ivec3(floor(gridSpaceOrigin));
@@ -164,10 +188,16 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
     ivec3 step = ivec3(raySign);
 
     // tMax: parametric distance along ray to next voxel boundary per axis
+    // For positive direction: boundary is at voxelPos + 1
+    // For negative direction: boundary is at voxelPos (current position's lower edge)
     vec3 voxelBoundary = vec3(voxelPos) + max(vec3(step), vec3(0.0));
+
+    // Calculate distance from current position to next boundary
+    // This is in grid space units, but rayInvDir handles the ray direction scaling
     vec3 tMax = (voxelBoundary - gridSpaceOrigin) * rayInvDir;
 
     // tDelta: distance along ray between voxel boundaries per axis
+    // Since voxels are 1 unit in grid space, this is simply abs(1/rayDir)
     vec3 tDelta = abs(rayInvDir);
 
     // Ray marching loop
@@ -239,13 +269,8 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         vec3 shadedColor = shadeVoxel(hitNormal, hitColor);
         return vec4(shadedColor, 1.0);
     } else {
-        // DEBUG: Show if we sampled any non-zero voxels
-        if (maxVoxelSeen > 0.01) {
-            // We saw some voxels but didn't hit threshold (show cyan)
-            return vec4(0.0, 1.0, 1.0, 1.0);  // Cyan = saw voxels but < 0.5 threshold
-        }
-        // Ray entered grid but all voxels were zero (show green)
-        return vec4(0.0, 1.0, 0.0, 1.0);  // Green = entered grid, all voxels zero
+        // No hit - return background color
+        return vec4(BACKGROUND_COLOR, 1.0);
     }
 }
 
