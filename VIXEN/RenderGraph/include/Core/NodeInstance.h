@@ -22,6 +22,10 @@
 // Forward declare Logger to avoid circular dependency
 class Logger;
 
+namespace ResourceManagement {
+    class UnifiedRM_Base;  // Forward declare for resource lifetime analysis
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declarations
@@ -663,6 +667,20 @@ public:
      * @return Resource pointer, or nullptr if not yet created
      */
     Resource* GetOutput(uint32_t slotIndex, uint32_t arrayIndex = 0) const override;
+
+    /**
+     * @brief Get UnifiedRM resource at output slot (for lifetime analysis)
+     *
+     * Used by ResourceLifetimeAnalyzer to track resource lifetimes for aliasing.
+     * Returns nullptr if the output at this slot is not managed by UnifiedRM system.
+     *
+     * TODO: When nodes migrate to UnifiedRM, implement proper extraction.
+     * For now, returns nullptr as nodes don't yet use UnifiedRM for outputs.
+     *
+     * @param slotIndex Output slot index
+     * @return UnifiedRM_Base pointer, or nullptr if not UnifiedRM-managed
+     */
+    ResourceManagement::UnifiedRM_Base* GetOutputResource(uint32_t slotIndex) const;
 
     /**
      * @brief Set input resource at slot/array index (INodeWiring implementation)

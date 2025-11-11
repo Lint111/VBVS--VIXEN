@@ -386,4 +386,42 @@ bool GraphTopology::IsConnected() const {
     return visited.size() == nodes.size();
 }
 
+// ============================================================================
+// RESOURCE LIFETIME ANALYSIS (Phase H)
+// ============================================================================
+
+void GraphTopology::UpdateResourceTimelines() {
+    if (nodes.empty()) {
+        LOG_DEBUG("UpdateResourceTimelines: Empty graph, clearing timelines");
+        lifetimeAnalyzer_.Clear();
+        return;
+    }
+
+    // Get execution order from topological sort
+    auto executionOrder = TopologicalSort();
+
+    if (executionOrder.empty()) {
+        LOG_WARNING("UpdateResourceTimelines: Topological sort returned empty order");
+        lifetimeAnalyzer_.Clear();
+        return;
+    }
+
+    // Compute resource timelines from execution order and edges
+    lifetimeAnalyzer_.ComputeTimelines(executionOrder, edges);
+
+    LOG_DEBUG("UpdateResourceTimelines: Computed timelines for " +
+              std::to_string(lifetimeAnalyzer_.GetTrackedResourceCount()) +
+              " resources from " + std::to_string(executionOrder.size()) +
+              " nodes");
+
+    // Validate timelines in debug builds
+    #ifndef NDEBUG
+    std::string errorMessage;
+    if (!lifetimeAnalyzer_.ValidateTimelines(errorMessage)) {
+        LOG_WARNING("UpdateResourceTimelines: Timeline validation failed:\n" +
+                   errorMessage);
+    }
+    #endif
+}
+
 } // namespace Vixen::RenderGraph

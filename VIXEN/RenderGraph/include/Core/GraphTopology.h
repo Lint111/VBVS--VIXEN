@@ -2,6 +2,7 @@
 
 #include "NodeInstance.h"
 #include "ILoggable.h"
+#include "ResourceLifetimeAnalyzer.h"
 #include <vector>
 #include <set>
 #include <map>
@@ -69,9 +70,35 @@ public:
     bool ValidateGraph(std::string& errorMessage) const;
     bool IsConnected() const;
 
+    // Resource Lifetime Analysis (Phase H)
+    /**
+     * @brief Get the resource lifetime analyzer
+     *
+     * Provides access to automatic resource aliasing analysis based on
+     * graph execution order. Used by UnifiedBudgetManager to create
+     * automatic memory aliasing pools.
+     *
+     * @return Reference to lifetime analyzer
+     */
+    ResourceLifetimeAnalyzer& GetLifetimeAnalyzer() { return lifetimeAnalyzer_; }
+    const ResourceLifetimeAnalyzer& GetLifetimeAnalyzer() const { return lifetimeAnalyzer_; }
+
+    /**
+     * @brief Update resource timelines based on current graph topology
+     *
+     * Automatically called when graph structure changes. Computes resource
+     * lifetimes from topological execution order and updates aliasing hints.
+     *
+     * Should be called after any topology modification (add/remove nodes/edges).
+     */
+    void UpdateResourceTimelines();
+
 private:
     std::set<NodeInstance*> nodes;
     std::vector<GraphEdge> edges;
+
+    // Resource lifetime analysis (Phase H)
+    ResourceLifetimeAnalyzer lifetimeAnalyzer_;
 
     // Helper methods for cycle detection
     bool HasCyclesHelper(

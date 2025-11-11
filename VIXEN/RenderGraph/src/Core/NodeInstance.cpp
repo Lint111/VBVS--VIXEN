@@ -88,6 +88,21 @@ Resource* NodeInstance::GetOutput(uint32_t slotIndex, uint32_t arrayIndex) const
     return nullptr;
 }
 
+ResourceManagement::UnifiedRM_Base* NodeInstance::GetOutputResource(uint32_t slotIndex) const {
+    // TODO: Implement when nodes migrate to UnifiedRM system
+    // For now, nodes use Resource* (variant-based) instead of UnifiedRM*
+    // This method will be properly implemented once nodes start wrapping
+    // their outputs in UnifiedRM for automatic lifetime tracking
+
+    // Future implementation sketch:
+    // 1. Check if output at slotIndex is UnifiedRM-wrapped
+    // 2. Extract UnifiedRM_Base* pointer
+    // 3. Return for lifetime analysis
+
+    // Current: Return nullptr (nodes don't use UnifiedRM yet)
+    return nullptr;
+}
+
 void NodeInstance::SetInput(uint32_t slotIndex, uint32_t arrayIndex, Resource* resource) {
     // Phase F: Bundle-first organization - ensure bundle exists
     if (arrayIndex >= bundles.size()) {
