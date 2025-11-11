@@ -11,6 +11,7 @@
 #include "Data/Core/ResourceVariant.h"
 #include "Data/Core/ResourceTypeTraits.h"
 #include "Core/StackResourceTracker.h"
+#include "Core/StackResourceHandle.h"
 
 namespace Vixen::RenderGraph {
 
@@ -247,6 +248,51 @@ public:
         return stackTracker_.GetStats();
     }
 
+    /**
+     * @brief Request stack-allocated resource with automatic heap fallback
+     *
+     * Phase H: Safe stack allocation API with budget tracking and fallback.
+     *
+     * Allocation strategy:
+     * 1. Check stack budget - if available, allocate on stack
+     * 2. If stack full, fall back to heap (tracked in HostMemory budget)
+     * 3. If heap also full (strict mode), return error
+     *
+     * @tparam T Element type
+     * @tparam Capacity Maximum capacity (stack array size)
+     * @param name Resource name for debugging/tracking
+     * @param nodeId Node ID for tracking
+     * @return std::expected with either:
+     *   - Success: StackResourceHandle<T, Capacity> (stack or heap)
+     *   - Failure: AllocationError
+     *
+     * Usage:
+     * @code
+     * auto writes = budgetManager->RequestStackResource<VkWriteDescriptorSet, 32>(
+     *     "DescriptorWrites", nodeId);
+     *
+     * if (!writes) {
+     *     // Handle allocation error
+     *     LOG_ERROR("Allocation failed: " << AllocationErrorMessage(writes.error()));
+     *     return;
+     * }
+     *
+     * // Use unified interface (works for stack or heap)
+     * writes->push_back(write);
+     * vkUpdateDescriptorSets(device, writes->size(), writes->data(), 0, nullptr);
+     *
+     * // Check location (for logging/profiling)
+     * if (writes->isHeap()) {
+     *     LOG_WARNING("Fell back to heap allocation for " << writes->getName());
+     * }
+     * @endcode
+     */
+    template<typename T, size_t Capacity>
+    VIXEN::StackResourceResult<T, Capacity> RequestStackResource(
+        std::string_view name,
+        uint32_t nodeId
+    );
+
 private:
     // Standard resource type budgets
     std::unordered_map<BudgetResourceType, ResourceBudget> budgets_;
@@ -371,6 +417,53 @@ size_t ResourceBudgetManager::EstimateSize(
         // Handle types: minimal tracking overhead
         return sizeof(T);
     }
+}
+
+template<typename T, size_t Capacity>
+VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResource(
+    std::string_view name,
+    uint32_t nodeId
+) {
+    // Validate capacity
+    if (Capacity == 0 || Capacity > 10000) {  // Sanity check
+        return std::unexpected(VIXEN::AllocationError::InvalidSize);
+    }
+
+    const size_t sizeBytes = Capacity * sizeof(T);
+
+    // Check if stack budget allows this allocation
+    const size_t currentStackUsage = stackTracker_.GetCurrentFrameUsage().totalStackUsed;
+    const size_t newStackUsage = currentStackUsage + sizeBytes;
+
+    if (newStackUsage <= VIXEN::StackResourceTracker::MAX_STACK_PER_FRAME) {
+        // Stack allocation succeeded
+        auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateStack(
+            name,
+            stackTracker_,
+            nodeId
+        );
+        return handle;
+    }
+
+    // Stack full - try heap fallback
+    // Check heap budget
+    auto budget = GetBudget(BudgetResourceType::HostMemory);
+    if (budget && budget->strict) {
+        // Strict mode - check if heap has space
+        auto heapUsage = GetUsage(BudgetResourceType::HostMemory);
+        if (budget->maxBytes > 0 && heapUsage.currentBytes + sizeBytes > budget->maxBytes) {
+            // Heap also full
+            return std::unexpected(VIXEN::AllocationError::HeapOverflow);
+        }
+    }
+
+    // Heap fallback allowed
+    auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateHeap(name);
+
+    // Track heap allocation in budget
+    RecordAllocation(BudgetResourceType::HostMemory, sizeBytes);
+
+    return handle;
 }
 
 } // namespace Vixen::RenderGraph

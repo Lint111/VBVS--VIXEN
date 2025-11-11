@@ -84,6 +84,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ResourceDependencyTracker.h
     include/Core/ResourceLifetimeAnalyzer.h
     include/Core/SlotTask.h
+    include/Core/StackResourceHandle.h
     include/Core/StackResourceTracker.h
     include/Core/StatefulContainer.h
     include/Core/Timer.h
