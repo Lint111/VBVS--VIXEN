@@ -1,6 +1,7 @@
 #include "Nodes/VoxelGridNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/VulkanLimits.h"  // For MAX_COMMAND_BUFFERS_PER_FRAME
 #include <cmath>
 #include <cstring>
 
@@ -122,7 +123,7 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     vkBindImageMemory(vulkanDevice->device, voxelImage, voxelMemory, 0);
 
     // Upload voxel data
-    UploadVoxelData(voxelData);
+    UploadVoxelData(ctx, voxelData);
 
     // Create image view
     VkImageViewCreateInfo viewInfo{};
@@ -202,7 +203,7 @@ void VoxelGridNode::GenerateTestPattern(std::vector<uint8_t>& voxelData) {
     NODE_LOG_INFO("Generated FULL SOLID test pattern (all voxels = 255)");
 }
 
-void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
+void VoxelGridNode::UploadVoxelData(TypedCompileContext& ctx, const std::vector<uint8_t>& voxelData) {
     VkDeviceSize bufferSize = voxelData.size();
 
     // Create staging buffer
@@ -259,19 +260,28 @@ void VoxelGridNode::UploadVoxelData(const std::vector<uint8_t>& voxelData) {
     vkUnmapMemory(vulkanDevice->device, stagingMemory);
 
     // Copy from staging buffer to image using command buffer
+    // Phase H: Use RequestStackResource for temporary command buffer allocation
+    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>("VoxelUploadCmdBuffer");
+    if (!cmdBufferResult) {
+        NODE_LOG_ERROR("Failed to allocate command buffer for voxel upload");
+        throw std::runtime_error("[VoxelGridNode] Command buffer allocation failed");
+    }
+
+    auto& cmdBuffers = *cmdBufferResult;
+
     VkCommandBufferAllocateInfo cmdAllocInfo{};
     cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cmdAllocInfo.commandPool = commandPool;
     cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cmdAllocInfo.commandBufferCount = 1;
 
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, &cmdBuffer);
+    vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, cmdBuffers->data());
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+    VkCommandBuffer cmdBuffer = cmdBuffers->at(0);
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
     // Transition image to TRANSFER_DST_OPTIMAL

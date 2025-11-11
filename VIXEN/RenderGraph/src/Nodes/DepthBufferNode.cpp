@@ -6,6 +6,7 @@
 #include "Data/Core/ResourceVariant.h"
 #include <sstream>
 #include "VulkanSwapChain.h"
+#include "Core/VulkanLimits.h"  // For MAX_COMMAND_BUFFERS_PER_FRAME
 
 
 namespace Vixen::RenderGraph {
@@ -86,19 +87,28 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     CreateDepthImageAndView(width, height, format);
 
     // Transition to depth-stencil attachment optimal layout
+    // Phase H: Use RequestStackResource for temporary command buffer allocation
+    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>("DepthTransitionCmdBuffer");
+    if (!cmdBufferResult) {
+        NODE_LOG_ERROR("Failed to allocate command buffer for depth transition");
+        throw std::runtime_error("DepthBufferNode: Command buffer allocation failed");
+    }
+
+    auto& cmdBuffers = *cmdBufferResult;
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = cmdPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
 
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(VK_DEVICE, &allocInfo, &cmdBuffer);
+    vkAllocateCommandBuffers(VK_DEVICE, &allocInfo, cmdBuffers->data());
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+    VkCommandBuffer cmdBuffer = cmdBuffers->at(0);
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
     TransitionImageLayout(cmdBuffer, depthImage.image,
                           VK_IMAGE_LAYOUT_UNDEFINED,

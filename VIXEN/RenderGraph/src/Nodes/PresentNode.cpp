@@ -1,6 +1,7 @@
 #include "Nodes/PresentNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/VulkanLimits.h"
 
 namespace Vixen::RenderGraph {
 
@@ -86,39 +87,58 @@ VkResult PresentNode::Present(Context& ctx) {
         throw std::runtime_error("PresentNode: No present function available");
     }
 
-    VkSwapchainPresentFenceInfoEXT presentFenceInfo{};
-    presentFenceInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
-    presentFenceInfo.pNext = nullptr;
-    if (presentFenceArray.empty()) {
-        presentFenceInfo.swapchainCount = 0;
-        presentFenceInfo.pFences = nullptr;
-    } else {
-        presentFenceInfo.swapchainCount = 1;
-        presentFenceInfo.pFences = &presentFenceArray[imageIndex];
+    // Phase H: Stack-allocated present fence info (hot-path optimization)
+    auto presentFenceInfoResult = ctx.RequestStackResource<VkSwapchainPresentFenceInfoEXT, 1>(
+        "PresentFenceInfo");
+
+    if (!presentFenceInfoResult) {
+        NODE_LOG_ERROR("Failed to allocate present fence info");
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
     }
 
-    // Setup present info
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = &presentFenceInfo;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain;
-    presentInfo.pImageIndices = &imageIndex;
-    
+    auto& presentFenceInfo = *presentFenceInfoResult;
+    presentFenceInfo->push_back({});
+    (*presentFenceInfo)[0].sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
+    (*presentFenceInfo)[0].pNext = nullptr;
+    if (presentFenceArray.empty()) {
+        (*presentFenceInfo)[0].swapchainCount = 0;
+        (*presentFenceInfo)[0].pFences = nullptr;
+    } else {
+        (*presentFenceInfo)[0].swapchainCount = 1;
+        (*presentFenceInfo)[0].pFences = &presentFenceArray[imageIndex];
+    }
+
+    // Phase H: Stack-allocated present info (hot-path optimization)
+    auto presentInfoResult = ctx.RequestStackResource<VkPresentInfoKHR, 1>(
+        "PresentInfo");
+
+    if (!presentInfoResult) {
+        NODE_LOG_ERROR("Failed to allocate present info");
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+
+    auto& presentInfo = *presentInfoResult;
+    presentInfo->push_back({});
+    (*presentInfo)[0].sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    (*presentInfo)[0].pNext = &(*presentFenceInfo)[0];
+    (*presentInfo)[0].swapchainCount = 1;
+    (*presentInfo)[0].pSwapchains = &swapchain;
+    (*presentInfo)[0].pImageIndices = &imageIndex;
+
     // Wait for rendering to complete if semaphore is provided
     if (renderCompleteSemaphore != VK_NULL_HANDLE) {
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &renderCompleteSemaphore;
+        (*presentInfo)[0].waitSemaphoreCount = 1;
+        (*presentInfo)[0].pWaitSemaphores = &renderCompleteSemaphore;
     } else {
-        presentInfo.waitSemaphoreCount = 0;
-        presentInfo.pWaitSemaphores = nullptr;
+        (*presentInfo)[0].waitSemaphoreCount = 0;
+        (*presentInfo)[0].pWaitSemaphores = nullptr;
     }
-    
-    presentInfo.pResults = nullptr;
+
+    (*presentInfo)[0].pResults = nullptr;
 
 
     // Queue present
-    lastResult = fpQueuePresent(device->queue, &presentInfo);
+    lastResult = fpQueuePresent(device->queue, &(*presentInfo)[0]);
 
     // Wait for device idle if requested (for compatibility with current behavior)
     if (waitForIdle && lastResult == VK_SUCCESS && device != nullptr) {

@@ -59,7 +59,7 @@ protected:
 
 private:
     void GenerateTestPattern(std::vector<uint8_t>& voxelData);
-    void UploadVoxelData(const std::vector<uint8_t>& voxelData);
+    void UploadVoxelData(TypedCompileContext& ctx, const std::vector<uint8_t>& voxelData);
 
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
