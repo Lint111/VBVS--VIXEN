@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
-#include <vector>
+#include <array>
 
 namespace Vixen::RenderGraph {
 
@@ -66,11 +67,15 @@ private:
         VkFence inFlightFence = VK_NULL_HANDLE;
     };
 
-    std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT
-    std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = swapchain image count
-    std::vector<VkSemaphore> renderCompleteSemaphores;  // Size = swapchain image count
-    std::vector<VkFence> presentFences;          // Size = swapchain image count (VK_KHR_swapchain_maintenance1)
-    uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
+    // Phase H: Convert to stack arrays (bounded by Vulkan limits)
+    std::array<FrameSyncData, MAX_FRAMES_IN_FLIGHT> frameSyncData{};
+    std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAvailableSemaphores{};
+    std::array<VkSemaphore, MAX_SWAPCHAIN_IMAGES> renderCompleteSemaphores{};
+    std::array<VkFence, MAX_SWAPCHAIN_IMAGES> presentFences{};
+
+    uint32_t flightCount_ = 0;       // Actual flight count (≤ MAX_FRAMES_IN_FLIGHT)
+    uint32_t imageCount_ = 0;        // Actual swapchain image count (≤ MAX_SWAPCHAIN_IMAGES)
+    uint32_t currentFrameIndex = 0;  // Current frame-in-flight index
     bool isCreated = false;
 };
 

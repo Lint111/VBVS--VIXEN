@@ -2,10 +2,12 @@
 
 #include "Core/VariadicTypedNode.h"
 #include "Core/NodeType.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include <memory>
-#include <vector>
+#include <array>
+#include <vector>  // For descriptorSlots_ (unbounded)
 
 namespace Vixen::RenderGraph {
 
@@ -101,11 +103,13 @@ protected:
 
 private:
     // Discovered descriptor metadata from shader
-    std::vector<DescriptorSlotInfo> descriptorSlots_;
+    std::vector<DescriptorSlotInfo> descriptorSlots_;  // Unbounded (shader-defined)
 
-    // Output resource array (indexed by binding)
-    std::vector<ResourceVariant> resourceArray_;
-    std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
+    // Phase H: Convert to stack arrays (bounded by MAX_DESCRIPTOR_BINDINGS)
+    // Output resource arrays (indexed by binding)
+    std::array<ResourceVariant, MAX_DESCRIPTOR_BINDINGS> resourceArray_{};
+    std::array<SlotRole, MAX_DESCRIPTOR_BINDINGS> slotRoleArray_{};
+    uint32_t descriptorCount_ = 0;  // Track actual binding count (maxBinding + 1)
 
     // Helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);

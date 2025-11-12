@@ -59,13 +59,24 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
         return;
     }
 
-    // Find max binding to size output arrays
+    // Phase H: Find max binding and validate against MAX_DESCRIPTOR_BINDINGS
     uint32_t maxBinding = 0;
     for (const auto& binding : layoutSpec->bindings) {
         maxBinding = std::max(maxBinding, binding.binding);
     }
-    resourceArray_.resize(maxBinding + 1);
-    slotRoleArray_.resize(maxBinding + 1, SlotRole::Dependency);  // Default to Dependency
+    descriptorCount_ = maxBinding + 1;
+
+    if (descriptorCount_ > MAX_DESCRIPTOR_BINDINGS) {
+        throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Descriptor count (" +
+                                 std::to_string(descriptorCount_) +
+                                 ") exceeds MAX_DESCRIPTOR_BINDINGS (" +
+                                 std::to_string(MAX_DESCRIPTOR_BINDINGS) + ")");
+    }
+
+    // Initialize slot roles to Dependency (default)
+    for (uint32_t i = 0; i < descriptorCount_; ++i) {
+        slotRoleArray_[i] = SlotRole::Dependency;
+    }
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
 
@@ -74,17 +85,24 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     // Debug: Log slot roles being output
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Outputting slot roles:");
-    for (size_t i = 0; i < slotRoleArray_.size(); ++i) {
+    for (uint32_t i = 0; i < descriptorCount_; ++i) {
         uint8_t roleVal = static_cast<uint8_t>(slotRoleArray_[i]);
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal));
     }
 
-    // Output resource array, slot roles, and pass through shader bundle
-    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
-    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleArray_);
+    // Phase H: Track stack arrays with URM before output
+    TrackStackArray(resourceArray_, descriptorCount_, ResourceLifetime::GraphLocal);
+    TrackStackArray(slotRoleArray_, descriptorCount_, ResourceLifetime::GraphLocal);
+
+    // Output resource arrays (convert to vector for interface compatibility)
+    std::vector<ResourceVariant> resourceVec(resourceArray_.begin(), resourceArray_.begin() + descriptorCount_);
+    std::vector<SlotRole> slotRoleVec(slotRoleArray_.begin(), slotRoleArray_.begin() + descriptorCount_);
+
+    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceVec);
+    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleVec);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries");
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(descriptorCount_) + " entries (URM tracked)");
 }
 
 void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
@@ -126,15 +144,21 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     }
 
     if (hasTransients) {
-        // Re-output updated resource array
-        ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries (transients updated)");
+        // Phase H: Track and re-output updated resource array
+        TrackStackArray(resourceArray_, descriptorCount_, ResourceLifetime::FrameLocal);
+
+        std::vector<ResourceVariant> resourceVec(resourceArray_.begin(), resourceArray_.begin() + descriptorCount_);
+        ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceVec);
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(descriptorCount_) + " entries (transients updated, URM tracked)");
     }
 }
 
 void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
     descriptorSlots_.clear();
-    resourceArray_.clear();
+
+    // Phase H: Reset array count instead of clear (arrays stay on stack)
+    descriptorCount_ = 0;
+    // Note: Arrays remain allocated on stack, just reset tracking
 }
 
 //-----------------------------------------------------------------------------
