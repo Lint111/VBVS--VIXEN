@@ -46,19 +46,19 @@ public:
      * @brief Create handle with stack allocation
      */
     static StackResourceHandle CreateStack(
-        std::string_view name,
+        uint64_t resourceHash,
         StackResourceTracker& tracker,
         uint32_t nodeId
     ) {
         StackResourceHandle handle;
         handle.location_ = ResourceLocation::Stack;
         handle.stackData_.emplace();
-        handle.name_ = name;
+        handle.resourceHash_ = resourceHash;
         handle.nodeId_ = nodeId;
 
         // Track allocation
         tracker.TrackAllocation(
-            name,
+            resourceHash,
             handle.stackData_->data(),
             handle.stackData_->capacity_bytes(),
             nodeId
@@ -70,12 +70,12 @@ public:
     /**
      * @brief Create handle with heap allocation (fallback)
      */
-    static StackResourceHandle CreateHeap(std::string_view name) {
+    static StackResourceHandle CreateHeap(uint64_t resourceHash) {
         StackResourceHandle handle;
         handle.location_ = ResourceLocation::Heap;
         handle.heapData_ = std::make_unique<std::vector<T>>();
         handle.heapData_->reserve(Capacity);  // Reserve same capacity as stack would have
-        handle.name_ = name;
+        handle.resourceHash_ = resourceHash;
         return handle;
     }
 
@@ -153,7 +153,7 @@ public:
     auto end() const { return isStack() ? stackData_->end() : heapData_->end(); }
 
     // Debugging info
-    std::string_view getName() const { return name_; }
+    uint64_t getResourceHash() const { return resourceHash_; }
     uint32_t getNodeId() const { return nodeId_; }
 
 private:
@@ -162,7 +162,7 @@ private:
     ResourceLocation location_;
     std::optional<StackArray<T, Capacity>> stackData_;
     std::unique_ptr<std::vector<T>> heapData_;
-    std::string_view name_;
+    uint64_t resourceHash_ = 0;
     uint32_t nodeId_ = 0;
 };
 

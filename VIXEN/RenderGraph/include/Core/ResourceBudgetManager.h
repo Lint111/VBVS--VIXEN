@@ -260,7 +260,7 @@ public:
      *
      * @tparam T Element type
      * @tparam Capacity Maximum capacity (stack array size)
-     * @param name Resource name for debugging/tracking
+     * @param resourceHash Persistent hash for resource identification (nodeInstanceId + bundleIndex + variableName)
      * @param nodeId Node ID for tracking
      * @return std::expected with either:
      *   - Success: StackResourceHandle<T, Capacity> (stack or heap)
@@ -268,8 +268,8 @@ public:
      *
      * Usage:
      * @code
-     * auto writes = budgetManager->RequestStackResource<VkWriteDescriptorSet, 32>(
-     *     "DescriptorWrites", nodeId);
+     * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "descriptorWrites");
+     * auto writes = budgetManager->RequestStackResource<VkWriteDescriptorSet, 32>(hash, nodeId);
      *
      * if (!writes) {
      *     // Handle allocation error
@@ -283,13 +283,13 @@ public:
      *
      * // Check location (for logging/profiling)
      * if (writes->isHeap()) {
-     *     LOG_WARNING("Fell back to heap allocation for " << writes->getName());
+     *     LOG_WARNING("Fell back to heap allocation");
      * }
      * @endcode
      */
     template<typename T, size_t Capacity>
     VIXEN::StackResourceResult<T, Capacity> RequestStackResource(
-        std::string_view name,
+        uint64_t resourceHash,
         uint32_t nodeId
     );
 
@@ -421,7 +421,7 @@ size_t ResourceBudgetManager::EstimateSize(
 
 template<typename T, size_t Capacity>
 VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResource(
-    std::string_view name,
+    uint64_t resourceHash,
     uint32_t nodeId
 ) {
     // Validate capacity
@@ -438,7 +438,7 @@ VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResou
     if (newStackUsage <= VIXEN::StackResourceTracker::MAX_STACK_PER_FRAME) {
         // Stack allocation succeeded
         auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateStack(
-            name,
+            resourceHash,
             stackTracker_,
             nodeId
         );
@@ -458,7 +458,7 @@ VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResou
     }
 
     // Heap fallback allowed
-    auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateHeap(name);
+    auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateHeap(resourceHash);
 
     // Track heap allocation in budget
     RecordAllocation(BudgetResourceType::HostMemory, sizeBytes);

@@ -27,7 +27,7 @@ public:
     static constexpr size_t CRITICAL_THRESHOLD = 56 * 1024;        // Critical at 87.5%
 
     struct StackAllocation {
-        std::string_view name;           // Allocation identifier (e.g., "DescriptorWrites")
+        uint64_t resourceHash;           // Persistent hash for resource identification
         size_t sizeBytes;                // Size of allocation
         const void* stackAddress;        // Stack address for tracking
         uint32_t nodeId;                 // Node that made the allocation
@@ -61,14 +61,15 @@ public:
      *
      * @code
      * void ExecuteImpl(...) {
+     *     uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "writes");
      *     StackArray<VkWriteDescriptorSet, 32> writes;
-     *     ctx.TrackStack("DescriptorWrites", writes.data(), writes.capacity_bytes());
+     *     ctx.TrackStack(hash, writes.data(), writes.capacity_bytes());
      *     // ... use writes
      * }
      * @endcode
      */
     void TrackAllocation(
-        std::string_view name,
+        uint64_t resourceHash,
         const void* stackAddress,
         size_t sizeBytes,
         uint32_t nodeId
@@ -237,8 +238,9 @@ void StackArray<T, Capacity>::LogOutOfBounds(size_t index) const {
  * Usage:
  * @code
  * void ExecuteImpl(Context& ctx) {
+ *     uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "writes");
  *     StackArray<VkWriteDescriptorSet, 32> writes;
- *     auto tracker = ctx.AutoTrackStack("DescriptorWrites", writes);
+ *     auto tracker = ctx.AutoTrackStack(hash, writes);
  *     // ... automatic tracking cleanup
  * }
  * @endcode
@@ -247,12 +249,12 @@ class ScopedStackTracker {
 public:
     ScopedStackTracker(
         StackResourceTracker& tracker,
-        std::string_view name,
+        uint64_t resourceHash,
         const void* address,
         size_t size,
         uint32_t nodeId
     ) : tracker_(tracker) {
-        tracker_.TrackAllocation(name, address, size, nodeId);
+        tracker_.TrackAllocation(resourceHash, address, size, nodeId);
     }
 
     ~ScopedStackTracker() = default;

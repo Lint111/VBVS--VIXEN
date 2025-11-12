@@ -3,10 +3,12 @@
 #include "Core/VariadicTypedNode.h"
 #include "Core/NodeType.h"
 #include "Core/VulkanLimits.h"
+#include "Core/StackResourceHandle.h"
 #include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include <memory>
 #include <array>
+#include <optional>
 #include <vector>  // For descriptorSlots_ (unbounded)
 
 namespace Vixen::RenderGraph {
@@ -105,10 +107,10 @@ private:
     // Discovered descriptor metadata from shader
     std::vector<DescriptorSlotInfo> descriptorSlots_;  // Unbounded (shader-defined)
 
-    // Phase H: Convert to stack arrays (bounded by MAX_DESCRIPTOR_BINDINGS)
-    // Output resource arrays (indexed by binding)
-    std::array<ResourceVariant, MAX_DESCRIPTOR_BINDINGS> resourceArray_{};
-    std::array<SlotRole, MAX_DESCRIPTOR_BINDINGS> slotRoleArray_{};
+    // Phase H: URM-managed stack arrays (requested via hash-based identification)
+    // Store handles to URM-owned resources instead of self-allocated arrays
+    std::optional<VIXEN::StackResourceHandle<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>> resourceArray_;
+    std::optional<VIXEN::StackResourceHandle<SlotRole, MAX_DESCRIPTOR_BINDINGS>> slotRoleArray_;
     uint32_t descriptorCount_ = 0;  // Track actual binding count (maxBinding + 1)
 
     // Helpers

@@ -1,5 +1,6 @@
 #include "Nodes/FrameSyncNode.h"
 #include "Core/RenderGraph.h"
+#include "Core/ResourceHash.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
@@ -90,33 +91,57 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // - imageAvailable: per-FLIGHT (tracks frame pacing)
     // - renderComplete: per-IMAGE (tracks presentation engine usage per swapchain image)
 
-    // Phase H: Arrays already sized, just use counts (no resize needed)
+    // Phase H: Request URM-managed stack arrays using persistent hashes
+
+    // Request imageAvailable semaphores array (per-FLIGHT)
+    uint64_t imageAvailHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "imageAvailableSemaphores");
+    auto imageAvailResult = RequestStackResource<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(imageAvailHash);
+    if (!imageAvailResult) {
+        throw std::runtime_error("FrameSyncNode: Failed to request imageAvailable semaphores array");
+    }
+    imageAvailableSemaphores_ = std::move(imageAvailResult.value());
+
+    // Request renderComplete semaphores array (per-IMAGE)
+    uint64_t renderCompleteHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "renderCompleteSemaphores");
+    auto renderCompleteResult = RequestStackResource<VkSemaphore, MAX_SWAPCHAIN_IMAGES>(renderCompleteHash);
+    if (!renderCompleteResult) {
+        throw std::runtime_error("FrameSyncNode: Failed to request renderComplete semaphores array");
+    }
+    renderCompleteSemaphores_ = std::move(renderCompleteResult.value());
+
+    // Request presentFences array (per-IMAGE)
+    uint64_t presentFencesHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "presentFences");
+    auto presentFencesResult = RequestStackResource<VkFence, MAX_SWAPCHAIN_IMAGES>(presentFencesHash);
+    if (!presentFencesResult) {
+        throw std::runtime_error("FrameSyncNode: Failed to request presentFences array");
+    }
+    presentFences_ = std::move(presentFencesResult.value());
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    // Create per-FLIGHT acquisition semaphores
+    // Create per-FLIGHT acquisition semaphores in URM-managed array
     for (uint32_t i = 0; i < flightCount; i++) {
-        if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS) {
+        if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &(*imageAvailableSemaphores_)[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create imageAvailable semaphore for flight " + std::to_string(i));
         }
     }
 
-    // Create per-IMAGE render complete semaphores (one per swapchain image)
+    // Create per-IMAGE render complete semaphores in URM-managed array
     for (uint32_t i = 0; i < imageCount; i++) {
-        if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &renderCompleteSemaphores[i]) != VK_SUCCESS) {
+        if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &(*renderCompleteSemaphores_)[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create renderComplete semaphore for image " + std::to_string(i));
         }
     }
 
-    // Phase 0.7: Create per-IMAGE present fences (VK_KHR_swapchain_maintenance1)
+    // Phase 0.7: Create per-IMAGE present fences (VK_KHR_swapchain_maintenance1) in URM-managed array
     // These track when the presentation engine has finished with each swapchain image
     VkFenceCreateInfo presentFenceInfo{};
     presentFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     presentFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled (no wait on first use)
 
     for (uint32_t i = 0; i < imageCount; i++) {
-        if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &presentFences[i]) != VK_SUCCESS) {
+        if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &(*presentFences_)[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create present fence for image " + std::to_string(i));
         }
     }
@@ -128,25 +153,24 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
-    // Phase H: Track stack arrays with URM before output
-    TrackStackArray(imageAvailableSemaphores, flightCount_, ResourceLifetime::GraphLocal);
-    TrackStackArray(renderCompleteSemaphores, imageCount_, ResourceLifetime::GraphLocal);
-    TrackStackArray(presentFences, imageCount_, ResourceLifetime::GraphLocal);
-
-    // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
+    // Phase H: URM-managed arrays automatically tracked, just output from handles
     // Convert to vectors for interface compatibility
-    std::vector<VkSemaphore> imageAvailableVec(imageAvailableSemaphores.begin(), imageAvailableSemaphores.begin() + flightCount_);
-    std::vector<VkSemaphore> renderCompleteVec(renderCompleteSemaphores.begin(), renderCompleteSemaphores.begin() + imageCount_);
-    std::vector<VkFence> presentFencesVec(presentFences.begin(), presentFences.begin() + imageCount_);
+    std::vector<VkSemaphore> imageAvailableVec(imageAvailableSemaphores_->begin(), imageAvailableSemaphores_->begin() + flightCount_);
+    std::vector<VkSemaphore> renderCompleteVec(renderCompleteSemaphores_->begin(), renderCompleteSemaphores_->begin() + imageCount_);
+    std::vector<VkFence> presentFencesVec(presentFences_->begin(), presentFences_->begin() + imageCount_);
 
     ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableVec);
     ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteVec);
     ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFencesVec);
 
-    NODE_LOG_INFO("Synchronization primitives created successfully (URM tracked)");
-    NODE_LOG_INFO("Created " + std::to_string(flightCount_) + " imageAvailable semaphores (per-flight)");
-    NODE_LOG_INFO("Created " + std::to_string(imageCount_) + " renderComplete semaphores (per-image)");
-    NODE_LOG_INFO("Created " + std::to_string(imageCount_) + " present fences (per-image, VK_KHR_swapchain_maintenance1)");
+    // Log allocation location for profiling
+    NODE_LOG_INFO("Synchronization primitives created successfully (URM-managed)");
+    NODE_LOG_INFO("  imageAvailable: " + std::to_string(flightCount_) + " semaphores (per-flight) - " +
+                  (imageAvailableSemaphores_->isStack() ? "STACK" : "HEAP"));
+    NODE_LOG_INFO("  renderComplete: " + std::to_string(imageCount_) + " semaphores (per-image) - " +
+                  (renderCompleteSemaphores_->isStack() ? "STACK" : "HEAP"));
+    NODE_LOG_INFO("  presentFences: " + std::to_string(imageCount_) + " fences (per-image) - " +
+                  (presentFences_->isStack() ? "STACK" : "HEAP"));
 }
 
 void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -182,31 +206,40 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
             }
         }
 
-        // Destroy per-flight semaphores
-        for (uint32_t i = 0; i < flightCount_; ++i) {
-            if (imageAvailableSemaphores[i] != VK_NULL_HANDLE) {
-                vkDestroySemaphore(device->device, imageAvailableSemaphores[i], nullptr);
-                imageAvailableSemaphores[i] = VK_NULL_HANDLE;
+        // Destroy per-flight semaphores (from URM-managed array)
+        if (imageAvailableSemaphores_.has_value()) {
+            for (uint32_t i = 0; i < flightCount_; ++i) {
+                if ((*imageAvailableSemaphores_)[i] != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, (*imageAvailableSemaphores_)[i], nullptr);
+                    (*imageAvailableSemaphores_)[i] = VK_NULL_HANDLE;
+                }
             }
+            imageAvailableSemaphores_.reset();  // Release handle, URM reclaims memory
         }
 
-        // Destroy per-image semaphores
-        for (uint32_t i = 0; i < imageCount_; ++i) {
-            if (renderCompleteSemaphores[i] != VK_NULL_HANDLE) {
-                vkDestroySemaphore(device->device, renderCompleteSemaphores[i], nullptr);
-                renderCompleteSemaphores[i] = VK_NULL_HANDLE;
+        // Destroy per-image semaphores (from URM-managed array)
+        if (renderCompleteSemaphores_.has_value()) {
+            for (uint32_t i = 0; i < imageCount_; ++i) {
+                if ((*renderCompleteSemaphores_)[i] != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, (*renderCompleteSemaphores_)[i], nullptr);
+                    (*renderCompleteSemaphores_)[i] = VK_NULL_HANDLE;
+                }
             }
+            renderCompleteSemaphores_.reset();  // Release handle, URM reclaims memory
         }
 
-        // Destroy per-image present fences
-        for (uint32_t i = 0; i < imageCount_; ++i) {
-            if (presentFences[i] != VK_NULL_HANDLE) {
-                vkDestroyFence(device->device, presentFences[i], nullptr);
-                presentFences[i] = VK_NULL_HANDLE;
+        // Destroy per-image present fences (from URM-managed array)
+        if (presentFences_.has_value()) {
+            for (uint32_t i = 0; i < imageCount_; ++i) {
+                if ((*presentFences_)[i] != VK_NULL_HANDLE) {
+                    vkDestroyFence(device->device, (*presentFences_)[i], nullptr);
+                    (*presentFences_)[i] = VK_NULL_HANDLE;
+                }
             }
+            presentFences_.reset();  // Release handle, URM reclaims memory
         }
 
-        // Phase H: Reset counts instead of clear (arrays stay on stack)
+        // Phase H: Reset counts (URM handles released above)
         flightCount_ = 0;
         imageCount_ = 0;
         currentFrameIndex = 0;

@@ -659,19 +659,20 @@ protected:
     /**
      * @brief Request stack-allocated resource with automatic heap fallback
      *
-     * Phase H: Universal utility for safe stack allocation.
+     * Phase H: Universal utility for safe stack allocation with hash-based identification.
      * Not tied to bundle/task handling - available at node level.
      *
      * @tparam T Element type (VkWriteDescriptorSet, WindowEvent, etc.)
      * @tparam Capacity Maximum capacity (stack array size)
-     * @param name Resource name for tracking
+     * @param resourceHash Persistent hash for resource identification (use ComputeResourceHash)
      * @return std::expected with either:
      *   - Success: StackResourceHandle<T, Capacity> (stack or heap)
      *   - Failure: AllocationError
      *
      * Usage (Descriptor Writes):
      * @code
-     * auto writes = RequestStackResource<VkWriteDescriptorSet, 32>("DescriptorWrites");
+     * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "descriptorWrites");
+     * auto writes = RequestStackResource<VkWriteDescriptorSet, 32>(hash);
      * if (!writes) {
      *     NODE_LOG_ERROR("Allocation failed: " << AllocationErrorMessage(writes.error()));
      *     return;
@@ -686,13 +687,13 @@ protected:
      * @endcode
      */
     template<typename T, size_t Capacity>
-    VIXEN::StackResourceResult<T, Capacity> RequestStackResource(std::string_view name) {
+    VIXEN::StackResourceResult<T, Capacity> RequestStackResource(uint64_t resourceHash) {
         auto* budgetManager = GetBudgetManager();
         if (!budgetManager) {
             return std::unexpected(VIXEN::AllocationError::SystemError);
         }
         uint32_t nodeId = static_cast<uint32_t>(GetInstanceId());
-        return budgetManager->RequestStackResource<T, Capacity>(name, nodeId);
+        return budgetManager->RequestStackResource<T, Capacity>(resourceHash, nodeId);
     }
 
     // ========================================================================

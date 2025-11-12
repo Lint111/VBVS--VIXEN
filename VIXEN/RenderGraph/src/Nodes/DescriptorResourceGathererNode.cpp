@@ -1,4 +1,5 @@
 #include "Nodes/DescriptorResourceGathererNode.h"
+#include "Core/ResourceHash.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "Core/RenderGraph.h"
@@ -73,9 +74,24 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
                                  std::to_string(MAX_DESCRIPTOR_BINDINGS) + ")");
     }
 
-    // Initialize slot roles to Dependency (default)
+    // Phase H: Request URM-managed stack arrays using persistent hashes
+    uint64_t resourceArrayHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "resourceArray");
+    auto resourceArrayResult = RequestStackResource<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>(resourceArrayHash);
+    if (!resourceArrayResult) {
+        throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request resourceArray from URM");
+    }
+    resourceArray_ = std::move(resourceArrayResult.value());
+
+    uint64_t slotRoleArrayHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "slotRoleArray");
+    auto slotRoleArrayResult = RequestStackResource<SlotRole, MAX_DESCRIPTOR_BINDINGS>(slotRoleArrayHash);
+    if (!slotRoleArrayResult) {
+        throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request slotRoleArray from URM");
+    }
+    slotRoleArray_ = std::move(slotRoleArrayResult.value());
+
+    // Initialize slot roles to Dependency (default) in URM-managed array
     for (uint32_t i = 0; i < descriptorCount_; ++i) {
-        slotRoleArray_[i] = SlotRole::Dependency;
+        (*slotRoleArray_)[i] = SlotRole::Dependency;
     }
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
@@ -86,23 +102,24 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     // Debug: Log slot roles being output
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Outputting slot roles:");
     for (uint32_t i = 0; i < descriptorCount_; ++i) {
-        uint8_t roleVal = static_cast<uint8_t>(slotRoleArray_[i]);
+        uint8_t roleVal = static_cast<uint8_t>((*slotRoleArray_)[i]);
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal));
     }
 
-    // Phase H: Track stack arrays with URM before output
-    TrackStackArray(resourceArray_, descriptorCount_, ResourceLifetime::GraphLocal);
-    TrackStackArray(slotRoleArray_, descriptorCount_, ResourceLifetime::GraphLocal);
-
-    // Output resource arrays (convert to vector for interface compatibility)
-    std::vector<ResourceVariant> resourceVec(resourceArray_.begin(), resourceArray_.begin() + descriptorCount_);
-    std::vector<SlotRole> slotRoleVec(slotRoleArray_.begin(), slotRoleArray_.begin() + descriptorCount_);
+    // Phase H: URM-managed arrays automatically tracked, just output from handles
+    // Convert to vectors for interface compatibility
+    std::vector<ResourceVariant> resourceVec(resourceArray_->begin(), resourceArray_->begin() + descriptorCount_);
+    std::vector<SlotRole> slotRoleVec(slotRoleArray_->begin(), slotRoleArray_->begin() + descriptorCount_);
 
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceVec);
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleVec);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(descriptorCount_) + " entries (URM tracked)");
+    // Log allocation location for profiling
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " +
+                   std::to_string(descriptorCount_) + " entries (URM-managed: resourceArray=" +
+                   (resourceArray_->isStack() ? "STACK" : "HEAP") + ", slotRoleArray=" +
+                   (slotRoleArray_->isStack() ? "STACK" : "HEAP") + ")");
 }
 
 void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
@@ -135,30 +152,29 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
             continue;
         }
 
-        // Update resource array with fresh value
+        // Update resource array with fresh value (in URM-managed array)
         uint32_t binding = slotInfo->binding;
         auto variant = freshResource->GetHandleVariant();
-        resourceArray_[binding] = variant;
+        (*resourceArray_)[binding] = variant;
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) + " (slot " + std::to_string(i) + ")");
     }
 
     if (hasTransients) {
-        // Phase H: Track and re-output updated resource array
-        TrackStackArray(resourceArray_, descriptorCount_, ResourceLifetime::FrameLocal);
-
-        std::vector<ResourceVariant> resourceVec(resourceArray_.begin(), resourceArray_.begin() + descriptorCount_);
+        // Phase H: URM-managed array automatically tracked, just re-output from handle
+        std::vector<ResourceVariant> resourceVec(resourceArray_->begin(), resourceArray_->begin() + descriptorCount_);
         ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceVec);
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(descriptorCount_) + " entries (transients updated, URM tracked)");
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(descriptorCount_) + " entries (transients updated in URM-managed array)");
     }
 }
 
 void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
     descriptorSlots_.clear();
 
-    // Phase H: Reset array count instead of clear (arrays stay on stack)
+    // Phase H: Release URM handles (URM reclaims memory)
+    resourceArray_.reset();
+    slotRoleArray_.reset();
     descriptorCount_ = 0;
-    // Note: Arrays remain allocated on stack, just reset tracking
 }
 
 //-----------------------------------------------------------------------------
@@ -297,14 +313,13 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
         uint32_t binding = slotInfo->binding;
 
         // Store slot role even for Execute slots (needed for filtering in DescriptorSetNode)
-        slotRoleArray_[binding] = slotInfo->slotRole;
+        (*slotRoleArray_)[binding] = slotInfo->slotRole;
 
         // For Execute-ONLY slots (no Dependency flag), skip resource gathering in Compile
         // Slots with Dependency flag (including Dependency|Execute) need initial gather here
         if (!HasDependency(slotInfo->slotRole)) {
-            // Initialize placeholder entry to prevent accessing uninitialized memory
-            // This ensures resourceArray_[binding] exists even before Execute phase
-            resourceArray_[binding] = std::monostate{};
+            // Initialize placeholder entry to prevent accessing uninitialized memory (in URM-managed array)
+            (*resourceArray_)[binding] = std::monostate{};
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute-only slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - placeholder initialized, resource will be gathered in Execute phase");
             continue;
         }
@@ -348,21 +363,21 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
 
                 // Extract field value based on resourceType - dispatch to correct type
                 // NOTE: This requires knowing the actual field type at runtime
-                // For now, we store the struct and let downstream nodes handle extraction
-                resourceArray_[binding] = variant;  // Store original struct
+                // For now, we store the struct and let downstream nodes handle extraction (in URM-managed array)
+                (*resourceArray_)[binding] = variant;  // Store original struct
 
                 NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Stored struct with field at offset " + std::to_string(slotInfo->fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
             }, variant);
         }
-        // Regular resources - store directly at binding index
+        // Regular resources - store directly at binding index (in URM-managed array)
         else {
-            resourceArray_[binding] = variant;
-            // Note: slotRoleArray_[binding] already set earlier in this function
+            (*resourceArray_)[binding] = variant;
+            // Note: (*slotRoleArray_)[binding] already set earlier in this function
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " + std::to_string(binding) + " (" + slotInfo->slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(slotInfo->slotRole)));
         }
     }
 
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered " + std::to_string(resourceArray_.size()) + " total resources");
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered " + std::to_string(descriptorCount_) + " total resources (URM-managed)");
 }
 
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {

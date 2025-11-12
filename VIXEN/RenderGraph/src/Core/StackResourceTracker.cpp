@@ -29,13 +29,13 @@ void StackResourceTracker::EndFrame() {
 }
 
 void StackResourceTracker::TrackAllocation(
-    std::string_view name,
+    uint64_t resourceHash,
     const void* stackAddress,
     size_t sizeBytes,
     uint32_t nodeId
 ) {
     StackAllocation alloc{
-        .name = name,
+        .resourceHash = resourceHash,
         .sizeBytes = sizeBytes,
         .stackAddress = stackAddress,
         .nodeId = nodeId,

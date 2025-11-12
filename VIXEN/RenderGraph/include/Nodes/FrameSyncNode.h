@@ -2,9 +2,11 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/VulkanLimits.h"
+#include "Core/StackResourceHandle.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include <array>
+#include <optional>
 
 namespace Vixen::RenderGraph {
 
@@ -67,11 +69,12 @@ private:
         VkFence inFlightFence = VK_NULL_HANDLE;
     };
 
-    // Phase H: Convert to stack arrays (bounded by Vulkan limits)
-    std::array<FrameSyncData, MAX_FRAMES_IN_FLIGHT> frameSyncData{};
-    std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAvailableSemaphores{};
-    std::array<VkSemaphore, MAX_SWAPCHAIN_IMAGES> renderCompleteSemaphores{};
-    std::array<VkFence, MAX_SWAPCHAIN_IMAGES> presentFences{};
+    // Phase H: URM-managed stack arrays (requested via hash-based identification)
+    // Store handles to URM-owned resources instead of self-allocated arrays
+    std::array<FrameSyncData, MAX_FRAMES_IN_FLIGHT> frameSyncData{};  // Small POD, keep as member
+    std::optional<VIXEN::StackResourceHandle<VkSemaphore, MAX_FRAMES_IN_FLIGHT>> imageAvailableSemaphores_;
+    std::optional<VIXEN::StackResourceHandle<VkSemaphore, MAX_SWAPCHAIN_IMAGES>> renderCompleteSemaphores_;
+    std::optional<VIXEN::StackResourceHandle<VkFence, MAX_SWAPCHAIN_IMAGES>> presentFences_;
 
     uint32_t flightCount_ = 0;       // Actual flight count (≤ MAX_FRAMES_IN_FLIGHT)
     uint32_t imageCount_ = 0;        // Actual swapchain image count (≤ MAX_SWAPCHAIN_IMAGES)

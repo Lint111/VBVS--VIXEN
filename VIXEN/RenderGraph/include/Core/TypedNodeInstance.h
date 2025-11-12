@@ -243,8 +243,8 @@ public:
          * @brief Request stack resource with fallback (forwards to NodeInstance::RequestStackResource)
          */
         template<typename T, size_t Capacity>
-        VIXEN::StackResourceResult<T, Capacity> RequestStackResource(std::string_view name) {
-            return typedNode->RequestStackResource<T, Capacity>(name);
+        VIXEN::StackResourceResult<T, Capacity> RequestStackResource(uint64_t resourceHash) {
+            return typedNode->RequestStackResource<T, Capacity>(resourceHash);
         }
     };
 
