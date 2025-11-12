@@ -246,6 +246,26 @@ public:
         VIXEN::StackResourceResult<T, Capacity> RequestStackResource(uint64_t resourceHash) {
             return typedNode->RequestStackResource<T, Capacity>(resourceHash);
         }
+
+        // ====================================================================
+        // PHASE H: CONTEXT-AWARE HASH COMPUTATION HELPERS
+        // ====================================================================
+
+        /**
+         * @brief Get node instance ID for hash computation
+         * @return Node instance ID (for use with ComputeResourceHashFor)
+         */
+        uint32_t GetNodeInstanceId() const {
+            return static_cast<uint32_t>(typedNode->GetInstanceId());
+        }
+
+        /**
+         * @brief Get bundle index for hash computation (always 0 for non-variadic nodes)
+         * @return Bundle index (0 for TypedNode, varies for VariadicTypedNode)
+         */
+        constexpr uint32_t GetBundleIndex() const {
+            return 0;  // Non-variadic nodes have single bundle
+        }
     };
 
     // Specialized context types for each lifecycle phase

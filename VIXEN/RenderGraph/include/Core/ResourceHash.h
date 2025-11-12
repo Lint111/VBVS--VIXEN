@@ -127,7 +127,7 @@ constexpr uint64_t ComputeResourceHash(uint32_t nodeInstanceId, uint32_t bundleI
  * @brief Convenience macro combining ComputeResourceHash with nameOf()
  *
  * Automatically stringifies the variable name and computes the hash.
- * This is the RECOMMENDED pattern for hash-based resource identification.
+ * Can be used standalone or with context helper methods.
  *
  * @param nodeId Node instance ID (usually GetInstanceId())
  * @param bundleIdx Bundle index (0 for non-variadic nodes)
@@ -149,6 +149,36 @@ constexpr uint64_t ComputeResourceHash(uint32_t nodeInstanceId, uint32_t bundleI
  */
 #define ComputeResourceHashFor(nodeId, bundleIdx, var) \
     ComputeResourceHash(nodeId, bundleIdx, #var)
+
+/**
+ * @brief Context-aware member hash computation (RECOMMENDED PATTERN)
+ *
+ * Automatically uses node instance ID and bundle index from context.
+ * This is the cleanest way to compute resource hashes within node methods.
+ *
+ * @param ctx Context object (TypedCompileContext, VariadicCompileContext, etc.)
+ * @param member Member variable identifier (NOT a string, will be stringified)
+ * @return uint64_t Persistent hash
+ *
+ * Example:
+ * @code
+ * void CompileImpl(TypedCompileContext& ctx) {
+ *     // Define member variable
+ *     std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
+ *
+ *     // Request from URM using context-aware macro (RECOMMENDED)
+ *     uint64_t hash = GetMemberHash(ctx, imageAvailableSemaphores_);
+ *     auto result = ctx.RequestStackResource<VkSemaphore, 4>(hash);
+ *     if (result) {
+ *         imageAvailableSemaphores_ = std::move(result.value());
+ *     }
+ * }
+ * @endcode
+ *
+ * @note Requires context to provide GetNodeInstanceId() and GetBundleIndex() methods
+ */
+#define GetMemberHash(ctx, member) \
+    ComputeResourceHashFor((ctx).GetNodeInstanceId(), (ctx).GetBundleIndex(), member)
 
 /**
  * @brief Runtime version for dynamic variable names (use sparingly)

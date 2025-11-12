@@ -74,16 +74,16 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
                                  std::to_string(MAX_DESCRIPTOR_BINDINGS) + ")");
     }
 
-    // Phase H: Request URM-managed stack arrays using type-safe persistent hashes
-    uint64_t resourceArrayHash = ComputeResourceHashFor(GetInstanceId(), 0, resourceArray_);
-    auto resourceArrayResult = RequestStackResource<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>(resourceArrayHash);
+    // Phase H: Request URM-managed stack arrays using context-aware hashing
+    uint64_t resourceArrayHash = GetMemberHash(ctx, resourceArray_);
+    auto resourceArrayResult = ctx.RequestStackResource<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>(resourceArrayHash);
     if (!resourceArrayResult) {
         throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request resourceArray from URM");
     }
     resourceArray_ = std::move(resourceArrayResult.value());
 
-    uint64_t slotRoleArrayHash = ComputeResourceHashFor(GetInstanceId(), 0, slotRoleArray_);
-    auto slotRoleArrayResult = RequestStackResource<SlotRole, MAX_DESCRIPTOR_BINDINGS>(slotRoleArrayHash);
+    uint64_t slotRoleArrayHash = GetMemberHash(ctx, slotRoleArray_);
+    auto slotRoleArrayResult = ctx.RequestStackResource<SlotRole, MAX_DESCRIPTOR_BINDINGS>(slotRoleArrayHash);
     if (!slotRoleArrayResult) {
         throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request slotRoleArray from URM");
     }

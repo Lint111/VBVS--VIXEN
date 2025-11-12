@@ -84,8 +84,8 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
     }
 
-    // Phase H: Request URM-managed framebuffers array using type-safe persistent hash
-    uint64_t framebuffersHash = ComputeResourceHashFor(GetInstanceId(), 0, framebuffers_);
+    // Phase H: Request URM-managed framebuffers array using context-aware hashing
+    uint64_t framebuffersHash = GetMemberHash(ctx, framebuffers_);
     auto framebuffersResult = ctx.RequestStackResource<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>(framebuffersHash);
     if (!framebuffersResult) {
         throw std::runtime_error("FramebufferNode: Failed to request framebuffers array from URM");

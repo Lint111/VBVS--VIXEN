@@ -156,6 +156,26 @@ public:
         void UpdateVariadicSlot(size_t index, const VariadicSlotInfo& slotInfo) {
             variadicNode->UpdateVariadicSlot(index, slotInfo, this->taskIndex);
         }
+
+        // ====================================================================
+        // PHASE H: CONTEXT-AWARE HASH COMPUTATION HELPERS
+        // ====================================================================
+
+        /**
+         * @brief Get node instance ID for hash computation
+         * @return Node instance ID (for use with ComputeResourceHashFor)
+         */
+        uint32_t GetNodeInstanceId() const {
+            return static_cast<uint32_t>(variadicNode->GetInstanceId());
+        }
+
+        /**
+         * @brief Get bundle index for hash computation (current task index for variadic nodes)
+         * @return Bundle index (current task/bundle being processed)
+         */
+        uint32_t GetBundleIndex() const {
+            return static_cast<uint32_t>(this->taskIndex);
+        }
     };
 
     // Type aliases for variadic contexts - extend each typed context
