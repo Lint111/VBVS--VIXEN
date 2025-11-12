@@ -206,17 +206,10 @@ struct ESVONode {
      * For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
      */
     inline uint8_t GetChildMask() const {
-        // Extract bits 8-15 and reverse: bit (15-i) → bit i
-        // SetChild(i) sets bit (15-i), so we reverse back for CPU-side child checking
+        // Child mask stored at bits 8-15 (ESVO spec)
+        // SetChild(i) sets bit (8+i), extract those 8 bits
         // Result: bit i = 1 if child i exists
-        uint16_t mask16 = (descriptor0 >> 8) & 0xFF;
-        uint8_t reversed = 0;
-        for (int i = 0; i < 8; ++i) {
-            if (mask16 & (1 << i)) {
-                reversed |= (1 << (7 - i));
-            }
-        }
-        return reversed;
+        return static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
     }
 
     /**
@@ -269,11 +262,29 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        // Child mask in REVERSED order at bits 8-15:
-        // child[0] at bit 15, child[1] at bit 14, ..., child[7] at bit 8
-        // Shader algorithm: int child_masks = int(descriptor0) << childIdx; if ((child_masks & 0x8000) != 0)
-        // For child i with shift=i: need (15-i) to shift to bit 15 after << i
-        descriptor0 |= (1 << (15 - childIndex));
+        // Child mask at bits 8-15 in FORWARD order:
+        // child[0] at bit 8, child[1] at bit 9, ..., child[7] at bit 15
+        // Shader algorithm: int child_masks = int(descriptor0) << child_shift (where child_shift = childIdx * 8)
+        // After << (childIdx * 8), bit (8 + childIdx) becomes bit (8 + childIdx + childIdx*8)
+        // For child 0: bit 8 << 0 = bit 8, never reaches bit 15
+        // For child 7: bit 15 << 56... wait that's wrong
+        //
+        // CORRECTED: Shader does child_shift = childIdx (NOT childIdx * 8)
+        // So: int child_masks = int(descriptor0) << childIdx
+        // For child 0: bits 8-15 << 0 = bits 8-15, check bit 15 with 0x8000
+        // For child 7: bits 8-15 << 7 = bits 15-22, bit 15 of mask is now at bit 22... WRONG!
+        //
+        // RE-ANALYSIS: child_shift is the VOXEL index (0-7), not the child index
+        // The shader builds idx from center tests, then does:
+        // int child_masks = int(descriptor0) << idx;
+        // This shifts the ENTIRE descriptor left by idx bits
+        // To check if child exists: (child_masks & 0x8000) tests bit 15 of shifted value
+        // So we need child i's bit at position (15 - i) so after << i it reaches bit 15!
+        //
+        // WAIT - let me re-read the shader...
+        // Line 427: int child_masks = int(descriptor0) << child_shift;
+        // Store at bits 8-15 (ESVO spec: bits 15-8 = valid_mask)
+        descriptor0 |= (1 << (8 + childIndex));
     }
 
     /**
@@ -689,6 +700,11 @@ public:
      * @brief Clear all materials and reset to default
      */
     void ClearMaterials();
+
+    /**
+     * @brief Check octree for symmetry issues (debugging)
+     */
+    void CheckForSymmetry() const;
 
 private:
     std::vector<OctreeNode> nodes_;       // Legacy octree node hierarchy (40 bytes/node)

@@ -88,6 +88,9 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     SparseVoxelOctree octree;
     octree.BuildFromGrid(grid.GetData(), resolution, VIXEN::RenderGraph::NodeFormat::ESVO);
 
+    // DEBUG: Check for symmetry issues
+    octree.CheckForSymmetry();
+
     size_t nodeCount = (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO)
                        ? octree.GetESVONodes().size()
                        : octree.GetNodes().size();

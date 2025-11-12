@@ -171,10 +171,8 @@ uvec2 fetchESVONode(uint nodeIndex) {
 }
 
 // Extract child existence mask (8 bits from descriptor0)
-// ChildMask is at bits 8-15 in REVERSED order:
-// child[0] at bit 15, child[1] at bit 14, ..., child[7] at bit 8
-// Shader traversal: descriptor0 << shift checks if (result & 0x8000)
-// For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
+// ChildMask is at bits 8-15 in FORWARD order:
+// child[0] at bit 8, child[1] at bit 9, ..., child[7] at bit 15
 uint getChildMask(uvec2 node) {
     return (node.x >> 8) & 0xFFu;  // Bits 8-15
 }

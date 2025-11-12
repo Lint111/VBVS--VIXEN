@@ -436,7 +436,8 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
         glm::ivec3 origin;
         uint32_t size;
         uint32_t depth;
-        uint32_t parentIndex;  // Index in esvoNodes_
+        uint32_t nodeIndex;     // ACTUAL index in esvoNodes_ where this node IS/WILL BE
+        uint32_t parentIndex;  // Index in esvoNodes_ of parent
         uint8_t childSlot;      // Which child slot (0-7) in parent
     };
 
@@ -447,10 +448,12 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
 
     // Level 0: Root node
     if (!IsRegionEmpty(voxelData, glm::ivec3(0, 0, 0), gridSize)) {
+        esvoNodes_.resize(1);  // Allocate root at index 0
         NodeInfo root;
         root.origin = glm::ivec3(0, 0, 0);
         root.size = gridSize;
         root.depth = 0;
+        root.nodeIndex = 0;  // Root at index 0
         root.parentIndex = 0xFFFFFFFF;  // No parent
         root.childSlot = 0;
         currentLevel.push_back(root);
@@ -464,15 +467,19 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
     while (!currentLevel.empty() && currentDepth < 5) {  // Max depth 4 (depth 5 = bricks)
         std::cout << "[BFS ESVO] Level " << currentDepth << ": processing " << currentLevel.size() << " nodes" << std::endl;
 
-        // Allocate nodes for this level
-        uint32_t levelStart = esvoNodes_.size();
-        esvoNodes_.resize(levelStart + currentLevel.size());
-
-        // Process each node in current level
+        // Process each node in current level (nodes already allocated with explicit indices)
         for (size_t i = 0; i < currentLevel.size(); ++i) {
             const NodeInfo& nodeInfo = currentLevel[i];
-            uint32_t nodeIndex = levelStart + i;
+            uint32_t nodeIndex = nodeInfo.nodeIndex;  // Use explicit node index
             ESVONode& node = esvoNodes_[nodeIndex];
+
+            // DEBUG: Print when processing root children
+            if (currentDepth == 1 && nodeInfo.parentIndex == 0) {
+                std::cout << "[BFS ESVO] Processing root child at index " << nodeIndex
+                          << " (parent=" << nodeInfo.parentIndex << ", slot=" << (int)nodeInfo.childSlot
+                          << ", origin=" << nodeInfo.origin.x << "," << nodeInfo.origin.y << "," << nodeInfo.origin.z << ")"
+                          << std::endl;
+            }
 
             // Leaf node (depth 4 or size 8): create brick
             if (nodeInfo.depth >= 4 || nodeInfo.size <= 8) {
@@ -512,10 +519,29 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
 
                 node.SetChildOffset(childBaseOffset);
 
-                // Mark which children exist
+                // Place each child at its correct octant-indexed slot
                 for (const NodeInfo& child : children) {
                     node.SetChild(child.childSlot);
-                    nextLevel.push_back(child);
+
+                    // CRITICAL: Child octant i must be stored at slot childBaseOffset + i
+                    // This ensures shader traversal (parentPtr = childOffset + childIdx) works
+                    uint32_t childNodeIndex = childBaseOffset + child.childSlot;
+
+                    // DEBUG: Print root children placement
+                    if (currentDepth == 0) {
+                        std::cout << "[BFS ESVO] Root child octant " << (int)child.childSlot
+                                  << " will be built at index " << childNodeIndex
+                                  << " (base=" << childBaseOffset << ", origin="
+                                  << child.origin.x << "," << child.origin.y << "," << child.origin.z << ")"
+                                  << std::endl;
+                    }
+
+                    // Store child info for next level processing with correct node index
+                    NodeInfo childWithSlot = child;
+                    childWithSlot.nodeIndex = childNodeIndex;  // Explicit index where child will be built
+                    childWithSlot.parentIndex = nodeIndex;     // Parent node
+
+                    nextLevel.push_back(childWithSlot);
                 }
             }
         }
@@ -700,6 +726,49 @@ void SparseVoxelOctree::ClearMaterials() {
     materialPalette_.clear();
     materialPalette_.reserve(256);
     materialPalette_.emplace_back(); // Re-add default white material at ID 0
+}
+
+void SparseVoxelOctree::CheckForSymmetry() const {
+    if (esvoNodes_.empty()) {
+        std::cout << "=== Symmetry Check: No ESVO nodes ===" << std::endl;
+        return;
+    }
+
+    std::cout << "=== Symmetry Check ===" << std::endl;
+    std::cout << "Root child mask: 0x" << std::hex << (int)esvoNodes_[0].GetChildMask() << std::dec << std::endl;
+
+    // Check if we have symmetrical children (e.g., both left and right walls)
+    uint8_t childMask = esvoNodes_[0].GetChildMask();
+    int symmetricalPairs = 0;
+
+    // Check for X-axis symmetry (common in Cornell Box issues)
+    // Octant encoding: bit 0 = x, bit 1 = y, bit 2 = z
+    // Octants 0-3 have x=0, octants 4-7 have x=1
+    for (int i = 0; i < 4; ++i) {
+        bool left = childMask & (1 << i);        // x=0 half
+        bool right = childMask & (1 << (i + 4)); // x=1 half
+        if (left && right) {
+            symmetricalPairs++;
+            std::cout << "Found symmetrical pair in octants " << i << " and " << (i + 4) << std::endl;
+        }
+    }
+
+    std::cout << "Total symmetrical pairs: " << symmetricalPairs << std::endl;
+
+    // Check first level children
+    uint32_t childOffset = esvoNodes_[0].GetChildOffset();
+    std::cout << "Root child offset: " << childOffset << std::endl;
+
+    for (int i = 0; i < 8; ++i) {
+        if (childMask & (1 << i)) {
+            uint32_t childIndex = childOffset + i;
+            if (childIndex < esvoNodes_.size()) {
+                std::cout << "  Child " << i << " at index " << childIndex
+                          << " has childMask=0x" << std::hex << (int)esvoNodes_[childIndex].GetChildMask() << std::dec
+                          << std::endl;
+            }
+        }
+    }
 }
 
 } // namespace RenderGraph
