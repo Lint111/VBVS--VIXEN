@@ -464,7 +464,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
 
     // Build level by level
     uint32_t currentDepth = 0;
-    while (!currentLevel.empty() && currentDepth < 5) {  // Max depth 4 (depth 5 = bricks)
+    while (!currentLevel.empty() && currentDepth < 5) {  // Process levels 0..4 (depth 5 would be beyond bricks)
         std::cout << "[BFS ESVO] Level " << currentDepth << ": processing " << currentLevel.size() << " nodes" << std::endl;
 
         // Process each node in current level (nodes already allocated with explicit indices)
@@ -481,7 +481,7 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
                           << std::endl;
             }
 
-            // Leaf node (depth 4 or size 8): create brick
+            // Leaf node (depth >=4 or size <=8): create brick immediately
             if (nodeInfo.depth >= 4 || nodeInfo.size <= 8) {
                 uint32_t brickOffset = CreateBrick(voxelData, nodeInfo.origin);
                 node.SetBrickOffset(brickOffset);
@@ -491,7 +491,17 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
             // Internal node: check which children exist
             uint32_t childSize = nodeInfo.size / 2;
             uint8_t childMask = 0;
-            std::vector<NodeInfo> children;
+
+            struct ChildMeta {
+                glm::ivec3 origin;
+                uint32_t size;
+                uint32_t depth;
+                uint8_t slot;
+                bool isLeafBrick;
+                bool isConstant;
+            };
+
+            std::vector<ChildMeta> childMetas;
 
             for (uint8_t childIdx = 0; childIdx < 8; ++childIdx) {
                 glm::ivec3 childOrigin = nodeInfo.origin;
@@ -502,46 +512,81 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
                 if (!IsRegionEmpty(voxelData, childOrigin, childSize)) {
                     childMask |= (1 << childIdx);
 
-                    NodeInfo childInfo;
-                    childInfo.origin = childOrigin;
-                    childInfo.size = childSize;
-                    childInfo.depth = nodeInfo.depth + 1;
-                    childInfo.parentIndex = nodeIndex;
-                    childInfo.childSlot = childIdx;
-                    children.push_back(childInfo);
+                    ChildMeta meta;
+                    meta.origin = childOrigin;
+                    meta.size = childSize;
+                    meta.depth = nodeInfo.depth + 1;
+                    meta.slot = childIdx;
+                    meta.isLeafBrick = (meta.depth >= 4) || (childSize <= 8);
+                    meta.isConstant = false;
+
+                    if (!meta.isLeafBrick) {
+                        uint8_t constVal = 0;
+                        if (IsRegionConstant(voxelData, childOrigin, childSize, constVal) && constVal != 0) {
+                            // Non-empty constant region → mark child as constant node
+                            meta.isConstant = true;
+                            // Reuse constVal as material ID (later stored in descriptor1 low 8 bits)
+                        }
+                    }
+
+                    childMetas.push_back(meta);
                 }
             }
 
-            if (!children.empty()) {
-                // Allocate 8 consecutive slots for children (even if some empty)
+            if (!childMetas.empty()) {
+                // Allocate 8 consecutive slots for children (even if some are empty)
                 uint32_t childBaseOffset = esvoNodes_.size();
                 esvoNodes_.resize(childBaseOffset + 8);  // Always allocate 8 slots
 
                 node.SetChildOffset(childBaseOffset);
 
-                // Place each child at its correct octant-indexed slot
-                for (const NodeInfo& child : children) {
-                    node.SetChild(child.childSlot);
+                // Place each existing child at its correct octant-indexed slot and classify
+                for (const ChildMeta& meta : childMetas) {
+                    node.SetChild(meta.slot);
 
                     // CRITICAL: Child octant i must be stored at slot childBaseOffset + i
                     // This ensures shader traversal (parentPtr = childOffset + childIdx) works
-                    uint32_t childNodeIndex = childBaseOffset + child.childSlot;
+                    uint32_t childNodeIndex = childBaseOffset + meta.slot;
 
                     // DEBUG: Print root children placement
                     if (currentDepth == 0) {
-                        std::cout << "[BFS ESVO] Root child octant " << (int)child.childSlot
+                        std::cout << "[BFS ESVO] Root child octant " << (int)meta.slot
                                   << " will be built at index " << childNodeIndex
                                   << " (base=" << childBaseOffset << ", origin="
-                                  << child.origin.x << "," << child.origin.y << "," << child.origin.z << ")"
+                                  << meta.origin.x << "," << meta.origin.y << "," << meta.origin.z << ")"
                                   << std::endl;
                     }
 
-                    // Store child info for next level processing with correct node index
-                    NodeInfo childWithSlot = child;
-                    childWithSlot.nodeIndex = childNodeIndex;  // Explicit index where child will be built
-                    childWithSlot.parentIndex = nodeIndex;     // Parent node
+                    ESVONode& childNode = esvoNodes_[childNodeIndex];
 
-                    nextLevel.push_back(childWithSlot);
+                    if (meta.isLeafBrick) {
+                        // Directly create brick leaf
+                        uint32_t brickOffset = CreateBrick(voxelData, meta.origin);
+                        childNode.SetBrickOffset(brickOffset);
+                    } else if (meta.isConstant) {
+                        // Determine material ID from constant voxel value (constVal)
+                        // For now assume voxel value directly maps to material ID
+                        // NOTE: If palette indirection differs later, add translation here.
+                        uint8_t constMatID = 0;
+                        // Sample first voxel to get material id (safe because region constant)
+                        uint32_t index = meta.origin.z * gridSize_ * gridSize_ + meta.origin.y * gridSize_ + meta.origin.x;
+                        if (index < voxelData.size()) {
+                            constMatID = voxelData[index];
+                        }
+                        childNode.SetConstant(constMatID);
+                    } else {
+                        // Internal node → set parent's non-leaf bit and schedule for next level
+                        node.SetNonLeaf(meta.slot);
+
+                        NodeInfo childInfo;
+                        childInfo.origin = meta.origin;
+                        childInfo.size = meta.size;
+                        childInfo.depth = meta.depth;
+                        childInfo.nodeIndex = childNodeIndex;
+                        childInfo.parentIndex = nodeIndex;
+                        childInfo.childSlot = meta.slot;
+                        nextLevel.push_back(childInfo);
+                    }
                 }
             }
         }
@@ -560,6 +605,74 @@ void SparseVoxelOctree::BuildESVOWithMortonCurve(
                   << esvoNodes_[0].descriptor0 << ", descriptor1=0x" << esvoNodes_[0].descriptor1
                   << std::dec << ", childMask=" << (int)esvoNodes_[0].GetChildMask()
                   << ", childCount=" << esvoNodes_[0].GetChildCount() << std::endl;
+    }
+
+    // =====================================================================
+    // Post-build validation (lightweight self-check of descriptor encoding)
+    // Ensures child valid bits (reversed layout) and non-leaf bits align with
+    // shader combined-mask traversal logic: child i stored at bit (15 - i)
+    // so that (descriptor0 << i) moves it to bit 15, and non-leaf bit at
+    // position (1 + i) shifts to (1 + i) after left shift.
+    // =====================================================================
+    auto validateNode = [&](uint32_t nodeIndex) {
+        if (nodeIndex >= esvoNodes_.size()) return; // Safety
+        const ESVONode &n = esvoNodes_[nodeIndex];
+        uint32_t d0 = n.descriptor0;
+        bool anyError = false;
+
+        // Extract raw reversed child bits (bits 15..8) and forward mask for debug
+        uint8_t rawChildBits = static_cast<uint8_t>((d0 >> 8) & 0xFF);
+        uint8_t fwdMask = n.GetChildMask();
+        uint8_t nonLeafMask = (d0 >> 1) & 0x7F; // direct non-leaf bits (children 0..6)
+        uint32_t childBase = n.GetChildOffset();
+
+        for (uint32_t child = 0; child < 8; ++child) {
+            bool existsHost = n.HasChild(child);
+
+            // Recompute existence directly from reversed storage: child i stored at bit (7 - i) of rawChildBits
+            bool existsRaw = (rawChildBits & (1u << (7 - child))) != 0;
+            if (existsHost != existsRaw) {
+                anyError = true;
+                std::cout << "[ESVO VALIDATION] EXISTENCE BIT MISMATCH node=" << nodeIndex
+                          << " child=" << child << " hostHas=" << existsHost
+                          << " rawHas=" << existsRaw << " d0=0x" << std::hex << d0 << std::dec << std::endl;
+            }
+
+            if (!existsHost) continue; // Skip further checks for empty child
+
+            // Leaf test mirrors shader logic now: leaf = (child>=7) || ((nonLeafMask & (1<<child)) == 0)
+            bool isLeafHost = n.IsLeaf(child);
+            bool isLeafDirect = (child >= 7) ? true : ((nonLeafMask & (1u << child)) == 0);
+            if (isLeafHost != isLeafDirect) {
+                anyError = true;
+                std::cout << "[ESVO VALIDATION] LEAF FLAG MISMATCH node=" << nodeIndex
+                          << " child=" << child << " hostLeaf=" << isLeafHost
+                          << " directLeaf=" << isLeafDirect << " nonLeafMask=0x"
+                          << std::hex << (int)nonLeafMask << " d0=0x" << d0 << std::dec << std::endl;
+            }
+
+            // Contiguity check: if parent encodes children, ensure allocated slot exists when expected
+            if (childBase != 0) { // childBase==0 allowed for root or if not set yet
+                uint32_t expectedIndex = childBase + child;
+                if (expectedIndex >= esvoNodes_.size()) {
+                    anyError = true;
+                    std::cout << "[ESVO VALIDATION] OUT-OF-RANGE child pointer node=" << nodeIndex
+                              << " child=" << child << " expectedIndex=" << expectedIndex << std::endl;
+                }
+            }
+        }
+        if (anyError) {
+            std::cout << "[ESVO VALIDATION] Descriptor issues detected for node " << nodeIndex << std::endl;
+        }
+    };
+
+    // Validate a small sample: root + its first 8 children (if allocated)
+    if (!esvoNodes_.empty()) {
+        validateNode(0);
+        uint32_t rootChildBase = esvoNodes_[0].GetChildOffset();
+        for (uint32_t i = 0; i < 8; ++i) {
+            validateNode(rootChildBase + i);
+        }
     }
 }
 

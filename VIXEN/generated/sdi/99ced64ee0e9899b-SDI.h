@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: 99ced64ee0e9899b
-// Generated: 2025-11-12 15:22:23
+// Generated: 2025-11-12 22:40:51
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -181,7 +181,7 @@ namespace Set0 {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "VoxelRayMarch";
-    static constexpr const char* INTERFACE_HASH = "6f3f9796388b7d5b";
+    static constexpr const char* INTERFACE_HASH = "bf16fe4832829cf8";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 0;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

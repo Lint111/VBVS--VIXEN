@@ -93,6 +93,11 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 #define VOXEL_RAY_DEBUG_MATERIAL_ID 0
 #endif
 
+// Optional debug: visualize local voxel coordinates in brick as RGB
+#ifndef VOXEL_RAY_DEBUG_LOCAL_COORD
+#define VOXEL_RAY_DEBUG_LOCAL_COORD 0
+#endif
+
 // Optional debug: visualize coordinate clamping (set to 1 to enable)
 #ifndef VOXEL_RAY_DEBUG_CLAMP
 #define VOXEL_RAY_DEBUG_CLAMP 0
@@ -215,6 +220,11 @@ bool isConstant(uvec2 node) {
     return (node.y & 0x80000000u) != 0u;
 }
 
+// Extract constant material ID from descriptor1 (low 8 bits) when constant flag set
+uint getConstantMaterialID(uvec2 node) {
+    return node.y & 0xFFu; // Low 8 bits store material ID
+}
+
 // Get combined child masks (for ESVO traversal)
 int getCombinedMasks(uvec2 node, uint childIndex) {
     int child_shift = int(childIndex);
@@ -267,6 +277,10 @@ uint getChildOctant(vec3 posInNode) {
 // ============================================================================
 // OCTREE TRAVERSAL (ESVO Algorithm)
 // ============================================================================
+
+// Forward declaration for brick DDA used by traversal
+bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 brickMax,
+                uint brickOffset, out vec3 hitColor, out vec3 hitNormal);
 
 // Octree traversal using ESVO format + brick DDA
 // Combines hierarchical descent (child masks) with precise voxel stepping in leaf bricks.
@@ -341,7 +355,15 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                           out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
     // ESVO traversal state
-    const int S_MAX = 23;
+    // IMPORTANT: Our host-side BFS builder currently produces a maximum depth of 5
+    // (root depth=0, leaves at depth=4 with 8x8x8 bricks). The reference ESVO
+    // algorithm uses S_MAX=23 for deep production trees, but keeping that value here
+    // makes scale_exp2 vastly smaller than our actual leaf size, collapsing bricks
+    // to a thin slice in world reconstruction. We therefore match S_MAX to the
+    // actual tree depth (5) so that leafMin/leafMax mapping (pos - scale_exp2, pos)
+    // spans the correct region. TODO: Parameterize S_MAX via a uniform when deeper
+    // trees are introduced.
+    const int S_MAX = 5;
     const float EPSILON_ESVO = exp2(-float(S_MAX));
 
     // LOD parameters (from camera uniform)
@@ -403,8 +425,12 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     }
 
     // Traversal state
-    uint parentPtr = 0u;
+    uint parentPtr = 0u;                 // Current node index at this scale
     uvec2 child_descriptor = uvec2(0u, 0u);
+    // Minimal parent pointer stack for ascending (Phase H baseline)
+    const int PTR_STACK_MAX = 48;
+    uint parentPtrStack[PTR_STACK_MAX];
+    int ptrTop = -1;
     int idx = 0;
     vec3 pos = vec3(1.0);
     int scale = S_MAX - 1;
@@ -435,61 +461,44 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         float tz_corner = pos.z * tz_coef - tz_bias;
         float tc_max = min(min(tx_corner, ty_corner), tz_corner);
 
-        // Check if child exists and t-span non-empty
-        int child_shift = idx ^ octant_mask;
-        int child_masks = int(child_descriptor.x) << child_shift;
+    // Check if child exists and t-span non-empty using ESVO combined-mask logic
+    int child_shift = idx ^ octant_mask;
+    int child_masks = int(child_descriptor.x) << child_shift;
+    bool childExists = (child_masks & 0x8000) != 0; // Bit 15 after shift = valid_mask for this child
 
-        if ((child_masks & 0x8000) != 0 && t_min <= t_max) {
+    if (childExists && t_min <= t_max) {
             // LOD TERMINATION: Stop if voxel small enough
             if (tc_max * raySizeCoef + raySizeBias >= scale_exp2) {
-                // Hit! Read brick and get material (same as leaf path)
-                uint brickIndex = getBrickOffset(child_descriptor);
+                // LOD termination: sample the actual CHILD node's brick
+                uint childIdx = uint(idx ^ octant_mask);
+                uint childNodeOffset = getChildOffset(child_descriptor);
+                uint childPtr = childNodeOffset + childIdx;
+                uvec2 childNode = fetchESVONode(childPtr);
 
-                // Compute local voxel position within brick
-                vec3 hitPos = p + d * t_min;
-                vec3 localPos = fract(hitPos) * 8.0;
-                ivec3 voxelCoord = ivec3(floor(localPos));
-
-                // DEBUG: Check if clamping is needed
-                #if VOXEL_RAY_DEBUG_CLAMP
-                bool wasClamped = false;
-                #endif
-
-                voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));
-
-                #if VOXEL_RAY_DEBUG_CLAMP
-                if (voxelCoord != ivec3(floor(localPos))) {
-                    wasClamped = true;
-                }
-                #endif
-
-                uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
-                Material mat = getMaterial(materialID);
-                hitColor = mat.albedo;
-
-                // DEBUG: Visualize material ID
-                #if VOXEL_RAY_DEBUG_MATERIAL_ID
-                if (materialID == 0) {
-                    hitColor = vec3(0.2, 0.2, 0.2);
-                } else if (materialID == 1) {
-                    hitColor = vec3(1.0, 0.0, 0.0);
-                } else if (materialID <= 7) {
-                    hitColor = vec3(float(materialID) / 7.0);
+                // If constant region, shade directly without brick traversal
+                if (isConstant(childNode)) {
+                    uint matID = getConstantMaterialID(childNode);
+                    Material m = getMaterial(matID);
+                    vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                    vec3 leafMax = vec3(pos);
+                    // Basic face normal approximation from ray direction
+                    vec3 approxNormal = normalize(-rayDir);
+                    hitNormal = approxNormal;
+                    hitColor = m.albedo;
+                    hitT = t_min;
+                    return true;
                 } else {
-                    hitColor = vec3(0.0, 1.0, 1.0);
+                    uint brickIndex = getBrickOffset(childNode);
+                    vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                    vec3 leafMax = vec3(pos);
+                    vec3 brickMin = gridMin + (leafMin - 1.0) * gridSize;
+                    vec3 brickMax = gridMin + (leafMax - 1.0) * gridSize;
+                    if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal)) {
+                        hitT = t_min;
+                        return true;
+                    }
                 }
-                #endif
-
-                // DEBUG: Visualize clamping artifacts
-                #if VOXEL_RAY_DEBUG_CLAMP
-                if (wasClamped) {
-                    hitColor = vec3(1.0, 1.0, 0.0);
-                }
-                #endif
-
-                hitNormal = vec3(0.0, 1.0, 0.0);
-                hitT = t_min;
-                return true;
+                // Miss within brick or constant region -> continue traversal
             }
 
             // INTERSECT: Narrow t-span to voxel interior
@@ -501,79 +510,61 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
             // PUSH: Descend to child if non-empty t-span
             if (t_min <= tv_max) {
-                // Check if node is a leaf by looking at non-leaf mask (bits 1-7)
-                // After shifting, bit (1+child_shift) indicates if child has grandchildren
-                int nonLeafBit = (1 + child_shift);
-                bool isLeaf = (child_masks & (1 << nonLeafBit)) == 0;
+                // Check if child is a leaf using explicit non-leaf mask.
+                // Combined-mask shifting aligns the valid bit to 15, but non-leaf bits
+                // live in descriptor0 bits 1..7 (for children 0..6). Shifting by child index
+                // does not align them to a fixed position, so test directly from the mask.
+                uint childIdxPush = uint(idx ^ octant_mask);
+                uint nonLeafMask = getNonLeafMask(child_descriptor);
+                bool isLeaf = (childIdxPush >= 7u) ? true : ((nonLeafMask & (1u << childIdxPush)) == 0u);
 
                 if (isLeaf) {
-                    // Leaf node! Read brick and get material
-                    uint brickIndex = getBrickOffset(child_descriptor);
-
-                    // Compute local voxel position within brick (0-7 range)
-                    vec3 hitPos = p + d * t_min;  // Ray hit point in [1,2] space
-                    vec3 localPos = fract(hitPos) * 8.0;  // Map to [0,8) brick space
-                    ivec3 voxelCoord = ivec3(floor(localPos));
-
-                    // DEBUG: Check if clamping is needed
-                    #if VOXEL_RAY_DEBUG_CLAMP
-                    bool wasClamped = false;
-                    #endif
-
-                    voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));  // Safety clamp
-
-                    #if VOXEL_RAY_DEBUG_CLAMP
-                    if (voxelCoord != ivec3(floor(localPos))) {
-                        wasClamped = true;
-                    }
-                    #endif
-
-                    // Read voxel material ID
-                    uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
-
-                    // Look up material and get albedo
-                    Material mat = getMaterial(materialID);
-                    hitColor = mat.albedo;
-
-                    // DEBUG: Visualize material ID
-                    #if VOXEL_RAY_DEBUG_MATERIAL_ID
-                    // Encode material ID as color (0-7 = grayscale, 8+ = other colors)
-                    if (materialID == 0) {
-                        hitColor = vec3(0.2, 0.2, 0.2);  // Dark gray for empty
-                    } else if (materialID == 1) {
-                        hitColor = vec3(1.0, 0.0, 0.0);  // Pure red for material 1 (debug)
-                    } else if (materialID <= 7) {
-                        hitColor = vec3(float(materialID) / 7.0);  // Grayscale for 1-7
+                    // Leaf node: sample brick from the CHILD node descriptor
+                    uint childNodeOffset = getChildOffset(child_descriptor);
+                    uint childPtr = childNodeOffset + childIdxPush;
+                    uvec2 childNode = fetchESVONode(childPtr);
+                    if (isConstant(childNode)) {
+                        uint matID = getConstantMaterialID(childNode);
+                        Material m = getMaterial(matID);
+                        vec3 approxNormal = normalize(-rayDir);
+                        hitColor = m.albedo;
+                        hitNormal = approxNormal;
+                        hitT = t_min;
+                        return true;
                     } else {
-                        hitColor = vec3(0.0, 1.0, 1.0);  // Cyan for 8+
+                        uint brickIndex = getBrickOffset(childNode);
+                        vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                        vec3 leafMax = vec3(pos);
+                        vec3 brickMin = gridMin + (leafMin - 1.0) * gridSize;
+                        vec3 brickMax = gridMin + (leafMax - 1.0) * gridSize;
+                        if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal)) {
+                            hitT = t_min;
+                            return true;
+                        }
                     }
-                    #endif
-
-                    // DEBUG: Visualize clamping artifacts
-                    #if VOXEL_RAY_DEBUG_CLAMP
-                    if (wasClamped) {
-                        hitColor = vec3(1.0, 1.0, 0.0);  // Yellow for clamped voxels
+                    // No solid voxel along ray inside this brick; advance to voxel exit and continue at SAME scale
+                    t_min = tv_max;
+                    // Skip descent for leaf; proceed to ADVANCE phase
+                } else {
+                    // Internal child: perform descent
+                    uint childIdx = idx ^ octant_mask;
+                    uint childNodeOffset = getChildOffset(child_descriptor);
+                    // Push current parent pointer onto stack, then move to child
+                    if (ptrTop + 1 < PTR_STACK_MAX) {
+                        parentPtrStack[++ptrTop] = parentPtr;
                     }
-                    #endif
+                    parentPtr = childNodeOffset + childIdx;
+                    child_descriptor = uvec2(0u, 0u); // Invalidate cached descriptor for new parentPtr
 
-                    hitNormal = vec3(0.0, 1.0, 0.0);
-                    hitT = t_min;
-                    return true;
+                    scale--;
+                    scale_exp2 = halfScale;
+                    idx = 0;
+                    if (tx_center > t_min) { idx ^= 1; pos.x += scale_exp2; }
+                    if (ty_center > t_min) { idx ^= 2; pos.y += scale_exp2; }
+                    if (tz_center > t_min) { idx ^= 4; pos.z += scale_exp2; }
+                    t_max = tv_max;
+                    continue;
                 }
-
-                // Descend to child node (BFS ESVO guarantees consecutive allocation)
-                uint childIdx = idx ^ octant_mask;
-                uint childNodeOffset = getChildOffset(child_descriptor);
-                parentPtr = childNodeOffset + childIdx;
-
-                scale--;
-                scale_exp2 = halfScale;
-                idx = 0;
-                if (tx_center > t_min) { idx ^= 1; pos.x += scale_exp2; }
-                if (ty_center > t_min) { idx ^= 2; pos.y += scale_exp2; }
-                if (tz_center > t_min) { idx ^= 4; pos.z += scale_exp2; }
-                t_max = tv_max;
-                continue;
             }
         }
 
@@ -609,7 +600,11 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
             if (pos.y >= 1.5) idx ^= 2;
             if (pos.z >= 1.5) idx ^= 4;
 
-            child_descriptor.x = 0u;  // Invalidate cache
+            // Restore parent pointer from stack
+            if (ptrTop >= 0) {
+                parentPtr = parentPtrStack[ptrTop--];
+            }
+            child_descriptor = uvec2(0u, 0u);  // Invalidate cache
         }
     }
 
@@ -889,7 +884,13 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
                 hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
             }
 
-            hitColor = shadeVoxel(hitNormal, mat.albedo);
+            #if VOXEL_RAY_DEBUG_LOCAL_COORD
+            // Encode local voxel coordinates to color for axis/mirroring debug
+            hitColor = vec3(voxelPos.x, voxelPos.y, voxelPos.z) / 7.0;
+            #else
+            // Return albedo; caller applies shading once
+            hitColor = mat.albedo;
+            #endif
             return true;
         }
 

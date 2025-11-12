@@ -206,10 +206,16 @@ struct ESVONode {
      * For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
      */
     inline uint8_t GetChildMask() const {
-        // Child mask stored at bits 8-15 (ESVO spec)
-        // SetChild(i) sets bit (8+i), extract those 8 bits
-        // Result: bit i = 1 if child i exists
-        return static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
+        // Child valid bits are stored REVERSED across bits 15..8
+        // child 0 -> bit 15, child 7 -> bit 8
+        uint8_t raw = static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
+        // Reverse into forward order (bit i corresponds to child i)
+        uint8_t fwd = 0;
+        for (int i = 0; i < 8; ++i) {
+            // raw bit at position (15 - i) => raw index (7 - i)
+            if (raw & (1u << (7 - i))) fwd |= (1u << i);
+        }
+        return fwd;
     }
 
     /**
@@ -262,29 +268,10 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        // Child mask at bits 8-15 in FORWARD order:
-        // child[0] at bit 8, child[1] at bit 9, ..., child[7] at bit 15
-        // Shader algorithm: int child_masks = int(descriptor0) << child_shift (where child_shift = childIdx * 8)
-        // After << (childIdx * 8), bit (8 + childIdx) becomes bit (8 + childIdx + childIdx*8)
-        // For child 0: bit 8 << 0 = bit 8, never reaches bit 15
-        // For child 7: bit 15 << 56... wait that's wrong
-        //
-        // CORRECTED: Shader does child_shift = childIdx (NOT childIdx * 8)
-        // So: int child_masks = int(descriptor0) << childIdx
-        // For child 0: bits 8-15 << 0 = bits 8-15, check bit 15 with 0x8000
-        // For child 7: bits 8-15 << 7 = bits 15-22, bit 15 of mask is now at bit 22... WRONG!
-        //
-        // RE-ANALYSIS: child_shift is the VOXEL index (0-7), not the child index
-        // The shader builds idx from center tests, then does:
-        // int child_masks = int(descriptor0) << idx;
-        // This shifts the ENTIRE descriptor left by idx bits
-        // To check if child exists: (child_masks & 0x8000) tests bit 15 of shifted value
-        // So we need child i's bit at position (15 - i) so after << i it reaches bit 15!
-        //
-        // WAIT - let me re-read the shader...
-        // Line 427: int child_masks = int(descriptor0) << child_shift;
-        // Store at bits 8-15 (ESVO spec: bits 15-8 = valid_mask)
-        descriptor0 |= (1 << (8 + childIndex));
+        // Store child valid bit at position (15 - childIndex) so that
+        // (descriptor0 << childIndex) moves it to bit 15, matching the
+        // (child_masks & 0x8000) existence test used in the shader.
+        descriptor0 |= (1u << (15 - childIndex));
     }
 
     /**
@@ -333,6 +320,15 @@ struct ESVONode {
     }
 
     /**
+     * @brief Get material ID stored for constant regions
+     * Interpretation: When the high bit (bit 31) is set, descriptor1's low 8 bits
+     * store the material ID of the homogeneous region. The remaining bits are unused.
+     */
+    inline uint8_t GetConstantMaterialID() const {
+        return static_cast<uint8_t>(descriptor1 & 0xFF);
+    }
+
+    /**
      * @brief Set brick offset
      * @param offset Offset into brick buffer (31 bits max)
      */
@@ -341,11 +337,14 @@ struct ESVONode {
     }
 
     /**
-     * @brief Set constant flag (homogeneous region)
+     * @brief Set constant flag (homogeneous region) and encode material ID in low 8 bits
      */
-    inline void SetConstant() {
-        descriptor1 |= 0x80000000;
+    inline void SetConstant(uint8_t materialID) {
+        descriptor1 = 0x80000000 | (static_cast<uint32_t>(materialID) & 0xFFu);
     }
+
+    // Back-compat convenience: mark constant with material ID 0
+    inline void SetConstant() { SetConstant(0); }
 
     /**
      * @brief Clear constant flag
