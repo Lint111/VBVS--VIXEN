@@ -84,13 +84,8 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
     }
 
-    // Phase H: Request URM-managed framebuffers array using context method
-    uint64_t framebuffersHash = ctx.GetMemberHash(nameOf(framebuffers_));
-    auto framebuffersResult = ctx.RequestStackResource<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>(framebuffersHash);
-    if (!framebuffersResult) {
-        throw std::runtime_error("FramebufferNode: Failed to request framebuffers array from URM");
-    }
-    framebuffers_ = std::move(framebuffersResult.value());
+    // Phase H: Request URM-managed framebuffers array using helper macro
+    REQUEST_STACK_RESOURCE(ctx, VkFramebuffer, MAX_SWAPCHAIN_IMAGES, framebuffers_);
 
     // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
     // Reset framebuffer count (array elements initialized to VK_NULL_HANDLE in Cleanup)

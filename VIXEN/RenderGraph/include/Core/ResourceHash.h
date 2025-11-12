@@ -280,4 +280,179 @@ namespace Literals {
     }
 }
 
+// ============================================================================
+// PHASE H: RESOURCE ALLOCATION HELPER MACROS
+// ============================================================================
+// These macros compress the repetitive pattern of:
+// 1. Computing hash from member name
+// 2. Requesting resource from URM
+// 3. Error checking
+// 4. Assigning to member variable
+//
+// These patterns repeat extensively during node conversions, so macros
+// dramatically reduce boilerplate and make code more maintainable.
+
+/**
+ * @brief Request stack resource from URM with automatic error handling
+ *
+ * Expands to full pattern: hash computation, request, error check, assignment.
+ * Use this for URM-managed stack arrays (with automatic heap fallback).
+ *
+ * @param ctx Context (TypedCompileContext, TypedExecuteContext, etc.)
+ * @param Type Element type (e.g., VkSemaphore, VkFramebuffer)
+ * @param Capacity Array capacity (e.g., MAX_FRAMES_IN_FLIGHT)
+ * @param member Member variable name (must be identifier, not string)
+ *
+ * Example:
+ * @code
+ * // Member declaration:
+ * std::optional<StackResourceHandle<VkSemaphore, MAX_FRAMES_IN_FLIGHT>> imageAvailableSemaphores_;
+ *
+ * // Request in CompileImpl:
+ * REQUEST_STACK_RESOURCE(ctx, VkSemaphore, MAX_FRAMES_IN_FLIGHT, imageAvailableSemaphores_);
+ *
+ * // Now imageAvailableSemaphores_ is ready to use!
+ * for (uint32_t i = 0; i < count; ++i) {
+ *     vkCreateSemaphore(..., &(*imageAvailableSemaphores_)[i]);
+ * }
+ * @endcode
+ *
+ * Expands to:
+ * @code
+ * {
+ *     uint64_t hash = ctx.GetMemberHash(nameOf(member));
+ *     auto result = ctx.RequestStackResource<Type, Capacity>(hash);
+ *     if (!result) {
+ *         throw std::runtime_error("Failed to allocate stack resource: " #member);
+ *     }
+ *     member = std::move(result.value());
+ * }
+ * @endcode
+ */
+#define REQUEST_STACK_RESOURCE(ctx, Type, Capacity, member) \
+    do { \
+        uint64_t hash = (ctx).GetMemberHash(nameOf(member)); \
+        auto result = (ctx).RequestStackResource<Type, Capacity>(hash); \
+        if (!result) { \
+            throw std::runtime_error("Failed to allocate stack resource: " #member); \
+        } \
+        member = std::move(result.value()); \
+    } while(0)
+
+/**
+ * @brief Request stack resource with custom error message
+ *
+ * Same as REQUEST_STACK_RESOURCE but allows custom error message.
+ *
+ * @param ctx Context
+ * @param Type Element type
+ * @param Capacity Array capacity
+ * @param member Member variable name
+ * @param errorMsg Custom error message (string literal)
+ *
+ * Example:
+ * @code
+ * REQUEST_STACK_RESOURCE_MSG(ctx, VkCommandBuffer, 16, cmdBuffers_,
+ *     "Node failed to allocate command buffer pool");
+ * @endcode
+ */
+#define REQUEST_STACK_RESOURCE_MSG(ctx, Type, Capacity, member, errorMsg) \
+    do { \
+        uint64_t hash = (ctx).GetMemberHash(nameOf(member)); \
+        auto result = (ctx).RequestStackResource<Type, Capacity>(hash); \
+        if (!result) { \
+            throw std::runtime_error(errorMsg); \
+        } \
+        member = std::move(result.value()); \
+    } while(0)
+
+/**
+ * @brief Request GPU/CPU resource from URM with automatic error handling
+ *
+ * Use this for GPU resources (buffers, images, etc.) or CPU heap resources
+ * managed by URM. This goes through the ResourceBudgetManager for GPU resources.
+ *
+ * @param ctx Context
+ * @param Type Resource type (e.g., VkBuffer, VkImage)
+ * @param descriptor Resource descriptor (BufferDescriptor, ImageDescriptor, etc.)
+ * @param member Member variable to assign (typically Resource*)
+ *
+ * Example:
+ * @code
+ * // Member declaration:
+ * Resource* stagingBuffer_;
+ *
+ * // Request in CompileImpl:
+ * BufferDescriptor desc{.size = 1024, .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT};
+ * REQUEST_RESOURCE(ctx, VkBuffer, desc, stagingBuffer_);
+ *
+ * // Now stagingBuffer_ points to URM-owned Resource
+ * @endcode
+ */
+#define REQUEST_RESOURCE(ctx, Type, descriptor, member) \
+    do { \
+        auto* resource = (ctx).RequestResource<Type>(descriptor); \
+        if (!resource) { \
+            throw std::runtime_error("Failed to allocate resource: " #member); \
+        } \
+        member = resource; \
+    } while(0)
+
+/**
+ * @brief Request GPU/CPU resource with allocation strategy
+ *
+ * Same as REQUEST_RESOURCE but allows specifying allocation strategy.
+ *
+ * @param ctx Context
+ * @param Type Resource type
+ * @param descriptor Resource descriptor
+ * @param strategy AllocStrategy (Stack/Heap/Device/Automatic)
+ * @param member Member variable to assign
+ *
+ * Example:
+ * @code
+ * REQUEST_RESOURCE_STRATEGY(ctx, VkBuffer, desc,
+ *     ResourceManagement::AllocStrategy::Device, stagingBuffer_);
+ * @endcode
+ */
+#define REQUEST_RESOURCE_STRATEGY(ctx, Type, descriptor, strategy, member) \
+    do { \
+        auto* resource = (ctx).RequestResource<Type>(descriptor, strategy); \
+        if (!resource) { \
+            throw std::runtime_error("Failed to allocate resource: " #member); \
+        } \
+        member = resource; \
+    } while(0)
+
+/**
+ * @brief Request stack resource with logging on success
+ *
+ * Same as REQUEST_STACK_RESOURCE but logs allocation location (STACK/HEAP).
+ * Useful for debugging and profiling stack vs heap usage.
+ *
+ * @param ctx Context
+ * @param Type Element type
+ * @param Capacity Array capacity
+ * @param member Member variable name
+ *
+ * Example:
+ * @code
+ * REQUEST_STACK_RESOURCE_LOG(ctx, VkFramebuffer, MAX_SWAPCHAIN_IMAGES, framebuffers_);
+ * // Logs: "Allocated framebuffers_: STACK (256 bytes)"
+ * @endcode
+ */
+#define REQUEST_STACK_RESOURCE_LOG(ctx, Type, Capacity, member) \
+    do { \
+        uint64_t hash = (ctx).GetMemberHash(nameOf(member)); \
+        auto result = (ctx).RequestStackResource<Type, Capacity>(hash); \
+        if (!result) { \
+            throw std::runtime_error("Failed to allocate stack resource: " #member); \
+        } \
+        member = std::move(result.value()); \
+        NODE_LOG_DEBUG("Allocated " #member ": " + \
+            std::string(member.isStack() ? "STACK" : "HEAP") + \
+            " (" + std::to_string(Capacity * sizeof(Type)) + " bytes)"); \
+    } while(0)
+
 } // namespace Vixen::RenderGraph
+

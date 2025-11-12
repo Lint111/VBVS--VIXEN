@@ -91,31 +91,17 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // - imageAvailable: per-FLIGHT (tracks frame pacing)
     // - renderComplete: per-IMAGE (tracks presentation engine usage per swapchain image)
 
-    // Phase H: Request URM-managed stack arrays using context method
+    // Phase H: Request URM-managed stack arrays using helper macros
+    // Dramatically reduced boilerplate - each macro handles hash, request, error check, and assignment
 
     // Request imageAvailable semaphores array (per-FLIGHT)
-    uint64_t imageAvailHash = ctx.GetMemberHash(nameOf(imageAvailableSemaphores_));
-    auto imageAvailResult = ctx.RequestStackResource<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(imageAvailHash);
-    if (!imageAvailResult) {
-        throw std::runtime_error("FrameSyncNode: Failed to request imageAvailable semaphores array");
-    }
-    imageAvailableSemaphores_ = std::move(imageAvailResult.value());
+    REQUEST_STACK_RESOURCE(ctx, VkSemaphore, MAX_FRAMES_IN_FLIGHT, imageAvailableSemaphores_);
 
     // Request renderComplete semaphores array (per-IMAGE)
-    uint64_t renderCompleteHash = ctx.GetMemberHash(nameOf(renderCompleteSemaphores_));
-    auto renderCompleteResult = ctx.RequestStackResource<VkSemaphore, MAX_SWAPCHAIN_IMAGES>(renderCompleteHash);
-    if (!renderCompleteResult) {
-        throw std::runtime_error("FrameSyncNode: Failed to request renderComplete semaphores array");
-    }
-    renderCompleteSemaphores_ = std::move(renderCompleteResult.value());
+    REQUEST_STACK_RESOURCE(ctx, VkSemaphore, MAX_SWAPCHAIN_IMAGES, renderCompleteSemaphores_);
 
     // Request presentFences array (per-IMAGE)
-    uint64_t presentFencesHash = ctx.GetMemberHash(nameOf(presentFences_));
-    auto presentFencesResult = ctx.RequestStackResource<VkFence, MAX_SWAPCHAIN_IMAGES>(presentFencesHash);
-    if (!presentFencesResult) {
-        throw std::runtime_error("FrameSyncNode: Failed to request presentFences array");
-    }
-    presentFences_ = std::move(presentFencesResult.value());
+    REQUEST_STACK_RESOURCE(ctx, VkFence, MAX_SWAPCHAIN_IMAGES, presentFences_);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;

@@ -74,20 +74,9 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
                                  std::to_string(MAX_DESCRIPTOR_BINDINGS) + ")");
     }
 
-    // Phase H: Request URM-managed stack arrays using context method
-    uint64_t resourceArrayHash = ctx.GetMemberHash(nameOf(resourceArray_));
-    auto resourceArrayResult = ctx.RequestStackResource<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>(resourceArrayHash);
-    if (!resourceArrayResult) {
-        throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request resourceArray from URM");
-    }
-    resourceArray_ = std::move(resourceArrayResult.value());
-
-    uint64_t slotRoleArrayHash = ctx.GetMemberHash(nameOf(slotRoleArray_));
-    auto slotRoleArrayResult = ctx.RequestStackResource<SlotRole, MAX_DESCRIPTOR_BINDINGS>(slotRoleArrayHash);
-    if (!slotRoleArrayResult) {
-        throw std::runtime_error("[DescriptorResourceGathererNode::Compile] Failed to request slotRoleArray from URM");
-    }
-    slotRoleArray_ = std::move(slotRoleArrayResult.value());
+    // Phase H: Request URM-managed stack arrays using helper macros
+    REQUEST_STACK_RESOURCE(ctx, ResourceVariant, MAX_DESCRIPTOR_BINDINGS, resourceArray_);
+    REQUEST_STACK_RESOURCE(ctx, SlotRole, MAX_DESCRIPTOR_BINDINGS, slotRoleArray_);
 
     // Initialize slot roles to Dependency (default) in URM-managed array
     for (uint32_t i = 0; i < descriptorCount_; ++i) {
