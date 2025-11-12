@@ -33,11 +33,15 @@ struct InputState {
     /**
      * @brief Clear per-frame state (pressed/released flags)
      * Call at the start of each frame before polling
+     *
+     * NOTE: mouseDelta is NOT cleared here because it's calculated by PollMouse()
+     * after polling but before BeginFrame() is called. Clearing would lose the frame's delta.
+     * The delta is used by consumers (CameraNode) and should persist until the next frame.
      */
     void BeginFrame() {
         keyPressed.clear();
         keyReleased.clear();
-        mouseDelta = glm::vec2(0.0f);
+        // NOTE: mouseDelta is preserved (calculated in PollMouse, not cleared here)
     }
 
     /**

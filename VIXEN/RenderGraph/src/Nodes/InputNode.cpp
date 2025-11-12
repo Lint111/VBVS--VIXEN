@@ -83,9 +83,14 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     PollKeyboard();
     PollMouse();
 
-    // Publish events based on state changes
+    // Modern polling-based input: No event publishing needed
+    // - Mouse movement is handled via InputState.mouseDelta (no MouseMoveEvent)
+    // - Keyboard input is polled directly from InputState (no KeyEvent)
+    // - ESC is handled inline in PublishKeyEvents for app exit
+
+    // Still call PublishKeyEvents for ESC handling only
     PublishKeyEvents();
-    PublishMouseEvents();
+    // PublishMouseEvents() disabled - all input via InputState polling
 
     // Re-center mouse for continuous movement
     if (mouseCaptured && hwnd) {
@@ -108,7 +113,7 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void InputNode::PopulateInputState() {
-    // Clear per-frame state
+    // Clear per-frame state (pressed/released flags, but NOT mouseDelta)
     inputState.BeginFrame();
 
     // Update frame timing
@@ -129,12 +134,19 @@ void InputNode::PopulateInputState() {
         }
     }
 
-    // Mouse delta already calculated in PollMouse()
-    // inputState.mouseDelta set during mouse polling (see below)
-
-    // Mouse position
+    // Get current mouse position and calculate delta
     POINT cursorPos;
     if (GetCursorPos(&cursorPos) && ScreenToClient(hwnd, &cursorPos)) {
+        // Calculate this frame's mouse movement delta
+        float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
+        float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
+        inputState.mouseDelta = glm::vec2(deltaX, deltaY);
+
+        // Store position for next frame's delta calculation
+        lastMouseX = cursorPos.x;
+        lastMouseY = cursorPos.y;
+
+        // Update current position in input state
         inputState.mousePosition = glm::vec2(cursorPos.x, cursorPos.y);
     }
 
@@ -209,70 +221,22 @@ void InputNode::PollMouse() {
 // ====== Event Publishing ======
 
 void InputNode::PublishKeyEvents() {
-    if (!GetMessageBus()) {
-        return;  // No message bus available
-    }
+    // Modern input system: Only handle ESC for application exit
+    // All other keyboard input is polled via InputState.keyDown/keyPressed/keyReleased
+    // No continuous KeyEvent publishing to avoid event flooding and render stalls
 
-    bool shift = IsShiftPressed();
-    bool ctrl = IsCtrlPressed();
-    bool alt = IsAltPressed();
-
-    for (const auto& [key, state] : keyStates) {
-        // Skip modifier keys to avoid self-reporting
-        if (key == EventBus::KeyCode::Shift ||
-            key == EventBus::KeyCode::Ctrl ||
-            key == EventBus::KeyCode::Alt) {
-            continue;
-        }
-
-        // KeyPressed: Key just went down
-        if (!state.wasDown && state.isDown) {
-            // ESC to exit application
-            if (key == EventBus::KeyCode::Escape) {
-                PostQuitMessage(0);
-                return;  // Exit early
-            }
-
-            auto event = std::make_unique<EventBus::KeyEvent>(
-                instanceId,
-                key,
-                EventBus::KeyEventType::Pressed,
-                0.0f,  // Duration 0 for pressed
-                shift, ctrl, alt
-            );
-            GetMessageBus()->Publish(std::move(event));
-        }
-        // KeyReleased: Key just went up
-        else if (state.wasDown && !state.isDown) {
-            // Calculate duration held
-            auto now = std::chrono::steady_clock::now();
-            float duration = std::chrono::duration<float>(now - state.pressTime).count();
-
-            auto event = std::make_unique<EventBus::KeyEvent>(
-                instanceId,
-                key,
-                EventBus::KeyEventType::Released,
-                duration,
-                shift, ctrl, alt
-            );
-            GetMessageBus()->Publish(std::move(event));
-        }
-        // KeyHeld: Key is currently down (every frame it's down)
-        else if (state.isDown) {
-            // Calculate duration held
-            auto now = std::chrono::steady_clock::now();
-            float duration = std::chrono::duration<float>(now - state.pressTime).count();
-
-            auto event = std::make_unique<EventBus::KeyEvent>(
-                instanceId,
-                key,
-                EventBus::KeyEventType::Held,
-                duration,
-                shift, ctrl, alt
-            );
-            GetMessageBus()->Publish(std::move(event));
+    // Check ESC specifically
+    auto escIt = keyStates.find(EventBus::KeyCode::Escape);
+    if (escIt != keyStates.end()) {
+        const auto& escState = escIt->second;
+        // ESC just pressed: exit application
+        if (!escState.wasDown && escState.isDown) {
+            PostQuitMessage(0);
+            return;
         }
     }
+
+    // No other events published (input via polling instead)
 }
 
 void InputNode::PublishMouseEvents() {
@@ -280,19 +244,16 @@ void InputNode::PublishMouseEvents() {
         return;
     }
 
-    // Get current mouse position
+    // Get current mouse position and delta (already calculated in PopulateInputState)
     POINT cursorPos;
     if (!GetCursorPos(&cursorPos) || !ScreenToClient(hwnd, &cursorPos)) {
         return;
     }
 
-    // Calculate delta
-    float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
-    float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
+    // Use delta from inputState (calculated in PopulateInputState)
+    float deltaX = inputState.mouseDelta.x;
+    float deltaY = inputState.mouseDelta.y;
     float deltaMagnitude = std::sqrt(deltaX * deltaX + deltaY * deltaY);
-
-    // Store delta in InputState for modern polling interface
-    inputState.mouseDelta = glm::vec2(deltaX, deltaY);
 
     // DISABLED: Continuous MouseMoveEvent causes event flooding and stuttering
     // Camera now queries mouse state once per frame instead of processing hundreds of events
@@ -359,10 +320,6 @@ void InputNode::PublishMouseEvents() {
         totalDeltaX += deltaX;
         totalDeltaY += deltaY;
     }
-
-    // Always update last position (state is queryable)
-    lastMouseX = cursorPos.x;
-    lastMouseY = cursorPos.y;
 }
 
 } // namespace Vixen::RenderGraph
