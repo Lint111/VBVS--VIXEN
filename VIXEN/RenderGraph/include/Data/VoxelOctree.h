@@ -200,8 +200,9 @@ struct ESVONode {
      * @brief Get child existence mask (8 bits)
      * @return Bitmask where bit i = child i exists (1) or empty (0)
      *
-     * ChildMask is at bits 0-7. Shader does: descriptor0 << child_shift
-     * This allows bit-checking at bit 15 after shifting.
+     * ChildMask MUST be at bits 0-7 for shader traversal:
+     * Shader does: int child_masks = descriptor0 << shift; then checks (child_masks & 0x8000)
+     * So bit 7 must shift to bit 15 when shift=8, requiring bits 0-7 for childMask.
      */
     inline uint8_t GetChildMask() const {
         return static_cast<uint8_t>(descriptor0 & 0xFF);
@@ -257,7 +258,7 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        descriptor0 |= (1 << childIndex);  // Bits 0-7 store childMask for shader << operation
+        descriptor0 |= (1 << childIndex);  // Bits 0-7 store childMask for shader traversal
     }
 
     /**

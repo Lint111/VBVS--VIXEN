@@ -1,6 +1,7 @@
 #include "Data/VoxelOctree.h"
 #include <cassert>
 #include <cstring>
+#include <iostream>
 
 namespace VIXEN {
 namespace RenderGraph {
@@ -246,12 +247,19 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
     esvoNodes_.emplace_back(); // Add new node
     ESVONode& node = esvoNodes_[nodeIndex];
 
+    if (depth == 0) {
+        std::cout << "[BuildRecursiveESVO] Created root node at index " << nodeIndex << std::endl;
+    }
+
     // If we've reached brick level (depth 4) or minimum size (8³), this is a leaf
     if (depth >= 4 || size <= 8) {
         // Leaf node: create brick and store offset in descriptor1
         uint32_t brickOffset = CreateBrick(voxelData, origin);
         node.SetBrickOffset(brickOffset);
         // No children, so childMask stays 0 (leaf indicator)
+        if (depth == 0) {
+            std::cout << "[BuildRecursiveESVO] Root is leaf! brickOffset=" << brickOffset << std::endl;
+        }
         return nodeIndex;
     }
 
@@ -302,6 +310,12 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
                 break;
             }
         }
+    }
+
+    if (depth == 0) {
+        std::cout << "[BuildRecursiveESVO] Root node finished: childMask=0x" << std::hex
+                  << static_cast<int>(node.GetChildMask()) << std::dec << ", childCount=" << node.GetChildCount()
+                  << ", descriptor0=0x" << std::hex << node.descriptor0 << std::dec << std::endl;
     }
 
     return nodeIndex;

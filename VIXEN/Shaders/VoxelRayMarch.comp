@@ -161,8 +161,11 @@ uvec2 fetchESVONode(uint nodeIndex) {
 }
 
 // Extract child existence mask (8 bits from descriptor0)
+// NOTE: ChildMask is at bits 0-7, not 8-15!
+// Shader traversal does: descriptor0 << shift; then checks bit 15
+// For this to work with shift=0-7, childMask must be in bits 0-7
 uint getChildMask(uvec2 node) {
-    return (node.x >> 8) & 0xFFu;
+    return node.x & 0xFFu;  // Bits 0-7, NOT 8-15
 }
 
 // Extract non-leaf mask (7 bits from descriptor0)
