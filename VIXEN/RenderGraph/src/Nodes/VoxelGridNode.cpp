@@ -236,6 +236,15 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
         nodesData = esvoNodes.data();
         NODE_LOG_INFO("Using ESVO format: " + std::to_string(esvoNodes.size()) + " nodes × 8 bytes = " +
                       std::to_string(nodesBufferSize) + " bytes");
+
+        // DEBUG: Print root node descriptor values
+        if (esvoNodes.size() > 0) {
+            std::cout << "[VoxelGridNode] Root node BEFORE upload: descriptor0=0x" << std::hex
+                      << esvoNodes[0].descriptor0 << ", descriptor1=0x" << esvoNodes[0].descriptor1
+                      << std::dec << std::endl;
+            std::cout << "[VoxelGridNode] ESVONode sizeof=" << sizeof(VIXEN::RenderGraph::ESVONode)
+                      << ", nodesData ptr=" << nodesData << std::endl;
+        }
     } else {
         const auto& legacyNodes = octree.GetNodes();
         nodesBufferSize = legacyNodes.size() * sizeof(VIXEN::RenderGraph::OctreeNode);  // 40 bytes per node

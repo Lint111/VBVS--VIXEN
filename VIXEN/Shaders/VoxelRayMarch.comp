@@ -89,9 +89,8 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 #endif
 
 // Optional debug: visualize material IDs and voxel coordinates (set to 1 to enable)
-// TEMPORARY: Enabled to diagnose grain issue on red wall
 #ifndef VOXEL_RAY_DEBUG_MATERIAL_ID
-#define VOXEL_RAY_DEBUG_MATERIAL_ID 1
+#define VOXEL_RAY_DEBUG_MATERIAL_ID 0
 #endif
 
 // Optional debug: visualize coordinate clamping (set to 1 to enable)
@@ -504,8 +503,12 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
             // PUSH: Descend to child if non-empty t-span
             if (t_min <= tv_max) {
-                // Check if node is non-leaf
-                if ((child_masks & 0x0080) == 0) {
+                // Check if node is a leaf by looking at non-leaf mask (bits 1-7)
+                // After shifting, bit (1+child_shift) indicates if child has grandchildren
+                int nonLeafBit = (1 + child_shift);
+                bool isLeaf = (child_masks & (1 << nonLeafBit)) == 0;
+
+                if (isLeaf) {
                     // Leaf node! Read brick and get material
                     uint brickIndex = getBrickOffset(child_descriptor);
 
@@ -560,8 +563,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     return true;
                 }
 
-                // Descend to child node
-                // Two-pass ESVO building guarantees consecutive allocation
+                // Descend to child node (BFS ESVO guarantees consecutive allocation)
                 uint childIdx = idx ^ octant_mask;
                 uint childNodeOffset = getChildOffset(child_descriptor);
                 parentPtr = childNodeOffset + childIdx;
@@ -573,7 +575,6 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                 if (ty_center > t_min) { idx ^= 2; pos.y += scale_exp2; }
                 if (tz_center > t_min) { idx ^= 4; pos.z += scale_exp2; }
                 t_max = tv_max;
-                child_descriptor.x = 0u;
                 continue;
             }
         }

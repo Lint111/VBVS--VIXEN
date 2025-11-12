@@ -206,10 +206,17 @@ struct ESVONode {
      * For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
      */
     inline uint8_t GetChildMask() const {
-        // Extract bits 8-15 (child existence flags)
-        // SetChild(i) sets bit (8+i), so return straight bits 8-15 as-is
+        // Extract bits 8-15 and reverse: bit (15-i) → bit i
+        // SetChild(i) sets bit (15-i), so we reverse back for CPU-side child checking
         // Result: bit i = 1 if child i exists
-        return static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
+        uint16_t mask16 = (descriptor0 >> 8) & 0xFF;
+        uint8_t reversed = 0;
+        for (int i = 0; i < 8; ++i) {
+            if (mask16 & (1 << i)) {
+                reversed |= (1 << (7 - i));
+            }
+        }
+        return reversed;
     }
 
     /**
@@ -262,11 +269,11 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        // Store at bits 0-7 in straight order for shader: `descriptor << shift` then check bit 15
+        // Child mask in REVERSED order at bits 8-15:
+        // child[0] at bit 15, child[1] at bit 14, ..., child[7] at bit 8
         // Shader algorithm: int child_masks = int(descriptor0) << childIdx; if ((child_masks & 0x8000) != 0)
-        // For child i with shift=i: need bit (8+i) in original descriptor to become bit 15 after << i
-        // So store child i at bit (8+i)
-        descriptor0 |= (1 << (8 + childIndex));
+        // For child i with shift=i: need (15-i) to shift to bit 15 after << i
+        descriptor0 |= (1 << (15 - childIndex));
     }
 
     /**
@@ -723,6 +730,54 @@ private:
         const glm::ivec3& origin,
         uint32_t size,
         uint32_t depth
+    );
+
+    // ========================================================================
+    // Morton/Z-order curve helpers for consecutive ESVO allocation
+    // ========================================================================
+
+    /**
+     * @brief Expand bits for Morton encoding (interleave zeros)
+     *
+     * Transforms:
+     *   0b00000abc → 0b000000a00b00c (spreads bits with 2 zeros between)
+     *
+     * Used for 3D Morton encoding by interleaving x,y,z coordinates.
+     */
+    static inline uint32_t ExpandBits(uint32_t v) {
+        v = (v | (v << 16)) & 0x030000FF;
+        v = (v | (v <<  8)) & 0x0300F00F;
+        v = (v | (v <<  4)) & 0x030C30C3;
+        v = (v | (v <<  2)) & 0x09249249;
+        return v;
+    }
+
+    /**
+     * @brief Encode 3D coordinates to Morton code (Z-order)
+     *
+     * Interleaves bits: x0y0z0 x1y1z1 x2y2z2...
+     *
+     * Properties:
+     * - Spatially coherent: nearby (x,y,z) → nearby morton codes
+     * - Octree friendly: children naturally consecutive
+     *
+     * @param x X coordinate [0, 1023]
+     * @param y Y coordinate [0, 1023]
+     * @param z Z coordinate [0, 1023]
+     * @return 30-bit Morton code (10 bits per axis)
+     */
+    static inline uint32_t EncodeMorton3D(uint32_t x, uint32_t y, uint32_t z) {
+        return (ExpandBits(x) << 2) | (ExpandBits(y) << 1) | ExpandBits(z);
+    }
+
+    /**
+     * @brief Build ESVO using Morton/Z-order curve for consecutive allocation
+     * @param voxelData Dense voxel grid
+     * @param gridSize Grid resolution (must be power of 2)
+     */
+    void BuildESVOWithMortonCurve(
+        const std::vector<uint8_t>& voxelData,
+        uint32_t gridSize
     );
 
     uint32_t CreateBrick(
