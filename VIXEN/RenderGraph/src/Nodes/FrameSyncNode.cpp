@@ -91,10 +91,10 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // - imageAvailable: per-FLIGHT (tracks frame pacing)
     // - renderComplete: per-IMAGE (tracks presentation engine usage per swapchain image)
 
-    // Phase H: Request URM-managed stack arrays using persistent hashes
+    // Phase H: Request URM-managed stack arrays using type-safe persistent hashes
 
     // Request imageAvailable semaphores array (per-FLIGHT)
-    uint64_t imageAvailHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "imageAvailableSemaphores");
+    uint64_t imageAvailHash = ComputeResourceHashFor(GetInstanceId(), 0, imageAvailableSemaphores_);
     auto imageAvailResult = RequestStackResource<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(imageAvailHash);
     if (!imageAvailResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request imageAvailable semaphores array");
@@ -102,7 +102,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     imageAvailableSemaphores_ = std::move(imageAvailResult.value());
 
     // Request renderComplete semaphores array (per-IMAGE)
-    uint64_t renderCompleteHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "renderCompleteSemaphores");
+    uint64_t renderCompleteHash = ComputeResourceHashFor(GetInstanceId(), 0, renderCompleteSemaphores_);
     auto renderCompleteResult = RequestStackResource<VkSemaphore, MAX_SWAPCHAIN_IMAGES>(renderCompleteHash);
     if (!renderCompleteResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request renderComplete semaphores array");
@@ -110,7 +110,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     renderCompleteSemaphores_ = std::move(renderCompleteResult.value());
 
     // Request presentFences array (per-IMAGE)
-    uint64_t presentFencesHash = ComputeResourceHash(static_cast<uint32_t>(GetInstanceId()), 0, "presentFences");
+    uint64_t presentFencesHash = ComputeResourceHashFor(GetInstanceId(), 0, presentFences_);
     auto presentFencesResult = RequestStackResource<VkFence, MAX_SWAPCHAIN_IMAGES>(presentFencesHash);
     if (!presentFencesResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request presentFences array");

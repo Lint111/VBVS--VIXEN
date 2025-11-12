@@ -100,6 +100,57 @@ constexpr uint64_t ComputeResourceHash(uint32_t nodeInstanceId, uint32_t bundleI
 }
 
 /**
+ * @brief Type-safe nameOf() macro for variable name stringification
+ *
+ * Converts a variable identifier to its string representation at compile-time.
+ * This prevents typos and enables refactoring tools to track variable renames.
+ *
+ * @note This is a preprocessor macro, not a function
+ *
+ * Example:
+ * @code
+ * std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
+ *
+ * // Without nameOf (error-prone):
+ * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "imageAvailableSemaphores_");
+ *
+ * // With nameOf (type-safe):
+ * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, nameOf(imageAvailableSemaphores_));
+ *
+ * // Or use the convenience macro:
+ * uint64_t hash = ComputeResourceHashFor(GetInstanceId(), 0, imageAvailableSemaphores_);
+ * @endcode
+ */
+#define nameOf(var) #var
+
+/**
+ * @brief Convenience macro combining ComputeResourceHash with nameOf()
+ *
+ * Automatically stringifies the variable name and computes the hash.
+ * This is the RECOMMENDED pattern for hash-based resource identification.
+ *
+ * @param nodeId Node instance ID (usually GetInstanceId())
+ * @param bundleIdx Bundle index (0 for non-variadic nodes)
+ * @param var Variable identifier (NOT a string, will be stringified)
+ * @return uint64_t Persistent hash
+ *
+ * Example:
+ * @code
+ * // Define member variable
+ * std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
+ *
+ * // Request from URM using type-safe macro
+ * uint64_t hash = ComputeResourceHashFor(GetInstanceId(), 0, imageAvailableSemaphores_);
+ * auto result = RequestStackResource<VkSemaphore, 4>(hash);
+ * if (result) {
+ *     imageAvailableSemaphores_ = std::move(result.value());
+ * }
+ * @endcode
+ */
+#define ComputeResourceHashFor(nodeId, bundleIdx, var) \
+    ComputeResourceHash(nodeId, bundleIdx, #var)
+
+/**
  * @brief Runtime version for dynamic variable names (use sparingly)
  *
  * Prefer the constexpr version with compile-time string literals.

@@ -1,5 +1,6 @@
 #include "Nodes/FramebufferNode.h"
 #include "Core/RenderGraph.h"
+#include "Core/ResourceHash.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -83,6 +84,14 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
                                  std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
     }
 
+    // Phase H: Request URM-managed framebuffers array using type-safe persistent hash
+    uint64_t framebuffersHash = ComputeResourceHashFor(GetInstanceId(), 0, framebuffers_);
+    auto framebuffersResult = ctx.RequestStackResource<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>(framebuffersHash);
+    if (!framebuffersResult) {
+        throw std::runtime_error("FramebufferNode: Failed to request framebuffers array from URM");
+    }
+    framebuffers_ = std::move(framebuffersResult.value());
+
     // Note: RenderGraph calls node->Cleanup() before recompilation, so we don't need to call it here
     // Reset framebuffer count (array elements initialized to VK_NULL_HANDLE in Cleanup)
     framebufferCount = static_cast<uint32_t>(colorAttachmentCount);
@@ -127,15 +136,15 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
             device->device,
             &framebufferInfo,
             nullptr,
-            &framebuffers[i]
+            &(*framebuffers_)[i]
         );
 
         if (result != VK_SUCCESS) {
-            // Clean up already created framebuffers
+            // Clean up already created framebuffers (in URM-managed array)
             for (size_t j = 0; j < i; j++) {
-                if (framebuffers[j] != VK_NULL_HANDLE) {
-                    vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
-                    framebuffers[j] = VK_NULL_HANDLE;
+                if ((*framebuffers_)[j] != VK_NULL_HANDLE) {
+                    vkDestroyFramebuffer(device->device, (*framebuffers_)[j], nullptr);
+                    (*framebuffers_)[j] = VK_NULL_HANDLE;
                 }
             }
             framebufferCount = 0;
@@ -145,19 +154,21 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
             throw std::runtime_error(error.toString());
         }
 
-        NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>((*framebuffers_)[i])));
         NODE_LOG_DEBUG("Created framebuffer " + std::to_string(i) + ": " +
-                      std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
+                      std::to_string(reinterpret_cast<uint64_t>((*framebuffers_)[i])));
     }
 
-    // Phase H: Track stack array with URM profiling before output
-    TrackStackArray(framebuffers, framebufferCount, ResourceLifetime::GraphLocal);
-
-    // Phase H: Convert array to vector for output (interface compatibility)
+    // Phase H: URM-managed array automatically tracked, just output from handle
+    // Convert array to vector for output (interface compatibility)
     // Note: This is a one-time allocation at compile-time, not per-frame
-    std::vector<VkFramebuffer> framebuffersVector(framebuffers.begin(), framebuffers.begin() + framebufferCount);
+    std::vector<VkFramebuffer> framebuffersVector(framebuffers_->begin(), framebuffers_->begin() + framebufferCount);
     ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffersVector);
-    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebufferCount) + " framebuffers as vector (URM tracked)");
+
+    // Log allocation location for profiling
+    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebufferCount) +
+                  " framebuffers as vector (URM-managed: " +
+                  (framebuffers_->isStack() ? "STACK" : "HEAP") + ")");
 
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
@@ -169,17 +180,18 @@ void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
-    // Phase H: Array-based cleanup with framebufferCount tracking
-    if (framebufferCount > 0 && device != nullptr) {
+    // Phase H: Cleanup URM-managed framebuffers array
+    if (framebuffers_.has_value() && framebufferCount > 0 && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebufferCount) + " framebuffers");
 
         for (uint32_t i = 0; i < framebufferCount; i++) {
-            if (framebuffers[i] != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device->device, framebuffers[i], nullptr);
-                framebuffers[i] = VK_NULL_HANDLE;
+            if ((*framebuffers_)[i] != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device->device, (*framebuffers_)[i], nullptr);
+                (*framebuffers_)[i] = VK_NULL_HANDLE;
             }
         }
         framebufferCount = 0;
+        framebuffers_.reset();  // Release handle, URM reclaims memory
     }
 }
 

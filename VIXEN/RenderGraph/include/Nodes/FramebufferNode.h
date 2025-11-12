@@ -3,8 +3,10 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "Core/VulkanLimits.h"
+#include "Core/StackResourceHandle.h"
 #include "Data/Nodes/FramebufferNodeConfig.h"
 #include <array>
+#include <optional>
 
 namespace Vixen::RenderGraph {
 
@@ -33,12 +35,14 @@ public:
 
     // Access framebuffers for external use
     VkFramebuffer GetFramebuffer(uint32_t index) const {
-        return (index < framebufferCount) ? framebuffers[index] : VK_NULL_HANDLE;
+        return (framebuffers_.has_value() && index < framebufferCount) ? (*framebuffers_)[index] : VK_NULL_HANDLE;
     }
     uint32_t GetFramebufferCount() const { return framebufferCount; }
 
-    // Phase H: Array-based access for zero-copy iteration
-    const std::array<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>& GetFramebufferArray() const { return framebuffers; }
+    // Phase H: Array-based access for zero-copy iteration (from URM handle)
+    const VIXEN::StackResourceHandle<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>* GetFramebufferHandle() const {
+        return framebuffers_.has_value() ? &(*framebuffers_) : nullptr;
+    }
 
 protected:
 	// Template method pattern - override *Impl() methods
@@ -50,8 +54,8 @@ protected:
 private:
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
 
-    // Phase H: Fixed-size array instead of vector (zero heap allocations)
-    std::array<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers{};
+    // Phase H: URM-managed stack array (requested via hash-based identification)
+    std::optional<VIXEN::StackResourceHandle<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>> framebuffers_;
     uint32_t framebufferCount = 0;
 
     bool hasDepth = false;
