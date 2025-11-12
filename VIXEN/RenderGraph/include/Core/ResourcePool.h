@@ -253,6 +253,18 @@ public:
     const ResourceBudgetManager* GetBudgetManager() const { return budgetManager_.get(); }
 
     /**
+     * @brief Get mutable access to the resource profiler
+     * @return ResourceProfiler* Pointer to profiler (never null)
+     */
+    ResourceProfiler* GetProfiler() { return profiler_.get(); }
+
+    /**
+     * @brief Get const access to the resource profiler
+     * @return const ResourceProfiler* Pointer to profiler (never null)
+     */
+    const ResourceProfiler* GetProfiler() const { return profiler_.get(); }
+
+    /**
      * @brief Set the lifetime analyzer for aliasing optimization
      *
      * The lifetime analyzer provides information about when resources

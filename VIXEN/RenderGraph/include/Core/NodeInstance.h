@@ -731,6 +731,71 @@ protected:
     }
 
     /**
+     * @brief Track stack array allocation with URM profiling
+     *
+     * Records a stack-allocated std::array with ResourceProfiler for visibility
+     * into per-node stack usage. Call this after populating your array and before
+     * outputting to a slot.
+     *
+     * @tparam T Element type (e.g., VkFramebuffer, VkCommandBuffer)
+     * @tparam N Array capacity (compile-time constant)
+     * @param array The stack-allocated array to track
+     * @param usedCount Number of elements actually used (for accurate byte tracking)
+     * @param lifetime Resource lifetime for tracking purposes
+     *
+     * Benefits:
+     * - Zero heap allocations (array already on stack)
+     * - Full URM profiling integration
+     * - Per-node stack usage visibility
+     * - Accurate byte tracking based on used elements
+     *
+     * Example:
+     * @code
+     * // Node member (stack-allocated)
+     * std::array<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers{};
+     * uint32_t framebufferCount = 0;
+     *
+     * // ... populate array ...
+     * for (uint32_t i = 0; i < imageCount; i++) {
+     *     framebuffers[i] = CreateFramebuffer(...);
+     *     framebufferCount++;
+     * }
+     *
+     * // Track before output
+     * TrackStackArray(framebuffers, framebufferCount);
+     *
+     * // Output to slot (now tracked by URM)
+     * ctx.Out(FRAMEBUFFERS, std::vector(framebuffers.begin(),
+     *                                    framebuffers.begin() + framebufferCount));
+     * @endcode
+     */
+    template<typename T, size_t N>
+    void TrackStackArray(
+        const std::array<T, N>& array,
+        size_t usedCount = N,
+        ResourceLifetime lifetime = ResourceLifetime::FrameLocal
+    ) {
+        // Track with ResourceProfiler
+        auto* pool = GetResourcePool();
+        if (pool) {
+            auto* profiler = pool->GetProfiler();
+            if (profiler) {
+                uint32_t nodeId = static_cast<uint32_t>(GetInstanceId());
+                std::string nodeName = GetInstanceName();
+                size_t bytes = sizeof(T) * usedCount;  // Track only used elements
+
+                profiler->RecordAllocation(
+                    nodeId,
+                    nodeName,
+                    ResourceLocation::Stack,
+                    bytes,
+                    false  // Not aliased (stack allocation)
+                );
+            }
+        }
+    }
+
+    /**
      * @brief Get SlotScope for an input slot
      *
      * Queries the node's config to determine the resource scope for a slot.

@@ -150,11 +150,14 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
                       std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
     }
 
+    // Phase H: Track stack array with URM profiling before output
+    TrackStackArray(framebuffers, framebufferCount, ResourceLifetime::GraphLocal);
+
     // Phase H: Convert array to vector for output (interface compatibility)
     // Note: This is a one-time allocation at compile-time, not per-frame
     std::vector<VkFramebuffer> framebuffersVector(framebuffers.begin(), framebuffers.begin() + framebufferCount);
     ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffersVector);
-    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebufferCount) + " framebuffers as vector");
+    NODE_LOG_INFO("[FramebufferNode::Compile] Output " + std::to_string(framebufferCount) + " framebuffers as vector (URM tracked)");
 
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
