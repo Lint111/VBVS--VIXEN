@@ -265,15 +265,15 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
 
     uint32_t childSize = size / 2;
 
-    // Allocate space for all 8 potential child nodes
-    // ESVO expects consecutive child node allocation
-    uint32_t childBlockStart = static_cast<uint32_t>(esvoNodes_.size());
+    // For Phase H baseline: Build children and store them recursively
+    // NOTE: Due to recursive nature, children are NOT guaranteed consecutive in memory
+    // This is a KNOWN LIMITATION - proper fix requires octree serialization rewrite
+    // WORKAROUND: We'll store pointers to individual children in the parent descriptor
+    // This requires extending the ESVO format, which is Phase H+ work
 
-    // Pre-allocate 8 child slots (will fill in recursively)
     std::vector<uint32_t> childIndices(8, 0);
     bool hasAnyChild = false;
 
-    // Recursively build 8 children
     for (uint32_t childIdx = 0; childIdx < 8; ++childIdx) {
         // Calculate child octant offset
         glm::ivec3 childOrigin = origin;
@@ -299,11 +299,12 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         }
     }
 
-    // Store first child node index (ESVO uses this as base for child lookups)
-    if (hasAnyChild && childIndices[0] != 0) {
-        node.SetChildOffset(childIndices[0]);
-    } else if (hasAnyChild) {
-        // Find first non-zero child
+    // Store the offset of the first/base child
+    // TEMPORARY FIX FOR PHASE H: Store actual first child instead of base
+    // This breaks the ESVO assumption of consecutive allocation
+    // PROPER FIX (Phase H+): Restructure octree building to guarantee consecutive children
+    if (hasAnyChild) {
+        // Find first existing child and use it as reference
         for (uint32_t i = 0; i < 8; ++i) {
             if (childIndices[i] != 0) {
                 node.SetChildOffset(childIndices[i]);
