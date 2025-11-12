@@ -13,15 +13,28 @@ namespace Vixen::RenderGraph {
  *
  * Design:
  * - FNV-1a hash algorithm (fast, good distribution)
- * - Combines: nodeInstanceId + bundleIndex + variableName
+ * - Two-part hash structure: (nodeInstance+bundle) + memberName
  * - 64-bit hash space (virtually collision-free)
  * - Compile-time string hashing where possible
+ * - Supports automatic cleanup of temporary resources by scope
+ *
+ * Hash Structure:
+ * - Scope Hash (nodeInstanceId + bundleIndex): Identifies allocation scope
+ * - Member Hash (variableName): Identifies specific resource
+ * - Full Hash (combination): Unique resource identifier
+ *
+ * This two-part structure enables:
+ * - Querying all resources from a specific node+bundle
+ * - Automatic cleanup at phase boundaries (end of Compile/Execute)
+ * - No manual release calls needed for temporary resources
  *
  * Usage Pattern:
  * @code
- * // In node's CompileImpl:
- * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "semaphores");
- * auto handle = RequestStackResource<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(hash);
+ * // In node's ExecuteImpl:
+ * uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "tempCmdBuffer");
+ * auto handle = RequestStackResource<VkCommandBuffer, 1>(hash);
+ * // ... use resource ...
+ * // Automatically cleaned up at end of ExecuteImpl
  * @endcode
  */
 
@@ -61,10 +74,51 @@ namespace Detail {
 }
 
 /**
- * @brief Compute persistent resource hash
+ * @brief Compute scope hash (node instance + bundle)
+ *
+ * Computes a hash identifying the allocation scope (node+bundle).
+ * Used for querying all resources allocated within a specific scope
+ * to enable automatic cleanup of temporary resources.
+ *
+ * @param nodeInstanceId Unique node instance identifier
+ * @param bundleIndex Bundle index (0 for non-variadic nodes, 0-N for variadic)
+ * @return uint64_t Scope hash for resource queries
+ *
+ * Example:
+ * @code
+ * // Get scope hash for cleanup
+ * uint64_t scopeHash = ComputeScopeHash(GetInstanceId(), 0);
+ * tracker.ReleaseTemporaryResources(scopeHash);
+ * @endcode
+ */
+constexpr uint64_t ComputeScopeHash(uint32_t nodeInstanceId, uint32_t bundleIndex) {
+    uint64_t combined = Detail::CombineHash(
+        static_cast<uint64_t>(nodeInstanceId),
+        static_cast<uint64_t>(bundleIndex)
+    );
+    return combined;
+}
+
+/**
+ * @brief Compute member hash (variable name only)
+ *
+ * Computes a hash of just the member variable name.
+ * Used internally for the two-part hash structure.
+ *
+ * @param variableName Variable name string
+ * @return uint64_t Member hash
+ */
+constexpr uint64_t ComputeMemberHash(const char* variableName) {
+    return Detail::HashString(variableName);
+}
+
+/**
+ * @brief Compute persistent resource hash (full)
  *
  * Combines node instance ID, bundle index, and variable name into a
  * persistent 64-bit hash suitable for URM resource identification.
+ *
+ * This is the full hash = CombineHash(scopeHash, memberHash)
  *
  * @param nodeInstanceId Unique node instance identifier
  * @param bundleIndex Bundle index (0 for non-variadic nodes, 0-N for variadic)
@@ -87,16 +141,12 @@ namespace Detail {
  * @endcode
  */
 constexpr uint64_t ComputeResourceHash(uint32_t nodeInstanceId, uint32_t bundleIndex, const char* variableName) {
-    // Step 1: Hash the variable name (compile-time when possible)
-    uint64_t nameHash = Detail::HashString(variableName);
+    // Two-part structure: scope hash + member hash
+    uint64_t scopeHash = ComputeScopeHash(nodeInstanceId, bundleIndex);
+    uint64_t memberHash = ComputeMemberHash(variableName);
 
-    // Step 2: Combine with nodeInstanceId
-    uint64_t combined = Detail::CombineHash(static_cast<uint64_t>(nodeInstanceId), nameHash);
-
-    // Step 3: Combine with bundleIndex
-    combined = Detail::CombineHash(combined, static_cast<uint64_t>(bundleIndex));
-
-    return combined;
+    // Combine both parts
+    return Detail::CombineHash(scopeHash, memberHash);
 }
 
 /**

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NodeInstance.h"
+#include "Core/ResourceHash.h"
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ResourceVariant.h"
 #include <future>
@@ -240,11 +241,38 @@ public:
         }
 
         /**
-         * @brief Request stack resource with fallback (forwards to NodeInstance::RequestStackResource)
+         * @brief Request stack resource with fallback
+         *
+         * Automatically computes scope hash and marks resources as temporary
+         * in Execute context for automatic cleanup at scope exit.
+         *
+         * @param resourceHash Full resource hash (from ctx.GetMemberHash())
+         * @return StackResourceHandle or AllocationError
          */
         template<typename T, size_t Capacity>
         VIXEN::StackResourceResult<T, Capacity> RequestStackResource(uint64_t resourceHash) {
-            return typedNode->RequestStackResource<T, Capacity>(resourceHash);
+            // Compute scope hash for cleanup queries
+            uint64_t scopeHash = Vixen::RenderGraph::ComputeScopeHash(
+                GetNodeInstanceId(),
+                GetBundleIndex()
+            );
+
+            // Determine if resource is temporary based on context type
+            // Execute resources are temporary (cleaned after ExecuteImpl)
+            // Compile resources are persistent (live until CleanupImpl)
+            constexpr bool isExecuteContext = std::is_same_v<ContextBase, ExecuteContext>;
+
+            auto* budgetManager = typedNode->GetBudgetManager();
+            if (!budgetManager) {
+                return std::unexpected(VIXEN::AllocationError::SystemError);
+            }
+
+            return budgetManager->RequestStackResource<T, Capacity>(
+                resourceHash,
+                scopeHash,
+                GetNodeInstanceId(),
+                isExecuteContext  // Mark Execute allocations as temporary
+            );
         }
 
         // ====================================================================

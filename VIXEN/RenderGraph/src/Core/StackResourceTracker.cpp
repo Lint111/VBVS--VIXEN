@@ -30,16 +30,20 @@ void StackResourceTracker::EndFrame() {
 
 void StackResourceTracker::TrackAllocation(
     uint64_t resourceHash,
+    uint64_t scopeHash,
     const void* stackAddress,
     size_t sizeBytes,
-    uint32_t nodeId
+    uint32_t nodeId,
+    bool isTemporary
 ) {
     StackAllocation alloc{
         .resourceHash = resourceHash,
+        .scopeHash = scopeHash,
         .sizeBytes = sizeBytes,
         .stackAddress = stackAddress,
         .nodeId = nodeId,
-        .frameNumber = currentFrame_.frameNumber
+        .frameNumber = currentFrame_.frameNumber,
+        .isTemporary = isTemporary
     };
 
     currentFrame_.allocations.push_back(alloc);
@@ -54,6 +58,50 @@ void StackResourceTracker::TrackAllocation(
     if (IsOverCriticalThreshold()) {
         LogWarning("CRITICAL: Stack usage exceeds safe threshold!");
     }
+}
+
+size_t StackResourceTracker::ReleaseTemporaryResources(uint64_t scopeHash) {
+    size_t releasedCount = 0;
+    size_t releasedBytes = 0;
+
+    // Remove all temporary allocations matching the scope hash
+    auto it = currentFrame_.allocations.begin();
+    while (it != currentFrame_.allocations.end()) {
+        if (it->isTemporary && it->scopeHash == scopeHash) {
+            releasedBytes += it->sizeBytes;
+            releasedCount++;
+            it = currentFrame_.allocations.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Update totals
+    currentFrame_.totalStackUsed -= releasedBytes;
+    currentFrame_.allocationCount -= releasedCount;
+
+    return releasedCount;
+}
+
+bool StackResourceTracker::ReleaseResource(uint64_t resourceHash) {
+    // Find and remove specific resource
+    auto it = std::find_if(
+        currentFrame_.allocations.begin(),
+        currentFrame_.allocations.end(),
+        [resourceHash](const StackAllocation& alloc) {
+            return alloc.resourceHash == resourceHash;
+        }
+    );
+
+    if (it != currentFrame_.allocations.end()) {
+        size_t sizeBytes = it->sizeBytes;
+        currentFrame_.allocations.erase(it);
+        currentFrame_.totalStackUsed -= sizeBytes;
+        currentFrame_.allocationCount--;
+        return true;
+    }
+
+    return false;
 }
 
 void StackResourceTracker::CheckThresholds() {

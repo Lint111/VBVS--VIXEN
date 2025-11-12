@@ -27,11 +27,13 @@ public:
     static constexpr size_t CRITICAL_THRESHOLD = 56 * 1024;        // Critical at 87.5%
 
     struct StackAllocation {
-        uint64_t resourceHash;           // Persistent hash for resource identification
+        uint64_t resourceHash;           // Full hash (scope + member)
+        uint64_t scopeHash;              // Scope hash (nodeInstance + bundle) for cleanup queries
         size_t sizeBytes;                // Size of allocation
         const void* stackAddress;        // Stack address for tracking
         uint32_t nodeId;                 // Node that made the allocation
         uint64_t frameNumber;            // Frame when allocated
+        bool isTemporary;                // True for temporary allocations (auto-cleanup)
     };
 
     struct FrameStackUsage {
@@ -67,12 +69,21 @@ public:
      *     // ... use writes
      * }
      * @endcode
+     *
+     * @param resourceHash Full resource hash (scope + member)
+     * @param scopeHash Scope hash (nodeInstance + bundle) for cleanup queries
+     * @param stackAddress Pointer to stack allocation
+     * @param sizeBytes Size of allocation in bytes
+     * @param nodeId Node instance ID
+     * @param isTemporary True if resource should be auto-cleaned at scope exit
      */
     void TrackAllocation(
         uint64_t resourceHash,
+        uint64_t scopeHash,
         const void* stackAddress,
         size_t sizeBytes,
-        uint32_t nodeId
+        uint32_t nodeId,
+        bool isTemporary = false
     );
 
     /**
@@ -113,6 +124,34 @@ public:
      * @brief Clear history (useful for profiling specific sections)
      */
     void ClearHistory();
+
+    /**
+     * @brief Release all temporary resources from a specific scope
+     *
+     * Automatically called at the end of Execute/Compile phases to reclaim
+     * stack space from temporary allocations.
+     *
+     * @param scopeHash Scope hash (nodeInstance + bundle) identifying resources to release
+     * @return Number of allocations released
+     *
+     * Example:
+     * @code
+     * // At end of ExecuteImpl
+     * uint64_t scopeHash = ComputeScopeHash(GetInstanceId(), GetBundleIndex());
+     * size_t released = tracker.ReleaseTemporaryResources(scopeHash);
+     * @endcode
+     */
+    size_t ReleaseTemporaryResources(uint64_t scopeHash);
+
+    /**
+     * @brief Release a specific resource by its full hash
+     *
+     * Manual cleanup for specific resources before scope exit.
+     *
+     * @param resourceHash Full resource hash
+     * @return True if resource was found and released
+     */
+    bool ReleaseResource(uint64_t resourceHash);
 
 private:
     FrameStackUsage currentFrame_;
@@ -239,8 +278,9 @@ void StackArray<T, Capacity>::LogOutOfBounds(size_t index) const {
  * @code
  * void ExecuteImpl(Context& ctx) {
  *     uint64_t hash = ComputeResourceHash(GetInstanceId(), 0, "writes");
+ *     uint64_t scopeHash = ComputeScopeHash(GetInstanceId(), 0);
  *     StackArray<VkWriteDescriptorSet, 32> writes;
- *     auto tracker = ctx.AutoTrackStack(hash, writes);
+ *     auto tracker = ctx.AutoTrackStack(hash, scopeHash, writes);
  *     // ... automatic tracking cleanup
  * }
  * @endcode
@@ -250,11 +290,13 @@ public:
     ScopedStackTracker(
         StackResourceTracker& tracker,
         uint64_t resourceHash,
+        uint64_t scopeHash,
         const void* address,
         size_t size,
-        uint32_t nodeId
+        uint32_t nodeId,
+        bool isTemporary = false
     ) : tracker_(tracker) {
-        tracker_.TrackAllocation(resourceHash, address, size, nodeId);
+        tracker_.TrackAllocation(resourceHash, scopeHash, address, size, nodeId, isTemporary);
     }
 
     ~ScopedStackTracker() = default;
@@ -264,6 +306,48 @@ public:
 
 private:
     StackResourceTracker& tracker_;
+};
+
+/**
+ * @brief RAII helper for automatic cleanup of temporary resources
+ *
+ * Use at the start of Execute phases to automatically clean up temporary
+ * resources when the scope exits.
+ *
+ * Example:
+ * @code
+ * void ExecuteImpl(TypedExecuteContext& ctx) {
+ *     // Auto-cleanup on scope exit
+ *     uint64_t scopeHash = ComputeScopeHash(GetInstanceId(), 0);
+ *     TemporaryResourceScope autoCleanup(GetBudgetManager()->GetStackTracker(), scopeHash);
+ *
+ *     // Request temporary resources
+ *     uint64_t hash = ctx.GetMemberHash("tempCmdBuffer");
+ *     auto cmdBuf = ctx.RequestStackResource<VkCommandBuffer, 1>(hash);
+ *
+ *     // ... use resources ...
+ *     // Automatically cleaned up when autoCleanup goes out of scope
+ * }
+ * @endcode
+ */
+class TemporaryResourceScope {
+public:
+    TemporaryResourceScope(StackResourceTracker& tracker, uint64_t scopeHash)
+        : tracker_(tracker), scopeHash_(scopeHash) {}
+
+    ~TemporaryResourceScope() {
+        tracker_.ReleaseTemporaryResources(scopeHash_);
+    }
+
+    // Non-copyable, non-movable
+    TemporaryResourceScope(const TemporaryResourceScope&) = delete;
+    TemporaryResourceScope& operator=(const TemporaryResourceScope&) = delete;
+    TemporaryResourceScope(TemporaryResourceScope&&) = delete;
+    TemporaryResourceScope& operator=(TemporaryResourceScope&&) = delete;
+
+private:
+    StackResourceTracker& tracker_;
+    uint64_t scopeHash_;
 };
 
 }  // namespace VIXEN

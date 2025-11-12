@@ -44,11 +44,19 @@ class StackResourceHandle {
 public:
     /**
      * @brief Create handle with stack allocation
+     *
+     * @param resourceHash Full resource hash (scope + member)
+     * @param scopeHash Scope hash (nodeInstance + bundle) for cleanup queries
+     * @param tracker Stack resource tracker
+     * @param nodeId Node instance ID
+     * @param isTemporary True if resource should be auto-cleaned at scope exit
      */
     static StackResourceHandle CreateStack(
         uint64_t resourceHash,
+        uint64_t scopeHash,
         StackResourceTracker& tracker,
-        uint32_t nodeId
+        uint32_t nodeId,
+        bool isTemporary = false
     ) {
         StackResourceHandle handle;
         handle.location_ = ResourceLocation::Stack;
@@ -56,12 +64,14 @@ public:
         handle.resourceHash_ = resourceHash;
         handle.nodeId_ = nodeId;
 
-        // Track allocation
+        // Track allocation with scope hash for cleanup
         tracker.TrackAllocation(
             resourceHash,
+            scopeHash,
             handle.stackData_->data(),
             handle.stackData_->capacity_bytes(),
-            nodeId
+            nodeId,
+            isTemporary
         );
 
         return handle;

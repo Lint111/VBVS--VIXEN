@@ -290,8 +290,28 @@ public:
     template<typename T, size_t Capacity>
     VIXEN::StackResourceResult<T, Capacity> RequestStackResource(
         uint64_t resourceHash,
-        uint32_t nodeId
+        uint64_t scopeHash,
+        uint32_t nodeId,
+        bool isTemporary = false
     );
+
+    /**
+     * @brief Get stack resource tracker
+     *
+     * Used for manual cleanup operations or RAII scope helpers.
+     *
+     * Example:
+     * @code
+     * // RAII cleanup for Execute phase
+     * uint64_t scopeHash = ComputeScopeHash(GetInstanceId(), 0);
+     * VIXEN::TemporaryResourceScope autoCleanup(
+     *     GetBudgetManager()->GetStackTracker(),
+     *     scopeHash
+     * );
+     * @endcode
+     */
+    VIXEN::StackResourceTracker& GetStackTracker() { return stackTracker_; }
+    const VIXEN::StackResourceTracker& GetStackTracker() const { return stackTracker_; }
 
 private:
     // Standard resource type budgets
@@ -422,7 +442,9 @@ size_t ResourceBudgetManager::EstimateSize(
 template<typename T, size_t Capacity>
 VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResource(
     uint64_t resourceHash,
-    uint32_t nodeId
+    uint64_t scopeHash,
+    uint32_t nodeId,
+    bool isTemporary
 ) {
     // Validate capacity
     if (Capacity == 0 || Capacity > 10000) {  // Sanity check
@@ -436,11 +458,13 @@ VIXEN::StackResourceResult<T, Capacity> ResourceBudgetManager::RequestStackResou
     const size_t newStackUsage = currentStackUsage + sizeBytes;
 
     if (newStackUsage <= VIXEN::StackResourceTracker::MAX_STACK_PER_FRAME) {
-        // Stack allocation succeeded
+        // Stack allocation succeeded - pass scope hash and temporary flag for tracking
         auto handle = VIXEN::StackResourceHandle<T, Capacity>::CreateStack(
             resourceHash,
+            scopeHash,
             stackTracker_,
-            nodeId
+            nodeId,
+            isTemporary
         );
         return handle;
     }
