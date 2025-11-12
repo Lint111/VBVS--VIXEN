@@ -250,18 +250,19 @@ void InputNode::PublishMouseEvents() {
     float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
     float deltaMagnitude = std::sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    // Publish continuous MouseMoveEvent for camera control
-    // Always publish if there's any movement
-    if (deltaMagnitude > 0.01f) {
-        auto event = std::make_unique<EventBus::MouseMoveEvent>(
-            instanceId,
-            cursorPos.x,
-            cursorPos.y,
-            deltaX,
-            deltaY
-        );
-        GetMessageBus()->Publish(std::move(event));
-    }
+    // DISABLED: Continuous MouseMoveEvent causes event flooding and stuttering
+    // Camera now queries mouse state once per frame instead of processing hundreds of events
+    // State-based MouseMoveStartEvent below is kept for UI/debug feedback
+    // if (deltaMagnitude > 0.01f) {
+    //     auto event = std::make_unique<EventBus::MouseMoveEvent>(
+    //         instanceId,
+    //         cursorPos.x,
+    //         cursorPos.y,
+    //         deltaX,
+    //         deltaY
+    //     );
+    //     GetMessageBus()->Publish(std::move(event));
+    // }
 
     // State-based event system: Start/End events for UI feedback
     const float START_THRESHOLD = 0.5f;  // Start movement session

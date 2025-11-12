@@ -109,8 +109,8 @@ private:
     // Camera control parameters
     float moveSpeed = 10.0f;      // Horizontal movement: units per second
     float verticalSpeed = 10.0f;  // Vertical movement (QE): units per second
-    float mouseSensitivity = 0.001f;  // Radians per pixel (reduced for smoother control)
-    float mouseSmoothingFactor = 0.3f;  // 0=no smoothing, 1=instant (0.3 = smooth but responsive)
+    float mouseSensitivity = 0.0012f;  // Radians per pixel
+    float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
 
     // Setup state tracking (prevent camera reset on recompilation)
