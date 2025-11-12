@@ -1,5 +1,6 @@
 #include "Nodes/DepthBufferNode.h"
 #include "Core/RenderGraph.h"
+#include "Core/ResourceHash.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
@@ -87,8 +88,9 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     CreateDepthImageAndView(width, height, format);
 
     // Transition to depth-stencil attachment optimal layout
-    // Phase H: Use RequestStackResource for temporary command buffer allocation
-    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>("DepthTransitionCmdBuffer");
+    // Phase H: Use RequestStackResource for temporary command buffer allocation (hash-based)
+    uint64_t cmdBufferHash = ctx.GetMemberHash("DepthTransitionCmdBuffer");
+    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>(cmdBufferHash);
     if (!cmdBufferResult) {
         NODE_LOG_ERROR("Failed to allocate command buffer for depth transition");
         throw std::runtime_error("DepthBufferNode: Command buffer allocation failed");

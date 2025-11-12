@@ -1,4 +1,5 @@
 #include "Nodes/VoxelGridNode.h"
+#include "Core/ResourceHash.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/VulkanLimits.h"  // For MAX_COMMAND_BUFFERS_PER_FRAME
@@ -260,8 +261,9 @@ void VoxelGridNode::UploadVoxelData(TypedCompileContext& ctx, const std::vector<
     vkUnmapMemory(vulkanDevice->device, stagingMemory);
 
     // Copy from staging buffer to image using command buffer
-    // Phase H: Use RequestStackResource for temporary command buffer allocation
-    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>("VoxelUploadCmdBuffer");
+    // Phase H: Use RequestStackResource for temporary command buffer allocation (hash-based)
+    uint64_t cmdBufferHash = ctx.GetMemberHash("VoxelUploadCmdBuffer");
+    auto cmdBufferResult = ctx.RequestStackResource<VkCommandBuffer, 1>(cmdBufferHash);
     if (!cmdBufferResult) {
         NODE_LOG_ERROR("Failed to allocate command buffer for voxel upload");
         throw std::runtime_error("[VoxelGridNode] Command buffer allocation failed");

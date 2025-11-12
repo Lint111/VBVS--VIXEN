@@ -1,4 +1,5 @@
 #include "Nodes/PresentNode.h"
+#include "Core/ResourceHash.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "Core/VulkanLimits.h"
@@ -87,9 +88,10 @@ VkResult PresentNode::Present(Context& ctx) {
         throw std::runtime_error("PresentNode: No present function available");
     }
 
-    // Phase H: Stack-allocated present fence info (hot-path optimization)
+    // Phase H: Stack-allocated present fence info (hot-path optimization, hash-based)
+    uint64_t presentFenceInfoHash = ctx.GetMemberHash("PresentFenceInfo");
     auto presentFenceInfoResult = ctx.RequestStackResource<VkSwapchainPresentFenceInfoEXT, 1>(
-        "PresentFenceInfo");
+        presentFenceInfoHash);
 
     if (!presentFenceInfoResult) {
         NODE_LOG_ERROR("Failed to allocate present fence info");
@@ -108,9 +110,10 @@ VkResult PresentNode::Present(Context& ctx) {
         (*presentFenceInfo)[0].pFences = &presentFenceArray[imageIndex];
     }
 
-    // Phase H: Stack-allocated present info (hot-path optimization)
+    // Phase H: Stack-allocated present info (hot-path optimization, hash-based)
+    uint64_t presentInfoHash = ctx.GetMemberHash("PresentInfo");
     auto presentInfoResult = ctx.RequestStackResource<VkPresentInfoKHR, 1>(
-        "PresentInfo");
+        presentInfoHash);
 
     if (!presentInfoResult) {
         NODE_LOG_ERROR("Failed to allocate present info");
