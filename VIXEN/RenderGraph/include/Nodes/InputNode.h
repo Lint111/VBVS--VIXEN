@@ -65,6 +65,9 @@ private:
     void PublishKeyEvents();
     void PublishMouseEvents();
 
+    // Modern polling interface
+    void PopulateInputState();
+
     // Check if key is currently down (Win32 GetAsyncKeyState)
     bool IsKeyDown(EventBus::KeyCode key) const;
 
@@ -88,6 +91,9 @@ private:
     // Delta time for held duration calculation
     std::chrono::steady_clock::time_point lastFrameTime;
     float deltaTime = 0.0f;
+
+    // Modern polling interface (GLFW/SDL2 style)
+    InputState inputState;  // Updated once per frame, output to consumers
 };
 
 } // namespace Vixen::RenderGraph

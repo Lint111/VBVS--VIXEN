@@ -101,6 +101,47 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
         lastMouseX = centerX;
         lastMouseY = centerY;
     }
+
+    // Modern polling interface: Populate InputState and output it
+    PopulateInputState();
+    ctx.Out(InputNodeConfig::INPUT_STATE, &inputState);
+}
+
+void InputNode::PopulateInputState() {
+    // Clear per-frame state
+    inputState.BeginFrame();
+
+    // Update frame timing
+    inputState.deltaTime = deltaTime;
+
+    // Copy keyboard state
+    for (const auto& [key, state] : keyStates) {
+        inputState.keyDown[key] = state.isDown;
+
+        // Just pressed: down this frame, but not last frame
+        if (state.isDown && !state.wasDown) {
+            inputState.keyPressed[key] = true;
+        }
+
+        // Just released: up this frame, but was down last frame
+        if (!state.isDown && state.wasDown) {
+            inputState.keyReleased[key] = true;
+        }
+    }
+
+    // Mouse delta already calculated in PollMouse()
+    // inputState.mouseDelta set during mouse polling (see below)
+
+    // Mouse position
+    POINT cursorPos;
+    if (GetCursorPos(&cursorPos) && ScreenToClient(hwnd, &cursorPos)) {
+        inputState.mousePosition = glm::vec2(cursorPos.x, cursorPos.y);
+    }
+
+    // Mouse buttons (query current state)
+    inputState.mouseButtons[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+    inputState.mouseButtons[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+    inputState.mouseButtons[2] = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
 
 void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -249,6 +290,9 @@ void InputNode::PublishMouseEvents() {
     float deltaX = static_cast<float>(cursorPos.x - lastMouseX);
     float deltaY = static_cast<float>(cursorPos.y - lastMouseY);
     float deltaMagnitude = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Store delta in InputState for modern polling interface
+    inputState.mouseDelta = glm::vec2(deltaX, deltaY);
 
     // DISABLED: Continuous MouseMoveEvent causes event flooding and stuttering
     // Camera now queries mouse state once per frame instead of processing hundreds of events

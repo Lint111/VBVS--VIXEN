@@ -55,30 +55,9 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
         NODE_LOG_INFO("Camera position preserved from previous state (recompilation)");
     }
 
-    // Subscribe to input events using NodeInstance helper (automatic cleanup)
-    if (GetMessageBus()) {
-        SubscribeToMessage(
-            EventBus::KeyEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) { return OnKeyEvent(msg); }
-        );
-
-        // Subscribe to mouse start/end events (state-based input)
-        SubscribeToMessage(
-            EventBus::MouseMoveStartEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) { return OnMouseMoveStart(msg); }
-        );
-
-        // Legacy: Still subscribe to continuous events for compatibility
-        // TODO: Remove once all systems use state-based input
-        SubscribeToMessage(
-            EventBus::MouseMoveEvent::TYPE,
-            [this](const EventBus::BaseEventMessage& msg) { return OnMouseMove(msg); }
-        );
-
-        NODE_LOG_INFO("CameraNode subscribed to input events");
-    } else {
-        NODE_LOG_WARNING("CameraNode: MessageBus not available, input disabled");
-    }
+    // Modern polling-based input (GLFW/SDL2 style)
+    // No event subscriptions needed - we poll InputState once per frame in ExecuteImpl
+    NODE_LOG_INFO("CameraNode using modern polling-based input");
 }
 
 void CameraNode::CompileImpl(TypedCompileContext& ctx) {
@@ -132,9 +111,25 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
                         static_cast<float>(swapchainInfo->Extent.height);
 
+    // Modern polling-based input: Read InputState once per frame
+    InputStatePtr inputState = ctx.In(CameraNodeConfig::INPUT_STATE);
+    if (inputState) {
+        // Accumulate mouse delta from polled state
+        rotationDelta.x += inputState->mouseDelta.x;
+        rotationDelta.y += inputState->mouseDelta.y;
+
+        // Get keyboard movement axes
+        float horizontal = inputState->GetAxisHorizontal();
+        float vertical = inputState->GetAxisVertical();
+        float upDown = inputState->GetAxisUpDown();
+
+        movementDelta.x += horizontal;
+        movementDelta.z += vertical;
+        movementDelta.y += upDown;
+    }
+
     // Apply accumulated input deltas to camera state
-    // TODO: Get actual delta time from frame timing
-    float deltaTime = 1.0f / 60.0f;  // Assume 60fps for now
+    float deltaTime = inputState ? inputState->deltaTime : (1.0f / 60.0f);
     ApplyInputDeltas(deltaTime);
 
     // Update the shared camera UBO for this frame
@@ -223,59 +218,10 @@ void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 // ============================================================================
-// INPUT HANDLING
+// INPUT HANDLING (MODERN POLLING-BASED)
 // ============================================================================
-
-bool CameraNode::OnKeyEvent(const EventBus::BaseEventMessage& msg) {
-    const auto& keyEvent = static_cast<const EventBus::KeyEvent&>(msg);
-
-    // Only handle Held events for continuous movement
-    if (keyEvent.eventType != EventBus::KeyEventType::Held) {
-        return false;  // Let other subscribers handle it
-    }
-
-    // WASD for local-space horizontal movement
-    // QE for global Y-axis vertical movement
-    switch (keyEvent.key) {
-        case EventBus::KeyCode::W:
-            movementDelta.z += 1.0f;  // Forward (local +Z)
-            break;
-        case EventBus::KeyCode::S:
-            movementDelta.z -= 1.0f;  // Backward (local -Z)
-            break;
-        case EventBus::KeyCode::A:
-            movementDelta.x -= 1.0f;  // Left (local -X)
-            break;
-        case EventBus::KeyCode::D:
-            movementDelta.x += 1.0f;  // Right (local +X)
-            break;
-        case EventBus::KeyCode::Q:
-            movementDelta.y -= 1.0f;  // Down (global -Y)
-            break;
-        case EventBus::KeyCode::E:
-            movementDelta.y += 1.0f;  // Up (global +Y)
-            break;
-        default:
-            break;
-    }
-
-    return false;  // Don't consume event
-}
-
-bool CameraNode::OnMouseMoveStart(const EventBus::BaseEventMessage& msg) {
-    // Mouse movement session started - could log or prepare state
-    return false;  // Don't consume event
-}
-
-bool CameraNode::OnMouseMove(const EventBus::BaseEventMessage& msg) {
-    const auto& mouseEvent = static_cast<const EventBus::MouseMoveEvent&>(msg);
-
-    // Accumulate rotation delta (will be applied in ApplyInputDeltas)
-    rotationDelta.x += mouseEvent.deltaX;  // Yaw (horizontal)
-    rotationDelta.y += mouseEvent.deltaY;  // Pitch (vertical)
-
-    return false;  // Don't consume event
-}
+// Input is now polled once per frame from InputState in ExecuteImpl
+// No event handlers needed - eliminates event flooding and provides predictable timing
 
 void CameraNode::ApplyInputDeltas(float deltaTime) {
     // Clamp raw rotation delta to prevent huge jumps (e.g., from window refocus)

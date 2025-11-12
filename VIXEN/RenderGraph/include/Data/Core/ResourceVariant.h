@@ -40,6 +40,7 @@ namespace Vixen::RenderGraph {
     struct LoopReference;  // From LoopManager.h
     enum class BoolOp : uint8_t;  // From BoolOpNodeConfig.h
     enum class SlotRole : uint8_t;  // From ResourceConfig.h
+    struct InputState;  // From InputState.h
 }
 
 // Type aliases for pointer types (needed for variant registry - macros can't handle namespaces)
@@ -55,6 +56,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
+using InputStatePtr = Vixen::RenderGraph::InputState*;  // Modern polling-based input
 
 // Workaround for std::vector<bool> which has special semantics that break std::variant
 // Use a wrapper with proper copy semantics
@@ -187,6 +189,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(LoopReferencePtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(SlotRoleEnum,                    HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(InputStatePtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)

@@ -945,7 +945,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   cameraNode, CameraNodeConfig::SWAPCHAIN_PUBLIC)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  cameraNode, CameraNodeConfig::IMAGE_INDEX);
+                  cameraNode, CameraNodeConfig::IMAGE_INDEX)
+         .Connect(inputNode, InputNodeConfig::INPUT_STATE,
+                  cameraNode, CameraNodeConfig::INPUT_STATE);
 
     // Voxel grid node connections
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,

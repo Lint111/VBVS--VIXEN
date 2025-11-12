@@ -76,11 +76,6 @@ protected:
 private:
     void UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio);
 
-    // Event handlers
-    bool OnKeyEvent(const Vixen::EventBus::BaseEventMessage& msg);
-    bool OnMouseMove(const Vixen::EventBus::BaseEventMessage& msg);
-    bool OnMouseMoveStart(const Vixen::EventBus::BaseEventMessage& msg);
-
     // Apply accumulated input deltas to camera state
     void ApplyInputDeltas(float deltaTime);
 
@@ -98,8 +93,6 @@ private:
     float nearPlane = 0.1f;
     float farPlane = 100.0f;
     uint32_t gridResolution = 128;
-
-    // Event subscriptions tracked automatically by NodeInstance base class
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
