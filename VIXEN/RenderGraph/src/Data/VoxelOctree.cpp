@@ -48,7 +48,11 @@ void SparseVoxelOctree::BuildFromGrid(
 
     // Build octree recursively starting from root
     if (format == NodeFormat::ESVO) {
-        BuildRecursiveESVO(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
+        // Two-pass ESVO algorithm: count phase, then build phase with guaranteed consecutive allocation
+        uint32_t totalNodes = CountNodesESVO(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
+        esvoNodes_.resize(totalNodes);
+        uint32_t currentNodeIndex = 0;
+        BuildRecursiveESVOWithAllocation(voxelData, glm::ivec3(0, 0, 0), gridSize, 0, currentNodeIndex);
     } else {
         BuildRecursive(voxelData, glm::ivec3(0, 0, 0), gridSize, 0);
     }
@@ -330,6 +334,119 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
                 std::cout << static_cast<int>(brick.voxels[0][0][i]) << " ";
             }
             std::cout << std::endl;
+        }
+    }
+
+    return nodeIndex;
+}
+
+// ============================================================================
+// TWO-PASS ESVO BUILDING (Guaranteed Consecutive Child Allocation)
+// ============================================================================
+
+uint32_t SparseVoxelOctree::CountNodesESVO(
+    const std::vector<uint8_t>& voxelData,
+    const glm::ivec3& origin,
+    uint32_t size,
+    uint32_t depth)
+{
+    // Check if region is empty
+    if (IsRegionEmpty(voxelData, origin, size)) {
+        return 0;  // 0 nodes needed
+    }
+
+    // At leaf level, create brick (counts as 1 node)
+    if (depth >= 4 || size <= 8) {
+        return 1;  // 1 node for the leaf
+    }
+
+    // Internal node: count itself + all children
+    uint32_t totalNodes = 1;  // This node
+    uint32_t childSize = size / 2;
+
+    // Count nodes in all 8 children
+    for (uint32_t childIdx = 0; childIdx < 8; ++childIdx) {
+        glm::ivec3 childOrigin = origin;
+        childOrigin.x += (childIdx & 1) ? childSize : 0;
+        childOrigin.y += (childIdx & 2) ? childSize : 0;
+        childOrigin.z += (childIdx & 4) ? childSize : 0;
+
+        uint32_t childNodes = CountNodesESVO(voxelData, childOrigin, childSize, depth + 1);
+        totalNodes += childNodes;
+    }
+
+    // Add space for 8 children slots (consecutive allocation)
+    totalNodes += 8;
+
+    return totalNodes;
+}
+
+uint32_t SparseVoxelOctree::BuildRecursiveESVOWithAllocation(
+    const std::vector<uint8_t>& voxelData,
+    const glm::ivec3& origin,
+    uint32_t size,
+    uint32_t depth,
+    uint32_t& currentNodeIndex)
+{
+    // Check if region is empty
+    if (IsRegionEmpty(voxelData, origin, size)) {
+        return 0;
+    }
+
+    // Allocate node at current position
+    uint32_t nodeIndex = currentNodeIndex++;
+    ESVONode& node = esvoNodes_[nodeIndex];
+
+    // Leaf node: create brick
+    if (depth >= 4 || size <= 8) {
+        uint32_t brickOffset = CreateBrick(voxelData, origin);
+        node.SetBrickOffset(brickOffset);
+        return nodeIndex;
+    }
+
+    // Internal node: reserve 8 consecutive slots for children FIRST
+    uint32_t childBlockStart = currentNodeIndex;
+    currentNodeIndex += 8;  // Reserve 8 slots
+
+    // CRITICAL: Set child offset BEFORE recursion
+    node.SetChildOffset(childBlockStart);
+
+    uint32_t childSize = size / 2;
+
+    // Build all 8 children, recursively for non-empty ones
+    for (uint32_t childIdx = 0; childIdx < 8; ++childIdx) {
+        glm::ivec3 childOrigin = origin;
+        childOrigin.x += (childIdx & 1) ? childSize : 0;
+        childOrigin.y += (childIdx & 2) ? childSize : 0;
+        childOrigin.z += (childIdx & 4) ? childSize : 0;
+
+        // Check if empty - skip to next iteration
+        if (IsRegionEmpty(voxelData, childOrigin, childSize)) {
+            continue;
+        }
+
+        // Build child at expected slot
+        uint32_t expectedSlot = childBlockStart + childIdx;
+
+        // Adjust currentNodeIndex to match expected slot
+        // (account for empty children that didn't allocate space)
+        while (currentNodeIndex < expectedSlot) {
+            currentNodeIndex++;
+        }
+
+        // Now currentNodeIndex == expectedSlot
+        // Recursive call will allocate at currentNodeIndex and increment it
+        uint32_t childNodeIndex = BuildRecursiveESVOWithAllocation(
+            voxelData, childOrigin, childSize, depth + 1, currentNodeIndex);
+
+        if (childNodeIndex == expectedSlot) {
+            // Child placed correctly - mark as existing
+            node.SetChild(childIdx);
+
+            // Check if child has children (is non-leaf)
+            if (esvoNodes_[expectedSlot].GetChildMask() != 0) {
+                node.SetNonLeaf(childIdx);
+            }
         }
     }
 

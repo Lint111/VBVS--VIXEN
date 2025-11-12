@@ -560,21 +560,11 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     return true;
                 }
 
-                // Descend (simplified - no stack for Phase H baseline)
-                // Full implementation would push to stack here
-
-                // PHASE H LIMITATION: Octree construction doesn't guarantee consecutive
-                // child allocation, so we can't use index arithmetic for child lookup.
-                // For now, we stay at root level and continue traversal there.
-                // This prevents correct octree descent but avoids fractal artifacts.
-                //
-                // TODO PHASE H+: Implement proper ESVO with guaranteed consecutive allocation
-                // by restructuring octree building algorithm.
-                //
-                // Commented out (broken in current octree format):
-                // uint childIdx = idx ^ octant_mask;
-                // uint childNodeOffset = getChildOffset(child_descriptor);
-                // parentPtr = childNodeOffset + childIdx;
+                // Descend to child node
+                // Two-pass ESVO building guarantees consecutive allocation
+                uint childIdx = idx ^ octant_mask;
+                uint childNodeOffset = getChildOffset(child_descriptor);
+                parentPtr = childNodeOffset + childIdx;
 
                 scale--;
                 scale_exp2 = halfScale;

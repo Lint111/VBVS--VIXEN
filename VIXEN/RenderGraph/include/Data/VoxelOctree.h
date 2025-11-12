@@ -206,15 +206,10 @@ struct ESVONode {
      * For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
      */
     inline uint8_t GetChildMask() const {
-        // Extract bits 8-15 and reverse them: bit (15-i) → bit i
-        uint16_t mask16 = (descriptor0 >> 8) & 0xFF;
-        uint8_t reversed = 0;
-        for (int i = 0; i < 8; ++i) {
-            if (mask16 & (1 << i)) {
-                reversed |= (1 << (7 - i));
-            }
-        }
-        return reversed;
+        // Extract bits 8-15 (child existence flags)
+        // SetChild(i) sets bit (8+i), so return straight bits 8-15 as-is
+        // Result: bit i = 1 if child i exists
+        return static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
     }
 
     /**
@@ -267,7 +262,11 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        descriptor0 |= (1 << (15 - childIndex));  // Child i at bit (15-i) for reversed indexing
+        // Store at bits 0-7 in straight order for shader: `descriptor << shift` then check bit 15
+        // Shader algorithm: int child_masks = int(descriptor0) << childIdx; if ((child_masks & 0x8000) != 0)
+        // For child i with shift=i: need bit (8+i) in original descriptor to become bit 15 after << i
+        // So store child i at bit (8+i)
+        descriptor0 |= (1 << (8 + childIndex));
     }
 
     /**
@@ -699,6 +698,24 @@ private:
         const glm::ivec3& origin,
         uint32_t size,
         uint32_t depth
+    );
+
+    // Two-pass ESVO building for guaranteed consecutive child allocation
+    // Pass 1: Count nodes needed at each level
+    // Pass 2: Pre-allocate and build with consecutive children
+    uint32_t CountNodesESVO(
+        const std::vector<uint8_t>& voxelData,
+        const glm::ivec3& origin,
+        uint32_t size,
+        uint32_t depth
+    );
+
+    uint32_t BuildRecursiveESVOWithAllocation(
+        const std::vector<uint8_t>& voxelData,
+        const glm::ivec3& origin,
+        uint32_t size,
+        uint32_t depth,
+        uint32_t& currentNodeIndex  // OUT: next available node index
     );
 
     uint32_t BuildRecursiveESVO(
