@@ -6,14 +6,17 @@
 
 **Phase H Started** (November 8, 2025): Implementing baseline brick-based sparse voxel octree (SVO) for comparative research. ECS-optimized variant deferred to Phase N+1 for extended study (180 → 360 configurations).
 
-**Critical Bug Diagnosed & Fixed** (November 12, 2025):
-- **Issue**: ESVO node descriptor bit layout - circular grey noise artifact then complete black
-- **Root Cause Analysis**: Shader traversal uses `descriptor0 << shift` then checks bit 15. Original reversed indexing (child[i] at bit 15-i) was CORRECT for this algorithm, not a bug.
-  - child[i] must be at bit (15-i) so that after << shift, it reaches bit 15
-  - Multiple "fixes" tried (bits 0-7, bits 8-15 normal order) broke traversal
-- **Correct Solution**: Restore original reversed bit order (bits 8-15, child[0] at bit 15)
-- **Key Insight**: ESVO uses shift-based indexing, not direct bit indexing. The "weird" reversed order is the correct design.
-- **Status**: ✅ Final fix committed (9025c0f), octree should now render correctly
+**Critical ESVO Bit Layout Bug Diagnosed & Fixed** (November 12, 2025):
+- **Layer 1 Issue**: GetChildMask was reading bits 8-15 directly without reversing back to CPU order
+  - CPU SetChild(i) sets bit (15-i) for shader efficiency
+  - GetChildMask returned bits in reversed order
+  - HasChild(i) would check wrong bit, breaking octree construction
+  - **Fix**: Reverse bits when extracting (bit 15-i → bit i)
+- **Root Cause**: ESVO descriptor layout is REVERSED for shader traversal algorithm
+  - Shader does: `descriptor0 << shift` then checks `(result & 0x8000)`
+  - Requires child[i] at bit (15-i) so shifts land at bit 15
+  - CPU octree construction must reverse bits for normal CPU semantics
+- **Status**: ✅ Fixed (80acf78), octree now renders Cornell box with red cube, floor, and walls visible
 
 **Most Recent Completion - Phase G** (November 8, 2025):
 - SlotRole bitwise flags system (Dependency | Execute) enables flexible descriptor binding semantics

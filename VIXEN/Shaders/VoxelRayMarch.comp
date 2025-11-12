@@ -88,6 +88,17 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 #define VOXEL_RAY_DEBUG_SPATIAL 0
 #endif
 
+// Optional debug: visualize material IDs and voxel coordinates (set to 1 to enable)
+// TEMPORARY: Enabled to diagnose grain issue on red wall
+#ifndef VOXEL_RAY_DEBUG_MATERIAL_ID
+#define VOXEL_RAY_DEBUG_MATERIAL_ID 1
+#endif
+
+// Optional debug: visualize coordinate clamping (set to 1 to enable)
+#ifndef VOXEL_RAY_DEBUG_CLAMP
+#define VOXEL_RAY_DEBUG_CLAMP 0
+#endif
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -441,11 +452,44 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                 vec3 hitPos = p + d * t_min;
                 vec3 localPos = fract(hitPos) * 8.0;
                 ivec3 voxelCoord = ivec3(floor(localPos));
+
+                // DEBUG: Check if clamping is needed
+                #if VOXEL_RAY_DEBUG_CLAMP
+                bool wasClamped = false;
+                #endif
+
                 voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));
+
+                #if VOXEL_RAY_DEBUG_CLAMP
+                if (voxelCoord != ivec3(floor(localPos))) {
+                    wasClamped = true;
+                }
+                #endif
 
                 uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
                 Material mat = getMaterial(materialID);
                 hitColor = mat.albedo;
+
+                // DEBUG: Visualize material ID
+                #if VOXEL_RAY_DEBUG_MATERIAL_ID
+                if (materialID == 0) {
+                    hitColor = vec3(0.2, 0.2, 0.2);
+                } else if (materialID == 1) {
+                    hitColor = vec3(1.0, 0.0, 0.0);
+                } else if (materialID <= 7) {
+                    hitColor = vec3(float(materialID) / 7.0);
+                } else {
+                    hitColor = vec3(0.0, 1.0, 1.0);
+                }
+                #endif
+
+                // DEBUG: Visualize clamping artifacts
+                #if VOXEL_RAY_DEBUG_CLAMP
+                if (wasClamped) {
+                    hitColor = vec3(1.0, 1.0, 0.0);
+                }
+                #endif
+
                 hitNormal = vec3(0.0, 1.0, 0.0);
                 hitT = t_min;
                 return true;
@@ -469,7 +513,19 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     vec3 hitPos = p + d * t_min;  // Ray hit point in [1,2] space
                     vec3 localPos = fract(hitPos) * 8.0;  // Map to [0,8) brick space
                     ivec3 voxelCoord = ivec3(floor(localPos));
+
+                    // DEBUG: Check if clamping is needed
+                    #if VOXEL_RAY_DEBUG_CLAMP
+                    bool wasClamped = false;
+                    #endif
+
                     voxelCoord = clamp(voxelCoord, ivec3(0), ivec3(7));  // Safety clamp
+
+                    #if VOXEL_RAY_DEBUG_CLAMP
+                    if (voxelCoord != ivec3(floor(localPos))) {
+                        wasClamped = true;
+                    }
+                    #endif
 
                     // Read voxel material ID
                     uint materialID = getVoxelFromBrick(brickIndex, voxelCoord);
@@ -477,6 +533,28 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     // Look up material and get albedo
                     Material mat = getMaterial(materialID);
                     hitColor = mat.albedo;
+
+                    // DEBUG: Visualize material ID
+                    #if VOXEL_RAY_DEBUG_MATERIAL_ID
+                    // Encode material ID as color (0-7 = grayscale, 8+ = other colors)
+                    if (materialID == 0) {
+                        hitColor = vec3(0.2, 0.2, 0.2);  // Dark gray for empty
+                    } else if (materialID == 1) {
+                        hitColor = vec3(1.0, 0.0, 0.0);  // Pure red for material 1 (debug)
+                    } else if (materialID <= 7) {
+                        hitColor = vec3(float(materialID) / 7.0);  // Grayscale for 1-7
+                    } else {
+                        hitColor = vec3(0.0, 1.0, 1.0);  // Cyan for 8+
+                    }
+                    #endif
+
+                    // DEBUG: Visualize clamping artifacts
+                    #if VOXEL_RAY_DEBUG_CLAMP
+                    if (wasClamped) {
+                        hitColor = vec3(1.0, 1.0, 0.0);  // Yellow for clamped voxels
+                    }
+                    #endif
+
                     hitNormal = vec3(0.0, 1.0, 0.0);
                     hitT = t_min;
                     return true;
