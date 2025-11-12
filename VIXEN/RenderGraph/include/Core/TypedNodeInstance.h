@@ -381,6 +381,18 @@ public:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             TypedCompileContext ctx(this, taskIndex);
             CompileImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle compilation
+            // Compile context resources are typically persistent, but any marked as temporary
+            // (e.g., staging buffers, temporary command buffers) are automatically released
+            auto* budgetManager = GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = Vixen::RenderGraph::ComputeScopeHash(
+                    static_cast<uint32_t>(GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
