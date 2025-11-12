@@ -206,7 +206,15 @@ struct ESVONode {
      * For child i with shift=(i^octant_mask), bit (15-i) shifts to bit 15
      */
     inline uint8_t GetChildMask() const {
-        return static_cast<uint8_t>((descriptor0 >> 8) & 0xFF);
+        // Extract bits 8-15 and reverse them: bit (15-i) → bit i
+        uint16_t mask16 = (descriptor0 >> 8) & 0xFF;
+        uint8_t reversed = 0;
+        for (int i = 0; i < 8; ++i) {
+            if (mask16 & (1 << i)) {
+                reversed |= (1 << (7 - i));
+            }
+        }
+        return reversed;
     }
 
     /**

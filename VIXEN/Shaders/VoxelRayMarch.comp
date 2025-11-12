@@ -214,14 +214,15 @@ int getCombinedMasks(uvec2 node, uint childIndex) {
 }
 
 // VoxelBrick accessor
-// Each brick is 8x8x8 = 512 bytes = 128 uints (4 voxels packed per uint)
+// Each brick is 8x8x8 = 512 bytes (unpacked, 1 byte per voxel)
+// Uploaded as flat uint8 array, accessed as uint array (4 voxels per uint read)
 uint getVoxelFromBrick(uint brickIndex, ivec3 localPos) {
-    uint baseOffset = brickIndex * 128;  // 128 uints per brick
+    uint baseOffset = brickIndex * 128;  // 128 uints per brick (512 bytes / 4)
     uint voxelIndex = uint(localPos.z * 64 + localPos.y * 8 + localPos.x);  // 0-511
-    uint uintIndex = voxelIndex / 4u;  // 4 voxels per uint
-    uint byteIndex = voxelIndex % 4u;
+    uint byteIndex = voxelIndex % 4u;  // Which byte within the uint (0-3)
 
-    uint packed = voxelBricks.data[baseOffset + uintIndex];
+    // Read the uint containing this voxel
+    uint packed = voxelBricks.data[baseOffset + (voxelIndex / 4u)];
     return (packed >> (byteIndex * 8u)) & 0xFFu;  // Extract byte
 }
 

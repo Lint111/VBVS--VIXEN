@@ -318,6 +318,21 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
                   << ", descriptor0=0x" << std::hex << node.descriptor0 << std::dec << std::endl;
     }
 
+    // DEBUG: Log leaf node bricks
+    if ((depth >= 4 || size <= 8) && depth < 6) {
+        std::cout << "[BuildRecursiveESVO] Created leaf at depth=" << depth << ", size=" << size
+                  << ", origin=(" << origin.x << "," << origin.y << "," << origin.z << ")" << std::endl;
+        // Check first few voxels in the brick
+        if (esvoNodes_.size() > 0 && esvoNodes_.back().GetBrickOffset() < bricks_.size()) {
+            const auto& brick = bricks_[esvoNodes_.back().GetBrickOffset()];
+            std::cout << "  First 8 voxels: ";
+            for (int i = 0; i < 8; ++i) {
+                std::cout << static_cast<int>(brick.voxels[0][0][i]) << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
+
     return nodeIndex;
 }
 

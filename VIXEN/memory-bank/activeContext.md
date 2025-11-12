@@ -6,14 +6,14 @@
 
 **Phase H Started** (November 8, 2025): Implementing baseline brick-based sparse voxel octree (SVO) for comparative research. ECS-optimized variant deferred to Phase N+1 for extended study (180 → 360 configurations).
 
-**Critical Bug Fixed** (November 12, 2025):
-- **Issue**: ESVO node descriptor bit layout mismatch between CPU SetChild/SetNonLeaf and shader getChildMask/getNonLeafMask
-- **Symptom**: Octree appeared empty (childMask=0) despite voxels existing → circular grey noise artifact
-- **Root Cause**: SetChild(i) used `(1 << (15-i))` instead of `(1 << (8+i))`, creating reversed bit order
-- **Fix**: Corrected bit shifts in [VoxelOctree.h:256-267](RenderGraph/include/Data/VoxelOctree.h#L256-L267)
-  - `SetChild(i)`: `(15-i)` → `(8+i)` (bits 8-15 for childMask)
-  - `SetNonLeaf(i)`: `(7-i)` → `(1+i)` (bits 1-7 for nonLeafMask)
-- **Status**: ✅ Built successfully, ready for runtime testing
+**Critical Bug Diagnosed & Fixed** (November 12, 2025):
+- **Issue**: ESVO node descriptor bit layout - circular grey noise artifact then complete black
+- **Root Cause Analysis**: Shader traversal uses `descriptor0 << shift` then checks bit 15. Original reversed indexing (child[i] at bit 15-i) was CORRECT for this algorithm, not a bug.
+  - child[i] must be at bit (15-i) so that after << shift, it reaches bit 15
+  - Multiple "fixes" tried (bits 0-7, bits 8-15 normal order) broke traversal
+- **Correct Solution**: Restore original reversed bit order (bits 8-15, child[0] at bit 15)
+- **Key Insight**: ESVO uses shift-based indexing, not direct bit indexing. The "weird" reversed order is the correct design.
+- **Status**: ✅ Final fix committed (9025c0f), octree should now render correctly
 
 **Most Recent Completion - Phase G** (November 8, 2025):
 - SlotRole bitwise flags system (Dependency | Execute) enables flexible descriptor binding semantics
