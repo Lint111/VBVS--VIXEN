@@ -103,12 +103,15 @@ private:
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
-    glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse
+    glm::vec2 rotationDelta{0.0f};  // Yaw/pitch from mouse (raw accumulation)
+    glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
 
     // Camera control parameters
     float moveSpeed = 10.0f;      // Horizontal movement: units per second
     float verticalSpeed = 10.0f;  // Vertical movement (QE): units per second
-    float mouseSensitivity = 0.0015f;  // Radians per pixel (increased for faster look)
+    float mouseSensitivity = 0.001f;  // Radians per pixel (reduced for smoother control)
+    float mouseSmoothingFactor = 0.3f;  // 0=no smoothing, 1=instant (0.3 = smooth but responsive)
+    float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
 
     // Setup state tracking (prevent camera reset on recompilation)
     bool initialSetupComplete = false;

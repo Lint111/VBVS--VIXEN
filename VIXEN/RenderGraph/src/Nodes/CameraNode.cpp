@@ -278,15 +278,26 @@ bool CameraNode::OnMouseMove(const EventBus::BaseEventMessage& msg) {
 }
 
 void CameraNode::ApplyInputDeltas(float deltaTime) {
-    // Apply rotation (mouse look)
-    yaw += rotationDelta.x * mouseSensitivity;
-    pitch -= rotationDelta.y * mouseSensitivity;  // Invert Y: down = look down
+    // Clamp raw rotation delta to prevent huge jumps (e.g., from window refocus)
+    rotationDelta.x = glm::clamp(rotationDelta.x, -maxRotationDeltaPerFrame, maxRotationDeltaPerFrame);
+    rotationDelta.y = glm::clamp(rotationDelta.y, -maxRotationDeltaPerFrame, maxRotationDeltaPerFrame);
+
+    // Apply exponential smoothing to reduce jitter
+    // smoothedDelta = lerp(smoothedDelta, rawDelta, smoothingFactor)
+    // smoothingFactor 0.0 = infinite smoothing (no movement)
+    // smoothingFactor 1.0 = no smoothing (instant response)
+    // smoothingFactor 0.3 = smooth but responsive (good default)
+    smoothedRotationDelta = glm::mix(smoothedRotationDelta, rotationDelta, mouseSmoothingFactor);
+
+    // Apply smoothed rotation (mouse look)
+    yaw += smoothedRotationDelta.x * mouseSensitivity;
+    pitch -= smoothedRotationDelta.y * mouseSensitivity;  // Invert Y: down = look down
 
     // Clamp pitch to avoid gimbal lock
     const float maxPitch = glm::radians(89.0f);
     pitch = glm::clamp(pitch, -maxPitch, maxPitch);
 
-    // Clear rotation delta
+    // Clear raw rotation delta (smoothed delta persists for continuity)
     rotationDelta = glm::vec2(0.0f);
 
     // Apply movement (helicopter controls)

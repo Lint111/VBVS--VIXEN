@@ -1092,6 +1092,12 @@ void RenderGraph::RecompileDirtyNodes() {
         return;  // Nothing to recompile
     }
 
+    // Defer recompilation if rendering is paused (e.g., during swapchain recreation)
+    if (renderPaused) {
+        GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Deferring recompilation - rendering paused");
+        return;
+    }
+
     // Log which nodes triggered recompilation
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] ===== RECOMPILATION TRIGGERED =====");
     GRAPH_LOG_INFO("[RenderGraph::RecompileDirtyNodes] Dirty nodes count: " + std::to_string(dirtyNodes.size()));

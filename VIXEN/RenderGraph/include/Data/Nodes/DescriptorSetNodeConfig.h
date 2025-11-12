@@ -79,9 +79,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotScope::NodeLevel);
 
     // Swapchain image count metadata (extracted from SwapChainPublicVariables::imageCount)
+    // Execute-only: image count rarely changes, no need to trigger recompilation
     INPUT_SLOT(SWAPCHAIN_IMAGE_COUNT, uint32_t, 2,
         SlotNullability::Required,
-        SlotRole::Dependency,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

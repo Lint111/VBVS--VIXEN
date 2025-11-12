@@ -93,10 +93,11 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
 
     /**
      * @brief Swapchain info (image views, dimensions, format)
+     * Execute-only: swapchain info only needed during dispatch, not during pipeline creation
      */
     INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 5,
         SlotNullability::Required,
-        SlotRole::Dependency,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
