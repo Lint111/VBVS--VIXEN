@@ -156,18 +156,32 @@ constexpr uint64_t ComputeResourceHash(uint32_t nodeInstanceId, uint32_t bundleI
  * Automatically uses node instance ID and bundle index from context.
  * This is the cleanest way to compute resource hashes within node methods.
  *
+ * RECOMMENDED: Use the context method `ctx.GetMemberHash(nameOf(member))` for better
+ * overridability and C++-idiomatic code. This macro is maintained for legacy compatibility.
+ *
  * @param ctx Context object (TypedCompileContext, VariadicCompileContext, etc.)
  * @param member Member variable identifier (NOT a string, will be stringified)
  * @return uint64_t Persistent hash
  *
- * Example:
+ * Example (LEGACY - use ctx.GetMemberHash() instead):
  * @code
  * void CompileImpl(TypedCompileContext& ctx) {
  *     // Define member variable
  *     std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
  *
- *     // Request from URM using context-aware macro (RECOMMENDED)
+ *     // Legacy macro pattern (still supported)
  *     uint64_t hash = GetMemberHash(ctx, imageAvailableSemaphores_);
+ *     auto result = ctx.RequestStackResource<VkSemaphore, 4>(hash);
+ * }
+ * @endcode
+ *
+ * NEW RECOMMENDED PATTERN:
+ * @code
+ * void CompileImpl(TypedCompileContext& ctx) {
+ *     std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
+ *
+ *     // Method-based pattern (RECOMMENDED)
+ *     uint64_t hash = ctx.GetMemberHash(nameOf(imageAvailableSemaphores_));
  *     auto result = ctx.RequestStackResource<VkSemaphore, 4>(hash);
  *     if (result) {
  *         imageAvailableSemaphores_ = std::move(result.value());

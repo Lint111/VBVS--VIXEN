@@ -176,6 +176,33 @@ public:
         uint32_t GetBundleIndex() const {
             return static_cast<uint32_t>(this->taskIndex);
         }
+
+        /**
+         * @brief Compute persistent hash for member variable resource identification
+         *
+         * This method-based approach replaces the GetMemberHash(ctx, member) macro pattern
+         * for better overridability and C++-idiomatic code.
+         *
+         * For variadic nodes, the hash automatically includes the current bundle index (taskIndex).
+         *
+         * @param memberName Stringified member variable name (use nameOf(member))
+         * @return uint64_t Persistent hash for URM resource lookup
+         *
+         * Example:
+         * @code
+         * std::optional<StackResourceHandle<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>> resourceArray_;
+         *
+         * // Request from URM using context method (bundle-aware)
+         * uint64_t hash = ctx.GetMemberHash(nameOf(resourceArray_));
+         * auto result = ctx.RequestStackResource<ResourceVariant, MAX_DESCRIPTOR_BINDINGS>(hash);
+         * if (result) {
+         *     resourceArray_ = std::move(result.value());
+         * }
+         * @endcode
+         */
+        uint64_t GetMemberHash(const char* memberName) const {
+            return ComputeResourceHash(GetNodeInstanceId(), GetBundleIndex(), memberName);
+        }
     };
 
     // Type aliases for variadic contexts - extend each typed context

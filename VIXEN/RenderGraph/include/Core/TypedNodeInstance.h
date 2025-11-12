@@ -266,6 +266,31 @@ public:
         constexpr uint32_t GetBundleIndex() const {
             return 0;  // Non-variadic nodes have single bundle
         }
+
+        /**
+         * @brief Compute persistent hash for member variable resource identification
+         *
+         * This method-based approach replaces the GetMemberHash(ctx, member) macro pattern
+         * for better overridability and C++-idiomatic code.
+         *
+         * @param memberName Stringified member variable name (use nameOf(member))
+         * @return uint64_t Persistent hash for URM resource lookup
+         *
+         * Example:
+         * @code
+         * std::optional<StackResourceHandle<VkSemaphore, 4>> imageAvailableSemaphores_;
+         *
+         * // Request from URM using context method
+         * uint64_t hash = ctx.GetMemberHash(nameOf(imageAvailableSemaphores_));
+         * auto result = ctx.RequestStackResource<VkSemaphore, 4>(hash);
+         * if (result) {
+         *     imageAvailableSemaphores_ = std::move(result.value());
+         * }
+         * @endcode
+         */
+        uint64_t GetMemberHash(const char* memberName) const {
+            return ComputeResourceHash(GetNodeInstanceId(), GetBundleIndex(), memberName);
+        }
     };
 
     // Specialized context types for each lifecycle phase

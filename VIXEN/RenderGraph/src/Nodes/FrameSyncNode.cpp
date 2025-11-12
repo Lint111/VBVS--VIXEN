@@ -91,10 +91,10 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // - imageAvailable: per-FLIGHT (tracks frame pacing)
     // - renderComplete: per-IMAGE (tracks presentation engine usage per swapchain image)
 
-    // Phase H: Request URM-managed stack arrays using context-aware hashing
+    // Phase H: Request URM-managed stack arrays using context method
 
     // Request imageAvailable semaphores array (per-FLIGHT)
-    uint64_t imageAvailHash = GetMemberHash(ctx, imageAvailableSemaphores_);
+    uint64_t imageAvailHash = ctx.GetMemberHash(nameOf(imageAvailableSemaphores_));
     auto imageAvailResult = ctx.RequestStackResource<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(imageAvailHash);
     if (!imageAvailResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request imageAvailable semaphores array");
@@ -102,7 +102,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     imageAvailableSemaphores_ = std::move(imageAvailResult.value());
 
     // Request renderComplete semaphores array (per-IMAGE)
-    uint64_t renderCompleteHash = GetMemberHash(ctx, renderCompleteSemaphores_);
+    uint64_t renderCompleteHash = ctx.GetMemberHash(nameOf(renderCompleteSemaphores_));
     auto renderCompleteResult = ctx.RequestStackResource<VkSemaphore, MAX_SWAPCHAIN_IMAGES>(renderCompleteHash);
     if (!renderCompleteResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request renderComplete semaphores array");
@@ -110,7 +110,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     renderCompleteSemaphores_ = std::move(renderCompleteResult.value());
 
     // Request presentFences array (per-IMAGE)
-    uint64_t presentFencesHash = GetMemberHash(ctx, presentFences_);
+    uint64_t presentFencesHash = ctx.GetMemberHash(nameOf(presentFences_));
     auto presentFencesResult = ctx.RequestStackResource<VkFence, MAX_SWAPCHAIN_IMAGES>(presentFencesHash);
     if (!presentFencesResult) {
         throw std::runtime_error("FrameSyncNode: Failed to request presentFences array");
