@@ -265,19 +265,17 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
 
     uint32_t childSize = size / 2;
 
-    // CRITICAL FOR PHASE H: Reserve 8 consecutive slots for children
-    // This ensures ESVO can use: child[i] = baseOffset + i
-    uint32_t childBlockStart = static_cast<uint32_t>(esvoNodes_.size());
-
-    // Pre-allocate 8 slots (will be filled with actual children or empty nodes)
-    for (int i = 0; i < 8; ++i) {
-        esvoNodes_.emplace_back();
-    }
+    // PHASE H BASELINE: Simple recursive octree construction
+    // NOTE: Children are NOT guaranteed consecutive in memory
+    // This is a KNOWN LIMITATION - shader traversal stays at root level
+    // TODO: Phase H+ will implement proper consecutive allocation for true ESVO traversal
+    //
+    // Current workaround: Store first child index, shader reads root only
 
     std::vector<uint32_t> childIndices(8, 0);
     bool hasAnyChild = false;
 
-    // Build all 8 children
+    // Build all 8 children recursively
     for (uint32_t childIdx = 0; childIdx < 8; ++childIdx) {
         // Calculate child octant offset
         glm::ivec3 childOrigin = origin;
@@ -285,7 +283,7 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         childOrigin.y += (childIdx & 2) ? childSize : 0;
         childOrigin.z += (childIdx & 4) ? childSize : 0;
 
-        // Build child subtree (this may recurse and add more nodes)
+        // Build child subtree
         uint32_t childNodeIndex = BuildRecursiveESVO(voxelData, childOrigin, childSize, depth + 1);
 
         if (childNodeIndex != 0) {
@@ -303,21 +301,14 @@ uint32_t SparseVoxelOctree::BuildRecursiveESVO(
         }
     }
 
-    // Now store children consecutively: copy built children to pre-allocated slots
+    // Store offset to first child (for potential future use)
+    // Current shader doesn't use this for traversal due to non-consecutive layout
     if (hasAnyChild) {
-        node.SetChildOffset(childBlockStart);
-
         for (uint32_t i = 0; i < 8; ++i) {
             if (childIndices[i] != 0) {
-                // Copy child node to consecutive slot
-                esvoNodes_[childBlockStart + i] = esvoNodes_[childIndices[i]];
+                node.SetChildOffset(childIndices[i]);
+                break;
             }
-            // else: slot remains as default empty ESVONode
-        }
-    } else {
-        // No children: remove the pre-allocated slots
-        for (int i = 0; i < 8; ++i) {
-            esvoNodes_.pop_back();
         }
     }
 

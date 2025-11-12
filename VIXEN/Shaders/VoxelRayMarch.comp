@@ -563,22 +563,18 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                 // Descend (simplified - no stack for Phase H baseline)
                 // Full implementation would push to stack here
 
-                // CRITICAL FIX FOR PHASE H: Update parentPtr to descend into octree
-                // Phase H baseline doesn't guarantee consecutive child allocation
-                // So we use the child offset as a "first child" pointer
-                // and traverse to that child (since we're descending into a non-leaf)
-
-                // The child offset points to the first of potentially 8 children
-                // We descend into the child corresponding to idx
-                // NOTE: This is a simplified ESVO that matches Phase H octree structure
-
-                uint childIdx = idx ^ octant_mask;  // Get actual child index
-                uint childNodeOffset = getChildOffset(child_descriptor);
-
-                // For Phase H: assume children are near sequential
-                // Full ESVO would use child_mask + offset arithmetic
-                // Here we simply update parentPtr to read the child node
-                parentPtr = childNodeOffset + childIdx;
+                // PHASE H LIMITATION: Octree construction doesn't guarantee consecutive
+                // child allocation, so we can't use index arithmetic for child lookup.
+                // For now, we stay at root level and continue traversal there.
+                // This prevents correct octree descent but avoids fractal artifacts.
+                //
+                // TODO PHASE H+: Implement proper ESVO with guaranteed consecutive allocation
+                // by restructuring octree building algorithm.
+                //
+                // Commented out (broken in current octree format):
+                // uint childIdx = idx ^ octant_mask;
+                // uint childNodeOffset = getChildOffset(child_descriptor);
+                // parentPtr = childNodeOffset + childIdx;
 
                 scale--;
                 scale_exp2 = halfScale;
