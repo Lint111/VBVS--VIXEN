@@ -387,7 +387,7 @@ public:
             // (e.g., staging buffers, temporary command buffers) are automatically released
             auto* budgetManager = GetBudgetManager();
             if (budgetManager) {
-                uint64_t scopeHash = Vixen::RenderGraph::ComputeScopeHash(
+                uint64_t scopeHash = ComputeScopeHash(
                     static_cast<uint32_t>(GetInstanceId()),
                     static_cast<uint32_t>(taskIndex)
                 );
@@ -406,7 +406,7 @@ public:
             // Temporary resources (marked during Execute context) are automatically released
             auto* budgetManager = GetBudgetManager();
             if (budgetManager) {
-                uint64_t scopeHash = Vixen::RenderGraph::ComputeScopeHash(
+                uint64_t scopeHash = ComputeScopeHash(
                     static_cast<uint32_t>(GetInstanceId()),
                     static_cast<uint32_t>(taskIndex)
                 );
