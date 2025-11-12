@@ -627,6 +627,17 @@ protected:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             VariadicExecuteContext ctx(this, taskIndex);
             ExecuteImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle execution
+            // Temporary resources (marked during Execute context) are automatically released
+            auto* budgetManager = this->GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = Vixen::RenderGraph::ComputeScopeHash(
+                    static_cast<uint32_t>(this->GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
