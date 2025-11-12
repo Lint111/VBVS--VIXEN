@@ -254,7 +254,7 @@ struct ESVONode {
      * @param childIndex Child index [0-7]
      */
     inline void SetChild(uint32_t childIndex) {
-        descriptor0 |= (1 << (15 - childIndex));
+        descriptor0 |= (1 << (8 + childIndex));  // Bits 8-15 store childMask
     }
 
     /**
@@ -263,7 +263,7 @@ struct ESVONode {
      */
     inline void SetNonLeaf(uint32_t childIndex) {
         if (childIndex < 7) {
-            descriptor0 |= (1 << (7 - childIndex));
+            descriptor0 |= (1 << (1 + childIndex));  // Bits 1-7 store nonLeafMask
         }
     }
 
