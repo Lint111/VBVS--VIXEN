@@ -103,6 +103,38 @@ const vec3 LIGHT_DIR = normalize(vec3(1.0, 1.0, 0.5));  // Directional light
 #define VOXEL_RAY_DEBUG_CLAMP 0
 #endif
 
+// Debug: color final hit (or diagnostic) by which axis (or axes) were last advanced in brick DDA
+#ifndef VOXEL_RAY_DEBUG_AXIS_STEP
+#define VOXEL_RAY_DEBUG_AXIS_STEP 0
+#endif
+
+// Debug: color entire brick by its occupancy ratio (expensive 512-voxel scan) for sparsity diagnosis
+#ifndef VOXEL_RAY_DEBUG_BRICK_OCCUPANCY
+#define VOXEL_RAY_DEBUG_BRICK_OCCUPANCY 0
+#endif
+
+// Optional: use alternative half-open interval mapping for initial voxel index with tiny inward bias
+#ifndef VOXEL_RAY_ALT_INITIAL_VOXEL
+#define VOXEL_RAY_ALT_INITIAL_VOXEL 1
+#endif
+
+// Enable multi-axis advancement when tMax ties occur (prevents checker/X patterns at axis-aligned junctions)
+#ifndef VOXEL_RAY_USE_MULTI_AXIS_TIES
+#define VOXEL_RAY_USE_MULTI_AXIS_TIES 1
+#endif
+
+// Enable 3D supercover processing: when multiple voxel boundaries are crossed simultaneously,
+// advance one axis at a time and test after each sub-step to avoid skipping thin features and
+// diagonal 'X' seam artifacts at wall junctions.
+#ifndef VOXEL_RAY_SUPERCOVER_TIES
+#define VOXEL_RAY_SUPERCOVER_TIES 1
+#endif
+
+// Debug: exhaustively test all 8 children at each node to detect missed siblings (expensive)
+#ifndef VOXEL_RAY_DEBUG_EXHAUSTIVE_CHILDREN
+#define VOXEL_RAY_DEBUG_EXHAUSTIVE_CHILDREN 0
+#endif
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -280,7 +312,7 @@ uint getChildOctant(vec3 posInNode) {
 
 // Forward declaration for brick DDA used by traversal
 bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 brickMax,
-                uint brickOffset, out vec3 hitColor, out vec3 hitNormal);
+                uint brickOffset, out vec3 hitColor, out vec3 hitNormal, out uint axisMaskOut);
 
 // Octree traversal using ESVO format + brick DDA
 // Combines hierarchical descent (child masks) with precise voxel stepping in leaf bricks.
@@ -365,6 +397,11 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     // trees are introduced.
     const int S_MAX = 5;
     const float EPSILON_ESVO = exp2(-float(S_MAX));
+    // TEMP SCALE PATCH: double leaf extent (see Phase H note)
+    // LEAF_SCALE_FACTOR was temporarily set to 2.0 which doubled leaf AABB size, causing
+    // overlapping bricks and visible X/diagonal artifacts at wall junctions. Reverting
+    // to 1.0 so leaf extent = scale_exp2 (canonical ESVO half/open interval mapping).
+    const float LEAF_SCALE_FACTOR = 1.0;
 
     // LOD parameters (from camera uniform)
     // Disable LOD termination for Phase H - show full detail everywhere
@@ -479,7 +516,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                 if (isConstant(childNode)) {
                     uint matID = getConstantMaterialID(childNode);
                     Material m = getMaterial(matID);
-                    vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                    vec3 leafMin = vec3(pos) - vec3(scale_exp2 * LEAF_SCALE_FACTOR);
                     vec3 leafMax = vec3(pos);
                     // Basic face normal approximation from ray direction
                     vec3 approxNormal = normalize(-rayDir);
@@ -489,14 +526,27 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     return true;
                 } else {
                     uint brickIndex = getBrickOffset(childNode);
-                    vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                    vec3 leafMin = vec3(pos) - vec3(scale_exp2 * LEAF_SCALE_FACTOR);
                     vec3 leafMax = vec3(pos);
                     vec3 brickMin = gridMin + (leafMin - 1.0) * gridSize;
                     vec3 brickMax = gridMin + (leafMax - 1.0) * gridSize;
-                    if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal)) {
+                    uint axisMaskDummy;
+                    if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal, axisMaskDummy)) {
                         hitT = t_min;
                         return true;
                     }
+#if defined(VOXEL_RAY_DEBUG_BRICK_AABB)
+                    else {
+                        // Visualize empty brick bounds: encode (leafMin.xy, scale) into color (normalized)
+                        vec3 debugColor = vec3(leafMin.x - 1.0, leafMin.y - 1.0, scale_exp2);
+                        // Normalize to safe display range
+                        debugColor = abs(normalize(debugColor + vec3(1e-6)));
+                        hitColor = debugColor;
+                        hitNormal = normalize(-rayDir);
+                        hitT = t_min;
+                        return true;
+                    }
+#endif
                 }
                 // Miss within brick or constant region -> continue traversal
             }
@@ -533,18 +583,108 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                         return true;
                     } else {
                         uint brickIndex = getBrickOffset(childNode);
-                        vec3 leafMin = vec3(pos) - vec3(scale_exp2);
+                        vec3 leafMin = vec3(pos) - vec3(scale_exp2 * LEAF_SCALE_FACTOR);
                         vec3 leafMax = vec3(pos);
                         vec3 brickMin = gridMin + (leafMin - 1.0) * gridSize;
                         vec3 brickMax = gridMin + (leafMax - 1.0) * gridSize;
-                        if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal)) {
+                        uint axisMaskDummy;
+                        if (marchBrick(rayOrigin, rayDir, 0.0, brickMin, brickMax, brickIndex, hitColor, hitNormal, axisMaskDummy)) {
                             hitT = t_min;
                             return true;
                         }
+#if defined(VOXEL_RAY_DEBUG_BRICK_AABB)
+                        else {
+                            vec3 debugColor = vec3(leafMin.x - 1.0, leafMin.y - 1.0, scale_exp2);
+                            debugColor = abs(normalize(debugColor + vec3(1e-6)));
+                            hitColor = debugColor;
+                            hitNormal = normalize(-rayDir);
+                            hitT = t_min;
+                            return true;
+                        }
+#endif
                     }
                     // No solid voxel along ray inside this brick; advance to voxel exit and continue at SAME scale
+                    // WORKAROUND (Phase H): Test sibling leaf bricks using proper ESVO coordinate mapping
+                    // The issue: 'pos' is in ESVO [1,2] mirrored space for the PRIMARY child we just tested.
+                    // For siblings, we need to compute THEIR 'pos' in the same coordinate system.
+                    uint fallbackChildOffset = getChildOffset(child_descriptor);
+                    uint fallbackNonLeafMask = getNonLeafMask(child_descriptor);
+                    
+                    // Current 'pos' encodes the primary child's position after mirroring.
+                    // To get sibling positions, we need to compute their idx values and derive pos from scratch.
+                    // Parent's scale is scale_exp2; we're at the parent level testing all its children.
+                    
+                    for (int sibIdx = 0; sibIdx < 8; ++sibIdx) {
+                        uint unmappedSibIdx = uint(sibIdx);
+                        if (unmappedSibIdx == childIdxPush) continue; // Already tested primary child
+                        
+                        bool sibIsLeaf = (unmappedSibIdx >= 7u) ? true : ((fallbackNonLeafMask & (1u << unmappedSibIdx)) == 0u);
+                        if (sibIsLeaf) {
+                            uint sibPtr = fallbackChildOffset + unmappedSibIdx;
+                            uvec2 sibNode = fetchESVONode(sibPtr);
+                            if (!isConstant(sibNode)) {
+                                uint sibBrickIdx = getBrickOffset(sibNode);
+                                
+                                // Compute sibling's 'pos' in ESVO [1,2] space by remapping idx bits through octant_mask
+                                // The primary child's pos was computed as the parent corner + offsets based on (idx ^ octant_mask)
+                                // For sibling: remap its index through octant_mask to get mirrored coordinates
+                                uint mappedSibIdx = unmappedSibIdx ^ octant_mask;
+                                
+                                // Reconstruct parent corner (before any child offset)
+                                vec3 parentCorner = pos;
+                                if ((childIdxPush & 1u) != 0u) parentCorner.x -= scale_exp2;
+                                if ((childIdxPush & 2u) != 0u) parentCorner.y -= scale_exp2;
+                                if ((childIdxPush & 4u) != 0u) parentCorner.z -= scale_exp2;
+                                
+                                // Compute sibling pos from parent corner using MAPPED index
+                                vec3 sibPos = parentCorner;
+                                if ((mappedSibIdx & 1u) != 0u) sibPos.x += scale_exp2;
+                                if ((mappedSibIdx & 2u) != 0u) sibPos.y += scale_exp2;
+                                if ((mappedSibIdx & 4u) != 0u) sibPos.z += scale_exp2;
+                                
+                                // Use EXACT same world-space mapping as primary child
+                                vec3 sibLeafMin = sibPos - vec3(scale_exp2 * LEAF_SCALE_FACTOR);
+                                vec3 sibLeafMax = sibPos;
+                                vec3 sibBrickMin = gridMin + (sibLeafMin - 1.0) * gridSize;
+                                vec3 sibBrickMax = gridMin + (sibLeafMax - 1.0) * gridSize;
+                                
+                                // Ray-AABB test before marching
+                                vec2 sibT = rayAABBIntersection(rayOrigin, rayDir, sibBrickMin, sibBrickMax);
+                                if (sibT.x >= 0.0 && sibT.x < sibT.y) {
+                                    uint axisMaskDummy;
+                                    if (marchBrick(rayOrigin, rayDir, sibT.x, sibBrickMin, sibBrickMax, sibBrickIdx, hitColor, hitNormal, axisMaskDummy)) {
+                                        hitT = sibT.x;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     t_min = tv_max;
                     // Skip descent for leaf; proceed to ADVANCE phase
+                    
+                    #if VOXEL_RAY_DEBUG_EXHAUSTIVE_CHILDREN
+                    // DIAGNOSTIC: Check if ANY sibling child at this node has geometry
+                    // (expensive; only for debugging missing traversal paths)
+                    uint debugChildOffset = getChildOffset(child_descriptor);
+                    uint debugNonLeafMask = getNonLeafMask(child_descriptor);
+                    for (int sibIdx = 0; sibIdx < 8; ++sibIdx) {
+                        bool sibIsLeaf = (uint(sibIdx) >= 7u) ? true : ((debugNonLeafMask & (1u << uint(sibIdx))) == 0u);
+                        if (sibIsLeaf) {
+                            uint sibPtr = debugChildOffset + uint(sibIdx);
+                            uvec2 sibNode = fetchESVONode(sibPtr);
+                            uint sibBrickIdx = getBrickOffset(sibNode);
+                            // Quick brick non-empty test (sample center voxel)
+                            if (getVoxelFromBrick(sibBrickIdx, ivec3(4,4,4)) > 0u) {
+                                // Found populated sibling that traversal may have skipped
+                                hitColor = vec3(1.0, 0.0, 1.0); // Magenta = missed sibling
+                                hitNormal = vec3(0,1,0);
+                                hitT = t_min;
+                                return true;
+                            }
+                        }
+                    }
+                    #endif
                 } else {
                     // Internal child: perform descent
                     uint childIdx = idx ^ octant_mask;
@@ -807,7 +947,7 @@ bool traverseOctree(uint rootNodeIndex, float tx0, float ty0, float tz0,
 // DDA march through 8^3 brick using parametric voxel traversal.
 // Returns true if hit solid voxel and fills hitColor/hitNormal.
 bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 brickMax,
-                uint brickOffset, out vec3 hitColor, out vec3 hitNormal) {
+                uint brickOffset, out vec3 hitColor, out vec3 hitNormal, out uint axisMaskOut) {
     vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
     if (brickT.x < 0.0) return false; // Missed brick
 
@@ -822,11 +962,38 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
     
     // Compute starting voxel from clean position
     vec3 relPos = cleanStartPos - brickMin;
-    ivec3 voxelPos = ivec3(floor(relPos / voxelSize));
+    ivec3 voxelPos;
+    #if VOXEL_RAY_ALT_INITIAL_VOXEL
+        // Half-open interval mapping [0,1) per axis; apply tiny inward bias to avoid sampling past max
+        vec3 scaled = relPos / voxelSize; // range ideally [0,8)
+        const float inward = 1e-5;
+        for (int a = 0; a < 3; ++a) {
+            float s = clamp(scaled[a], 0.0, 8.0 - inward);
+            int idx = int(floor(s));
+            voxelPos[a] = clamp(idx, 0, 7);
+        }
+    #else
+        // Original direction-aware boundary epsilon approach
+        const float boundaryEps = 1e-6;
+        vec3 scaled = relPos / voxelSize;
+        for (int a = 0; a < 3; ++a) {
+            float s = scaled[a];
+            int base = int(floor(s));
+            float fracPart = s - float(base);
+            if (fracPart < boundaryEps) {
+                if (rayDir[a] < 0.0 && base > 0) base -= 1;
+            } else if (1.0 - fracPart < boundaryEps) {
+                if (rayDir[a] > 0.0 && base < 7) base += 1;
+            }
+            voxelPos[a] = clamp(base, 0, 7);
+        }
+    #endif
     voxelPos = clamp(voxelPos, ivec3(0), ivec3(7));
     
     // NOW apply bias to avoid re-hitting entry boundary
-    startT += SURFACE_EPS;
+    // Use dynamic epsilon scaled to voxel size to avoid skipping very small voxels when close
+    float dynamicSurfaceEps = min(SURFACE_EPS, 0.1 * voxelSize);
+    startT += dynamicSurfaceEps;
     vec3 startPos = rayOrigin + rayDir * startT;
 
     // Step direction per axis
@@ -857,6 +1024,7 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
     float brickExitT = brickT.y;
 
     // Use a generous iteration cap as a safety guard; in practice, at most ~512 steps for 8^3 voxels
+    int lastAxisMask = 0; // Bitmask: 1=X,2=Y,4=Z (can combine for multi-axis tie)
     for (int iter = 0; iter < 2048; ++iter) {
         // Bounds check
         if (any(lessThan(voxelPos, ivec3(0))) || any(greaterThan(voxelPos, ivec3(7)))) {
@@ -869,7 +1037,7 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
         }
 
         // Sample voxel
-        uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
+    uint voxelValue = getVoxelFromBrick(brickOffset, voxelPos);
         if (voxelValue > 0u) {
             // Hit solid voxel
             Material mat = getMaterial(voxelValue);
@@ -884,34 +1052,147 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float tStart, vec3 brickMin, vec3 b
                 hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
             }
 
-            #if VOXEL_RAY_DEBUG_LOCAL_COORD
+            #if VOXEL_RAY_DEBUG_BRICK_OCCUPANCY
+            // Brick occupancy visualization overrides axis/local debug: compute once lazily.
+            // (Expensive) 512-voxel scan.
+            int filled = 0;
+            for (int z = 0; z < 8; ++z)
+            for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x) {
+                if (getVoxelFromBrick(brickOffset, ivec3(x,y,z)) > 0u) filled++;
+            }
+            float occ = float(filled) / 512.0;
+            hitColor = vec3(occ, 1.0 - occ, 0.3);
+            #elif VOXEL_RAY_DEBUG_AXIS_STEP
+            // Axis-step debug coloring
+            int m = lastAxisMask;
+            vec3 axisColor;
+            switch (m) {
+                case 1: axisColor = vec3(1,0,0); break;            // X
+                case 2: axisColor = vec3(0,1,0); break;            // Y
+                case 4: axisColor = vec3(0,0,1); break;            // Z
+                case 3: axisColor = vec3(1,1,0); break;            // X+Y
+                case 5: axisColor = vec3(1,0,1); break;            // X+Z
+                case 6: axisColor = vec3(0,1,1); break;            // Y+Z
+                case 7: axisColor = vec3(1,1,1); break;            // X+Y+Z
+                default: axisColor = vec3(0.2,0.2,0.2); break;     // None (first voxel)
+            }
+            hitColor = axisColor;
+            #elif VOXEL_RAY_DEBUG_LOCAL_COORD
             // Encode local voxel coordinates to color for axis/mirroring debug
             hitColor = vec3(voxelPos.x, voxelPos.y, voxelPos.z) / 7.0;
             #else
             // Return albedo; caller applies shading once
             hitColor = mat.albedo;
             #endif
+            axisMaskOut = uint(lastAxisMask);
             return true;
         }
 
-        // Determine which axis crosses its boundary first
-        float nextT = min(min(tMax.x, tMax.y), tMax.z);
-
-        // Step to next voxel along the axis with minimum tMax
-        if (tMax.x <= tMax.y && tMax.x <= tMax.z) {
-            voxelPos.x += step.x;
-            tMax.x += tDelta.x;
-        } else if (tMax.y <= tMax.z) {
-            voxelPos.y += step.y;
-            tMax.y += tDelta.y;
-        } else {
-            voxelPos.z += step.z;
-            tMax.z += tDelta.z;
-        }
-
-        // Update current parametric position (nextT is absolute from ray origin)
-        currentT = nextT;
+        // Axis advancement strategy
+        #if VOXEL_RAY_USE_MULTI_AXIS_TIES
+            // Advance along ALL axes whose boundary is the minimal tMax within an epsilon.
+            float nextT = min(min(tMax.x, tMax.y), tMax.z);
+            const float tieEps = 1e-8; // Tight epsilon; scene scale modest
+            bool advX = (tMax.x - nextT) <= tieEps;
+            bool advY = (tMax.y - nextT) <= tieEps;
+            bool advZ = (tMax.z - nextT) <= tieEps;
+            lastAxisMask = (advX ? 1 : 0) | (advY ? 2 : 0) | (advZ ? 4 : 0);
+            #if VOXEL_RAY_SUPERCOVER_TIES
+                // Supercover: perform per-axis sub-steps when multiple axes tie to ensure we don't skip voxels.
+                // We reuse nextT as the parametric distance for all tied axes (same plane intersection t).
+                // After each axis increment, test the new voxel immediately (early return if hit).
+                // Order of axis processing is deterministic (X,Y,Z) for stability.
+                if (advX) {
+                    voxelPos.x += step.x; tMax.x += tDelta.x; currentT = nextT;
+                    if (!advY && !advZ) {
+                        // Single-axis tie falls through to outer loop's next voxel test
+                    } else {
+                        // Multi-axis: perform intermediate test
+                        if (!(any(lessThan(voxelPos, ivec3(0))) || any(greaterThan(voxelPos, ivec3(7))))) {
+                            uint voxelValueX = getVoxelFromBrick(brickOffset, voxelPos);
+                            if (voxelValueX > 0u) {
+                                Material matX = getMaterial(voxelValueX);
+                                vec3 ad = abs(rayDir);
+                                if (ad.x >= ad.y && ad.x >= ad.z) { hitNormal = vec3(-sign(rayDir.x),0,0);} else if (ad.y >= ad.z) { hitNormal = vec3(0,-sign(rayDir.y),0);} else { hitNormal = vec3(0,0,-sign(rayDir.z)); }
+                                #if VOXEL_RAY_DEBUG_AXIS_STEP
+                                hitColor = vec3(1,0,0);
+                                #elif VOXEL_RAY_DEBUG_LOCAL_COORD
+                                hitColor = vec3(voxelPos)/7.0;
+                                #else
+                                hitColor = matX.albedo;
+                                #endif
+                                axisMaskOut = uint(lastAxisMask);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if (advY) {
+                    voxelPos.y += step.y; tMax.y += tDelta.y; currentT = nextT;
+                    if (advX || advZ) {
+                        if (!(any(lessThan(voxelPos, ivec3(0))) || any(greaterThan(voxelPos, ivec3(7))))) {
+                            uint voxelValueY = getVoxelFromBrick(brickOffset, voxelPos);
+                            if (voxelValueY > 0u) {
+                                Material matY = getMaterial(voxelValueY);
+                                vec3 ad = abs(rayDir);
+                                if (ad.x >= ad.y && ad.x >= ad.z) { hitNormal = vec3(-sign(rayDir.x),0,0);} else if (ad.y >= ad.z) { hitNormal = vec3(0,-sign(rayDir.y),0);} else { hitNormal = vec3(0,0,-sign(rayDir.z)); }
+                                #if VOXEL_RAY_DEBUG_AXIS_STEP
+                                hitColor = vec3(0,1,0);
+                                #elif VOXEL_RAY_DEBUG_LOCAL_COORD
+                                hitColor = vec3(voxelPos)/7.0;
+                                #else
+                                hitColor = matY.albedo;
+                                #endif
+                                axisMaskOut = uint(lastAxisMask);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if (advZ) {
+                    voxelPos.z += step.z; tMax.z += tDelta.z; currentT = nextT;
+                    if (advX || advY) {
+                        if (!(any(lessThan(voxelPos, ivec3(0))) || any(greaterThan(voxelPos, ivec3(7))))) {
+                            uint voxelValueZ = getVoxelFromBrick(brickOffset, voxelPos);
+                            if (voxelValueZ > 0u) {
+                                Material matZ = getMaterial(voxelValueZ);
+                                vec3 ad = abs(rayDir);
+                                if (ad.x >= ad.y && ad.x >= ad.z) { hitNormal = vec3(-sign(rayDir.x),0,0);} else if (ad.y >= ad.z) { hitNormal = vec3(0,-sign(rayDir.y),0);} else { hitNormal = vec3(0,0,-sign(rayDir.z)); }
+                                #if VOXEL_RAY_DEBUG_AXIS_STEP
+                                hitColor = vec3(0,0,1);
+                                #elif VOXEL_RAY_DEBUG_LOCAL_COORD
+                                hitColor = vec3(voxelPos)/7.0;
+                                #else
+                                hitColor = matZ.albedo;
+                                #endif
+                                axisMaskOut = uint(lastAxisMask);
+                                return true;
+                            }
+                        }
+                    }
+                }
+            #else
+                if (advX) { voxelPos.x += step.x; tMax.x += tDelta.x; }
+                if (advY) { voxelPos.y += step.y; tMax.y += tDelta.y; }
+                if (advZ) { voxelPos.z += step.z; tMax.z += tDelta.z; }
+                currentT = nextT;
+            #endif
+        #else
+            // Original deterministic single-axis tie-break with ordered bias (X < Y < Z)
+            vec3 biased = tMax + vec3(1e-7, 2e-7, 3e-7);
+            float nextT = min(min(biased.x, biased.y), biased.z);
+            if (biased.x <= biased.y && biased.x <= biased.z) {
+                voxelPos.x += step.x; tMax.x += tDelta.x; lastAxisMask = 1;
+            } else if (biased.y <= biased.z) {
+                voxelPos.y += step.y; tMax.y += tDelta.y; lastAxisMask = 2;
+            } else {
+                voxelPos.z += step.z; tMax.z += tDelta.z; lastAxisMask = 4;
+            }
+            currentT = nextT;
+        #endif
     }
+    axisMaskOut = 0u;
     return false; // No hit inside brick
 }
 
@@ -947,10 +1228,10 @@ vec4 traceRay(vec3 rayOrigin, vec3 rayDir) {
         if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax,
                                   hitColor, hitNormal, hitT)) {
             // Hit found - shade and return
-            #if VOXEL_RAY_DEBUG_BRICK_BOUNDARY
-            return vec4(hitColor, 1.0);
+            #if VOXEL_RAY_DEBUG_AXIS_STEP || VOXEL_RAY_DEBUG_BRICK_BOUNDARY || VOXEL_RAY_DEBUG_LOCAL_COORD
+                return vec4(hitColor, 1.0);
             #else
-            return vec4(shadeVoxel(hitNormal, hitColor), 1.0);
+                return vec4(shadeVoxel(hitNormal, hitColor), 1.0);
             #endif
         }
 

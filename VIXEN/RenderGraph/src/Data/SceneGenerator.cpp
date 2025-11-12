@@ -87,39 +87,51 @@ void CornellBoxGenerator::Generate(VoxelGrid& grid) {
 
 void CornellBoxGenerator::GenerateWalls(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
+    // Thicken walls to 3 voxels to ensure brick occupancy at all resolutions
+    const uint32_t wallThickness = 3;
 
     // Left wall (material ID 1 = red)
     for (uint32_t y = 0; y < res; ++y) {
         for (uint32_t z = 0; z < res; ++z) {
-            grid.Set(0, y, z, 1);
+            for (uint32_t t = 0; t < wallThickness; ++t) {
+                grid.Set(t, y, z, 1);
+            }
         }
     }
 
     // Right wall (material ID 2 = green)
     for (uint32_t y = 0; y < res; ++y) {
         for (uint32_t z = 0; z < res; ++z) {
-            grid.Set(res - 1, y, z, 2);
+            for (uint32_t t = 0; t < wallThickness; ++t) {
+                grid.Set(res - 1 - t, y, z, 2);
+            }
         }
     }
 
     // Back wall (material ID 3 = white)
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t y = 0; y < res; ++y) {
-            grid.Set(x, y, 0, 3);
+            for (uint32_t t = 0; t < wallThickness; ++t) {
+                grid.Set(x, y, t, 3);
+            }
         }
     }
 
     // Floor (material ID 4 = white)
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t z = 0; z < res; ++z) {
-            grid.Set(x, 0, z, 4);
+            for (uint32_t t = 0; t < wallThickness; ++t) {
+                grid.Set(x, t, z, 4);
+            }
         }
     }
 
     // Ceiling (material ID 5 = white)
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t z = 0; z < res; ++z) {
-            grid.Set(x, res - 1, z, 5);
+            for (uint32_t t = 0; t < wallThickness; ++t) {
+                grid.Set(x, res - 1 - t, z, 5);
+            }
         }
     }
 }
