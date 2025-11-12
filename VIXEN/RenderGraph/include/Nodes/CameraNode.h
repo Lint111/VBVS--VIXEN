@@ -100,9 +100,9 @@ private:
     glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
 
     // Camera control parameters
-    float moveSpeed = 10.0f;      // Horizontal movement: units per second
-    float verticalSpeed = 10.0f;  // Vertical movement (QE): units per second
-    float mouseSensitivity = 0.0012f;  // Radians per pixel
+    float moveSpeed = 30.0f;      // Horizontal movement: units per second (3x faster)
+    float verticalSpeed = 30.0f;  // Vertical movement (QE): units per second (3x faster)
+    float mouseSensitivity = 0.004f;  // Radians per pixel (3.3x more sensitive)
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
 
