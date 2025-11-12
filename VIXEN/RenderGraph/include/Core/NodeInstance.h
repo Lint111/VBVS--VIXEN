@@ -9,6 +9,7 @@
 #include "INodeWiring.h"
 #include "SlotTask.h"
 #include "ResourceBudgetManager.h"
+#include "ResourceHash.h"
 #include "GraphLifecycleHooks.h"
 #include "NodeContext.h"
 #include "Core/ManagedResource.h"
@@ -439,6 +440,17 @@ protected:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             SetupContext ctx = CreateSetupContext(taskIndex);
             SetupImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle setup
+            // Setup typically doesn't allocate temporary resources, but cleanup is here for completeness
+            auto* budgetManager = GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = ComputeScopeHash(
+                    static_cast<uint32_t>(GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
@@ -467,6 +479,17 @@ protected:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             CompileContext ctx = CreateCompileContext(taskIndex);
             CompileImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle compilation
+            // Note: TypedNode and VariadicTypedNode override this with their own cleanup logic
+            auto* budgetManager = GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = ComputeScopeHash(
+                    static_cast<uint32_t>(GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
@@ -502,6 +525,17 @@ protected:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             ExecuteContext ctx = CreateExecuteContext(taskIndex);
             ExecuteImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle execution
+            // Note: TypedNode and VariadicTypedNode override this with their own cleanup logic
+            auto* budgetManager = GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = ComputeScopeHash(
+                    static_cast<uint32_t>(GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
@@ -533,6 +567,17 @@ protected:
         for (uint32_t taskIndex = 0; taskIndex < taskCount; ++taskIndex) {
             CleanupContext ctx = CreateCleanupContext(taskIndex);
             CleanupImpl(ctx);
+
+            // Phase H: Automatic cleanup of temporary resources after bundle cleanup
+            // This is the final cleanup - releases any remaining temporary resources
+            auto* budgetManager = GetBudgetManager();
+            if (budgetManager) {
+                uint64_t scopeHash = ComputeScopeHash(
+                    static_cast<uint32_t>(GetInstanceId()),
+                    static_cast<uint32_t>(taskIndex)
+                );
+                budgetManager->GetStackTracker().ReleaseTemporaryResources(scopeHash);
+            }
         }
     }
 
