@@ -242,10 +242,10 @@ ExtractNodeData(const SparseVoxelOctree& octree) {
     if (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO) {
         const auto& esvoNodes = octree.GetESVONodes();
         VkDeviceSize size = esvoNodes.size() * sizeof(VIXEN::RenderGraph::ESVONode);
-        NODE_LOG_INFO("ESVO format: " + std::to_string(esvoNodes.size()) + " nodes (8 bytes) = " +
-                      std::to_string(size) + " bytes");
+        std::cout << "[VoxelGridNode::ExtractNodeData] ESVO format: " << esvoNodes.size()
+                  << " nodes (8 bytes) = " << size << " bytes" << std::endl;
         if (!esvoNodes.empty()) {
-            std::cout << "[VoxelGridNode] Root ESVO node: descriptor0=0x" << std::hex
+            std::cout << "[VoxelGridNode::ExtractNodeData] Root ESVO node: descriptor0=0x" << std::hex
                       << esvoNodes[0].descriptor0 << ", descriptor1=0x" << esvoNodes[0].descriptor1
                       << std::dec << std::endl;
         }
@@ -254,8 +254,8 @@ ExtractNodeData(const SparseVoxelOctree& octree) {
 
     const auto& legacyNodes = octree.GetNodes();
     VkDeviceSize size = legacyNodes.size() * sizeof(VIXEN::RenderGraph::OctreeNode);
-    NODE_LOG_INFO("Legacy format: " + std::to_string(legacyNodes.size()) + " nodes (40 bytes) = " +
-                  std::to_string(size) + " bytes");
+    std::cout << "[VoxelGridNode::ExtractNodeData] Legacy format: " << legacyNodes.size()
+              << " nodes (40 bytes) = " << size << " bytes" << std::endl;
     return std::make_tuple(size, legacyNodes.data(), "Legacy");
 }
 

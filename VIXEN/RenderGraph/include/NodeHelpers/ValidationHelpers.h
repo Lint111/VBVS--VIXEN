@@ -25,12 +25,12 @@ void ValidateAndSetDevice(const typename NodeConfig::ContextType& ctx, NodeType*
 /// Generic typed input validation. Throws with descriptive error.
 /// Usage: auto ptr = ValidateInput<MyPtrType>(ctx, "MyInput", inputSlot);
 template <typename T, typename ContextType, typename SlotType>
-T ValidateInput(
+inline T ValidateInput(
     const ContextType& ctx,
     const std::string& inputName,
     const SlotType& inputSlot
 ) {
-    T ptr = ctx.template In(inputSlot);
+    auto ptr = ctx.In(inputSlot);  // Let auto deduce, then cast if needed
     if (!ptr) {
         throw std::runtime_error(
             "Required input '" + inputName + "' is null"
@@ -55,12 +55,12 @@ inline void ValidateVulkanResult(
 /// Safely retrieves optional input, returns default if null
 /// Usage: auto ptr = GetOptionalInput<MyPtrType>(ctx, inputSlot, nullptr);
 template <typename T, typename ContextType, typename SlotType>
-T GetOptionalInput(
+inline T GetOptionalInput(
     const ContextType& ctx,
     const SlotType& inputSlot,
     T defaultValue = nullptr
 ) {
-    T ptr = ctx.template In(inputSlot);
+    auto ptr = ctx.In(inputSlot);  // Let auto deduce
     return ptr ? ptr : defaultValue;
 }
 

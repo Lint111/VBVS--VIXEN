@@ -9,8 +9,8 @@
 
 // Forward declarations for shader management types
 namespace ShaderManagement {
-    struct DescriptorLayoutSpecification;
-    struct DescriptorBindingInfo;
+    struct DescriptorLayoutSpec;
+    struct DescriptorBindingSpec;
 }
 
 namespace Vixen::RenderGraph {
@@ -125,8 +125,8 @@ private:
     void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
 
     // Validation helpers (extracted from ValidateTentativeSlotsAgainstShader)
-    void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorLayoutSpecification* layoutSpec);
-    void UpdateSlotWithShaderBinding(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorBindingInfo& shaderBinding);
+    void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorLayoutSpec* layoutSpec);
+    void UpdateSlotWithShaderBinding(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorBindingSpec& shaderBinding);
     void MarkSlotAsInvalid(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo);
 
     // Resource gathering helpers (extracted from GatherResources)

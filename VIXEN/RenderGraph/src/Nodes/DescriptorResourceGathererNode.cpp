@@ -172,7 +172,7 @@ void DescriptorResourceGathererNode::ValidateSingleSlotAgainstShader(
     VariadicCompileContext& ctx,
     size_t slotIndex,
     const VariadicSlotInfo* slotInfo,
-    const ShaderManagement::DescriptorLayoutSpecification* layoutSpec
+    const ShaderManagement::DescriptorLayoutSpec* layoutSpec
 ) {
     // Find matching shader binding
     for (const auto& shaderBinding : layoutSpec->bindings) {
@@ -190,7 +190,7 @@ void DescriptorResourceGathererNode::UpdateSlotWithShaderBinding(
     VariadicCompileContext& ctx,
     size_t slotIndex,
     const VariadicSlotInfo* slotInfo,
-    const ShaderManagement::DescriptorBindingInfo& shaderBinding
+    const ShaderManagement::DescriptorBindingSpec& shaderBinding
 ) {
     VariadicSlotInfo updatedSlot = *slotInfo;
 
