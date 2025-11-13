@@ -12,9 +12,6 @@
 #include <cstring> // for memcpy
 #include <unordered_map>
 
-// Phase 5: Type-safe UBO updates with generated SDI headers
-#include "generated/sdi/Draw_ShaderNames.h"
-
 // Event subscription
 #include "EventTypes/RenderGraphEvents.h"
 
