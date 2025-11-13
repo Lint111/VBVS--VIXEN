@@ -3,6 +3,8 @@
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // ====== InputNodeType ======

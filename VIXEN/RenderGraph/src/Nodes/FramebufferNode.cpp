@@ -6,6 +6,8 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "NodeHelpers/VulkanStructHelpers.h"
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // ====== FramebufferNodeType ======

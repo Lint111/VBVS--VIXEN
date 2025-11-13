@@ -67,10 +67,10 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
     // Validate inputs using helpers
-    VulkanDevicePtr devicePtr =  NodeHelpers::ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", CameraNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevicePtr devicePtr = ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", CameraNodeConfig::VULKAN_DEVICE_IN);
     SetDevice(devicePtr);
 
-    SwapChainPublicVariables* swapchainInfo = NodeHelpers::ValidateInput<SwapChainPublicVariables*>(
+    SwapChainPublicVariables* swapchainInfo = ValidateInput<SwapChainPublicVariables*>(
         ctx, "SwapChainPublic", CameraNodeConfig::SWAPCHAIN_PUBLIC);
 
     // Initialize camera data with valid values

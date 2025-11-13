@@ -3,6 +3,8 @@
 #include "Core/NodeLogging.h"
 #include "NodeHelpers/ValidationHelpers.h"
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // Type ID: 110

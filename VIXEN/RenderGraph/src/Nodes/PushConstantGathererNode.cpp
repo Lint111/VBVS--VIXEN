@@ -5,6 +5,8 @@
 #include <cstring>
 #include <iostream>
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // ============================================================================

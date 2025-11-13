@@ -8,6 +8,8 @@
 #include "NodeHelpers/CacherHelpers.h"
 #include "NodeHelpers/EnumParsers.h"
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // ====== RenderPassNodeType ======
