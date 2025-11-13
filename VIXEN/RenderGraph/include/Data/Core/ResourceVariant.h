@@ -91,8 +91,11 @@ struct BoolVector {
     auto operator[](size_t i) { return data[i]; }
 };
 
+// Include CameraData definition before namespace (to avoid double qualification)
+#include "Data/CameraData.h"
+
 namespace Vixen::RenderGraph {
-    
+
 
 // ============================================================================
 // RESOURCE USAGE OPERATORS (bitwise for flags)
@@ -128,9 +131,6 @@ struct ImageSamplerPair {
 // ============================================================================
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
-
-// Include CameraData definition (in separate header to avoid circular dependency)
-#include "../CameraData.h"
 
 /**
  * @brief Master list of base resource types
