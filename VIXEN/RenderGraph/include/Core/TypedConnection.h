@@ -427,11 +427,13 @@ public:
         BindingRefType bindingRef,
         SlotRole slotRoleOverride = SlotRole::Output  // Output = sentinel for auto-detect
     ) {
-        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << BindingRefType::binding << std::endl;
+        // Access static members via the type
+        constexpr uint32_t bindingValue = BindingRefType::binding;
+        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingValue << std::endl;
 
         // Defer the variadic connection via lambda (applied during RegisterAll)
         variadicConnections.push_back([=]() {
-            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << BindingRefType::binding << std::endl;
+            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << bindingValue << std::endl;
 
             // Get the variadic node instance
             NodeInstance* node = graph->GetInstance(variadicNode);

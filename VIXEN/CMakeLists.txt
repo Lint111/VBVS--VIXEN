@@ -463,7 +463,7 @@ add_executable(${Recipe_Name}
 
 # Add include directory for generated SDI headers
 target_include_directories(${Recipe_Name} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/builtAssets/GeneratedIncludes
+    ${CMAKE_CURRENT_SOURCE_DIR}/binaries/generated/sdi
 )
 
 # Link libraries to main executable

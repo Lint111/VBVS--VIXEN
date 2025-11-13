@@ -52,6 +52,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/InstanceNodeConfig.h
     include/Data/Nodes/LoopBridgeNodeConfig.h
     include/Data/Nodes/PresentNodeConfig.h
+    include/Data/Nodes/PushConstantGathererNodeConfig.h
     include/Data/Nodes/RenderPassNodeConfig.h
     include/Data/Nodes/ShaderLibraryNodeConfig.h
     include/Data/Nodes/StructSpreaderNodeConfig.h
@@ -140,6 +141,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/InstanceNode.h
     include/Nodes/LoopBridgeNode.h
     include/Nodes/PresentNode.h
+    include/Nodes/PushConstantGathererNode.h
     include/Nodes/RenderPassNode.h
     include/Nodes/ResourceGathererNode.h
     include/Nodes/ShaderLibraryNode.h
@@ -170,6 +172,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/InstanceNode.cpp
     src/Nodes/LoopBridgeNode.cpp
     src/Nodes/PresentNode.cpp
+    src/Nodes/PushConstantGathererNode.cpp
     src/Nodes/RenderPassNode.cpp
     src/Nodes/ShaderLibraryNode.cpp
     src/Nodes/StructSpreaderNode.cpp
@@ -225,7 +228,7 @@ target_include_directories(RenderGraph
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ${CMAKE_CURRENT_SOURCE_DIR}/../CashSystem/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../ShaderManagement/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../binaries  # For generated SDI headers
+        ${CMAKE_CURRENT_SOURCE_DIR}/../binaries/generated/sdi  # For generated SDI headers
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

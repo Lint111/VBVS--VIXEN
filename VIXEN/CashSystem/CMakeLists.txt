@@ -18,6 +18,8 @@ target_include_directories(CashSystem PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
     # Main project source headers for VulkanResources
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/source/VulkanResources>
+    # Generated SDI headers
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
 )
 
 # Link dependencies here if/when required
