@@ -1,6 +1,7 @@
 #include "Nodes/LoopBridgeNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
+#include "NodeHelpers/ValidationHelpers.h"
 
 namespace Vixen::RenderGraph {
 
@@ -21,31 +22,28 @@ LoopBridgeNode::LoopBridgeNode(
 }
 
 void LoopBridgeNode::SetupImpl(TypedSetupContext& ctx) {
-    NODE_LOG_DEBUG("LoopBridgeNode::SetupImpl()");
-    
+    NODE_LOG_DEBUG("LoopBridgeNode setup");
 }
 
 void LoopBridgeNode::CompileImpl(TypedCompileContext& ctx) {
-    NODE_LOG_DEBUG("LoopBridgeNode::CompileImpl()");
+    NODE_LOG_DEBUG("LoopBridgeNode compile");
 
-    // Read LOOP_ID from input (connected to ConstantNode)
+    // Read LOOP_ID from input
     loopID = ctx.In(LoopBridgeNodeConfig::LOOP_ID);
 
     // Access graph-owned LoopManager
     RenderGraph* graph = GetOwningGraph();
-    if (graph) {
-        loopManager = &graph->GetLoopManager();
-        NODE_LOG_DEBUG("Connected to graph LoopManager with LOOP_ID: " + std::to_string(loopID));
-    } else {
-        NODE_LOG_ERROR("LoopBridgeNode has no owning graph");
+    if (!graph) {
+        throw std::runtime_error("LoopBridgeNode has no owning graph");
     }
 
+    loopManager = &graph->GetLoopManager();
+    NODE_LOG_DEBUG("Connected to LoopManager with LOOP_ID: " + std::to_string(loopID));
+
     // Verify loop exists
-    if (loopManager) {
-        const LoopReference* loopRef = loopManager->GetLoopReference(loopID);
-        if (!loopRef) {
-            NODE_LOG_ERROR("Invalid LOOP_ID - loop not registered");
-        }
+    const LoopReference* loopRef = loopManager->GetLoopReference(loopID);
+    if (!loopRef) {
+        throw std::runtime_error("Invalid LOOP_ID - loop not registered: " + std::to_string(loopID));
     }
 }
 
@@ -71,7 +69,7 @@ void LoopBridgeNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void LoopBridgeNode::CleanupImpl(TypedCleanupContext& ctx) {
-    NODE_LOG_DEBUG("LoopBridgeNode::CleanupImpl(TypedCleanupContext& ctx)");
+    NODE_LOG_DEBUG("LoopBridgeNode cleanup");
 
     // No resources to clean up - LoopManager owned by graph
     loopManager = nullptr;

@@ -1,5 +1,6 @@
 #include "Nodes/InputNode.h"
 #include "Core/NodeLogging.h"
+#include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 
 namespace Vixen::RenderGraph {
@@ -42,41 +43,20 @@ void InputNode::SetupImpl(TypedSetupContext& ctx) {
 void InputNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InputNode] Compile");
 
-    // Get HWND from input slot
-    hwnd = ctx.In(InputNodeConfig::HWND_IN);
-    if (hwnd == nullptr) {
-        throw std::runtime_error("[InputNode] HWND input is null");
-    }
+    // Validate HWND input using helper
+    using namespace RenderGraph::NodeHelpers;
+    hwnd = ValidateInput<HWND>(ctx, "HWND", InputNodeConfig::HWND_IN);
 
     NODE_LOG_INFO("[InputNode] HWND received successfully");
 }
 
 void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Calculate delta time
-    auto now = std::chrono::steady_clock::now();
-    deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
-    lastFrameTime = now;
+    UpdateDeltaTime();
 
-    // Enable mouse capture on first frame for game mode
+    // Enable mouse capture on first frame
     if (!mouseCaptured && hwnd) {
-        // Get window center for re-centering
-        RECT rect;
-        if (GetClientRect(hwnd, &rect)) {
-            int centerX = (rect.right - rect.left) / 2;
-            int centerY = (rect.bottom - rect.top) / 2;
-            POINT center = {centerX, centerY};
-            ClientToScreen(hwnd, &center);
-            SetCursorPos(center.x, center.y);
-
-            lastMouseX = centerX;
-            lastMouseY = centerY;
-        }
-
-        // Capture mouse to window
-        SetCapture(hwnd);
-
-        mouseCaptured = true;
-        NODE_LOG_INFO("[InputNode] Mouse captured for game mode");
+        InitializeMouseCapture();
     }
 
     // Poll input state
@@ -94,17 +74,7 @@ void InputNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Re-center mouse for continuous movement
     if (mouseCaptured && hwnd) {
-        RECT rect;
-        GetClientRect(hwnd, &rect);
-        int centerX = (rect.right - rect.left) / 2;
-        int centerY = (rect.bottom - rect.top) / 2;
-        POINT center = {centerX, centerY};
-        ClientToScreen(hwnd, &center);
-        SetCursorPos(center.x, center.y);
-
-        // Update last position to center (avoid accumulated drift)
-        lastMouseX = centerX;
-        lastMouseY = centerY;
+        RecenterMouse();
     }
 
     // Modern polling interface: Populate InputState and output it
@@ -166,6 +136,48 @@ void InputNode::CleanupImpl(TypedCleanupContext& ctx) {
     }
 
     keyStates.clear();
+}
+
+// ====== Helper Methods ======
+
+void InputNode::UpdateDeltaTime() {
+    auto now = std::chrono::steady_clock::now();
+    deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
+    lastFrameTime = now;
+}
+
+void InputNode::InitializeMouseCapture() {
+    // Get window center for re-centering
+    RECT rect;
+    if (GetClientRect(hwnd, &rect)) {
+        int centerX = (rect.right - rect.left) / 2;
+        int centerY = (rect.bottom - rect.top) / 2;
+        POINT center = {centerX, centerY};
+        ClientToScreen(hwnd, &center);
+        SetCursorPos(center.x, center.y);
+
+        lastMouseX = centerX;
+        lastMouseY = centerY;
+    }
+
+    // Capture mouse to window
+    SetCapture(hwnd);
+    mouseCaptured = true;
+    NODE_LOG_INFO("[InputNode] Mouse captured for game mode");
+}
+
+void InputNode::RecenterMouse() {
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int centerX = (rect.right - rect.left) / 2;
+    int centerY = (rect.bottom - rect.top) / 2;
+    POINT center = {centerX, centerY};
+    ClientToScreen(hwnd, &center);
+    SetCursorPos(center.x, center.y);
+
+    // Update last position to center (avoid accumulated drift)
+    lastMouseX = centerX;
+    lastMouseY = centerY;
 }
 
 // ====== Input Polling ======

@@ -59,6 +59,7 @@ private:
 
     VkFormat ConvertDepthFormat(DepthFormat format);
     void CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format);
+    void TransitionDepthImageLayout(VkCommandPool cmdPool);
     void TransitionImageLayout(VkCommandBuffer cmdBuffer, VkImage image,
                                VkImageLayout oldLayout, VkImageLayout newLayout);
 };

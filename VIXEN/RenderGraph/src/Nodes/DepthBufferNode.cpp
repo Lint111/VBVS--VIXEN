@@ -4,8 +4,10 @@
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "Data/Core/ResourceVariant.h"
-#include <sstream>
+#include "NodeHelpers/VulkanStructHelpers.h"
+#include "NodeHelpers/ValidationHelpers.h"
 #include "VulkanSwapChain.h"
+#include <sstream>
 
 
 namespace Vixen::RenderGraph {
@@ -39,38 +41,31 @@ void DepthBufferNode::SetupImpl(TypedSetupContext& ctx) {
 void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
-    // Access device input (compile-time dependency)
-    vulkanDevice = ctx.In(DepthBufferNodeConfig::VULKAN_DEVICE_IN);
-    deviceHandle = vulkanDevice; // Keep for legacy code
-
-    if (!vulkanDevice) {
-        std::string errorMsg = "DepthBufferNode: VulkanDevice input is null";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
+    // Validate and set device using helper
+    using namespace RenderGraph::NodeHelpers;
+    vulkanDevice = ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
+    deviceHandle = vulkanDevice;  // Keep for legacy code
 
     // Helper macro for VkDevice
     #define VK_DEVICE (vulkanDevice->device)
 
-    // Get typed inputs
-    SwapChainPublicVariablesPtr swapChainVars = ctx.In(DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
-    VkCommandPool cmdPool = ctx.In(DepthBufferNodeConfig::COMMAND_POOL);
+    // Validate swapchain variables and command pool
+    SwapChainPublicVariablesPtr swapChainVars = ValidateInput<SwapChainPublicVariablesPtr>(
+        ctx, "SwapChainPublicVars", DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
+    VkCommandPool cmdPool = ValidateInput<VkCommandPool>(
+        ctx, "CommandPool", DepthBufferNodeConfig::COMMAND_POOL);
 
-	uint32_t width = swapChainVars ? swapChainVars->Extent.width : 0;
-	uint32_t height = swapChainVars ? swapChainVars->Extent.height : 0;
+    uint32_t width = swapChainVars->Extent.width;
+    uint32_t height = swapChainVars->Extent.height;
 
     NODE_LOG_DEBUG("Input dimensions: " + std::to_string(width) + "x" + std::to_string(height));
 
-    // Validate inputs
+    // Validate dimensions
     if (width == 0 || height == 0) {
-        std::string errorMsg = "Invalid dimensions: width and height must be greater than 0";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
+        throw std::runtime_error("Invalid dimensions: width and height must be greater than 0");
     }
     if (cmdPool == VK_NULL_HANDLE) {
-        std::string errorMsg = "Command pool is null";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
+        throw std::runtime_error("Command pool is null");
     }
 
     // Get format from typed parameter (defaults to D32)
@@ -85,36 +80,8 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     // Create depth image and view
     CreateDepthImageAndView(width, height, format);
 
-    // Transition to depth-stencil attachment optimal layout
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = cmdPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer cmdBuffer;
-    vkAllocateCommandBuffers(VK_DEVICE, &allocInfo, &cmdBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    TransitionImageLayout(cmdBuffer, depthImage.image,
-                          VK_IMAGE_LAYOUT_UNDEFINED,
-                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-    vkEndCommandBuffer(cmdBuffer);
-
-    // Submit and wait
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmdBuffer;
-
-    vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(vulkanDevice->queue);
-
-    vkFreeCommandBuffers(VK_DEVICE, cmdPool, 1, &cmdBuffer);
+    // Transition depth image to optimal layout
+    TransitionDepthImageLayout(cmdPool);
 
     #undef VK_DEVICE
 
@@ -166,31 +133,23 @@ VkFormat DepthBufferNode::ConvertDepthFormat(DepthFormat format) {
 }
 
 void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format) {
+    using namespace RenderGraph::NodeHelpers;
+
     depthImage.format = format;
     VkDevice device = vulkanDevice->device;
 
-    // Create image
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = width;
-    imageInfo.extent.height = height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = format;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // Create image using helper
+    VkImageCreateInfo imageInfo = CreateImageInfo(
+        VK_IMAGE_TYPE_2D,
+        format,
+        VkExtent3D{width, height, 1},
+        1,  // mipLevels
+        1,  // arrayLayers
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
 
     VkResult result = vkCreateImage(device, &imageInfo, nullptr, &depthImage.image);
-    if (result != VK_SUCCESS) {
-        VulkanError error{result, "Failed to create depth image"};
-        NODE_LOG_ERROR(error.toString());
-        throw std::runtime_error(error.toString());
-    }
+    ValidateVulkanResult(result, "Depth image creation");
     NODE_LOG_DEBUG("Depth image created");
 
     // Allocate memory
@@ -216,25 +175,60 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
 
     vkBindImageMemory(device, depthImage.image, depthImage.mem, 0);
 
-    // Create image view
-    VkImageViewCreateInfo viewInfo{};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = depthImage.image;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = format;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = 1;
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
+    // Create image view using helper
+    VkImageViewCreateInfo viewInfo = CreateImageViewInfo(
+        depthImage.image,
+        VK_IMAGE_VIEW_TYPE_2D,
+        format,
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        1,  // mipLevels
+        1   // arrayLayers
+    );
 
     result = vkCreateImageView(device, &viewInfo, nullptr, &depthImage.view);
-    if (result != VK_SUCCESS) {
-        VulkanError error{result, "Failed to create depth image view"};
-        NODE_LOG_ERROR(error.toString());
-        throw std::runtime_error(error.toString());
-    }
+    ValidateVulkanResult(result, "Depth image view creation");
     NODE_LOG_DEBUG("Depth image view created");
+}
+
+void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
+    VkDevice device = vulkanDevice->device;
+
+    // Allocate command buffer
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = cmdPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &cmdBuffer);
+
+    // Begin command buffer
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+    // Transition layout
+    TransitionImageLayout(
+        cmdBuffer,
+        depthImage.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    );
+
+    vkEndCommandBuffer(cmdBuffer);
+
+    // Submit and wait
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vulkanDevice->queue);
+
+    vkFreeCommandBuffers(device, cmdPool, 1, &cmdBuffer);
 }
 
 void DepthBufferNode::TransitionImageLayout(

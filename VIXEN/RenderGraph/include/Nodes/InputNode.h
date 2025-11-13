@@ -57,6 +57,11 @@ private:
         std::chrono::steady_clock::time_point pressTime;  // When key was first pressed
     };
 
+    // Helper methods
+    void UpdateDeltaTime();
+    void InitializeMouseCapture();
+    void RecenterMouse();
+
     // Poll Win32 input state
     void PollKeyboard();
     void PollMouse();

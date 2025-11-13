@@ -191,6 +191,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(BoolOpEnum,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(SlotRoleEnum,                    HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(InputStatePtr,                   HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VkPushConstantRange,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(CameraData,                      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \

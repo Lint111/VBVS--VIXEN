@@ -57,6 +57,8 @@ private:
 
     // Apply accumulated input deltas to camera state
     void ApplyInputDeltas(float deltaTime);
+    void ApplyRotation();
+    void ApplyMovement(float deltaTime);
 
 
     // Current camera data struct

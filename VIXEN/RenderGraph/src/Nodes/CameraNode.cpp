@@ -3,6 +3,7 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanSwapChain.h"
 #include "EventBus/InputEvents.h"
+#include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 #include <cstring>
 
@@ -63,19 +64,13 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
 void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
-    // Get device
-    VulkanDevicePtr devicePtr = ctx.In(CameraNodeConfig::VULKAN_DEVICE_IN);
-    if (!devicePtr) {
-        throw std::runtime_error("[CameraNode] VULKAN_DEVICE_IN is null");
-    }
-
+    // Validate inputs using helpers
+    using namespace RenderGraph::NodeHelpers;
+    VulkanDevicePtr devicePtr = ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", CameraNodeConfig::VULKAN_DEVICE_IN);
     SetDevice(devicePtr);
 
-    // Get swapchain info for initial aspect ratio
-    SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
-    if (!swapchainInfo) {
-        throw std::runtime_error("[CameraNode] SWAPCHAIN_PUBLIC is null");
-    }
+    SwapChainPublicVariables* swapchainInfo = ValidateInput<SwapChainPublicVariables*>(
+        ctx, "SwapChainPublic", CameraNodeConfig::SWAPCHAIN_PUBLIC);
 
     // Initialize camera data with valid values
     float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
@@ -219,62 +214,61 @@ void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
 // No event handlers needed - eliminates event flooding and provides predictable timing
 
 void CameraNode::ApplyInputDeltas(float deltaTime) {
-    // Clamp raw rotation delta to prevent huge jumps (e.g., from window refocus)
+    ApplyRotation();
+    ApplyMovement(deltaTime);
+}
+
+void CameraNode::ApplyRotation() {
+    // Clamp raw rotation delta to prevent huge jumps
     rotationDelta.x = glm::clamp(rotationDelta.x, -maxRotationDeltaPerFrame, maxRotationDeltaPerFrame);
     rotationDelta.y = glm::clamp(rotationDelta.y, -maxRotationDeltaPerFrame, maxRotationDeltaPerFrame);
 
     // Apply exponential smoothing to reduce jitter
-    // smoothedDelta = lerp(smoothedDelta, rawDelta, smoothingFactor)
-    // smoothingFactor 0.0 = infinite smoothing (no movement)
-    // smoothingFactor 1.0 = no smoothing (instant response)
-    // smoothingFactor 0.3 = smooth but responsive (good default)
     smoothedRotationDelta = glm::mix(smoothedRotationDelta, rotationDelta, mouseSmoothingFactor);
 
-    // Apply smoothed rotation (mouse look)
+    // Apply smoothed rotation
     yaw += smoothedRotationDelta.x * mouseSensitivity;
-    pitch -= smoothedRotationDelta.y * mouseSensitivity;  // Invert Y: down = look down
+    pitch -= smoothedRotationDelta.y * mouseSensitivity;
 
     // Clamp pitch to avoid gimbal lock
     const float maxPitch = glm::radians(89.0f);
     pitch = glm::clamp(pitch, -maxPitch, maxPitch);
 
-    // Clear raw rotation delta (smoothed delta persists for continuity)
+    // Clear raw rotation delta
     rotationDelta = glm::vec2(0.0f);
+}
 
-    // Apply movement (helicopter controls)
-    if (glm::length(movementDelta) > 0.0f) {
-        // Compute local-space forward/right vectors
-        glm::vec3 forward;
-        forward.x = cos(pitch) * sin(yaw);
-        forward.y = sin(pitch);
-        forward.z = -cos(pitch) * cos(yaw);
-        forward = glm::normalize(forward);
-
-        glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-
-        // For helicopter controls:
-        // - WASD movement uses local forward/right (XZ plane)
-        // - QE movement uses global Y-axis
-
-        // Local horizontal movement (WASD in camera-space, but keep Y=0 for helicopter feel)
-        glm::vec3 forwardHorizontal = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
-        glm::vec3 rightHorizontal = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
-
-        glm::vec3 moveVector = forwardHorizontal * movementDelta.z + rightHorizontal * movementDelta.x;
-
-        // Normalize to prevent faster diagonal movement (only for horizontal)
-        float horizontalLength = glm::length(glm::vec2(moveVector.x, moveVector.z));
-        if (horizontalLength > 1.0f) {
-            moveVector.x /= horizontalLength;
-            moveVector.z /= horizontalLength;
-        }
-
-        // Apply horizontal movement with speed and delta time
-        cameraPosition += moveVector * moveSpeed * deltaTime;
-
-        // Apply vertical movement (QE) separately with its own speed
-        cameraPosition.y += movementDelta.y * verticalSpeed * deltaTime;
+void CameraNode::ApplyMovement(float deltaTime) {
+    if (glm::length(movementDelta) == 0.0f) {
+        movementDelta = glm::vec3(0.0f);
+        return;
     }
+
+    // Compute local-space vectors
+    glm::vec3 forward;
+    forward.x = cos(pitch) * sin(yaw);
+    forward.y = sin(pitch);
+    forward.z = -cos(pitch) * cos(yaw);
+    forward = glm::normalize(forward);
+
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+    // Helicopter controls: horizontal movement in XZ plane
+    glm::vec3 forwardHorizontal = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
+    glm::vec3 rightHorizontal = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
+
+    glm::vec3 moveVector = forwardHorizontal * movementDelta.z + rightHorizontal * movementDelta.x;
+
+    // Normalize to prevent faster diagonal movement
+    float horizontalLength = glm::length(glm::vec2(moveVector.x, moveVector.z));
+    if (horizontalLength > 1.0f) {
+        moveVector.x /= horizontalLength;
+        moveVector.z /= horizontalLength;
+    }
+
+    // Apply horizontal and vertical movement
+    cameraPosition += moveVector * moveSpeed * deltaTime;
+    cameraPosition.y += movementDelta.y * verticalSpeed * deltaTime;
 
     // Clear movement delta
     movementDelta = glm::vec3(0.0f);

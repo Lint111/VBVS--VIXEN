@@ -1,5 +1,6 @@
 #include "Nodes/BoolOpNode.h"
 #include "Core/NodeLogging.h"
+#include "NodeHelpers/ValidationHelpers.h"
 
 namespace Vixen::RenderGraph {
 
@@ -20,20 +21,21 @@ BoolOpNode::BoolOpNode(
 }
 
 void BoolOpNode::SetupImpl(TypedSetupContext& ctx) {
-    NODE_LOG_DEBUG("BoolOpNode::SetupImpl()");
-   
+    NODE_LOG_DEBUG("BoolOpNode setup");
 }
 
 void BoolOpNode::CompileImpl(TypedCompileContext& ctx) {
-    NODE_LOG_DEBUG("BoolOpNode::CompileImpl()");
+    NODE_LOG_DEBUG("BoolOpNode compile");
 
-     // Read OPERATION from input (connected to ConstantNode)
+    // Read OPERATION from input
     operation = ctx.In(BoolOpNodeConfig::OPERATION);
 
     // Validate operation type
     if (static_cast<uint8_t>(operation) > static_cast<uint8_t>(BoolOp::NOR)) {
-        NODE_LOG_ERROR("Invalid BoolOp operation");
+        throw std::runtime_error("Invalid BoolOp operation: " + std::to_string(static_cast<int>(operation)));
     }
+
+    NODE_LOG_DEBUG("BoolOp operation set to: " + std::to_string(static_cast<int>(operation)));
 }
 
 void BoolOpNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -110,7 +112,7 @@ void BoolOpNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void BoolOpNode::CleanupImpl(TypedCleanupContext& ctx) {
-    NODE_LOG_DEBUG("BoolOpNode::CleanupImpl(TypedCleanupContext& ctx)");
+    NODE_LOG_DEBUG("BoolOpNode cleanup");
     // No resources to clean up
 }
 

@@ -1,6 +1,7 @@
 #include "Nodes/PushConstantGathererNode.h"
 #include "Core/ExecutionContext.h"
 #include "ShaderManagement/SpirvReflectionData.h"
+#include "NodeHelpers/ValidationHelpers.h"
 #include <cstring>
 #include <iostream>
 
@@ -105,7 +106,7 @@ void PushConstantGathererNode::SetupImpl(VariadicSetupContext& ctx) {
 void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     std::cout << "[PushConstantGatherer] Compile phase\n";
 
-    // Get shader bundle to discover/validate push constants
+    // Validate shader bundle input
     auto* bundleRes = GetInputResource(PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
     if (!bundleRes) {
         ctx.ReportError("No shader bundle connected");
