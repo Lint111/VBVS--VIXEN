@@ -107,10 +107,21 @@ private:
     std::vector<ResourceVariant> resourceArray_;
     std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
 
-    // Helpers
+    // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);
     void GatherResources(VariadicCompileContext& ctx);
     void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
+
+    // Validation helpers (extracted from ValidateTentativeSlotsAgainstShader)
+    void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorLayoutSpecification* layoutSpec);
+    void UpdateSlotWithShaderBinding(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorBindingInfo& shaderBinding);
+    void MarkSlotAsInvalid(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo);
+
+    // Resource gathering helpers (extracted from GatherResources)
+    bool ProcessSlot(size_t slotIndex, const VariadicSlotInfo* slotInfo);
+    void InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role);
+    void StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, const ResourceVariant& variant);
+    void StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant);
 
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);
@@ -118,6 +129,8 @@ private:
 
     // Generic descriptor type compatibility (visitor pattern)
     bool IsResourceCompatibleWithDescriptorType(Resource* res, VkDescriptorType descriptorType);
+    std::optional<ResourceUsage> ExtractResourceUsage(Resource* res);
+    bool CheckUsageCompatibility(ResourceUsage usage, ResourceType resType, VkDescriptorType descriptorType);
     bool IsResourceTypeCompatibleWithDescriptor(ResourceType resType, VkDescriptorType descriptorType);
 
     // Pre-registration helper (implementation detail)

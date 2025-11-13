@@ -207,9 +207,9 @@ add_library(RenderGraph STATIC
 # Compiler Options
 # ============================================================================
 
-# MSVC: Enable /FS for parallel compilation PDB access
+# MSVC: Enable /FS for parallel compilation PDB access and /bigobj for large object files
 if(MSVC)
-    target_compile_options(RenderGraph PRIVATE /FS)
+    target_compile_options(RenderGraph PRIVATE /FS /bigobj)
 endif()
 
 # C++23 standard

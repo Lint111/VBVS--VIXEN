@@ -170,6 +170,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(VkFormat,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(uint32_t,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(uint64_t,                        HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(uint8_t,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(HWND,                            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(HINSTANCE,                       HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(SwapChainPublicVariablesPtr,     HandleDescriptor,      ResourceType::Buffer) \

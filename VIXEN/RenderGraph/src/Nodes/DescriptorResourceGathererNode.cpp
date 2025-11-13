@@ -148,13 +148,10 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Variadi
         return;
     }
 
-    // All bundle access goes through context
     size_t variadicCount = ctx.InVariadicCount();
-
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateTentativeSlots] Validating " + std::to_string(variadicCount) + " tentative slots against " + std::to_string(layoutSpec->bindings.size()) + " shader bindings");
 
-    RenderGraph* graph = GetOwningGraph();
-    if (!graph) {
+    if (!GetOwningGraph()) {
         NODE_LOG_INFO("[DescriptorResourceGathererNode::ValidateTentativeSlots] ERROR: No owning graph");
         return;
     }
@@ -166,43 +163,61 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Variadi
             continue;  // Skip non-tentative slots
         }
 
-        // Find matching shader binding
-        bool foundMatch = false;
-        for (const auto& shaderBinding : layoutSpec->bindings) {
-            if (shaderBinding.binding == slotInfo->binding) {
-                // Create updated slot info
-                VariadicSlotInfo updatedSlot = *slotInfo;
+        ValidateSingleSlotAgainstShader(ctx, i, slotInfo, layoutSpec);
+    }
+}
 
-                // Update descriptor type from shader if mismatch
-                if (shaderBinding.descriptorType != slotInfo->descriptorType) {
-                    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateTentativeSlots] Updating slot " + std::to_string(i) + " descriptor type from " + std::to_string(slotInfo->descriptorType) + " to " + std::to_string(shaderBinding.descriptorType) + " (from shader)");
-                    updatedSlot.descriptorType = shaderBinding.descriptorType;
-                }
-
-                // Keep source info for deferred resource fetch in GatherResources
-                // (Don't fetch now - source node might not be compiled yet)
-
-                // Mark as validated
-                updatedSlot.state = SlotState::Validated;
-
-                // Update the slot via context
-                ctx.UpdateVariadicSlot(i, updatedSlot);
-
-                NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateTentativeSlots] Slot " + std::to_string(i) + " (binding=" + std::to_string(slotInfo->binding) + ") validated and updated (state=Validated)");
-                foundMatch = true;
-                break;
-            }
-        }
-
-        if (!foundMatch) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateTentativeSlots] WARNING: Slot " + std::to_string(i) + " (binding=" + std::to_string(slotInfo->binding) + ") has no matching shader binding");
-
-            // Mark as invalid via context
-            VariadicSlotInfo updatedSlot = *slotInfo;
-            updatedSlot.state = SlotState::Invalid;
-            ctx.UpdateVariadicSlot(i, updatedSlot);
+void DescriptorResourceGathererNode::ValidateSingleSlotAgainstShader(
+    VariadicCompileContext& ctx,
+    size_t slotIndex,
+    const VariadicSlotInfo* slotInfo,
+    const ShaderManagement::DescriptorLayoutSpecification* layoutSpec
+) {
+    // Find matching shader binding
+    for (const auto& shaderBinding : layoutSpec->bindings) {
+        if (shaderBinding.binding == slotInfo->binding) {
+            UpdateSlotWithShaderBinding(ctx, slotIndex, slotInfo, shaderBinding);
+            return;
         }
     }
+
+    // No matching shader binding found - mark as invalid
+    MarkSlotAsInvalid(ctx, slotIndex, slotInfo);
+}
+
+void DescriptorResourceGathererNode::UpdateSlotWithShaderBinding(
+    VariadicCompileContext& ctx,
+    size_t slotIndex,
+    const VariadicSlotInfo* slotInfo,
+    const ShaderManagement::DescriptorBindingInfo& shaderBinding
+) {
+    VariadicSlotInfo updatedSlot = *slotInfo;
+
+    // Update descriptor type from shader if mismatch
+    if (shaderBinding.descriptorType != slotInfo->descriptorType) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::UpdateSlotWithShaderBinding] Updating slot " + std::to_string(slotIndex) + " descriptor type from " + std::to_string(slotInfo->descriptorType) + " to " + std::to_string(shaderBinding.descriptorType) + " (from shader)");
+        updatedSlot.descriptorType = shaderBinding.descriptorType;
+    }
+
+    // Mark as validated
+    updatedSlot.state = SlotState::Validated;
+
+    // Update the slot via context
+    ctx.UpdateVariadicSlot(slotIndex, updatedSlot);
+
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::UpdateSlotWithShaderBinding] Slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(slotInfo->binding) + ") validated and updated (state=Validated)");
+}
+
+void DescriptorResourceGathererNode::MarkSlotAsInvalid(
+    VariadicCompileContext& ctx,
+    size_t slotIndex,
+    const VariadicSlotInfo* slotInfo
+) {
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::MarkSlotAsInvalid] WARNING: Slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(slotInfo->binding) + ") has no matching shader binding");
+
+    VariadicSlotInfo updatedSlot = *slotInfo;
+    updatedSlot.state = SlotState::Invalid;
+    ctx.UpdateVariadicSlot(slotIndex, updatedSlot);
 }
 
 void DescriptorResourceGathererNode::DiscoverDescriptors(VariadicCompileContext& ctx) {
@@ -252,93 +267,102 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
 
 void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx) {
     // Gather validated variadic slots into resource array, indexed by binding
-    // All bundle access goes through context - taskIndex handled automatically
     size_t inputCount = ctx.InVariadicCount();
-
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathering " + std::to_string(inputCount) + " validated slots");
 
     for (size_t i = 0; i < inputCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Null slot at index " + std::to_string(i));
+        if (!slotInfo || !ProcessSlot(i, slotInfo)) {
             continue;
-        }
-
-        // Skip invalid slots (failed validation)
-        if (slotInfo->state == SlotState::Invalid) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Skipping invalid slot " + std::to_string(i) + " (binding=" + std::to_string(slotInfo->binding) + ")");
-            continue;
-        }
-
-        uint32_t binding = slotInfo->binding;
-
-        // Store slot role even for Execute slots (needed for filtering in DescriptorSetNode)
-        slotRoleArray_[binding] = slotInfo->slotRole;
-
-        // For Execute-ONLY slots (no Dependency flag), skip resource gathering in Compile
-        // Slots with Dependency flag (including Dependency|Execute) need initial gather here
-        if (!HasDependency(slotInfo->slotRole)) {
-            // Initialize placeholder entry to prevent accessing uninitialized memory
-            // This ensures resourceArray_[binding] exists even before Execute phase
-            resourceArray_[binding] = std::monostate{};
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Recorded role for Execute-only slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(slotInfo->slotRole)) + ") - placeholder initialized, resource will be gathered in Execute phase");
-            continue;
-        }
-
-        // Slot should have valid resource after validation (for non-transient)
-        if (!slotInfo->resource) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Validated slot " + std::to_string(i) + " (binding=" + std::to_string(binding) + ") has null resource");
-            continue;
-        }
-
-        auto variant = slotInfo->resource->GetHandleVariant();
-
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Slot " + std::to_string(i) + " variant index=" + std::to_string(variant.index()) + ", resource type=" + std::to_string(static_cast<int>(slotInfo->resource->GetType())) + ", isValid=" + std::to_string(slotInfo->resource->IsValid()) + ", hasFieldExtraction=" + std::to_string(slotInfo->hasFieldExtraction));
-
-        // Handle field extraction from struct using runtime type dispatch
-        if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Extracting field at offset " + std::to_string(slotInfo->fieldOffset) + " from struct for binding " + std::to_string(binding));
-
-            // Extract field using visitor pattern - get raw struct pointer from variant
-            std::visit([&](auto&& structPtr) {
-                using StructPtrType = std::decay_t<decltype(structPtr)>;
-
-                // Get raw pointer from smart pointer or raw pointer
-                const void* rawStructPtr = nullptr;
-                if constexpr (std::is_pointer_v<StructPtrType>) {
-                    rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr));
-                } else if constexpr (requires { structPtr.get(); }) {
-                    rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr.get()));
-                } else {
-                    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Cannot extract raw pointer from variant type");
-                    return;
-                }
-
-                if (!rawStructPtr) {
-                    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] WARNING: Null struct pointer");
-                    return;
-                }
-
-                // Apply field offset to get field pointer
-                auto* fieldPtr = reinterpret_cast<const char*>(rawStructPtr) + slotInfo->fieldOffset;
-
-                // Extract field value based on resourceType - dispatch to correct type
-                // NOTE: This requires knowing the actual field type at runtime
-                // For now, we store the struct and let downstream nodes handle extraction
-                resourceArray_[binding] = variant;  // Store original struct
-
-                NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Stored struct with field at offset " + std::to_string(slotInfo->fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
-            }, variant);
-        }
-        // Regular resources - store directly at binding index
-        else {
-            resourceArray_[binding] = variant;
-            // Note: slotRoleArray_[binding] already set earlier in this function
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered resource for binding " + std::to_string(binding) + " (" + slotInfo->slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(slotInfo->slotRole)));
         }
     }
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::GatherResources] Gathered " + std::to_string(resourceArray_.size()) + " total resources");
+}
+
+bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const VariadicSlotInfo* slotInfo) {
+    if (!slotInfo) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Null slot at index " + std::to_string(slotIndex));
+        return false;
+    }
+
+    // Skip invalid slots (failed validation)
+    if (slotInfo->state == SlotState::Invalid) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Skipping invalid slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(slotInfo->binding) + ")");
+        return false;
+    }
+
+    uint32_t binding = slotInfo->binding;
+    slotRoleArray_[binding] = slotInfo->slotRole;
+
+    // Handle Execute-only slots
+    if (!HasDependency(slotInfo->slotRole)) {
+        InitializeExecuteOnlySlot(slotIndex, binding, slotInfo->slotRole);
+        return true;
+    }
+
+    // Validate resource availability
+    if (!slotInfo->resource) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Validated slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ") has null resource");
+        return false;
+    }
+
+    auto variant = slotInfo->resource->GetHandleVariant();
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Slot " + std::to_string(slotIndex) + " variant index=" + std::to_string(variant.index()) + ", resource type=" + std::to_string(static_cast<int>(slotInfo->resource->GetType())) + ", isValid=" + std::to_string(slotInfo->resource->IsValid()) + ", hasFieldExtraction=" + std::to_string(slotInfo->hasFieldExtraction));
+
+    // Store resource (field extraction or regular)
+    if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
+        StoreFieldExtractionResource(slotIndex, binding, slotInfo->fieldOffset, variant);
+    } else {
+        StoreRegularResource(slotIndex, binding, slotInfo->slotName, slotInfo->slotRole, variant);
+    }
+
+    return true;
+}
+
+void DescriptorResourceGathererNode::InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role) {
+    // Initialize placeholder entry to prevent accessing uninitialized memory
+    // This ensures resourceArray_[binding] exists even before Execute phase
+    resourceArray_[binding] = std::monostate{};
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::InitializeExecuteOnlySlot] Recorded role for Execute-only slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(role)) + ") - placeholder initialized, resource will be gathered in Execute phase");
+}
+
+void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, const ResourceVariant& variant) {
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Extracting field at offset " + std::to_string(fieldOffset) + " from struct for binding " + std::to_string(binding));
+
+    // Extract field using visitor pattern - get raw struct pointer from variant
+    std::visit([&](auto&& structPtr) {
+        using StructPtrType = std::decay_t<decltype(structPtr)>;
+
+        // Get raw pointer from smart pointer or raw pointer
+        const void* rawStructPtr = nullptr;
+        if constexpr (std::is_pointer_v<StructPtrType>) {
+            rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr));
+        } else if constexpr (requires { structPtr.get(); }) {
+            rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr.get()));
+        } else {
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] WARNING: Cannot extract raw pointer from variant type");
+            return;
+        }
+
+        if (!rawStructPtr) {
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] WARNING: Null struct pointer");
+            return;
+        }
+
+        // Apply field offset to get field pointer (not currently used - stored for downstream)
+        auto* fieldPtr = reinterpret_cast<const char*>(rawStructPtr) + fieldOffset;
+
+        // Store original struct - downstream nodes will handle extraction
+        resourceArray_[binding] = variant;
+
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored struct with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
+    }, variant);
+}
+
+void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant) {
+    resourceArray_[binding] = variant;
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(role)));
 }
 
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {
@@ -371,35 +395,8 @@ bool DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType(
 ) {
     if (!res) return false;
 
-    // Get descriptor from resource
     ResourceType resType = res->GetType();
-
-    // Try to extract usage from descriptor using visitor pattern
-    std::optional<ResourceUsage> usageOpt;
-
-    // Visit BufferDescriptor
-    if (auto* bufferDesc = res->GetDescriptor<BufferDescriptor>()) {
-        usageOpt = bufferDesc->usage;
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found BufferDescriptor with usage=" + std::to_string(static_cast<uint32_t>(bufferDesc->usage)));
-    }
-    // Visit ImageDescriptor
-    else if (auto* imageDesc = res->GetDescriptor<ImageDescriptor>()) {
-        usageOpt = imageDesc->usage;
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found ImageDescriptor with usage=" + std::to_string(static_cast<uint32_t>(imageDesc->usage)));
-    }
-    // Visit StorageImageDescriptor
-    else if (auto* storageImageDesc = res->GetDescriptor<StorageImageDescriptor>()) {
-        usageOpt = ResourceUsage::Storage;  // Storage images always have Storage usage
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found StorageImageDescriptor");
-    }
-    // Visit Texture3DDescriptor
-    else if (auto* texture3DDesc = res->GetDescriptor<Texture3DDescriptor>()) {
-        usageOpt = ResourceUsage::Sampled;  // 3D textures typically sampled
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Found Texture3DDescriptor");
-    }
-    else {
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] No descriptor with usage found, using fallback");
-    }
+    std::optional<ResourceUsage> usageOpt = ExtractResourceUsage(res);
 
     // If no usage available, fall back to ResourceType-based compatibility
     if (!usageOpt.has_value()) {
@@ -411,7 +408,40 @@ bool DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType(
     ResourceUsage usage = usageOpt.value();
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType] Checking usage=" + std::to_string(static_cast<uint32_t>(usage)) + " against VkDescriptorType=" + std::to_string(descriptorType));
 
-    // Check compatibility based on descriptor type
+    return CheckUsageCompatibility(usage, resType, descriptorType);
+}
+
+std::optional<ResourceUsage> DescriptorResourceGathererNode::ExtractResourceUsage(Resource* res) {
+    // Try to extract usage from descriptor using visitor pattern
+    if (auto* bufferDesc = res->GetDescriptor<BufferDescriptor>()) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractResourceUsage] Found BufferDescriptor with usage=" + std::to_string(static_cast<uint32_t>(bufferDesc->usage)));
+        return bufferDesc->usage;
+    }
+
+    if (auto* imageDesc = res->GetDescriptor<ImageDescriptor>()) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractResourceUsage] Found ImageDescriptor with usage=" + std::to_string(static_cast<uint32_t>(imageDesc->usage)));
+        return imageDesc->usage;
+    }
+
+    if (auto* storageImageDesc = res->GetDescriptor<StorageImageDescriptor>()) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractResourceUsage] Found StorageImageDescriptor");
+        return ResourceUsage::Storage;  // Storage images always have Storage usage
+    }
+
+    if (auto* texture3DDesc = res->GetDescriptor<Texture3DDescriptor>()) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractResourceUsage] Found Texture3DDescriptor");
+        return ResourceUsage::Sampled;  // 3D textures typically sampled
+    }
+
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractResourceUsage] No descriptor with usage found");
+    return std::nullopt;
+}
+
+bool DescriptorResourceGathererNode::CheckUsageCompatibility(
+    ResourceUsage usage,
+    ResourceType resType,
+    VkDescriptorType descriptorType
+) {
     switch (descriptorType) {
         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
             return HasUsage(usage, ResourceUsage::UniformBuffer);
@@ -424,12 +454,8 @@ bool DescriptorResourceGathererNode::IsResourceCompatibleWithDescriptorType(
                    (resType == ResourceType::Image || resType == ResourceType::StorageImage);
 
         case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-            return HasUsage(usage, ResourceUsage::Sampled) &&
-                   (resType == ResourceType::Image || resType == ResourceType::Image3D);
-
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            // Combined sampler requires Sampled usage
-            // Note: Actual sampler is separate resource, we check image compatibility here
+            // Both require Sampled usage (combined sampler checks image compatibility)
             return HasUsage(usage, ResourceUsage::Sampled) &&
                    (resType == ResourceType::Image || resType == ResourceType::Image3D);
 
