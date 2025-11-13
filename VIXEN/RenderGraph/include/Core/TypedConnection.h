@@ -427,8 +427,18 @@ public:
         BindingRefType bindingRef,
         SlotRole slotRoleOverride = SlotRole::Output  // Output = sentinel for auto-detect
     ) {
-        // Access static members via the type
-        constexpr uint32_t bindingValue = BindingRefType::binding;
+        // Extract binding value from bindingRef
+        // Handle both binding reference objects (with .binding member) and plain integers
+        uint32_t bindingValue;
+        
+        if constexpr (std::is_integral_v<BindingRefType>) {
+            // Plain integer binding index
+            bindingValue = static_cast<uint32_t>(bindingRef);
+        } else {
+            // Binding reference object with .binding, .name, .type members
+            bindingValue = bindingRef.binding;
+        }
+        
         std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingValue << std::endl;
 
         // Defer the variadic connection via lambda (applied during RegisterAll)
@@ -454,7 +464,7 @@ public:
             }
 
             // Extract binding index from binding ref
-            uint32_t bindingIndex = BindingRefType::binding;
+            uint32_t bindingIndex = bindingValue;  // Use captured bindingValue from outer scope
             size_t bundleIndex = 0;
 
             // Create tentative slot using helper (no field extraction needed)
@@ -520,8 +530,21 @@ public:
         FieldType StructType::* memberPtr,  // Member pointer for field extraction
         SlotRole slotRoleOverride = SlotRole::Output  // Output = sentinel for auto-detect
     ) {
-        // Access static members via the type
-        constexpr uint32_t bindingValue = BindingRefType::binding;
+        // Extract binding value from bindingRef
+        // Handle both binding reference objects (with .binding member) and plain integers
+        uint32_t bindingValue;
+        const char* slotName = "";
+        
+        if constexpr (std::is_integral_v<BindingRefType>) {
+            // Plain integer binding index (for push constant gatherer)
+            bindingValue = static_cast<uint32_t>(bindingRef);
+            slotName = "push_constant_field";  // Default name for push constant fields
+        } else {
+            // Binding reference object with .binding, .name, .type members
+            bindingValue = bindingRef.binding;
+            slotName = bindingRef.name;
+        }
+        
         std::cout << "[ConnectVariadic] Storing field extraction lambda for PostSetup execution at binding "
                   << bindingValue << std::endl;
 
@@ -561,7 +584,7 @@ public:
 
             // Type information for the extracted field
             using FieldResourceType = std::remove_reference_t<FieldType>;
-            uint32_t bindingIndex = BindingRefType::binding;
+            uint32_t bindingIndex = bindingValue;  // Use captured bindingValue from outer scope
             size_t bundleIndex = 0;
 
             // Create base tentative slot using helper
@@ -758,9 +781,19 @@ private:
         VariadicSlotInfo tentativeSlot;
         tentativeSlot.resource = nullptr;  // Will be set in PostCompile hook
         tentativeSlot.resourceType = sourceResourceType;
-        tentativeSlot.slotName = BindingRefType::name;
-        tentativeSlot.binding = BindingRefType::binding;
-        tentativeSlot.descriptorType = BindingRefType::type;
+        
+        // Handle both binding reference objects and plain integers
+        if constexpr (std::is_integral_v<BindingRefType>) {
+            // Plain integer binding index
+            tentativeSlot.slotName = "push_constant_field";  // Default name for simple bindings
+            tentativeSlot.binding = static_cast<uint32_t>(bindingRef);
+            tentativeSlot.descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;  // Not applicable for simple bindings
+        } else {
+            // Binding reference object with .binding, .name, .type members
+            tentativeSlot.slotName = bindingRef.name;
+            tentativeSlot.binding = bindingRef.binding;
+            tentativeSlot.descriptorType = bindingRef.type;
+        }
         tentativeSlot.state = SlotState::Tentative;
         tentativeSlot.sourceNode = sourceNode;
         tentativeSlot.sourceOutput = static_cast<uint32_t>(sourceSlotIndex);

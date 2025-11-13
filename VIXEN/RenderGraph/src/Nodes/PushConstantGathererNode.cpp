@@ -1,5 +1,5 @@
 #include "Nodes/PushConstantGathererNode.h"
-#include "Core/ExecutionContext.h"
+#include "Core/NodeContext.h"
 #include "ShaderManagement/SpirvReflectionData.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include <cstring>
@@ -33,7 +33,7 @@ PushConstantGathererNode::PushConstantGathererNode(
 
     // Set maximum number of variadic slots
     // Support up to 32 push constant fields (128 bytes / 4 bytes avg)
-    SetMaxVariadicSlotCount(32);
+    maxVariadicInputs_ = 32;
 
     // Initialize with no variadic constraints (will be set during pre-registration or setup)
     SetVariadicInputConstraints(0, 0);

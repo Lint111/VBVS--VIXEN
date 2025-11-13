@@ -282,13 +282,9 @@ std::string SpirvTypeInfo::ToCppType() const {
             oss << structName;
             break;
         case BaseType::Array:
-            // For runtime-sized arrays (arraySize == 0), return generic element type
-            // The [] will be added by the generator code based on arrayStride
-            if (arraySize == 0) {
-                oss << "uint32_t";  // Generic element type for runtime arrays
-            } else {
-                oss << "Array[" << arraySize << "]";
-            }
+            // Return generic element type - array brackets are added separately
+            // by the code generation logic based on arraySize
+            oss << "uint32_t";  // Generic element type for all array types
             break;
         case BaseType::Sampler:
             oss << "VkSampler";

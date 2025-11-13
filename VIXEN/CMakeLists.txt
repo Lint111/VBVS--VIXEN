@@ -461,9 +461,12 @@ add_executable(${Recipe_Name}
     ${HPP_FILES}
 )
 
-# Add include directory for generated SDI headers
+# Add include directories for generated SDI headers
+# Primary: Runtime-generated SDI files (generated during shader compilation)
+# Fallback: Build-time generated SDI files (precompiled assets)
 target_include_directories(${Recipe_Name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/binaries/generated/sdi
+    ${CMAKE_CURRENT_SOURCE_DIR}/BuiltAssets/GeneratedIncludes
 )
 
 # Link libraries to main executable
