@@ -14,6 +14,8 @@
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include <cstring>
 
+using namespace NodeHelpers;
+
 namespace Vixen::RenderGraph {
 
 // ====== GraphicsPipelineNodeType ======
@@ -65,10 +67,10 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     std::string topologyStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::TOPOLOGY, "TriangleList");
     std::string frontFaceStr = GetParameterValue<std::string>(GraphicsPipelineNodeConfig::FRONT_FACE, "CounterClockwise");
 
-    cullMode = NodeHelpers::ParseCullMode(cullModeStr);
-    polygonMode = NodeHelpers::ParsePolygonMode(polygonModeStr);
-    topology = NodeHelpers::ParseTopology(topologyStr);
-    frontFace = NodeHelpers::ParseFrontFace(frontFaceStr);
+    cullMode = ParseCullMode(cullModeStr);
+    polygonMode = ParsePolygonMode(polygonModeStr);
+    topology = ParseTopology(topologyStr);
+    frontFace = ParseFrontFace(frontFaceStr);
 
     // Get inputs
     currentShaderBundle =  ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
@@ -394,12 +396,12 @@ void GraphicsPipelineNode::BuildDynamicStateInfo(VkPipelineDynamicStateCreateInf
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
     };
-    outState = NodeHelpers::CreateDynamicStateInfo(dynamicStates, 2);
+    outState = CreateDynamicStateInfo(dynamicStates, 2);
 }
 
 void GraphicsPipelineNode::BuildVertexInputState(VkPipelineVertexInputStateCreateInfo& outState) {
     if (!enableVertexInput) {
-        outState = NodeHelpers::CreateVertexInputState(nullptr, 0, nullptr, 0);
+        outState = CreateVertexInputState(nullptr, 0, nullptr, 0);
         return;
     }
 
@@ -414,23 +416,23 @@ void GraphicsPipelineNode::BuildVertexInputState(VkPipelineVertexInputStateCreat
     attributes[0] = {0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0};
     attributes[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 4};
 
-    outState = NodeHelpers::CreateVertexInputState(&binding, 1, attributes, 2);
+    outState = CreateVertexInputState(&binding, 1, attributes, 2);
 }
 
 void GraphicsPipelineNode::BuildInputAssemblyState(VkPipelineInputAssemblyStateCreateInfo& outState) {
-    outState = NodeHelpers::CreateInputAssemblyState(topology, VK_FALSE);
+    outState = CreateInputAssemblyState(topology, VK_FALSE);
 }
 
 void GraphicsPipelineNode::BuildRasterizationState(VkPipelineRasterizationStateCreateInfo& outState) {
-    outState = NodeHelpers::CreateRasterizationState(polygonMode, cullMode, frontFace, 1.0f);
+    outState = CreateRasterizationState(polygonMode, cullMode, frontFace, 1.0f);
 }
 
 void GraphicsPipelineNode::BuildMultisampleState(VkPipelineMultisampleStateCreateInfo& outState) {
-    outState = NodeHelpers::CreateMultisampleState(VK_SAMPLE_COUNT_1_BIT);
+    outState = CreateMultisampleState(VK_SAMPLE_COUNT_1_BIT);
 }
 
 void GraphicsPipelineNode::BuildDepthStencilState(VkPipelineDepthStencilStateCreateInfo& outState) {
-    outState = NodeHelpers::CreateDepthStencilState(
+    outState = CreateDepthStencilState(
         enableDepthTest ? VK_TRUE : VK_FALSE,
         enableDepthWrite ? VK_TRUE : VK_FALSE,
         VK_COMPARE_OP_LESS_OR_EQUAL
@@ -438,8 +440,8 @@ void GraphicsPipelineNode::BuildDepthStencilState(VkPipelineDepthStencilStateCre
 }
 
 void GraphicsPipelineNode::BuildColorBlendState(VkPipelineColorBlendStateCreateInfo& outState) {
-    static VkPipelineColorBlendAttachmentState attachment = NodeHelpers::CreateColorBlendAttachment(VK_FALSE);
-    outState = NodeHelpers::CreateColorBlendState(&attachment, 1);
+    static VkPipelineColorBlendAttachmentState attachment = CreateColorBlendAttachment(VK_FALSE);
+    outState = CreateColorBlendState(&attachment, 1);
 }
 
 void GraphicsPipelineNode::BuildViewportState(VkPipelineViewportStateCreateInfo& outState) {

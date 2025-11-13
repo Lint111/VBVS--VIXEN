@@ -10,9 +10,11 @@
 #include "ShaderManagement/ShaderProgram.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
+#include "Core/NodeLogging.h"
 #include <stdexcept>
 #include <iostream>
 #include <chrono>
+#include <memory>
 
 namespace Vixen::RenderGraph {
 

@@ -9,11 +9,16 @@
 namespace CashSystem {
     class ComputePipelineCacher;
     struct ComputePipelineWrapper;
+    class PipelineLayoutCacher;
+    struct PipelineLayoutWrapper;
 }
 
 namespace ShaderManagement {
     struct ShaderDataBundle;
 }
+
+// Type alias for shared_ptr
+using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 namespace Vixen::RenderGraph {
 

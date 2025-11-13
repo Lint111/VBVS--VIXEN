@@ -716,10 +716,8 @@ private:
         std::monostate,              // Uninitialized state
         ResourceVariant,             // Case 1: Single element from variant alternatives
         VariantHandle,               // Case 2: ResourceVariant as pass-through
-        std::vector<VariantHandle>   // Case 3: Vector of pass-throughs
+        std::vector<VariantHandle>   // Case 3: Vector of pass-through ResourceVariants
     > handleStorage;
-
-    friend class RenderGraph;
 };
 
 // ============================================================================

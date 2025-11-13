@@ -9,6 +9,8 @@
 #include "VulkanSwapChain.h"
 #include <sstream>
 
+using namespace NodeHelpers;
+
 
 namespace Vixen::RenderGraph {
 
@@ -42,17 +44,16 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Validate and set device using helper
-    using namespace RenderGraph::NodeHelpers;
-    vulkanDevice = ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
+    vulkanDevice = NodeHelpers::ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
     deviceHandle = vulkanDevice;  // Keep for legacy code
 
     // Helper macro for VkDevice
     #define VK_DEVICE (vulkanDevice->device)
 
     // Validate swapchain variables and command pool
-    SwapChainPublicVariablesPtr swapChainVars = ValidateInput<SwapChainPublicVariablesPtr>(
+    SwapChainPublicVariablesPtr swapChainVars = NodeHelpers::ValidateInput<SwapChainPublicVariablesPtr>(
         ctx, "SwapChainPublicVars", DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
-    VkCommandPool cmdPool = ValidateInput<VkCommandPool>(
+    VkCommandPool cmdPool = NodeHelpers::ValidateInput<VkCommandPool>(
         ctx, "CommandPool", DepthBufferNodeConfig::COMMAND_POOL);
 
     uint32_t width = swapChainVars->Extent.width;
@@ -133,13 +134,12 @@ VkFormat DepthBufferNode::ConvertDepthFormat(DepthFormat format) {
 }
 
 void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format) {
-    using namespace RenderGraph::NodeHelpers;
 
     depthImage.format = format;
     VkDevice device = vulkanDevice->device;
 
     // Create image using helper
-    VkImageCreateInfo imageInfo = CreateImageInfo(
+    VkImageCreateInfo imageInfo = NodeHelpers::CreateImageInfo(
         VK_IMAGE_TYPE_2D,
         format,
         VkExtent3D{width, height, 1},
@@ -149,7 +149,7 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
     );
 
     VkResult result = vkCreateImage(device, &imageInfo, nullptr, &depthImage.image);
-    ValidateVulkanResult(result, "Depth image creation");
+    NodeHelpers::ValidateVulkanResult(result, "Depth image creation");
     NODE_LOG_DEBUG("Depth image created");
 
     // Allocate memory
@@ -176,7 +176,7 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
     vkBindImageMemory(device, depthImage.image, depthImage.mem, 0);
 
     // Create image view using helper
-    VkImageViewCreateInfo viewInfo = CreateImageViewInfo(
+    VkImageViewCreateInfo viewInfo = NodeHelpers::CreateImageViewInfo(
         depthImage.image,
         VK_IMAGE_VIEW_TYPE_2D,
         format,
@@ -186,7 +186,7 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
     );
 
     result = vkCreateImageView(device, &viewInfo, nullptr, &depthImage.view);
-    ValidateVulkanResult(result, "Depth image view creation");
+    NodeHelpers::ValidateVulkanResult(result, "Depth image view creation");
     NODE_LOG_DEBUG("Depth image view created");
 }
 
