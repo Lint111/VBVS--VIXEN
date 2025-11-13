@@ -4,7 +4,6 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/CameraNodeConfig.h"
-#include "Core/PerFrameResources.h"
 #include <glm/glm.hpp>
 #include <memory>
 
@@ -30,24 +29,27 @@ public:
 };
 
 /**
- * @brief Camera data structure matching VoxelRayMarch shader
+ * @brief Camera data structure for both push constants and uniform buffers
  *
- * Must match layout in generated/sdi/69bb4318e2e033bd-SDI.h:
- * struct CameraData {
- *     glm::mat4 invProjection;  // Offset 0
- *     glm::mat4 invView;        // Offset 64
- *     glm::vec3 cameraPos;      // Offset 128
- *     uint32_t gridResolution;  // Offset 140
- * };
+ * Contains camera-related fields that can be used for push constants or UBOs:
+ * - Camera position and orientation vectors
+ * - Projection parameters (fov, aspect)
+ * - Matrix fields for uniform buffers (invProjection, invView)
  */
 struct CameraData {
-    glm::mat4 invProjection;     // Offset 0, 64 bytes
-    glm::mat4 invView;           // Offset 64, 64 bytes
-    glm::vec3 cameraPos;         // Offset 128, 12 bytes
-    float _padding0;             // Offset 140, 4 bytes (vec3 aligns to 16)
-    uint32_t gridResolution;     // Offset 144, 4 bytes
-    float lodBias;               // Offset 148, 4 bytes
-    float _padding1[2];          // Offset 152, 8 bytes (align struct to 16)
+    // Camera fields (for ray generation push constants)
+    glm::vec3 cameraPos;         // Offset 0, 12 bytes
+    float fov;                   // Offset 12, 4 bytes
+    glm::vec3 cameraDir;         // Offset 16, 12 bytes
+    float aspect;                // Offset 28, 4 bytes
+    glm::vec3 cameraUp;          // Offset 32, 12 bytes
+    float lodBias;               // Offset 44, 4 bytes
+    glm::vec3 cameraRight;       // Offset 48, 12 bytes
+    uint32_t gridResolution;     // Offset 60, 4 bytes
+
+    // Matrix fields (for uniform buffers)
+    glm::mat4 invProjection;     // Offset 64, 64 bytes
+    glm::mat4 invView;           // Offset 128, 64 bytes
 };
 
 /**
@@ -74,16 +76,14 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    void UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio);
+    void UpdateCameraData(float aspectRatio);
 
     // Apply accumulated input deltas to camera state
     void ApplyInputDeltas(float deltaTime);
 
-    // Device reference
-    Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
 
-    // Per-frame uniform buffers using PerFrameResources helper
-    PerFrameResources perFrameResources;
+    // Current camera data struct
+    CameraData currentCameraData;
 
     // Camera state
     glm::vec3 cameraPosition{0.0f, 0.0f, 3.0f};

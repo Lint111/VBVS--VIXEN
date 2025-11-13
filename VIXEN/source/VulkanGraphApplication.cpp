@@ -33,7 +33,8 @@
 #include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
 #include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
 #include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
-#include "Nodes/CameraNode.h"  // Ray marching: Camera UBO
+#include "Nodes/PushConstantGathererNode.h"  // Phase H: Push constant gatherer
+#include "Nodes/CameraNode.h"  // Ray marching: Camera data
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
@@ -424,11 +425,12 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
     nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
     nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
+    nodeRegistry->RegisterNodeType(std::make_unique<PushConstantGathererNodeType>());  // Phase H: Push constant gatherer
     nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
     nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
     nodeRegistry->RegisterNodeType(std::make_unique<InputNodeType>());  // Input polling and event publishing
 
-    mainLogger->Info("Successfully registered 26 node types");
+    mainLogger->Info("Successfully registered 27 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -476,6 +478,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Phase G: Compute Pipeline Nodes ---
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
     NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
+    NodeHandle pushConstantGatherer = renderGraph->AddNode("PushConstantGatherer", "push_constant_gatherer");  // Phase H
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
@@ -491,7 +494,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 22 node instances (including camera and voxel grid)");
+    mainLogger->Info("Created 23 node instances (including camera, voxel grid, and push constant gatherer)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -918,6 +921,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
          .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES,
                   computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES)
+         // Phase H: Push constant gatherer connections
+         .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  pushConstantGatherer, PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE)
+         .Connect(pushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  computeDispatch, ComputeDispatchNodeConfig::PUSH_CONSTANT_DATA)
+         .Connect(pushConstantGatherer, PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  computeDispatch, ComputeDispatchNodeConfig::PUSH_CONSTANT_RANGES)
          // Pass shader bundle directly to descriptor set and pipeline (needed during Compile)
          .Connect(computeShaderLib, ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   computeDescriptorSet, DescriptorSetNodeConfig::SHADER_DATA_BUNDLE)
@@ -955,6 +965,30 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   voxelGridNode, VoxelGridNodeConfig::COMMAND_POOL);
 
+    // Connect push constant fields to push constant gatherer using member extraction
+    // CameraNode now outputs a CameraData struct, so we can extract individual fields
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 0,  // vec3 cameraPos
+                          &CameraData::cameraPos);
+    // TODO: Create TimeNode to provide time field
+    //   batch.ConnectVariadic(timeNode, TimeNodeConfig::TIME_OUTPUT,
+    //                         pushConstantGatherer, 1);  // float time
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 2,  // vec3 cameraDir
+                          &CameraData::cameraDir);
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 3,  // float fov
+                          &CameraData::fov);
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 4,  // vec3 cameraUp
+                          &CameraData::cameraUp);
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 5,  // float aspect
+                          &CameraData::aspect);
+    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
+                          pushConstantGatherer, 6,  // vec3 cameraRight
+                          &CameraData::cameraRight);
+
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
@@ -962,22 +996,17 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, VoxelRayMarch::outputImage,
                           SlotRole::Execute);
 
-    // Binding 1: camera (uniform buffer) - updated per frame
-    batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::camera,
-                          SlotRole::Dependency | SlotRole::Execute);
-
-    // Binding 2: octreeNodes (SSBO) - octree node data
+    // Binding 1: octreeNodes (SSBO) - octree node data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::octreeNodes,
                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 3: voxelBricks (SSBO) - voxel brick data
+    // Binding 2: voxelBricks (SSBO) - voxel brick data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::voxelBricks,
                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 4: materialPalette (SSBO) - material data
+    // Binding 3: materialPalette (SSBO) - material data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materialPalette,
                           SlotRole::Dependency | SlotRole::Execute);

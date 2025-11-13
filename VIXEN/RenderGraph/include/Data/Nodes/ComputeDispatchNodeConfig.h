@@ -10,7 +10,7 @@ namespace Vixen::RenderGraph {
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 12;  // Added SHADER_DATA_BUNDLE for push constant reflection
+    static constexpr size_t INPUTS = 14;  // Added PUSH_CONSTANT_DATA and PUSH_CONSTANT_METADATA
     static constexpr size_t OUTPUTS = 3;  // Added RENDER_COMPLETE_SEMAPHORE output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -152,6 +152,26 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 11,
         SlotNullability::Required,
         SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Push constant data buffer (from PushConstantGathererNode)
+     * Contains raw bytes to be passed to vkCmdPushConstants
+     */
+    INPUT_SLOT(PUSH_CONSTANT_DATA, std::vector<uint8_t>, 12,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    /**
+     * @brief Push constant ranges from shader reflection
+     * Contains size, offset, and stage flags
+     */
+    INPUT_SLOT(PUSH_CONSTANT_RANGES, std::vector<VkPushConstantRange>, 13,
+        SlotNullability::Optional,
+        SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

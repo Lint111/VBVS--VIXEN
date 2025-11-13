@@ -70,7 +70,6 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     SetDevice(devicePtr);
-    vulkanDevice = devicePtr;
 
     // Get swapchain info for initial aspect ratio
     SwapChainPublicVariables* swapchainInfo = ctx.In(CameraNodeConfig::SWAPCHAIN_PUBLIC);
@@ -78,27 +77,47 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[CameraNode] SWAPCHAIN_PUBLIC is null");
     }
 
-    // Create a SINGLE camera UBO shared by all frames
-    // This is safe because frame-in-flight synchronization ensures the GPU
-    // has finished reading frame N before the CPU updates it for frame N+3
-    // All descriptor sets will point to this one buffer
-    NODE_LOG_INFO("Creating single shared camera UBO");
-
-    perFrameResources.Initialize(vulkanDevice, 1);  // Only 1 buffer
-
-    VkDeviceSize bufferSize = sizeof(CameraData);
-    perFrameResources.CreateUniformBuffer(0, bufferSize);
-
-    // Initialize with valid camera data
+    // Initialize camera data with valid values
     float aspectRatio = static_cast<float>(swapchainInfo->Extent.width) /
                         static_cast<float>(swapchainInfo->Extent.height);
-    UpdateCameraMatrices(0, 0, aspectRatio);
 
-    // Output the buffer (same for all descriptor sets)
-    ctx.Out(CameraNodeConfig::CAMERA_BUFFER, perFrameResources.GetUniformBuffer(0));
-    ctx.Out(CameraNodeConfig::CAMERA_BUFFER_SIZE, static_cast<uint64_t>(bufferSize));
+    // Compute initial camera vectors
+    glm::vec3 forward;
+    forward.x = cos(pitch) * sin(yaw);
+    forward.y = sin(pitch);
+    forward.z = -cos(pitch) * cos(yaw);
+    forward = glm::normalize(forward);
 
-    NODE_LOG_INFO("Created shared camera UBO successfully");
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 up = glm::normalize(glm::cross(right, forward));
+
+    // Create projection and view matrices
+    glm::mat4 projection = glm::perspective(
+        glm::radians(fov),
+        aspectRatio,
+        nearPlane,
+        farPlane
+    );
+
+    glm::vec3 target = cameraPosition + forward;
+    glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // Fill initial camera data
+    currentCameraData.cameraPos = cameraPosition;
+    currentCameraData.fov = glm::radians(fov);
+    currentCameraData.cameraDir = forward;
+    currentCameraData.aspect = aspectRatio;
+    currentCameraData.cameraUp = up;
+    currentCameraData.lodBias = 1.0f;
+    currentCameraData.cameraRight = right;
+    currentCameraData.gridResolution = gridResolution;
+    currentCameraData.invProjection = glm::inverse(projection);
+    currentCameraData.invView = glm::inverse(view);
+
+    // Output the camera data struct
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, currentCameraData);
+
+    NODE_LOG_INFO("Camera data initialized successfully");
 }
 
 void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -132,30 +151,14 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     float deltaTime = inputState ? inputState->deltaTime : (1.0f / 60.0f);
     ApplyInputDeltas(deltaTime);
 
-    // Update the shared camera UBO for this frame
-    // Always use buffer index 0 (the only buffer)
-    // Frame-in-flight sync ensures GPU finished reading before we write
-    UpdateCameraMatrices(0, 0, aspectRatio);
+    // Update camera data with current state
+    UpdateCameraData(aspectRatio);
+
+    // Output the updated camera data
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, currentCameraData);
 }
 
-void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, float aspectRatio) {
-    // Safety check: perFrameResources might be cleaned up during recompilation
-    if (!vulkanDevice || vulkanDevice->device == VK_NULL_HANDLE) {
-        return;
-    }
-
-    void* mappedPtr = nullptr;
-    try {
-        mappedPtr = perFrameResources.GetUniformBufferMapped(imageIndex);
-    } catch (...) {
-        // During recompilation, perFrameResources might be in inconsistent state
-        return;
-    }
-
-    if (!mappedPtr) {
-        return;
-    }
-
+void CameraNode::UpdateCameraData(float aspectRatio) {
     // Create projection matrix
     glm::mat4 projection = glm::perspective(
         glm::radians(fov),
@@ -172,49 +175,41 @@ void CameraNode::UpdateCameraMatrices(uint32_t frameIndex, uint32_t imageIndex, 
     forward.z = -cos(pitch) * cos(yaw);  // Negative Z for forward
     forward = glm::normalize(forward);
 
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 up = glm::normalize(glm::cross(right, forward));
+
     glm::vec3 target = cameraPosition + forward;
     glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
 
-    // Compute inverse matrices
-    glm::mat4 invProjection = glm::inverse(projection);
-    glm::mat4 invView = glm::inverse(view);
+    // Update camera data struct
+    currentCameraData.cameraPos = cameraPosition;
+    currentCameraData.fov = glm::radians(fov);
+    currentCameraData.cameraDir = forward;
+    currentCameraData.aspect = aspectRatio;
+    currentCameraData.cameraUp = up;
+    currentCameraData.lodBias = 1.0f;
+    currentCameraData.cameraRight = right;
+    currentCameraData.gridResolution = gridResolution;
+    currentCameraData.invProjection = glm::inverse(projection);
+    currentCameraData.invView = glm::inverse(view);
 
-    // DEBUG: Log invView matrix once
-    static bool loggedInvView = false;
-    if (!loggedInvView) {
+    // DEBUG: Log camera state once
+    static bool loggedCamera = false;
+    if (!loggedCamera) {
         std::cout << "[CameraNode] Camera params: yaw=" << yaw << ", pitch=" << pitch << std::endl;
         std::cout << "[CameraNode] Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
         std::cout << "[CameraNode] forward = (" << forward.x << ", " << forward.y << ", " << forward.z << ")" << std::endl;
-        std::cout << "[CameraNode] invView col2: (" << invView[0][2] << ", " << invView[1][2] << ", " << invView[2][2] << ")" << std::endl;
-        std::cout << "[CameraNode] -invView col2: (" << -invView[0][2] << ", " << -invView[1][2] << ", " << -invView[2][2] << ")" << std::endl;
-        loggedInvView = true;
+        std::cout << "[CameraNode] right = (" << right.x << ", " << right.y << ", " << right.z << ")" << std::endl;
+        std::cout << "[CameraNode] up = (" << up.x << ", " << up.y << ", " << up.z << ")" << std::endl;
+        loggedCamera = true;
     }
-
-    // Update uniform buffer
-    CameraData cameraData;
-    cameraData.invProjection = invProjection;
-    cameraData.invView = invView;
-    cameraData.cameraPos = cameraPosition;
-    cameraData._padding0 = 0.0f;
-    cameraData.gridResolution = gridResolution;
-    cameraData.lodBias = 1.0f;  // Default LOD bias
-    cameraData._padding1[0] = 0.0f;
-    cameraData._padding1[1] = 0.0f;
-
-    std::memcpy(mappedPtr, &cameraData, sizeof(CameraData));
 }
 
 void CameraNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("CameraNode cleanup");
 
-    // Event unsubscription handled automatically by NodeInstance destructor
-    // (no manual Unsubscribe needed - avoids deadlock)
-
-    // Device wait handled by RenderGraph before cleanup
-    // (no need to wait here - prevents double-wait on invalid device)
-
-    // Cleanup per-frame resources
-    perFrameResources.Cleanup();
+    // No resources to cleanup since we're outputting a struct now
+    // Camera state is maintained internally for next setup
 }
 
 // ============================================================================

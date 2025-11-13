@@ -5,24 +5,27 @@
 
 namespace Vixen::RenderGraph {
 
+// Forward declare CameraData struct
+struct CameraData;
+
 // Type alias for VulkanDevice pointer
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
 // Compile-time slot counts
 namespace CameraNodeCounts {
     static constexpr size_t INPUTS = 4;  // Added INPUT_STATE
-    static constexpr size_t OUTPUTS = 2;
+    static constexpr size_t OUTPUTS = 1;  // Changed to output CameraData struct
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
 /**
  * @brief Configuration for CameraNode
  *
- * Manages camera uniform buffer for raymarching compute shaders.
- * Updates per-frame with inverse matrices and position.
+ * Manages camera data for raymarching compute shaders.
+ * Outputs a CameraData struct that can be used for push constants or uniform buffers.
  *
  * Inputs: 4 (VULKAN_DEVICE_IN, SWAPCHAIN_PUBLIC, IMAGE_INDEX, INPUT_STATE)
- * Outputs: 2 (CAMERA_BUFFER, CAMERA_BUFFER_SIZE)
+ * Outputs: 1 (CAMERA_DATA)
  */
 CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
                       CameraNodeCounts::INPUTS,
@@ -53,12 +56,8 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
-    OUTPUT_SLOT(CAMERA_BUFFER, VkBuffer, 0,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    OUTPUT_SLOT(CAMERA_BUFFER_SIZE, uint64_t, 1,
+    // ===== OUTPUTS (1) =====
+    OUTPUT_SLOT(CAMERA_DATA, CameraData, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -91,14 +90,9 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         HandleDescriptor inputStateDesc{"InputState*"};
         INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Transient, inputStateDesc);
 
-        // Initialize output descriptors
-        BufferDescriptor cameraBufferDesc{};
-        cameraBufferDesc.size = 144;  // sizeof(CameraData)
-        cameraBufferDesc.usage = ResourceUsage::UniformBuffer;
-        INIT_OUTPUT_DESC(CAMERA_BUFFER, "camera_buffer", ResourceLifetime::Persistent, cameraBufferDesc);
-
-        HandleDescriptor sizeDesc{"uint64_t"};
-        INIT_OUTPUT_DESC(CAMERA_BUFFER_SIZE, "camera_buffer_size", ResourceLifetime::Persistent, sizeDesc);
+        // Initialize output descriptor
+        HandleDescriptor cameraDataDesc{"CameraData"};
+        INIT_OUTPUT_DESC(CAMERA_DATA, "camera_data", ResourceLifetime::Transient, cameraDataDesc);
     }
 
     // Compile-time validations
@@ -110,16 +104,14 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(SWAPCHAIN_PUBLIC_Slot::index == 1, "SWAPCHAIN_PUBLIC must be at index 1");
     static_assert(IMAGE_INDEX_Slot::index == 2, "IMAGE_INDEX must be at index 2");
     static_assert(INPUT_STATE_Slot::index == 3, "INPUT_STATE must be at index 3");
-    static_assert(CAMERA_BUFFER_Slot::index == 0, "CAMERA_BUFFER must be at index 0");
-    static_assert(CAMERA_BUFFER_SIZE_Slot::index == 1, "CAMERA_BUFFER_SIZE must be at index 1");
+    static_assert(CAMERA_DATA_Slot::index == 0, "CAMERA_DATA must be at index 0");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
-    static_assert(std::is_same_v<CAMERA_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<CAMERA_BUFFER_SIZE_Slot::Type, uint64_t>);
+    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraData>);
 };
 
 // Global compile-time validations

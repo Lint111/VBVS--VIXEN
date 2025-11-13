@@ -5,6 +5,7 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "Core/NodeLogging.h"
+// BufferResource.h removed - using std::vector<uint8_t> for push constant data
 #include <stdexcept>
 #include <chrono>
 
@@ -282,30 +283,57 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         nullptr
     );
 
-    // Get shader bundle to check for push constants
-    ShaderDataBundlePtr shaderBundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
+    // Check for push constant data from PushConstantGathererNode
+    std::vector<uint8_t> pushConstantDataVec = ctx.In(ComputeDispatchNodeConfig::PUSH_CONSTANT_DATA);
+    std::vector<VkPushConstantRange> pushConstantRanges = ctx.In(ComputeDispatchNodeConfig::PUSH_CONSTANT_RANGES);
 
-    // Conditionally set push constants if shader declares them
-    if (shaderBundle && shaderBundle->reflectionData &&
-        !shaderBundle->reflectionData->pushConstants.empty() &&
-        pushConstantData != nullptr) {
+    // Use gathered push constants if available
+    if (!pushConstantDataVec.empty() && !pushConstantRanges.empty()) {
+        // Apply each push constant range
+        for (const auto& range : pushConstantRanges) {
+            if (range.offset + range.size <= pushConstantDataVec.size()) {
+                vkCmdPushConstants(
+                    cmdBuffer,
+                    pipelineLayout,
+                    range.stageFlags,
+                    range.offset,
+                    range.size,
+                    pushConstantDataVec.data() + range.offset
+                );
 
-        // Get first push constant range (we assume single range for now)
-        const auto& pc = shaderBundle->reflectionData->pushConstants[0];
+                static int pcLogCount = 0;
+                if (pcLogCount++ < 3) {
+                    NODE_LOG_INFO("[ComputeDispatchNode] Setting gathered push constants: offset=" +
+                                  std::to_string(range.offset) + ", size=" + std::to_string(range.size));
+                }
+            }
+        }
+    }
+    // Fall back to legacy push constant data if no gatherer connected
+    else if (pushConstantData != nullptr) {
+        // Get shader bundle to check for push constants
+        ShaderDataBundlePtr shaderBundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
 
-        vkCmdPushConstants(
-            cmdBuffer,
-            pipelineLayout,
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            pc.offset,
-            pc.size,
-            pushConstantData
-        );
+        if (shaderBundle && shaderBundle->reflectionData &&
+            !shaderBundle->reflectionData->pushConstants.empty()) {
 
-        static int pcLogCount = 0;
-        if (pcLogCount++ < 3) {
-            NODE_LOG_INFO("[ComputeDispatchNode] Setting push constants: offset=" + std::to_string(pc.offset) +
-                          ", size=" + std::to_string(pc.size));
+            // Get first push constant range (we assume single range for now)
+            const auto& pc = shaderBundle->reflectionData->pushConstants[0];
+
+            vkCmdPushConstants(
+                cmdBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                pc.offset,
+                pc.size,
+                pushConstantData
+            );
+
+            static int pcLogCount = 0;
+            if (pcLogCount++ < 3) {
+                NODE_LOG_INFO("[ComputeDispatchNode] Setting legacy push constants: offset=" +
+                              std::to_string(pc.offset) + ", size=" + std::to_string(pc.size));
+            }
         }
     }
 
