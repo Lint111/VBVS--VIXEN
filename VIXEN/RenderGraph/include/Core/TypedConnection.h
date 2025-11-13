@@ -427,11 +427,11 @@ public:
         BindingRefType bindingRef,
         SlotRole slotRoleOverride = SlotRole::Output  // Output = sentinel for auto-detect
     ) {
-        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << bindingRef.binding << std::endl;
+        std::cout << "[ConnectVariadic] Queuing variadic connection for binding " << BindingRefType::binding << std::endl;
 
         // Defer the variadic connection via lambda (applied during RegisterAll)
         variadicConnections.push_back([=]() {
-            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << bindingRef.binding << std::endl;
+            std::cout << "[ConnectVariadic] Creating tentative slot for binding " << BindingRefType::binding << std::endl;
 
             // Get the variadic node instance
             NodeInstance* node = graph->GetInstance(variadicNode);
@@ -452,7 +452,7 @@ public:
             }
 
             // Extract binding index from binding ref
-            uint32_t bindingIndex = bindingRef.binding;
+            uint32_t bindingIndex = BindingRefType::binding;
             size_t bundleIndex = 0;
 
             // Create tentative slot using helper (no field extraction needed)
@@ -518,13 +518,15 @@ public:
         FieldType StructType::* memberPtr,  // Member pointer for field extraction
         SlotRole slotRoleOverride = SlotRole::Output  // Output = sentinel for auto-detect
     ) {
+        // Access static members via the type
+        constexpr uint32_t bindingValue = BindingRefType::binding;
         std::cout << "[ConnectVariadic] Storing field extraction lambda for PostSetup execution at binding "
-                  << bindingRef.binding << std::endl;
+                  << bindingValue << std::endl;
 
         // Store lambda in variadicConnections to be executed during RegisterAll (before compilation)
         variadicConnections.push_back([=]() {
             std::cout << "[ConnectVariadic] Executing field extraction lambda - creating tentative slot at binding "
-                      << bindingRef.binding << std::endl;
+                      << bindingValue << std::endl;
 
             // Validate types at compile-time
             using SourceType = typename SourceSlot::Type;
@@ -557,7 +559,7 @@ public:
 
             // Type information for the extracted field
             using FieldResourceType = std::remove_reference_t<FieldType>;
-            uint32_t bindingIndex = bindingRef.binding;
+            uint32_t bindingIndex = BindingRefType::binding;
             size_t bundleIndex = 0;
 
             // Create base tentative slot using helper
@@ -754,9 +756,9 @@ private:
         VariadicSlotInfo tentativeSlot;
         tentativeSlot.resource = nullptr;  // Will be set in PostCompile hook
         tentativeSlot.resourceType = sourceResourceType;
-        tentativeSlot.slotName = bindingRef.name;
-        tentativeSlot.binding = bindingRef.binding;
-        tentativeSlot.descriptorType = bindingRef.type;
+        tentativeSlot.slotName = BindingRefType::name;
+        tentativeSlot.binding = BindingRefType::binding;
+        tentativeSlot.descriptorType = BindingRefType::type;
         tentativeSlot.state = SlotState::Tentative;
         tentativeSlot.sourceNode = sourceNode;
         tentativeSlot.sourceOutput = static_cast<uint32_t>(sourceSlotIndex);

@@ -303,14 +303,14 @@ void PushConstantGathererNode::PackMatrix(const Resource* res, uint8_t* dest, si
 
 ResourceType PushConstantGathererNode::GetResourceTypeForField(const PushConstantFieldSlotInfo& field) const {
     // Map SPIRV types to resource types
-    if (field.baseType == ShaderManagement::SpirvType::Float) {
+    if (field.baseType == ShaderManagement::SpirvTypeInfo::BaseType::Float) {
         if (field.vecSize == 1) return ResourceType::Float;
         else if (field.vecSize == 2) return ResourceType::Vec2;
         else if (field.vecSize == 3) return ResourceType::Vec3;
         else if (field.vecSize == 4) return ResourceType::Vec4;
-    } else if (field.baseType == ShaderManagement::SpirvType::Uint32) {
+    } else if (field.baseType == ShaderManagement::SpirvTypeInfo::BaseType::UInt) {
         return ResourceType::Uint;
-    } else if (field.baseType == ShaderManagement::SpirvType::Int32) {
+    } else if (field.baseType == ShaderManagement::SpirvTypeInfo::BaseType::Int) {
         return ResourceType::Int;
     }
 
