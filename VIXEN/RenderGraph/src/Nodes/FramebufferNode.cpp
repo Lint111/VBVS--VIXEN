@@ -135,7 +135,6 @@ VkFramebuffer FramebufferNode::CreateSingleFramebuffer(
     const VkExtent2D& extent,
     uint32_t layers
 ) {
-    using namespace RenderGraph::NodeHelpers;
 
     VkFramebufferCreateInfo framebufferInfo = CreateFramebufferInfo(
         renderPass,

@@ -101,6 +101,15 @@ Added include for SpirvReflectionData.h in DescriptorResourceGathererNode.cpp:
 - **Fix**: Provided full type definition via include
 - **Files**: DescriptorResourceGathererNode.cpp/h
 
+### C2187 - Syntax error: 'template' unexpected
+- **Cause**: Template functions with `const auto&` parameters (MSVC doesn't support auto in function parameters like Clang does)
+- **Fix**: Replaced `const auto&` with explicit template parameters
+- **Files**: ValidationHelpers.h, CacherHelpers.h
+- **Details**:
+  - ValidateInput: `const auto& ctx` → `const ContextType& ctx`
+  - GetOptionalInput: `const auto& ctx, const auto& inputSlot` → explicit template params
+  - GetOrCreateCached: `const auto& params` → `const ParamsType& params`
+
 ---
 
 ## Helper Libraries Accessed
@@ -174,6 +183,11 @@ cmake --build build --config Release
 
 ### Header Files (.h)
 1. DescriptorResourceGathererNode.h - Added forward declarations for ShaderManagement types
+2. ValidationHelpers.h - Fixed template parameter syntax
+   - ValidateInput: Changed `const auto&` to explicit template parameters (ContextType, SlotType)
+   - GetOptionalInput: Changed `const auto&` to explicit template parameters (ContextType, SlotType)
+3. CacherHelpers.h - Fixed template parameter syntax
+   - GetOrCreateCached: Changed `const auto&` to explicit template parameter (ParamsType)
 
 ---
 

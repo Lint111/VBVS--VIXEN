@@ -55,10 +55,10 @@ CacherType* RegisterCacherIfNeeded(
 ///       CashSystem::RenderPassCacher,
 ///       CashSystem::RenderPassWrapper
 ///   >(cacher, params, "render pass");
-template <typename CacherType, typename WrapperType>
+template <typename CacherType, typename WrapperType, typename ParamsType>
 std::shared_ptr<WrapperType> GetOrCreateCached(
     CacherType* cacher,
-    const auto& params,
+    const ParamsType& params,
     const std::string& resourceName
 ) {
     if (!cacher) {
