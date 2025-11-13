@@ -2,7 +2,7 @@
 #include "Core/NodeLogging.h"
 #include "NodeHelpers/ValidationHelpers.h"
 
-using namespace NodeHelpers;
+using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 

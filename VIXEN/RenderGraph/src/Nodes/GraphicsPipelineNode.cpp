@@ -14,7 +14,7 @@
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include <cstring>
 
-using namespace NodeHelpers;
+using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 

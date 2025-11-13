@@ -5,7 +5,7 @@
 #include <cstring>
 #include <iostream>
 
-using namespace NodeHelpers;
+using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 

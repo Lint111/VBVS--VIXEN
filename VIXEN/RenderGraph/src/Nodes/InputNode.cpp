@@ -3,7 +3,7 @@
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 
-using namespace NodeHelpers;
+using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 
@@ -46,7 +46,6 @@ void InputNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[InputNode] Compile");
 
     // Validate HWND input using helper
-    using namespace RenderGraph::NodeHelpers;
     hwnd = ValidateInput<HWND>(ctx, "HWND", InputNodeConfig::HWND_IN);
 
     NODE_LOG_INFO("[InputNode] HWND received successfully");

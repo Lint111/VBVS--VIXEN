@@ -8,7 +8,7 @@
 #include "NodeHelpers/CacherHelpers.h"
 #include "NodeHelpers/EnumParsers.h"
 
-using namespace NodeHelpers;
+using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 
@@ -85,7 +85,7 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     // Build cache parameters
     CashSystem::RenderPassCreateParams cacheParams{};
     cacheParams.colorFormat = colorFormat;
-    cacheParams.samples = NodeHelpers::ParseSampleCount(sampleCount);
+    cacheParams.samples = ParseSampleCount(sampleCount);
     cacheParams.colorLoadOp = ConvertLoadOp(colorLoadOp);
     cacheParams.colorStoreOp = ConvertStoreOp(colorStoreOp);
     cacheParams.initialLayout = ConvertImageLayout(initialLayout);
@@ -100,20 +100,20 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
     // Register and get cacher using helper
-    auto* cacher = NodeHelpers::RegisterCacherIfNeeded<
+    auto* cacher = RegisterCacherIfNeeded<
         CashSystem::RenderPassCacher,
         CashSystem::RenderPassWrapper,
         CashSystem::RenderPassCreateParams
     >(GetOwningGraph(), device, "RenderPass", true);
 
     // Get or create cached render pass using helper
-    cachedRenderPassWrapper = NodeHelpers::GetOrCreateCached<
+    cachedRenderPassWrapper = GetOrCreateCached<
         CashSystem::RenderPassCacher,
         CashSystem::RenderPassWrapper
     >(cacher, cacheParams, "render pass");
 
     // Validate cached handle
-    NodeHelpers::ValidateCachedHandle(
+    ValidateCachedHandle(
         cachedRenderPassWrapper->renderPass,
         "VkRenderPass",
         "render pass"
