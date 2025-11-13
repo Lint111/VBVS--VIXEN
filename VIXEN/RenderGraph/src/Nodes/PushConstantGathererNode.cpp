@@ -11,6 +11,52 @@ using namespace RenderGraph::NodeHelpers;
 namespace Vixen::RenderGraph {
 
 // ============================================================================
+// VISITOR PATTERN FOR TYPE-SAFE VALUE EXTRACTION
+// ============================================================================
+
+/**
+ * @brief Visitor that extracts resource variant values and packs into buffer
+ *
+ * This visitor handles all registered types in ResourceVariant and uses
+ * ResourceExtractor for type-safe packing.
+ */
+class PushConstantPackVisitor {
+public:
+    PushConstantPackVisitor(
+        const ShaderManagement::SpirvTypeInfo& typeInfo,
+        uint8_t* dest,
+        size_t destSize
+    ) : typeInfo(typeInfo), dest(dest), destSize(destSize), bytesWritten(0) {}
+
+    // Generic handler for all types
+    template<typename T>
+    void operator()(const T& value) {
+        ShaderManagement::SpirvTypeInfo info{};
+        info.baseType = typeInfo.baseType;
+        info.vecSize = typeInfo.vecSize;
+        info.sizeInBytes = typeInfo.sizeInBytes;
+
+        // Cast away const to get pointer for extraction
+        T* ptr = const_cast<T*>(&value);
+        bytesWritten = ShaderManagement::ResourceExtractor::Extract(info, ptr, dest, destSize);
+    }
+
+    // Specialization for monostate (empty variant)
+    void operator()(const std::monostate&) {
+        // Fill with zeros for unset values
+        bytesWritten = ShaderManagement::ResourceExtractor::ExtractZero(typeInfo, dest, destSize);
+    }
+
+    size_t GetBytesWritten() const { return bytesWritten; }
+
+private:
+    const ShaderManagement::SpirvTypeInfo& typeInfo;
+    uint8_t* dest;
+    size_t destSize;
+    size_t bytesWritten;
+};
+
+// ============================================================================
 // NODETYPE FACTORY
 // ============================================================================
 
@@ -216,7 +262,7 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
     // Clear buffer
     std::fill(pushConstantData_.begin(), pushConstantData_.end(), 0);
 
-    // Pack each field value into the buffer using type-safe extractor
+    // Pack each field value into the buffer using type-safe visitor
     size_t variadicCount = ctx.InVariadicCount();
     
     for (size_t i = 0; i < variadicCount && i < pushConstantFields_.size(); ++i) {
@@ -227,15 +273,16 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
 
         uint8_t* dest = pushConstantData_.data() + field.offset;
 
-        // Use ResourceExtractor to fill type-appropriate value
-        // For now, uses zero-fill as placeholder
-        // Future: integrate with actual resource value extraction
+        // Create type info for visitor/extractor
         ShaderManagement::SpirvTypeInfo typeInfo{};
         typeInfo.baseType = field.baseType;
         typeInfo.vecSize = field.vecSize;
         typeInfo.sizeInBytes = field.size;
 
-        ShaderManagement::ResourceExtractor::ExtractZero(typeInfo, dest, field.size);
+        // Use visitor pattern to extract typed value from resource variant
+        const auto& resourceVariant = resource->GetHandleVariant();
+        PushConstantPackVisitor visitor(typeInfo, dest, field.size);
+        std::visit(visitor, resourceVariant);
     }
 }
 
