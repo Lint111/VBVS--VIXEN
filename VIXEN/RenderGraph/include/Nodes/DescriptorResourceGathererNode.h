@@ -7,6 +7,12 @@
 #include <memory>
 #include <vector>
 
+// Forward declarations for shader management types
+namespace ShaderManagement {
+    struct DescriptorLayoutSpecification;
+    struct DescriptorBindingInfo;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
