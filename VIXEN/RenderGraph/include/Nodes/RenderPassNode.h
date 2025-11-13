@@ -54,10 +54,10 @@ private:
     // Cached wrapper from RenderPassCacher
     std::shared_ptr<CashSystem::RenderPassWrapper> cachedRenderPassWrapper;
 
+    // Typed enum conversions (RenderGraph-specific enums -> Vulkan enums)
     VkAttachmentLoadOp ConvertLoadOp(AttachmentLoadOp op);
     VkAttachmentStoreOp ConvertStoreOp(AttachmentStoreOp op);
     VkImageLayout ConvertImageLayout(ImageLayout layout);
-    VkSampleCountFlagBits GetSampleCount(uint32_t samples);
 };
 
 /**

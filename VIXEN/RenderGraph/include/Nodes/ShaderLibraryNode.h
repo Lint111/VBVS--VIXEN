@@ -123,6 +123,12 @@ private:
 
     // Shader builder functions (registered via RegisterShaderBuilder)
     std::vector<std::function<ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
+
+    // Helper methods
+    void RegisterShaderModuleCacher();
+    void InitializeShaderModuleCacher();
+    void CompileShaderBundle(int targetVulkan, int targetSpirv);
+    void CreateShaderModules();
 };
 
 } // namespace Vixen::RenderGraph

@@ -77,8 +77,13 @@ protected:
     void ExecuteImpl(TypedExecuteContext& ctx) override;
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
-
 private:
+    // === Compile phase helper methods ===
+    void ValidateCompileInputs(HWND hwnd, HINSTANCE hinstance, VkInstance instance);
+    void LoadExtensionsAndCreateSurface(VkInstance instance, HWND hwnd, HINSTANCE hinstance);
+    void SetupFormatsAndCapabilities(uint32_t graphicsQueueIndex);
+    void CreateSwapchainAndViews();
+    void PublishCompileOutputs(TypedCompileContext& ctx);
     // Swapchain wrapper (from existing VulkanSwapChain)
     VulkanSwapChain* swapChainWrapper = nullptr;
 

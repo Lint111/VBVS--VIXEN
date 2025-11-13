@@ -221,35 +221,73 @@ void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex) {
-    // Begin command buffer recording
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
-    
-    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("GeometryRenderNode: Failed to begin command buffer");
-    }
-    
-    // Get inputs via typed config API
+    // Begin command buffer
+    BeginCommandBuffer(cmdBuffer);
+
+    // Get inputs
     VkRenderPass renderPass = ctx.In(GeometryRenderNodeConfig::RENDER_PASS);
-    std::vector<VkFramebuffer> framebuffers = ctx.In(GeometryRenderNodeConfig::FRAMEBUFFERS);
-    if(framebufferIndex >= framebuffers.size()) {
-        std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) + " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
-
-
     VkPipeline pipeline = ctx.In(GeometryRenderNodeConfig::PIPELINE);
     VkPipelineLayout pipelineLayout = ctx.In(GeometryRenderNodeConfig::PIPELINE_LAYOUT);
     VkBuffer vertexBuffer = ctx.In(GeometryRenderNodeConfig::VERTEX_BUFFER);
     SwapChainPublicVariables* swapchainInfo = ctx.In(GeometryRenderNodeConfig::SWAPCHAIN_INFO);
-    
+    std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
 
+    // Validate inputs
+    ValidateInputs(ctx, renderPass, pipeline, pipelineLayout, vertexBuffer, swapchainInfo);
+
+    // Get framebuffer
+    std::vector<VkFramebuffer> framebuffers = ctx.In(GeometryRenderNodeConfig::FRAMEBUFFERS);
+    if (framebufferIndex >= framebuffers.size()) {
+        std::string errorMsg = "Framebuffer index " + std::to_string(framebufferIndex) +
+                               " out of bounds (size " + std::to_string(framebuffers.size()) + ")";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    VkFramebuffer currentFramebuffer = framebuffers[framebufferIndex];
+
+    // Begin render pass with clear
+    BeginRenderPassWithClear(cmdBuffer, renderPass, currentFramebuffer,
+                            swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+
+    // Bind pipeline and descriptors
+    BindPipelineAndDescriptors(cmdBuffer, pipeline, pipelineLayout, descriptorSets);
+
+    // Bind buffers
+    BindVertexAndIndexBuffers(cmdBuffer, ctx, vertexBuffer);
+
+    // Set viewport and scissor
+    SetViewportAndScissor(cmdBuffer, swapchainInfo->Extent);
+
+    // Draw
+    RecordDrawCall(cmdBuffer, ctx);
+
+    // End render pass
+    vkCmdEndRenderPass(cmdBuffer);
+
+    // End command buffer
+    EndCommandBuffer(cmdBuffer);
+}
+
+void GeometryRenderNode::BeginCommandBuffer(VkCommandBuffer cmdBuffer) {
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+
+    VkResult result = vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("GeometryRenderNode: Failed to begin command buffer");
+    }
+}
+
+void GeometryRenderNode::ValidateInputs(
+    Context& ctx,
+    VkRenderPass renderPass,
+    VkPipeline pipeline,
+    VkPipelineLayout pipelineLayout,
+    VkBuffer vertexBuffer,
+    SwapChainPublicVariables* swapchainInfo
+) {
     if (renderPass == VK_NULL_HANDLE) {
         std::string errorMsg = "GeometryRenderNode: RenderPass is VK_NULL_HANDLE";
         NODE_LOG_ERROR(errorMsg);
@@ -260,8 +298,8 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    if (swapchainInfo == nullptr) {
-        std::string errorMsg = "GeometryRenderNode: SwapChain info is null";
+    if (pipelineLayout == VK_NULL_HANDLE) {
+        std::string errorMsg = "GeometryRenderNode: Pipeline layout is VK_NULL_HANDLE";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
@@ -270,66 +308,51 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    if (pipelineLayout == VK_NULL_HANDLE) {
-        std::string errorMsg = "GeometryRenderNode: Pipeline layout is VK_NULL_HANDLE";
+    if (swapchainInfo == nullptr) {
+        std::string errorMsg = "GeometryRenderNode: SwapChain info is null";
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+}
 
-    // Extract viewport and scissor from swapchain info
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchainInfo->Extent.width);
-    viewport.height = static_cast<float>(swapchainInfo->Extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchainInfo->Extent;
-
-    uint32_t renderWidth = swapchainInfo->Extent.width;
-    uint32_t renderHeight = swapchainInfo->Extent.height;
-
-    // Setup clear values
+void GeometryRenderNode::BeginRenderPassWithClear(
+    VkCommandBuffer cmdBuffer,
+    VkRenderPass renderPass,
+    VkFramebuffer framebuffer,
+    uint32_t width,
+    uint32_t height
+) {
     VkClearValue clearValues[2];
     clearValues[0] = clearColor;
     clearValues[1] = clearDepthStencil;
 
-    // Begin render pass
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.pNext = nullptr;
     renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = currentFramebuffer;
-    renderPassInfo.renderArea.offset.x = 0;
-    renderPassInfo.renderArea.offset.y = 0;
-    renderPassInfo.renderArea.extent.width = renderWidth;
-    renderPassInfo.renderArea.extent.height = renderHeight;
+    renderPassInfo.framebuffer = framebuffer;
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = {width, height};
     renderPassInfo.clearValueCount = 2;
     renderPassInfo.pClearValues = clearValues;
 
-    vkCmdBeginRenderPass(
-        cmdBuffer,
-        &renderPassInfo,
-        VK_SUBPASS_CONTENTS_INLINE
-    );
+    vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
 
+void GeometryRenderNode::BindPipelineAndDescriptors(
+    VkCommandBuffer cmdBuffer,
+    VkPipeline pipeline,
+    VkPipelineLayout pipelineLayout,
+    const std::vector<VkDescriptorSet>& descriptorSets
+) {
     // Bind pipeline
-    vkCmdBindPipeline(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipeline
-    );
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
     // Bind descriptor sets
-    std::vector<VkDescriptorSet> descriptorSets = ctx.In(GeometryRenderNodeConfig::DESCRIPTOR_SETS);
-
-    if(descriptorSets.size() == 0) {
-        std::string errorMsg = "[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!";
-        NODE_LOG_WARNING(errorMsg);
-	}
+    if (descriptorSets.size() == 0) {
+        NODE_LOG_WARNING("[GeometryRenderNode] WARNING: No descriptor sets provided, rendering may fail!");
+        return;
+    }
 
     if (descriptorSets[0] != VK_NULL_HANDLE && pipelineLayout != VK_NULL_HANDLE) {
         vkCmdBindDescriptorSets(
@@ -343,65 +366,58 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
             nullptr
         );
     } else {
-        std::string errorMsg = "[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!";
-        NODE_LOG_WARNING(errorMsg);
+        NODE_LOG_WARNING("[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!");
     }
-    
+}
 
+void GeometryRenderNode::BindVertexAndIndexBuffers(
+    VkCommandBuffer cmdBuffer,
+    Context& ctx,
+    VkBuffer vertexBuffer
+) {
     // Bind vertex buffer
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(
-        cmdBuffer,
-        0,
-        1,
-        &vertexBuffer,
-        offsets
-    );
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, offsets);
 
-    // Bind index buffer (if using indexed rendering)
+    // Bind index buffer if enabled
     if (useIndexBuffer) {
         VkBuffer indexBuffer = ctx.In(GeometryRenderNodeConfig::INDEX_BUFFER);
         if (indexBuffer != VK_NULL_HANDLE) {
-            vkCmdBindIndexBuffer(
-                cmdBuffer,
-                indexBuffer,
-                0,
-                VK_INDEX_TYPE_UINT32
-            );
+            vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
         }
     }
+}
 
-    // Set viewport
+void GeometryRenderNode::SetViewportAndScissor(
+    VkCommandBuffer cmdBuffer,
+    const VkExtent2D& extent
+) {
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = extent;
+
     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-
-    // Set scissor
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+}
 
-    // Draw
+void GeometryRenderNode::RecordDrawCall(VkCommandBuffer cmdBuffer, Context& ctx) {
     if (useIndexBuffer) {
-        vkCmdDrawIndexed(
-            cmdBuffer,
-            indexCount,
-            instanceCount,
-            0,
-            0,
-            firstInstance
-        );
+        vkCmdDrawIndexed(cmdBuffer, indexCount, instanceCount, 0, 0, firstInstance);
     } else {
-        vkCmdDraw(
-            cmdBuffer,
-            vertexCount,
-            instanceCount,
-            firstVertex,
-            firstInstance
-        );
+        vkCmdDraw(cmdBuffer, vertexCount, instanceCount, firstVertex, firstInstance);
     }
+}
 
-    // End render pass
-    vkCmdEndRenderPass(cmdBuffer);
-    
-    // End command buffer recording
-    result = vkEndCommandBuffer(cmdBuffer);
+void GeometryRenderNode::EndCommandBuffer(VkCommandBuffer cmdBuffer) {
+    VkResult result = vkEndCommandBuffer(cmdBuffer);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to end command buffer");
     }

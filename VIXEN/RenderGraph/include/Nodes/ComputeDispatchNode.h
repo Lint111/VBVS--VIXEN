@@ -68,6 +68,12 @@ protected:
 private:
     void RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, const void* pushConstantData);
 
+    // Extracted helper methods for RecordComputeCommands
+    void TransitionImageToGeneral(VkCommandBuffer cmdBuffer, VkImage image);
+    void BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet);
+    void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData);
+    void TransitionImageToPresent(VkCommandBuffer cmdBuffer, VkImage image);
+
     // Device and command pool references
     VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;

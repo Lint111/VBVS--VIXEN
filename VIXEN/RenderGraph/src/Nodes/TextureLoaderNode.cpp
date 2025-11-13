@@ -41,10 +41,9 @@ void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
     }
 
-    // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // Get parameters using config constants
+    // Get parameters
     std::string filePath = GetParameterValue<std::string>(TextureLoaderNodeConfig::FILE_PATH, "");
     if (filePath.empty()) {
         throw std::runtime_error("TextureLoaderNode: filePath parameter is required");
@@ -52,93 +51,8 @@ void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
 
     bool generateMipmaps = GetParameterValue<bool>(TextureLoaderNodeConfig::GENERATE_MIPMAPS, false);
 
-    // Get MainCacher from owning graph
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-
-    // Register TextureCacher (idempotent - safe to call multiple times)
-    if (!mainCacher.IsRegistered(typeid(CashSystem::TextureWrapper))) {
-        mainCacher.RegisterCacher<
-            CashSystem::TextureCacher,
-            CashSystem::TextureWrapper,
-            CashSystem::TextureCreateParams
-        >(
-            typeid(CashSystem::TextureWrapper),
-            "Texture",
-            true  // device-dependent
-        );
-        NODE_LOG_DEBUG("TextureLoaderNode: Registered TextureCacher");
-    }
-
-    // Register SamplerCacher (idempotent - safe to call multiple times)
-    if (!mainCacher.IsRegistered(typeid(CashSystem::SamplerWrapper))) {
-        mainCacher.RegisterCacher<
-            CashSystem::SamplerCacher,
-            CashSystem::SamplerWrapper,
-            CashSystem::SamplerCreateParams
-        >(
-            typeid(CashSystem::SamplerWrapper),
-            "Sampler",
-            true  // device-dependent
-        );
-        NODE_LOG_DEBUG("TextureLoaderNode: Registered SamplerCacher");
-    }
-
-    // Get SamplerCacher
-    auto* samplerCacher = mainCacher.GetCacher<
-        CashSystem::SamplerCacher,
-        CashSystem::SamplerWrapper,
-        CashSystem::SamplerCreateParams
-    >(typeid(CashSystem::SamplerWrapper), device);
-
-    if (!samplerCacher) {
-        throw std::runtime_error("TextureLoaderNode: Failed to get SamplerCacher from MainCacher");
-    }
-
-    // Get TextureCacher
-    auto* textureCacher = mainCacher.GetCacher<
-        CashSystem::TextureCacher,
-        CashSystem::TextureWrapper,
-        CashSystem::TextureCreateParams
-    >(typeid(CashSystem::TextureWrapper), device);
-
-    if (!textureCacher) {
-        throw std::runtime_error("TextureLoaderNode: Failed to get TextureCacher from MainCacher");
-    }
-
-    // Step 1: Get or create sampler
-    CashSystem::SamplerCreateParams samplerParams{};
-    samplerParams.minFilter = VK_FILTER_LINEAR;
-    samplerParams.magFilter = VK_FILTER_LINEAR;
-    samplerParams.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerParams.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerParams.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerParams.maxAnisotropy = 16.0f;
-    samplerParams.compareEnable = VK_FALSE;
-    samplerParams.compareOp = VK_COMPARE_OP_NEVER;
-
-    cachedSamplerWrapper = samplerCacher->GetOrCreate(samplerParams);
-    if (!cachedSamplerWrapper || cachedSamplerWrapper->resource == VK_NULL_HANDLE) {
-        throw std::runtime_error("TextureLoaderNode: Failed to get or create sampler");
-    }
-
-    // Step 2: Get or create texture (passing sampler from step 1)
-    CashSystem::TextureCreateParams textureParams{};
-    textureParams.filePath = filePath;
-    textureParams.format = VK_FORMAT_R8G8B8A8_UNORM;
-    textureParams.generateMipmaps = generateMipmaps;
-    textureParams.samplerWrapper = cachedSamplerWrapper;
-
-    cachedTextureWrapper = textureCacher->GetOrCreate(textureParams);
-    if (!cachedTextureWrapper || cachedTextureWrapper->image == VK_NULL_HANDLE) {
-        throw std::runtime_error("TextureLoaderNode: Failed to get or create texture from cache");
-    }
-
-    // Extract resources from cached wrappers
-    textureImage = cachedTextureWrapper->image;
-    textureView = cachedTextureWrapper->view;
-    textureSampler = cachedTextureWrapper->samplerWrapper->resource;
-    textureMemory = cachedTextureWrapper->memory;
-    isLoaded = true;
+    RegisterCachers();
+    LoadTextureResources(filePath, generateMipmaps);
 
     // Set typed outputs
     ctx.Out(TextureLoaderNodeConfig::TEXTURE_IMAGE, textureImage);
@@ -156,9 +70,9 @@ void TextureLoaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void TextureLoaderNode::CleanupImpl(TypedCleanupContext& ctx) {
-    // Release cached wrappers - cachers own all Vulkan resources and manage lifecycle
+    // Release cached wrappers - cachers own all Vulkan resources
     if (cachedTextureWrapper) {
-        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached texture wrapper (cacher owns resources)");
+        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached texture wrapper");
         cachedTextureWrapper.reset();
         textureImage = VK_NULL_HANDLE;
         textureView = VK_NULL_HANDLE;
@@ -166,12 +80,93 @@ void TextureLoaderNode::CleanupImpl(TypedCleanupContext& ctx) {
     }
 
     if (cachedSamplerWrapper) {
-        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached sampler wrapper (cacher owns resource)");
+        NODE_LOG_DEBUG("TextureLoaderNode: Releasing cached sampler wrapper");
         cachedSamplerWrapper.reset();
         textureSampler = VK_NULL_HANDLE;
     }
 
     isLoaded = false;
+}
+
+void TextureLoaderNode::RegisterCachers() {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+
+    if (!mainCacher.IsRegistered(typeid(CashSystem::TextureWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::TextureCacher,
+            CashSystem::TextureWrapper,
+            CashSystem::TextureCreateParams
+        >(typeid(CashSystem::TextureWrapper), "Texture", true);
+        NODE_LOG_DEBUG("TextureLoaderNode: Registered TextureCacher");
+    }
+
+    if (!mainCacher.IsRegistered(typeid(CashSystem::SamplerWrapper))) {
+        mainCacher.RegisterCacher<
+            CashSystem::SamplerCacher,
+            CashSystem::SamplerWrapper,
+            CashSystem::SamplerCreateParams
+        >(typeid(CashSystem::SamplerWrapper), "Sampler", true);
+        NODE_LOG_DEBUG("TextureLoaderNode: Registered SamplerCacher");
+    }
+}
+
+void TextureLoaderNode::LoadTextureResources(const std::string& filePath, bool generateMipmaps) {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+
+    // Get SamplerCacher and create sampler
+    auto* samplerCacher = mainCacher.GetCacher<
+        CashSystem::SamplerCacher,
+        CashSystem::SamplerWrapper,
+        CashSystem::SamplerCreateParams
+    >(typeid(CashSystem::SamplerWrapper), device);
+
+    if (!samplerCacher) {
+        throw std::runtime_error("TextureLoaderNode: Failed to get SamplerCacher");
+    }
+
+    CashSystem::SamplerCreateParams samplerParams{};
+    samplerParams.minFilter = VK_FILTER_LINEAR;
+    samplerParams.magFilter = VK_FILTER_LINEAR;
+    samplerParams.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerParams.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerParams.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerParams.maxAnisotropy = 16.0f;
+    samplerParams.compareEnable = VK_FALSE;
+    samplerParams.compareOp = VK_COMPARE_OP_NEVER;
+
+    cachedSamplerWrapper = samplerCacher->GetOrCreate(samplerParams);
+    if (!cachedSamplerWrapper || cachedSamplerWrapper->resource == VK_NULL_HANDLE) {
+        throw std::runtime_error("TextureLoaderNode: Failed to create sampler");
+    }
+
+    // Get TextureCacher and create texture
+    auto* textureCacher = mainCacher.GetCacher<
+        CashSystem::TextureCacher,
+        CashSystem::TextureWrapper,
+        CashSystem::TextureCreateParams
+    >(typeid(CashSystem::TextureWrapper), device);
+
+    if (!textureCacher) {
+        throw std::runtime_error("TextureLoaderNode: Failed to get TextureCacher");
+    }
+
+    CashSystem::TextureCreateParams textureParams{};
+    textureParams.filePath = filePath;
+    textureParams.format = VK_FORMAT_R8G8B8A8_UNORM;
+    textureParams.generateMipmaps = generateMipmaps;
+    textureParams.samplerWrapper = cachedSamplerWrapper;
+
+    cachedTextureWrapper = textureCacher->GetOrCreate(textureParams);
+    if (!cachedTextureWrapper || cachedTextureWrapper->image == VK_NULL_HANDLE) {
+        throw std::runtime_error("TextureLoaderNode: Failed to create texture");
+    }
+
+    // Extract resources from cached wrappers
+    textureImage = cachedTextureWrapper->image;
+    textureView = cachedTextureWrapper->view;
+    textureSampler = cachedTextureWrapper->samplerWrapper->resource;
+    textureMemory = cachedTextureWrapper->memory;
+    isLoaded = true;
 }
 
 } // namespace Vixen::RenderGraph

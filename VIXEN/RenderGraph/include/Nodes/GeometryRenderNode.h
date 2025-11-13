@@ -55,6 +55,20 @@ public:
     void RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t framebufferIndex);
 
 protected:
+    // Command recording helpers (extracted from RecordDrawCommands)
+    void BeginCommandBuffer(VkCommandBuffer cmdBuffer);
+    void ValidateInputs(Context& ctx, VkRenderPass renderPass, VkPipeline pipeline,
+                        VkPipelineLayout pipelineLayout, VkBuffer vertexBuffer,
+                        SwapChainPublicVariables* swapchainInfo);
+    void BeginRenderPassWithClear(VkCommandBuffer cmdBuffer, VkRenderPass renderPass,
+                                  VkFramebuffer framebuffer, uint32_t width, uint32_t height);
+    void BindPipelineAndDescriptors(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
+                                    VkPipelineLayout pipelineLayout,
+                                    const std::vector<VkDescriptorSet>& descriptorSets);
+    void BindVertexAndIndexBuffers(VkCommandBuffer cmdBuffer, Context& ctx, VkBuffer vertexBuffer);
+    void SetViewportAndScissor(VkCommandBuffer cmdBuffer, const VkExtent2D& extent);
+    void RecordDrawCall(VkCommandBuffer cmdBuffer, Context& ctx);
+    void EndCommandBuffer(VkCommandBuffer cmdBuffer);
 	// Template method pattern - override *Impl() methods
 	void SetupImpl(TypedSetupContext& ctx) override;
 	void CompileImpl(TypedCompileContext& ctx) override;

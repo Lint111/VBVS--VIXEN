@@ -232,37 +232,63 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
     // All bundle access goes through context - bundle index handled automatically
 
     size_t inputCount = ctx.InVariadicCount();
-
-    // Shader-specific validation: descriptor type matching
     bool allValid = true;
+
     for (size_t i = 0; i < inputCount; ++i) {
-        const auto* slotInfo = ctx.InVariadicSlot(i);
-
-        // Access resource through context
-        Resource* res = ctx.InVariadicResource(i);
-
-        if (!slotInfo) continue;
-
-        // Skip validation for transient slots (Execute) - validated in Execute phase
-        if (HasExecute(slotInfo->slotRole)) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping transient slot " + std::to_string(i) + " (" + slotInfo->slotName + ") - will be validated in Execute phase");
-            continue;
-        }
-
-        // Skip type validation for field extraction - DescriptorSetNode handles per-frame indexing
-        if (slotInfo->hasFieldExtraction) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] Skipping type validation for field extraction slot " + std::to_string(i) + " (" + slotInfo->slotName + ") - downstream node will handle per-frame extraction");
-            continue;
-        }
-
-        VkDescriptorType expectedType = slotInfo->descriptorType;
-        if (!ValidateResourceType(res, expectedType)) {
-            NODE_LOG_INFO("[DescriptorResourceGathererNode::ValidateVariadicInputsImpl] ERROR: Resource " + std::to_string(i) + " (" + slotInfo->slotName + ") type mismatch for shader binding " + std::to_string(slotInfo->binding) + " (expected VkDescriptorType=" + std::to_string(expectedType) + ")");
+        if (!ValidateSingleInput(ctx, i)) {
             allValid = false;
         }
     }
 
     return allValid;
+}
+
+bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext& ctx, size_t slotIndex) {
+    const auto* slotInfo = ctx.InVariadicSlot(slotIndex);
+    if (!slotInfo) {
+        return true;  // Skip null slots
+    }
+
+    // Skip validation for transient slots (Execute) - validated in Execute phase
+    if (ShouldSkipTransientSlot(slotInfo, slotIndex)) {
+        return true;
+    }
+
+    // Skip type validation for field extraction - DescriptorSetNode handles per-frame indexing
+    if (ShouldSkipFieldExtractionSlot(slotInfo, slotIndex)) {
+        return true;
+    }
+
+    // Validate resource type against expected descriptor type
+    Resource* res = ctx.InVariadicResource(slotIndex);
+    VkDescriptorType expectedType = slotInfo->descriptorType;
+
+    if (!ValidateResourceType(res, expectedType)) {
+        LogTypeValidationError(slotIndex, slotInfo, expectedType);
+        return false;
+    }
+
+    return true;
+}
+
+bool DescriptorResourceGathererNode::ShouldSkipTransientSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex) {
+    if (HasExecute(slotInfo->slotRole)) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ShouldSkipTransientSlot] Skipping transient slot " + std::to_string(slotIndex) + " (" + slotInfo->slotName + ") - will be validated in Execute phase");
+        return true;
+    }
+    return false;
+}
+
+bool DescriptorResourceGathererNode::ShouldSkipFieldExtractionSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex) {
+    if (slotInfo->hasFieldExtraction) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ShouldSkipFieldExtractionSlot] Skipping type validation for field extraction slot " + std::to_string(slotIndex) + " (" + slotInfo->slotName + ") - downstream node will handle per-frame extraction");
+        return true;
+    }
+    return false;
+}
+
+void DescriptorResourceGathererNode::LogTypeValidationError(size_t slotIndex, const VariadicSlotInfo* slotInfo, VkDescriptorType expectedType) {
+    NODE_LOG_INFO("[DescriptorResourceGathererNode::LogTypeValidationError] ERROR: Resource " + std::to_string(slotIndex) + " (" + slotInfo->slotName + ") type mismatch for shader binding " + std::to_string(slotInfo->binding) + " (expected VkDescriptorType=" + std::to_string(expectedType) + ")");
 }
 
 void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx) {
@@ -332,21 +358,8 @@ void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotInd
 
     // Extract field using visitor pattern - get raw struct pointer from variant
     std::visit([&](auto&& structPtr) {
-        using StructPtrType = std::decay_t<decltype(structPtr)>;
-
-        // Get raw pointer from smart pointer or raw pointer
-        const void* rawStructPtr = nullptr;
-        if constexpr (std::is_pointer_v<StructPtrType>) {
-            rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr));
-        } else if constexpr (requires { structPtr.get(); }) {
-            rawStructPtr = const_cast<const void*>(static_cast<const volatile void*>(structPtr.get()));
-        } else {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] WARNING: Cannot extract raw pointer from variant type");
-            return;
-        }
-
+        const void* rawStructPtr = ExtractRawPointerFromVariant(structPtr);
         if (!rawStructPtr) {
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] WARNING: Null struct pointer");
             return;
         }
 
@@ -358,6 +371,21 @@ void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotInd
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored struct with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
     }, variant);
+}
+
+template<typename T>
+const void* DescriptorResourceGathererNode::ExtractRawPointerFromVariant(T&& structPtr) {
+    using StructPtrType = std::decay_t<T>;
+
+    // Get raw pointer from smart pointer or raw pointer
+    if constexpr (std::is_pointer_v<StructPtrType>) {
+        return const_cast<const void*>(static_cast<const volatile void*>(structPtr));
+    } else if constexpr (requires { structPtr.get(); }) {
+        return const_cast<const void*>(static_cast<const volatile void*>(structPtr.get()));
+    } else {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ExtractRawPointerFromVariant] WARNING: Cannot extract raw pointer from variant type");
+        return nullptr;
+    }
 }
 
 void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant) {

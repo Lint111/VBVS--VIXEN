@@ -79,6 +79,24 @@ private:
     std::shared_ptr<CashSystem::ComputePipelineWrapper> pipelineWrapper_;
     // Performance logging (disabled by default)
     std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
+
+    // Helper methods
+    VkShaderModule CreateShaderModule(VulkanDevicePtr device, const std::vector<uint32_t>& spirv);
+    std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(
+        VulkanDevicePtr device,
+        ShaderDataBundlePtr shaderBundle,
+        VkDescriptorSetLayout descriptorSetLayout
+    );
+    void CreateComputePipeline(
+        VulkanDevicePtr device,
+        VkShaderModule shaderModule,
+        ShaderDataBundlePtr shaderBundle,
+        std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,
+        const std::string& layoutKey,
+        uint32_t workgroupX,
+        uint32_t workgroupY,
+        uint32_t workgroupZ
+    );
 };
 
 } // namespace Vixen::RenderGraph

@@ -44,6 +44,17 @@ protected:
 	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    // Extracted compile helpers
+    void ValidateInputs(VulkanDevicePtr devicePtr, VkRenderPass renderPass);
+    std::vector<VkImageView> BuildAttachmentArray(VkImageView colorView, VkImageView depthView);
+    VkFramebuffer CreateSingleFramebuffer(
+        VkRenderPass renderPass,
+        const std::vector<VkImageView>& attachments,
+        const VkExtent2D& extent,
+        uint32_t layers
+    );
+    void CleanupPartialFramebuffers(size_t count);
+
     VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> framebuffers;
     bool hasDepth = false;

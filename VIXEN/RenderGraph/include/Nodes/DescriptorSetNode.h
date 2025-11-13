@@ -173,6 +173,55 @@ private:
         const std::vector<SlotRole>& slotRoles = {},
         SlotRole roleFilter = SlotRole::Dependency  // Filter to process (Dependency or ExecuteOnly)
     );
+
+    // Descriptor write helpers - extracted from BuildDescriptorWrites for readability
+    VkSampler FindSamplerResource(const std::vector<ResourceVariant>& descriptorResources, uint32_t targetBinding);
+    bool ValidateAndFilterBinding(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const std::vector<ResourceVariant>& descriptorResources,
+        const std::vector<SlotRole>& slotRoles,
+        SlotRole roleFilter
+    );
+    void HandleStorageImage(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ResourceVariant& resourceVariant,
+        uint32_t imageIndex,
+        VkWriteDescriptorSet& write,
+        std::vector<VkDescriptorImageInfo>& imageInfos,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
+    void HandleSampledImage(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ResourceVariant& resourceVariant,
+        uint32_t imageIndex,
+        VkWriteDescriptorSet& write,
+        std::vector<VkDescriptorImageInfo>& imageInfos,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
+    void HandleSampler(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ResourceVariant& resourceVariant,
+        VkWriteDescriptorSet& write,
+        std::vector<VkDescriptorImageInfo>& imageInfos,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
+    void HandleCombinedImageSampler(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ResourceVariant& resourceVariant,
+        const std::vector<ResourceVariant>& descriptorResources,
+        uint32_t imageIndex,
+        size_t bindingIdx,
+        VkWriteDescriptorSet& write,
+        std::vector<VkDescriptorImageInfo>& imageInfos,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
+    void HandleBuffer(
+        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ResourceVariant& resourceVariant,
+        VkWriteDescriptorSet& write,
+        std::vector<VkDescriptorBufferInfo>& bufferInfos,
+        std::vector<VkWriteDescriptorSet>& writes
+    );
 };
 
 } // namespace Vixen::RenderGraph

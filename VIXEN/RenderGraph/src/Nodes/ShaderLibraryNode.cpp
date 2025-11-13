@@ -38,13 +38,12 @@ void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Called - graph-scope initialization");
 
     // Subscribe to DeviceMetadataEvent for shader version validation
-    // Use NodeInstance::SubscribeToMessage for automatic cleanup (avoids subscription leaks)
     if (GetMessageBus()) {
         SubscribeToMessage(
             Vixen::EventBus::DeviceMetadataEvent::TYPE,
             [this](const Vixen::EventBus::BaseEventMessage& msg) {
                 this->OnDeviceMetadata(msg);
-                return true; // Handled
+                return true;
             }
         );
         NODE_LOG_INFO("ShaderLibraryNode: Subscribed to DeviceMetadataEvent");
@@ -52,28 +51,7 @@ void ShaderLibraryNode::SetupImpl(TypedSetupContext& ctx) {
         NODE_LOG_WARNING("ShaderLibraryNode: MessageBus not available - cannot subscribe to device metadata");
     }
 
-    // Register ShaderModuleCacher (idempotent) - graph-scope setup
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-    NODE_LOG_DEBUG("ShaderLibraryNode: Checking if ShaderModuleCacher is registered...");
-    bool wasRegistered = mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper));
-    NODE_LOG_DEBUG("ShaderLibraryNode: Is registered: " + std::string(wasRegistered ? "true" : "false"));
-
-    if (!wasRegistered) {
-        NODE_LOG_DEBUG("ShaderLibraryNode: Registering ShaderModuleCacher...");
-        mainCacher.RegisterCacher<
-            CashSystem::ShaderModuleCacher,
-            CashSystem::ShaderModuleWrapper,
-            CashSystem::ShaderModuleCreateParams
-        >(
-            typeid(CashSystem::ShaderModuleWrapper),
-            "ShaderModule",
-            true  // device-dependent
-        );
-        NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher registered");
-    } else {
-        NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher already registered");
-    }
-
+    RegisterShaderModuleCacher();
     NODE_LOG_DEBUG("ShaderLibraryNode::Setup: Complete");
 }
 
@@ -89,129 +67,29 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Compile: START - Phase G shader builder");
 
     // Access VulkanDevice input (compile-time dependency)
-    NODE_LOG_DEBUG("ShaderLibraryNode::Compile: Retrieving VulkanDevice input...");
     VulkanDevicePtr devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
-
     if (devicePtr == nullptr) {
-        std::string errorMsg = "ShaderLibraryNode: VulkanDevice input is null during Compile";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
+        throw std::runtime_error("ShaderLibraryNode: VulkanDevice input is null during Compile");
     }
 
     NODE_LOG_DEBUG("ShaderLibraryNode::Compile: VulkanDevice retrieved: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr)));
     SetDevice(devicePtr);
 
-    // Get ShaderModuleCacher (registered during Setup)
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-    NODE_LOG_DEBUG("ShaderLibraryNode: Getting ShaderModuleCacher from MainCacher...");
-    NODE_LOG_DEBUG("ShaderLibraryNode: Device pointer value: " + std::to_string(reinterpret_cast<uint64_t>(device)));
-    NODE_LOG_DEBUG("ShaderLibraryNode: IsDeviceDependent: " + std::string(mainCacher.IsDeviceDependent(typeid(CashSystem::ShaderModuleWrapper)) ? "true" : "false"));
+    InitializeShaderModuleCacher();
 
-    shaderModuleCacher = mainCacher.GetCacher<
-        CashSystem::ShaderModuleCacher,
-        CashSystem::ShaderModuleWrapper,
-        CashSystem::ShaderModuleCreateParams
-    >(typeid(CashSystem::ShaderModuleWrapper), device);
-
-    if (!shaderModuleCacher) {
-        std::string errorMsg = "ShaderLibraryNode: Failed to get ShaderModuleCacher";
-        NODE_LOG_ERROR(errorMsg);
-        NODE_LOG_ERROR("ShaderLibraryNode: device=" + std::to_string(reinterpret_cast<uint64_t>(device)));
-        throw std::runtime_error(errorMsg);
-    }
-    NODE_LOG_DEBUG("ShaderLibraryNode: Got ShaderModuleCacher successfully");
-    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->IsInitialized()=" + std::string(shaderModuleCacher->IsInitialized() ? "true" : "false"));
-    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher->GetDevice()=" + std::to_string(reinterpret_cast<uint64_t>(shaderModuleCacher->GetDevice())));
-
-    // Check if any builder functions were registered
-    if (shaderBuilderFuncs.empty()) {
-        std::string errorMsg = "ShaderLibraryNode: No shader builders registered. Call RegisterShaderBuilder() before compilation.";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Use device metadata for shader compilation if available
+    // Determine target shader versions
     int targetVulkan = deviceVulkanVersion;
     int targetSpirv = deviceSpirvVersion;
-
     if (hasReceivedDeviceMetadata) {
-        NODE_LOG_INFO("ShaderLibraryNode: Using device metadata for shader compilation");
-        NODE_LOG_INFO("  - Target Vulkan: " + std::to_string(targetVulkan));
-        NODE_LOG_INFO("  - Target SPIR-V: " + std::to_string(targetSpirv));
+        NODE_LOG_INFO("ShaderLibraryNode: Using device metadata (Vulkan " + std::to_string(targetVulkan) +
+                      ", SPIR-V " + std::to_string(targetSpirv) + ")");
     } else {
-        NODE_LOG_WARNING("ShaderLibraryNode: Device metadata not received, using default versions");
-        NODE_LOG_WARNING("  - Default Vulkan: " + std::to_string(targetVulkan));
-        NODE_LOG_WARNING("  - Default SPIR-V: " + std::to_string(targetSpirv));
+        NODE_LOG_WARNING("ShaderLibraryNode: Using default versions (Vulkan " + std::to_string(targetVulkan) +
+                         ", SPIR-V " + std::to_string(targetSpirv) + ")");
     }
 
-    // MVP: Compile only first registered shader program
-    // TODO Phase G.1: Support multiple programs with indexed outputs
-    NODE_LOG_DEBUG("ShaderLibraryNode: Registered builders: " + std::to_string(shaderBuilderFuncs.size()) +
-                  " (compiling first only)");
-
-    NODE_LOG_DEBUG("ShaderLibraryNode: Calling shader builder function...");
-    ShaderManagement::ShaderBundleBuilder builder = shaderBuilderFuncs[0](targetVulkan, targetSpirv);
-
-    NODE_LOG_DEBUG("ShaderLibraryNode: Builder configured, calling Build()...");
-
-    auto result = builder.Build();
-    if (!result.success) {
-        std::string errorMsg = "ShaderLibraryNode: Shader compilation failed: " + result.errorMessage;
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    NODE_LOG_INFO("ShaderLibraryNode: Shader bundle built successfully");
-    NODE_LOG_INFO("  - Compile time: " + std::to_string(result.compileTime.count()) + "ms");
-    NODE_LOG_INFO("  - Reflect time: " + std::to_string(result.reflectTime.count()) + "ms");
-
-    // Store bundle for future descriptor automation (Phase 2)
-    shaderBundle_ = std::move(result.bundle);
-
-    // Step 2: Create VkShaderModules using CashSystem caching
-    NODE_LOG_INFO("ShaderLibraryNode: Creating VkShaderModules via CashSystem");
-
-    // Step 3: Create shader modules from ShaderDataBundle SPIR-V
-    try {
-        for (const auto& stage : shaderBundle_->program.stages) {
-            VkShaderStageFlagBits vkStage;
-            const char* stageName;
-
-            if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
-                vkStage = VK_SHADER_STAGE_VERTEX_BIT;
-                stageName = "Vertex";
-            } else if (stage.stage == ShaderManagement::ShaderStage::Fragment) {
-                vkStage = VK_SHADER_STAGE_FRAGMENT_BIT;
-                stageName = "Fragment";
-            } else {
-                continue; // Skip other stages for now
-            }
-
-            // Use cacher to create/retrieve shader module from SPIR-V
-            auto shaderWrapper = shaderModuleCacher->GetOrCreateFromSpirv(
-                stage.spirvCode,
-                stage.entryPoint,
-                {},  // no macros
-                vkStage,
-                std::string("Draw_") + stageName
-            );
-
-            if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
-                vertexShader = shaderWrapper;
-                NODE_LOG_INFO("ShaderLibraryNode: Vertex shader module created (VkShaderModule: " +
-                             std::to_string(reinterpret_cast<uint64_t>(vertexShader->shaderModule)) + ")");
-            } else {
-                fragmentShader = shaderWrapper;
-                NODE_LOG_INFO("ShaderLibraryNode: Fragment shader module created (VkShaderModule: " +
-                             std::to_string(reinterpret_cast<uint64_t>(fragmentShader->shaderModule)) + ")");
-            }
-        }
-
-        NODE_LOG_INFO("ShaderLibraryNode: All shader modules successfully created via CashSystem");
-    } catch (const std::exception& e) {
-        NODE_LOG_ERROR("ShaderLibraryNode: Failed to create shader modules: " + std::string(e.what()));
-        throw;
-    }
+    CompileShaderBundle(targetVulkan, targetSpirv);
+    CreateShaderModules();
 
     // Output device and shader data bundle
     ctx.Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
@@ -237,37 +115,118 @@ void ShaderLibraryNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 void ShaderLibraryNode::OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message) {
     auto* metadataEvent = static_cast<const Vixen::EventBus::DeviceMetadataEvent*>(&message);
-
     if (!metadataEvent) {
         NODE_LOG_WARNING("ShaderLibraryNode: Received invalid DeviceMetadataEvent");
         return;
     }
 
-    // Get selected device info
     const auto& selectedDevice = metadataEvent->GetSelectedDevice();
-
-    // Store device capabilities
     deviceVulkanVersion = selectedDevice.GetVulkanVersionShorthand();
     deviceSpirvVersion = selectedDevice.GetSpirvVersionShorthand();
     hasReceivedDeviceMetadata = true;
 
-    NODE_LOG_INFO("ShaderLibraryNode: Received device metadata from EventBus");
-    NODE_LOG_INFO("  - Total devices detected: " + std::to_string(metadataEvent->availableDevices.size()));
-    NODE_LOG_INFO("  - Selected device index: " + std::to_string(metadataEvent->selectedDeviceIndex));
-    NODE_LOG_INFO("  - Selected device: " + selectedDevice.deviceName);
-    NODE_LOG_INFO("  - Vulkan API version: " + std::to_string(deviceVulkanVersion) + " (shorthand)");
-    NODE_LOG_INFO("  - Max SPIR-V version: " + std::to_string(deviceSpirvVersion) + " (shorthand)");
-    NODE_LOG_INFO("  - Discrete GPU: " + std::string(selectedDevice.isDiscreteGPU ? "Yes" : "No"));
-    NODE_LOG_INFO("  - Dedicated memory: " + std::to_string(selectedDevice.dedicatedMemoryMB) + " MB");
+    NODE_LOG_INFO("ShaderLibraryNode: Device metadata received - " + selectedDevice.deviceName +
+                  " (Vulkan " + std::to_string(deviceVulkanVersion) +
+                  ", SPIR-V " + std::to_string(deviceSpirvVersion) + ")");
+}
 
-    // Log all available devices
-    NODE_LOG_INFO("ShaderLibraryNode: Available devices:");
-    for (size_t i = 0; i < metadataEvent->availableDevices.size(); ++i) {
-        const auto& dev = metadataEvent->availableDevices[i];
-        NODE_LOG_INFO("  [" + std::to_string(i) + "] " + dev.deviceName +
-                      " (Vulkan " + std::to_string(dev.GetVulkanVersionShorthand()) +
-                      ", SPIR-V " + std::to_string(dev.GetSpirvVersionShorthand()) + ")");
+void ShaderLibraryNode::RegisterShaderModuleCacher() {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    if (mainCacher.IsRegistered(typeid(CashSystem::ShaderModuleWrapper))) {
+        NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher already registered");
+        return;
     }
+
+    NODE_LOG_DEBUG("ShaderLibraryNode: Registering ShaderModuleCacher...");
+    mainCacher.RegisterCacher<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(
+        typeid(CashSystem::ShaderModuleWrapper),
+        "ShaderModule",
+        true  // device-dependent
+    );
+    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher registered");
+}
+
+void ShaderLibraryNode::InitializeShaderModuleCacher() {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    NODE_LOG_DEBUG("ShaderLibraryNode: Getting ShaderModuleCacher from MainCacher...");
+
+    shaderModuleCacher = mainCacher.GetCacher<
+        CashSystem::ShaderModuleCacher,
+        CashSystem::ShaderModuleWrapper,
+        CashSystem::ShaderModuleCreateParams
+    >(typeid(CashSystem::ShaderModuleWrapper), device);
+
+    if (!shaderModuleCacher) {
+        throw std::runtime_error("ShaderLibraryNode: Failed to get ShaderModuleCacher (device=" +
+                                 std::to_string(reinterpret_cast<uint64_t>(device)) + ")");
+    }
+
+    NODE_LOG_DEBUG("ShaderLibraryNode: ShaderModuleCacher initialized successfully");
+}
+
+void ShaderLibraryNode::CompileShaderBundle(int targetVulkan, int targetSpirv) {
+    if (shaderBuilderFuncs.empty()) {
+        throw std::runtime_error("ShaderLibraryNode: No shader builders registered. Call RegisterShaderBuilder() before compilation.");
+    }
+
+    // MVP: Compile only first registered shader program
+    NODE_LOG_DEBUG("ShaderLibraryNode: Compiling shader bundle (first of " +
+                   std::to_string(shaderBuilderFuncs.size()) + " registered)");
+
+    ShaderManagement::ShaderBundleBuilder builder = shaderBuilderFuncs[0](targetVulkan, targetSpirv);
+    auto result = builder.Build();
+
+    if (!result.success) {
+        throw std::runtime_error("ShaderLibraryNode: Shader compilation failed: " + result.errorMessage);
+    }
+
+    NODE_LOG_INFO("ShaderLibraryNode: Shader bundle built (compile: " +
+                  std::to_string(result.compileTime.count()) + "ms, reflect: " +
+                  std::to_string(result.reflectTime.count()) + "ms)");
+
+    shaderBundle_ = std::move(result.bundle);
+}
+
+void ShaderLibraryNode::CreateShaderModules() {
+    NODE_LOG_INFO("ShaderLibraryNode: Creating VkShaderModules via CashSystem");
+
+    for (const auto& stage : shaderBundle_->program.stages) {
+        VkShaderStageFlagBits vkStage;
+        const char* stageName;
+
+        if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
+            vkStage = VK_SHADER_STAGE_VERTEX_BIT;
+            stageName = "Vertex";
+        } else if (stage.stage == ShaderManagement::ShaderStage::Fragment) {
+            vkStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            stageName = "Fragment";
+        } else {
+            continue;
+        }
+
+        auto shaderWrapper = shaderModuleCacher->GetOrCreateFromSpirv(
+            stage.spirvCode,
+            stage.entryPoint,
+            {},
+            vkStage,
+            std::string("Draw_") + stageName
+        );
+
+        if (stage.stage == ShaderManagement::ShaderStage::Vertex) {
+            vertexShader = shaderWrapper;
+        } else {
+            fragmentShader = shaderWrapper;
+        }
+
+        NODE_LOG_INFO("ShaderLibraryNode: " + std::string(stageName) + " shader module created (VkShaderModule: " +
+                      std::to_string(reinterpret_cast<uint64_t>(shaderWrapper->shaderModule)) + ")");
+    }
+
+    NODE_LOG_INFO("ShaderLibraryNode: All shader modules successfully created");
 }
 
 } // namespace Vixen::RenderGraph

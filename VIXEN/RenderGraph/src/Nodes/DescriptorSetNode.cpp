@@ -341,6 +341,310 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 }
 
+VkSampler DescriptorSetNode::FindSamplerResource(
+    const std::vector<ResourceVariant>& descriptorResources,
+    uint32_t targetBinding
+) {
+    // First check the binding index itself
+    if (targetBinding < descriptorResources.size()) {
+        const auto& resource = descriptorResources[targetBinding];
+        if (std::holds_alternative<VkSampler>(resource)) {
+            return std::get<VkSampler>(resource);
+        }
+    }
+
+    // Search all resources for a sampler (for combined image samplers)
+    // The gatherer may have placed it elsewhere due to overwriting
+    for (size_t i = 0; i < descriptorResources.size(); ++i) {
+        const auto& resource = descriptorResources[i];
+        if (std::holds_alternative<VkSampler>(resource)) {
+            // Found a sampler - assume it's for this combined sampler binding
+            // TODO: Better tracking of which sampler belongs to which binding
+            return std::get<VkSampler>(resource);
+        }
+    }
+
+    return VK_NULL_HANDLE;
+}
+
+bool DescriptorSetNode::ValidateAndFilterBinding(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const std::vector<ResourceVariant>& descriptorResources,
+    const std::vector<SlotRole>& slotRoles,
+    SlotRole roleFilter
+) {
+    // Use binding.binding (shader binding number) to index into resources, not loop index
+    if (binding.binding >= descriptorResources.size()) {
+        NODE_LOG_DEBUG("[DescriptorSetNode::ValidateAndFilterBinding] WARNING: Binding " +
+                      std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
+                      std::to_string(descriptorResources.size()));
+        return false;
+    }
+
+    // Filter by slot role if provided
+    // Support combined roles (e.g., Dependency | Execute)
+    // A binding matches the filter if it has ANY of the filter's flags set
+    if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
+        SlotRole bindingRole = slotRoles[binding.binding];
+        uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
+        uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
+
+        // Check if binding has any of the filter flags
+        // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
+        // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
+        bool matchesFilter = (bindingFlags & filterFlags) != 0;
+
+        NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
+                      " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
+                      ", filter=" + std::to_string(filterFlags) +
+                      ", matches=" + (matchesFilter ? "YES" : "NO"));
+
+        if (!matchesFilter) {
+            return false;  // Skip this binding - doesn't match filter
+        }
+    }
+
+    const auto& resourceVariant = descriptorResources[binding.binding];
+
+    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
+                  " (" + binding.name + ") resource type: " +
+                  (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
+                   std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
+                   std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
+                   std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
+
+    // Skip placeholder entries (std::monostate) - these are transient resources not yet populated
+    if (std::holds_alternative<std::monostate>(resourceVariant)) {
+        NODE_LOG_DEBUG("[ValidateAndFilterBinding] Skipping binding " + std::to_string(binding.binding) +
+                      " - placeholder not yet populated (transient resource)");
+        return false;
+    }
+
+    return true;
+}
+
+void DescriptorSetNode::HandleStorageImage(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const ResourceVariant& resourceVariant,
+    uint32_t imageIndex,
+    VkWriteDescriptorSet& write,
+    std::vector<VkDescriptorImageInfo>& imageInfos,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    // Storage images don't need samplers
+    // Check for SwapChainPublicInfo (per-frame image views)
+    if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
+        SwapChainPublicVariables* sc = *swapchainPtr;
+        if (sc && imageIndex < sc->colorBuffers.size()) {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = sc->colorBuffers[imageIndex].view;
+            imageInfo.sampler = VK_NULL_HANDLE;
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            imageInfos.push_back(imageInfo);
+            write.pImageInfo = &imageInfos.back();
+            writes.push_back(write);
+        }
+    }
+    // Direct VkImageView (single image, same for all frames)
+    else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+        VkImageView imageView = std::get<VkImageView>(resourceVariant);
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = imageView;
+        imageInfo.sampler = VK_NULL_HANDLE;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        imageInfos.push_back(imageInfo);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+    }
+}
+
+void DescriptorSetNode::HandleSampledImage(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const ResourceVariant& resourceVariant,
+    uint32_t imageIndex,
+    VkWriteDescriptorSet& write,
+    std::vector<VkDescriptorImageInfo>& imageInfos,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    // Sampled images are used with separate samplers
+    // Samplers should be in the same descriptor set (validated by ShaderDataBundle)
+    VkImageView imageView = VK_NULL_HANDLE;
+
+    // Check for SwapChainPublicInfo (per-frame image views)
+    if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
+        SwapChainPublicVariables* sc = *swapchainPtr;
+        if (sc && imageIndex < sc->colorBuffers.size()) {
+            imageView = sc->colorBuffers[imageIndex].view;
+        }
+    }
+    // Direct VkImageView (single image, same for all frames)
+    else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+        imageView = std::get<VkImageView>(resourceVariant);
+    }
+
+    if (imageView != VK_NULL_HANDLE) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = imageView;
+        imageInfo.sampler = VK_NULL_HANDLE;  // Sampled images don't include sampler
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos.push_back(imageInfo);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+
+        NODE_LOG_DEBUG("[DescriptorSetNode::HandleSampledImage] Bound SAMPLED_IMAGE '" +
+                      binding.name + "' at binding " + std::to_string(binding.binding) +
+                      " (sampler should be separate)");
+    }
+}
+
+void DescriptorSetNode::HandleSampler(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const ResourceVariant& resourceVariant,
+    VkWriteDescriptorSet& write,
+    std::vector<VkDescriptorImageInfo>& imageInfos,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    // Standalone sampler descriptor (no image)
+    if (std::holds_alternative<VkSampler>(resourceVariant)) {
+        VkSampler sampler = std::get<VkSampler>(resourceVariant);
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.sampler = sampler;
+        imageInfo.imageView = VK_NULL_HANDLE;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfos.push_back(imageInfo);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+    }
+    // Handle vector of samplers (for array bindings)
+    else if (std::holds_alternative<std::vector<VkSampler>>(resourceVariant)) {
+        const auto& samplerArray = std::get<std::vector<VkSampler>>(resourceVariant);
+        if (!samplerArray.empty()) {
+            // For array bindings, create one write with multiple samplers
+            size_t startIdx = imageInfos.size();
+            for (const auto& sampler : samplerArray) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.sampler = sampler;
+                imageInfo.imageView = VK_NULL_HANDLE;
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                imageInfos.push_back(imageInfo);
+            }
+            write.pImageInfo = &imageInfos[startIdx];
+            write.descriptorCount = static_cast<uint32_t>(samplerArray.size());
+            writes.push_back(write);
+        }
+    }
+}
+
+void DescriptorSetNode::HandleCombinedImageSampler(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const ResourceVariant& resourceVariant,
+    const std::vector<ResourceVariant>& descriptorResources,
+    uint32_t imageIndex,
+    size_t bindingIdx,
+    VkWriteDescriptorSet& write,
+    std::vector<VkDescriptorImageInfo>& imageInfos,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    // Handle combined image sampler (image + sampler)
+    // Check for ImageSamplerPair first (new type-safe approach)
+    NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] COMBINED_IMAGE_SAMPLER binding " +
+                  std::to_string(binding.binding) + " (" + binding.name + "), variant index=" +
+                  std::to_string(resourceVariant.index()));
+
+    if (std::holds_alternative<ImageSamplerPair>(resourceVariant)) {
+        const ImageSamplerPair& pair = std::get<ImageSamplerPair>(resourceVariant);
+
+        NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] Extracted ImageSamplerPair: imageView=" +
+                      std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) + ", sampler=" +
+                      std::to_string(reinterpret_cast<uint64_t>(pair.sampler)));
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = pair.imageView;
+        imageInfo.sampler = pair.sampler;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos.push_back(imageInfo);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+
+        NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] Bound COMBINED_IMAGE_SAMPLER '" +
+                      binding.name + "' at binding " + std::to_string(binding.binding) +
+                      " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) +
+                      ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(pair.sampler)) + ")");
+    }
+    // Fallback: Legacy approach with separate ImageView and Sampler resources
+    else if (std::holds_alternative<VkImageView>(resourceVariant)) {
+        VkImageView imageView = std::get<VkImageView>(resourceVariant);
+
+        // Find paired sampler resource using helper
+        VkSampler sampler = FindSamplerResource(descriptorResources, binding.binding);
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = imageView;
+        imageInfo.sampler = sampler;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos.push_back(imageInfo);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+
+        NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] Bound COMBINED_IMAGE_SAMPLER '" +
+                      binding.name + "' at binding " + std::to_string(binding.binding) +
+                      " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(imageView)) +
+                      ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(sampler)) + ") [legacy]");
+
+        if (sampler == VK_NULL_HANDLE) {
+            NODE_LOG_DEBUG("[DescriptorSetNode::HandleCombinedImageSampler] WARNING: Combined image sampler at binding " +
+                          std::to_string(binding.binding) + " has no sampler (VK_NULL_HANDLE)");
+        }
+    }
+    // Handle array of combined image samplers
+    // Expect vector<VkImageView> followed by vector<VkSampler>
+    else if (std::holds_alternative<std::vector<VkImageView>>(resourceVariant)) {
+        const auto& imageViewArray = std::get<std::vector<VkImageView>>(resourceVariant);
+        std::vector<VkSampler> samplerArray;
+
+        // Try to get sampler array from next slot
+        if (bindingIdx + 1 < descriptorResources.size()) {
+            const auto& nextResource = descriptorResources[bindingIdx + 1];
+            if (std::holds_alternative<std::vector<VkSampler>>(nextResource)) {
+                samplerArray = std::get<std::vector<VkSampler>>(nextResource);
+            }
+        }
+
+        if (!imageViewArray.empty()) {
+            size_t startIdx = imageInfos.size();
+            for (size_t i = 0; i < imageViewArray.size(); i++) {
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.imageView = imageViewArray[i];
+                imageInfo.sampler = (i < samplerArray.size()) ? samplerArray[i] : VK_NULL_HANDLE;
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfos.push_back(imageInfo);
+            }
+            write.pImageInfo = &imageInfos[startIdx];
+            write.descriptorCount = static_cast<uint32_t>(imageViewArray.size());
+            writes.push_back(write);
+        }
+    }
+}
+
+void DescriptorSetNode::HandleBuffer(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const ResourceVariant& resourceVariant,
+    VkWriteDescriptorSet& write,
+    std::vector<VkDescriptorBufferInfo>& bufferInfos,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    if (std::holds_alternative<VkBuffer>(resourceVariant)) {
+        VkBuffer buffer = std::get<VkBuffer>(resourceVariant);
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = buffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = VK_WHOLE_SIZE;
+        bufferInfos.push_back(bufferInfo);
+        write.pBufferInfo = &bufferInfos.back();
+        writes.push_back(write);
+    }
+}
+
 std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     uint32_t imageIndex,
     const std::vector<ResourceVariant>& descriptorResources,
@@ -359,82 +663,17 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
 
-    // Helper to find sampler resource by searching all resources
-    // This handles the case where ImageView and Sampler both connect to the same binding
-    // but are stored in different slots in the resource array
-    auto findSamplerResource = [&](uint32_t targetBinding) -> VkSampler {
-        // First check the binding index itself
-        if (targetBinding < descriptorResources.size()) {
-            const auto& resource = descriptorResources[targetBinding];
-            if (std::holds_alternative<VkSampler>(resource)) {
-                return std::get<VkSampler>(resource);
-            }
-        }
-
-        // Search all resources for a sampler (for combined image samplers)
-        // The gatherer may have placed it elsewhere due to overwriting
-        for (size_t i = 0; i < descriptorResources.size(); ++i) {
-            const auto& resource = descriptorResources[i];
-            if (std::holds_alternative<VkSampler>(resource)) {
-                // Found a sampler - assume it's for this combined sampler binding
-                // TODO: Better tracking of which sampler belongs to which binding
-                return std::get<VkSampler>(resource);
-            }
-        }
-
-        return VK_NULL_HANDLE;
-    };
-
     for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size(); bindingIdx++) {
         const auto& binding = descriptorBindings[bindingIdx];
 
-        // Use binding.binding (shader binding number) to index into resources, not loop index
-        if (binding.binding >= descriptorResources.size()) {
-            NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] WARNING: Binding " +
-                          std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
-                          std::to_string(descriptorResources.size()));
+        // Validate and filter binding
+        if (!ValidateAndFilterBinding(binding, descriptorResources, slotRoles, roleFilter)) {
             continue;
-        }
-
-        // Filter by slot role if provided
-        // Support combined roles (e.g., Dependency | Execute)
-        // A binding matches the filter if it has ANY of the filter's flags set
-        if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
-            SlotRole bindingRole = slotRoles[binding.binding];
-            uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
-            uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
-
-            // Check if binding has any of the filter flags
-            // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
-            // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
-            bool matchesFilter = (bindingFlags & filterFlags) != 0;
-
-            NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) +
-                          " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
-                          ", filter=" + std::to_string(filterFlags) +
-                          ", matches=" + (matchesFilter ? "YES" : "NO"));
-
-            if (!matchesFilter) {
-                continue;  // Skip this binding - doesn't match filter
-            }
         }
 
         const auto& resourceVariant = descriptorResources[binding.binding];
 
-        NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) +
-                      " (" + binding.name + ") resource type: " +
-                      (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
-                       std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
-                       std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
-                       std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
-
-        // Skip placeholder entries (std::monostate) - these are transient resources not yet populated
-        if (std::holds_alternative<std::monostate>(resourceVariant)) {
-            NODE_LOG_DEBUG("[BuildDescriptorWrites] Skipping binding " + std::to_string(binding.binding) +
-                          " - placeholder not yet populated (transient resource)");
-            continue;
-        }
-
+        // Initialize write descriptor
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptorSets[imageIndex];
@@ -443,200 +682,28 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
         write.descriptorType = binding.descriptorType;
         write.descriptorCount = 1;
 
-        // Generic variant inspection based on descriptor type
+        // Dispatch to type-specific handlers
         switch (binding.descriptorType) {
-            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE: {
-                // Storage images don't need samplers
-                // Check for SwapChainPublicInfo (per-frame image views)
-                if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
-                    SwapChainPublicVariables* sc = *swapchainPtr;
-                    if (sc && imageIndex < sc->colorBuffers.size()) {
-                        VkDescriptorImageInfo imageInfo{};
-                        imageInfo.imageView = sc->colorBuffers[imageIndex].view;
-                        imageInfo.sampler = VK_NULL_HANDLE;
-                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                        imageInfos.push_back(imageInfo);
-                        write.pImageInfo = &imageInfos.back();
-                        writes.push_back(write);
-                    }
-                }
-                // Direct VkImageView (single image, same for all frames)
-                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
-                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageView = imageView;
-                    imageInfo.sampler = VK_NULL_HANDLE;
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    writes.push_back(write);
-                }
+            case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                HandleStorageImage(binding, resourceVariant, imageIndex, write, imageInfos, writes);
                 break;
-            }
 
-            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
-                // Sampled images are used with separate samplers
-                // Samplers should be in the same descriptor set (validated by ShaderDataBundle)
-                VkImageView imageView = VK_NULL_HANDLE;
-
-                // Check for SwapChainPublicInfo (per-frame image views)
-                if (auto* swapchainPtr = std::get_if<SwapChainPublicVariables*>(&resourceVariant)) {
-                    SwapChainPublicVariables* sc = *swapchainPtr;
-                    if (sc && imageIndex < sc->colorBuffers.size()) {
-                        imageView = sc->colorBuffers[imageIndex].view;
-                    }
-                }
-                // Direct VkImageView (single image, same for all frames)
-                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
-                    imageView = std::get<VkImageView>(resourceVariant);
-                }
-
-                if (imageView != VK_NULL_HANDLE) {
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageView = imageView;
-                    imageInfo.sampler = VK_NULL_HANDLE;  // Sampled images don't include sampler
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    writes.push_back(write);
-
-                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound SAMPLED_IMAGE '" +
-                                  binding.name + "' at binding " + std::to_string(binding.binding) +
-                                  " (sampler should be separate)");
-                }
+            case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                HandleSampledImage(binding, resourceVariant, imageIndex, write, imageInfos, writes);
                 break;
-            }
 
-            case VK_DESCRIPTOR_TYPE_SAMPLER: {
-                // Standalone sampler descriptor (no image)
-                if (std::holds_alternative<VkSampler>(resourceVariant)) {
-                    VkSampler sampler = std::get<VkSampler>(resourceVariant);
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler = sampler;
-                    imageInfo.imageView = VK_NULL_HANDLE;
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    writes.push_back(write);
-                }
-                // Handle vector of samplers (for array bindings)
-                else if (std::holds_alternative<std::vector<VkSampler>>(resourceVariant)) {
-                    const auto& samplerArray = std::get<std::vector<VkSampler>>(resourceVariant);
-                    if (!samplerArray.empty()) {
-                        // For array bindings, create one write with multiple samplers
-                        size_t startIdx = imageInfos.size();
-                        for (const auto& sampler : samplerArray) {
-                            VkDescriptorImageInfo imageInfo{};
-                            imageInfo.sampler = sampler;
-                            imageInfo.imageView = VK_NULL_HANDLE;
-                            imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                            imageInfos.push_back(imageInfo);
-                        }
-                        write.pImageInfo = &imageInfos[startIdx];
-                        write.descriptorCount = static_cast<uint32_t>(samplerArray.size());
-                        writes.push_back(write);
-                    }
-                }
+            case VK_DESCRIPTOR_TYPE_SAMPLER:
+                HandleSampler(binding, resourceVariant, write, imageInfos, writes);
                 break;
-            }
 
-            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: {
-                // Handle combined image sampler (image + sampler)
-                // Check for ImageSamplerPair first (new type-safe approach)
-                NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] COMBINED_IMAGE_SAMPLER binding " +
-                              std::to_string(binding.binding) + " (" + binding.name + "), variant index=" +
-                              std::to_string(resourceVariant.index()));
-
-                if (std::holds_alternative<ImageSamplerPair>(resourceVariant)) {
-                    const ImageSamplerPair& pair = std::get<ImageSamplerPair>(resourceVariant);
-
-                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Extracted ImageSamplerPair: imageView=" +
-                                  std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) + ", sampler=" +
-                                  std::to_string(reinterpret_cast<uint64_t>(pair.sampler)));
-
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageView = pair.imageView;
-                    imageInfo.sampler = pair.sampler;
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    writes.push_back(write);
-
-                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '" +
-                                  binding.name + "' at binding " + std::to_string(binding.binding) +
-                                  " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(pair.imageView)) +
-                                  ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(pair.sampler)) + ")");
-                }
-                // Fallback: Legacy approach with separate ImageView and Sampler resources
-                else if (std::holds_alternative<VkImageView>(resourceVariant)) {
-                    VkImageView imageView = std::get<VkImageView>(resourceVariant);
-
-                    // Find paired sampler resource using helper
-                    VkSampler sampler = findSamplerResource(binding.binding);
-
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageView = imageView;
-                    imageInfo.sampler = sampler;
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    writes.push_back(write);
-
-                    NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] Bound COMBINED_IMAGE_SAMPLER '" +
-                                  binding.name + "' at binding " + std::to_string(binding.binding) +
-                                  " (imageView=" + std::to_string(reinterpret_cast<uint64_t>(imageView)) +
-                                  ", sampler=" + std::to_string(reinterpret_cast<uint64_t>(sampler)) + ") [legacy]");
-
-                    if (sampler == VK_NULL_HANDLE) {
-                        NODE_LOG_DEBUG("[DescriptorSetNode::BuildDescriptorWrites] WARNING: Combined image sampler at binding " +
-                                      std::to_string(binding.binding) + " has no sampler (VK_NULL_HANDLE)");
-                    }
-                }
-                // Handle array of combined image samplers
-                // Expect vector<VkImageView> followed by vector<VkSampler>
-                else if (std::holds_alternative<std::vector<VkImageView>>(resourceVariant)) {
-                    const auto& imageViewArray = std::get<std::vector<VkImageView>>(resourceVariant);
-                    std::vector<VkSampler> samplerArray;
-
-                    // Try to get sampler array from next slot
-                    if (bindingIdx + 1 < descriptorResources.size()) {
-                        const auto& nextResource = descriptorResources[bindingIdx + 1];
-                        if (std::holds_alternative<std::vector<VkSampler>>(nextResource)) {
-                            samplerArray = std::get<std::vector<VkSampler>>(nextResource);
-                        }
-                    }
-
-                    if (!imageViewArray.empty()) {
-                        size_t startIdx = imageInfos.size();
-                        for (size_t i = 0; i < imageViewArray.size(); i++) {
-                            VkDescriptorImageInfo imageInfo{};
-                            imageInfo.imageView = imageViewArray[i];
-                            imageInfo.sampler = (i < samplerArray.size()) ? samplerArray[i] : VK_NULL_HANDLE;
-                            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                            imageInfos.push_back(imageInfo);
-                        }
-                        write.pImageInfo = &imageInfos[startIdx];
-                        write.descriptorCount = static_cast<uint32_t>(imageViewArray.size());
-                        writes.push_back(write);
-                    }
-                }
+            case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                HandleCombinedImageSampler(binding, resourceVariant, descriptorResources, imageIndex, bindingIdx, write, imageInfos, writes);
                 break;
-            }
 
             case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: {
-                if (std::holds_alternative<VkBuffer>(resourceVariant)) {
-                    VkBuffer buffer = std::get<VkBuffer>(resourceVariant);
-                    VkDescriptorBufferInfo bufferInfo{};
-                    bufferInfo.buffer = buffer;
-                    bufferInfo.offset = 0;
-                    bufferInfo.range = VK_WHOLE_SIZE;
-                    bufferInfos.push_back(bufferInfo);
-                    write.pBufferInfo = &bufferInfos.back();
-                    writes.push_back(write);
-                }
+            case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                HandleBuffer(binding, resourceVariant, write, bufferInfos, writes);
                 break;
-            }
 
             default:
                 // Unsupported or constant descriptor type - skip

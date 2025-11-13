@@ -225,6 +225,11 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     std::vector<VkDescriptorSet> descriptorSets = ctx.In(ComputeDispatchNodeConfig::DESCRIPTOR_SETS);
     SwapChainPublicVariables* swapchainInfo = ctx.In(ComputeDispatchNodeConfig::SWAPCHAIN_INFO);
 
+    // Validate descriptor sets
+    if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for image " + std::to_string(imageIndex));
+    }
+
     // Get dispatch dimensions from swapchain extent (8x8 workgroup size)
     uint32_t dispatchX = (swapchainInfo->Extent.width + 7) / 8;
     uint32_t dispatchY = (swapchainInfo->Extent.height + 7) / 8;
@@ -236,12 +241,33 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
                       " for swapchain " + std::to_string(swapchainInfo->Extent.width) + "x" + std::to_string(swapchainInfo->Extent.height));
     }
 
-    // Validate descriptor sets
-    if (descriptorSets.empty() || imageIndex >= descriptorSets.size()) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Invalid descriptor sets for image " + std::to_string(imageIndex));
+    // Execute recording steps
+    VkImage swapchainImage = swapchainInfo->colorBuffers[imageIndex].image;
+    VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
+
+    TransitionImageToGeneral(cmdBuffer, swapchainImage);
+    BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
+    SetPushConstants(ctx, cmdBuffer, pipelineLayout, pushConstantData);
+
+    // Dispatch compute shader
+    vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
+
+    TransitionImageToPresent(cmdBuffer, swapchainImage);
+
+    // End command buffer
+    result = vkEndCommandBuffer(cmdBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
     }
 
-    // Transition swapchain image: UNDEFINED -> GENERAL
+    NODE_LOG_INFO("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
+}
+
+// ============================================================================
+// HELPER METHODS
+// ============================================================================
+
+void ComputeDispatchNode::TransitionImageToGeneral(VkCommandBuffer cmdBuffer, VkImage image) {
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.srcAccessMask = 0;
@@ -250,7 +276,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = swapchainInfo->colorBuffers[imageIndex].image;
+    barrier.image = image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
@@ -266,23 +292,26 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         0, nullptr,
         1, &barrier
     );
+}
 
+void ComputeDispatchNode::BindComputePipeline(VkCommandBuffer cmdBuffer, VkPipeline pipeline, VkPipelineLayout layout, VkDescriptorSet descriptorSet) {
     // Bind compute pipeline
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 
     // Bind descriptor set from DescriptorSetNode
-    VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
     vkCmdBindDescriptorSets(
         cmdBuffer,
         VK_PIPELINE_BIND_POINT_COMPUTE,
-        pipelineLayout,
+        layout,
         0,
         1,
         &descriptorSet,
         0,
         nullptr
     );
+}
 
+void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout layout, const void* pushConstantData) {
     // Check for push constant data from PushConstantGathererNode
     std::vector<uint8_t> pushConstantDataVec = ctx.In(ComputeDispatchNodeConfig::PUSH_CONSTANT_DATA);
     std::vector<VkPushConstantRange> pushConstantRanges = ctx.In(ComputeDispatchNodeConfig::PUSH_CONSTANT_RANGES);
@@ -294,7 +323,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
             if (range.offset + range.size <= pushConstantDataVec.size()) {
                 vkCmdPushConstants(
                     cmdBuffer,
-                    pipelineLayout,
+                    layout,
                     range.stageFlags,
                     range.offset,
                     range.size,
@@ -322,7 +351,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
             vkCmdPushConstants(
                 cmdBuffer,
-                pipelineLayout,
+                layout,
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 pc.offset,
                 pc.size,
@@ -336,15 +365,23 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
             }
         }
     }
+}
 
-    // Dispatch compute shader
-    vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
-
-    // Transition swapchain image: GENERAL -> PRESENT_SRC
+void ComputeDispatchNode::TransitionImageToPresent(VkCommandBuffer cmdBuffer, VkImage image) {
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barrier.dstAccessMask = 0;
     barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
 
     vkCmdPipelineBarrier(
         cmdBuffer,
@@ -355,14 +392,6 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
         0, nullptr,
         1, &barrier
     );
-
-    // End command buffer
-    result = vkEndCommandBuffer(cmdBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[ComputeDispatchNode::RecordComputeCommands] Failed to end command buffer");
-    }
-
-    NODE_LOG_INFO("[ComputeDispatchNode::RecordComputeCommands] Recorded compute commands for image " + std::to_string(imageIndex));
 }
 
 // ============================================================================

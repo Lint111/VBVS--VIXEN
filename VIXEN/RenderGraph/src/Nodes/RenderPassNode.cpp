@@ -5,6 +5,8 @@
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "CashSystem/RenderPassCacher.h"
+#include "NodeHelpers/CacherHelpers.h"
+#include "NodeHelpers/EnumParsers.h"
 
 namespace Vixen::RenderGraph {
 
@@ -81,7 +83,7 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     // Build cache parameters
     CashSystem::RenderPassCreateParams cacheParams{};
     cacheParams.colorFormat = colorFormat;
-    cacheParams.samples = GetSampleCount(sampleCount);
+    cacheParams.samples = NodeHelpers::ParseSampleCount(sampleCount);
     cacheParams.colorLoadOp = ConvertLoadOp(colorLoadOp);
     cacheParams.colorStoreOp = ConvertStoreOp(colorStoreOp);
     cacheParams.initialLayout = ConvertImageLayout(initialLayout);
@@ -95,37 +97,25 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     cacheParams.srcAccessMask = 0;
     cacheParams.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    // Register RenderPassCacher if not already registered
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-    if (!mainCacher.IsRegistered(std::type_index(typeid(CashSystem::RenderPassWrapper)))) {
-        NODE_LOG_INFO("Registering RenderPassCacher with MainCacher");
-        mainCacher.RegisterCacher<
-            CashSystem::RenderPassCacher,
-            CashSystem::RenderPassWrapper,
-            CashSystem::RenderPassCreateParams
-        >(
-            std::type_index(typeid(CashSystem::RenderPassWrapper)),
-            "RenderPass",
-            true  // device-dependent
-        );
-    }
-
-    // Get or create cached render pass
-    auto* cacher = mainCacher.GetCacher<
+    // Register and get cacher using helper
+    auto* cacher = NodeHelpers::RegisterCacherIfNeeded<
         CashSystem::RenderPassCacher,
         CashSystem::RenderPassWrapper,
         CashSystem::RenderPassCreateParams
-    >(std::type_index(typeid(CashSystem::RenderPassWrapper)), device);
+    >(GetOwningGraph(), device, "RenderPass", true);
 
-    if (!cacher) {
-        throw std::runtime_error("RenderPassNode: Failed to get RenderPassCacher from MainCacher");
-    }
+    // Get or create cached render pass using helper
+    cachedRenderPassWrapper = NodeHelpers::GetOrCreateCached<
+        CashSystem::RenderPassCacher,
+        CashSystem::RenderPassWrapper
+    >(cacher, cacheParams, "render pass");
 
-    cachedRenderPassWrapper = cacher->GetOrCreate(cacheParams);
-
-    if (!cachedRenderPassWrapper || cachedRenderPassWrapper->renderPass == VK_NULL_HANDLE) {
-        throw std::runtime_error("RenderPassNode: Failed to get or create render pass from cache");
-    }
+    // Validate cached handle
+    NodeHelpers::ValidateCachedHandle(
+        cachedRenderPassWrapper->renderPass,
+        "VkRenderPass",
+        "render pass"
+    );
 
     renderPass = cachedRenderPassWrapper->renderPass;
 
@@ -175,19 +165,6 @@ VkImageLayout RenderPassNode::ConvertImageLayout(ImageLayout layout) {
         case ImageLayout::TransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         case ImageLayout::TransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         default: return VK_IMAGE_LAYOUT_UNDEFINED;
-    }
-}
-
-VkSampleCountFlagBits RenderPassNode::GetSampleCount(uint32_t samples) {
-    switch (samples) {
-        case 1: return VK_SAMPLE_COUNT_1_BIT;
-        case 2: return VK_SAMPLE_COUNT_2_BIT;
-        case 4: return VK_SAMPLE_COUNT_4_BIT;
-        case 8: return VK_SAMPLE_COUNT_8_BIT;
-        case 16: return VK_SAMPLE_COUNT_16_BIT;
-        case 32: return VK_SAMPLE_COUNT_32_BIT;
-        case 64: return VK_SAMPLE_COUNT_64_BIT;
-        default: return VK_SAMPLE_COUNT_1_BIT;
     }
 }
 

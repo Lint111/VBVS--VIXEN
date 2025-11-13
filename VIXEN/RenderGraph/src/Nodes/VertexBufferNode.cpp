@@ -34,108 +34,40 @@ void VertexBufferNode::SetupImpl(TypedSetupContext& ctx) {
 void VertexBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
-    // Access device input (compile-time dependency)
+    // Access device input
     VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
     }
-
-    // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // Get typed parameters
-    vertexCount = GetParameterValue<uint32_t>(
-        VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 0);
+    // Get parameters
+    vertexCount = GetParameterValue<uint32_t>(VertexBufferNodeConfig::PARAM_VERTEX_COUNT, 0);
     if (vertexCount == 0) {
-        VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "vertexCount parameter is required"};
-        NODE_LOG_ERROR(error.toString());
-        throw std::runtime_error(error.toString());
+        throw std::runtime_error("VertexBufferNode: vertexCount parameter is required");
     }
 
-    vertexStride = GetParameterValue<uint32_t>(
-        VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV));
-    useTexture = GetParameterValue<bool>(
-        VertexBufferNodeConfig::PARAM_USE_TEXTURE, true);
-
-    NODE_LOG_DEBUG("Vertex count: " + std::to_string(vertexCount) +
-                   ", stride: " + std::to_string(vertexStride) +
-                   ", texture: " + std::string(useTexture ? "enabled" : "disabled"));
-
-    indexCount = GetParameterValue<uint32_t>(
-        VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0);
+    vertexStride = GetParameterValue<uint32_t>(VertexBufferNodeConfig::PARAM_VERTEX_STRIDE, sizeof(VertexWithUV));
+    useTexture = GetParameterValue<bool>(VertexBufferNodeConfig::PARAM_USE_TEXTURE, true);
+    indexCount = GetParameterValue<uint32_t>(VertexBufferNodeConfig::PARAM_INDEX_COUNT, 0);
     hasIndices = (indexCount > 0);
 
-    // Register MeshCacher if not already registered
-    auto& mainCacher = GetOwningGraph()->GetMainCacher();
-    if (!mainCacher.IsRegistered(std::type_index(typeid(CashSystem::MeshWrapper)))) {
-        NODE_LOG_INFO("Registering MeshCacher with MainCacher");
-        mainCacher.RegisterCacher<
-            CashSystem::MeshCacher,
-            CashSystem::MeshWrapper,
-            CashSystem::MeshCreateParams
-        >(
-            std::type_index(typeid(CashSystem::MeshWrapper)),
-            "Mesh",
-            true  // device-dependent
-        );
-    }
+    NODE_LOG_DEBUG("VertexBufferNode: count=" + std::to_string(vertexCount) +
+                   ", stride=" + std::to_string(vertexStride) +
+                   ", indices=" + std::to_string(indexCount));
 
-    // Get or create cached mesh
-    auto* cacher = mainCacher.GetCacher<
-        CashSystem::MeshCacher,
-        CashSystem::MeshWrapper,
-        CashSystem::MeshCreateParams
-    >(std::type_index(typeid(CashSystem::MeshWrapper)), device);
-
-    if (!cacher) {
-        throw std::runtime_error("VertexBufferNode: Failed to get MeshCacher from MainCacher");
-    }
-
-    // Build cache parameters
-    CashSystem::MeshCreateParams cacheParams{};
-    // For now, using procedural geometry data (no file path)
-    cacheParams.filePath = "";  // Empty = procedural data
-    cacheParams.vertexDataPtr = geometryData;
-    cacheParams.vertexDataSize = vertexCount * vertexStride;
-    cacheParams.vertexStride = vertexStride;
-    cacheParams.vertexCount = vertexCount;
-    cacheParams.indexCount = indexCount;
-    cacheParams.indexDataPtr = nullptr;  // No index data for now
-    cacheParams.indexDataSize = 0;
-    cacheParams.vertexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    cacheParams.indexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    // Get or create cached mesh
-    cachedMeshWrapper = cacher->GetOrCreate(cacheParams);
-
-    if (!cachedMeshWrapper || cachedMeshWrapper->vertexBuffer == VK_NULL_HANDLE) {
-        throw std::runtime_error("VertexBufferNode: Failed to get or create mesh from cache");
-    }
-
-    // Store direct references for convenience
-    vertexBuffer = cachedMeshWrapper->vertexBuffer;
-    indexBuffer = cachedMeshWrapper->indexBuffer;
-
-    NODE_LOG_DEBUG("Using cached mesh: vertex buffer = " +
-                   std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)) +
-                   ", index buffer = " +
-                   std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
-
-    // Setup vertex input description
+    RegisterMeshCacher();
+    CreateMeshBuffers();
     SetupVertexInputDescription();
 
     // Set outputs
-    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer BEFORE ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
-    NODE_LOG_DEBUG("Setting VERTEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     ctx.Out(VertexBufferNodeConfig::VERTEX_BUFFER, vertexBuffer);
-    NODE_LOG_DEBUG("[VertexBufferNode::Compile] vertexBuffer AFTER ctx.Out(): " + std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)));
     if (hasIndices) {
-        NODE_LOG_DEBUG("Setting INDEX_BUFFER output: " + std::to_string(reinterpret_cast<uint64_t>(indexBuffer)));
         ctx.Out(VertexBufferNodeConfig::INDEX_BUFFER, indexBuffer);
     }
     ctx.Out(VertexBufferNodeConfig::VULKAN_DEVICE_OUT, device);
 
-    NODE_LOG_INFO("Compile complete: Vertex buffer ready (via cache)");
+    NODE_LOG_INFO("Compile complete: Vertex buffer ready");
 }
 
 void VertexBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -144,13 +76,63 @@ void VertexBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void VertexBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
-    // Release cached wrapper - cacher owns VkBuffer and VkDeviceMemory and destroys when appropriate
     if (cachedMeshWrapper) {
-        NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper (cacher owns resources)");
+        NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper");
         cachedMeshWrapper.reset();
         vertexBuffer = VK_NULL_HANDLE;
         indexBuffer = VK_NULL_HANDLE;
     }
+}
+
+void VertexBufferNode::RegisterMeshCacher() {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    if (mainCacher.IsRegistered(std::type_index(typeid(CashSystem::MeshWrapper)))) {
+        return;
+    }
+
+    NODE_LOG_INFO("VertexBufferNode: Registering MeshCacher");
+    mainCacher.RegisterCacher<
+        CashSystem::MeshCacher,
+        CashSystem::MeshWrapper,
+        CashSystem::MeshCreateParams
+    >(std::type_index(typeid(CashSystem::MeshWrapper)), "Mesh", true);
+}
+
+void VertexBufferNode::CreateMeshBuffers() {
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+    auto* cacher = mainCacher.GetCacher<
+        CashSystem::MeshCacher,
+        CashSystem::MeshWrapper,
+        CashSystem::MeshCreateParams
+    >(std::type_index(typeid(CashSystem::MeshWrapper)), device);
+
+    if (!cacher) {
+        throw std::runtime_error("VertexBufferNode: Failed to get MeshCacher");
+    }
+
+    // Build cache parameters for procedural geometry
+    CashSystem::MeshCreateParams cacheParams{};
+    cacheParams.filePath = "";  // Empty = procedural data
+    cacheParams.vertexDataPtr = geometryData;
+    cacheParams.vertexDataSize = vertexCount * vertexStride;
+    cacheParams.vertexStride = vertexStride;
+    cacheParams.vertexCount = vertexCount;
+    cacheParams.indexCount = indexCount;
+    cacheParams.indexDataPtr = nullptr;
+    cacheParams.indexDataSize = 0;
+    cacheParams.vertexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    cacheParams.indexMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    cachedMeshWrapper = cacher->GetOrCreate(cacheParams);
+    if (!cachedMeshWrapper || cachedMeshWrapper->vertexBuffer == VK_NULL_HANDLE) {
+        throw std::runtime_error("VertexBufferNode: Failed to create mesh");
+    }
+
+    vertexBuffer = cachedMeshWrapper->vertexBuffer;
+    indexBuffer = cachedMeshWrapper->indexBuffer;
+
+    NODE_LOG_DEBUG("VertexBufferNode: Mesh created (vertex=" +
+                   std::to_string(reinterpret_cast<uint64_t>(vertexBuffer)) + ")");
 }
 
 void VertexBufferNode::CreateBuffer(

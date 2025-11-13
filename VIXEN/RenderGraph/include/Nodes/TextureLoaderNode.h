@@ -50,6 +50,10 @@ private:
     // CashSystem integration - cached wrappers
     std::shared_ptr<CashSystem::TextureWrapper> cachedTextureWrapper;
     std::shared_ptr<CashSystem::SamplerWrapper> cachedSamplerWrapper;
+
+    // Helper methods
+    void RegisterCachers();
+    void LoadTextureResources(const std::string& filePath, bool generateMipmaps);
 };
 
 /**

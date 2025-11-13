@@ -90,21 +90,14 @@ private:
     bool hasIndices = false;
     bool useTexture = false;
 
-    // Helper functions
-    void CreateBuffer(
-        VkDeviceSize size,
-        VkBufferUsageFlags usage,
-        VkBuffer& buffer,
-        VkDeviceMemory& memory
-    );
-
-    void UploadData(
-        VkDeviceMemory memory,
-        const void* data,
-        VkDeviceSize size
-    );
-
+    // Helper methods
+    void RegisterMeshCacher();
+    void CreateMeshBuffers();
     void SetupVertexInputDescription();
+
+    // Legacy buffer creation methods (unused - kept for reference)
+    void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory);
+    void UploadData(VkDeviceMemory memory, const void* data, VkDeviceSize size);
 };
 
 } // namespace Vixen::RenderGraph

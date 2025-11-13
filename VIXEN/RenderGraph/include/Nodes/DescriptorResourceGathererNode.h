@@ -99,6 +99,12 @@ protected:
     // Context automatically handles bundle access via taskIndex
     bool ValidateVariadicInputsImpl(VariadicCompileContext& ctx);
 
+    // Single input validation helpers (extracted from ValidateVariadicInputsImpl)
+    bool ValidateSingleInput(VariadicCompileContext& ctx, size_t slotIndex);
+    bool ShouldSkipTransientSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex);
+    bool ShouldSkipFieldExtractionSlot(const VariadicSlotInfo* slotInfo, size_t slotIndex);
+    void LogTypeValidationError(size_t slotIndex, const VariadicSlotInfo* slotInfo, VkDescriptorType expectedType);
+
 private:
     // Discovered descriptor metadata from shader
     std::vector<DescriptorSlotInfo> descriptorSlots_;
@@ -122,6 +128,10 @@ private:
     void InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role);
     void StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, const ResourceVariant& variant);
     void StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant);
+
+    // Pointer extraction helper for field extraction
+    template<typename T>
+    const void* ExtractRawPointerFromVariant(T&& structPtr);
 
     // Shader-specific type validation helpers
     bool ValidateResourceType(Resource* res, VkDescriptorType expectedType);
