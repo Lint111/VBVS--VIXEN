@@ -62,8 +62,21 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    // Scene generation
     void GenerateProceduralScene(VIXEN::RenderGraph::VoxelGrid& grid);
+
+    // Buffer upload orchestration
     void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
+
+    // Buffer creation steps (extracted from UploadOctreeBuffers)
+    void CreateOctreeNodesBuffer(VkDeviceSize size, const void* nodeData);
+    void CreateOctreeBricksBuffer(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
+    void CreateOctreeMaterialsBuffer();
+    void UploadBufferDataViaStagingBuffer();
+
+    // Cleanup steps (extracted from CleanupImpl)
+    void DestroyOctreeBuffers();
+    void LogCleanupProgress(const std::string& stage);
 
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;

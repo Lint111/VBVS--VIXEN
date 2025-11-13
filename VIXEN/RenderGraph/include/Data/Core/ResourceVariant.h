@@ -33,10 +33,7 @@ namespace Vixen::Vulkan::Resources {
 
 namespace Vixen::RenderGraph {
     struct ShaderProgramDescriptor;  // Forward declare from ShaderLibraryNodeConfig.h
-}
-
-// Forward declarations for Phase 0.4 loop system
-namespace Vixen::RenderGraph {
+    struct CameraData;  // Forward declare from CameraNodeConfig.h
     struct LoopReference;  // From LoopManager.h
     enum class BoolOp : uint8_t;  // From BoolOpNodeConfig.h
     enum class SlotRole : uint8_t;  // From ResourceConfig.h
@@ -132,10 +129,8 @@ struct ImageSamplerPair {
 // SINGLE SOURCE OF TRUTH: RESOURCE TYPE REGISTRY
 // ============================================================================
 
-// Forward declarations for custom types
-namespace Vixen::RenderGraph {
-    struct CameraData;
-}
+// Include CameraData definition (in separate header to avoid circular dependency)
+#include "../CameraData.h"
 
 /**
  * @brief Master list of base resource types

@@ -2,11 +2,9 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Data/InputState.h"
+#include "Data/CameraData.h"
 
 namespace Vixen::RenderGraph {
-
-// Forward declare CameraData struct
-struct CameraData;
 
 // Type alias for VulkanDevice pointer
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;

@@ -86,21 +86,30 @@ private:
     std::unordered_map<ShaderManagement::ShaderStage, std::shared_ptr<CashSystem::ShaderModuleWrapper>> shaderModules;
     std::shared_ptr<ShaderManagement::ShaderDataBundle> currentShaderBundle;  // Current bundle for reflection
 
-    // Helper functions
+    // Pipeline assembly orchestration
+    void CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
+
+    // Pipeline setup steps (extracted from CreatePipeline)
+    void CreatePipelineCache();
+    void CreatePipelineLayout();
+    void CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
+
+    // Pipeline state builder methods (extracted from CreatePipeline)
+    void BuildDynamicStateInfo(VkPipelineDynamicStateCreateInfo& outState);
+    void BuildVertexInputState(VkPipelineVertexInputStateCreateInfo& outState);
+    void BuildInputAssemblyState(VkPipelineInputAssemblyStateCreateInfo& outState);
+    void BuildRasterizationState(VkPipelineRasterizationStateCreateInfo& outState);
+    void BuildMultisampleState(VkPipelineMultisampleStateCreateInfo& outState);
+    void BuildDepthStencilState(VkPipelineDepthStencilStateCreateInfo& outState);
+    void BuildColorBlendState(VkPipelineColorBlendStateCreateInfo& outState);
+    void BuildViewportState(VkPipelineViewportStateCreateInfo& outState);
+
+    // Shader and vertex input reflection
     void BuildShaderStages(std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle);
     void BuildVertexInputsFromReflection(
         std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle,
         std::vector<VkVertexInputBindingDescription>& outBindings,
         std::vector<VkVertexInputAttributeDescription>& outAttributes);
-    void CreatePipelineCache();
-    void CreatePipelineLayout();
-    void CreatePipeline(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
-    void CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);
-
-    VkCullModeFlags ParseCullMode(const std::string& mode);
-    VkPolygonMode ParsePolygonMode(const std::string& mode);
-    VkPrimitiveTopology ParseTopology(const std::string& topo);
-    VkFrontFace ParseFrontFace(const std::string& face);
 
     // CashSystem integration - cached during Compile()
     CashSystem::PipelineCacher* pipelineCacher = nullptr;

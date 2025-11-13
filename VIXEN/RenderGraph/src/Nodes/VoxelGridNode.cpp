@@ -148,55 +148,64 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
 }
 
-void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
-    std::cout << "!!!! [VoxelGridNode::CleanupImpl] DESTROYING RESOURCES !!!!" << std::endl;
-    std::cout << "  octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << std::endl;
-    NODE_LOG_INFO("VoxelGridNode cleanup");
+void VoxelGridNode::DestroyOctreeBuffers() {
+    if (!vulkanDevice) return;
 
-    if (!vulkanDevice) {
-        return;
-    }
-
-    vkDeviceWaitIdle(vulkanDevice->device);
-
-    // Cleanup octree buffers
+    // Destroy nodes buffer and memory
     if (octreeNodesBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(vulkanDevice->device, octreeNodesBuffer, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeNodesBuffer" << std::endl;
         octreeNodesBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeNodesBuffer destroyed");
     }
 
     if (octreeNodesMemory != VK_NULL_HANDLE) {
         vkFreeMemory(vulkanDevice->device, octreeNodesMemory, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeNodesMemory" << std::endl;
         octreeNodesMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeNodesMemory freed");
     }
 
+    // Destroy bricks buffer and memory
     if (octreeBricksBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeBricksBuffer" << std::endl;
         octreeBricksBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeBricksBuffer destroyed");
     }
 
     if (octreeBricksMemory != VK_NULL_HANDLE) {
         vkFreeMemory(vulkanDevice->device, octreeBricksMemory, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeBricksMemory" << std::endl;
         octreeBricksMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeBricksMemory freed");
     }
 
+    // Destroy materials buffer and memory
     if (octreeMaterialsBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsBuffer" << std::endl;
         octreeMaterialsBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeMaterialsBuffer destroyed");
     }
 
     if (octreeMaterialsMemory != VK_NULL_HANDLE) {
         vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
-        std::cout << "  [VoxelGridNode::CleanupImpl] Destroyed octreeMaterialsMemory" << std::endl;
         octreeMaterialsMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeMaterialsMemory freed");
+    }
+}
+
+void VoxelGridNode::LogCleanupProgress(const std::string& stage) {
+    NODE_LOG_DEBUG("[VoxelGridNode::Cleanup] " + stage);
+}
+
+void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
+    NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Destroying octree buffers");
+
+    if (!vulkanDevice) {
+        NODE_LOG_DEBUG("[VoxelGridNode::CleanupImpl] Device unavailable, skipping cleanup");
+        return;
     }
 
-    std::cout << "!!!! [VoxelGridNode::CleanupImpl] CLEANUP COMPLETE !!!!" << std::endl;
+    vkDeviceWaitIdle(vulkanDevice->device);
+    DestroyOctreeBuffers();
+    NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Cleanup complete");
 }
 
 void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
@@ -226,35 +235,33 @@ void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
     }
 }
 
-void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
-    const auto& bricks = octree.GetBricks();
-
-    // Determine buffer size based on node format
-    VkDeviceSize nodesBufferSize = 0;
-    const void* nodesData = nullptr;
-
+/// Extracts node data pointer and size from octree based on format.
+/// Returns <size, data, formatName>.
+static std::tuple<VkDeviceSize, const void*, std::string>
+ExtractNodeData(const SparseVoxelOctree& octree) {
     if (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO) {
         const auto& esvoNodes = octree.GetESVONodes();
-        nodesBufferSize = esvoNodes.size() * sizeof(VIXEN::RenderGraph::ESVONode);  // 8 bytes per node
-        nodesData = esvoNodes.data();
-        NODE_LOG_INFO("Using ESVO format: " + std::to_string(esvoNodes.size()) + " nodes × 8 bytes = " +
-                      std::to_string(nodesBufferSize) + " bytes");
-
-        // DEBUG: Print root node descriptor values
-        if (esvoNodes.size() > 0) {
-            std::cout << "[VoxelGridNode] Root node BEFORE upload: descriptor0=0x" << std::hex
+        VkDeviceSize size = esvoNodes.size() * sizeof(VIXEN::RenderGraph::ESVONode);
+        NODE_LOG_INFO("ESVO format: " + std::to_string(esvoNodes.size()) + " nodes (8 bytes) = " +
+                      std::to_string(size) + " bytes");
+        if (!esvoNodes.empty()) {
+            std::cout << "[VoxelGridNode] Root ESVO node: descriptor0=0x" << std::hex
                       << esvoNodes[0].descriptor0 << ", descriptor1=0x" << esvoNodes[0].descriptor1
                       << std::dec << std::endl;
-            std::cout << "[VoxelGridNode] ESVONode sizeof=" << sizeof(VIXEN::RenderGraph::ESVONode)
-                      << ", nodesData ptr=" << nodesData << std::endl;
         }
-    } else {
-        const auto& legacyNodes = octree.GetNodes();
-        nodesBufferSize = legacyNodes.size() * sizeof(VIXEN::RenderGraph::OctreeNode);  // 40 bytes per node
-        nodesData = legacyNodes.data();
-        NODE_LOG_INFO("Using Legacy format: " + std::to_string(legacyNodes.size()) + " nodes × 40 bytes = " +
-                      std::to_string(nodesBufferSize) + " bytes");
+        return std::make_tuple(size, esvoNodes.data(), "ESVO");
     }
+
+    const auto& legacyNodes = octree.GetNodes();
+    VkDeviceSize size = legacyNodes.size() * sizeof(VIXEN::RenderGraph::OctreeNode);
+    NODE_LOG_INFO("Legacy format: " + std::to_string(legacyNodes.size()) + " nodes (40 bytes) = " +
+                  std::to_string(size) + " bytes");
+    return std::make_tuple(size, legacyNodes.data(), "Legacy");
+}
+
+void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
+    auto [nodesBufferSize, nodesData, formatName] = ExtractNodeData(octree);
+    const auto& bricks = octree.GetBricks();
 
     VkDeviceSize bricksBufferSize = bricks.size() * sizeof(VoxelBrick);
 
