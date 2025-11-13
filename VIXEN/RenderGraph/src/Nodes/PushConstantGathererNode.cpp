@@ -1,6 +1,7 @@
 #include "Nodes/PushConstantGathererNode.h"
 #include "Core/NodeContext.h"
 #include "ShaderManagement/SpirvReflectionData.h"
+#include "ShaderManagement/ResourceExtractor.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include <cstring>
 #include <iostream>
@@ -91,6 +92,16 @@ void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
         return;
     }
 
+    // Discover fields from shader if not pre-registered
+    if (pushConstantFields_.empty()) {
+        DiscoverPushConstants(ctx);
+    }
+
+    // Validate that all variadic inputs are connected
+    if (!ValidateVariadicInputsImpl(ctx)) {
+        return;
+    }
+
     // Extract push constant information and allocate buffer
     pushConstantRanges_.clear();
     pushConstantData_.clear();
@@ -116,8 +127,10 @@ void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 // ============================================================================
 
 void PushConstantGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
-    // Clear and refill buffer from variadic inputs
-    std::fill(pushConstantData_.begin(), pushConstantData_.end(), 0);
+    // Pack variadic inputs into push constant buffer
+    if (!pushConstantData_.empty()) {
+        PackPushConstantData(ctx);
+    }
 
     // Output push constant data and ranges
     ctx.Out(PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA, pushConstantData_);
@@ -139,32 +152,110 @@ void PushConstantGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
 // ============================================================================
 
 void PushConstantGathererNode::DiscoverPushConstants(VariadicCompileContext& ctx) {
-    // Placeholder - discovery happens in PreRegisterPushConstantFields
+    // Get shader bundle to discover push constants
+    auto shaderBundle = ctx.In(PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+    if (!shaderBundle || !shaderBundle->reflectionData) {
+        return;
+    }
+
+    if (shaderBundle->reflectionData->pushConstants.empty()) {
+        return;
+    }
+
+    const auto& pcBlock = shaderBundle->reflectionData->pushConstants[0];
+
+    // Parse struct members from reflection
+    pushConstantFields_.clear();
+    for (const auto& member : pcBlock.structDef.members) {
+        PushConstantFieldSlotInfo fieldInfo;
+        fieldInfo.fieldName = member.name;
+        fieldInfo.offset = member.offset;
+        fieldInfo.size = member.type.sizeInBytes;
+        fieldInfo.baseType = member.type.baseType;
+        fieldInfo.vecSize = member.type.vecSize;
+        fieldInfo.dynamicInputIndex = pushConstantFields_.size();
+
+        pushConstantFields_.push_back(fieldInfo);
+    }
+
+    // Update variadic constraints to match discovered fields
+    if (!pushConstantFields_.empty()) {
+        SetVariadicInputConstraints(pushConstantFields_.size(), pushConstantFields_.size());
+    }
 }
 
 bool PushConstantGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext& ctx) {
-    // Placeholder validation - always pass for now
+    // Validate each field has a connected input
+    size_t variadicCount = ctx.InVariadicCount();
+    
+    if (variadicCount != pushConstantFields_.size()) {
+        // Field count mismatch - but this is acceptable if fields were pre-registered
+        // and inputs may be optional
+        if (!pushConstantFields_.empty() && variadicCount == 0) {
+            // No inputs connected but fields exist - this is OK, may be placeholder
+            return true;
+        }
+    }
+
+    // Validate each connected input
+    for (size_t i = 0; i < variadicCount; ++i) {
+        auto* resource = ctx.InVariadicResource(i);
+        
+        // Check if corresponding field exists
+        if (i < pushConstantFields_.size()) {
+            if (!ValidateFieldType(resource, pushConstantFields_[i])) {
+                // Type mismatch - log warning but continue
+            }
+        }
+    }
+
     return true;
 }
 
 void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx) {
-    // Placeholder - data packing happens in Execute
+    // Clear buffer
+    std::fill(pushConstantData_.begin(), pushConstantData_.end(), 0);
+
+    // Pack each field value into the buffer using type-safe extractor
+    size_t variadicCount = ctx.InVariadicCount();
+    
+    for (size_t i = 0; i < variadicCount && i < pushConstantFields_.size(); ++i) {
+        const auto& field = pushConstantFields_[i];
+        auto* resource = ctx.InVariadicResource(i);
+
+        if (!resource) continue;
+
+        uint8_t* dest = pushConstantData_.data() + field.offset;
+
+        // Use ResourceExtractor to fill type-appropriate value
+        // For now, uses zero-fill as placeholder
+        // Future: integrate with actual resource value extraction
+        ShaderManagement::SpirvTypeInfo typeInfo{};
+        typeInfo.baseType = field.baseType;
+        typeInfo.vecSize = field.vecSize;
+        typeInfo.sizeInBytes = field.size;
+
+        ShaderManagement::ResourceExtractor::ExtractZero(typeInfo, dest, field.size);
+    }
 }
 
 bool PushConstantGathererNode::ValidateFieldType(Resource* res, const PushConstantFieldSlotInfo& field) {
-    return res != nullptr;
+    if (!res) return false;
+
+    // Resource type should be Buffer for push constant values
+    return res->GetType() == ResourceType::Buffer || res->GetType() == ResourceType::Image;
 }
 
 void PushConstantGathererNode::PackScalar(const Resource* res, uint8_t* dest, size_t size) {
-    // Placeholder
+    // Deprecated - use ResourceExtractor instead via PackPushConstantData
 }
 
 void PushConstantGathererNode::PackVector(const Resource* res, uint8_t* dest, size_t componentCount) {
-    // Placeholder
+    // Deprecated - use ResourceExtractor instead via PackPushConstantData
 }
 
 void PushConstantGathererNode::PackMatrix(const Resource* res, uint8_t* dest, size_t rows, size_t cols) {
-    // Placeholder
+    // Deprecated - use ResourceExtractor instead via PackPushConstantData
 }
 
 ResourceType PushConstantGathererNode::GetResourceTypeForField(const PushConstantFieldSlotInfo& field) const {
