@@ -266,6 +266,34 @@ protected:
         return TypedCleanupContext(this, taskIndex);
     }
 
+    // ============================================================================
+    // SLOT VALIDATION - TypedNode layer
+    // ============================================================================
+
+    /**
+     * @brief Validate input slot (TypedNode override)
+     *
+     * TypedNode can add config-specific validation here if needed.
+     * For now, just call base implementation.
+     */
+    bool ValidateInputSlot(uint32_t slotIndex, std::string& errorMessage) const override {
+        // TypedNode: Could add config-specific validation here
+        // For now, delegate to base
+        return NodeInstance::ValidateInputSlot(slotIndex, errorMessage);
+    }
+
+    /**
+     * @brief Validate output slot (TypedNode override)
+     *
+     * TypedNode can add config-specific validation here if needed.
+     * For now, just call base implementation.
+     */
+    bool ValidateOutputSlot(uint32_t slotIndex, std::string& errorMessage) const override {
+        // TypedNode: Could add config-specific validation here
+        // For now, delegate to base
+        return NodeInstance::ValidateOutputSlot(slotIndex, errorMessage);
+    }
+
 public:
     // ===== PHASE F: CONTEXT SYSTEM =====
 
