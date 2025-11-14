@@ -9,6 +9,9 @@ namespace Vixen::RenderGraph {
 // Type alias for VulkanDevice pointer
 using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
 
+// Type alias for CameraData pointer (defined in ResourceVariant.h)
+using CameraDataPtr = const CameraData*;
+
 // Compile-time slot counts
 namespace CameraNodeCounts {
     static constexpr size_t INPUTS = 4;  // Added INPUT_STATE
@@ -55,7 +58,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (1) =====
-    OUTPUT_SLOT(CAMERA_DATA, CameraDataRef, 0,
+    OUTPUT_SLOT(CAMERA_DATA, CameraDataPtr, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -89,15 +92,19 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Transient, inputStateDesc);
 
         // Initialize output descriptor
-        HandleDescriptor cameraDataDesc{"CameraDataRef"};
+        HandleDescriptor cameraDataDesc{"CameraDataPtr"};
         INIT_OUTPUT_DESC(CAMERA_DATA, "camera_data", ResourceLifetime::Persistent, cameraDataDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == CameraNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == CameraNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == CameraNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(CameraNodeConfig, CameraNodeCounts);
 
+    // Validate persistent slots use appropriate types
+    VALIDATE_PERSISTENT_SLOT(VULKAN_DEVICE_IN, ResourceLifetime::Persistent);
+    VALIDATE_PERSISTENT_SLOT(SWAPCHAIN_PUBLIC, ResourceLifetime::Persistent);
+    VALIDATE_PERSISTENT_SLOT(CAMERA_DATA, ResourceLifetime::Persistent);
+
+    // Slot index validations
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(SWAPCHAIN_PUBLIC_Slot::index == 1, "SWAPCHAIN_PUBLIC must be at index 1");
     static_assert(IMAGE_INDEX_Slot::index == 2, "IMAGE_INDEX must be at index 2");
@@ -109,11 +116,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
-    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraDataRef>);
+    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraDataPtr>);
 };
-
-// Global compile-time validations
-static_assert(CameraNodeConfig::INPUT_COUNT == CameraNodeCounts::INPUTS);
-static_assert(CameraNodeConfig::OUTPUT_COUNT == CameraNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

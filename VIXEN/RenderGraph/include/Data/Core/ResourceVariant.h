@@ -55,7 +55,6 @@ using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
 using InputStatePtr = Vixen::RenderGraph::InputState*;  // Modern polling-based input
-
 // Workaround for std::vector<bool> which has special semantics that break std::variant
 // Use a wrapper with proper copy semantics
 struct BoolVector {
@@ -97,8 +96,8 @@ struct BoolVector {
 
 namespace Vixen::RenderGraph {
 
-// Type alias for CameraData reference wrapper
-using CameraDataRef = std::reference_wrapper<const CameraData>;
+// Type alias for CameraData pointer (persistent reference)
+using CameraDataPtr = const CameraData*;
 
 
 // ============================================================================
@@ -197,7 +196,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(InputStatePtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPushConstantRange,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(CameraData,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(CameraDataRef,                   HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(CameraDataPtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
@@ -597,23 +596,23 @@ public:
      * @brief Set handle value (compile-time type-safe)
      */
     template<typename VulkanType>
-    void SetHandle(VulkanType&& value) {
+    void SetHandle(const VulkanType& value) {
         static_assert(ResourceTypeTraits<VulkanType>::isValid, "Type not registered");
 
         if constexpr (std::is_same_v<std::decay_t<VulkanType>, ResourceVariant>) {
             // Case 2: ResourceVariant as a handle (pass-through variant)
-            handleStorage = VariantHandle{std::forward<VulkanType>(value)};
+            handleStorage = VariantHandle{value};
         } else if constexpr (std::is_same_v<std::decay_t<VulkanType>, std::vector<ResourceVariant>>) {
             // Case 3: std::vector<ResourceVariant> - convert to vector<VariantHandle>
             std::vector<VariantHandle> wrapped;
             wrapped.reserve(value.size());
-            for (auto& v : value) {
-                wrapped.emplace_back(std::move(v));
+            for (const auto& v : value) {
+                wrapped.emplace_back(v);
             }
             handleStorage = std::move(wrapped);
         } else {
             // Case 1: Regular registered types (VkImage, VkBuffer, etc.)
-            handleStorage = ResourceVariant{std::forward<VulkanType>(value)};
+            handleStorage = ResourceVariant{value};
         }
     }
 

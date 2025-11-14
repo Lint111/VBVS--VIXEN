@@ -168,6 +168,23 @@ public:
                 throw std::runtime_error("Connect with field extraction: Invalid node handle");
             }
 
+            // RUNTIME VALIDATION: Check source slot lifetime is Persistent
+            // Member extraction requires persistent resources because we're extracting a pointer
+            // to a member field - the source struct must have stable memory address
+            const auto* srcType = srcNode->GetType();
+            if (srcType) {
+                const auto* outputDesc = srcType->GetOutputDescriptor(sourceSlot.index);
+                if (outputDesc && outputDesc->lifetime != ResourceLifetime::Persistent) {
+                    throw std::runtime_error(
+                        "Member field extraction requires source slot to have ResourceLifetime::Persistent. "
+                        "Source slot '" + outputDesc->name + "' has lifetime " +
+                        (outputDesc->lifetime == ResourceLifetime::Transient ? "Transient" :
+                         outputDesc->lifetime == ResourceLifetime::Imported ? "Imported" : "Static") +
+                        ". Change the slot configuration to use ResourceLifetime::Persistent."
+                    );
+                }
+            }
+
             // Debug: Registering callback
             // std::cout << "[FieldExtraction] Registering callback: extract from " << srcNode->GetInstanceName()
             //           << " slot " << sourceSlot.index << " to " << tgtNode->GetInstanceName()
@@ -502,6 +519,10 @@ public:
      * Field extraction connection - extracts a specific field from struct-typed source output
      * using member pointer syntax.
      *
+     * IMPORTANT: Field extraction requires the source output slot to be a pointer or reference type,
+     * NOT a value type. This is enforced at compile-time to prevent bugs where field extraction
+     * points to temporary copies that get destroyed each frame.
+     *
      * Examples:
      * ```cpp
      * // Auto-detect SlotRole based on source lifetime
@@ -564,6 +585,16 @@ public:
                          std::is_base_of_v<StructType, SourceType>,
                 "Source slot type must match or derive from struct type in member pointer");
 
+            // CRITICAL VALIDATION: Member extraction requires persistent pointer/reference types
+            // This prevents the bug where field extraction from value types creates dangling pointers
+            static_assert(std::is_pointer_v<SourceType> ||
+                         std::is_reference_v<SourceType> ||
+                         (std::is_class_v<SourceType> && std::is_same_v<SourceType, std::reference_wrapper<SourceBaseType>>),
+                "Member field extraction requires source slot to be a pointer or reference type, "
+                "not a value type. Value types are copied each frame, causing field extraction to "
+                "point to temporary copies that get destroyed. Use a pointer type (e.g., const CameraData*) "
+                "instead of value type (e.g., CameraData) for the output slot.");
+
             // Get node instances
             NodeInstance* node = graph->GetInstance(variadicNode);
             if (!node) {
@@ -578,6 +609,23 @@ public:
             NodeInstance* sourceNodeInst = graph->GetInstance(sourceNode);
             if (!sourceNodeInst) {
                 throw std::runtime_error("ConnectVariadic: Invalid source node handle");
+            }
+
+            // RUNTIME VALIDATION: Check source slot lifetime is Persistent
+            // Member extraction requires persistent resources because we're extracting a pointer
+            // to a member field - the source struct must have stable memory address
+            const auto* srcType = sourceNodeInst->GetType();
+            if (srcType) {
+                const auto* outputDesc = srcType->GetOutputDescriptor(sourceSlot.index);
+                if (outputDesc && outputDesc->lifetime != ResourceLifetime::Persistent) {
+                    throw std::runtime_error(
+                        "ConnectVariadic member field extraction requires source slot to have ResourceLifetime::Persistent. "
+                        "Source slot '" + outputDesc->name + "' has lifetime " +
+                        (outputDesc->lifetime == ResourceLifetime::Transient ? "Transient" :
+                         outputDesc->lifetime == ResourceLifetime::Imported ? "Imported" : "Static") +
+                        ". Change the slot configuration to use ResourceLifetime::Persistent."
+                    );
+                }
             }
 
             // Calculate member pointer offset (doesn't require resource to exist)

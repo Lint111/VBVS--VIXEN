@@ -6,7 +6,6 @@
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 #include <cstring>
-#include <functional>
 
 using namespace RenderGraph::NodeHelpers;
 
@@ -111,8 +110,8 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     currentCameraData.invProjection = glm::inverse(projection);
     currentCameraData.invView = glm::inverse(view);
 
-    // Output reference wrapper to the camera data struct
-    ctx.Out(CameraNodeConfig::CAMERA_DATA, std::cref(currentCameraData));
+    // Output pointer to the camera data struct
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, &currentCameraData);
 
     NODE_LOG_INFO("Camera data initialized successfully");
 }
@@ -151,8 +150,8 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Update camera data with current state
     UpdateCameraData(aspectRatio);
 
-    // Output reference wrapper to the camera data struct
-    ctx.Out(CameraNodeConfig::CAMERA_DATA, std::cref(currentCameraData));
+    // Output pointer to the camera data struct
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, &currentCameraData);
 }
 
 void CameraNode::UpdateCameraData(float aspectRatio) {

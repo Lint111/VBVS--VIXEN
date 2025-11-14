@@ -538,6 +538,70 @@ ResourceDescriptor MakeDescriptor(
     )
 
 /**
+ * @brief Type trait to check if a type can be persistent
+ *
+ * Persistent slots must use types that have stable memory addresses:
+ * - Pointers (T*)
+ * - References (T&)
+ * - std::reference_wrapper
+ *
+ * Value types cannot be persistent because they are copied each frame,
+ * making member extraction unsafe.
+ */
+template<typename T>
+struct CanBePersistent {
+    static constexpr bool value =
+        std::is_pointer_v<T> ||
+        std::is_reference_v<T> ||
+        (std::is_class_v<T> && std::is_same_v<T, std::reference_wrapper<std::remove_reference_t<T>>>);
+};
+
+template<typename T>
+inline constexpr bool CanBePersistent_v = CanBePersistent<T>::value;
+
+/**
+ * @brief Helper to validate persistent slot during INIT_*_DESC
+ *
+ * This macro validates that if a slot is marked as Persistent,
+ * its type must be able to be persistent (pointer/reference).
+ */
+#define VALIDATE_PERSISTENT_SLOT(SlotName, Lifetime) \
+    static_assert( \
+        (Lifetime) != ::Vixen::RenderGraph::ResourceLifetime::Persistent || \
+        ::Vixen::RenderGraph::CanBePersistent_v<SlotName##_Slot::Type>, \
+        #SlotName " slot is marked as Persistent but uses a type that cannot be persistent. " \
+        "Persistent slots must use pointer or reference types, not value types." \
+    )
+
+/**
+ * @brief Macro to automatically generate all standard validations for a node config
+ *
+ * Place this at the end of your config struct to automatically validate:
+ * - Input/output counts match
+ * - Array mode matches
+ * - All persistent slots use appropriate types
+ *
+ * Usage:
+ * ```cpp
+ * CONSTEXPR_NODE_CONFIG(MyNodeConfig, 2, 1, SlotArrayMode::Single) {
+ *     INPUT_SLOT(INPUT1, ...);
+ *     INPUT_SLOT(INPUT2, ...);
+ *     OUTPUT_SLOT(OUTPUT1, ...);
+ *
+ *     MyNodeConfig() {
+ *         // Initialize descriptors...
+ *     }
+ *
+ *     VALIDATE_NODE_CONFIG(MyNodeConfig, MyNodeCounts);
+ * };
+ * ```
+ */
+#define VALIDATE_NODE_CONFIG(ConfigName, CountsNamespace) \
+    static_assert(INPUT_COUNT == CountsNamespace::INPUTS, "Input count mismatch"); \
+    static_assert(OUTPUT_COUNT == CountsNamespace::OUTPUTS, "Output count mismatch"); \
+    static_assert(ARRAY_MODE == CountsNamespace::ARRAY_MODE, "Array mode mismatch")
+
+/**
  * @brief Simplified initialization for common cases
  */
 #define INIT_INPUT_DESC(Slot, Name, Lifetime, Desc) \
