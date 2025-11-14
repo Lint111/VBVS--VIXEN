@@ -14,7 +14,9 @@
  * No code changes required!
  */
 
+#include "Headers.h"  // Include for Vulkan type definitions
 #include "ResourceTypes.h"
+#include "ResourceTypeTraits.h"  // Include for StripContainer
 #include "../VariantDescriptors.h"
 #include <variant>
 #include <type_traits>
@@ -321,11 +323,10 @@ struct ResourceTypeTraits {
     // Strip containers to get base type
     using BaseType = typename StripContainer<T>::Type;
 
-    // Check if base type is registered
+    // Check if type or base type is registered
     static constexpr bool isValid =
-        IsRegisteredType<BaseType>::value ||
-        IsRegisteredType<std::vector<BaseType>>::value ||
-        (StripContainer<T>::isContainer && IsRegisteredType<BaseType>::value);
+        IsRegisteredType<T>::value ||  // Direct type is registered
+        (StripContainer<T>::isContainer && IsRegisteredType<BaseType>::value);  // Or it's a container of registered type
 
     // Provide dummy descriptor type for compatibility
     using DescriptorT = HandleDescriptor;

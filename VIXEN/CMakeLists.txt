@@ -483,6 +483,10 @@ set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
 # RenderGraph static library (replaces old inline definitions)
 add_subdirectory(RenderGraph)
 
+# Debug test for ResourceTypeTraits (temporary)
+add_executable(test_traits_debug test_traits_debug.cpp)
+target_link_libraries(test_traits_debug PRIVATE RenderGraph)
+
 # CashSystem static library (caching and resource management)
 add_subdirectory(CashSystem)
 
