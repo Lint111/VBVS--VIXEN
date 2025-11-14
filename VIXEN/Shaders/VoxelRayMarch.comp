@@ -78,6 +78,17 @@ bool childIsLeaf(uint nonLeafMask, int childIndex) {
     return (childIndex >= 7) || ((nonLeafMask >> childIndex) & 1u) == 0u;
 }
 
+// Count how many children exist before childIndex (for offset calculation)
+uint countChildrenBefore(uint childMask, int childIndex) {
+    uint count = 0;
+    for (int i = 0; i < childIndex; i++) {
+        if (childExists(childMask, i)) {
+            count++;
+        }
+    }
+    return count;
+}
+
 // Brick node helpers
 bool isConstant(uvec2 node) {
     return (node.x & 0x80000000u) != 0u; // Bit 31
@@ -408,8 +419,9 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
                 if (isLeaf) {
                     // Process leaf voxel/brick
-                    // Child nodes are stored consecutively, use childIndex to offset
-                    uint childPtr = childOffset + uint(childIndex);
+                    // Only EXISTING children are stored, count how many come before this one
+                    uint childLocalIndex = countChildrenBefore(childMask, childIndex);
+                    uint childPtr = childOffset + childLocalIndex;
                     uvec2 childNode = fetchESVONode(childPtr);
 
                     // Check for constant material
@@ -476,7 +488,8 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
                             // If ray will intersect this child, push it
                             if (ct_max > t_min) {
-                                uint push_ptr = childOffset + uint(child_idx);
+                                uint childLocalIdx = countChildrenBefore(childMask, child_idx);
+                                uint push_ptr = childOffset + childLocalIdx;
                                 stack[stackPtr].parentPtr = push_ptr;
                                 stack[stackPtr].t_max = min(ct_max, t_max);
                                 stackPtr++;
@@ -486,7 +499,9 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     }
 
                     // Descend to near child
-                    parentPtr = childOffset + uint(childIndex);
+                    // Only EXISTING children are stored, count how many come before this one
+                    uint childLocalIndex = countChildrenBefore(childMask, childIndex);
+                    parentPtr = childOffset + childLocalIndex;
 
                     // Update position for child level
                     idx = 0;
@@ -572,8 +587,6 @@ void main() {
     // Grid bounds for octree
     vec3 gridMin = vec3(-8.0, -8.0, -8.0);
     vec3 gridMax = vec3(8.0, 8.0, 8.0);
-
-    // Test modes (uncomment one):
 
     // 1. ESVO octree traversal
     if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax, hitColor, hitNormal, hitT)) {

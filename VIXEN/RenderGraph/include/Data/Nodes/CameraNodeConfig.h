@@ -55,7 +55,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (1) =====
-    OUTPUT_SLOT(CAMERA_DATA, CameraData, 0,
+    OUTPUT_SLOT(CAMERA_DATA, CameraDataRef, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -89,8 +89,8 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Transient, inputStateDesc);
 
         // Initialize output descriptor
-        HandleDescriptor cameraDataDesc{"CameraData"};
-        INIT_OUTPUT_DESC(CAMERA_DATA, "camera_data", ResourceLifetime::Transient, cameraDataDesc);
+        HandleDescriptor cameraDataDesc{"CameraDataRef"};
+        INIT_OUTPUT_DESC(CAMERA_DATA, "camera_data", ResourceLifetime::Persistent, cameraDataDesc);
     }
 
     // Compile-time validations
@@ -109,7 +109,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
-    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraData>);
+    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraDataRef>);
 };
 
 // Global compile-time validations

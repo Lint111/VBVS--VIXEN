@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <functional>
 #include "Data/VariantDescriptors.h"
 #include "ResourceTypeTraits.h"  // NEW: Enhanced type trait system
 // TEMPORARILY REMOVED - ShaderManagement integration incomplete
@@ -95,6 +96,9 @@ struct BoolVector {
 #include "Data/CameraData.h"
 
 namespace Vixen::RenderGraph {
+
+// Type alias for CameraData reference wrapper
+using CameraDataRef = std::reference_wrapper<const CameraData>;
 
 
 // ============================================================================
@@ -193,6 +197,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(InputStatePtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPushConstantRange,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(CameraData,                      HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(CameraDataRef,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
