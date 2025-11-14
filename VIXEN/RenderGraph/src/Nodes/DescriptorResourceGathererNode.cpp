@@ -4,6 +4,8 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
+#include "VulkanResources/VulkanDevice.h"  // For device limits validation
+#include <map>  // For descriptor type counting
 
 namespace Vixen::RenderGraph {
 
@@ -56,6 +58,67 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     const auto* layoutSpec = shaderBundle->descriptorLayout.get();
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Shader expects " + std::to_string(layoutSpec->bindings.size()) + " descriptor bindings");
+
+    // Validate against device limits
+    auto* device = this->GetDevice();
+    if (device && device->gpu) {
+        const auto& limits = device->gpuProperties.limits;
+
+        // Count descriptors by type
+        std::map<VkDescriptorType, uint32_t> descriptorCounts;
+        for (const auto& binding : layoutSpec->bindings) {
+            descriptorCounts[binding.descriptorType] += binding.descriptorCount;
+        }
+
+        // Validate each descriptor type against device limits
+        for (const auto& [type, count] : descriptorCounts) {
+            uint32_t limit = 0;
+            const char* typeName = "";
+
+            switch (type) {
+                case VK_DESCRIPTOR_TYPE_SAMPLER:
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                    limit = limits.maxPerStageDescriptorSamplers;
+                    typeName = "Samplers";
+                    break;
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                    limit = limits.maxPerStageDescriptorSampledImages;
+                    typeName = "Sampled Images";
+                    break;
+                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+                    limit = limits.maxPerStageDescriptorStorageImages;
+                    typeName = "Storage Images";
+                    break;
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+                    limit = limits.maxPerStageDescriptorUniformBuffers;
+                    typeName = "Uniform Buffers";
+                    break;
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                    limit = limits.maxPerStageDescriptorStorageBuffers;
+                    typeName = "Storage Buffers";
+                    break;
+                default:
+                    continue;  // Skip unknown types
+            }
+
+            if (count > limit) {
+                NODE_LOG_ERROR("[DescriptorResourceGathererNode::Compile] " + std::string(typeName) +
+                             " count " + std::to_string(count) + " exceeds device limit " + std::to_string(limit));
+                throw std::runtime_error(std::string(typeName) + " count " + std::to_string(count) +
+                                       " exceeds device limit " + std::to_string(limit));
+            }
+
+            // Log usage statistics
+            float usagePercent = (static_cast<float>(count) / limit) * 100.0f;
+            uint32_t remaining = limit - count;
+            NODE_LOG_INFO("[DescriptorResourceGathererNode::Compile] " + std::string(typeName) + " usage: " +
+                         std::to_string(count) + "/" + std::to_string(limit) +
+                         " (" + std::to_string(static_cast<int>(usagePercent)) + "%, " +
+                         std::to_string(remaining) + " remaining)");
+        }
+    }
 
     // Validate tentative slots against shader requirements
     ValidateTentativeSlotsAgainstShader(ctx, shaderBundle.get());

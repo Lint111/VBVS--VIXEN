@@ -1,8 +1,10 @@
 #include "Nodes/PushConstantGathererNode.h"
 #include "Core/NodeContext.h"
+#include "Core/NodeLogging.h"
 #include "ShaderManagement/SpirvReflectionData.h"
 #include "ShaderManagement/ResourceExtractor.h"
 #include "NodeHelpers/ValidationHelpers.h"
+#include "VulkanResources/VulkanDevice.h"  // For device limits validation
 #include <cstring>
 #include <iostream>
 
@@ -117,9 +119,12 @@ void PushConstantGathererNode::PreRegisterPushConstantFields(const ShaderManagem
                   << " (offset=" << member.offset << ", size=" << member.type.sizeInBytes << ")\n";
     }
 
-    // Set variadic constraints
+    // Set variadic constraints - fields are OPTIONAL
+    // Min = 0 (all fields can use defaults), Max = field count
     if (!pushConstantFields_.empty()) {
-        SetVariadicInputConstraints(pushConstantFields_.size(), pushConstantFields_.size());
+        SetVariadicInputConstraints(0, pushConstantFields_.size());
+        std::cout << "[PushConstantGatherer] Variadic constraints: min=0, max=" << pushConstantFields_.size()
+                  << " (fields are optional, missing fields use zero defaults)\n";
     }
 }
 
@@ -158,6 +163,28 @@ void PushConstantGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     if (!shaderBundle->reflectionData->pushConstants.empty()) {
         const auto& pc = shaderBundle->reflectionData->pushConstants[0];
+
+        // Validate against device limits
+        auto* device = this->GetDevice();
+        if (device && device->gpu) {
+            uint32_t maxPushConstantsSize = device->gpuProperties.limits.maxPushConstantsSize;
+
+            if (pc.size > maxPushConstantsSize) {
+                NODE_LOG_ERROR("[PushConstantGathererNode::Compile] Push constant size " +
+                             std::to_string(pc.size) + " bytes exceeds device limit " +
+                             std::to_string(maxPushConstantsSize) + " bytes");
+                throw std::runtime_error("Push constant size " + std::to_string(pc.size) +
+                                       " bytes exceeds device limit " + std::to_string(maxPushConstantsSize) + " bytes");
+            }
+
+            // Log usage statistics
+            float usagePercent = (static_cast<float>(pc.size) / maxPushConstantsSize) * 100.0f;
+            uint32_t remaining = maxPushConstantsSize - pc.size;
+            NODE_LOG_INFO("[PushConstantGathererNode::Compile] Push constant usage: " +
+                         std::to_string(pc.size) + "/" + std::to_string(maxPushConstantsSize) +
+                         " bytes (" + std::to_string(static_cast<int>(usagePercent)) + "%, " +
+                         std::to_string(remaining) + " bytes remaining)");
+        }
 
         VkPushConstantRange range{};
         range.stageFlags = pc.stageFlags;
@@ -228,34 +255,34 @@ void PushConstantGathererNode::DiscoverPushConstants(VariadicCompileContext& ctx
         pushConstantFields_.push_back(fieldInfo);
     }
 
-    // Update variadic constraints to match discovered fields
+    // Update variadic constraints - fields are OPTIONAL
+    // Min = 0 (all fields can use defaults), Max = field count
     if (!pushConstantFields_.empty()) {
-        SetVariadicInputConstraints(pushConstantFields_.size(), pushConstantFields_.size());
+        SetVariadicInputConstraints(0, pushConstantFields_.size());
     }
 }
 
 bool PushConstantGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext& ctx) {
-    // Validate each field has a connected input
+    // Variadic inputs are OPTIONAL - allow partial connections
+    // Missing fields will use default values (zero-initialized)
     size_t variadicCount = ctx.InVariadicCount();
-    
-    if (variadicCount != pushConstantFields_.size()) {
-        // Field count mismatch - but this is acceptable if fields were pre-registered
-        // and inputs may be optional
-        if (!pushConstantFields_.empty() && variadicCount == 0) {
-            // No inputs connected but fields exist - this is OK, may be placeholder
-            return true;
-        }
-    }
+
+    NODE_LOG_INFO("[PushConstantGathererNode::Validate] Connected " + std::to_string(variadicCount) +
+                 " of " + std::to_string(pushConstantFields_.size()) + " push constant fields");
 
     // Validate each connected input
     for (size_t i = 0; i < variadicCount; ++i) {
         auto* resource = ctx.InVariadicResource(i);
-        
+
         // Check if corresponding field exists
         if (i < pushConstantFields_.size()) {
             if (!ValidateFieldType(resource, pushConstantFields_[i])) {
-                // Type mismatch - log warning but continue
+                NODE_LOG_ERROR("[PushConstantGathererNode::Validate] Type mismatch for field " +
+                             pushConstantFields_[i].fieldName);
             }
+        } else {
+            NODE_LOG_ERROR("[PushConstantGathererNode::Validate] Variadic input " + std::to_string(i) +
+                         " has no corresponding field definition");
         }
     }
 
@@ -263,31 +290,43 @@ bool PushConstantGathererNode::ValidateVariadicInputsImpl(VariadicCompileContext
 }
 
 void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx) {
-    // Clear buffer
+    // Initialize entire buffer with zeros (default values for all fields)
     std::fill(pushConstantData_.begin(), pushConstantData_.end(), 0);
 
-    // Pack each field value into the buffer using type-safe visitor
     size_t variadicCount = ctx.InVariadicCount();
-    
-    for (size_t i = 0; i < variadicCount && i < pushConstantFields_.size(); ++i) {
-        const auto& field = pushConstantFields_[i];
-        auto* resource = ctx.InVariadicResource(i);
 
-        if (!resource) continue;
-
+    // Pack ALL fields from shader reflection, using connected inputs or defaults
+    for (size_t fieldIdx = 0; fieldIdx < pushConstantFields_.size(); ++fieldIdx) {
+        const auto& field = pushConstantFields_[fieldIdx];
         uint8_t* dest = pushConstantData_.data() + field.offset;
 
-        // Create type info for visitor/extractor
-        ShaderManagement::SpirvTypeInfo typeInfo{};
-        typeInfo.baseType = field.baseType;
-        typeInfo.vecSize = field.vecSize;
-        typeInfo.sizeInBytes = field.size;
+        // Check if this field has a connected input
+        auto* resource = (fieldIdx < variadicCount) ? ctx.InVariadicResource(fieldIdx) : nullptr;
 
-        // Use visitor pattern to extract typed value from resource variant
-        const auto& resourceVariant = resource->GetHandleVariant();
-        PushConstantPackVisitor visitor(typeInfo, dest, field.size);
-        std::visit(visitor, resourceVariant);
+        if (resource) {
+            // Pack connected field value
+            ShaderManagement::SpirvTypeInfo typeInfo{};
+            typeInfo.baseType = field.baseType;
+            typeInfo.vecSize = field.vecSize;
+            typeInfo.sizeInBytes = field.size;
+
+            // Use visitor pattern to extract typed value from resource variant
+            const auto& resourceVariant = resource->GetHandleVariant();
+            PushConstantPackVisitor visitor(typeInfo, dest, field.size);
+            std::visit(visitor, resourceVariant);
+
+            NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +
+                          "' at offset " + std::to_string(field.offset) + " (connected)");
+        } else {
+            // Leave as zero-initialized (already done by std::fill)
+            NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +
+                          "' at offset " + std::to_string(field.offset) + " (default: zero)");
+        }
     }
+
+    NODE_LOG_INFO("[PushConstantGathererNode::Pack] Packed " + std::to_string(pushConstantData_.size()) +
+                 " bytes with " + std::to_string(variadicCount) + "/" + std::to_string(pushConstantFields_.size()) +
+                 " fields connected");
 }
 
 bool PushConstantGathererNode::ValidateFieldType(Resource* res, const PushConstantFieldSlotInfo& field) {
