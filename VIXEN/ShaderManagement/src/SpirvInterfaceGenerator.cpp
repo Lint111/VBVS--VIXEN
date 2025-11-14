@@ -6,6 +6,7 @@
 #include <chrono>
 #include <ctime>
 #include <algorithm>
+#include <set>
 
 namespace ShaderManagement {
 
@@ -293,46 +294,114 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "namespace SDI = " << sdiNs << ";\n";
         code << "\n";
 
-        // Generate descriptor binding constants
+        // Generate descriptor binding name aliases
         if (!reflectionData.descriptorSets.empty()) {
             code << "// ============================================================================\n";
-            code << "// Descriptor Binding Constants\n";
+            code << "// Descriptor Binding Aliases\n";
             code << "// ============================================================================\n";
             code << "\n";
 
             for (const auto& [setIndex, bindings] : reflectionData.descriptorSets) {
                 for (const auto& binding : bindings) {
-                    std::string bindingName = SanitizeName(binding.name);
-                    if (bindingName.empty()) {
-                        bindingName = "Binding" + std::to_string(binding.binding);
+                    // The SDI binding name (what we use to reference SDI::Set#::BindingX)
+                    std::string sdiBindingName = SanitizeName(binding.name);
+                    if (sdiBindingName.empty()) {
+                        sdiBindingName = "Binding" + std::to_string(binding.binding);
                     }
-
-                    // Generate binding ref struct for use with ConnectVariadic
-                    code << "// " << binding.name << " (Set " << setIndex
-                         << ", Binding " << binding.binding << ")\n";
-                    code << "struct " << bindingName << "_Ref {\n";
-                    code << "    using SDI_Type = SDI::Set" << setIndex << "::" << bindingName << ";\n";
-                    code << "    static constexpr uint32_t set = SDI_Type::SET;\n";
-                    code << "    static constexpr uint32_t binding = SDI_Type::BINDING;\n";
-                    code << "    static constexpr VkDescriptorType type = SDI_Type::TYPE;\n";
-                    code << "    static constexpr const char* name = \"" << binding.name << "\";\n";
-                    code << "};\n";
-                    code << "inline constexpr " << bindingName << "_Ref " << bindingName << "{};\n";
+                    
+                    // The user-facing name (what we alias to in the Names file)
+                    std::string aliasName = SanitizeName(binding.name);
+                    if (aliasName.empty()) {
+                        // Use the DataType name if available
+                        if (binding.structDefIndex >= 0 && 
+                            binding.structDefIndex < static_cast<int>(reflectionData.structDefinitions.size())) {
+                            const auto& structDef = reflectionData.structDefinitions[binding.structDefIndex];
+                            aliasName = SanitizeName(structDef.name);
+                        } else {
+                            aliasName = "Binding" + std::to_string(binding.binding);
+                        }
+                    }
+                    
+                    // Use original name if available for display
+                    std::string displayName = binding.name.empty() ? aliasName : binding.name;
+                    code << "// " << displayName << " (Set " << setIndex << ", Binding " << binding.binding << ")\n";
+                    code << "inline constexpr auto& " << aliasName << " = SDI::Set" << setIndex << "::" << sdiBindingName << ";\n";
                     code << "\n";
                 }
             }
         }
 
+        // Generate push constant name aliases and member field aliases
+        if (!reflectionData.pushConstants.empty()) {
+            code << "// ============================================================================\n";
+            code << "// Push Constant Member Aliases (With Metadata)\n";
+            code << "// ============================================================================\n";
+            code << "\n";
+
+            for (size_t pcIdx = 0; pcIdx < reflectionData.pushConstants.size(); ++pcIdx) {
+                const auto& pc = reflectionData.pushConstants[pcIdx];
+                // For the first push constant, use "pc". For additional ones, use pc_1, pc_2, etc.
+                std::string genericPcName = (pcIdx == 0) ? "pc" : "pc_" + std::to_string(pcIdx);
+
+                code << "// " << pc.name << " (Size: " << pc.size << " bytes)\n";
+                
+                // Generate using aliases for each member field that reference the metadata struct
+                for (size_t memberIdx = 0; memberIdx < pc.structDef.members.size(); ++memberIdx) {
+                    const auto& member = pc.structDef.members[memberIdx];
+                    std::string fieldName = SanitizeName(member.name);
+                    std::string memberMetaName = "pc_" + std::to_string(memberIdx);
+                    
+                    // Use correct path: SDI::pc::DataType::pc_0, pc_1, etc.
+                    code << "using " << fieldName << " = SDI::" << genericPcName << "::DataType::" << memberMetaName << ";\n";
+                    // Also generate a static NAME for the Names file layer
+                    code << "constexpr const char* " << fieldName << "_name = \"" << fieldName << "\";\n";
+                }
+                code << "\n";
+            }
+
+            code << "// ============================================================================\n";
+            code << "// Push Constant Struct Type Aliases\n";
+            code << "// ============================================================================\n";
+            code << "\n";
+
+            for (size_t pcIdx = 0; pcIdx < reflectionData.pushConstants.size(); ++pcIdx) {
+                const auto& pc = reflectionData.pushConstants[pcIdx];
+                std::string genericPcName = (pcIdx == 0) ? "pc" : "pc_" + std::to_string(pcIdx);
+
+                code << "using pc = SDI::" << genericPcName << ";\n";
+            }
+            code << "\n";
+        }
+
         // Generate struct type aliases
         if (!reflectionData.structDefinitions.empty()) {
+            code << "// ============================================================================\n";
+            code << "// UBO/SSBO Member Aliases (With Metadata)\n";
+            code << "// ============================================================================\n";
+            code << "\n";
+
+            for (const auto& structDef : reflectionData.structDefinitions) {
+                std::string structName = SanitizeName(structDef.name);
+                code << "// " << structDef.name << " (Size: " << structDef.sizeInBytes << " bytes)\n";
+                
+                // Generate using aliases for each member field that reference the metadata struct
+                for (const auto& member : structDef.members) {
+                    std::string memberName = SanitizeName(member.name);
+                    code << "using " << memberName << " = SDI::" << structName << "::" << memberName << "_t;\n";
+                }
+                code << "\n";
+            }
+
             code << "// ============================================================================\n";
             code << "// UBO/SSBO Struct Type Aliases\n";
             code << "// ============================================================================\n";
             code << "\n";
 
             for (const auto& structDef : reflectionData.structDefinitions) {
-                code << "using " << structDef.name << " = SDI::" << structDef.name << ";\n";
+                std::string structName = SanitizeName(structDef.name);
+                code << "using " << structName << " = SDI::" << structName << ";\n";
             }
+
             code << "\n";
         }
 
@@ -455,36 +524,28 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinition(
          << std::hex << layoutHash << std::dec << "ULL;\n";
     code << "\n";
 
-    for (const auto& member : structDef.members) {
-        if (config_.generateComments) {
-            code << Indent(1) << "// Offset: " << member.offset << " bytes";
-            if (member.arrayStride > 0) {
-                code << ", Array stride: " << member.arrayStride;
-            }
-            if (member.type.arraySize == 0 && member.arrayStride > 0) {
-                code << " (runtime-sized array)";
-            }
-            code << "\n";
-        }
-
-        code << Indent(1) << member.type.ToCppType() << " " << member.name;
-
-        // Array handling:
-        // arraySize > 0: Fixed-size array [N]
-        // arraySize == 0 && baseType was Array: Runtime-sized array [] (flexible array member)
-        if (member.type.arraySize > 0) {
-            code << "[" << member.type.arraySize << "]";
-        } else if (member.type.arraySize == 0 && member.type.baseType == SpirvTypeInfo::BaseType::Array) {
-            code << "[]";  // Flexible array member for SSBOs
-        }
-
-        code << ";\n";
+    // Generate member metadata structs with full metadata (type, offset, size, index)
+    code << Indent(1) << "// Member metadata structs\n";
+    for (size_t memberIdx = 0; memberIdx < structDef.members.size(); ++memberIdx) {
+        const auto& member = structDef.members[memberIdx];
+        // Use pc_0, pc_1, pc_2... naming for member metadata
+        std::string memberMetaName = "pc_" + std::to_string(memberIdx);
+        
+        code << Indent(1) << "struct " << memberMetaName << " {\n";
+        code << Indent(2) << "static constexpr const char* TYPE = \"" << member.type.ToCppType() << "\";\n";
+        code << Indent(2) << "static constexpr uint32_t OFFSET = " << member.offset << ";\n";
+        code << Indent(2) << "static constexpr uint32_t SIZE = " << member.type.sizeInBytes << ";\n";
+        code << Indent(2) << "static constexpr uint32_t INDEX = " << memberIdx << ";\n";
+        code << Indent(1) << "};\n";
     }
+    code << "\n";
 
     code << "};\n";
 
     return code.str();
 }
+
+
 
 std::string SpirvInterfaceGenerator::GenerateDescriptorInfo(
     const SpirvReflectionData& data
@@ -505,10 +566,8 @@ std::string SpirvInterfaceGenerator::GenerateDescriptorInfo(
         code << "\n";
 
         for (const auto& binding : bindings) {
-            std::string bindingName = SanitizeName(binding.name);
-            if (bindingName.empty()) {
-                bindingName = "Binding" + std::to_string(binding.binding);
-            }
+            // Always use generic naming in SDI (Binding0, Binding1, etc.)
+            std::string bindingName = "Binding" + std::to_string(binding.binding);
 
             if (config_.generateComments) {
                 code << Indent(1) << "/**\n";
@@ -522,7 +581,7 @@ std::string SpirvInterfaceGenerator::GenerateDescriptorInfo(
             code << Indent(1) << "struct " << bindingName << " {\n";
             code << Indent(2) << "static constexpr uint32_t SET = " << setIndex << ";\n";
             code << Indent(2) << "static constexpr uint32_t BINDING = " << binding.binding << ";\n";
-            code << Indent(2) << "static constexpr VkDescriptorType TYPE = VK_DESCRIPTOR_TYPE_"
+            code << Indent(2) << "static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_"
                  << DescriptorTypeConstName(binding.descriptorType) << ";\n";
             code << Indent(2) << "static constexpr uint32_t COUNT = " << binding.descriptorCount << ";\n";
             code << Indent(2) << "static constexpr VkShaderStageFlags STAGES = ";
@@ -580,8 +639,10 @@ std::string SpirvInterfaceGenerator::GeneratePushConstantInfo(
     }
 
     // Then generate push constant info structs
-    for (const auto& pushConst : data.pushConstants) {
-        std::string name = SanitizeName(pushConst.name);
+    for (size_t pcIdx = 0; pcIdx < data.pushConstants.size(); ++pcIdx) {
+        const auto& pushConst = data.pushConstants[pcIdx];
+        // For the first (and usually only) push constant, use "pc". For additional ones, use pc_1, pc_2, etc.
+        std::string name = (pcIdx == 0) ? "pc" : "pc_" + std::to_string(pcIdx);
 
         if (config_.generateComments) {
             code << "/**\n";

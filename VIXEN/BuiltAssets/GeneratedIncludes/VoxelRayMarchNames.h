@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch
-// UUID: 806355c85ce11ca2
-// Generated: 2025-11-09 17:33:10
+// UUID: 43bded93fcbc37f9
+// Generated: 2025-11-14 12:07:06
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,74 +17,76 @@
 
 #pragma once
 
-#include "806355c85ce11ca2-SDI.h"
+#include "43bded93fcbc37f9-SDI.h"
 
 namespace VoxelRayMarch {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_806355c85ce11ca2;
+namespace SDI = ShaderInterface::_43bded93fcbc37f9;
 
 // ============================================================================
-// Descriptor Binding Constants
+// Descriptor Binding Aliases
 // ============================================================================
 
 // outputImage (Set 0, Binding 0)
-struct outputImage_Ref {
-    using SDI_Type = SDI::Set0::outputImage;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "outputImage";
-};
-inline constexpr outputImage_Ref outputImage{};
+inline constexpr auto& outputImage = SDI::Set0::outputImage;
 
-// camera (Set 0, Binding 1)
-struct camera_Ref {
-    using SDI_Type = SDI::Set0::camera;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "camera";
-};
-inline constexpr camera_Ref camera{};
+// ESVOBuffer (Set 0, Binding 1)
+inline constexpr auto& ESVOBuffer = SDI::Set0::Binding1;
 
-// octreeNodes (Set 0, Binding 2)
-struct octreeNodes_Ref {
-    using SDI_Type = SDI::Set0::octreeNodes;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "octreeNodes";
-};
-inline constexpr octreeNodes_Ref octreeNodes{};
+// BrickBuffer (Set 0, Binding 2)
+inline constexpr auto& BrickBuffer = SDI::Set0::Binding2;
 
-// voxelBricks (Set 0, Binding 3)
-struct voxelBricks_Ref {
-    using SDI_Type = SDI::Set0::voxelBricks;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "voxelBricks";
-};
-inline constexpr voxelBricks_Ref voxelBricks{};
+// MaterialBuffer (Set 0, Binding 3)
+inline constexpr auto& MaterialBuffer = SDI::Set0::Binding3;
 
-// materialPalette (Set 0, Binding 4)
-struct materialPalette_Ref {
-    using SDI_Type = SDI::Set0::materialPalette;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "materialPalette";
-};
-inline constexpr materialPalette_Ref materialPalette{};
+// ============================================================================
+// Push Constant Member Aliases (With Metadata)
+// ============================================================================
+
+// pc (Size: 64 bytes)
+using cameraPos = SDI::pc::DataType::pc_0;
+constexpr const char* cameraPos_name = "cameraPos";
+using time = SDI::pc::DataType::pc_1;
+constexpr const char* time_name = "time";
+using cameraDir = SDI::pc::DataType::pc_2;
+constexpr const char* cameraDir_name = "cameraDir";
+using fov = SDI::pc::DataType::pc_3;
+constexpr const char* fov_name = "fov";
+using cameraUp = SDI::pc::DataType::pc_4;
+constexpr const char* cameraUp_name = "cameraUp";
+using aspect = SDI::pc::DataType::pc_5;
+constexpr const char* aspect_name = "aspect";
+using cameraRight = SDI::pc::DataType::pc_6;
+constexpr const char* cameraRight_name = "cameraRight";
+using pad = SDI::pc::DataType::pc_7;
+constexpr const char* pad_name = "pad";
+
+// ============================================================================
+// Push Constant Struct Type Aliases
+// ============================================================================
+
+using pc = SDI::pc;
+
+// ============================================================================
+// UBO/SSBO Member Aliases (With Metadata)
+// ============================================================================
+
+// ESVOBuffer (Size: 0 bytes)
+using esvoNodes = SDI::ESVOBuffer::esvoNodes_t;
+
+// BrickBuffer (Size: 0 bytes)
+using brickData = SDI::BrickBuffer::brickData_t;
+
+// MaterialBuffer (Size: 0 bytes)
+using materials = SDI::MaterialBuffer::materials_t;
 
 // ============================================================================
 // UBO/SSBO Struct Type Aliases
 // ============================================================================
 
-using CameraData = SDI::CameraData;
-using OctreeNodesBuffer = SDI::OctreeNodesBuffer;
-using VoxelBricksBuffer = SDI::VoxelBricksBuffer;
-using MaterialPaletteBuffer = SDI::MaterialPaletteBuffer;
+using ESVOBuffer = SDI::ESVOBuffer;
+using BrickBuffer = SDI::BrickBuffer;
+using MaterialBuffer = SDI::MaterialBuffer;
 
 } // namespace VoxelRayMarch

@@ -968,26 +968,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 0,  // vec3 cameraPos
-                          &CameraData::cameraPos);
+                          pushConstantGatherer, VoxelRayMarch::cameraPos,  // vec3 cameraPos
+                          &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
     // TODO: Create TimeNode to provide time field
     //   batch.ConnectVariadic(timeNode, TimeNodeConfig::TIME_OUTPUT,
     //                         pushConstantGatherer, 1);  // float time
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 2,  // vec3 cameraDir
-                          &CameraData::cameraDir);
+                          pushConstantGatherer, VoxelRayMarch::cameraDir,  // vec3 cameraDir
+                          &CameraData::cameraDir, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 3,  // float fov
-                          &CameraData::fov);
+                          pushConstantGatherer, VoxelRayMarch::fov,  // float fov
+                          &CameraData::fov, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 4,  // vec3 cameraUp
-                          &CameraData::cameraUp);
+                          pushConstantGatherer, VoxelRayMarch::cameraUp,  // vec3 cameraUp
+                          &CameraData::cameraUp , SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 5,  // float aspect
-                          &CameraData::aspect);
+                          pushConstantGatherer, VoxelRayMarch::aspect,  // float aspect
+                          &CameraData::aspect, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, 6,  // vec3 cameraRight
-                          &CameraData::cameraRight);
+                          pushConstantGatherer, VoxelRayMarch::cameraRight,  // vec3 cameraRight
+                          &CameraData::cameraRight, SlotRole::Execute);  // Mark as Execute-only
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
@@ -1000,6 +1000,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                           descriptorGatherer, VoxelRayMarch::octreeNodes,
                           SlotRole::Dependency | SlotRole::Execute);
+                          VoxelRayMarch
 
     // Binding 2: voxelBricks (SSBO) - voxel brick data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,

@@ -7,7 +7,7 @@
   "stages": [
     {
       "entryPoint": "main",
-      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\43bded93fcbc37f9_stage32.spv",
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\sdi\\43bded93fcbc37f9_stage32.spv",
       "spirvSize": 8847,
       "stage": 32
     }
