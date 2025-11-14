@@ -51,11 +51,11 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(WIDTH_OUT, uint32_t, 3,
+    OUTPUT_SLOT(WIDTH_OUT,const uint32_t&, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(HEIGHT_OUT, uint32_t, 4,
+    OUTPUT_SLOT(HEIGHT_OUT, const uint32_t&, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -113,16 +113,8 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
     static_assert(WIDTH_OUT_Slot::index == 3, "WIDTH_OUT must be at index 3");
     static_assert(HEIGHT_OUT_Slot::index == 4, "HEIGHT_OUT must be at index 4");
 
-    // Validate counts match expectations
-    static_assert(INPUT_COUNT == WindowNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == WindowNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == WindowNodeCounts::ARRAY_MODE, "Array mode mismatch");
-};
 
-// Compile-time verification (reusing same constants)
-static_assert(WindowNodeConfig::INPUT_COUNT == WindowNodeCounts::INPUTS, 
-              "WindowNode input count validation");
-static_assert(WindowNodeConfig::OUTPUT_COUNT == WindowNodeCounts::OUTPUTS, 
-              "WindowNode output count validation");
+    VALIDATE_NODE_CONFIG(WindowNodeConfig, WindowNodeCounts);
+};
 
 } // namespace Vixen::RenderGraph

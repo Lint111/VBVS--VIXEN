@@ -540,10 +540,16 @@ ResourceDescriptor MakeDescriptor(
  */
 template<typename T>
 struct CanBePersistent {
+    // Accept if:
+    // - pointer/reference types, or
+    // - registered resource types (including containers like std::vector<T>)
+    // This is intentionally permissive to match historical behavior where
+    // persistent slots often used registered value types or container types.
+    using Decayed = std::remove_cv_t<std::remove_reference_t<T>>;
     static constexpr bool value =
-        std::is_pointer_v<T> ||
+        std::is_pointer_v<Decayed> ||
         std::is_reference_v<T> ||
-        (std::is_class_v<T> && std::is_same_v<T, std::reference_wrapper<std::remove_reference_t<T>>>);
+        ResourceTypeTraits<Decayed>::isValid;
 };
 
 template<typename T>

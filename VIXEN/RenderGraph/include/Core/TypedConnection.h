@@ -141,16 +141,20 @@ public:
         // std::cout << "[FieldExtraction] Connect() called with member pointer - Source handle index: " << sourceNode.index
         //           << ", Target handle index: " << targetNode.index << std::endl;
 
+
         // Extract type information
         using SourceType = typename SourceSlot::Type;
         using TargetType = typename TargetSlot::Type;
 
-        // Validate struct type matches source (handle both pointer and non-pointer types)
-        using SourceBaseType = std::remove_pointer_t<SourceType>;
+        // Normalize SourceType to a plain struct type for comparison.
+        // We accept pointer, reference, and const-qualified forms like
+        // `T*`, `const T*`, `T&`, `const T&` - so strip pointer, reference and cv
+        // qualifiers before comparing to the member's StructType.
+        using SourceBaseType = std::remove_cv_t<std::remove_reference_t<std::remove_pointer_t<SourceType>>>;
         static_assert(std::is_same_v<SourceBaseType, StructType> ||
                      std::is_base_of_v<StructType, SourceBaseType> ||
-                     std::is_same_v<SourceType, StructType> ||
-                     std::is_base_of_v<StructType, SourceType>,
+                     std::is_same_v<std::remove_cv_t<std::remove_reference_t<SourceType>>, StructType> ||
+                     std::is_base_of_v<StructType, std::remove_cv_t<std::remove_reference_t<SourceType>>>,
             "Source slot type must match or derive from struct type in member pointer");
 
         // Validate field type matches target
@@ -578,11 +582,13 @@ public:
 
             // Validate types at compile-time
             using SourceType = typename SourceSlot::Type;
-            using SourceBaseType = std::remove_pointer_t<SourceType>;
+
+            // Normalize SourceType to a plain struct type for comparison (strip pointer/ref/cv)
+            using SourceBaseType = std::remove_cv_t<std::remove_reference_t<std::remove_pointer_t<SourceType>>>;
             static_assert(std::is_same_v<SourceBaseType, StructType> ||
                          std::is_base_of_v<StructType, SourceBaseType> ||
-                         std::is_same_v<SourceType, StructType> ||
-                         std::is_base_of_v<StructType, SourceType>,
+                         std::is_same_v<std::remove_cv_t<std::remove_reference_t<SourceType>>, StructType> ||
+                         std::is_base_of_v<StructType, std::remove_cv_t<std::remove_reference_t<SourceType>>>,
                 "Source slot type must match or derive from struct type in member pointer");
 
             // CRITICAL VALIDATION: Member extraction requires persistent pointer/reference types

@@ -35,6 +35,27 @@ struct StripContainer {
     static constexpr size_t arraySize = 0;
 };
 
+// ---------------------------------------------------------------------------
+// Normalize pointer cv-qualification of the pointee type
+// Example: const Foo* -> Foo*
+//          Foo const* -> Foo*
+// Non-pointer types map to themselves.
+// ---------------------------------------------------------------------------
+template<typename T>
+struct NormalizePointee {
+    using type = T;
+    static constexpr bool isPointer = false;
+};
+
+template<typename P>
+struct NormalizePointee<P*> {
+    using type = std::add_pointer_t<std::remove_cv_t<P>>;
+    static constexpr bool isPointer = true;
+};
+
+template<typename T>
+using NormalizePointee_t = typename NormalizePointee<T>::type;
+
 // Specialization for std::vector<T>
 template<typename T>
 struct StripContainer<std::vector<T>> {

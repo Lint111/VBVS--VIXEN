@@ -18,6 +18,12 @@
 #include "../include/Core/NodeType.h"
 #include <algorithm>
 
+// Provide minimal Vulkan globals so linking succeeds for tests that don't
+// define these variables. Tests which need custom values may define their
+// own variables in their TU and will override these.
+std::vector<const char*> deviceExtensionNames;
+std::vector<const char*> layerNames;
+
 using namespace Vixen::RenderGraph;
 
 // ============================================================================

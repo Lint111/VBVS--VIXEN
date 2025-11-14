@@ -111,7 +111,7 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     currentCameraData.invView = glm::inverse(view);
 
     // Output pointer to the camera data struct
-    ctx.Out(CameraNodeConfig::CAMERA_DATA, &currentCameraData);
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
 
     NODE_LOG_INFO("Camera data initialized successfully");
 }
@@ -151,7 +151,7 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
     UpdateCameraData(aspectRatio);
 
     // Output pointer to the camera data struct
-    ctx.Out(CameraNodeConfig::CAMERA_DATA, &currentCameraData);
+    ctx.Out(CameraNodeConfig::CAMERA_DATA, const_cast<const CameraData&>(currentCameraData));
 }
 
 void CameraNode::UpdateCameraData(float aspectRatio) {

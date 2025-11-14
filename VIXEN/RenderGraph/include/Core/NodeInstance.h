@@ -80,6 +80,8 @@ public:
     const std::string& GetInstanceName() const { return instanceName; }
     NodeType* GetNodeType() const { return nodeType; }
     NodeTypeId GetTypeId() const;
+    // Backwards-compatible accessor used in multiple places (legacy GetType calls)
+    NodeType* GetType() const { return nodeType; }
 
     // Logger access
     Logger* GetLogger() const { return nodeLogger.get(); }

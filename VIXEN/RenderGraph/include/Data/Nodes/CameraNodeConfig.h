@@ -60,7 +60,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 
     // ===== OUTPUTS (1) =====
     // Use generic OUTPUT_SLOT; lifetime (Persistent) is declared in INIT_OUTPUT_DESC
-    OUTPUT_SLOT(CAMERA_DATA, CameraDataPtr, 0,
+    OUTPUT_SLOT(CAMERA_DATA, const CameraData&, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -113,7 +113,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
-    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, CameraDataPtr>);
+    static_assert(std::is_same_v<CAMERA_DATA_Slot::Type, const CameraData&>);
 };
 
 } // namespace Vixen::RenderGraph

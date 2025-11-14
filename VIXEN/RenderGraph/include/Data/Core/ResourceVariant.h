@@ -96,8 +96,6 @@ struct BoolVector {
 
 namespace Vixen::RenderGraph {
 
-// Type alias for CameraData pointer (persistent reference)
-using CameraDataPtr = const CameraData*;
 
 
 // ============================================================================
@@ -196,7 +194,6 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(InputStatePtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPushConstantRange,             HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(CameraData,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(CameraDataPtr,                   HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_BOOL_ONLY(bool,                  HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_NO_VECTOR(BoolVector,            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE_LAST(VkBufferView,               HandleDescriptor,      ResourceType::Buffer)
@@ -218,6 +215,10 @@ struct ImageSamplerPair {
  */
 
 // Generate base type + vector wrapper (for most types)
+// NOTE: Do NOT generate reference alternatives here - std::variant cannot hold
+// reference types. Reference-style slot patterns are normalized in the
+// ResourceTypeTraits validation logic (so writing `const T&` in a slot is
+// accepted), but the runtime variant must only contain actual value types.
 #define EXPAND_WITH_WRAPPERS(HandleType) \
     HandleType, \
     std::vector<HandleType>,
@@ -231,9 +232,6 @@ struct ImageSamplerPair {
     HandleType,
 
 // For the last entry (no trailing comma)
-#define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
-    HandleType, \
-    std::vector<HandleType>
 #define EXPAND_WITH_WRAPPERS_LAST(HandleType) \
     HandleType, \
     std::vector<HandleType>
@@ -410,6 +408,13 @@ struct ResourceTypeTraitsImpl<ResourceVariant> {
 template<typename T>
 struct ResourceTypeTraits {
     using BaseType = typename StripContainer<T>::Type;
+    // First remove reference/cv so patterns like `const T&` don't propagate
+    // into the normalized checks or into the runtime variant types.
+    using DecayedBase = std::remove_cv_t<std::remove_reference_t<BaseType>>;
+    using DecayedT = std::remove_cv_t<std::remove_reference_t<T>>;
+    // Normalize pointer pointee cv-qualifiers so const Foo* -> Foo*
+    using NormalizedBaseType = ::Vixen::RenderGraph::NormalizePointee_t<DecayedBase>;
+    using NormalizedT = ::Vixen::RenderGraph::NormalizePointee_t<DecayedT>;
 
     // Check if T is a custom variant (not ResourceVariant) with all types registered
     static constexpr bool isCustomVariant =
@@ -426,13 +431,15 @@ struct ResourceTypeTraits {
 
     // Validation using helpers
     static constexpr bool isValid =
-        ResourceTypeTraitsImpl<T>::isValid ||           // Direct registration
+        ResourceTypeTraitsImpl<T>::isValid ||                       // Direct registration
+        ResourceTypeTraitsImpl<NormalizedT>::isValid ||             // Direct registration after normalizing pointer cv
         (StripContainer<T>::isContainer &&
-         ResourceTypeTraitsImpl<BaseType>::isValid) ||  // Container of registered type
-        IsResourceVariant_v<T> ||                       // ResourceVariant itself
-        IsResourceVariantContainer_v<T> ||              // Container of ResourceVariant
-        isCustomVariant ||                              // Custom variant (NEW!)
-        isCustomVariantContainer;                       // Container of custom variant (NEW!)
+         (ResourceTypeTraitsImpl<BaseType>::isValid ||              // Container of registered type
+          ResourceTypeTraitsImpl<NormalizedBaseType>::isValid)) ||  // Container of normalized pointer type
+        IsResourceVariant_v<T> ||                                   // ResourceVariant itself
+        IsResourceVariantContainer_v<T> ||                          // Container of ResourceVariant
+        isCustomVariant ||                                          // Custom variant (NEW!)
+        isCustomVariantContainer;                                   // Container of custom variant (NEW!)
 
     // Variant type checks (using helpers)
     static constexpr bool isVariantType = IsResourceVariant_v<T>;
@@ -446,14 +453,15 @@ struct ResourceTypeTraits {
     static constexpr bool isResourceVariant = IsResourceVariant_v<T>;
 
     // Use base type's descriptor and resource type (fallback for variant)
+    // Prefer the normalized base type's descriptor/resourceType when available
     using DescriptorT = typename std::conditional_t<
         isAnyVariant,
         std::type_identity<HandleDescriptor>,
-        std::type_identity<typename ResourceTypeTraitsImpl<BaseType>::DescriptorT>
+        std::type_identity<typename ResourceTypeTraitsImpl<NormalizedBaseType>::DescriptorT>
     >::type;
 
     static constexpr ResourceType resourceType =
-        isAnyVariant ? ResourceType::Buffer : ResourceTypeTraitsImpl<BaseType>::resourceType;
+        isAnyVariant ? ResourceType::Buffer : ResourceTypeTraitsImpl<NormalizedBaseType>::resourceType;
 
     // Container metadata
     static constexpr bool isContainer = StripContainer<T>::isContainer;

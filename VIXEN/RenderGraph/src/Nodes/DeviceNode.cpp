@@ -12,6 +12,7 @@
 #include "CashSystem/DescriptorSetLayoutCacher.h"
 #include "CashSystem/TextureCacher.h"
 
+#include <vector>
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 
