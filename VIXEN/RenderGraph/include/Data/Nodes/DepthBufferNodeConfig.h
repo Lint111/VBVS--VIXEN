@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"  // For DepthFormat enum
@@ -42,7 +42,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
     // ===== INPUTS (3) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
     OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 2,
         SlotNullability::Required,
@@ -50,7 +50,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariablesPtr, 1,
+    INPUT_SLOT(SWAPCHAIN_PUBLIC_VARS, SwapChainPublicVariables*, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -138,10 +138,10 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(!DEPTH_FORMAT_Slot::nullable, "DEPTH_FORMAT is required");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariablesPtr>);
+    static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
 
     static_assert(std::is_same_v<DEPTH_IMAGE_Slot::Type, VkImage>);
@@ -154,3 +154,5 @@ static_assert(DepthBufferNodeConfig::INPUT_COUNT == 3);
 static_assert(DepthBufferNodeConfig::OUTPUT_COUNT == 3);
 
 } // namespace Vixen::RenderGraph
+
+

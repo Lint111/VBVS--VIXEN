@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 // TEMPORARILY REMOVED - using simple descriptor layouts for MVP
@@ -15,7 +15,7 @@ namespace ShaderManagement {
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 /**
@@ -26,7 +26,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  *
  * Inputs:
  * - SHADER_PROGRAM (CompiledProgram*, nullable) - Optional shader program for automatic reflection
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer for resource creation
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer for resource creation
  *
  * Outputs:
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Layout defining descriptor bindings
@@ -70,7 +70,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     CONSTEXPR_INPUT(SHADER_PROGRAM, const ShaderManagement::CompiledProgram*, 0, true);
 
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevicePtr, 1, false);
+    CONSTEXPR_INPUT(VULKAN_DEVICE_IN, VulkanDevice*, 1, false);
 
     // Texture resources (MVP: for descriptor binding 1)
     CONSTEXPR_INPUT(TEXTURE_IMAGE, VkImage, 2, true);
@@ -81,7 +81,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5, false);
 
     // Per-frame resource management (Phase 0.1)
-    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 6, false);
+    CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 6, false);
     CONSTEXPR_INPUT(IMAGE_INDEX, uint32_t, 7, false);
 
     // ===== OUTPUTS (4) =====
@@ -92,10 +92,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     CONSTEXPR_OUTPUT(DESCRIPTOR_POOL, VkDescriptorPool, 1, false);
 
     // Descriptor sets (array output - allocated based on layoutSpec.maxSets)
-    CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, DescriptorSetVector, 2, false);
+    CONSTEXPR_OUTPUT(DESCRIPTOR_SETS, std::vector<VkDescriptorSet>, 2, false);
 
     // VulkanDevice pass-through output
-    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3, false);
+    CONSTEXPR_OUTPUT(VULKAN_DEVICE_OUT, VulkanDevice*, 3, false);
 
     DescriptorSetNodeConfig() {
         // Initialize input descriptors
@@ -186,12 +186,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, const ShaderManagement::CompiledProgram*>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, DescriptorSetVector>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, std::vector<VkDescriptorSet>>);
     
     //-------------------------------------------------------------------------
     // Parameters
@@ -208,3 +208,5 @@ static_assert(DescriptorSetNodeConfig::INPUT_COUNT == DescriptorSetNodeCounts::I
 static_assert(DescriptorSetNodeConfig::OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
+
+

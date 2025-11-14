@@ -1,4 +1,4 @@
-#include "Nodes/TextureLoaderNode.h"
+﻿#include "Nodes/TextureLoaderNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -36,7 +36,7 @@ void TextureLoaderNode::SetupImpl(TypedSetupContext& ctx) {
 
 void TextureLoaderNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(TextureLoaderNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("TextureLoaderNode: Invalid device handle");
     }
@@ -170,3 +170,4 @@ void TextureLoaderNode::LoadTextureResources(const std::string& filePath, bool g
 }
 
 } // namespace Vixen::RenderGraph
+

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -6,13 +6,13 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for PresentNode
  *
  * Inputs:
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice containing device, queue, etc.
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice containing device, queue, etc.
  * - SWAPCHAIN (VkSwapchainKHR) - Swapchain from SwapChainNode
  * - IMAGE_INDEX (uint32_t) - Index of swapchain image to present
  * - RENDER_COMPLETE_SEMAPHORE (VkSemaphore) - Semaphore to wait on before presenting
@@ -20,7 +20,7 @@ using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
  *
  * Outputs:
  * - PRESENT_RESULT (VkResult*) - Result of the present operation
- * - DEVICE_OUT (VulkanDevicePtr) - VulkanDevice containing device, queue, etc.
+ * - DEVICE_OUT (VulkanDevice*) - VulkanDevice containing device, queue, etc.
  *
  * Parameters:
  * - WAIT_FOR_IDLE (bool) - Whether to wait for device idle after present (default: true for compatibility)
@@ -42,7 +42,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static constexpr const char* WAIT_FOR_IDLE = "waitForIdle";
 
     // ===== INPUTS (6) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -83,7 +83,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -160,16 +160,16 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
 
     static_assert(VULKAN_DEVICE_OUT_Slot::index == 1, "VULKAN_DEVICE_OUT must be at index 1");
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT is required");
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>, "VULKAN_DEVICE_OUT must be VulkanDevice");
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>, "VULKAN_DEVICE_OUT must be VulkanDevice");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SWAPCHAIN_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
     static_assert(std::is_same_v<PRESENT_FENCE_ARRAY_Slot::Type, std::vector<VkFence>>);
     static_assert(std::is_same_v<PRESENT_FUNCTION_Slot::Type, PFN_vkQueuePresentKHR>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
 
 // Global compile-time validations
@@ -177,3 +177,4 @@ static_assert(PresentNodeConfig::INPUT_COUNT == PresentNodeCounts::INPUTS);
 static_assert(PresentNodeConfig::OUTPUT_COUNT == PresentNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
+

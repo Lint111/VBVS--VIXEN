@@ -1,4 +1,4 @@
-# Phase G: Compute Shader Pipeline - Implementation Plan
+﻿# Phase G: Compute Shader Pipeline - Implementation Plan
 
 **Date**: November 2, 2025
 **Status**: Planning Complete - Ready to Implement
@@ -17,32 +17,32 @@ Phase G implements the simplest voxel ray marching pipeline using compute shader
 
 **Core Innovation**: Data-driven compute pipeline creation using existing ShaderManagement reflection infrastructure.
 
-### Architectural Decision: Generalized Nodes ✅
+### Architectural Decision: Generalized Nodes âœ…
 
 **Key Design Choice**: Generic `ComputeDispatchNode` instead of specialized `ComputeRayMarchNode`.
 
 **Rationale**:
-- **Separation of Concerns**: Pipeline creation (ComputePipelineNode) ≠ Dispatch logic (ComputeDispatchNode)
+- **Separation of Concerns**: Pipeline creation (ComputePipelineNode) â‰  Dispatch logic (ComputeDispatchNode)
 - **Reusability**: Same dispatcher works for ray marching, voxel generation, post-processing, etc.
 - **Research-Ready**: Easy to swap shaders for Phase L algorithm comparisons
 - **Matches Existing Pattern**: GraphicsPipelineNode creates, GeometryRenderNode dispatches
 
 **Node Chain**:
 ```
-ShaderLibraryNode → ComputePipelineNode → ComputeDispatchNode → TimestampQueryNode
+ShaderLibraryNode â†’ ComputePipelineNode â†’ ComputeDispatchNode â†’ TimestampQueryNode
 ```
 
 Ray marching becomes **application-level graph wiring**, not node-level logic.
 
 ---
 
-## Prerequisites ✅
+## Prerequisites âœ…
 
 **Completed**:
-- ✅ Phase F: Bundle-first organization (build successful)
-- ✅ ShaderManagement: SPIRV reflection, descriptor layout automation
-- ✅ CashSystem: Caching infrastructure with MainCacher registry
-- ✅ Existing shader: `Shaders/VoxelRayMarch.comp` (245 lines, DDA traversal)
+- âœ… Phase F: Bundle-first organization (build successful)
+- âœ… ShaderManagement: SPIRV reflection, descriptor layout automation
+- âœ… CashSystem: Caching infrastructure with MainCacher registry
+- âœ… Existing shader: `Shaders/VoxelRayMarch.comp` (245 lines, DDA traversal)
 
 **Ready to Build On**:
 - GraphicsPipelineNode pattern (data-driven pipeline creation)
@@ -54,7 +54,7 @@ Ray marching becomes **application-level graph wiring**, not node-level logic.
 
 ## Implementation Tasks
 
-### G.1: ComputePipelineNode (8-10 hours) 🎯
+### G.1: ComputePipelineNode (8-10 hours) ðŸŽ¯
 
 **Goal**: Create VkComputePipeline with automatic descriptor layout generation.
 
@@ -67,7 +67,7 @@ RenderGraph/src/Nodes/ComputePipelineNode.cpp            // Implementation (6-8h
 #### Config Design: ComputePipelineNodeConfig.h
 
 **Inputs** (3):
-- `VULKAN_DEVICE_IN` (VulkanDevicePtr) - Device for pipeline creation
+- `VULKAN_DEVICE_IN` (VulkanDevice*) - Device for pipeline creation
 - `SHADER_DATA_BUNDLE` (ShaderDataBundlePtr) - SPIRV reflection from ShaderLibraryNode
 - `DESCRIPTOR_SET_LAYOUT` (VkDescriptorSetLayout) - Optional (auto-generated if not provided)
 
@@ -75,7 +75,7 @@ RenderGraph/src/Nodes/ComputePipelineNode.cpp            // Implementation (6-8h
 - `PIPELINE` (VkComputePipeline) - Compute pipeline handle
 - `PIPELINE_LAYOUT` (VkPipelineLayout) - Pipeline layout handle
 - `PIPELINE_CACHE` (VkPipelineCache) - Pipeline cache for reuse
-- `VULKAN_DEVICE_OUT` (VulkanDevicePtr) - Device passthrough
+- `VULKAN_DEVICE_OUT` (VulkanDevice*) - Device passthrough
 
 **Parameters**:
 - `WORKGROUP_SIZE_X` (uint32_t) - Default: 8 (extracted from shader if 0)
@@ -159,14 +159,14 @@ vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pip
 ```
 
 **Success Criteria**:
-- ✅ ComputePipelineNode compiles without errors
-- ✅ VkComputePipeline created successfully
-- ✅ Cache HIT on second compilation
-- ✅ Descriptor layout auto-generated correctly
+- âœ… ComputePipelineNode compiles without errors
+- âœ… VkComputePipeline created successfully
+- âœ… Cache HIT on second compilation
+- âœ… Descriptor layout auto-generated correctly
 
 ---
 
-### G.2: Storage Resource Support (4-6 hours) 📦
+### G.2: Storage Resource Support (4-6 hours) ðŸ“¦
 
 **Goal**: Extend ResourceVariant to support storage buffers/images for compute shaders.
 
@@ -213,17 +213,17 @@ REGISTER_RESOURCE_TYPE(VkImageView, Texture3DDescriptor)
 
 #### Testing:
 - Create simple storage image (256x256 RGBA8)
-- Create 3D texture (64³ voxels)
+- Create 3D texture (64Â³ voxels)
 - Verify descriptor updates work with new types
 
 **Success Criteria**:
-- ✅ VkBufferView, StorageImageDescriptor, Texture3DDescriptor registered
-- ✅ No compilation errors or warnings
-- ✅ Descriptor set updates accept new types
+- âœ… VkBufferView, StorageImageDescriptor, Texture3DDescriptor registered
+- âœ… No compilation errors or warnings
+- âœ… Descriptor set updates accept new types
 
 ---
 
-### G.3: ComputeDispatchNode - Generic Compute Dispatcher (6-8 hours) 🎨
+### G.3: ComputeDispatchNode - Generic Compute Dispatcher (6-8 hours) ðŸŽ¨
 
 **Goal**: Create generic node that dispatches ANY compute shader (not ray marching specific).
 
@@ -236,7 +236,7 @@ RenderGraph/src/Nodes/ComputeDispatchNode.cpp           // Generic dispatcher (4
 ```
 
 #### Design Philosophy:
-- **Separation of Concerns**: Pipeline creation (G.1) ≠ Dispatch logic (G.3)
+- **Separation of Concerns**: Pipeline creation (G.1) â‰  Dispatch logic (G.3)
 - **Reusability**: Works with ANY compute shader (ray marching, voxel generation, post-processing)
 - **Data-Driven**: Shader selected via graph wiring, not hardcoded in node
 - **Research-Ready**: Easy to swap algorithms for Phase L testing
@@ -244,7 +244,7 @@ RenderGraph/src/Nodes/ComputeDispatchNode.cpp           // Generic dispatcher (4
 #### Config Design: ComputeDispatchNodeConfig.h
 
 **Inputs** (6):
-- `VULKAN_DEVICE_IN` (VulkanDevicePtr) - Device for command buffer allocation
+- `VULKAN_DEVICE_IN` (VulkanDevice*) - Device for command buffer allocation
 - `COMMAND_POOL` (VkCommandPool) - Pool for command buffer allocation
 - `COMPUTE_PIPELINE` (VkComputePipeline) - From ComputePipelineNode
 - `PIPELINE_LAYOUT` (VkPipelineLayout) - From ComputePipelineNode
@@ -253,7 +253,7 @@ RenderGraph/src/Nodes/ComputeDispatchNode.cpp           // Generic dispatcher (4
 
 **Outputs** (2):
 - `COMMAND_BUFFER` (VkCommandBuffer) - Recorded dispatch command
-- `VULKAN_DEVICE_OUT` (VulkanDevicePtr) - Device passthrough
+- `VULKAN_DEVICE_OUT` (VulkanDevice*) - Device passthrough
 
 **Parameters**:
 - `DISPATCH_X` (uint32_t) - Workgroups in X dimension (default: 1)
@@ -340,16 +340,16 @@ RenderGraph/src/Nodes/ComputeDispatchNode.cpp           // Generic dispatcher (4
 4. **Push Constants Test**: Pass data to shader, verify shader receives it
 
 **Success Criteria**:
-- ✅ Generic dispatch works with ANY compute shader
-- ✅ Descriptor sets bind correctly (any type)
-- ✅ Push constants work (optional)
-- ✅ Dispatch dimensions configurable (X/Y/Z)
-- ✅ Zero validation errors
-- ✅ Reusable for ray marching, voxel generation, post-processing
+- âœ… Generic dispatch works with ANY compute shader
+- âœ… Descriptor sets bind correctly (any type)
+- âœ… Push constants work (optional)
+- âœ… Dispatch dimensions configurable (X/Y/Z)
+- âœ… Zero validation errors
+- âœ… Reusable for ray marching, voxel generation, post-processing
 
 ---
 
-### G.4: Timestamp Query Integration (6-8 hours) ⏱️
+### G.4: Timestamp Query Integration (6-8 hours) â±ï¸
 
 **Goal**: Measure GPU time for compute dispatch with <0.1ms overhead.
 
@@ -362,13 +362,13 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 #### Config Design: TimestampQueryNodeConfig.h
 
 **Inputs** (2):
-- `VULKAN_DEVICE_IN` (VulkanDevicePtr)
+- `VULKAN_DEVICE_IN` (VulkanDevice*)
 - `COMMAND_BUFFER` (VkCommandBuffer) - Command buffer to wrap with queries
 
 **Outputs** (3):
 - `GPU_TIME_NS` (uint64_t*) - Pointer to GPU time in nanoseconds
 - `QUERY_POOL` (VkQueryPool) - Query pool handle (for inspection)
-- `VULKAN_DEVICE_OUT` (VulkanDevicePtr)
+- `VULKAN_DEVICE_OUT` (VulkanDevice*)
 
 **Parameters**:
 - `QUERY_NAME` (string) - Name for logging ("ComputeDispatch")
@@ -442,7 +442,7 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 
 #### Design Note: Double-Buffered Queries
 
-**Why?** Reading query results causes GPU → CPU stall. By using frame N-1's results while recording frame N, we avoid blocking.
+**Why?** Reading query results causes GPU â†’ CPU stall. By using frame N-1's results while recording frame N, we avoid blocking.
 
 **Pattern**:
 - Frame 0: Write queries to pool[0], skip read (no previous data)
@@ -452,18 +452,18 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 - Frame 4: Write queries to pool[0], read pool[3] (wrap around)
 
 **Success Criteria**:
-- ✅ GPU time measured accurately (cross-reference with Nsight Graphics)
-- ✅ Overhead < 0.1ms per frame
-- ✅ No GPU stalls (frame time stable)
-- ✅ Zero validation errors
+- âœ… GPU time measured accurately (cross-reference with Nsight Graphics)
+- âœ… Overhead < 0.1ms per frame
+- âœ… No GPU stalls (frame time stable)
+- âœ… Zero validation errors
 
 ---
 
 ## Integration Plan
 
 ### Phase G.0: Preparation (1-2h)
-1. ✅ Create branch: `claude/phase-g-compute-pipeline`
-2. ✅ Write Phase G plan (this document)
+1. âœ… Create branch: `claude/phase-g-compute-pipeline`
+2. âœ… Write Phase G plan (this document)
 3. Create stub CMakeLists.txt entries for new nodes
 4. Verify VoxelRayMarch.comp compiles with glslangValidator
 
@@ -502,7 +502,7 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 
 1. Create simple test scene resources:
    - Storage image (1280x720 RGBA8, VK_IMAGE_LAYOUT_GENERAL)
-   - 3D voxel texture (64³, simple cube data)
+   - 3D voxel texture (64Â³, simple cube data)
    - Camera UBO (view, projection, inverse projection matrices)
 
 2. Create descriptor set for ray marching:
@@ -548,8 +548,8 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
    - Voxel resolution adjustable via parameter
 
 5. Performance test:
-   - 64³ voxels @ 720p: Target <10ms
-   - 128³ voxels @ 720p: Target <30ms
+   - 64Â³ voxels @ 720p: Target <10ms
+   - 128Â³ voxels @ 720p: Target <30ms
    - Compare to baseline (empty dispatch): Overhead <0.1ms
 
 ---
@@ -566,15 +566,15 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 - **Visual Test**: Voxel cube visible on screen
 - **Parameter Test**: Voxel resolution changes affect performance
 - **Validation Test**: Zero Vulkan validation errors
-- **Performance Test**: GPU time < 10ms for 64³ @ 720p
+- **Performance Test**: GPU time < 10ms for 64Â³ @ 720p
 
 ### Acceptance Criteria (Phase G Complete)
-- ✅ Compute shader renders voxel cube to screen
-- ✅ Timestamp queries measure dispatch time (<0.1ms overhead)
-- ✅ Manually adjustable voxel resolution (32³, 64³, 128³)
-- ✅ Zero validation errors
-- ✅ Cache HIT on second run (pipeline cached)
-- ✅ Code follows existing patterns (GraphicsPipelineNode, PipelineCacher)
+- âœ… Compute shader renders voxel cube to screen
+- âœ… Timestamp queries measure dispatch time (<0.1ms overhead)
+- âœ… Manually adjustable voxel resolution (32Â³, 64Â³, 128Â³)
+- âœ… Zero validation errors
+- âœ… Cache HIT on second run (pipeline cached)
+- âœ… Code follows existing patterns (GraphicsPipelineNode, PipelineCacher)
 
 ---
 
@@ -589,7 +589,7 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 ### Risk: Storage Image Layout Transitions
 **Issue**: Incorrect layout transitions cause validation errors.
 **Mitigation**:
-- Explicitly transition GENERAL → SHADER_READ in ComputeRayMarchNode
+- Explicitly transition GENERAL â†’ SHADER_READ in ComputeRayMarchNode
 - Add validation: Check image layout before present
 
 ### Risk: Timestamp Overhead
@@ -638,11 +638,11 @@ RenderGraph/src/Nodes/TimestampQueryNode.cpp           // Implementation (4-6h)
 
 ## Next Steps (Immediate Actions)
 
-1. ✅ Create branch: `claude/phase-g-compute-pipeline`
-2. ✅ Write Phase G plan (this document)
-3. ⏳ Start G.1: Create ComputePipelineNodeConfig.h
-4. ⏳ Implement ComputePipelineCacher
-5. ⏳ Build and test minimal compute pipeline
+1. âœ… Create branch: `claude/phase-g-compute-pipeline`
+2. âœ… Write Phase G plan (this document)
+3. â³ Start G.1: Create ComputePipelineNodeConfig.h
+4. â³ Implement ComputePipelineCacher
+5. â³ Build and test minimal compute pipeline
 
 **Estimated Start Date**: November 2, 2025 (after Phase F merge)
 **Estimated Completion**: November 24, 2025 (3 weeks)
@@ -660,3 +660,4 @@ Phase G is the foundation for all research pipelines. By implementing the simple
 **Success = Voxel cube rendering with accurate GPU timing measurements.**
 
 Ready to implement G.1: ComputePipelineNode.
+

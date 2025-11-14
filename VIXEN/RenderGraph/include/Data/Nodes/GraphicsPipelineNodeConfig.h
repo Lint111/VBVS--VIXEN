@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -18,7 +18,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * @brief Pure constexpr resource configuration for GraphicsPipelineNode
  *
  * Inputs:
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer (contains device, gpu, memory properties)
  * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Shader reflection data from ShaderLibraryNode
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
@@ -27,7 +27,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * - PIPELINE (VkPipeline) - Graphics pipeline handle
  * - PIPELINE_LAYOUT (VkPipelineLayout) - Pipeline layout handle
  * - PIPELINE_CACHE (VkPipelineCache) - Pipeline cache for optimization
- * - VULKAN_DEVICE_OUT (VulkanDevicePtr) - Device passthrough
+ * - VULKAN_DEVICE_OUT (VulkanDevice*) - Device passthrough
  *
  * Parameters:
  * - ENABLE_DEPTH_TEST (bool) - Enable depth testing (default: true)
@@ -157,3 +157,4 @@ static_assert(GraphicsPipelineNodeConfig::INPUT_COUNT == GraphicsPipelineNodeCou
 static_assert(GraphicsPipelineNodeConfig::OUTPUT_COUNT == GraphicsPipelineNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
+

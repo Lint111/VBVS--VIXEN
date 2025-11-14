@@ -1,4 +1,4 @@
-#include "Nodes/FrameSyncNode.h"
+﻿#include "Nodes/FrameSyncNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
@@ -34,7 +34,7 @@ void FrameSyncNode::SetupImpl(TypedSetupContext& ctx) {
 
 void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
+    VulkanDevice* devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "FrameSyncNode: VulkanDevice input is null";

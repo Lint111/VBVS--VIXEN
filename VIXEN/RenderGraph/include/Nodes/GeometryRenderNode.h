@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/PerFrameResources.h"
@@ -90,7 +90,6 @@ private:
 
     // Phase 0.1: Per-frame command buffer management
     // Command buffers are allocated per swapchain image to prevent race conditions.
-    VulkanDevicePtr vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
     // Phase 0.2: Semaphores now managed by FrameSyncNode (per-flight pattern)
@@ -108,3 +107,4 @@ private:
 };
 
 } // namespace Vixen::RenderGraph
+

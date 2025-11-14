@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 
@@ -20,7 +20,7 @@ namespace CommandPoolNodeCounts {
  * ALL type information is resolved at compile time.
  * Runtime code is just array[0] access - zero overhead.
  *
- * Inputs: 1 (VULKAN_DEVICE: VulkanDevicePtr, required)
+ * Inputs: 1 (VULKAN_DEVICE: VulkanDevice*, required)
  * Outputs: 1 (COMMAND_POOL: VkCommandPool, required)
  * Parameters: queue_family_index
  */

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -6,7 +6,7 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for DeviceNode
@@ -44,7 +44,7 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
         SlotScope::NodeLevel);
 
     // Phase F: Output slots with full metadata
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -84,7 +84,7 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<INSTANCE_IN_Slot::Type, VkInstance>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<INSTANCE_OUT_Slot::Type, VkInstance>);
 };
 

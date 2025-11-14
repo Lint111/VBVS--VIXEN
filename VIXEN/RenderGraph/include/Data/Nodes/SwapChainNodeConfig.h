@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -17,7 +17,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * - WIDTH (uint32_t) - Window width from WindowNode
  * - HEIGHT (uint32_t) - Window height from WindowNode
  * - INSTANCE (VkInstance) - Vulkan instance from InstanceNode
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer (contains device, gpu, memory properties)
  *
  * Outputs:
  * - SWAPCHAIN_IMAGES (VkImage[]) - Color images for rendering
@@ -259,3 +259,4 @@ static_assert(SwapChainNodeConfig::INPUT_COUNT == SwapChainNodeCounts::INPUTS);
 static_assert(SwapChainNodeConfig::OUTPUT_COUNT == SwapChainNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
+

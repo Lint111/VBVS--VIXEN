@@ -1,4 +1,4 @@
-# Refactoring Patterns Reference
+﻿# Refactoring Patterns Reference
 
 Quick lookup for common refactoring patterns when improving node readability.
 
@@ -8,7 +8,7 @@ Quick lookup for common refactoring patterns when improving node readability.
 
 ### Before (4 lines, repeated 20+ times)
 ```cpp
-VulkanDevicePtr devicePtr = ctx.In(MyNodeConfig::VULKAN_DEVICE_IN);
+VulkanDevice* devicePtr = ctx.In(MyNodeConfig::VULKAN_DEVICE_IN);
 if (!devicePtr) {
     throw std::runtime_error("MyNode: Device is null");
 }
@@ -26,7 +26,7 @@ ValidateAndSetDevice<MyNodeConfig>(ctx, this);
 - Consistent error messages across nodes
 
 ### Helper Location
-`NodeHelpers/ValidationHelpers.h` → `ValidateAndSetDevice<NodeConfig, NodeType>()`
+`NodeHelpers/ValidationHelpers.h` â†’ `ValidateAndSetDevice<NodeConfig, NodeType>()`
 
 ---
 
@@ -70,7 +70,7 @@ ValidateCachedHandle(cached->handle, "VkHandle", "Resource");
 - Reducing cacher boilerplate
 
 ### Helper Location
-`NodeHelpers/CacherHelpers.h` → `RegisterCacherIfNeeded()`, `GetOrCreateCached()`, `ValidateCachedHandle()`
+`NodeHelpers/CacherHelpers.h` â†’ `RegisterCacherIfNeeded()`, `GetOrCreateCached()`, `ValidateCachedHandle()`
 
 ---
 
@@ -108,7 +108,7 @@ auto rasterState = CreateRasterizationState(polygonMode, cullMode, frontFace);
 - Resources: FramebufferInfo, ImageInfo, ImageViewInfo, BufferInfo
 
 ### Helper Location
-`NodeHelpers/VulkanStructHelpers.h` → 18 builder functions
+`NodeHelpers/VulkanStructHelpers.h` â†’ 18 builder functions
 
 ---
 
@@ -148,7 +148,7 @@ auto frontFace = ParseFrontFace(faceStr);
 - CompareOp, SampleCount
 
 ### Helper Location
-`NodeHelpers/EnumParsers.h` → 10 parsers
+`NodeHelpers/EnumParsers.h` â†’ 10 parsers
 
 ---
 
@@ -223,7 +223,7 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(
 ```cpp
 void MyNode::RecordDrawCommands(const Context& ctx) {
     // Validation (15 lines)
-    VulkanDevicePtr device = ctx.In(...);
+    VulkanDevice* device = ctx.In(...);
     if (!device) throw...;
 
     // Barrier setup (20 lines)
@@ -284,7 +284,7 @@ private:
 ### Naming Convention
 - Start with verb: Record, Build, Setup, Validate, Create, Destroy, Upload
 - Be specific: RecordMeshDraws, not RecordDraws
-- Order: Setup → Record → Cleanup pattern
+- Order: Setup â†’ Record â†’ Cleanup pattern
 
 ### Declaration in Header
 ```cpp
@@ -483,7 +483,7 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 - Clear intent: "Destroy octree buffers" (method name)
 - Grouped resources: nodes with nodes, bricks with bricks
 - Main method focuses on orchestration
-- Easy to understand flow: Wait → Destroy → Log
+- Easy to understand flow: Wait â†’ Destroy â†’ Log
 
 ---
 
@@ -491,3 +491,4 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 - [REFACTORING_GUIDE.md](./REFACTORING_GUIDE.md) - Complete refactoring overview
 - [NodeHelpers/](./RenderGraph/include/NodeHelpers/) - All helper libraries
 - [VoxelGridNode example](./RenderGraph/src/Nodes/VoxelGridNode.cpp) - Practical example
+

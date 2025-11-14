@@ -1,4 +1,4 @@
-# Render Graph Node Refactoring Guide
+﻿# Render Graph Node Refactoring Guide
 
 ## Overview
 
@@ -29,7 +29,7 @@ Created 5 new helper libraries in `RenderGraph/include/NodeHelpers/`:
 **Example Usage:**
 ```cpp
 // Old: 4 lines per node
-VulkanDevicePtr devicePtr = ctx.In(NodeConfig::VULKAN_DEVICE_IN);
+VulkanDevice* devicePtr = ctx.In(NodeConfig::VULKAN_DEVICE_IN);
 if (!devicePtr) {
     throw std::runtime_error("Device is null");
 }
@@ -135,11 +135,11 @@ auto rasterState = CreateRasterizationState(polygonMode, cullMode, frontFace);
 **Purpose:** String-to-enum conversion for Vulkan enums (4 identical implementations).
 
 **Exports (10 functions):**
-- `ParseCullMode()` - "Back" → VK_CULL_MODE_BACK_BIT
-- `ParsePolygonMode()` - "Fill" → VK_POLYGON_MODE_FILL
-- `ParseTopology()` - "TriangleList" → VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-- `ParseFrontFace()` - "CounterClockwise" → VK_FRONT_FACE_COUNTER_CLOCKWISE
-- `ParseImageLayout()` - "PresentSrc" → VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+- `ParseCullMode()` - "Back" â†’ VK_CULL_MODE_BACK_BIT
+- `ParsePolygonMode()` - "Fill" â†’ VK_POLYGON_MODE_FILL
+- `ParseTopology()` - "TriangleList" â†’ VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+- `ParseFrontFace()` - "CounterClockwise" â†’ VK_FRONT_FACE_COUNTER_CLOCKWISE
+- `ParseImageLayout()` - "PresentSrc" â†’ VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 - `ParseAttachmentLoadOp()`, `ParseAttachmentStoreOp()`
 - `ParseCompareOp()`, `ParseSampleCount()`
 
@@ -222,16 +222,16 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(
    - Reduces UploadOctreeBuffers complexity
    - Single responsibility: "Determine what data to upload"
 
-2. **Refactored `CleanupImpl()` (50→10 lines, 80% reduction)**
+2. **Refactored `CleanupImpl()` (50â†’10 lines, 80% reduction)**
    - Extracted buffer/memory destruction to `DestroyOctreeBuffers()`
    - Each buffer pair (buffer + memory) destroyed in one section
    - Logging delegated to `LogCleanupProgress()`
-   - Flow now clear: Wait for device → Destroy buffers → Log complete
+   - Flow now clear: Wait for device â†’ Destroy buffers â†’ Log complete
 
 3. **Refactored `DestroyOctreeBuffers()` (NEW, 42 lines)**
    - Replaces scattered if-blocks with grouped cleanup
    - 3 logical sections: nodes, bricks, materials
-   - Consistent pattern: if buffer exists → destroy, reset handle → log
+   - Consistent pattern: if buffer exists â†’ destroy, reset handle â†’ log
    - Null-safe device checks at top
 
 4. **Added `LogCleanupProgress()` (2 lines)**
@@ -254,18 +254,18 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(
 
 ### When Refactoring Existing Nodes:
 
-1. **Find device validation** → Use `ValidateAndSetDevice<Config>(ctx, this)`
-2. **Find cacher registration** → Use `RegisterCacherIfNeeded<...>()` + `GetOrCreateCached<...>()`
-3. **Find Vulkan struct creation** → Use `CreateXxxInfo()` builders
-4. **Find enum parsing** → Use `ParseXxx()` functions
-5. **Find buffer allocation** → Use `CreateDeviceLocalBuffer()` + `DestroyBuffer()`
+1. **Find device validation** â†’ Use `ValidateAndSetDevice<Config>(ctx, this)`
+2. **Find cacher registration** â†’ Use `RegisterCacherIfNeeded<...>()` + `GetOrCreateCached<...>()`
+3. **Find Vulkan struct creation** â†’ Use `CreateXxxInfo()` builders
+4. **Find enum parsing** â†’ Use `ParseXxx()` functions
+5. **Find buffer allocation** â†’ Use `CreateDeviceLocalBuffer()` + `DestroyBuffer()`
 
 ### Example: Converting a Node
 
 Before:
 ```cpp
 // Device validation (3 lines)
-VulkanDevicePtr devicePtr = ctx.In(MyNodeConfig::VULKAN_DEVICE_IN);
+VulkanDevice* devicePtr = ctx.In(MyNodeConfig::VULKAN_DEVICE_IN);
 if (!devicePtr) throw std::runtime_error("Device null");
 SetDevice(devicePtr);
 
@@ -318,33 +318,33 @@ auto mode = ParseCullMode(str);
 
 **High Priority (100+ lines each):**
 1. **GraphicsPipelineNode** (723 lines)
-   - Extract: CreatePipeline() 183→90 lines, BuildVertexInputsFromReflection() 87→40 lines
+   - Extract: CreatePipeline() 183â†’90 lines, BuildVertexInputsFromReflection() 87â†’40 lines
    - Use: VulkanStructHelpers, EnumParsers, ValidationHelpers
    - Estimated reduction: 200 lines
 
 2. **DescriptorResourceGathererNode** (479 lines)
-   - Extract: GatherResources() 88→40 lines, IsResourceCompatibleWithDescriptorType() 76→35 lines
+   - Extract: GatherResources() 88â†’40 lines, IsResourceCompatibleWithDescriptorType() 76â†’35 lines
    - Use: ValidationHelpers
    - Estimated reduction: 100 lines
 
 3. **VoxelGridNode** (675 lines) - **COMPLETED**
-   - Extract: UploadOctreeBuffers() 440→200 lines, CleanupImpl() 50→10 lines
+   - Extract: UploadOctreeBuffers() 440â†’200 lines, CleanupImpl() 50â†’10 lines
    - Use: BufferHelpers, ValidationHelpers
    - Reduction: 270 lines
 
 4. **GeometryRenderNode** (410 lines)
-   - Extract: RecordDrawCommands() 185→90 lines
+   - Extract: RecordDrawCommands() 185â†’90 lines
    - Use: VulkanStructHelpers, ValidationHelpers
    - Estimated reduction: 120 lines
 
 5. **ComputeDispatchNode** (406 lines)
-   - Extract: RecordComputeCommands() 155→80 lines
+   - Extract: RecordComputeCommands() 155â†’80 lines
    - Use: VulkanStructHelpers, ValidationHelpers
    - Estimated reduction: 100 lines
 
 **Medium Priority (50-100 lines each):**
-- RenderPassNode (99→50 lines) - Use CacherHelpers, EnumParsers
-- FramebufferNode (111→60 lines) - Use VulkanStructHelpers, BufferHelpers
+- RenderPassNode (99â†’50 lines) - Use CacherHelpers, EnumParsers
+- FramebufferNode (111â†’60 lines) - Use VulkanStructHelpers, BufferHelpers
 - SwapChainNode (452 lines) - Extract frame handling logic
 
 ---
@@ -416,11 +416,11 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(device, memProps, size, usage, "
 ```
 
 2. Search for patterns in this order:
-   - `if (!device) throw...` → Use `ValidateAndSetDevice()`
-   - `VkCreateInfo{};` → Use `Create*Info()` builders
-   - Cacher registration loops → Use `RegisterCacherIfNeeded()`
-   - Enum string parsing → Use `Parse*()`
-   - Buffer allocation → Use `CreateDeviceLocalBuffer()`
+   - `if (!device) throw...` â†’ Use `ValidateAndSetDevice()`
+   - `VkCreateInfo{};` â†’ Use `Create*Info()` builders
+   - Cacher registration loops â†’ Use `RegisterCacherIfNeeded()`
+   - Enum string parsing â†’ Use `Parse*()`
+   - Buffer allocation â†’ Use `CreateDeviceLocalBuffer()`
 
 3. Extract long methods:
    - Identify logical blocks (30+ lines)
@@ -445,8 +445,8 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(device, memProps, size, usage, "
 - 1 static helper function (ExtractNodeData)
 
 **Refactored:**
-- VoxelGridNode: 675→400 lines (-40%)
-- CleanupImpl: 50→10 lines (-80%)
+- VoxelGridNode: 675â†’400 lines (-40%)
+- CleanupImpl: 50â†’10 lines (-80%)
 - UploadOctreeBuffers: Simplified logic flow
 
 **Potential Total Reduction:**
@@ -455,11 +455,11 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(device, memProps, size, usage, "
 - Reduction: 1,130 lines (14%)
 
 **Quality Improvements:**
-- 150+ duplicate validation blocks → 1 helper
-- 100+ duplicate cacher patterns → 1 helper
-- 200+ scattered struct inits → 18 builders
-- 4 identical enum parsers → 10 unified functions
-- 3 buffer allocation duplicates → 1 allocation helper
+- 150+ duplicate validation blocks â†’ 1 helper
+- 100+ duplicate cacher patterns â†’ 1 helper
+- 200+ scattered struct inits â†’ 18 builders
+- 4 identical enum parsers â†’ 10 unified functions
+- 3 buffer allocation duplicates â†’ 1 allocation helper
 
 ---
 
@@ -472,3 +472,4 @@ auto [buffer, memory] = CreateDeviceLocalBuffer(device, memProps, size, usage, "
 - [BufferHelpers.h](./RenderGraph/include/NodeHelpers/BufferHelpers.h)
 - [VoxelGridNode.h](./RenderGraph/include/Nodes/VoxelGridNode.h)
 - [VoxelGridNode.cpp](./RenderGraph/src/Nodes/VoxelGridNode.cpp)
+

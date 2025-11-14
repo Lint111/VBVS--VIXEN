@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -18,7 +18,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * @brief Pure constexpr resource configuration for ComputePipelineNode
  *
  * Inputs:
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer (contains device, gpu, memory properties)
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer (contains device, gpu, memory properties)
  * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Shader reflection data from ShaderLibraryNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Optional (auto-generated if not provided)
  *
@@ -26,7 +26,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * - PIPELINE (VkPipeline) - Compute pipeline handle
  * - PIPELINE_LAYOUT (VkPipelineLayout) - Pipeline layout handle
  * - PIPELINE_CACHE (VkPipelineCache) - Pipeline cache for optimization
- * - VULKAN_DEVICE_OUT (VulkanDevicePtr) - Device passthrough
+ * - VULKAN_DEVICE_OUT (VulkanDevice*) - Device passthrough
  *
  * Parameters:
  * - WORKGROUP_SIZE_X (uint32_t) - Workgroup size X (default: 0 = extract from shader)
@@ -136,3 +136,4 @@ static_assert(ComputePipelineNodeConfig::INPUT_COUNT == ComputePipelineNodeCount
 static_assert(ComputePipelineNodeConfig::OUTPUT_COUNT == ComputePipelineNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
+

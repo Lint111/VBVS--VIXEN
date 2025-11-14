@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Enable new variant-based resource system (disables legacy Resource.h)
 #define USE_RESOURCE_VARIANT_SYSTEM
@@ -42,7 +42,7 @@ namespace Vixen::RenderGraph {
 }
 
 // Type aliases for pointer types (needed for variant registry - macros can't handle namespaces)
-using SwapChainPublicVariablesPtr = SwapChainPublicVariables*;
+using SwapChainPublicVariables = Vixen::RenderGraph::SwapChainPublicVariables;
 using VulkanShaderPtr = VulkanShader*; // MVP approach
 using ShaderProgramPtr = const ShaderManagement::CompiledProgram*;
 using ShaderProgramDescriptorPtr = Vixen::RenderGraph::ShaderProgramDescriptor*;
@@ -113,7 +113,7 @@ struct ImageSamplerPair {
  *
  * Example:
  * RESOURCE_TYPE(VkImage, ImageDescriptor, ResourceType::Image)
- * → Auto-generates: VkImage, std::vector<VkImage>
+ * â†’ Auto-generates: VkImage, std::vector<VkImage>
  */
 #define RESOURCE_TYPE_REGISTRY \
     RESOURCE_TYPE(VkImage,                         ImageDescriptor,       ResourceType::Image) \
@@ -142,7 +142,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(uint8_t,                         HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(HWND,                            HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(HINSTANCE,                       HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(SwapChainPublicVariablesPtr,     HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(SwapChainPublicVariables*,     HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramPtr,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderProgramDescriptorPtr,      HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(ShaderDataBundlePtr,             HandleDescriptor,      ResourceType::Buffer) \
@@ -178,8 +178,8 @@ struct ImageSamplerPair {
  * Generates all combinations: BaseType + std::vector<BaseType>
  * 
  * Special case: bool and BoolVector don't get auto-vectorized
- * - bool → BoolVector (not std::vector<bool> due to vector<bool> specialization)
- * - BoolVector → no vector wrapper needed
+ * - bool â†’ BoolVector (not std::vector<bool> due to vector<bool> specialization)
+ * - BoolVector â†’ no vector wrapper needed
  */
 
 // Generate base type + vector wrapper (for most types)
@@ -364,14 +364,14 @@ struct ResourceTypeTraitsImpl<ResourceVariant> {
  * 5. Check if T is a custom variant with all registered types (NEW!)
  *
  * Examples:
- * - VkImage: Registered directly → isValid = true ✅
- * - vector<VkImage>: Registered directly (auto-generated in variant) → isValid = true ✅
- * - array<VkImage, 10>: Not registered, but VkImage is → isValid = true ✅
- * - ResourceVariant: Special variant type → isValid = true ✅
- * - vector<ResourceVariant>: Container of variant → isValid = true ✅
- * - variant<VkImage, VkBuffer>: Custom variant, all types registered → isValid = true ✅
- * - variant<VkImage, UnknownType>: Custom variant, UnknownType not registered → isValid = false ❌
- * - vector<UnknownType>: Not registered, UnknownType not registered → isValid = false ❌
+ * - VkImage: Registered directly â†’ isValid = true âœ…
+ * - vector<VkImage>: Registered directly (auto-generated in variant) â†’ isValid = true âœ…
+ * - array<VkImage, 10>: Not registered, but VkImage is â†’ isValid = true âœ…
+ * - ResourceVariant: Special variant type â†’ isValid = true âœ…
+ * - vector<ResourceVariant>: Container of variant â†’ isValid = true âœ…
+ * - variant<VkImage, VkBuffer>: Custom variant, all types registered â†’ isValid = true âœ…
+ * - variant<VkImage, UnknownType>: Custom variant, UnknownType not registered â†’ isValid = false âŒ
+ * - vector<UnknownType>: Not registered, UnknownType not registered â†’ isValid = false âŒ
  */
 template<typename T>
 struct ResourceTypeTraits {
@@ -762,3 +762,4 @@ using BufferDescription = BufferDescriptor;
 #undef RESOURCE_TYPE_REGISTRY
 
 } // namespace Vixen::RenderGraph
+

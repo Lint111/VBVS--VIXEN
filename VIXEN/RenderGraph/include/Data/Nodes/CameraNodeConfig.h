@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Data/InputState.h"
@@ -7,7 +7,7 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Type alias for CameraData pointer (defined in ResourceVariant.h)
 using CameraDataPtr = const CameraData*;
@@ -34,7 +34,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
                       CameraNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (4) =====
     // Use generic INPUT_SLOT; lifetime (Persistent) is declared in INIT_INPUT_DESC
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -109,7 +109,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
     static_assert(CAMERA_DATA_Slot::index == 0, "CAMERA_DATA must be at index 0");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>);
@@ -117,3 +117,4 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 };
 
 } // namespace Vixen::RenderGraph
+

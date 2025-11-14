@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
@@ -6,7 +6,7 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for GeometryRenderNode
@@ -108,7 +108,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 7,
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 7,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -120,7 +120,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(VULKAN_DEVICE, VulkanDevicePtr, 9,
+    INPUT_SLOT(VULKAN_DEVICE, VulkanDevice*, 9,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -324,9 +324,9 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, std::vector<VkDescriptorSet>>);
     static_assert(std::is_same_v<VERTEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INDEX_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
+    static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
@@ -342,3 +342,5 @@ static_assert(GeometryRenderNodeConfig::OUTPUT_COUNT == GeometryRenderNodeCounts
 static_assert(GeometryRenderNodeConfig::ALLOW_INPUT_ARRAYS); // Array mode enabled
 
 } // namespace Vixen::RenderGraph
+
+

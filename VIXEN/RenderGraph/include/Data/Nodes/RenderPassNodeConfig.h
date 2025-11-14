@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"
@@ -13,7 +13,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  * @brief Pure constexpr resource configuration for RenderPassNode
  *
  * Inputs:
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer
  * - COLOR_FORMAT (VkFormat) - Color attachment format (from SwapChainNode)
  * - DEPTH_FORMAT (VkFormat) - Depth attachment format (from DepthBufferNode, nullable)
  *

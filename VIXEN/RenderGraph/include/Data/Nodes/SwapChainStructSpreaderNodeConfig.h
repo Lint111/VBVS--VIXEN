@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 
@@ -35,7 +35,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainStructSpreaderNodeConfig,
                       SwapChainStructSpreaderNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1) =====
-    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 0,
+    INPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -100,3 +100,4 @@ CONSTEXPR_NODE_CONFIG(SwapChainStructSpreaderNodeConfig,
 };
 
 } // namespace Vixen::RenderGraph
+

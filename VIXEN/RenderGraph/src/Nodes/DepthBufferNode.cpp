@@ -1,4 +1,4 @@
-#include "Nodes/DepthBufferNode.h"
+﻿#include "Nodes/DepthBufferNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/NodeLogging.h"
@@ -51,7 +51,7 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     #define VK_DEVICE (vulkanDevice->device)
 
     // Validate swapchain variables and command pool
-    SwapChainPublicVariablesPtr swapChainVars = ValidateInput<SwapChainPublicVariablesPtr>(
+    SwapChainPublicVariables* swapChainVars = ValidateInput<SwapChainPublicVariables*>(
         ctx, "SwapChainPublicVars", DepthBufferNodeConfig::SWAPCHAIN_PUBLIC_VARS);
     VkCommandPool cmdPool = ValidateInput<VkCommandPool>(
         ctx, "CommandPool", DepthBufferNodeConfig::COMMAND_POOL);
@@ -277,3 +277,4 @@ void DepthBufferNode::TransitionImageLayout(
 }
 
 } // namespace Vixen::RenderGraph
+

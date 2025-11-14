@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
@@ -27,7 +27,7 @@ public:
  * for CPU-GPU synchronization to prevent CPU from racing ahead of GPU.
  *
  * Inputs:
- *  - VULKAN_DEVICE (VulkanDevicePtr): Device to create sync primitives on
+ *  - VULKAN_DEVICE (VulkanDevice*): Device to create sync primitives on
  *
  * Outputs:
  *  - CURRENT_FRAME_INDEX (uint32_t): Current frame-in-flight index (0 to MAX_FRAMES_IN_FLIGHT-1)
