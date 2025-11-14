@@ -79,7 +79,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    OUTPUT_SLOT(PRESENT_RESULT, VkResultPtr, 0,
+    OUTPUT_SLOT(PRESENT_RESULT, VkResult*, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 

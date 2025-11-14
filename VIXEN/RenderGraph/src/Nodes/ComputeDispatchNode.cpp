@@ -341,7 +341,7 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
     // Fall back to legacy push constant data if no gatherer connected
     else if (pushConstantData != nullptr) {
         // Get shader bundle to check for push constants
-        ShaderDataBundlePtr shaderBundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
+        ShaderDataBundle* shaderBundle = ctx.In(ComputeDispatchNodeConfig::SHADER_DATA_BUNDLE);
 
         if (shaderBundle && shaderBundle->reflectionData &&
             !shaderBundle->reflectionData->pushConstants.empty()) {

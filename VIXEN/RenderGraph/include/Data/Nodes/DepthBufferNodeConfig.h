@@ -42,9 +42,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
     // ===== INPUTS (3) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 2,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

@@ -42,10 +42,11 @@ void GeometryRenderNode::SetupImpl(TypedSetupContext& ctx) {
 
 void GeometryRenderNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device and command pool inputs (compile-time dependencies)
-    vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
+    VulkanDevice* vulkanDevice = ctx.In(GeometryRenderNodeConfig::VULKAN_DEVICE);
     if (!vulkanDevice) {
         throw std::runtime_error("GeometryRenderNode: VulkanDevice input is null");
     }
+    SetDevice(vulkanDevice);
 
     commandPool = ctx.In(GeometryRenderNodeConfig::COMMAND_POOL);
     if (commandPool == VK_NULL_HANDLE) {
@@ -135,7 +136,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
-    vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+    vkResetFences(device->device, 1, &inFlightFence);
 
     // Guard against invalid image index (swapchain out of date)
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
@@ -189,7 +190,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     submitInfo.pSignalSemaphores = &renderCompleteSemaphore;
 
     // Phase 0.2: Signal fence when GPU completes this frame (CPU-GPU sync)
-    VkResult result = vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, inFlightFence);
+    VkResult result = vkQueueSubmit(device->queue, 1, &submitInfo, inFlightFence);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("GeometryRenderNode: Failed to submit command buffer");
     }
@@ -200,7 +201,7 @@ void GeometryRenderNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Free command buffers
-    if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && vulkanDevice) {
+    if (!commandBuffers.empty() && commandPool != VK_NULL_HANDLE && device) {
         // Extract raw command buffer handles for vkFreeCommandBuffers
         std::vector<VkCommandBuffer> rawHandles;
         rawHandles.reserve(commandBuffers.size());
@@ -209,7 +210,7 @@ void GeometryRenderNode::CleanupImpl(TypedCleanupContext& ctx) {
         }
 
         vkFreeCommandBuffers(
-            vulkanDevice->device,
+            device->device,
             commandPool,
             static_cast<uint32_t>(rawHandles.size()),
             rawHandles.data()

@@ -7,6 +7,8 @@ namespace ShaderManagement {
     struct ShaderDataBundle;
 }
 
+using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
+
 namespace Vixen::RenderGraph {
 
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;

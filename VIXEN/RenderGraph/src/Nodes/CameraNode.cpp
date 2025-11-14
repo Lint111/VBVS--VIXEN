@@ -67,7 +67,7 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("CameraNode compile");
 
     // Validate inputs using helpers
-    VulkanDevice* devicePtr = ValidateInput<VulkanDevice*>(ctx, "VulkanDevice", CameraNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(CameraNodeConfig::VULKAN_DEVICE_IN);
     SetDevice(devicePtr);
 
     SwapChainPublicVariables* swapchainInfo = ValidateInput<SwapChainPublicVariables*>(

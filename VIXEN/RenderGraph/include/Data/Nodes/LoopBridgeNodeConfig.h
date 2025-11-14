@@ -2,6 +2,8 @@
 #include "Data/Core/ResourceConfig.h"
 #include "Core/LoopManager.h"
 
+
+
 namespace Vixen::RenderGraph {
 
 // Compile-time slot counts
@@ -32,7 +34,7 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    OUTPUT_SLOT(LOOP_OUT, LoopReferencePtr, 0,
+    OUTPUT_SLOT(LOOP_OUT, LoopReference*, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -69,7 +71,7 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<LOOP_ID_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<LOOP_OUT_Slot::Type, LoopReferencePtr>);
+    static_assert(std::is_same_v<LOOP_OUT_Slot::Type, LoopReference*>);
     static_assert(std::is_same_v<SHOULD_EXECUTE_Slot::Type, bool>);
 };
 

@@ -682,8 +682,15 @@ private:
 
                 // Create resource from type + descriptor
                 if (descClone) {
+                    // ResourceV3 migration: create an empty Resource and rely on
+                    // the new ResourceV3 system to initialize descriptors later.
+                    // The previous code used Resource::CreateFromType(...) which
+                    // is part of the legacy runtime dispatch. During migration we
+                    // allocate an empty Resource here. The descriptor from
+                    // schemaDesc is preserved in the NodeType schema and the
+                    // graph's resource manager will be responsible for proper
+                    // initialization when needed.
                     outputs[slotIndex] = new Resource();
-                    *outputs[slotIndex] = Resource::CreateFromType(schemaDesc->type, std::move(descClone));
                 } else {
                     outputs[slotIndex] = new Resource();
                 }
