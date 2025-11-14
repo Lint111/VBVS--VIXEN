@@ -1,6 +1,6 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
-#include "Data/Core/ResourceVariant.h"  // For BoolVector typedef
+#include "Data/Core/ResourceV3.h"  // For BoolVector typedef
 
 namespace Vixen::RenderGraph {
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceV3.h"
 #include <string>
 #include <vector>
 #include <functional>

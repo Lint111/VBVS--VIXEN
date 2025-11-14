@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Data/Core/ResourceConfig.h"
-#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceV3.h"
 
 namespace ShaderManagement {
     struct ShaderDataBundle;
