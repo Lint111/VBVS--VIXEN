@@ -53,7 +53,12 @@ endif()
 # Parallel compilation (MSVC)
 if(MSVC)
     add_compile_options(/MP)  # Multi-processor compilation
+
+    # Suppress LNK4099 warnings for missing PDB files in third-party libraries
+    add_link_options(/ignore:4099)
+
     message(STATUS "MSVC multi-processor compilation enabled")
+    message(STATUS "MSVC LNK4099 warnings suppressed (missing PDB in third-party libs)")
 endif()
 
 # Generate compile_commands.json for better IDE integration
@@ -340,6 +345,49 @@ else()
 	target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
 endif()
 
+# ============================================================================
+# GOOGLE TEST - Fetch early so subdirectories can use it
+# ============================================================================
+# Note: Fetched here (before add_subdirectory calls) so all subdirectories
+# can use GTest targets. enable_testing() is called later when BUILD_TESTS is checked.
+
+option(BUILD_TESTS "Build test executables" ON)
+
+if(BUILD_TESTS)
+    # Fetch Google Test framework
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+        GIT_SHALLOW    TRUE
+    )
+
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+    # Don't install GTest when installing our project
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(googletest)
+
+    # Create GTest:: namespace aliases for compatibility
+    # FetchContent creates gtest/gtest_main, but some tests expect GTest::gtest/GTest::gtest_main
+    if(TARGET gtest AND NOT TARGET GTest::gtest)
+        add_library(GTest::gtest ALIAS gtest)
+    endif()
+    if(TARGET gtest_main AND NOT TARGET GTest::gtest_main)
+        add_library(GTest::gtest_main ALIAS gtest_main)
+    endif()
+    if(TARGET gmock AND NOT TARGET GTest::gmock)
+        add_library(GTest::gmock ALIAS gmock)
+    endif()
+    if(TARGET gmock_main AND NOT TARGET GTest::gmock_main)
+        add_library(GTest::gmock_main ALIAS gmock_main)
+    endif()
+
+    message(STATUS "GoogleTest fetched - test targets available to subdirectories")
+endif()
+
 # Specify a suitable project name
 project(${Recipe_Name})
 
@@ -502,29 +550,18 @@ endif()
 # ============================================================================
 # TESTING INFRASTRUCTURE
 # ============================================================================
+# Note: GoogleTest is fetched early (near top of file) so all subdirectories can use it.
+# This section only enables CTest and adds root-level tests directory.
 
 if(BUILD_TESTS)
     # Enable testing with CTest
     enable_testing()
 
-    # Fetch Google Test framework
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
-        GIT_SHALLOW    TRUE
-    )
-
-    # For Windows: Prevent overriding the parent project's compiler/linker settings
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-
-    # Don't install GTest when installing our project
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-
-    FetchContent_MakeAvailable(googletest)
-
-    # Add tests subdirectory
-    add_subdirectory(tests)
+    # Add root-level tests subdirectory (if it exists)
+    # Note: Subdirectories (RenderGraph, ShaderManagement, etc.) add their own tests
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_subdirectory(tests)
+    endif()
 
     message(STATUS "Unit tests enabled - use 'ctest' or 'make test' to run")
 else()
