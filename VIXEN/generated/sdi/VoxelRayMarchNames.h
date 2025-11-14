@@ -4,7 +4,7 @@
 //
 // Program: VoxelRayMarch
 // UUID: 43bded93fcbc37f9
-// Generated: 2025-11-14 12:07:06
+// Generated: 2025-11-14 12:18:05
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -24,21 +24,25 @@ namespace VoxelRayMarch {
 // Reference to generic SDI namespace
 namespace SDI = ShaderInterface::_43bded93fcbc37f9;
 
+// Forward declare push constant type to prevent error messages
+using pc = SDI::pc;
+
 // ============================================================================
 // Descriptor Binding Aliases
 // ============================================================================
 
 // outputImage (Set 0, Binding 0)
-inline constexpr auto& outputImage = SDI::Set0::outputImage;
-
+using outputImage = SDI::Set0::Binding0;
+constexpr const char* outputImage_name = "outputImage";
 // ESVOBuffer (Set 0, Binding 1)
-inline constexpr auto& ESVOBuffer = SDI::Set0::Binding1;
-
+using ESVOBuffer = SDI::Set0::Binding1;
+constexpr const char* ESVOBuffer_name = "ESVOBuffer";
 // BrickBuffer (Set 0, Binding 2)
-inline constexpr auto& BrickBuffer = SDI::Set0::Binding2;
-
+using BrickBuffer = SDI::Set0::Binding2;
+constexpr const char* BrickBuffer_name = "BrickBuffer";
 // MaterialBuffer (Set 0, Binding 3)
-inline constexpr auto& MaterialBuffer = SDI::Set0::Binding3;
+using MaterialBuffer = SDI::Set0::Binding3;
+constexpr const char* MaterialBuffer_name = "MaterialBuffer";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)
@@ -61,32 +65,5 @@ using cameraRight = SDI::pc::DataType::pc_6;
 constexpr const char* cameraRight_name = "cameraRight";
 using pad = SDI::pc::DataType::pc_7;
 constexpr const char* pad_name = "pad";
-
-// ============================================================================
-// Push Constant Struct Type Aliases
-// ============================================================================
-
-using pc = SDI::pc;
-
-// ============================================================================
-// UBO/SSBO Member Aliases (With Metadata)
-// ============================================================================
-
-// ESVOBuffer (Size: 0 bytes)
-using esvoNodes = SDI::ESVOBuffer::esvoNodes_t;
-
-// BrickBuffer (Size: 0 bytes)
-using brickData = SDI::BrickBuffer::brickData_t;
-
-// MaterialBuffer (Size: 0 bytes)
-using materials = SDI::MaterialBuffer::materials_t;
-
-// ============================================================================
-// UBO/SSBO Struct Type Aliases
-// ============================================================================
-
-using ESVOBuffer = SDI::ESVOBuffer;
-using BrickBuffer = SDI::BrickBuffer;
-using MaterialBuffer = SDI::MaterialBuffer;
 
 } // namespace VoxelRayMarch

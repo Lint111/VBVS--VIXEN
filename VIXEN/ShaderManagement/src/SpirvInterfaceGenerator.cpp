@@ -294,6 +294,13 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
         code << "namespace SDI = " << sdiNs << ";\n";
         code << "\n";
 
+        // Forward declare push constant type to prevent error messages
+        if (!reflectionData.pushConstants.empty()) {
+            code << "// Forward declare push constant type to prevent error messages\n";
+            code << "using pc = SDI::pc;\n";
+            code << "\n";
+        }
+
         // Generate descriptor binding name aliases
         if (!reflectionData.descriptorSets.empty()) {
             code << "// ============================================================================\n";
@@ -303,11 +310,8 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
 
             for (const auto& [setIndex, bindings] : reflectionData.descriptorSets) {
                 for (const auto& binding : bindings) {
-                    // The SDI binding name (what we use to reference SDI::Set#::BindingX)
-                    std::string sdiBindingName = SanitizeName(binding.name);
-                    if (sdiBindingName.empty()) {
-                        sdiBindingName = "Binding" + std::to_string(binding.binding);
-                    }
+                    // Always use generic binding names like the SDI file
+                    std::string genericBindingName = "Binding" + std::to_string(binding.binding);
                     
                     // The user-facing name (what we alias to in the Names file)
                     std::string aliasName = SanitizeName(binding.name);
@@ -318,17 +322,18 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
                             const auto& structDef = reflectionData.structDefinitions[binding.structDefIndex];
                             aliasName = SanitizeName(structDef.name);
                         } else {
-                            aliasName = "Binding" + std::to_string(binding.binding);
+                            aliasName = genericBindingName;
                         }
                     }
                     
                     // Use original name if available for display
                     std::string displayName = binding.name.empty() ? aliasName : binding.name;
                     code << "// " << displayName << " (Set " << setIndex << ", Binding " << binding.binding << ")\n";
-                    code << "inline constexpr auto& " << aliasName << " = SDI::Set" << setIndex << "::" << sdiBindingName << ";\n";
-                    code << "\n";
+                    code << "using " << aliasName << " = SDI::Set" << setIndex << "::" << genericBindingName << ";\n";
+                    code << "constexpr const char* " << aliasName << "_name = \"" << aliasName << "\";\n";
                 }
             }
+            code << "\n";
         }
 
         // Generate push constant name aliases and member field aliases
@@ -358,51 +363,6 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
                 }
                 code << "\n";
             }
-
-            code << "// ============================================================================\n";
-            code << "// Push Constant Struct Type Aliases\n";
-            code << "// ============================================================================\n";
-            code << "\n";
-
-            for (size_t pcIdx = 0; pcIdx < reflectionData.pushConstants.size(); ++pcIdx) {
-                const auto& pc = reflectionData.pushConstants[pcIdx];
-                std::string genericPcName = (pcIdx == 0) ? "pc" : "pc_" + std::to_string(pcIdx);
-
-                code << "using pc = SDI::" << genericPcName << ";\n";
-            }
-            code << "\n";
-        }
-
-        // Generate struct type aliases
-        if (!reflectionData.structDefinitions.empty()) {
-            code << "// ============================================================================\n";
-            code << "// UBO/SSBO Member Aliases (With Metadata)\n";
-            code << "// ============================================================================\n";
-            code << "\n";
-
-            for (const auto& structDef : reflectionData.structDefinitions) {
-                std::string structName = SanitizeName(structDef.name);
-                code << "// " << structDef.name << " (Size: " << structDef.sizeInBytes << " bytes)\n";
-                
-                // Generate using aliases for each member field that reference the metadata struct
-                for (const auto& member : structDef.members) {
-                    std::string memberName = SanitizeName(member.name);
-                    code << "using " << memberName << " = SDI::" << structName << "::" << memberName << "_t;\n";
-                }
-                code << "\n";
-            }
-
-            code << "// ============================================================================\n";
-            code << "// UBO/SSBO Struct Type Aliases\n";
-            code << "// ============================================================================\n";
-            code << "\n";
-
-            for (const auto& structDef : reflectionData.structDefinitions) {
-                std::string structName = SanitizeName(structDef.name);
-                code << "using " << structName << " = SDI::" << structName << ";\n";
-            }
-
-            code << "\n";
         }
 
         // Close namespace
