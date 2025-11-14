@@ -5,7 +5,7 @@
 // NO Vulkan runtime needed - only headers!
 // Compatible with VULKAN_TRIMMED_BUILD (headers only)
 
-#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceV3.h"
 #include "Data/Core/ResourceTypeTraits.h"
 
 #include <iostream>

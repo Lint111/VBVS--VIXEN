@@ -21,7 +21,7 @@
 // Render graph components
 #include "../include/Nodes/DescriptorResourceGathererNode.h"
 #include "../include/Core/RenderGraph.h"
-#include "../include/Data/Core/ResourceVariant.h"
+#include "../include/Data/Core/ResourceV3.h"
 
 // Shader management
 #include "../../ShaderManagement/include/ShaderManagement/ShaderDataBundle.h"

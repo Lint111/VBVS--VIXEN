@@ -1,4 +1,4 @@
-#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceV3.h"
 
 namespace Vixen::RenderGraph {
 

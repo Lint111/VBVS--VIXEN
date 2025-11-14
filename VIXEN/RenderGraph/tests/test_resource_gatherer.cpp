@@ -51,7 +51,7 @@ private:
 // NOW include headers that use Slot
 #include "Nodes/ResourceGathererNode.h"
 #include "Core/FieldExtractor.h"
-#include "Data/Core/ResourceVariant.h"
+#include "Data/Core/ResourceV3.h"
 
 using namespace Vixen::RenderGraph;
 

@@ -302,8 +302,55 @@ private:
 };
 
 // Backward compatibility aliases (same as old ResourceVariant.h)
-using ResourceDescriptor = ResourceSlotDescriptor;
+using ResourceDescriptor = ResourceDescriptorBase;
 using ImageDescription = ImageDescriptor;
 using BufferDescription = BufferDescriptor;
+
+// ============================================================================
+// COMPATIBILITY LAYER FOR ResourceTypeTraits
+// ============================================================================
+
+/**
+ * @brief Compatibility layer to support existing code using ResourceTypeTraits
+ *
+ * Maps the old ResourceTypeTraits API to the new compile-time validation system.
+ * This enables FieldExtractor and other components to work during the migration.
+ */
+template<typename T>
+struct ResourceTypeTraits {
+    // Strip containers to get base type
+    using BaseType = typename StripContainer<T>::Type;
+
+    // Check if base type is registered
+    static constexpr bool isValid =
+        IsRegisteredType<BaseType>::value ||
+        IsRegisteredType<std::vector<BaseType>>::value ||
+        (StripContainer<T>::isContainer && IsRegisteredType<BaseType>::value);
+
+    // Provide dummy descriptor type for compatibility
+    using DescriptorT = HandleDescriptor;
+
+    // Provide dummy resource type for compatibility
+    static constexpr ResourceType resourceType = ResourceType::Buffer;
+
+    // Container metadata
+    static constexpr bool isContainer = StripContainer<T>::isContainer;
+    static constexpr bool isVector = StripContainer<T>::isVector;
+    static constexpr bool isArray = StripContainer<T>::isArray;
+    static constexpr size_t arraySize = StripContainer<T>::arraySize;
+};
+
+// Specialization for pointers (normalize cv-qualifiers)
+template<typename T>
+struct ResourceTypeTraits<T*> {
+    using BaseType = std::remove_cv_t<T>;
+    static constexpr bool isValid = IsRegisteredType<BaseType>::value;
+    using DescriptorT = HandleDescriptor;
+    static constexpr ResourceType resourceType = ResourceType::Buffer;
+    static constexpr bool isContainer = false;
+    static constexpr bool isVector = false;
+    static constexpr bool isArray = false;
+    static constexpr size_t arraySize = 0;
+};
 
 } // namespace Vixen::RenderGraph
