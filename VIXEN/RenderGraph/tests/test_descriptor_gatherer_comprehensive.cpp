@@ -15,15 +15,13 @@
 #include <memory>
 
 // Real SDI-generated files
-#include "../../generated/sdi/ComputeTestNames.h"
-#include "../../generated/sdi/Draw_ShaderNames.h"
-#include "../../generated/sdi/3e331666c418cc79-SDI.h"
-#include "../../generated/sdi/4e34fbf760c3a28b-SDI.h"
+#include "../../generated/sdi/43bded93fcbc37f9-SDI.h"
+#include "../../generated/sdi/VoxelRayMarchNames.h"
 
 // Render graph components
 #include "../include/Nodes/DescriptorResourceGathererNode.h"
 #include "../include/Core/RenderGraph.h"
-#include "../include/Core/ResourceVariant.h"
+#include "../include/Data/Core/ResourceVariant.h"
 
 // Shader management
 #include "../../ShaderManagement/include/ShaderManagement/ShaderDataBundle.h"

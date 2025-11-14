@@ -15,23 +15,48 @@
 #include <gtest/gtest.h>
 #include "../include/Core/RenderGraph.h"
 #include "../include/Core/GraphTopology.h"
-#include "../include/Nodes/ConstantNode.h"
-#include "../include/Data/Core/GraphMessages.h"
+#include "../include/Core/NodeType.h"
+#include <algorithm>
 
 using namespace Vixen::RenderGraph;
 
 // ============================================================================
-// Mock Node for Testing
+// Mock Node Type and Instance for Testing
 // ============================================================================
+
+class MockNodeType : public NodeType {
+public:
+    explicit MockNodeType(const std::string& typeName = "MockNode")
+        : NodeType(typeName) {}
+
+    std::unique_ptr<NodeInstance> CreateInstance(const std::string& instanceName) const override {
+        return nullptr;
+    }
+};
 
 class MockNode : public NodeInstance {
 public:
-    explicit MockNode(const std::string& name) : NodeInstance(name) {}
+    explicit MockNode(const std::string& name, NodeType* nodeType = nullptr)
+        : NodeInstance(name, nodeType ? nodeType : &mockType) {}
 
-    void SetupImpl(Context& ctx) override {}
-    void CompileImpl(Context& ctx) override {}
-    void ExecuteImpl(Context& ctx) override {}
+private:
+    static MockNodeType mockType;
 };
+
+MockNodeType MockNode::mockType("MockNode");
+
+// ============================================================================
+// Helper: Create GraphEdge
+// ============================================================================
+
+static GraphEdge MakeEdge(NodeInstance* source, NodeInstance* target, uint32_t srcIdx = 0, uint32_t tgtIdx = 0) {
+    GraphEdge edge;
+    edge.source = source;
+    edge.sourceOutputIndex = srcIdx;
+    edge.target = target;
+    edge.targetInputIndex = tgtIdx;
+    return edge;
+}
 
 // ============================================================================
 // GraphTopology Tests
@@ -47,267 +72,256 @@ protected:
 };
 
 TEST_F(GraphTopologyTest, AddNodes) {
-    auto node1 = std::make_shared<MockNode>("Node1");
-    auto node2 = std::make_shared<MockNode>("Node2");
+    MockNode node1("Node1");
+    MockNode node2("Node2");
 
-    topology->AddNode(node1);
-    topology->AddNode(node2);
+    topology->AddNode(&node1);
+    topology->AddNode(&node2);
 
     EXPECT_EQ(topology->GetNodeCount(), 2);
 }
 
 TEST_F(GraphTopologyTest, AddEdge) {
-    auto node1 = std::make_shared<MockNode>("Node1");
-    auto node2 = std::make_shared<MockNode>("Node2");
+    MockNode node1("Node1");
+    MockNode node2("Node2");
 
-    topology->AddNode(node1);
-    topology->AddNode(node2);
+    topology->AddNode(&node1);
+    topology->AddNode(&node2);
 
-    GraphEdge edge{node1.get(), node2.get(), 0, 0};
-    topology->AddEdge(edge);
+    topology->AddEdge(MakeEdge(&node1, &node2, 0, 0));
 
-    EXPECT_TRUE(topology->HasEdge(node1.get(), node2.get()));
+    auto outgoing = topology->GetOutgoingEdges(&node1);
+    EXPECT_EQ(outgoing.size(), 1);
 }
 
 TEST_F(GraphTopologyTest, CircularDependencyDetection_Direct) {
-    // Create A -> B -> A (direct cycle)
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeB.get(), nodeA.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeA, 0, 0));
 
-    // Should detect circular dependency
-    EXPECT_FALSE(topology->IsAcyclic());
+    EXPECT_TRUE(topology->HasCycles());
 }
 
 TEST_F(GraphTopologyTest, CircularDependencyDetection_Indirect) {
-    // Create A -> B -> C -> A (indirect cycle)
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeB.get(), nodeC.get(), 0, 0});
-    topology->AddEdge({nodeC.get(), nodeA.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeC, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeC, &nodeA, 0, 0));
 
-    EXPECT_FALSE(topology->IsAcyclic());
+    EXPECT_TRUE(topology->HasCycles());
 }
 
 TEST_F(GraphTopologyTest, AcyclicGraph) {
-    // Create A -> B -> C (no cycle)
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeB.get(), nodeC.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeC, 0, 0));
 
-    EXPECT_TRUE(topology->IsAcyclic());
+    EXPECT_FALSE(topology->HasCycles());
 }
 
 TEST_F(GraphTopologyTest, TopologicalSort_Linear) {
-    // Create A -> B -> C
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeB.get(), nodeC.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeC, 0, 0));
 
     auto sorted = topology->TopologicalSort();
     ASSERT_EQ(sorted.size(), 3);
 
-    // Should be in order: A, B, C
-    EXPECT_EQ(sorted[0], nodeA.get());
-    EXPECT_EQ(sorted[1], nodeB.get());
-    EXPECT_EQ(sorted[2], nodeC.get());
+    EXPECT_EQ(sorted[0], &nodeA);
+    EXPECT_EQ(sorted[1], &nodeB);
+    EXPECT_EQ(sorted[2], &nodeC);
 }
 
 TEST_F(GraphTopologyTest, TopologicalSort_Diamond) {
-    // Create diamond: A -> B, A -> C, B -> D, C -> D
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
-    auto nodeD = std::make_shared<MockNode>("D");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
+    MockNode nodeD("D");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
-    topology->AddNode(nodeD);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
+    topology->AddNode(&nodeD);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeA.get(), nodeC.get(), 0, 1});
-    topology->AddEdge({nodeB.get(), nodeD.get(), 0, 0});
-    topology->AddEdge({nodeC.get(), nodeD.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeA, &nodeC, 0, 1));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeD, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeC, &nodeD, 0, 0));
 
     auto sorted = topology->TopologicalSort();
     ASSERT_EQ(sorted.size(), 4);
 
-    // A must come first, D must come last
-    EXPECT_EQ(sorted[0], nodeA.get());
-    EXPECT_EQ(sorted[3], nodeD.get());
+    EXPECT_EQ(sorted[0], &nodeA);
+    EXPECT_EQ(sorted[3], &nodeD);
 
-    // B and C can be in either order (both depend on A, both feed into D)
-    bool validOrder = (sorted[1] == nodeB.get() && sorted[2] == nodeC.get()) ||
-                      (sorted[1] == nodeC.get() && sorted[2] == nodeB.get());
+    bool validOrder = (sorted[1] == &nodeB && sorted[2] == &nodeC) ||
+                      (sorted[1] == &nodeC && sorted[2] == &nodeB);
     EXPECT_TRUE(validOrder);
 }
 
-TEST_F(GraphTopologyTest, GetDependencies) {
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
+TEST_F(GraphTopologyTest, GetDirectDependencies) {
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
 
-    topology->AddEdge({nodeA.get(), nodeC.get(), 0, 0});
-    topology->AddEdge({nodeB.get(), nodeC.get(), 0, 1});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeC, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeB, &nodeC, 0, 1));
 
-    auto dependencies = topology->GetDependencies(nodeC.get());
+    auto dependencies = topology->GetDirectDependencies(&nodeC);
     EXPECT_EQ(dependencies.size(), 2);
-    EXPECT_TRUE(std::find(dependencies.begin(), dependencies.end(), nodeA.get()) != dependencies.end());
-    EXPECT_TRUE(std::find(dependencies.begin(), dependencies.end(), nodeB.get()) != dependencies.end());
+    EXPECT_TRUE(std::find(dependencies.begin(), dependencies.end(), &nodeA) != dependencies.end());
+    EXPECT_TRUE(std::find(dependencies.begin(), dependencies.end(), &nodeB) != dependencies.end());
 }
 
-TEST_F(GraphTopologyTest, GetDependents) {
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
+TEST_F(GraphTopologyTest, GetDirectDependents) {
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
 
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeA.get(), nodeC.get(), 0, 1});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeA, &nodeC, 0, 1));
 
-    auto dependents = topology->GetDependents(nodeA.get());
+    auto dependents = topology->GetDirectDependents(&nodeA);
     EXPECT_EQ(dependents.size(), 2);
-    EXPECT_TRUE(std::find(dependents.begin(), dependents.end(), nodeB.get()) != dependents.end());
-    EXPECT_TRUE(std::find(dependents.begin(), dependents.end(), nodeC.get()) != dependents.end());
+    EXPECT_TRUE(std::find(dependents.begin(), dependents.end(), &nodeB) != dependents.end());
+    EXPECT_TRUE(std::find(dependents.begin(), dependents.end(), &nodeC) != dependents.end());
 }
 
 TEST_F(GraphTopologyTest, ComplexGraph_MultipleProducers) {
-    // Test graph with multiple producers feeding into one node
-    auto producer1 = std::make_shared<MockNode>("Producer1");
-    auto producer2 = std::make_shared<MockNode>("Producer2");
-    auto producer3 = std::make_shared<MockNode>("Producer3");
-    auto consumer = std::make_shared<MockNode>("Consumer");
+    MockNode producer1("Producer1");
+    MockNode producer2("Producer2");
+    MockNode producer3("Producer3");
+    MockNode consumer("Consumer");
 
-    topology->AddNode(producer1);
-    topology->AddNode(producer2);
-    topology->AddNode(producer3);
-    topology->AddNode(consumer);
+    topology->AddNode(&producer1);
+    topology->AddNode(&producer2);
+    topology->AddNode(&producer3);
+    topology->AddNode(&consumer);
 
-    topology->AddEdge({producer1.get(), consumer.get(), 0, 0});
-    topology->AddEdge({producer2.get(), consumer.get(), 0, 1});
-    topology->AddEdge({producer3.get(), consumer.get(), 0, 2});
+    topology->AddEdge(MakeEdge(&producer1, &consumer, 0, 0));
+    topology->AddEdge(MakeEdge(&producer2, &consumer, 0, 1));
+    topology->AddEdge(MakeEdge(&producer3, &consumer, 0, 2));
 
-    EXPECT_TRUE(topology->IsAcyclic());
+    EXPECT_FALSE(topology->HasCycles());
 
-    auto deps = topology->GetDependencies(consumer.get());
+    auto deps = topology->GetDirectDependencies(&consumer);
     EXPECT_EQ(deps.size(), 3);
 }
 
 TEST_F(GraphTopologyTest, ComplexGraph_MultipleConsumers) {
-    // Test graph with one producer feeding multiple consumers
-    auto producer = std::make_shared<MockNode>("Producer");
-    auto consumer1 = std::make_shared<MockNode>("Consumer1");
-    auto consumer2 = std::make_shared<MockNode>("Consumer2");
-    auto consumer3 = std::make_shared<MockNode>("Consumer3");
+    MockNode producer("Producer");
+    MockNode consumer1("Consumer1");
+    MockNode consumer2("Consumer2");
+    MockNode consumer3("Consumer3");
 
-    topology->AddNode(producer);
-    topology->AddNode(consumer1);
-    topology->AddNode(consumer2);
-    topology->AddNode(consumer3);
+    topology->AddNode(&producer);
+    topology->AddNode(&consumer1);
+    topology->AddNode(&consumer2);
+    topology->AddNode(&consumer3);
 
-    topology->AddEdge({producer.get(), consumer1.get(), 0, 0});
-    topology->AddEdge({producer.get(), consumer2.get(), 0, 0});
-    topology->AddEdge({producer.get(), consumer3.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&producer, &consumer1, 0, 0));
+    topology->AddEdge(MakeEdge(&producer, &consumer2, 0, 0));
+    topology->AddEdge(MakeEdge(&producer, &consumer3, 0, 0));
 
-    EXPECT_TRUE(topology->IsAcyclic());
+    EXPECT_FALSE(topology->HasCycles());
 
-    auto deps = topology->GetDependents(producer.get());
+    auto deps = topology->GetDirectDependents(&producer);
     EXPECT_EQ(deps.size(), 3);
 }
 
 TEST_F(GraphTopologyTest, SelfLoop_Detection) {
-    // Node connecting to itself should be detected as cyclic
-    auto node = std::make_shared<MockNode>("SelfLoop");
+    MockNode node("SelfLoop");
 
-    topology->AddNode(node);
-    topology->AddEdge({node.get(), node.get(), 0, 0});
+    topology->AddNode(&node);
+    topology->AddEdge(MakeEdge(&node, &node, 0, 0));
 
-    EXPECT_FALSE(topology->IsAcyclic());
+    EXPECT_TRUE(topology->HasCycles());
 }
 
 TEST_F(GraphTopologyTest, DisconnectedGraph) {
-    // Graph with disconnected components
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
-    auto nodeC = std::make_shared<MockNode>("C");
-    auto nodeD = std::make_shared<MockNode>("D");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
+    MockNode nodeC("C");
+    MockNode nodeD("D");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddNode(nodeC);
-    topology->AddNode(nodeD);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddNode(&nodeC);
+    topology->AddNode(&nodeD);
 
-    // Connect A -> B and C -> D (two separate components)
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
-    topology->AddEdge({nodeC.get(), nodeD.get(), 0, 0});
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
+    topology->AddEdge(MakeEdge(&nodeC, &nodeD, 0, 0));
 
-    EXPECT_TRUE(topology->IsAcyclic());
+    EXPECT_FALSE(topology->HasCycles());
     EXPECT_EQ(topology->GetNodeCount(), 4);
 }
 
 TEST_F(GraphTopologyTest, RemoveNode) {
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
-    topology->AddEdge({nodeA.get(), nodeB.get(), 0, 0});
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
+    topology->AddEdge(MakeEdge(&nodeA, &nodeB, 0, 0));
 
-    topology->RemoveNode(nodeA.get());
+    topology->RemoveNode(&nodeA);
 
     EXPECT_EQ(topology->GetNodeCount(), 1);
-    EXPECT_FALSE(topology->HasEdge(nodeA.get(), nodeB.get()));
+    auto outgoing = topology->GetOutgoingEdges(&nodeA);
+    EXPECT_EQ(outgoing.size(), 0);
 }
 
 TEST_F(GraphTopologyTest, RemoveEdge) {
-    auto nodeA = std::make_shared<MockNode>("A");
-    auto nodeB = std::make_shared<MockNode>("B");
+    MockNode nodeA("A");
+    MockNode nodeB("B");
 
-    topology->AddNode(nodeA);
-    topology->AddNode(nodeB);
+    topology->AddNode(&nodeA);
+    topology->AddNode(&nodeB);
 
-    GraphEdge edge{nodeA.get(), nodeB.get(), 0, 0};
+    GraphEdge edge = MakeEdge(&nodeA, &nodeB, 0, 0);
     topology->AddEdge(edge);
 
-    EXPECT_TRUE(topology->HasEdge(nodeA.get(), nodeB.get()));
+    auto outgoing = topology->GetOutgoingEdges(&nodeA);
+    EXPECT_EQ(outgoing.size(), 1);
 
     topology->RemoveEdge(edge);
 
-    EXPECT_FALSE(topology->HasEdge(nodeA.get(), nodeB.get()));
+    outgoing = topology->GetOutgoingEdges(&nodeA);
+    EXPECT_EQ(outgoing.size(), 0);
 }
 
 // ============================================================================
@@ -317,59 +331,51 @@ TEST_F(GraphTopologyTest, RemoveEdge) {
 TEST(GraphTopologyIntegration, RenderingPipelineTopology) {
     GraphTopology topology;
 
-    // Simulate a rendering pipeline
-    auto device = std::make_shared<MockNode>("Device");
-    auto swapchain = std::make_shared<MockNode>("Swapchain");
-    auto renderPass = std::make_shared<MockNode>("RenderPass");
-    auto pipeline = std::make_shared<MockNode>("Pipeline");
-    auto commandBuffer = std::make_shared<MockNode>("CommandBuffer");
-    auto present = std::make_shared<MockNode>("Present");
+    MockNode device("Device");
+    MockNode swapchain("Swapchain");
+    MockNode renderPass("RenderPass");
+    MockNode pipeline("Pipeline");
+    MockNode commandBuffer("CommandBuffer");
+    MockNode present("Present");
 
-    topology.AddNode(device);
-    topology.AddNode(swapchain);
-    topology.AddNode(renderPass);
-    topology.AddNode(pipeline);
-    topology.AddNode(commandBuffer);
-    topology.AddNode(present);
+    topology.AddNode(&device);
+    topology.AddNode(&swapchain);
+    topology.AddNode(&renderPass);
+    topology.AddNode(&pipeline);
+    topology.AddNode(&commandBuffer);
+    topology.AddNode(&present);
 
-    // Build dependency chain
-    topology.AddEdge({device.get(), swapchain.get(), 0, 0});
-    topology.AddEdge({swapchain.get(), renderPass.get(), 0, 0});
-    topology.AddEdge({renderPass.get(), pipeline.get(), 0, 0});
-    topology.AddEdge({pipeline.get(), commandBuffer.get(), 0, 0});
-    topology.AddEdge({commandBuffer.get(), present.get(), 0, 0});
+    topology.AddEdge(MakeEdge(&device, &swapchain, 0, 0));
+    topology.AddEdge(MakeEdge(&swapchain, &renderPass, 0, 0));
+    topology.AddEdge(MakeEdge(&renderPass, &pipeline, 0, 0));
+    topology.AddEdge(MakeEdge(&pipeline, &commandBuffer, 0, 0));
+    topology.AddEdge(MakeEdge(&commandBuffer, &present, 0, 0));
 
-    // Verify acyclic
-    EXPECT_TRUE(topology.IsAcyclic());
+    EXPECT_FALSE(topology.HasCycles());
 
-    // Verify topological order
     auto sorted = topology.TopologicalSort();
     ASSERT_EQ(sorted.size(), 6);
 
-    // Device should be first, Present should be last
-    EXPECT_EQ(sorted[0], device.get());
-    EXPECT_EQ(sorted[5], present.get());
+    EXPECT_EQ(sorted[0], &device);
+    EXPECT_EQ(sorted[5], &present);
 }
 
 TEST(GraphTopologyIntegration, DetectInvalidPipeline) {
     GraphTopology topology;
 
-    // Create invalid pipeline with feedback loop
-    auto renderPass = std::make_shared<MockNode>("RenderPass");
-    auto pipeline = std::make_shared<MockNode>("Pipeline");
-    auto framebuffer = std::make_shared<MockNode>("Framebuffer");
+    MockNode renderPass("RenderPass");
+    MockNode pipeline("Pipeline");
+    MockNode framebuffer("Framebuffer");
 
-    topology.AddNode(renderPass);
-    topology.AddNode(pipeline);
-    topology.AddNode(framebuffer);
+    topology.AddNode(&renderPass);
+    topology.AddNode(&pipeline);
+    topology.AddNode(&framebuffer);
 
-    // Create cycle: RenderPass -> Pipeline -> Framebuffer -> RenderPass
-    topology.AddEdge({renderPass.get(), pipeline.get(), 0, 0});
-    topology.AddEdge({pipeline.get(), framebuffer.get(), 0, 0});
-    topology.AddEdge({framebuffer.get(), renderPass.get(), 0, 0}); // Invalid!
+    topology.AddEdge(MakeEdge(&renderPass, &pipeline, 0, 0));
+    topology.AddEdge(MakeEdge(&pipeline, &framebuffer, 0, 0));
+    topology.AddEdge(MakeEdge(&framebuffer, &renderPass, 0, 0));
 
-    // Should detect cycle
-    EXPECT_FALSE(topology.IsAcyclic());
+    EXPECT_TRUE(topology.HasCycles());
 }
 
 // ============================================================================
@@ -388,14 +394,14 @@ int main(int argc, char** argv) {
 
     if (result == 0) {
         std::cout << "\n═══════════════════════════════════════════════════════\n";
-        std::cout << "  ✅ ALL GRAPH TOPOLOGY TESTS PASSED!\n";
+        std::cout << "  ✓ ALL GRAPH TOPOLOGY TESTS PASSED!\n";
         std::cout << "\n  Coverage:\n";
-        std::cout << "  ✅ Circular dependency detection (direct & indirect)\n";
-        std::cout << "  ✅ Topological sorting (linear & diamond)\n";
-        std::cout << "  ✅ Dependency tracking (dependencies & dependents)\n";
-        std::cout << "  ✅ Complex graphs (multiple producers/consumers)\n";
-        std::cout << "  ✅ Edge cases (self-loops, disconnected graphs)\n";
-        std::cout << "  ✅ Integration tests (rendering pipelines)\n";
+        std::cout << "  ✓ Circular dependency detection (direct & indirect)\n";
+        std::cout << "  ✓ Topological sorting (linear & diamond)\n";
+        std::cout << "  ✓ Dependency tracking (dependencies & dependents)\n";
+        std::cout << "  ✓ Complex graphs (multiple producers/consumers)\n";
+        std::cout << "  ✓ Edge cases (self-loops, disconnected graphs)\n";
+        std::cout << "  ✓ Integration tests (rendering pipelines)\n";
         std::cout << "═══════════════════════════════════════════════════════\n";
     }
 

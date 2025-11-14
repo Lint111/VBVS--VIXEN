@@ -2,8 +2,8 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// Output image
-layout(binding = 0, rgba8) uniform image2D outputImage;
+// Output image (no format specified - uses shaderStorageImageWriteWithoutFormat feature)
+layout(binding = 0) uniform writeonly image2D outputImage;
 
 // ESVO octree buffer (uvec2 per node - 64 bits)
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
@@ -46,16 +46,36 @@ uvec2 fetchESVONode(uint nodeIndex) {
 }
 
 // ESVO descriptor bit layout helpers
+// C++ layout: bits 1-7: nonLeafMask, bits 8-15: childMask (reversed), bits 17-31: childOffset
 uint getChildMask(uvec2 descriptor) {
-    return descriptor.x & 0xFFu; // Bits 0-7
+    // Child mask is stored REVERSED at bits 8-15
+    // child[0] at bit 15, child[7] at bit 8
+    return (descriptor.x >> 8) & 0xFFu;
 }
 
 uint getNonLeafMask(uvec2 descriptor) {
-    return (descriptor.x >> 8) & 0xFFu; // Bits 8-15
+    // Non-leaf mask at bits 1-7 (7 bits for children 0-6)
+    return (descriptor.x >> 1) & 0x7Fu;
 }
 
 uint getChildOffset(uvec2 descriptor) {
-    return descriptor.y; // Full 32 bits
+    // Child offset at bits 17-31 (15 bits)
+    return (descriptor.x >> 17) & 0x7FFFu;
+}
+
+// Helper function to check if a child exists
+// Takes care of the reversed bit ordering in childMask
+bool childExists(uint childMask, int childIndex) {
+    // childMask has child[0] at bit 7, child[7] at bit 0 (REVERSED order)
+    int bit_pos = 7 - childIndex;
+    return ((childMask >> bit_pos) & 1u) != 0u;
+}
+
+// Helper function to check if a child is a leaf node
+bool childIsLeaf(uint nonLeafMask, int childIndex) {
+    // Child 7 is always a leaf (no bit in nonLeafMask)
+    // For children 0-6, check if the bit is 0 (leaf) or 1 (internal)
+    return (childIndex >= 7) || ((nonLeafMask >> childIndex) & 1u) == 0u;
 }
 
 // Brick node helpers
@@ -269,7 +289,7 @@ vec3 debugOctreeLevel(uint nodeIndex, int targetLevel) {
 bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                           out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    const int S_MAX = 5;
+    const int S_MAX = 7;  // For 128^3 grid (2^7 = 128)
     const float EPSILON_ESVO = exp2(-float(S_MAX));
 
     // World-space AABB test
@@ -374,10 +394,9 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         float tc_max = min(min(tx_corner, ty_corner), tz_corner);
 
         // Check if current child exists in octree
-        int child_shift = idx ^ octant_mask ^ 7;  // Invert for correct bit position
-        bool childExists = ((childMask >> child_shift) & 1u) != 0u;
+        int childIndex = idx ^ octant_mask;
 
-        if (childExists && t_min <= t_max) {
+        if (childExists(childMask, childIndex) && t_min <= t_max) {
             float tv_max = min(t_max, tc_max);
             float halfScale = scale_exp2 * 0.5;
 
@@ -385,12 +404,12 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
                 // Check if this is a leaf
                 uint nonLeafMask = getNonLeafMask(parent_descriptor);
-                bool isLeaf = ((nonLeafMask >> child_shift) & 1u) == 0u;
+                bool isLeaf = childIsLeaf(nonLeafMask, childIndex);
 
                 if (isLeaf) {
                     // Process leaf voxel/brick
-                    uint childIdx = uint(idx ^ octant_mask);
-                    uint childPtr = childOffset + childIdx;
+                    // Child nodes are stored consecutively, use childIndex to offset
+                    uint childPtr = childOffset + uint(childIndex);
                     uvec2 childNode = fetchESVONode(childPtr);
 
                     // Check for constant material
@@ -441,8 +460,8 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                             if (i == (idx ^ octant_mask)) continue; // Skip current
 
                             // Check if child exists
-                            int bit_pos = i ^ octant_mask ^ 7;
-                            if (((childMask >> bit_pos) & 1u) == 0u) continue;
+                            int child_idx = i ^ octant_mask;
+                            if (!childExists(childMask, child_idx)) continue;
 
                             // Compute child's t-span
                             vec3 child_pos = pos - vec3(scale_exp2);
@@ -457,7 +476,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
                             // If ray will intersect this child, push it
                             if (ct_max > t_min) {
-                                uint push_ptr = childOffset + uint(i);
+                                uint push_ptr = childOffset + uint(child_idx);
                                 stack[stackPtr].parentPtr = push_ptr;
                                 stack[stackPtr].t_max = min(ct_max, t_max);
                                 stackPtr++;
@@ -467,8 +486,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     }
 
                     // Descend to near child
-                    uint childIdx = uint(idx ^ octant_mask);
-                    parentPtr = childOffset + childIdx;
+                    parentPtr = childOffset + uint(childIndex);
 
                     // Update position for child level
                     idx = 0;
