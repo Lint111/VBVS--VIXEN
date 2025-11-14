@@ -36,7 +36,7 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
     // Validate and set up device
-    VulkanDevicePtr devicePtr = ctx.In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
     VkRenderPass renderPass = ctx.In(FramebufferNodeConfig::RENDER_PASS);
     ValidateInputs(devicePtr, renderPass);
     SetDevice(devicePtr);
@@ -109,7 +109,7 @@ void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 // ====== Private Helper Methods ======
 
-void FramebufferNode::ValidateInputs(VulkanDevicePtr devicePtr, VkRenderPass renderPass) {
+void FramebufferNode::ValidateInputs(VulkanDevice* devicePtr, VkRenderPass renderPass) {
     if (devicePtr == nullptr) {
         std::string errorMsg = "FramebufferNode: VkDevice input is null";
         NODE_LOG_ERROR(errorMsg);

@@ -1,6 +1,13 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Core/ResourceV3.h"  // For BoolVector typedef
+#include "Data/Core/BoolVector.h"
+
+namespace Vixen::RenderGraph::Data {
+    struct BoolVector;
+}
+
+using BoolVector = Vixen::RenderGraph::Data::BoolVector;
 
 namespace Vixen::RenderGraph {
 
@@ -44,7 +51,7 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
                       BoolOpNodeCounts::OUTPUTS,
                       BoolOpNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (2) =====
-    INPUT_SLOT(OPERATION, BoolOpEnum, 0,
+    INPUT_SLOT(OPERATION, BoolOp, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -87,9 +94,11 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
     static_assert(!OUTPUT_Slot::nullable, "OUTPUT is not nullable");
 
     // Type validations
-    static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOpEnum>);
+    static_assert(std::is_same_v<OPERATION_Slot::Type, BoolOp>);
     static_assert(std::is_same_v<INPUTS_Slot::Type, BoolVector>);
     static_assert(std::is_same_v<OUTPUT_Slot::Type, bool>);
+
+    
 };
 
 // Global compile-time validations

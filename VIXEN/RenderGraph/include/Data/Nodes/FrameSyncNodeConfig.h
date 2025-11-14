@@ -3,6 +3,8 @@
 #include "VulkanResources/VulkanDevice.h"
 #include "Data/Core/ResourceV3.h"
 
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
+
 namespace Vixen::RenderGraph {
 
 
@@ -36,7 +38,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
                       FrameSyncNodeCounts::OUTPUTS,
                       FrameSyncNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    INPUT_SLOT(VULKAN_DEVICE, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -103,7 +105,7 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(PRESENT_FENCES_ARRAY_Slot::index == 4, "PRESENT_FENCES_ARRAY must be at index 4");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);

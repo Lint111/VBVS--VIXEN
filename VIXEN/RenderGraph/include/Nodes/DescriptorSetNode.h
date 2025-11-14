@@ -133,8 +133,6 @@ private:
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
 
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-
     // CashSystem integration - cached during Compile()
     CashSystem::DescriptorCacher* descriptorCacher = nullptr;
 

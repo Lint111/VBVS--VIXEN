@@ -5,8 +5,8 @@
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for SwapChainNode
@@ -73,7 +73,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 5,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 5,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -108,7 +108,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariablesPtr, 1,
+    OUTPUT_SLOT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 1,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
@@ -242,7 +242,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<WIDTH_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);

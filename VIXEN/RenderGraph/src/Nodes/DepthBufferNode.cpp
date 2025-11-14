@@ -44,7 +44,7 @@ void DepthBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating depth buffer");
 
     // Validate and set device using helper
-    vulkanDevice = ValidateInput<VulkanDevicePtr>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
+    vulkanDevice = ValidateInput<VulkanDevice*>(ctx, "VulkanDevice", DepthBufferNodeConfig::VULKAN_DEVICE_IN);
     deviceHandle = vulkanDevice;  // Keep for legacy code
 
     // Helper macro for VkDevice

@@ -231,4 +231,5 @@ inline constexpr bool IsResourceContainer_v =
     StripContainer<T>::isContainer &&
     IsValidResourceType_v<typename StripContainer<T>::Type>;
 
+
 } // namespace Vixen::RenderGraph

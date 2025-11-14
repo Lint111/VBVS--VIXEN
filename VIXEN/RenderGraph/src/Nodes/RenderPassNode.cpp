@@ -42,7 +42,7 @@ void RenderPassNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Getting or creating cached render pass");
 
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(RenderPassNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "RenderPassNode: VkDevice input is null";

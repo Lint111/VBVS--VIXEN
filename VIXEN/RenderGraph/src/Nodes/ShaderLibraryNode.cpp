@@ -67,7 +67,7 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_DEBUG("ShaderLibraryNode::Compile: START - Phase G shader builder");
 
     // Access VulkanDevice input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("ShaderLibraryNode: VulkanDevice input is null during Compile");
     }

@@ -86,14 +86,14 @@ private:
     std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
 
     // Helper methods
-    VkShaderModule CreateShaderModule(VulkanDevicePtr device, const std::vector<uint32_t>& spirv);
+    VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv);
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(
-        VulkanDevicePtr device,
+        VulkanDevice* device,
         ShaderDataBundlePtr shaderBundle,
         VkDescriptorSetLayout descriptorSetLayout
     );
     void CreateComputePipeline(
-        VulkanDevicePtr device,
+        VulkanDevice* device,
         VkShaderModule shaderModule,
         ShaderDataBundlePtr shaderBundle,
         std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,

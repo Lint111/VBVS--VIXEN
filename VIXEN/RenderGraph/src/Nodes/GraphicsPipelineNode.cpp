@@ -46,7 +46,7 @@ void GraphicsPipelineNode::SetupImpl(TypedSetupContext& ctx) {
 
 void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "GraphicsPipelineNode: VkDevice input is null";
@@ -105,7 +105,7 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
 
         auto& mainCacher = renderGraph->GetMainCacher();
 
-        VulkanDevicePtr device = GetDevice();
+        VulkanDevice* device = GetDevice();
         if (!device) {
             throw std::runtime_error("GraphicsPipelineNode: Device not available for descriptor layout creation");
         }
@@ -171,19 +171,19 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
         pipelineCache = VK_NULL_HANDLE;
     } else {
         // Fallback: cleanup locally-created resources (if created without cacher)
-        if (pipeline != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+    if (pipeline != VK_NULL_HANDLE && device != nullptr) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline");
             vkDestroyPipeline(device->device, pipeline, nullptr);
             pipeline = VK_NULL_HANDLE;
         }
 
-        if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+    if (pipelineLayout != VK_NULL_HANDLE && device != nullptr) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline layout");
             vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
             pipelineLayout = VK_NULL_HANDLE;
         }
 
-        if (pipelineCache != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+    if (pipelineCache != VK_NULL_HANDLE && device != nullptr) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline cache");
             vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
             pipelineCache = VK_NULL_HANDLE;

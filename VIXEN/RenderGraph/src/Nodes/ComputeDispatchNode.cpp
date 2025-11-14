@@ -59,7 +59,7 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocating per-image command buffers");
 
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(ComputeDispatchNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[ComputeDispatchNode::CompileImpl] Vulkan device input is null");
     }

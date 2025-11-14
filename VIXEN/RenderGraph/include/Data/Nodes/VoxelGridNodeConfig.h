@@ -4,8 +4,8 @@
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
@@ -28,7 +28,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::OUTPUTS,
                       VoxelGridNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (2) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -96,7 +96,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<OCTREE_NODES_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);

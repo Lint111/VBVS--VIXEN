@@ -11,7 +11,7 @@ namespace ShaderManagement {
 namespace Vixen::RenderGraph {
 
 // Type aliases
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 /**
@@ -61,7 +61,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static constexpr const char* FRONT_FACE = "frontFace";
 
     // ===== INPUTS (4) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -98,7 +98,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -142,14 +142,14 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable);
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
 
 // Global compile-time validations

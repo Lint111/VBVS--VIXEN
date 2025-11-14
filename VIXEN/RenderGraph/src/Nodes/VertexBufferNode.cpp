@@ -35,7 +35,7 @@ void VertexBufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating vertex and index buffers via MeshCacher");
 
     // Access device input
-    VulkanDevicePtr devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(VertexBufferNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("VertexBufferNode: Invalid device handle");
     }

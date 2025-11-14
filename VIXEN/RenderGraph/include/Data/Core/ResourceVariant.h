@@ -50,46 +50,14 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 using VkViewportPtr = VkViewport*;
 using VkRect2DPtr = VkRect2D*;
 using VkResultPtr = VkResult*;
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using LoopReferencePtr = const Vixen::RenderGraph::LoopReference*;  // Phase 0.4
 using BoolOpEnum = Vixen::RenderGraph::BoolOp;  // Phase 0.4
 using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
 using InputStatePtr = Vixen::RenderGraph::InputState*;  // Modern polling-based input
 // Workaround for std::vector<bool> which has special semantics that break std::variant
 // Use a wrapper with proper copy semantics
-struct BoolVector {
-    std::vector<bool> data;
-    
-    BoolVector() = default;
-    BoolVector(const BoolVector& other) : data(other.data) {}
-    BoolVector(BoolVector&& other) noexcept : data(std::move(other.data)) {}
-    BoolVector& operator=(const BoolVector& other) {
-        if (this != &other) data = other.data;
-        return *this;
-    }
-    BoolVector& operator=(BoolVector&& other) noexcept {
-        if (this != &other) data = std::move(other.data);
-        return *this;
-    }
-    
-    // Implicit conversion from std::vector<bool>
-    BoolVector(const std::vector<bool>& v) : data(v) {}
-    BoolVector(std::vector<bool>&& v) : data(std::move(v)) {}
-    
-    // Implicit conversion to std::vector<bool>
-    operator std::vector<bool>&() { return data; }
-    operator const std::vector<bool>&() const { return data; }
-    
-    // Convenience methods
-    auto begin() { return data.begin(); }
-    auto end() { return data.end(); }
-    auto begin() const { return data.begin(); }
-    auto end() const { return data.end(); }
-    size_t size() const { return data.size(); }
-    bool empty() const { return data.empty(); }
-    bool operator[](size_t i) const { return data[i]; }
-    auto operator[](size_t i) { return data[i]; }
-};
+
 
 // Include CameraData definition before namespace (to avoid double qualification)
 #include "Data/CameraData.h"
@@ -166,7 +134,7 @@ struct ImageSamplerPair {
     RESOURCE_TYPE(VkDevice,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkPhysicalDevice,                HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkInstance,                      HandleDescriptor,      ResourceType::Buffer) \
-    RESOURCE_TYPE(VulkanDevicePtr,                 HandleDescriptor,      ResourceType::Buffer) \
+    RESOURCE_TYPE(VulkanDevice*,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VulkanShaderPtr,                 HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(VkFormat,                        HandleDescriptor,      ResourceType::Buffer) \
     RESOURCE_TYPE(uint32_t,                        HandleDescriptor,      ResourceType::Buffer) \

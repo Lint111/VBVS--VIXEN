@@ -5,7 +5,7 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 // Compile-time slot counts (declared early for reuse)
 namespace CommandPoolNodeCounts {
@@ -29,7 +29,7 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
                       CommandPoolNodeCounts::OUTPUTS, 
                       CommandPoolNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -40,7 +40,7 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -78,9 +78,9 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
 	static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT must not be nullable");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
-	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
 
 // Global compile-time validations

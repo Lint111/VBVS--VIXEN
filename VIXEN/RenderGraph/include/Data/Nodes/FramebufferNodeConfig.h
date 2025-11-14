@@ -5,8 +5,8 @@
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use pointer types explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for FramebufferNode
@@ -43,7 +43,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== INPUTS (4) =====
     // VulkanDevice pointer (contains device, gpu, memory properties, etc.)
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -77,7 +77,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-	OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -132,12 +132,12 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 	static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT must not be nullable");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
-	static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
 
 // Global compile-time validations

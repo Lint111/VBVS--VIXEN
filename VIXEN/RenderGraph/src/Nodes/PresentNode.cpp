@@ -32,7 +32,7 @@ void PresentNode::SetupImpl(TypedSetupContext& ctx) {
 
 void PresentNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(PresentNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("PresentNode: Invalid device handle");
     }

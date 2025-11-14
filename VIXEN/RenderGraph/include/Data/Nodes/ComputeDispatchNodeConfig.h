@@ -2,8 +2,17 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Core/ResourceV3.h"
+#include "ShaderManagement/ShaderDataBundle.h"
+
+namespace Vixen::ShaderManagement {
+    struct ShaderDataBundle;
+}
+
+using ShaderDataBundle = Vixen::ShaderManagement::ShaderDataBundle;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace Vixen::RenderGraph {
+
 
 // ============================================================================
 // SLOT COUNTS
@@ -49,7 +58,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Vulkan device for command buffer allocation
      */
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -95,7 +104,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      * @brief Swapchain info (image views, dimensions, format)
      * Execute-only: swapchain info only needed during dispatch, not during pipeline creation
      */
-    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariablesPtr, 5,
+    INPUT_SLOT(SWAPCHAIN_INFO, SwapChainPublicVariables*, 5,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -149,7 +158,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Shader data bundle with reflection metadata (for push constant detection)
      */
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 11,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundle*, 11,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -187,7 +196,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Pass-through device for downstream nodes
      */
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 1,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 

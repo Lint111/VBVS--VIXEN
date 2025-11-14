@@ -486,7 +486,7 @@ public:
     ResourceVariant GetVariadicInputVariant(size_t index, size_t bundleIndex = 0) const {
         Resource* res = GetVariadicInputResource(index, bundleIndex);
         if (!res || !res->IsValid()) {
-            return std::monostate{};
+            return ResourceVariant{};  // Return empty ResourceVariant
         }
 
         // Extract variant from resource

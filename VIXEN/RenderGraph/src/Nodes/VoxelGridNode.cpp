@@ -57,7 +57,7 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Getting device...");
     // Get device
-    VulkanDevicePtr devicePtr = ctx.In(VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(VoxelGridNodeConfig::VULKAN_DEVICE_IN);
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Device ptr: " + std::to_string(reinterpret_cast<uint64_t>(devicePtr)));
     if (!devicePtr) {
         NODE_LOG_ERROR("[VoxelGridNode::CompileImpl] ERROR: Device is null!");

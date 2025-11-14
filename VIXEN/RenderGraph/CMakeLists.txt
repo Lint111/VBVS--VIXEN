@@ -32,6 +32,8 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/Core/ResourceTypeTraits.h
     include/Data/Core/ResourceTypes.h
     include/Data/Core/ResourceVariant.h
+    include/Data/Core/ResourceV3.h
+    include/Data/Core/BoolVector.h
 )
 
 set(RENDERGRAPH_DATA_NODE_CONFIGS

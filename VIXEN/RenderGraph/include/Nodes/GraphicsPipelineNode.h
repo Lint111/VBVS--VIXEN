@@ -62,9 +62,7 @@ protected:
     void ExecuteImpl(TypedExecuteContext& ctx) override;
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
-private:
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
-    
+private:    
     // Pipeline resources (outputs)
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

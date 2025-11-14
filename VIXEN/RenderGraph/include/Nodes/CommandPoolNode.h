@@ -49,7 +49,7 @@ protected:
 
 private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    VulkanDevice* vulkanDevice = nullptr;
     bool isCreated = false;
 };
 

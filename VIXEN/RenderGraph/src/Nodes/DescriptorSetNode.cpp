@@ -66,7 +66,7 @@ void DescriptorSetNode::SetupImpl(TypedSetupContext& ctx) {
 
 void DescriptorSetNode::SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<ShaderManagement::ShaderDataBundle>& outShaderBundle) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
     if (devicePtr == nullptr) {
         throw std::runtime_error("DescriptorSetNode: VulkanDevice input is null");
     }

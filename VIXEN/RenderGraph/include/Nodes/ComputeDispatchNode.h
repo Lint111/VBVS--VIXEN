@@ -75,7 +75,7 @@ private:
     void TransitionImageToPresent(VkCommandBuffer cmdBuffer, VkImage image);
 
     // Device and command pool references
-    VulkanDevicePtr vulkanDevice = nullptr;
+    VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
     // Per-swapchain-image command buffers with state tracking

@@ -1,5 +1,7 @@
 #pragma once
 
+#define VIXEN_RESOURCEV3_H  // Marker for ResourceTypeTraits.h to know ResourceV3 is in use
+
 /**
  * @file ResourceV3.h
  * @brief Zero-overhead compile-time resource type system (drop-in replacement)
@@ -21,11 +23,16 @@
 #include <variant>
 #include <type_traits>
 #include <cstdint>
+#include "BoolVector.h"  // Include BoolVector wrapper
 
 // Forward declarations (same as ResourceVariant.h)
 struct SwapChainPublicVariables;
 struct SwapChainBuffer;
 class VulkanShader;
+
+namespace Vixen::RenderGraph::Data {
+    struct BoolVector;
+}
 
 namespace ShaderManagement {
     struct CompiledProgram;
@@ -94,6 +101,7 @@ REGISTER_COMPILE_TIME_TYPE(float);
 REGISTER_COMPILE_TIME_TYPE(double);
 REGISTER_COMPILE_TIME_TYPE(bool);
 REGISTER_COMPILE_TIME_TYPE(PFN_vkQueuePresentKHR);
+REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::Data::BoolVector);
 
 // Register application types
 REGISTER_COMPILE_TIME_TYPE(CameraData);
@@ -155,6 +163,25 @@ inline constexpr bool IsValidType_v = []() constexpr {
     using BareBaseType = std::remove_cv_t<std::remove_pointer_t<BaseType>>;
     return IsRegisteredType<BareBaseType>::value;
 }();
+
+// ResourceVariant: Passthrough type for migration compatibility
+// In ResourceV3, this is a placeholder that represents "any valid type"
+// The actual type validation happens at compile-time through IsValidType_v
+// This allows slots to accept any registered type and pass it through unchanged
+struct ResourceVariant {
+    // Empty struct - acts as a type tag for "accepts any valid resource"
+    // The actual storage and type handling is done by ZeroOverheadStorage
+
+    // Default constructor for monostate-like behavior
+    ResourceVariant() = default;
+
+    // Template constructor - accepts any type that passes IsValidType_v
+    template<typename T>
+    ResourceVariant(T&&) {
+        // In the old system, this would store the value
+        // In ResourceV3, this is just for compatibility - actual storage is in Resource
+    }
+};
 
 // ============================================================================
 // ZERO-OVERHEAD STORAGE
@@ -295,6 +322,14 @@ public:
         return nullptr;
     }
 
+    // Migration compatibility method
+    // Returns a ResourceVariant passthrough for compatibility
+    ResourceVariant GetHandleVariant() const {
+        // ResourceVariant is now a passthrough type
+        // It doesn't store data, just indicates "any valid resource"
+        return ResourceVariant{};
+    }
+
 private:
     ZeroOverheadStorage storage_;
     ResourceType type_ = ResourceType::Buffer;
@@ -303,21 +338,43 @@ private:
     bool isSet_ = false;
 };
 
+// ============================================================================
+// RESOURCE DESCRIPTOR WITH METADATA
+// ============================================================================
+
+/**
+ * @brief Complete resource descriptor with metadata
+ * Used by Schema to describe slot requirements
+ */
+struct ResourceDescriptor {
+    std::string name;
+    ResourceType type = ResourceType::Buffer;
+    ResourceLifetime lifetime = ResourceLifetime::Transient;
+    ResourceDescriptorVariant descriptor;  // Actual descriptor variant (ImageDescriptor, etc.)
+    bool nullable = false;
+
+    // Constructor for compatibility
+    ResourceDescriptor() = default;
+
+    ResourceDescriptor(
+        std::string name_,
+        ResourceType type_,
+        ResourceLifetime lifetime_,
+        const ResourceDescriptorVariant& desc_,
+        bool nullable_ = false
+    ) : name(std::move(name_)), type(type_), lifetime(lifetime_),
+        descriptor(desc_), nullable(nullable_) {}
+};
+
 // Backward compatibility aliases (same as old ResourceVariant.h)
-using ResourceDescriptor = ResourceDescriptorBase;
 using ImageDescription = ImageDescriptor;
 using BufferDescription = BufferDescriptor;
 
 // ============================================================================
-// COMPATIBILITY LAYER FOR ResourceTypeTraits
+// RESOURCETYPETRAITS IMPLEMENTATION FOR RESOURCEV3
 // ============================================================================
+// Provide the implementation of ResourceTypeTraits using IsRegisteredType
 
-/**
- * @brief Compatibility layer to support existing code using ResourceTypeTraits
- *
- * Maps the old ResourceTypeTraits API to the new compile-time validation system.
- * This enables FieldExtractor and other components to work during the migration.
- */
 template<typename T>
 struct ResourceTypeTraits {
     // Strip containers to get base type
@@ -341,17 +398,8 @@ struct ResourceTypeTraits {
     static constexpr size_t arraySize = StripContainer<T>::arraySize;
 };
 
-// Specialization for pointers (normalize cv-qualifiers)
-template<typename T>
-struct ResourceTypeTraits<T*> {
-    using BaseType = std::remove_cv_t<T>;
-    static constexpr bool isValid = IsRegisteredType<BaseType>::value;
-    using DescriptorT = HandleDescriptor;
-    static constexpr ResourceType resourceType = ResourceType::Buffer;
-    static constexpr bool isContainer = false;
-    static constexpr bool isVector = false;
-    static constexpr bool isArray = false;
-    static constexpr size_t arraySize = 0;
-};
+// Note: No specialization for pointers because Vulkan handles are typedef'd pointers
+// but should be treated as opaque types, not decomposed into their pointer components.
+// VkSwapchainKHR, VkImage, etc. are registered as complete types.
 
 } // namespace Vixen::RenderGraph

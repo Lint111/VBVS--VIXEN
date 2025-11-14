@@ -47,7 +47,7 @@ protected:
 	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    VulkanDevice* vulkanDevice = nullptr;
     VkRenderPass renderPass = VK_NULL_HANDLE;
     bool hasDepth = false;
 

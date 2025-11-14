@@ -8,7 +8,7 @@
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for DepthBufferNode
@@ -43,6 +43,8 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static constexpr const char* PARAM_FORMAT = "format";
     // ===== INPUTS (3) =====
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 2,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -137,6 +139,8 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariablesPtr>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
 

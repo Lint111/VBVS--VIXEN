@@ -50,7 +50,7 @@ void CommandPoolNode::SetupImpl(TypedSetupContext& ctx) {
 
 void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     // Access device input (compile-time dependency)
-    VulkanDevicePtr devicePtr = ctx.In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(CommandPoolNodeConfig::VULKAN_DEVICE_IN);
 
     if (devicePtr == nullptr) {
         std::string errorMsg = "CommandPoolNode: VkDevice input is null";
@@ -96,7 +96,7 @@ void CommandPoolNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void CommandPoolNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (isCreated && commandPool != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+    if (isCreated && commandPool != VK_NULL_HANDLE && device != nullptr) {
         vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
         isCreated = false;

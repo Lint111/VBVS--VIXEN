@@ -55,7 +55,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode::CompileImpl] Compiling compute pipeline...");
 
     // Access device input
-    VulkanDevicePtr devicePtr = ctx.In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* devicePtr = ctx.In(ComputePipelineNodeConfig::VULKAN_DEVICE_IN);
     if (!devicePtr) {
         throw std::runtime_error("[ComputePipelineNode] VULKAN_DEVICE_IN is null");
     }
@@ -111,7 +111,7 @@ void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputePipelineNode] Cleaning up...");
 
     if (shaderModule_ != VK_NULL_HANDLE) {
-        VulkanDevicePtr devicePtr = GetDevice();
+        VulkanDevice* devicePtr = GetDevice();
         if (devicePtr) {
             vkDestroyShaderModule(devicePtr->device, shaderModule_, nullptr);
         }
@@ -127,7 +127,7 @@ void ComputePipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
 }
 
 VkShaderModule ComputePipelineNode::CreateShaderModule(
-    VulkanDevicePtr device,
+    VulkanDevice* device,
     const std::vector<uint32_t>& spirv
 ) {
     VkShaderModuleCreateInfo moduleCreateInfo{};
@@ -152,7 +152,7 @@ VkShaderModule ComputePipelineNode::CreateShaderModule(
 }
 
 std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePipelineLayout(
-    VulkanDevicePtr device,
+    VulkanDevice* device,
     ShaderDataBundlePtr shaderBundle,
     VkDescriptorSetLayout descriptorSetLayout
 ) {
@@ -211,7 +211,7 @@ std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePi
 }
 
 void ComputePipelineNode::CreateComputePipeline(
-    VulkanDevicePtr device,
+    VulkanDevice* device,
     VkShaderModule shaderModule,
     ShaderDataBundlePtr shaderBundle,
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,

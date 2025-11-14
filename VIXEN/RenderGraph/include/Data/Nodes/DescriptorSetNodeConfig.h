@@ -5,6 +5,9 @@
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
 #include "VulkanResources/VulkanDevice.h"
 
+using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
+
+
 // Forward declaration for shader program type
 namespace ShaderManagement {
     struct CompiledProgram;
@@ -14,8 +17,8 @@ namespace ShaderManagement {
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 /**
@@ -26,7 +29,7 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  *
  * Inputs:
  * - SHADER_PROGRAM (CompiledProgram*, nullable) - Optional shader program for automatic reflection
- * - VULKAN_DEVICE (VulkanDevicePtr) - VulkanDevice pointer for resource creation
+ * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer for resource creation
  *
  * Outputs:
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Layout defining descriptor bindings
@@ -35,7 +38,6 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  *
  * Parameters:
  * - NONE (layout spec is set via SetLayoutSpec() method, not parameters)
- *
  * IMPORTANT:
  * - The DescriptorLayoutSpec must remain valid for the node's lifetime
  * - Descriptor set updates are done via UpdateDescriptorSet() method with actual resources
@@ -65,8 +67,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
                       DescriptorSetNodeCounts::INPUTS,
                       DescriptorSetNodeCounts::OUTPUTS,
                       DescriptorSetNodeCounts::ARRAY_MODE) {
-    // ===== INPUTS (5) - Data-Driven with Metadata =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    // ===== INPUTS (6) - Data-Driven with Metadata =====
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -119,7 +121,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -139,7 +141,11 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         HandleDescriptor slotRolesDesc{"std::vector<SlotRoleEnum>"};
         INIT_INPUT_DESC(DESCRIPTOR_SLOT_ROLES, "descriptor_slot_roles", ResourceLifetime::Transient, slotRolesDesc);
 
-        INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, BufferDescription{});
+        INPUT_SLOT(IMAGE_INDEX, uint32_t, 5,
+            SlotNullability::Required,
+            SlotRole::Execute,
+            SlotMutability::ReadOnly,
+            SlotScope::NodeLevel);
 
         // Initialize output descriptors
         INIT_OUTPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout",
@@ -196,7 +202,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(!DESCRIPTOR_SETS_Slot::nullable, "DESCRIPTOR_SETS is required");
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<SWAPCHAIN_IMAGE_COUNT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);

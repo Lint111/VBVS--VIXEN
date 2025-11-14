@@ -45,7 +45,7 @@ protected:
 
 private:
     // Extracted compile helpers
-    void ValidateInputs(VulkanDevicePtr devicePtr, VkRenderPass renderPass);
+    void ValidateInputs(VulkanDevice* devicePtr, VkRenderPass renderPass);
     std::vector<VkImageView> BuildAttachmentArray(VkImageView colorView, VkImageView depthView);
     VkFramebuffer CreateSingleFramebuffer(
         VkRenderPass renderPass,
@@ -55,7 +55,7 @@ private:
     );
     void CleanupPartialFramebuffers(size_t count);
 
-    VulkanDevicePtr vulkanDevice = VK_NULL_HANDLE;
+    VulkanDevice* vulkanDevice = nullptr;
     std::vector<VkFramebuffer> framebuffers;
     bool hasDepth = false;
 };

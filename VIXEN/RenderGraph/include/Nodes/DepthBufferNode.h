@@ -47,8 +47,8 @@ private:
         VkImageView view = VK_NULL_HANDLE;
     } depthImage;
 
-    VulkanDevicePtr vulkanDevice = nullptr;
-    VulkanDevicePtr deviceHandle = nullptr; // Alias for vulkanDevice (for legacy code)
+    VulkanDevice* vulkanDevice = nullptr;
+    VulkanDevice* deviceHandle = nullptr; // Alias for vulkanDevice (for legacy code)
     VkCommandPool commandPool = VK_NULL_HANDLE;
     bool isCreated = false;
 

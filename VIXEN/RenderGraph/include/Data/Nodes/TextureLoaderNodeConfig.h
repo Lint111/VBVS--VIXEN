@@ -5,8 +5,8 @@
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 /**
  * @brief Pure constexpr resource configuration for TextureLoaderNode
@@ -40,7 +40,7 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
                       TextureLoaderNodeCounts::OUTPUTS,
                       TextureLoaderNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -66,7 +66,7 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 3,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -104,7 +104,7 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
 
     static_assert(TEXTURE_IMAGE_Slot::index == 0, "TEXTURE_IMAGE must be at index 0");
     static_assert(!TEXTURE_IMAGE_Slot::nullable, "TEXTURE_IMAGE is required");
@@ -117,7 +117,7 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
 
     static_assert(VULKAN_DEVICE_OUT_Slot::index == 3, "DEVICE_OUT must be at index 3");
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>, "DEVICE_OUT must be VkDevice");
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>, "DEVICE_OUT must be VkDevice");
 };
 
 // Global compile-time validations

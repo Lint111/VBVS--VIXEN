@@ -15,8 +15,8 @@ namespace ShaderManagement {
 
 namespace Vixen::RenderGraph {
 
-// Type alias for VulkanDevice pointer
-using VulkanDevicePtr = Vixen::Vulkan::Resources::VulkanDevice*;
+// Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
+using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using VulkanShaderPtr = VulkanShader*;
 using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
@@ -56,14 +56,14 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
                       ShaderLibraryNodeCounts::OUTPUTS, 
                       ShaderLibraryNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (1) =====
-    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (2) =====
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevicePtr, 0,
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -96,8 +96,8 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable);
 
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevicePtr>);
-    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevicePtr>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
+    static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
 };
 

@@ -596,3 +596,17 @@ if(ENABLE_COVERAGE)
         COMMENT "Cleaning coverage data"
     )
 endif()
+
+# Minimal test for ResourceV3 migration
+add_executable(test_minimal test_minimal.cpp)
+target_include_directories(test_minimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES})
+set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
+set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
+
+# Test compile-time recursive validation
+add_executable(test_compile_time_cache test_compile_time_cache.cpp)
+target_include_directories(test_compile_time_cache PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(test_compile_time_cache PRIVATE ${Vulkan_LIBRARIES})
+set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
+set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
