@@ -42,7 +42,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     // ===== PARAMETER NAMES =====
     static constexpr const char* PARAM_FORMAT = "format";
     // ===== INPUTS (3) =====
-    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 0,
+    INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevice*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -73,8 +73,12 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    OUTPUT_SLOT(VULKAN_DEVICE_OUT, VulkanDevice*, 3,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     DepthBufferNodeConfig() {
-        // Initialize input descriptors
+    // Initialize input descriptors
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
         INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
 
@@ -110,6 +114,11 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
             ResourceLifetime::Persistent,
             BufferDescription{}  // Format value
         );
+
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device",
+            ResourceLifetime::Persistent,
+            vulkanDeviceDesc
+        );
     }
 
     // Compile-time validations
@@ -135,8 +144,10 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(DEPTH_FORMAT_Slot::index == 2, "DEPTH_FORMAT must be at index 2");
     static_assert(!DEPTH_FORMAT_Slot::nullable, "DEPTH_FORMAT is required");
 
+    static_assert(VULKAN_DEVICE_OUT_Slot::index == 3, "VULKAN_DEVICE_OUT must be at index 3");
+    static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "VULKAN_DEVICE_OUT must not be nullable");
+
     // Type validations
-    static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_VARS_Slot::Type, SwapChainPublicVariables*>);

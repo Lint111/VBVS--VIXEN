@@ -596,7 +596,7 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
 
         for (size_t i = 0; i < inputSchema.size(); ++i) {
             // Check if slot has at least one resource (array index 0)
-            if (!inputSchema[i].optional && !instance->GetInput(static_cast<uint32_t>(i), 0)) {
+            if (!inputSchema[i].nullable && !instance->GetInput(static_cast<uint32_t>(i), 0)) {
                 errorMessage = "Node " + instance->GetInstanceName() +
                              " missing required input at index " + std::to_string(i);
                 return false;

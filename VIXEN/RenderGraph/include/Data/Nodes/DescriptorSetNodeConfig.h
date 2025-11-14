@@ -19,7 +19,7 @@ namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
+using ShaderDataBundle = ShaderManagement::ShaderDataBundle;
 
 /**
  * @brief Pure constexpr resource configuration for DescriptorSetNode
@@ -74,7 +74,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundle*, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -203,7 +203,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundle*>);
     static_assert(std::is_same_v<SWAPCHAIN_IMAGE_COUNT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
 

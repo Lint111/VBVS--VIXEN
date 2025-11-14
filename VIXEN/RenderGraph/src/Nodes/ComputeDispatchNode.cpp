@@ -5,7 +5,6 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "Core/NodeLogging.h"
-// BufferResource.h removed - using std::vector<uint8_t> for push constant data
 #include <stdexcept>
 #include <chrono>
 
