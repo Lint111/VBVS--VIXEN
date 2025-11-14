@@ -405,4 +405,25 @@ SlotScope NodeInstance::GetSlotScope(uint32_t slotIndex) const {
     return SlotScope::TaskLevel;
 }
 
+bool NodeInstance::ValidateInputSlot(uint32_t slotIndex, std::string& errorMessage) const {
+    // Base implementation: check against static input count
+    size_t inputCount = nodeType->GetInputCount();
+    if (slotIndex >= inputCount) {
+        errorMessage = "Input index " + std::to_string(slotIndex) +
+                     " exceeds maximum " + std::to_string(inputCount - 1);
+        return false;
+    }
+    return true;
+}
+
+bool NodeInstance::ValidateOutputSlot(uint32_t slotIndex, std::string& errorMessage) const {
+    size_t outputCount = nodeType->GetOutputCount();
+    if (slotIndex >= outputCount) {
+        errorMessage = "Output index " + std::to_string(slotIndex) +
+                     " exceeds maximum " + std::to_string(outputCount - 1);
+        return false;
+    }
+    return true;
+}
+
 } // namespace Vixen::RenderGraph

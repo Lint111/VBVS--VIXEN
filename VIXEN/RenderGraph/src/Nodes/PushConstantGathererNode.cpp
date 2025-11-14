@@ -74,8 +74,12 @@ PushConstantGathererNode::PushConstantGathererNode(
     const std::string& instanceName,
     NodeType* nodeType
 ) : VariadicTypedNode<PushConstantGathererNodeConfig>(instanceName, nodeType) {
-    // Initialize with minimal variadic constraints - will be expanded during pre-registration
-    SetVariadicInputConstraints(0, 32); // Max 32 fields by default
+    // Initialize with default variadic constraints from type definition
+    auto* pcNodeType = static_cast<PushConstantGathererNodeType*>(nodeType);
+    SetVariadicInputConstraints(
+        pcNodeType->GetDefaultMinVariadicInputs(),
+        pcNodeType->GetDefaultMaxVariadicInputs()
+    );
 }
 
 // ============================================================================

@@ -80,6 +80,16 @@ public:
      * @brief Get variadic slot metadata (polymorphic interface)
      */
     virtual const VariadicSlotInfo* GetVariadicSlotInfo(size_t slotIndex, size_t bundleIndex = 0) const = 0;
+
+    /**
+     * @brief Get minimum variadic input count (polymorphic interface)
+     */
+    virtual size_t GetMinVariadicInputs() const = 0;
+
+    /**
+     * @brief Get maximum variadic input count (polymorphic interface)
+     */
+    virtual size_t GetMaxVariadicInputs() const = 0;
 };
 
 /**
@@ -235,6 +245,32 @@ public:
      * @brief Get maximum variadic input count
      */
     size_t GetMaxVariadicInputs() const { return maxVariadicInputs_; }
+
+    /**
+     * @brief Validate input slot including variadic bounds (override)
+     *
+     * Extends base NodeInstance validation to handle variadic slots.
+     */
+    bool ValidateInputSlot(uint32_t slotIndex, std::string& errorMessage) const override {
+        size_t staticInputCount = this->GetNodeType()->GetInputCount();
+
+        if (slotIndex < staticInputCount) {
+            // Static slot - use base validation
+            return Base::ValidateInputSlot(slotIndex, errorMessage);
+        } else {
+            // Variadic slot - check variadic bounds
+            size_t variadicIndex = slotIndex - staticInputCount;
+
+            // Skip check if maxVariadicInputs_ is SIZE_MAX (unlimited)
+            if (maxVariadicInputs_ != SIZE_MAX && variadicIndex >= maxVariadicInputs_) {
+                errorMessage = "Variadic input index " + std::to_string(variadicIndex) +
+                             " exceeds maximum " + std::to_string(maxVariadicInputs_ - 1) +
+                             " (total slot index: " + std::to_string(slotIndex) + ")";
+                return false;
+            }
+            return true;
+        }
+    }
 
     /**
      * @brief Register a variadic slot with metadata (per-bundle)

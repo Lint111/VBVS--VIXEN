@@ -25,6 +25,12 @@ DescriptorResourceGathererNode::DescriptorResourceGathererNode(
     const std::string& instanceName,
     NodeType* nodeType
 ) : VariadicTypedNode<DescriptorResourceGathererNodeConfig>(instanceName, nodeType) {
+    // Initialize with default variadic constraints from type definition
+    auto* descNodeType = static_cast<DescriptorResourceGathererNodeType*>(nodeType);
+    SetVariadicInputConstraints(
+        descNodeType->GetDefaultMinVariadicInputs(),
+        descNodeType->GetDefaultMaxVariadicInputs()
+    );
 }
 
 // GraphCompileSetup removed - cannot access connected inputs during this phase

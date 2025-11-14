@@ -126,6 +126,25 @@ public:
     void RemoveDependency(NodeInstance* node);
     bool DependsOn(NodeInstance* node) const;
 
+    // Slot validation
+    /**
+     * @brief Validate if an input slot index is valid for this node
+     *
+     * @param slotIndex The input slot index to validate
+     * @param errorMessage Output parameter for error description
+     * @return true if valid, false otherwise
+     */
+    virtual bool ValidateInputSlot(uint32_t slotIndex, std::string& errorMessage) const;
+
+    /**
+     * @brief Validate if an output slot index is valid for this node
+     *
+     * @param slotIndex The output slot index to validate
+     * @param errorMessage Output parameter for error description
+     * @return true if valid, false otherwise
+     */
+    virtual bool ValidateOutputSlot(uint32_t slotIndex, std::string& errorMessage) const;
+
     // State (read-only access - lifecycle methods manage state internally)
     NodeState GetState() const { return state; }
 

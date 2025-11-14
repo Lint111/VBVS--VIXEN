@@ -1,4 +1,5 @@
 #include "Core/GraphTopology.h"
+#include "Core/VariadicTypedNode.h"
 #include <algorithm>
 #include <queue>
 
@@ -321,31 +322,23 @@ bool GraphTopology::ValidateGraph(std::string& errorMessage) const {
         auto incoming = GetIncomingEdges(node);
         auto outgoing = GetOutgoingEdges(node);
 
-        // Check input count
-        NodeType* type = node->GetNodeType();
-        if (type) {
-            size_t inputCount = type->GetInputCount();
-
-            // Count unique input indices
-            std::set<uint32_t> usedInputs;
-            for (const auto& edge : incoming) {
-                usedInputs.insert(edge.targetInputIndex);
-
-                if (edge.targetInputIndex >= inputCount) {
-                    errorMessage = "Node " + node->GetInstanceName() +
-                                 " has edge to invalid input index";
-                    return false;
-                }
+        // Validate incoming edges (input slots)
+        for (const auto& edge : incoming) {
+            std::string slotError;
+            if (!edge.target->ValidateInputSlot(edge.targetInputIndex, slotError)) {
+                errorMessage = "Node " + node->GetInstanceName() +
+                             " has edge to invalid input slot: " + slotError;
+                return false;
             }
+        }
 
-            // Check output count
-            size_t outputCount = type->GetOutputCount();
-            for (const auto& edge : outgoing) {
-                if (edge.sourceOutputIndex >= outputCount) {
-                    errorMessage = "Node " + node->GetInstanceName() +
-                                 " has edge from invalid output index";
-                    return false;
-                }
+        // Validate outgoing edges (output slots)
+        for (const auto& edge : outgoing) {
+            std::string slotError;
+            if (!edge.source->ValidateOutputSlot(edge.sourceOutputIndex, slotError)) {
+                errorMessage = "Node " + node->GetInstanceName() +
+                             " has edge from invalid output slot: " + slotError;
+                return false;
             }
         }
     }

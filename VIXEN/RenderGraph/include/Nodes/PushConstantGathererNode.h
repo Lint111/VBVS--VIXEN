@@ -21,12 +21,23 @@ namespace Vixen::RenderGraph {
 class PushConstantGathererNodeType : public TypedNodeType<PushConstantGathererNodeConfig> {
 public:
     PushConstantGathererNodeType(const std::string& typeName = "PushConstantGatherer")
-        : TypedNodeType<PushConstantGathererNodeConfig>(typeName) {}
+        : TypedNodeType<PushConstantGathererNodeConfig>(typeName)
+        , defaultMinVariadicInputs(0)
+        , defaultMaxVariadicInputs(64)  // Conservative limit - enough fields to fill 256 bytes (common max)
+    {}
     virtual ~PushConstantGathererNodeType() = default;
 
     std::unique_ptr<NodeInstance> CreateInstance(
         const std::string& instanceName
     ) const override;
+
+    // Variadic input constraints (for validation)
+    size_t GetDefaultMinVariadicInputs() const { return defaultMinVariadicInputs; }
+    size_t GetDefaultMaxVariadicInputs() const { return defaultMaxVariadicInputs; }
+
+private:
+    size_t defaultMinVariadicInputs;
+    size_t defaultMaxVariadicInputs;
 };
 
 /**
