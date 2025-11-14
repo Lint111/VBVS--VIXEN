@@ -33,6 +33,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
                       CameraNodeCounts::OUTPUTS,
                       CameraNodeCounts::ARRAY_MODE) {
     // ===== INPUTS (4) =====
+    // Use generic INPUT_SLOT; lifetime (Persistent) is declared in INIT_INPUT_DESC
     INPUT_SLOT(VULKAN_DEVICE_IN, VulkanDevicePtr, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
@@ -58,6 +59,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (1) =====
+    // Use generic OUTPUT_SLOT; lifetime (Persistent) is declared in INIT_OUTPUT_DESC
     OUTPUT_SLOT(CAMERA_DATA, CameraDataPtr, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
@@ -98,11 +100,6 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
 
     // Automated config validation
     VALIDATE_NODE_CONFIG(CameraNodeConfig, CameraNodeCounts);
-
-    // Validate persistent slots use appropriate types
-    VALIDATE_PERSISTENT_SLOT(VULKAN_DEVICE_IN, ResourceLifetime::Persistent);
-    VALIDATE_PERSISTENT_SLOT(SWAPCHAIN_PUBLIC, ResourceLifetime::Persistent);
-    VALIDATE_PERSISTENT_SLOT(CAMERA_DATA, ResourceLifetime::Persistent);
 
     // Slot index validations
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");

@@ -163,26 +163,9 @@ enum class SlotScope : uint8_t {
  * 
  * Usage: InputCount<3> instead of magic number 3
  */
-template<size_t N>
-struct InputCount {
-    static constexpr size_t value = N;
-};
-
-template<size_t N>
-struct OutputCount {
-    static constexpr size_t value = N;
-};
-
-// Convenience aliases for common cases
-using NoInputs = InputCount<0>;
-using OneInput = InputCount<1>;
-using TwoInputs = InputCount<2>;
-using ThreeInputs = InputCount<3>;
-
-using NoOutputs = OutputCount<0>;
-using OneOutput = OutputCount<1>;
-using TwoOutputs = OutputCount<2>;
-using ThreeOutputs = OutputCount<3>;
+// NOTE: legacy InputCount/OutputCount helpers were removed to simplify the API.
+// Use explicit numeric literals or Config::INPUT_COUNT / Config::OUTPUT_COUNT when
+// documenting expected counts inside node configs.
 
 
 /**
@@ -525,6 +508,13 @@ ResourceDescriptor MakeDescriptor(
         Mutability \
     )
 
+/* PERSISTENT_INPUT_SLOT and PERSISTENT_OUTPUT_SLOT removed.
+ * Use INPUT_SLOT/OUTPUT_SLOT to declare slot metadata and specify the
+ * ResourceLifetime in INIT_INPUT_DESC/INIT_OUTPUT_DESC. Validation for
+ * persistent lifetimes is performed by SlotValidator which is invoked by
+ * the INIT_*_DESC macros.
+ */
+
 /**
  * @brief Runtime descriptor initialization (only part with runtime cost)
  *
@@ -560,18 +550,47 @@ template<typename T>
 inline constexpr bool CanBePersistent_v = CanBePersistent<T>::value;
 
 /**
+ * @brief Universal slot validator
+ *
+ * This template performs all necessary compile-time validations for a slot.
+ * Add new validation rules here as needed without changing the macro API.
+ */
+template<typename SlotType,
+         ResourceLifetime Lifetime = ResourceLifetime::Transient,
+         SlotRole Role = SlotRole::Dependency,
+         SlotNullability Nullability = SlotNullability::Required>
+struct SlotValidator {
+    // Rule 1: Persistent slots must use pointer/reference types
+    static constexpr bool persistence_check =
+        (Lifetime != ResourceLifetime::Persistent) || CanBePersistent_v<SlotType>;
+
+    static_assert(persistence_check,
+        "Slot is marked as Persistent but uses a type that cannot be persistent. "
+        "Persistent slots must use pointer or reference types, not value types.");
+
+    // Rule 2: Execute role slots should not be persistent (example of additional rule)
+    static constexpr bool execute_role_check =
+        (Role != SlotRole::Execute) || (Lifetime != ResourceLifetime::Static);
+
+    static_assert(execute_role_check,
+        "Execute role slots should not use Static lifetime as they change every frame.");
+
+    // Rule 3: Optional slots of certain types might need special handling
+    // Add more rules here as needed...
+
+    // The validation passes if all checks pass
+    static constexpr bool is_valid = persistence_check && execute_role_check;
+};
+
+/**
  * @brief Helper to validate persistent slot during INIT_*_DESC
  *
  * This macro validates that if a slot is marked as Persistent,
  * its type must be able to be persistent (pointer/reference).
  */
-#define VALIDATE_PERSISTENT_SLOT(SlotName, Lifetime) \
-    static_assert( \
-        (Lifetime) != ::Vixen::RenderGraph::ResourceLifetime::Persistent || \
-        ::Vixen::RenderGraph::CanBePersistent_v<SlotName##_Slot::Type>, \
-        #SlotName " slot is marked as Persistent but uses a type that cannot be persistent. " \
-        "Persistent slots must use pointer or reference types, not value types." \
-    )
+
+// VALIDATE_PERSISTENT_SLOT removed: use INIT_INPUT_DESC / INIT_OUTPUT_DESC which
+// invoke SlotValidator to perform lifetime-dependent compile-time checks.
 
 /**
  * @brief Macro to automatically generate all standard validations for a node config
@@ -602,13 +621,36 @@ inline constexpr bool CanBePersistent_v = CanBePersistent<T>::value;
     static_assert(ARRAY_MODE == CountsNamespace::ARRAY_MODE, "Array mode mismatch")
 
 /**
- * @brief Simplified initialization for common cases
+ * @brief Simplified initialization for common cases with automatic validation
+ *
+ * These macros now automatically validate slots based on their properties.
+ * The validation happens via SlotValidator which can be extended with new rules.
  */
 #define INIT_INPUT_DESC(Slot, Name, Lifetime, Desc) \
-    INIT_SLOT_DESCRIPTOR(inputs, Slot, Name, Lifetime, Desc)
+    do { \
+        /* Trigger compile-time validation for this slot */ \
+        [[maybe_unused]] constexpr auto validator_##Slot = \
+            ::Vixen::RenderGraph::SlotValidator< \
+                Slot##_Slot::Type, \
+                Lifetime, \
+                Slot##_Slot::role, \
+                Slot##_Slot::nullability \
+            >{}; \
+        INIT_SLOT_DESCRIPTOR(inputs, Slot, Name, Lifetime, Desc); \
+    } while(0)
 
 #define INIT_OUTPUT_DESC(Slot, Name, Lifetime, Desc) \
-    INIT_SLOT_DESCRIPTOR(outputs, Slot, Name, Lifetime, Desc)
+    do { \
+        /* Trigger compile-time validation for this slot */ \
+        [[maybe_unused]] constexpr auto validator_##Slot = \
+            ::Vixen::RenderGraph::SlotValidator< \
+                Slot##_Slot::Type, \
+                Lifetime, \
+                Slot##_Slot::role, \
+                Slot##_Slot::nullability \
+            >{}; \
+        INIT_SLOT_DESCRIPTOR(outputs, Slot, Name, Lifetime, Desc); \
+    } while(0)
 
 // ====================================================================
 // COMPILE-TIME TYPE VALIDATION

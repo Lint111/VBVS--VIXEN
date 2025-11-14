@@ -537,7 +537,14 @@ struct VariantHandle {
     ResourceVariant value;
 
     VariantHandle() = default;
+    explicit VariantHandle(const ResourceVariant& v) : value(v) {}
     explicit VariantHandle(ResourceVariant&& v) : value(std::move(v)) {}
+
+    // Default copy/move semantics
+    VariantHandle(const VariantHandle&) = default;
+    VariantHandle(VariantHandle&&) noexcept = default;
+    VariantHandle& operator=(const VariantHandle&) = default;
+    VariantHandle& operator=(VariantHandle&&) noexcept = default;
 };
 
 /**
@@ -601,13 +608,13 @@ public:
 
         if constexpr (std::is_same_v<std::decay_t<VulkanType>, ResourceVariant>) {
             // Case 2: ResourceVariant as a handle (pass-through variant)
-            handleStorage = VariantHandle{value};
+            handleStorage = VariantHandle{ResourceVariant(value)};
         } else if constexpr (std::is_same_v<std::decay_t<VulkanType>, std::vector<ResourceVariant>>) {
             // Case 3: std::vector<ResourceVariant> - convert to vector<VariantHandle>
             std::vector<VariantHandle> wrapped;
             wrapped.reserve(value.size());
             for (const auto& v : value) {
-                wrapped.emplace_back(v);
+                wrapped.push_back(VariantHandle{ResourceVariant(v)});
             }
             handleStorage = std::move(wrapped);
         } else {
