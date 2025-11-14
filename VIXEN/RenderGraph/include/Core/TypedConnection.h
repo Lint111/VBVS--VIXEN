@@ -6,6 +6,8 @@
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
 #include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
+#include "Data/Nodes/PushConstantGathererNodeConfig.h"
+#include "Data/Nodes/StructSpreaderNodeConfig.h"
 #include <vector>
 #include <functional>
 
@@ -32,27 +34,27 @@ struct TypedConnectionDescriptor {
 
 /**
  * @brief Connection builder with batch edge registration
- * 
+ *
  * Allows building multiple connections and registering them atomically.
  * Type information is automatically deduced from ResourceSlot constants.
- * 
+ *
  * Supports:
  * - Single connections (1-to-1)
  * - Array connections (1-to-many for arrayable inputs)
  * - Indexed connections (connect to specific array element)
- * 
+ *
  * Example usage:
  *   ConnectionBatch batch(renderGraph);
- *   
+ *
  *   // Simple connection - types automatically deduced from slots
  *   batch.Connect(windowNode, WindowNodeConfig::SURFACE,
  *                 swapChainNode, SwapChainNodeConfig::SURFACE);
- *   
+ *
  *   // Array connection (fan-out to multiple framebuffers)
  *   batch.ConnectToArray(renderPassNode, RenderPassNodeConfig::RENDER_PASS,
  *                        framebufferNode, FramebufferNodeConfig::RENDER_PASS,
  *                        {0, 1, 2});  // Connect to array indices 0, 1, 2
- *   
+ *
  *   batch.RegisterAll();  // Atomically register all connections
  */
 class ConnectionBatch {
@@ -451,8 +453,8 @@ public:
                 throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
             }
 
-            // Cast to VariadicTypedNode to access UpdateVariadicSlot
-            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            // Cast to IVariadicNode interface to access UpdateVariadicSlot
+            auto* variadicNodePtr = dynamic_cast<IVariadicNode*>(node);
             if (!variadicNodePtr) {
                 throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
             }
@@ -568,7 +570,7 @@ public:
                 throw std::runtime_error("ConnectVariadic: Invalid variadic node handle");
             }
 
-            auto* variadicNodePtr = dynamic_cast<VariadicTypedNode<DescriptorResourceGathererNodeConfig>*>(node);
+            auto* variadicNodePtr = dynamic_cast<IVariadicNode*>(node);
             if (!variadicNodePtr) {
                 throw std::runtime_error("ConnectVariadic: Node is not a variadic node");
             }

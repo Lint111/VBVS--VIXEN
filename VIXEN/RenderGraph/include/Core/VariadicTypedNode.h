@@ -62,6 +62,27 @@ struct VariadicBundle {
 };
 
 /**
+ * @brief Interface for variadic node operations
+ *
+ * Provides polymorphic access to variadic slot management without
+ * requiring knowledge of the specific ConfigType template parameter.
+ */
+class IVariadicNode {
+public:
+    virtual ~IVariadicNode() = default;
+
+    /**
+     * @brief Update or create a variadic slot (polymorphic interface)
+     */
+    virtual void UpdateVariadicSlot(size_t slotIndex, const VariadicSlotInfo& slotInfo, size_t bundleIndex = 0) = 0;
+
+    /**
+     * @brief Get variadic slot metadata (polymorphic interface)
+     */
+    virtual const VariadicSlotInfo* GetVariadicSlotInfo(size_t slotIndex, size_t bundleIndex = 0) const = 0;
+};
+
+/**
  * @brief Extension of TypedNode that supports variadic inputs
  *
  * Adds support for arbitrary number of additional input connections beyond
@@ -87,7 +108,8 @@ struct VariadicBundle {
  */
 template<typename ConfigType>
 class VariadicTypedNode : public TypedNode<ConfigType>,
-                         public IGraphCompilable {
+                         public IGraphCompilable,
+                         public IVariadicNode {
 public:
     using Base = TypedNode<ConfigType>;
 
@@ -241,7 +263,7 @@ public:
      * @param slotInfo Slot metadata (includes resource, state, source info)
      * @param bundleIndex Bundle index (default: 0)
      */
-    void UpdateVariadicSlot(size_t slotIndex, const VariadicSlotInfo& slotInfo, size_t bundleIndex = 0) {
+    void UpdateVariadicSlot(size_t slotIndex, const VariadicSlotInfo& slotInfo, size_t bundleIndex = 0) override {
         // Ensure variadic bundle exists
         if (bundleIndex >= variadicBundles_.size()) {
             variadicBundles_.resize(bundleIndex + 1);
@@ -389,7 +411,7 @@ public:
      * @param bundleIndex Bundle index (default: 0)
      * @return Pointer to slot metadata, or nullptr if invalid index
      */
-    const VariadicSlotInfo* GetVariadicSlotInfo(size_t index, size_t bundleIndex = 0) const {
+    const VariadicSlotInfo* GetVariadicSlotInfo(size_t index, size_t bundleIndex = 0) const override {
         if (bundleIndex >= variadicBundles_.size()) {
             return nullptr;
         }
