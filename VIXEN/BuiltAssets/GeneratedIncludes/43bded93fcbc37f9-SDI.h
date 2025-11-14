@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // UUID: 43bded93fcbc37f9
-// Generated: 2025-11-14 12:17:37
+// Generated: 2025-11-14 12:33:32
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -42,7 +42,7 @@ struct ESVOBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 0;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
@@ -62,7 +62,7 @@ struct BrickBuffer {
         static constexpr const char* TYPE = "uint32_t";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 0;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
@@ -82,7 +82,7 @@ struct MaterialBuffer {
         static constexpr const char* TYPE = "Material";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 32;
-        static constexpr uint32_t INDEX = 0;
+        static constexpr uint32_t BINDING = 0;
     };
 
 };
@@ -173,49 +173,49 @@ struct PushConstants {
         static constexpr const char* TYPE = "glm::dvec3";
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 12;
-        static constexpr uint32_t INDEX = 0;
+        static constexpr uint32_t BINDING = 0;
     };
     struct pc_1 {
         static constexpr const char* TYPE = "float";
         static constexpr uint32_t OFFSET = 12;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 1;
+        static constexpr uint32_t BINDING = 1;
     };
     struct pc_2 {
         static constexpr const char* TYPE = "glm::dvec3";
         static constexpr uint32_t OFFSET = 16;
         static constexpr uint32_t SIZE = 12;
-        static constexpr uint32_t INDEX = 2;
+        static constexpr uint32_t BINDING = 2;
     };
     struct pc_3 {
         static constexpr const char* TYPE = "float";
         static constexpr uint32_t OFFSET = 28;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 3;
+        static constexpr uint32_t BINDING = 3;
     };
     struct pc_4 {
         static constexpr const char* TYPE = "glm::dvec3";
         static constexpr uint32_t OFFSET = 32;
         static constexpr uint32_t SIZE = 12;
-        static constexpr uint32_t INDEX = 4;
+        static constexpr uint32_t BINDING = 4;
     };
     struct pc_5 {
         static constexpr const char* TYPE = "float";
         static constexpr uint32_t OFFSET = 44;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 5;
+        static constexpr uint32_t BINDING = 5;
     };
     struct pc_6 {
         static constexpr const char* TYPE = "glm::dvec3";
         static constexpr uint32_t OFFSET = 48;
         static constexpr uint32_t SIZE = 12;
-        static constexpr uint32_t INDEX = 6;
+        static constexpr uint32_t BINDING = 6;
     };
     struct pc_7 {
         static constexpr const char* TYPE = "float";
         static constexpr uint32_t OFFSET = 60;
         static constexpr uint32_t SIZE = 4;
-        static constexpr uint32_t INDEX = 7;
+        static constexpr uint32_t BINDING = 7;
     };
 
 };

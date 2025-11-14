@@ -968,48 +968,48 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Connect push constant fields to push constant gatherer using member extraction
     // CameraNode now outputs a CameraData struct, so we can extract individual fields
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraPos,  // vec3 cameraPos
+                          pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
                           &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
     // TODO: Create TimeNode to provide time field
     //   batch.ConnectVariadic(timeNode, TimeNodeConfig::TIME_OUTPUT,
     //                         pushConstantGatherer, 1);  // float time
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraDir,  // vec3 cameraDir
+                          pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
                           &CameraData::cameraDir, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::fov,  // float fov
+                          pushConstantGatherer, VoxelRayMarch::fov::BINDING,  // float fov
                           &CameraData::fov, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraUp,  // vec3 cameraUp
+                          pushConstantGatherer, VoxelRayMarch::cameraUp::BINDING,  // vec3 cameraUp
                           &CameraData::cameraUp , SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::aspect,  // float aspect
+                          pushConstantGatherer, VoxelRayMarch::aspect::BINDING,  // float aspect
                           &CameraData::aspect, SlotRole::Execute);  // Mark as Execute-only
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
-                          pushConstantGatherer, VoxelRayMarch::cameraRight,  // vec3 cameraRight
+                          pushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,  // vec3 cameraRight
                           &CameraData::cameraRight, SlotRole::Execute);  // Mark as Execute-only
 
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame
     batch.ConnectVariadic(swapChainNode, SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
-                          descriptorGatherer, VoxelRayMarch::outputImage,
+                          descriptorGatherer, VoxelRayMarch::outputImage::BINDING,
                           SlotRole::Execute);
 
     // Binding 1: octreeNodes (SSBO) - octree node data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::octreeNodes,
+                          descriptorGatherer, VoxelRayMarch::esvoNodes::BINDING,
                           SlotRole::Dependency | SlotRole::Execute);
-                          VoxelRayMarch
+                          
 
     // Binding 2: voxelBricks (SSBO) - voxel brick data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::voxelBricks,
+                          descriptorGatherer, VoxelRayMarch::brickData::BINDING,
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Binding 3: materialPalette (SSBO) - material data
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::materialPalette,
+                          descriptorGatherer, VoxelRayMarch::materials::BINDING,
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Swapchain connections to descriptor set and dispatch

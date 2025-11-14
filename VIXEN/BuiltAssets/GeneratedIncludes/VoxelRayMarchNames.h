@@ -4,7 +4,7 @@
 //
 // Program: VoxelRayMarch
 // UUID: 43bded93fcbc37f9
-// Generated: 2025-11-14 12:18:05
+// Generated: 2025-11-14 12:40:46
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -34,15 +34,15 @@ using pc = SDI::pc;
 // outputImage (Set 0, Binding 0)
 using outputImage = SDI::Set0::Binding0;
 constexpr const char* outputImage_name = "outputImage";
-// ESVOBuffer (Set 0, Binding 1)
-using ESVOBuffer = SDI::Set0::Binding1;
-constexpr const char* ESVOBuffer_name = "ESVOBuffer";
-// BrickBuffer (Set 0, Binding 2)
-using BrickBuffer = SDI::Set0::Binding2;
-constexpr const char* BrickBuffer_name = "BrickBuffer";
-// MaterialBuffer (Set 0, Binding 3)
-using MaterialBuffer = SDI::Set0::Binding3;
-constexpr const char* MaterialBuffer_name = "MaterialBuffer";
+// esvoNodes (Set 0, Binding 1)
+using esvoNodes = SDI::Set0::Binding1;
+constexpr const char* esvoNodes_name = "esvoNodes";
+// brickData (Set 0, Binding 2)
+using brickData = SDI::Set0::Binding2;
+constexpr const char* brickData_name = "brickData";
+// materials (Set 0, Binding 3)
+using materials = SDI::Set0::Binding3;
+constexpr const char* materials_name = "materials";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)

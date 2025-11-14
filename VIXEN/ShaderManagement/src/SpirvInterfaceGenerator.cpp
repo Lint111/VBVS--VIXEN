@@ -315,22 +315,33 @@ std::string SpirvInterfaceGenerator::GenerateNamesHeader(
                     
                     // The user-facing name (what we alias to in the Names file)
                     std::string aliasName = SanitizeName(binding.name);
+                    std::string actualVariableName = binding.name; // For the _name string
+                    
                     if (aliasName.empty()) {
-                        // Use the DataType name if available
+                        // Use the DataType name if available for fallback
                         if (binding.structDefIndex >= 0 && 
                             binding.structDefIndex < static_cast<int>(reflectionData.structDefinitions.size())) {
                             const auto& structDef = reflectionData.structDefinitions[binding.structDefIndex];
-                            aliasName = SanitizeName(structDef.name);
+                            
+                            // For the actual variable name, use the first member field name if available
+                            if (!structDef.members.empty()) {
+                                actualVariableName = structDef.members[0].name;
+                                aliasName = SanitizeName(actualVariableName); // Use variable name for alias too
+                            } else {
+                                actualVariableName = structDef.name;
+                                aliasName = SanitizeName(structDef.name);
+                            }
                         } else {
                             aliasName = genericBindingName;
+                            actualVariableName = genericBindingName;
                         }
                     }
                     
-                    // Use original name if available for display
-                    std::string displayName = binding.name.empty() ? aliasName : binding.name;
+                    // Use actual variable name for display
+                    std::string displayName = actualVariableName;
                     code << "// " << displayName << " (Set " << setIndex << ", Binding " << binding.binding << ")\n";
                     code << "using " << aliasName << " = SDI::Set" << setIndex << "::" << genericBindingName << ";\n";
-                    code << "constexpr const char* " << aliasName << "_name = \"" << aliasName << "\";\n";
+                    code << "constexpr const char* " << aliasName << "_name = \"" << displayName << "\";\n";
                 }
             }
             code << "\n";
@@ -485,18 +496,24 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinition(
     code << "\n";
 
     // Generate member metadata structs with full metadata (type, offset, size, index)
-    code << Indent(1) << "// Member metadata structs\n";
-    for (size_t memberIdx = 0; memberIdx < structDef.members.size(); ++memberIdx) {
-        const auto& member = structDef.members[memberIdx];
-        // Use pc_0, pc_1, pc_2... naming for member metadata
-        std::string memberMetaName = "pc_" + std::to_string(memberIdx);
-        
-        code << Indent(1) << "struct " << memberMetaName << " {\n";
-        code << Indent(2) << "static constexpr const char* TYPE = \"" << member.type.ToCppType() << "\";\n";
-        code << Indent(2) << "static constexpr uint32_t OFFSET = " << member.offset << ";\n";
-        code << Indent(2) << "static constexpr uint32_t SIZE = " << member.type.sizeInBytes << ";\n";
-        code << Indent(2) << "static constexpr uint32_t INDEX = " << memberIdx << ";\n";
-        code << Indent(1) << "};\n";
+    if (!structDef.members.empty()) {
+        code << Indent(1) << "// Member metadata structs\n";
+        for (size_t memberIdx = 0; memberIdx < structDef.members.size(); ++memberIdx) {
+            const auto& member = structDef.members[memberIdx];
+            // Use pc_0, pc_1, pc_2... naming for member metadata
+            std::string memberMetaName = "pc_" + std::to_string(memberIdx);
+            
+            code << Indent(1) << "struct " << memberMetaName << " {\n";
+            code << Indent(2) << "static constexpr const char* TYPE = \"" << member.type.ToCppType() << "\";\n";
+            code << Indent(2) << "static constexpr uint32_t OFFSET = " << member.offset << ";\n";
+            code << Indent(2) << "static constexpr uint32_t SIZE = " << member.type.sizeInBytes << ";\n";
+            code << Indent(2) << "static constexpr uint32_t BINDING = " << memberIdx << ";\n";
+            code << Indent(1) << "};\n";
+        }
+    } else {
+        // For empty structs, add a dummy field to make them valid C++
+        code << Indent(1) << "// Empty buffer struct - adding dummy field for valid C++\n";
+        code << Indent(1) << "uint8_t _placeholder = 0;\n";
     }
     code << "\n";
 
