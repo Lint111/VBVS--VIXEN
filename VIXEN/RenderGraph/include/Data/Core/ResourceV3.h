@@ -296,30 +296,6 @@ struct ImageSamplerPair {
     ImageSamplerPair(VkImageView view, VkSampler samp) : imageView(view), sampler(samp) {}
 };
 
-// PassThroughStorage: Passthrough type for migration compatibility
-// In ResourceV3, this is a placeholder that represents "any valid type"
-// The actual type validation happens at compile-time through IsValidType_v
-// This allows slots to accept any registered type and pass it through unchanged
-//
-// NOTE: For inter-node communication of descriptor handles, use DescriptorHandleVariant instead
-struct PassThroughStorage {
-    // Empty struct - acts as a type tag for "accepts any valid resource"
-    // The actual storage and type handling is done by ZeroOverheadStorage
-
-    // Default constructor for monostate-like behavior
-    PassThroughStorage() = default;
-
-    // Template constructor - accepts any type that passes IsValidType_v
-    template<typename T>
-    PassThroughStorage(T&&) {
-        // In the old system, this would store the value
-        // In ResourceV3, this is just for compatibility - actual storage is in Resource
-    }
-};
-
-// Legacy alias for backward compatibility
-using ResourceVariant = PassThroughStorage;
-
 // Register types defined above (after their definitions)
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
 REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
@@ -332,7 +308,7 @@ REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 // DescriptorHandleVariant: Domain-specific runtime variant for descriptor communication
 //
 // DESIGN RATIONALE:
-// ResourceV3 provides compile-time type safety within Resource storage using ZeroOverheadStorage.
+// ResourceV3 provides compile-time type safety within Resource storage using PassThroughStorage.
 // However, descriptor gathering nodes (DescriptorResourceGathererNode) collect heterogeneous
 // descriptor handles from variadic inputs and pass them to descriptor set creation nodes.
 //
@@ -351,14 +327,17 @@ REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 // (Forward declared above for type registration - this comment documents the rationale)
 
 // ============================================================================
-// ZERO-OVERHEAD STORAGE
+// PASS-THROUGH STORAGE
 // ============================================================================
+// PassThroughStorage: Type-erased storage for any registered resource type.
+// Supports value, reference, and pointer storage modes with compile-time validation.
+// Used by ResourceVariant and VariadicTypedNode for heterogeneous type handling.
 
-class ZeroOverheadStorage {
+class PassThroughStorage {
 public:
     enum class Mode : uint8_t { Empty, Value, Reference, Pointer };
 
-    ZeroOverheadStorage() = default;
+    PassThroughStorage() = default;
 
     // Setters (compile-time tag dispatch)
     template<typename T>
@@ -502,13 +481,6 @@ public:
         return nullptr;
     }
 
-    // Migration compatibility method (deprecated - returns empty struct)
-    // Returns a ResourceVariant passthrough for compatibility
-    ResourceVariant GetHandleVariant() const {
-        // ResourceVariant is now a passthrough type
-        // It doesn't store data, just indicates "any valid resource"
-        return ResourceVariant{};
-    }
 
     // Extract handle as DescriptorHandleVariant for inter-node communication
     // This method attempts to extract common descriptor handle types
@@ -589,7 +561,7 @@ public:
     }
 
 private:
-    ZeroOverheadStorage storage_;
+    PassThroughStorage storage_;
     ResourceType type_ = ResourceType::Buffer;
     ResourceLifetime lifetime_ = ResourceLifetime::Transient;
     ResourceDescriptorVariant descriptor_;
@@ -653,8 +625,7 @@ struct ResourceTypeTraits {
     static constexpr bool isArray = StripContainer<T>::isArray;
     static constexpr size_t arraySize = StripContainer<T>::arraySize;
 
-    // Variant detection (for compatibility with old code)
-    static constexpr bool isResourceVariant = std::is_same_v<std::decay_t<T>, ResourceVariant>;
+    // Variant detection
     static constexpr bool isCustomVariant = false;
 };
 

@@ -474,24 +474,6 @@ public:
         return res->GetHandle<T>();
     }
 
-    /**
-     * @brief Get variadic input as ResourceHandleVariant
-     *
-     * Useful for generic processing without knowing the exact type.
-     *
-     * @param index Variadic input index (0-based)
-     * @param bundleIndex Bundle index (default: 0)
-     * @return ResourceHandleVariant containing the handle
-     */
-    ResourceVariant GetVariadicInputVariant(size_t index, size_t bundleIndex = 0) const {
-        Resource* res = GetVariadicInputResource(index, bundleIndex);
-        if (!res || !res->IsValid()) {
-            return ResourceVariant{};  // Return empty ResourceVariant
-        }
-
-        // Extract variant from resource
-        return res->GetHandleVariant();
-    }
 
     /**
      * @brief Clear all variadic inputs from bundle

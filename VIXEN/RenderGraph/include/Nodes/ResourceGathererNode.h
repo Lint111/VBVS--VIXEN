@@ -117,9 +117,9 @@ public:
     /**
      * @brief Output slot containing all gathered resources
      *
-     * Type is vector<ResourceVariant> to hold heterogeneous resources
+     * Type is vector<PassThroughStorage> to hold heterogeneous resources
      */
-    Slot<std::vector<ResourceVariant>> gatheredResources;
+    Slot<std::vector<PassThroughStorage>> gatheredResources;
 
     /**
      * @brief Optional: Individual outputs for each input (pass-through)
@@ -142,13 +142,13 @@ public:
      * @brief Execute node: collect all inputs into gathered output
      */
     void execute() {
-        std::vector<ResourceVariant> gathered;
+        std::vector<PassThroughStorage> gathered;
         gathered.reserve(INPUT_COUNT);
 
         // Fold expression to gather all inputs
         std::apply([&gathered](auto&... slots) {
-            // For each input slot, convert to ResourceVariant and add to vector
-            (gathered.push_back(convertToVariant(slots.get())), ...);
+            // For each input slot, convert to PassThroughStorage and add to vector
+            (gathered.push_back(convertToStorage(slots.get())), ...);
         }, inputs);
 
         gatheredResources.set(std::move(gathered));
@@ -159,38 +159,19 @@ public:
 
 private:
     // ========================================================================
-    // HELPERS - Convert various types to ResourceVariant
+    // HELPERS - Convert various types to PassThroughStorage
     // ========================================================================
 
     /**
-     * @brief Convert input value to ResourceVariant
+     * @brief Convert input value to PassThroughStorage
      *
-     * Handles:
-     * - Scalar types: Direct conversion
-     * - Vector types: Each element becomes a ResourceVariant
-     * - Array types: Each element becomes a ResourceVariant
-     * - Already ResourceVariant: Pass through
+     * Handles all registered types by storing them directly
      */
     template<typename T>
-    static ResourceVariant convertToVariant(const T& value) {
-        if constexpr (std::is_same_v<T, ResourceVariant>) {
-            // Already a variant, return as-is
-            return value;
-        }
-        else if constexpr (ResourceTypeTraits<T>::isVector) {
-            // Vector type: Create variant from first element (or handle differently)
-            // Note: This is a design choice - do we want one variant per vector,
-            // or one variant per element? Let's do per-vector for now.
-            return ResourceVariant(value);
-        }
-        else if constexpr (ResourceTypeTraits<T>::isArray) {
-            // Array type: Similar to vector
-            return ResourceVariant(value);
-        }
-        else {
-            // Scalar type: Direct conversion
-            return ResourceVariant(value);
-        }
+    static PassThroughStorage convertToStorage(const T& value) {
+        PassThroughStorage storage;
+        storage.Set(value, ValueTag<T>{});
+        return storage;
     }
 
     /**

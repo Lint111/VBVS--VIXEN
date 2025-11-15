@@ -38,7 +38,6 @@ struct ResourceTypeTraits<std::vector<VkImage>> {
     static constexpr bool isVector = true;
     static constexpr bool isArray = false;
     static constexpr size_t arraySize = 0;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -52,7 +51,6 @@ struct ResourceTypeTraits<std::vector<VkImageView>> {
     static constexpr bool isVector = true;
     static constexpr bool isArray = false;
     static constexpr size_t arraySize = 0;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -66,7 +64,6 @@ struct ResourceTypeTraits<std::vector<VkBuffer>> {
     static constexpr bool isVector = true;
     static constexpr bool isArray = false;
     static constexpr size_t arraySize = 0;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -80,7 +77,6 @@ struct ResourceTypeTraits<std::vector<VkFramebuffer>> {
     static constexpr bool isVector = true;
     static constexpr bool isArray = false;
     static constexpr size_t arraySize = 0;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -99,7 +95,6 @@ struct ResourceTypeTraits<std::array<VkImageView, 2>> {
     static constexpr bool isVector = false;
     static constexpr bool isArray = true;
     static constexpr size_t arraySize = 2;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -113,7 +108,6 @@ struct ResourceTypeTraits<std::array<VkBuffer, 3>> {
     static constexpr bool isVector = false;
     static constexpr bool isArray = true;
     static constexpr size_t arraySize = 3;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 
@@ -132,7 +126,6 @@ struct ResourceTypeTraits<std::vector<std::vector<VkImage>>> {
     static constexpr bool isVector = true;
     static constexpr bool isArray = false;
     static constexpr size_t arraySize = 0;
-    static constexpr bool isResourceVariant = false;
     static constexpr bool isCustomVariant = false;
 };
 

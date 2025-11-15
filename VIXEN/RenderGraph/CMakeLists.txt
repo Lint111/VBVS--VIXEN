@@ -31,7 +31,6 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/Core/ResourceConfig.h
     include/Data/Core/ResourceTypeTraits.h
     include/Data/Core/ResourceTypes.h
-    include/Data/Core/PassThroughStorage.h
     include/Data/Core/ResourceV3.h
     include/Data/Core/BoolVector.h
 )
@@ -114,7 +113,6 @@ set(RENDERGRAPH_CORE_SOURCES
     # src/Core/Resource.cpp  # Excluded - replaced by variant system
     src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
-    src/Core/PassThroughStorage.cpp
     src/Core/SlotTask.cpp
     src/Core/Timer.cpp
 )
