@@ -400,137 +400,60 @@ TEST_F(ResourceBudgetManagerTest, SetBudget) {
 
 ---
 
-### 17. shared_ptr<T> Type System Pattern (November 15, 2025 - Phase H)
-**Classes**: `ResourceV3`, pipeline node configs
+### 17. shared_ptr<T> Support Pattern (November 15, 2025 - Phase H)
+**Purpose**: Enable shared ownership semantics for complex resources (ShaderDataBundle, reflection data)
 
 **Implementation**:
+- PassThroughStorage detects `shared_ptr<T>` at compile-time via template specialization detection
+- Validates element type T via `SharedPtrElementType` helper
+- Stores shared_ptr in Value mode (std::any for copy semantics)
+- Type registration: `REGISTER_COMPILE_TIME_TYPE(std::shared_ptr<ShaderManagement::ShaderDataBundle>)`
+
+**Migration from raw pointers**:
 ```cpp
-// Template specialization detection for shared_ptr
-template<typename T>
-struct is_specialization_v<std::shared_ptr, T> {
-    static constexpr bool value = true;
-};
+// Before (Phase G - no-op deleter hack)
+INPUT_SLOT(SHADER_DATA, ShaderDataBundle*, ...);
+bundle = std::shared_ptr<ShaderDataBundle>(rawPtr, [](ShaderDataBundle*){});
 
-// Extract element type from shared_ptr<T> → T
-template<typename T>
-struct GetElementType {
-    using type = typename std::conditional_t<
-        is_specialization_v<std::shared_ptr, T>,
-        typename T::element_type,
-        T
-    >;
-};
-
-// Validation helper for shared_ptr types
-template<typename T>
-constexpr bool IsValidSharedPtrType() {
-    if constexpr (is_specialization_v<std::shared_ptr, T>) {
-        using ElementType = typename T::element_type;
-        return !std::is_void_v<ElementType> && !std::is_reference_v<ElementType>;
-    }
-    return false;
-}
-
-// Type validation logic integrates shared_ptr checking
-static constexpr bool value =
-    std::is_arithmetic_v<BaseType> ||
-    std::is_pointer_v<BaseType> ||
-    std::is_enum_v<BaseType> ||
-    is_specialization_v<std::shared_ptr, BaseType> ||  // NEW
-    is_specialization_v<std::vector, BaseType>;
+// After (Phase H - proper shared ownership)
+INPUT_SLOT(SHADER_DATA, std::shared_ptr<ShaderDataBundle>, ...);
+bundle = std::make_shared<ShaderDataBundle>(...);
 ```
 
-**Usage Example**:
-```cpp
-// ShaderLibraryNodeConfig outputs shared_ptr
-struct ShaderLibraryNodeConfig {
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<ShaderDataBundle>);
-};
+**Benefits**:
+- Eliminates no-op deleter hacks
+- Clear ownership semantics
+- Automatic lifetime management
+- Type-safe shared access across nodes
 
-// Consumers use shared_ptr directly (no wrapper hacks)
-struct GraphicsPipelineNodeConfig {
-    INPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<ShaderDataBundle>);
-};
-
-// Node implementation
-void GraphicsPipelineNode::CompileImpl(Context& ctx) {
-    auto shaderBundle = ctx.In(SHADER_DATA_BUNDLE);  // shared_ptr<ShaderDataBundle>
-    // Use directly - no need for custom deleters or wrapper types
-    auto reflection = shaderBundle->GetReflectionData();
-}
-```
-
-**Purpose**: Eliminates no-op deleter hacks, enables direct shared_ptr usage in type-safe slot system
-
-**Key Insight**: Supporting `shared_ptr<T>` as first-class type allows passing managed resources through graph without raw pointer workarounds. Pattern recognition extracts element type for validation while preserving shared ownership semantics.
-
-**Before/After**:
-```cpp
-// BEFORE: Hack with no-op deleter
-auto rawPtr = ctx.In(SHADER_DATA_BUNDLE);  // ShaderDataBundle*
-std::shared_ptr<ShaderDataBundle> shaderBundle(
-    rawPtr,
-    [](ShaderDataBundle*) {}  // No-op deleter (UGLY HACK)
-);
-
-// AFTER: Direct shared_ptr usage
-auto shaderBundle = ctx.In(SHADER_DATA_BUNDLE);  // shared_ptr<ShaderDataBundle>
-// Clean, semantically correct, zero hacks
-```
-
-**Files Modified**:
-- `RenderGraph/include/Data/Core/ResourceV3.h` (type system extension)
-- `RenderGraph/include/Data/Nodes/ShaderLibraryNodeConfig.h` (producer)
-- `RenderGraph/include/Data/Nodes/GraphicsPipelineNodeConfig.h` (consumer)
-- `RenderGraph/include/Data/Nodes/ComputePipelineNodeConfig.h` (consumer)
-- `RenderGraph/include/Data/Nodes/ComputeDispatchNodeConfig.h` (consumer)
-- `RenderGraph/include/Data/Nodes/DescriptorResourceGathererNodeConfig.h` (consumer)
-- `RenderGraph/include/Data/Nodes/PushConstantGathererNodeConfig.h` (consumer)
-- All corresponding .cpp implementation files
-
-**Location**: `RenderGraph/include/Data/Core/ResourceV3.h` (lines 214-218, 234-239, 269-278, 294)
+**Location**: `RenderGraph/include/Data/Core/CompileTimeResourceSystem.h` (lines 214-294)
 
 ---
 
 ### 18. ResourceVariant Elimination Pattern (November 15, 2025 - Phase H)
-**Classes**: `ResourceGathererNode`, `UniversalGatherer`
+**Purpose**: Eliminate redundant type-erasure wrapper, use PassThroughStorage directly
 
-**Implementation**:
+**Migration**:
 ```cpp
-// BEFORE: Redundant wrapper around PassThroughStorage
+// Before (Phase G)
 struct ResourceVariant {
-    PassThroughStorage storage;  // Only member
-    // Just a wrapper with no added value
+    PassThroughStorage storage;
+    // Wrapper with no additional value
 };
 
-std::vector<ResourceVariant> gathered;
-for (auto& rv : gathered) {
-    storage.push_back(rv.storage);  // Unwrap every time
-}
-
-// AFTER: Use PassThroughStorage directly
-std::vector<PassThroughStorage> gathered;
-for (auto& storage : gathered) {
-    // Use directly, no unwrapping
-}
+// After (Phase H)
+// ResourceVariant deleted - use PassThroughStorage directly
+using Resource = PassThroughStorage;
 ```
 
-**Refactoring Steps**:
-1. Replaced `vector<ResourceVariant>` → `vector<PassThroughStorage>` in ResourceGathererNode
-2. Renamed `convertToVariant()` → `convertToStorage()` (clearer intent)
-3. Updated UniversalGatherer template class to use PassThroughStorage
-4. Updated test files (test_array_type_validation.cpp)
+**Affected code**:
+- Deleted: `RenderGraph/include/Data/Core/ResourceVariant.h`
+- Updated: `ResourceGathererNode.h` to use PassThroughStorage
+- Updated: 7 test files to use new API
 
-**Purpose**: Eliminate unnecessary abstraction layers, reduce cognitive overhead
+**Rationale**: ResourceVariant added no functionality beyond PassThroughStorage. Eliminating wrapper reduces indirection and clarifies architecture.
 
-**Key Insight**: ResourceVariant provided no type safety or additional functionality - just wrapper bloat. PassThroughStorage already handles type-erased storage correctly.
-
-**Benefits**:
-- Reduced code complexity (one fewer type to understand)
-- Eliminated redundant conversions (no wrapping/unwrapping)
-- Clearer semantics (PassThroughStorage name explains purpose)
-
-**Location**: `RenderGraph/include/Nodes/ResourceGathererNode.h`
+**Location**: Phase H refactoring (November 2025)
 
 ---
 
