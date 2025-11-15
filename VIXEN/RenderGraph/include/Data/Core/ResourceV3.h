@@ -186,9 +186,12 @@ struct IsValidTypeImpl {
     static constexpr bool is_variant_helper(...) { return false; }
     static constexpr bool is_variant = is_variant_helper(static_cast<Clean*>(nullptr));
 
-    // Extract element type from vector (only valid when is_vector == true)
+    // Extract element type from vector (specialization-based)
+    template<typename U, typename = void>
+    struct VectorElementType { using type = void; };  // Default: void for non-vectors
+
     template<typename U>
-    static U vector_element_type(const std::vector<U>*);
+    struct VectorElementType<std::vector<U>> { using type = U; };
 
     // Validate all types in a variant
     template<typename... Us>
@@ -196,16 +199,23 @@ struct IsValidTypeImpl {
         return (IsValidTypeImpl<Us>::value && ...);
     }
 
+    // Helper: validate vector element
+    template<typename VecType>
+    static constexpr bool validate_vector_element() {
+        using Element = typename VectorElementType<VecType>::type;
+        if constexpr (std::is_same_v<Element, void>) {
+            return false;  // Not a vector
+        } else {
+            return IsValidTypeImpl<Element>::value;
+        }
+    }
+
     static constexpr bool value = []() constexpr {
         if constexpr (IsRegisteredType<Clean>::value) {
-            // Direct registration
             return true;
         } else if constexpr (is_vector) {
-            // Recursive check for vector element type (extract type only when needed)
-            using VectorElement = decltype(vector_element_type(static_cast<Clean*>(nullptr)));
-            return IsValidTypeImpl<VectorElement>::value;
+            return validate_vector_element<Clean>();
         } else if constexpr (is_variant) {
-            // Check all variant types are valid
             return all_variant_types_valid(static_cast<Clean*>(nullptr));
         } else {
             return false;
