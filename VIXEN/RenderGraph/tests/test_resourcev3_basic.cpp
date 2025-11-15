@@ -1,6 +1,6 @@
 /**
  * @file test_resourcev3_basic.cpp
- * @brief Basic test to verify ResourceV3.h drop-in replacement works
+ * @brief Basic test to verify CompileTimeResourceSystem works
  */
 
 #include <gtest/gtest.h>

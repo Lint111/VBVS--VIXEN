@@ -53,8 +53,8 @@ using ResourceSlot = TransparentResourceSlot<T>;
 // Old
 #include "Data/Core/ResourceVariant.h"
 
-// New
-#include "Data/Core/ResourceV3.h"
+// New (Phase H - ResourceVariant deleted)
+#include "Data/Core/CompileTimeResourceSystem.h"
 ```
 
 **Files to update** (29 files with ResourceVariant):
@@ -170,7 +170,7 @@ class Resource {
 
 ```diff
 - #include "Data/Core/ResourceVariant.h"
-+ #include "Data/Core/ResourceV3.h"
++ #include "Data/Core/CompileTimeResourceSystem.h"
 
 // No other changes needed - API compatible!
 ```

@@ -620,7 +620,7 @@ if(ENABLE_COVERAGE)
     )
 endif()
 
-# Minimal test for ResourceV3 migration
+# Minimal test for CompileTimeResourceSystem
 add_executable(test_minimal test_minimal.cpp)
 target_include_directories(test_minimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES})

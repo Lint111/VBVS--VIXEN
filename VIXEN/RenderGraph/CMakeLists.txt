@@ -31,7 +31,7 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/Core/ResourceConfig.h
     include/Data/Core/ResourceTypeTraits.h
     include/Data/Core/ResourceTypes.h
-    include/Data/Core/ResourceV3.h
+    include/Data/Core/CompileTimeResourceSystem.h
     include/Data/Core/BoolVector.h
 )
 

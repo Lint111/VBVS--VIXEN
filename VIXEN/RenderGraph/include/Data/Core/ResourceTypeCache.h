@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ResourceV3.h"
+#include "CompileTimeResourceSystem.h"
 #include <vector>
 #include <array>
 
