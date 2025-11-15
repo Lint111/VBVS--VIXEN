@@ -168,5 +168,16 @@
         "ctest": {
             "allowParallelJobs": true
         }
-    }
+    },
+    "cmake.ctestArgs": [],
+    "cmake.ctestDefaultArgs": [],
+    "C_Cpp.testAdapter.debugConfig": {
+        "stopAtEntry": false
+    },
+    "cmake.testExplorerIntegrationEnabled": true,
+    "cmake.enabledOutputParsers": ["cmake", "gcc", "gnuld"],
+    "gtest-adapter.debugConfig": {
+        "args": []
+    },
+    "testMate.cpp.test.advancedExecutables": []
 }
