@@ -2,7 +2,7 @@
 
 #include "NodeInstance.h"
 #include "Data/Core/ResourceConfig.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <future>
 #include <vector>
 

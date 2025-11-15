@@ -1,6 +1,6 @@
 // Debug test to verify ResourceTypeTraits works with ResourceV3
 #include "Data/Core/ResourceTypeTraits.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <vector>
 #include <iostream>
 

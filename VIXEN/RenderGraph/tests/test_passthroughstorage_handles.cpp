@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 
 using namespace Vixen::RenderGraph;
 

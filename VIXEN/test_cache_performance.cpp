@@ -1,6 +1,6 @@
 // Test to demonstrate explicit compile-time caching
 #include "Headers.h"
-#include "RenderGraph/include/Data/Core/ResourceV3.h"
+#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
 #include "RenderGraph/include/Data/Core/ResourceTypeCache.h"
 #include <iostream>
 #include <vector>

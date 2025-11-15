@@ -1,7 +1,7 @@
 // Minimal syntax check - just include the headers to verify no syntax errors
 #include <vulkan/vulkan.h>
 #include "RenderGraph/include/Data/Core/Headers.h"
-#include "RenderGraph/include/Data/Core/ResourceV3.h"
+#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
 
 int main() {
     return 0;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include "Data/Core/ResourceTypeTraits.h"
 #include "Core/FieldExtractor.h"
 #include <tuple>

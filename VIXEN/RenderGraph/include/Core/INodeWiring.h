@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <cstdint>
 
 namespace Vixen::RenderGraph {

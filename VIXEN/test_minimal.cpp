@@ -1,6 +1,6 @@
 // Minimal test to verify ResourceV3 type registration works
 #include "Headers.h"
-#include "RenderGraph/include/Data/Core/ResourceV3.h"
+#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
 #include <iostream>
 
 using namespace Vixen::RenderGraph;

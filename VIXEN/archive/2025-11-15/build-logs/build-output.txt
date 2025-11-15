@@ -1,0 +1,1033 @@
+MSBuild version 17.14.23+b0019275e for .NET Framework
+
+  EventBus.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\EventBus.lib
+  Logger.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\Logger.lib
+  Scanning sources for module dependencies...
+  ShaderManagement.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\ShaderManagement.lib
+  CashSystem.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\CashSystem.lib
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\glm.lib
+  VulkanResources.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VulkanResources.lib
+  GraphLifecycleHooks.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphLifecycleHooks.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphLifecycleHooks.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphLifecycleHooks.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphLifecycleHooks.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphLifecycleHooks.cpp')
+  
+  GraphTopology.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphTopology.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphTopology.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphTopology.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphTopology.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/GraphTopology.cpp')
+  
+  NodeInstance.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeInstance.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeInstance.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeInstance.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeInstance.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeInstance.cpp')
+  
+  NodeType.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeType.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeType.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeType.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeType.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeType.cpp')
+  
+  NodeTypeRegistry.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\WindowNodeConfig.h(35,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<VkInstance,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\SwapChainNodeConfig.h(138,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<unsigned int,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C1003: error count exceeds 100; stopping compilation [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/NodeTypeRegistry.cpp')
+  
+  RenderGraph.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\SwapChainNodeConfig.h(46,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<HWND,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/RenderGraph.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\SwapChainNodeConfig.h(138,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<unsigned int,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  ResourceDependencyTracker.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/ResourceDependencyTracker.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/ResourceDependencyTracker.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/ResourceDependencyTracker.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/ResourceDependencyTracker.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/ResourceDependencyTracker.cpp')
+  
+  SlotTask.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/SlotTask.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/SlotTask.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/SlotTask.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/SlotTask.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Core/SlotTask.cpp')
+  
+  BoolOpNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/BoolOpNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\BoolOpNodeConfig.h(54,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::BoolOp,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  CameraNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CameraNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\CameraNodeConfig.h(37,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  CommandPoolNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/CommandPoolNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\CommandPoolNodeConfig.h(32,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  ComputeDispatchNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputeDispatchNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\ComputeDispatchNodeConfig.h(56,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  ComputePipelineNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ComputePipelineNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\ComputePipelineNodeConfig.h(52,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  DepthBufferNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DepthBufferNodeConfig.h(45,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DepthBufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DepthBufferNodeConfig.h(113,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<VkFormat,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Output,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  DescriptorResourceGathererNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DescriptorResourceGathererNodeConfig.h(52,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<ShaderManagement::ShaderDataBundle *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  DescriptorSetNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DescriptorSetNodeConfig.h(71,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DescriptorSetNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DescriptorSetNodeConfig.h(161,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<std::vector<VkDescriptorSet,std::allocator<VkDescriptorSet>>,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Output,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  DeviceNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/DeviceNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\DeviceNodeConfig.h(40,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<VkInstance,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  FrameSyncNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\FrameSyncNodeConfig.h(41,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FrameSyncNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\FrameSyncNodeConfig.h(86,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<std::vector<VkSemaphore,std::allocator<VkSemaphore>>,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Output,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  FramebufferNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/FramebufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\FramebufferNodeConfig.h(46,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  GeometryRenderNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\GeometryRenderNodeConfig.h(69,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<VkRenderPass,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GeometryRenderNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\GeometryRenderNodeConfig.h(190,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<std::vector<VkDescriptorSet,std::allocator<VkDescriptorSet>>,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  Generating Code...
+  Compiling...
+  GraphicsPipelineNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/GraphicsPipelineNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\GraphicsPipelineNodeConfig.h(63,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21): error C2679: binary '=': no operator found which takes a right-hand operand of type 'ShaderManagement::ShaderDataBundle *' (or there is no acceptable conversion) [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\memory(1704,17):
+      could be 'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::shared_ptr<ShaderManagement::ShaderDataBundle> &&) noexcept'
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+          'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::shared_ptr<ShaderManagement::ShaderDataBundle> &&) noexcept': cannot convert argument 2 from 'ShaderManagement::ShaderDataBundle *' to 'std::shared_ptr<ShaderManagement::ShaderDataBundle> &&'
+              C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,37):
+              Reason: cannot convert from 'ShaderManagement::ShaderDataBundle *' to 'std::shared_ptr<ShaderManagement::ShaderDataBundle>'
+              C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,37):
+              Constructor for class 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' is declared 'explicit'
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\memory(1693,17):
+      or       'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(const std::shared_ptr<ShaderManagement::ShaderDataBundle> &) noexcept'
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+          'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(const std::shared_ptr<ShaderManagement::ShaderDataBundle> &) noexcept': cannot convert argument 2 from 'ShaderManagement::ShaderDataBundle *' to 'const std::shared_ptr<ShaderManagement::ShaderDataBundle> &'
+              C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,37):
+              Reason: cannot convert from 'ShaderManagement::ShaderDataBundle *' to 'const std::shared_ptr<ShaderManagement::ShaderDataBundle>'
+              C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,37):
+              Constructor for class 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' is declared 'explicit'
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\memory(1727,17):
+      or       'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::unique_ptr<_Ux,_Dx> &&)'
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+          'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::unique_ptr<_Ux,_Dx> &&)': could not deduce template argument for 'std::unique_ptr<_Ux,_Dx> &&' from 'ShaderManagement::ShaderDataBundle *'
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\memory(1710,17):
+      or       'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::shared_ptr<_Ty2> &&) noexcept'
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+          'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(std::shared_ptr<_Ty2> &&) noexcept': could not deduce template argument for 'std::shared_ptr<_Ty2> &&' from 'ShaderManagement::ShaderDataBundle *'
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\memory(1699,17):
+      or       'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(const std::shared_ptr<_Ty2> &) noexcept'
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+          'std::shared_ptr<ShaderManagement::ShaderDataBundle> &std::shared_ptr<ShaderManagement::ShaderDataBundle>::operator =(const std::shared_ptr<_Ty2> &) noexcept': could not deduce template argument for 'const std::shared_ptr<_Ty2> &' from 'ShaderManagement::ShaderDataBundle *'
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(125,21):
+      while trying to match the argument list '(std::shared_ptr<ShaderManagement::ShaderDataBundle>, ShaderManagement::ShaderDataBundle *)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(146,5): error C2664: 'void Vixen::RenderGraph::GraphicsPipelineNode::BuildShaderStages(std::shared_ptr<ShaderManagement::ShaderDataBundle>)': cannot convert argument 1 from 'ShaderManagement::ShaderDataBundle *' to 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(146,23):
+      Constructor for class 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' is declared 'explicit'
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Nodes\GraphicsPipelineNode.h(106,10):
+      see declaration of 'Vixen::RenderGraph::GraphicsPipelineNode::BuildShaderStages'
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(146,5):
+      while trying to match the argument list '(ShaderManagement::ShaderDataBundle *)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(556,13): error C2664: 'void Vixen::RenderGraph::GraphicsPipelineNode::BuildVertexInputsFromReflection(std::shared_ptr<ShaderManagement::ShaderDataBundle>,std::vector<VkVertexInputBindingDescription,std::allocator<VkVertexInputBindingDescription>> &,std::vector<VkVertexInputAttributeDescription,std::allocator<VkVertexInputAttributeDescription>> &)': cannot convert argument 1 from 'ShaderManagement::ShaderDataBundle *' to 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(556,45):
+      Constructor for class 'std::shared_ptr<ShaderManagement::ShaderDataBundle>' is declared 'explicit'
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(305,28):
+      see declaration of 'Vixen::RenderGraph::GraphicsPipelineNode::BuildVertexInputsFromReflection'
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\src\Nodes\GraphicsPipelineNode.cpp(556,13):
+      while trying to match the argument list '(ShaderManagement::ShaderDataBundle *, std::vector<VkVertexInputBindingDescription,std::allocator<VkVertexInputBindingDescription>>, std::vector<VkVertexInputAttributeDescription,std::allocator<VkVertexInputAttributeDescription>>)'
+  
+  InputNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InputNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\InputNodeConfig.h(34,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<HWND,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Execute,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  InstanceNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/InstanceNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\InstanceNodeConfig.h(30,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<VkInstance,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Output,Vixen::RenderGraph::SlotMutability::WriteOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  LoopBridgeNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/LoopBridgeNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\LoopBridgeNodeConfig.h(30,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<uint32_t,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  PresentNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\PresentNodeConfig.h(45,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Execute,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PresentNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\PresentNodeConfig.h(113,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<std::vector<VkFence,std::allocator<VkFence>>,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Execute,Vixen::RenderGraph::SlotNullability::Optional>' being compiled
+  
+  PushConstantGathererNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/PushConstantGathererNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\PushConstantGathererNodeConfig.h(56,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<ShaderManagement::ShaderDataBundle *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  RenderPassNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\RenderPassNodeConfig.h(56,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/RenderPassNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\RenderPassNodeConfig.h(94,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<VkFormat,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotNullability::Optional>' being compiled
+  
+  ShaderLibraryNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/ShaderLibraryNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\ShaderLibraryNodeConfig.h(58,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  SwapChainNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\SwapChainNodeConfig.h(46,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<HWND,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19): error C2338: static_assert failed: 'Slot is marked as Persistent but uses a type that cannot be persistent. Persistent slots must use pointer or reference types, not value types.' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/SwapChainNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(573,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\SwapChainNodeConfig.h(138,9):
+          see reference to class template instantiation 'Vixen::RenderGraph::SlotValidator<unsigned int,Vixen::RenderGraph::ResourceLifetime::Persistent,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotNullability::Required>' being compiled
+  
+  TextureLoaderNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/TextureLoaderNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\TextureLoaderNodeConfig.h(43,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  VertexBufferNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VertexBufferNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\VertexBufferNodeConfig.h(46,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  VoxelGridNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/VoxelGridNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\VoxelGridNodeConfig.h(31,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<Vixen::RenderGraph::VulkanDevice *,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  WindowNode.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42): error C2338: static_assert failed: 'Unsupported Vulkan resource type' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\RenderGraph.vcxproj]
+  (compiling source file '../../RenderGraph/src/Nodes/WindowNode.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceConfig.h(207,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Nodes\WindowNodeConfig.h(35,5):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceSlot<VkInstance,0,Vixen::RenderGraph::SlotNullability::Required,Vixen::RenderGraph::SlotRole::Dependency,Vixen::RenderGraph::SlotMutability::ReadOnly,Vixen::RenderGraph::SlotScope::NodeLevel>' being compiled
+  
+  Generating Code...
+  gtest.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest.lib
+  gtest_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest_main.lib
+  ShaderManagementTests.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ShaderManagement\tests\Debug\ShaderManagementTests.exe
+  gli_dummy.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\gli-build\gli\Debug\gli_dummy.exe
+  gmock.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock.lib
+  gmock_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gmock_main.lib
+  Scanning sources for module dependencies...
+  sdi_tool.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\bin\Debug\sdi_tool.exe
+  test_array_type_validation.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_array_type_validation.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_array_type_validation.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_array_type_validation.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_array_type_validation.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_array_type_validation.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(32,44): error C2338: static_assert failed: 'VkImage should be valid (registered scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(34,45): error C2338: static_assert failed: 'VkBuffer should be valid (registered scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(36,48): error C2338: static_assert failed: 'VkImageView should be valid (registered scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(38,46): error C2338: static_assert failed: 'VkSampler should be valid (registered scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(44,57): error C2338: static_assert failed: 'vector<VkImage> should be valid (auto from scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(46,58): error C2338: static_assert failed: 'vector<VkBuffer> should be valid (auto from scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(48,61): error C2338: static_assert failed: 'vector<VkImageView> should be valid (auto from scalar)' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(60,59): error C2338: static_assert failed: 'array<VkImage, 1> should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(62,60): error C2338: static_assert failed: 'array<VkImage, 10> should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(64,60): error C2338: static_assert failed: 'array<VkBuffer, 5> should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(83,60): error C2338: static_assert failed: 'DescriptorHandleVariant should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(87,73): error C2338: static_assert failed: 'vector<DescriptorHandleVariant> should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_array_type_validation.cpp(89,75): error C2338: static_assert failed: 'array<DescriptorHandleVariant, 5> should be valid' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_array_type_validation.vcxproj]
+  test_compile_time_cache.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\Debug\test_compile_time_cache.exe
+  test_eventbus_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\EventBus\Debug\test_eventbus_basic.exe
+  test_field_extraction.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Core\FieldExtractor.h(204,50): error C2338: static_assert failed: 'Field type must be registered in RESOURCE_TYPE_REGISTRY' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_field_extraction.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_field_extraction.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Core\FieldExtractor.h(204,50):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_field_extraction.cpp(129,4):
+          see reference to class template instantiation 'Vixen::RenderGraph::ValidateFieldExtraction<Vixen::RenderGraph::FieldExtractor<TestSwapChainVariables,VkSwapchainKHR>,VkSwapchainKHR>' being compiled
+  
+  test_logger_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\Logger\Debug\test_logger_basic.exe
+  test_minimal.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  (compiling source file '../test_minimal.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  (compiling source file '../test_minimal.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  (compiling source file '../test_minimal.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  (compiling source file '../test_minimal.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  (compiling source file '../test_minimal.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\test_minimal.cpp(42,19): error C2338: static_assert failed: 'VkSwapchainKHR should be registered' [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\test_minimal.cpp(43,19): error C2338: static_assert failed: 'VkImageView should be registered' [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\test_minimal.cpp(47,55): error C2338: static_assert failed: 'VkSwapchainKHR should be valid in traits' [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\test_minimal.cpp(48,65): error C2338: static_assert failed: 'vector<VkImageView> should be valid in traits' [C:\cpp\VBVS--VIXEN\VIXEN\build\test_minimal.vcxproj]
+  test_registration_api.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\CashSystem\Debug\test_registration_api.exe
+  test_resource_gatherer.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2065: 'ResourceVariant': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2923: 'Vixen::RenderGraph::IsRegisteredType': 'ResourceVariant' is not a valid template type argument for parameter 'T' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1):
+      see declaration of 'ResourceVariant'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(148,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(152,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Data\Core\ResourceV3.h(153,1): error C2913: explicit specialization; 'Vixen::RenderGraph::IsRegisteredType' is not a specialization of a class template [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Nodes\ResourceGathererNode.h(74,19): error C2338: static_assert failed: 'All input types must be registered in RESOURCE_TYPE_REGISTRY' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Nodes\ResourceGathererNode.h(74,19):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_resource_gatherer.cpp(87,30):
+          see reference to class template instantiation 'Vixen::RenderGraph::ResourceGathererNode<VkImage,VkBuffer,VkSampler>' being compiled
+  
+C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Nodes\ResourceGathererNode.h(223,42): error C2338: static_assert failed: 'Type must be registered' [C:\cpp\VBVS--VIXEN\VIXEN\build\RenderGraph\tests\test_resource_gatherer.vcxproj]
+  (compiling source file '../../../RenderGraph/tests/test_resource_gatherer.cpp')
+      C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\include\Nodes\ResourceGathererNode.h(223,42):
+      the template instantiation context (the oldest one first) is
+          C:\cpp\VBVS--VIXEN\VIXEN\RenderGraph\tests\test_resource_gatherer.cpp(128,32):
+          see reference to class template instantiation 'Vixen::RenderGraph::HomogeneousGatherer<VkImage,5>' being compiled
+  
+  test_resourcemanagement_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\ResourceManagement\Debug\test_resourcemanagement_basic.exe
+  test_vulkanresources_basic.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\tests\VulkanResources\Debug\test_vulkanresources_basic.exe

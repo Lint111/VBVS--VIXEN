@@ -1,7 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 

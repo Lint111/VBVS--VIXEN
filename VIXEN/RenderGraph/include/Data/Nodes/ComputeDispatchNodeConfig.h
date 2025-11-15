@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Data/Core/ResourceTypeTraits.h"
-#include "Data/Core/ResourceV3.h"  // Needed for ResourceTypeTraits implementation
+#include "Data/Core/CompileTimeResourceSystem.h"  // Needed for ResourceTypeTraits implementation
 #include <type_traits>
 
 namespace Vixen::RenderGraph {

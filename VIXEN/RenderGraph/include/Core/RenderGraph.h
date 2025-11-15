@@ -5,7 +5,7 @@
 #include "NodeInstance.h"
 #include "NodeTypeRegistry.h"
 #include "GraphTopology.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include "CleanupStack.h"
 #include "ResourceDependencyTracker.h"
 #include "DeferredDestruction.h"

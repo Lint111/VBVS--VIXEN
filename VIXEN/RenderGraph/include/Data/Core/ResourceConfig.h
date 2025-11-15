@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 
 // Forward declare global type
 struct SwapChainPublicVariables;

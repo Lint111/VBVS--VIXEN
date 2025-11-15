@@ -198,7 +198,7 @@ inline std::shared_ptr<ShaderDataBundle> CreateSimplePushConstantBundle() {
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushRange.structDef = MakeSimplePushConstantStruct();
 
-    bundle->reflectionData.pushConstantRanges.push_back(pushRange);
+    bundle->reflectionData->pushConstants.push_back(pushRange);
 
     // Mark bundle as valid (has at least one reflection element)
     bundle->uuid = "test-simple-push";
@@ -221,7 +221,7 @@ inline std::shared_ptr<ShaderDataBundle> CreateComplexPushConstantBundle() {
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pushRange.structDef = MakeComplexPushConstantStruct();
 
-    bundle->reflectionData.pushConstantRanges.push_back(pushRange);
+    bundle->reflectionData->pushConstants.push_back(pushRange);
     bundle->uuid = "test-complex-push";
 
     return bundle;
@@ -254,7 +254,7 @@ inline std::shared_ptr<ShaderDataBundle> CreateSingleScalarPushBundle() {
     pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushRange.structDef = structDef;
 
-    bundle->reflectionData.pushConstantRanges.push_back(pushRange);
+    bundle->reflectionData->pushConstants.push_back(pushRange);
     bundle->uuid = "test-single-scalar";
 
     return bundle;
@@ -290,8 +290,8 @@ inline std::shared_ptr<ShaderDataBundle> CreateDescriptorBundle() {
     sampler.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
     sampler.imageDimension = 2; // 2D texture
 
-    bundle->reflectionData.descriptorBindings.push_back(ubo);
-    bundle->reflectionData.descriptorBindings.push_back(sampler);
+    bundle->reflectionData->descriptorSets[0].push_back(ubo);
+    bundle->reflectionData->descriptorSets[0].push_back(sampler);
     bundle->uuid = "test-descriptors";
 
     return bundle;
@@ -312,7 +312,7 @@ inline std::shared_ptr<ShaderDataBundle> CreateFullFeaturedBundle() {
     pushRange.size = 20;
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pushRange.structDef = MakeSimplePushConstantStruct();
-    bundle->reflectionData.pushConstantRanges.push_back(pushRange);
+    bundle->reflectionData->pushConstants.push_back(pushRange);
 
     bundle->uuid = "test-full-featured";
     return bundle;

@@ -1,19 +1,18 @@
 #pragma once
 
-#define VIXEN_RESOURCEV3_H  // Marker for ResourceTypeTraits.h to know ResourceV3 is in use
+#define VIXEN_COMPILE_TIME_RESOURCE_SYSTEM_H
 
 /**
- * @file ResourceV3.h
- * @brief Zero-overhead compile-time resource type system (drop-in replacement)
+ * @file CompileTimeResourceSystem.h
+ * @brief Zero-overhead compile-time resource type system
  *
- * This file provides a drop-in replacement for PassThroughStorage.h with:
+ * Provides compile-time type validation with zero runtime overhead:
  * - Compile-time-only type validation (static_assert)
  * - Zero runtime overhead (type tags disappear after compilation)
  * - Natural C++ syntax (T&, T*, const T&)
- * - Same API as original Resource class
+ * - Support for shared_ptr<T> with proper ownership semantics
  *
- * Migration: Replace #include "PassThroughStorage.h" with #include "ResourceV3.h"
- * No code changes required!
+ * This is the final form after Phase H refactoring (ResourceVariant eliminated).
  */
 
 #include "Headers.h"  // Include for Vulkan type definitions

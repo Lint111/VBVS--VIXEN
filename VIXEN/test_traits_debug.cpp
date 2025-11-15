@@ -1,7 +1,7 @@
 // Debug test to see if types are properly registered
 #include "Headers.h"
 #include "RenderGraph/include/Data/Core/ResourceTypeTraits.h"
-#include "RenderGraph/include/Data/Core/ResourceV3.h"
+#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
 
 using namespace Vixen::RenderGraph;
 

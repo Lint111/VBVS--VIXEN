@@ -6,7 +6,7 @@
 // Compatible with VULKAN_TRIMMED_BUILD (headers only)
 
 #include "Core/FieldExtractor.h"
-#include "Data/Core/ResourceV3.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include "Data/Core/ResourceTypeTraits.h"
 
 #include <iostream>
