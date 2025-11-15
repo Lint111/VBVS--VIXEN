@@ -63,10 +63,8 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
         INIT_OUTPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
     }
 
-    // Compile-time validation using declared constants
-    static_assert(INPUT_COUNT == CommandPoolNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == CommandPoolNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == CommandPoolNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(CommandPoolNodeConfig, CommandPoolNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -82,9 +80,5 @@ CONSTEXPR_NODE_CONFIG(CommandPoolNodeConfig,
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
-
-// Global compile-time validations
-static_assert(CommandPoolNodeConfig::INPUT_COUNT == CommandPoolNodeCounts::INPUTS);
-static_assert(CommandPoolNodeConfig::OUTPUT_COUNT == CommandPoolNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

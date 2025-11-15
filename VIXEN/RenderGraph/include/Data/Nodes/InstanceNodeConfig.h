@@ -43,10 +43,8 @@ CONSTEXPR_NODE_CONFIG(InstanceNodeConfig,
         INIT_OUTPUT_DESC(INSTANCE, "instance", ResourceLifetime::Persistent, instanceDesc);
     }
 
-    // Compile-time validation
-    static_assert(INPUT_COUNT == InstanceNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == InstanceNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == InstanceNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(InstanceNodeConfig, InstanceNodeCounts);
 
     static_assert(INSTANCE_Slot::index == 0, "INSTANCE must be at index 0");
     static_assert(!INSTANCE_Slot::nullable, "INSTANCE must not be nullable");
@@ -54,11 +52,5 @@ CONSTEXPR_NODE_CONFIG(InstanceNodeConfig,
     // Type validations
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
 };
-
-// Compile-time verification
-static_assert(InstanceNodeConfig::INPUT_COUNT == InstanceNodeCounts::INPUTS,
-              "InstanceNode should have no inputs");
-static_assert(InstanceNodeConfig::OUTPUT_COUNT == InstanceNodeCounts::OUTPUTS,
-              "InstanceNode should have 1 output");
 
 } // namespace Vixen::RenderGraph

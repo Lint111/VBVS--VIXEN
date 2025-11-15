@@ -94,9 +94,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainStructSpreaderNodeConfig,
             extentDesc);
     }
 
-    static_assert(INPUT_COUNT == SwapChainStructSpreaderNodeCounts::INPUTS);
-    static_assert(OUTPUT_COUNT == SwapChainStructSpreaderNodeCounts::OUTPUTS);
-    static_assert(ARRAY_MODE == SwapChainStructSpreaderNodeCounts::ARRAY_MODE);
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(SwapChainStructSpreaderNodeConfig, SwapChainStructSpreaderNodeCounts);
 };
 
 } // namespace Vixen::RenderGraph

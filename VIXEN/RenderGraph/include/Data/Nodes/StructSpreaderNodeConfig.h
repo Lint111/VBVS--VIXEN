@@ -44,9 +44,8 @@ CONSTEXPR_NODE_CONFIG(StructSpreaderNodeConfig,
             structDesc);
     }
 
-    static_assert(INPUT_COUNT == StructSpreaderNodeCounts::INPUTS);
-    static_assert(OUTPUT_COUNT == StructSpreaderNodeCounts::OUTPUTS);
-    static_assert(ARRAY_MODE == StructSpreaderNodeCounts::ARRAY_MODE);
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(StructSpreaderNodeConfig, StructSpreaderNodeCounts);
 };
 
 } // namespace Vixen::RenderGraph

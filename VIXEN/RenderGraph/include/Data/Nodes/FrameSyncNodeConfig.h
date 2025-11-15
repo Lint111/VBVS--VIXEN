@@ -90,10 +90,8 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         INIT_OUTPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
     }
 
-    // Compile-time validation using declared constants
-    static_assert(INPUT_COUNT == FrameSyncNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == FrameSyncNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == FrameSyncNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(FrameSyncNodeConfig, FrameSyncNodeCounts);
 
     static_assert(VULKAN_DEVICE_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -112,9 +110,5 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
     static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, std::vector<VkFence>>);
 };
-
-// Global compile-time validations
-static_assert(FrameSyncNodeConfig::INPUT_COUNT == FrameSyncNodeCounts::INPUTS);
-static_assert(FrameSyncNodeConfig::OUTPUT_COUNT == FrameSyncNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

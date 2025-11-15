@@ -117,7 +117,7 @@ private:
     std::vector<DescriptorSlotInfo> descriptorSlots_;
 
     // Output resource array (indexed by binding)
-    std::vector<ResourceVariant> resourceArray_;
+    std::vector<DescriptorHandleVariant> resourceArray_;
     std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
 
     // Primary workflow helpers
@@ -133,8 +133,8 @@ private:
     // Resource gathering helpers (extracted from GatherResources)
     bool ProcessSlot(size_t slotIndex, const VariadicSlotInfo* slotInfo);
     void InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role);
-    void StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, const ResourceVariant& variant);
-    void StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant);
+    void StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, Resource* resource);
+    void StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, Resource* resource);
 
     // Pointer extraction helper for field extraction
     template<typename T>

@@ -70,10 +70,8 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
         INIT_OUTPUT_DESC(INSTANCE_OUT, "instance_out", ResourceLifetime::Persistent, instanceOutputDesc);
     }
 
-    // Compile-time validation
-    static_assert(INPUT_COUNT == DeviceNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == DeviceNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == DeviceNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(DeviceNodeConfig, DeviceNodeCounts);
 
     static_assert(INSTANCE_IN_Slot::index == 0, "INSTANCE_IN must be at index 0");
     static_assert(!INSTANCE_IN_Slot::nullable, "INSTANCE_IN must not be nullable");
@@ -87,11 +85,5 @@ CONSTEXPR_NODE_CONFIG(DeviceNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<INSTANCE_OUT_Slot::Type, VkInstance>);
 };
-
-// Compile-time verification
-static_assert(DeviceNodeConfig::INPUT_COUNT == DeviceNodeCounts::INPUTS,
-              "DeviceNode should have 1 input");
-static_assert(DeviceNodeConfig::OUTPUT_COUNT == DeviceNodeCounts::OUTPUTS,
-              "DeviceNode should have 2 outputs");
 
 } // namespace Vixen::RenderGraph

@@ -100,10 +100,8 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
             ResourceLifetime::Persistent, shaderDataBundleDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == PushConstantGathererNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == PushConstantGathererNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == PushConstantGathererNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(PushConstantGathererNodeConfig, PushConstantGathererNodeCounts);
 
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 0, "SHADER_DATA_BUNDLE must be at index 0");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
@@ -121,11 +119,7 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
     static_assert(std::is_same_v<PUSH_CONSTANT_DATA_Slot::Type, std::vector<uint8_t>>);
     static_assert(std::is_same_v<PUSH_CONSTANT_RANGES_Slot::Type, std::vector<VkPushConstantRange>>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<PUSH_CONSTANTS_OUT_Slot::Type, std::vector<uint8_t>>);
 };
-
-// Global compile-time validations
-static_assert(PushConstantGathererNodeConfig::INPUT_COUNT == PushConstantGathererNodeCounts::INPUTS);
-static_assert(PushConstantGathererNodeConfig::OUTPUT_COUNT == PushConstantGathererNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

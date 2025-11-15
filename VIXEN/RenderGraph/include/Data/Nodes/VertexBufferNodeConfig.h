@@ -93,10 +93,8 @@ CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig,
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == VertexBufferNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == VertexBufferNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == VertexBufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(VertexBufferNodeConfig, VertexBufferNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -116,9 +114,5 @@ CONSTEXPR_NODE_CONFIG(VertexBufferNodeConfig,
     static_assert(std::is_same_v<INDEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
-
-// Global compile-time validations
-static_assert(VertexBufferNodeConfig::INPUT_COUNT == VertexBufferNodeCounts::INPUTS, "Input count mismatch");
-static_assert(VertexBufferNodeConfig::OUTPUT_COUNT == VertexBufferNodeCounts::OUTPUTS, "Output count mismatch");
 
 } // namespace Vixen::RenderGraph

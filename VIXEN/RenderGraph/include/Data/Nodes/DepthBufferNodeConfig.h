@@ -121,10 +121,8 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == DepthBufferNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == DepthBufferNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == DepthBufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(DepthBufferNodeConfig, DepthBufferNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -157,10 +155,6 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
     static_assert(std::is_same_v<DEPTH_IMAGE_VIEW_Slot::Type, VkImageView>);
     static_assert(std::is_same_v<DEPTH_FORMAT_Slot::Type, VkFormat>);
 };
-
-// Global compile-time validations
-static_assert(DepthBufferNodeConfig::INPUT_COUNT == 3);
-static_assert(DepthBufferNodeConfig::OUTPUT_COUNT == 3);
 
 } // namespace Vixen::RenderGraph
 

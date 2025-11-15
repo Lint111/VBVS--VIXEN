@@ -44,19 +44,13 @@ CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == ConstantNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == ConstantNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == ConstantNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(ConstantNodeConfig, ConstantNodeCounts);
 
     static_assert(OUTPUT_Slot::index == 0, "OUTPUT must be at index 0");
     static_assert(!OUTPUT_Slot::nullable, "OUTPUT is required");
 
     static_assert(std::is_same_v<OUTPUT_Slot::Type, VulkanShaderPtr>);
 };
-
-// Global compile-time validations
-static_assert(ConstantNodeConfig::INPUT_COUNT == ConstantNodeCounts::INPUTS);
-static_assert(ConstantNodeConfig::OUTPUT_COUNT == ConstantNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

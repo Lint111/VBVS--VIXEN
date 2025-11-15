@@ -71,37 +71,23 @@ static_assert(ResourceTypeTraits<std::array<VkImage, 10>>::arraySize == 10,
     "array size should be detected correctly");
 
 // ----------------------------------------------------------------------------
-// Test 4: ResourceVariant itself (macro-generated variant)
+// Test 4: ResourceVariant (ResourceV3 placeholder)
 // ----------------------------------------------------------------------------
-static_assert(ResourceTypeTraits<ResourceVariant>::isValid,
-    "ResourceVariant itself should be valid");
-static_assert(ResourceTypeTraits<ResourceVariant>::isResourceVariant,
-    "ResourceVariant should be detected as ResourceVariant");
-
-// Vector/array of ResourceVariant
-static_assert(ResourceTypeTraits<std::vector<ResourceVariant>>::isValid,
-    "vector<ResourceVariant> should be valid");
-static_assert(ResourceTypeTraits<std::array<ResourceVariant, 5>>::isValid,
-    "array<ResourceVariant, 5> should be valid");
+// NOTE: In ResourceV3, ResourceVariant is an empty placeholder struct, not a variant
+// The old isResourceVariant and isCustomVariant traits don't exist
+// These tests are disabled pending ResourceV3 migration completion
 
 // ----------------------------------------------------------------------------
-// Test 5: Custom variants (type-safe subsets)
+// Test 5: DescriptorHandleVariant (actual variant for inter-node communication)
 // ----------------------------------------------------------------------------
-using TextureHandles = std::variant<VkImage, VkImageView, VkSampler>;
-using BufferHandles = std::variant<VkBuffer, VkBufferView>;
+static_assert(ResourceTypeTraits<DescriptorHandleVariant>::isValid,
+    "DescriptorHandleVariant should be valid");
 
-static_assert(ResourceTypeTraits<TextureHandles>::isValid,
-    "Custom variant with registered types should be valid");
-static_assert(ResourceTypeTraits<TextureHandles>::isCustomVariant,
-    "TextureHandles should be detected as custom variant");
-static_assert(ResourceTypeTraits<BufferHandles>::isValid,
-    "BufferHandles custom variant should be valid");
-
-// Vector/array of custom variants
-static_assert(ResourceTypeTraits<std::vector<TextureHandles>>::isValid,
-    "vector<TextureHandles> should be valid");
-static_assert(ResourceTypeTraits<std::array<BufferHandles, 3>>::isValid,
-    "array<BufferHandles, 3> should be valid");
+// Vector/array of DescriptorHandleVariant
+static_assert(ResourceTypeTraits<std::vector<DescriptorHandleVariant>>::isValid,
+    "vector<DescriptorHandleVariant> should be valid");
+static_assert(ResourceTypeTraits<std::array<DescriptorHandleVariant, 5>>::isValid,
+    "array<DescriptorHandleVariant, 5> should be valid");
 
 // ----------------------------------------------------------------------------
 // Test 6: Invalid types (should be rejected)

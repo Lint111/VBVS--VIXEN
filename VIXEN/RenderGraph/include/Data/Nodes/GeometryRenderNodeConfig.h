@@ -260,10 +260,8 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == GeometryRenderNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == GeometryRenderNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == GeometryRenderNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(GeometryRenderNodeConfig, GeometryRenderNodeCounts);
 
     static_assert(RENDER_PASS_Slot::index == 0, "RENDER_PASS must be at index 0");
     static_assert(!RENDER_PASS_Slot::nullable, "RENDER_PASS is required");
@@ -337,8 +335,6 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(GeometryRenderNodeConfig::INPUT_COUNT == GeometryRenderNodeCounts::INPUTS);
-static_assert(GeometryRenderNodeConfig::OUTPUT_COUNT == GeometryRenderNodeCounts::OUTPUTS);
 static_assert(GeometryRenderNodeConfig::ALLOW_INPUT_ARRAYS); // Array mode enabled
 
 } // namespace Vixen::RenderGraph

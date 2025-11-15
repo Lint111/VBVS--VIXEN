@@ -310,13 +310,47 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
             typeInfo.vecSize = field.vecSize;
             typeInfo.sizeInBytes = field.size;
 
-            // Use visitor pattern to extract typed value from resource variant
-            const auto& resourceVariant = resource->GetHandleVariant();
-            PushConstantPackVisitor visitor(typeInfo, dest, field.size);
-            std::visit(visitor, resourceVariant);
+            // Extract value from resource based on SPIRV type
+            // ResourceV3 stores typed values - extract based on base type
+            size_t bytesWritten = 0;
+
+            // Determine which type to extract based on SPIRV type info
+            switch (typeInfo.baseType) {
+                case ShaderManagement::SpirvBaseType::Float: {
+                    if (typeInfo.vecSize == 1) {
+                        float value = resource->GetHandle<float>();
+                        std::memcpy(dest, &value, sizeof(float));
+                        bytesWritten = sizeof(float);
+                    }
+                    // TODO: Add vec2, vec3, vec4 support
+                    break;
+                }
+                case ShaderManagement::SpirvBaseType::Int: {
+                    if (typeInfo.vecSize == 1) {
+                        int32_t value = resource->GetHandle<int32_t>();
+                        std::memcpy(dest, &value, sizeof(int32_t));
+                        bytesWritten = sizeof(int32_t);
+                    }
+                    break;
+                }
+                case ShaderManagement::SpirvBaseType::UInt: {
+                    if (typeInfo.vecSize == 1) {
+                        uint32_t value = resource->GetHandle<uint32_t>();
+                        std::memcpy(dest, &value, sizeof(uint32_t));
+                        bytesWritten = sizeof(uint32_t);
+                    }
+                    break;
+                }
+                default:
+                    // Unsupported type - zero fill
+                    std::fill(dest, dest + field.size, 0);
+                    bytesWritten = field.size;
+                    break;
+            }
 
             NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +
-                          "' at offset " + std::to_string(field.offset) + " (connected)");
+                          "' at offset " + std::to_string(field.offset) + " (connected, " +
+                          std::to_string(bytesWritten) + " bytes written)");
         } else {
             // Leave as zero-initialized (already done by std::fill)
             NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +

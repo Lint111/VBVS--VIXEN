@@ -106,10 +106,8 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device", ResourceLifetime::Persistent, deviceOutDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == RenderPassNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == RenderPassNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(RenderPassNodeConfig, RenderPassNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE is required");
@@ -133,9 +131,5 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
-
-// Global compile-time validations
-static_assert(RenderPassNodeConfig::INPUT_COUNT == RenderPassNodeCounts::INPUTS);
-static_assert(RenderPassNodeConfig::OUTPUT_COUNT == RenderPassNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

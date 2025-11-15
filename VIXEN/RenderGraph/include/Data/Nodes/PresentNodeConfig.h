@@ -132,10 +132,8 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == PresentNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == PresentNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == PresentNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(PresentNodeConfig, PresentNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN_Slot must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE_IN_Slot is required");
@@ -171,10 +169,6 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
     static_assert(std::is_same_v<PRESENT_FUNCTION_Slot::Type, PFN_vkQueuePresentKHR>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
-
-// Global compile-time validations
-static_assert(PresentNodeConfig::INPUT_COUNT == PresentNodeCounts::INPUTS);
-static_assert(PresentNodeConfig::OUTPUT_COUNT == PresentNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
 

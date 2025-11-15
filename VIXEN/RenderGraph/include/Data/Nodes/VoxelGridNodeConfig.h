@@ -84,10 +84,8 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         INIT_OUTPUT_DESC(OCTREE_MATERIALS_BUFFER, "octree_materials_buffer", ResourceLifetime::Persistent, octreeMaterialsDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == VoxelGridNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == VoxelGridNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == VoxelGridNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(VoxelGridNodeConfig, VoxelGridNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
@@ -100,11 +98,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<OCTREE_NODES_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VulkanBuffer*>);
 };
-
-// Global compile-time validations
-static_assert(VoxelGridNodeConfig::INPUT_COUNT == VoxelGridNodeCounts::INPUTS);
-static_assert(VoxelGridNodeConfig::OUTPUT_COUNT == VoxelGridNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

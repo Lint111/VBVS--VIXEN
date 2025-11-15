@@ -89,7 +89,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotScope::NodeLevel);
 
     // Resource array from DescriptorResourceGathererNode (data-driven binding)
-    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 3,
+    INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorHandleVariant>, 3,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -169,10 +169,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == DescriptorSetNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == DescriptorSetNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(DescriptorSetNodeConfig, DescriptorSetNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -205,7 +203,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundle*>);
     static_assert(std::is_same_v<SWAPCHAIN_IMAGE_COUNT_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
@@ -220,9 +218,5 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
      */
     static constexpr const char* PARAM_LAYOUT_SPEC = "layoutSpec";
 };
-
-// Global compile-time validations
-static_assert(DescriptorSetNodeConfig::INPUT_COUNT == DescriptorSetNodeCounts::INPUTS);
-static_assert(DescriptorSetNodeConfig::OUTPUT_COUNT == DescriptorSetNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

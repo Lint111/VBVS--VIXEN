@@ -56,10 +56,8 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
         INIT_OUTPUT_DESC(SHOULD_EXECUTE, "should_execute", ResourceLifetime::Transient, boolDesc);
     }
 
-    // Compile-time validation
-    static_assert(INPUT_COUNT == LoopBridgeNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == LoopBridgeNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == LoopBridgeNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(LoopBridgeNodeConfig, LoopBridgeNodeCounts);
 
     static_assert(LOOP_ID_Slot::index == 0, "LOOP_ID must be at index 0");
     static_assert(!LOOP_ID_Slot::nullable, "LOOP_ID is required");
@@ -74,9 +72,5 @@ CONSTEXPR_NODE_CONFIG(LoopBridgeNodeConfig,
     static_assert(std::is_same_v<LOOP_OUT_Slot::Type, const LoopReference*>);
     static_assert(std::is_same_v<SHOULD_EXECUTE_Slot::Type, bool>);
 };
-
-// Global compile-time validations
-static_assert(LoopBridgeNodeConfig::INPUT_COUNT == LoopBridgeNodeCounts::INPUTS);
-static_assert(LoopBridgeNodeConfig::OUTPUT_COUNT == LoopBridgeNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

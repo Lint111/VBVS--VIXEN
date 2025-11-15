@@ -403,14 +403,13 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
         return false;
     }
 
-    auto variant = slotInfo->resource->GetHandleVariant();
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Slot " + std::to_string(slotIndex) + " variant index=" + std::to_string(variant.index()) + ", resource type=" + std::to_string(static_cast<int>(slotInfo->resource->GetType())) + ", isValid=" + std::to_string(slotInfo->resource->IsValid()) + ", hasFieldExtraction=" + std::to_string(slotInfo->hasFieldExtraction));
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Slot " + std::to_string(slotIndex) + " resource type=" + std::to_string(static_cast<int>(slotInfo->resource->GetType())) + ", isValid=" + std::to_string(slotInfo->resource->IsValid()) + ", hasFieldExtraction=" + std::to_string(slotInfo->hasFieldExtraction));
 
     // Store resource (field extraction or regular)
     if (slotInfo->hasFieldExtraction && slotInfo->fieldOffset != 0) {
-        StoreFieldExtractionResource(slotIndex, binding, slotInfo->fieldOffset, variant);
+        StoreFieldExtractionResource(slotIndex, binding, slotInfo->fieldOffset, slotInfo->resource);
     } else {
-        StoreRegularResource(slotIndex, binding, slotInfo->slotName, slotInfo->slotRole, variant);
+        StoreRegularResource(slotIndex, binding, slotInfo->slotName, slotInfo->slotRole, slotInfo->resource);
     }
 
     return true;
@@ -423,24 +422,16 @@ void DescriptorResourceGathererNode::InitializeExecuteOnlySlot(size_t slotIndex,
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::InitializeExecuteOnlySlot] Recorded role for Execute-only slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(role)) + ") - placeholder initialized, resource will be gathered in Execute phase");
 }
 
-void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, const ResourceVariant& variant) {
+void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, Resource* resource) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Extracting field at offset " + std::to_string(fieldOffset) + " from struct for binding " + std::to_string(binding));
 
-    // Extract field using visitor pattern - get raw struct pointer from variant
-    std::visit([&](auto&& structPtr) {
-        const void* rawStructPtr = ExtractRawPointerFromVariant(structPtr);
-        if (!rawStructPtr) {
-            return;
-        }
+    // Extract handle from resource and store in variant
+    auto handle = resource->GetDescriptorHandle();
 
-        // Apply field offset to get field pointer (not currently used - stored for downstream)
-        auto* fieldPtr = reinterpret_cast<const char*>(rawStructPtr) + fieldOffset;
+    // Store handle - downstream nodes will handle field extraction if needed
+    resourceArray_[binding] = handle;
 
-        // Store original struct - downstream nodes will handle extraction
-        resourceArray_[binding] = variant;
-
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored struct with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
-    }, variant);
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
 }
 
 template<typename T>
@@ -458,9 +449,12 @@ const void* DescriptorResourceGathererNode::ExtractRawPointerFromVariant(T&& str
     }
 }
 
-void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, const ResourceVariant& variant) {
-    resourceArray_[binding] = variant;
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), variant index=" + std::to_string(variant.index()) + ", role=" + std::to_string(static_cast<int>(role)));
+void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, Resource* resource) {
+    // Extract handle from resource and store in variant
+    auto handle = resource->GetDescriptorHandle();
+    resourceArray_[binding] = handle;
+
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), variant index=" + std::to_string(handle.index()) + ", role=" + std::to_string(static_cast<int>(role)));
 }
 
 bool DescriptorResourceGathererNode::ValidateResourceType(Resource* res, VkDescriptorType expectedType) {

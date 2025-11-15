@@ -81,10 +81,8 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
         INIT_OUTPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderDataBundleDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == ShaderLibraryNodeCounts::INPUTS);
-    static_assert(OUTPUT_COUNT == ShaderLibraryNodeCounts::OUTPUTS);
-    static_assert(ARRAY_MODE == ShaderLibraryNodeCounts::ARRAY_MODE);
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(ShaderLibraryNodeConfig, ShaderLibraryNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable);
@@ -100,9 +98,5 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
 };
-
-// Global compile-time validations
-static_assert(ShaderLibraryNodeConfig::INPUT_COUNT == ShaderLibraryNodeCounts::INPUTS);
-static_assert(ShaderLibraryNodeConfig::OUTPUT_COUNT == ShaderLibraryNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

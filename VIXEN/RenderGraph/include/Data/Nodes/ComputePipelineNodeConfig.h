@@ -100,10 +100,8 @@ CONSTEXPR_NODE_CONFIG(ComputePipelineNodeConfig,
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out", ResourceLifetime::Persistent, vulkanDeviceDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == ComputePipelineNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == ComputePipelineNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == ComputePipelineNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(ComputePipelineNodeConfig, ComputePipelineNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable);
@@ -130,10 +128,6 @@ CONSTEXPR_NODE_CONFIG(ComputePipelineNodeConfig,
     static_assert(std::is_same_v<PIPELINE_CACHE_Slot::Type, VkPipelineCache>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
-
-// Global compile-time validations
-static_assert(ComputePipelineNodeConfig::INPUT_COUNT == ComputePipelineNodeCounts::INPUTS);
-static_assert(ComputePipelineNodeConfig::OUTPUT_COUNT == ComputePipelineNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
 

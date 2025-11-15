@@ -164,10 +164,28 @@ inline constexpr bool IsValidType_v = []() constexpr {
     return IsRegisteredType<BareBaseType>::value;
 }();
 
+// ============================================================================
+// DESCRIPTOR HANDLE VARIANT (For inter-node communication)
+// ============================================================================
+
+// Actual std::variant for passing descriptor handles between nodes
+// This is needed because nodes like DescriptorResourceGathererNode output
+// arrays of handles that DescriptorSetNode consumes
+using DescriptorHandleVariant = std::variant<
+    std::monostate,              // Placeholder/empty
+    VkImageView,                 // Image/texture descriptors
+    VkBuffer,                    // Buffer descriptors
+    VkSampler,                   // Sampler descriptors
+    SwapChainPublicVariables*,   // Swapchain resources (per-frame image views)
+    VkImage                      // Storage images
+>;
+
 // ResourceVariant: Passthrough type for migration compatibility
 // In ResourceV3, this is a placeholder that represents "any valid type"
 // The actual type validation happens at compile-time through IsValidType_v
 // This allows slots to accept any registered type and pass it through unchanged
+//
+// NOTE: For inter-node communication of descriptor handles, use DescriptorHandleVariant instead
 struct ResourceVariant {
     // Empty struct - acts as a type tag for "accepts any valid resource"
     // The actual storage and type handling is done by ZeroOverheadStorage
@@ -322,12 +340,81 @@ public:
         return nullptr;
     }
 
-    // Migration compatibility method
+    // Migration compatibility method (deprecated - returns empty struct)
     // Returns a ResourceVariant passthrough for compatibility
     ResourceVariant GetHandleVariant() const {
         // ResourceVariant is now a passthrough type
         // It doesn't store data, just indicates "any valid resource"
         return ResourceVariant{};
+    }
+
+    // Extract handle as DescriptorHandleVariant for inter-node communication
+    // This method attempts to extract common descriptor handle types
+    DescriptorHandleVariant GetDescriptorHandle() const {
+        // Try each common descriptor type in order of likelihood
+        // Note: This uses template specialization - only types that were Set() will succeed
+
+        // Try VkImageView (most common for sampledImage descriptors)
+        try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
+
+        // Try VkBuffer (for uniform/storage buffers)
+        try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
+
+        // Try VkSampler (for sampler descriptors)
+        try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
+
+        // Try SwapChainPublicVariables* (for swapchain resources)
+        try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
+
+        // Try VkImage (for storage images)
+        try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
+
+        // If nothing matched, return empty monostate
+        return DescriptorHandleVariant{std::monostate{}};
+    }
+
+    // Legacy-style runtime factory translated into ResourceV3
+    // Creates a Resource from a runtime ResourceType and a heap-allocated
+    // ResourceDescriptorBase. This replaces the old InitializeResourceFromType
+    // behavior by dynamically inspecting the incoming descriptor and storing
+    // the corresponding compile-time descriptor variant in the Resource.
+    static Resource CreateFromType(ResourceType type, std::unique_ptr<ResourceDescriptorBase> desc) {
+        Resource res;
+        res.type_ = type;
+        res.lifetime_ = ResourceLifetime::Transient;
+
+        // Convert the incoming polymorphic descriptor into the variant
+        if (desc) {
+            // Try to match each known descriptor alternative and move into variant
+            if (auto* img = dynamic_cast<ImageDescriptor*>(desc.get())) {
+                res.descriptor_ = *img;
+            } else if (auto* buf = dynamic_cast<BufferDescriptor*>(desc.get())) {
+                res.descriptor_ = *buf;
+            } else if (auto* handle = dynamic_cast<HandleDescriptor*>(desc.get())) {
+                res.descriptor_ = *handle;
+            } else if (auto* cmd = dynamic_cast<CommandPoolDescriptor*>(desc.get())) {
+                res.descriptor_ = *cmd;
+            } else if (auto* shader = dynamic_cast<ShaderProgramHandleDescriptor*>(desc.get())) {
+                res.descriptor_ = *shader;
+            } else if (auto* stor = dynamic_cast<StorageImageDescriptor*>(desc.get())) {
+                res.descriptor_ = *stor;
+            } else if (auto* tex3 = dynamic_cast<Texture3DDescriptor*>(desc.get())) {
+                res.descriptor_ = *tex3;
+            } else if (auto* runtime = dynamic_cast<RuntimeStructDescriptor*>(desc.get())) {
+                res.descriptor_ = *runtime;
+            } else if (auto* runtimeBuf = dynamic_cast<RuntimeStructBuffer*>(desc.get())) {
+                res.descriptor_ = *runtimeBuf;
+            } else {
+                // Unknown descriptor type: store a generic HandleDescriptor with runtime type name
+                res.descriptor_ = HandleDescriptor("UnknownDescriptor");
+            }
+        } else {
+            res.descriptor_ = HandleDescriptor("EmptyDescriptor");
+        }
+
+        // Note: We intentionally do NOT try to initialize or populate handle storage
+        // here. Resource handles are set explicitly via SetHandle() in the new API.
+        return res;
     }
 
 private:

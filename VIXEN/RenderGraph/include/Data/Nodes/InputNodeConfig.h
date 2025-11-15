@@ -62,15 +62,8 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
     static_assert(!INPUT_STATE_Slot::nullable, "INPUT_STATE must not be nullable");
     static_assert(std::is_same_v<INPUT_STATE_Slot::Type, InputStatePtr>, "INPUT_STATE must be InputStatePtr");
 
-    static_assert(INPUT_COUNT == InputNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == InputNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == InputNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(InputNodeConfig, InputNodeCounts);
 };
-
-// Compile-time verification
-static_assert(InputNodeConfig::INPUT_COUNT == InputNodeCounts::INPUTS,
-              "InputNode input count validation");
-static_assert(InputNodeConfig::OUTPUT_COUNT == InputNodeCounts::OUTPUTS,
-              "InputNode output count validation");
 
 } // namespace Vixen::RenderGraph

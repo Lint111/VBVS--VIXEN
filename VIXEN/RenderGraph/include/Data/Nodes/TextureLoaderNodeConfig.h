@@ -97,10 +97,8 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == TextureLoaderNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == TextureLoaderNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == TextureLoaderNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(TextureLoaderNodeConfig, TextureLoaderNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -119,9 +117,5 @@ CONSTEXPR_NODE_CONFIG(TextureLoaderNodeConfig,
     static_assert(!VULKAN_DEVICE_OUT_Slot::nullable, "DEVICE_OUT is required");
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>, "DEVICE_OUT must be VkDevice");
 };
-
-// Global compile-time validations
-static_assert(TextureLoaderNodeConfig::INPUT_COUNT == TextureLoaderNodeCounts::INPUTS);
-static_assert(TextureLoaderNodeConfig::OUTPUT_COUNT == TextureLoaderNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph

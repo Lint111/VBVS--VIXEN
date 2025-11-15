@@ -108,10 +108,8 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 		);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == FramebufferNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == FramebufferNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == FramebufferNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(FramebufferNodeConfig, FramebufferNodeCounts);
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE input must be at index 0");
     static_assert(!VULKAN_DEVICE_IN_Slot::nullable, "VULKAN_DEVICE input is required");
@@ -141,8 +139,6 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 };
 
 // Global compile-time validations
-static_assert(FramebufferNodeConfig::INPUT_COUNT == FramebufferNodeCounts::INPUTS);
-static_assert(FramebufferNodeConfig::OUTPUT_COUNT == FramebufferNodeCounts::OUTPUTS);
 static_assert(FramebufferNodeConfig::ALLOW_INPUT_ARRAYS);
 
 } // namespace Vixen::RenderGraph

@@ -58,7 +58,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotScope::NodeLevel);
 
     // ===== OUTPUTS (3) =====
-    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<ResourceVariant>, 0,
+    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorHandleVariant>, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -90,10 +90,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
             ResourceLifetime::Persistent, shaderDataBundleDesc);
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == DescriptorResourceGathererNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == DescriptorResourceGathererNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == DescriptorResourceGathererNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(DescriptorResourceGathererNodeConfig, DescriptorResourceGathererNodeCounts);
 
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 0, "SHADER_DATA_BUNDLE must be at index 0");
     static_assert(!SHADER_DATA_BUNDLE_Slot::nullable, "SHADER_DATA_BUNDLE is required");
@@ -109,13 +107,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
-    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<ResourceVariant>>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
     static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderDataBundlePtr>);
-};
-
-// Global compile-time validations
-static_assert(DescriptorResourceGathererNodeConfig::INPUT_COUNT == DescriptorResourceGathererNodeCounts::INPUTS);
-static_assert(DescriptorResourceGathererNodeConfig::OUTPUT_COUNT == DescriptorResourceGathererNodeCounts::OUTPUTS);
-
 } // namespace Vixen::RenderGraph

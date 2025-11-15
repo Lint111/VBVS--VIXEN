@@ -189,10 +189,8 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         );
     }
 
-    // Compile-time validations
-    static_assert(INPUT_COUNT == SwapChainNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == SwapChainNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == SwapChainNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(SwapChainNodeConfig, SwapChainNodeCounts);
 
     static_assert(HWND_Slot::index == 0, "HWND input must be at index 0");
     static_assert(!HWND_Slot::nullable, "HWND input is required");
@@ -253,10 +251,6 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<CURRENT_FRAME_IMAGE_VIEW_Slot::Type, VkImageView>);
 };
-
-// Global compile-time validations
-static_assert(SwapChainNodeConfig::INPUT_COUNT == SwapChainNodeCounts::INPUTS);
-static_assert(SwapChainNodeConfig::OUTPUT_COUNT == SwapChainNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
 
