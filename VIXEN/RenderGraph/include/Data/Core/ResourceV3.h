@@ -143,8 +143,9 @@ REGISTER_COMPILE_TIME_TYPE(LoopReference);
 REGISTER_COMPILE_TIME_TYPE(BoolOp);
 REGISTER_COMPILE_TIME_TYPE(SlotRole);
 REGISTER_COMPILE_TIME_TYPE(InputState);
-REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
-REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
+
+// NOTE: ImageSamplerPair, DescriptorHandleVariant, and ResourceVariant
+// are registered later after their definitions
 
 // Platform-specific types
 #ifdef _WIN32
@@ -278,7 +279,7 @@ template<typename T>
 inline constexpr bool IsValidType_v = IsValidTypeImpl<T>::value;
 
 // ============================================================================
-// DESCRIPTOR HANDLE VARIANT (For inter-node communication)
+// FORWARD TYPE DEFINITIONS (Must be defined before registration)
 // ============================================================================
 
 /**
@@ -294,27 +295,6 @@ struct ImageSamplerPair {
     ImageSamplerPair() = default;
     ImageSamplerPair(VkImageView view, VkSampler samp) : imageView(view), sampler(samp) {}
 };
-
-// DescriptorHandleVariant: Domain-specific runtime variant for descriptor communication
-//
-// DESIGN RATIONALE:
-// ResourceV3 provides compile-time type safety within Resource storage using ZeroOverheadStorage.
-// However, descriptor gathering nodes (DescriptorResourceGathererNode) collect heterogeneous
-// descriptor handles from variadic inputs and pass them to descriptor set creation nodes.
-//
-// This requires runtime polymorphism because:
-// 1. Different bindings have different handle types (VkImageView, VkBuffer, VkSampler, etc.)
-// 2. The binding array is dynamically sized based on shader reflection
-// 3. Each binding's type is only known at runtime from SPIRV reflection metadata
-//
-// This is NOT a violation of ResourceV3's philosophy - it's a domain-specific inter-node
-// communication protocol. ResourceV3 handles type safety WITHIN resource storage; this variant
-// handles type safety for the descriptor binding protocol BETWEEN nodes.
-//
-// Alternative considered: Separate typed outputs (std::vector<VkImageView>, std::vector<VkBuffer>, etc.)
-// Rejected because: Would require NxM connections for N descriptor types x M pipeline stages,
-// and doesn't match the semantic model of "array of bindings" that Vulkan uses.
-// (Forward declared above for type registration - this comment documents the rationale)
 
 // ResourceVariant: Passthrough type for migration compatibility
 // In ResourceV3, this is a placeholder that represents "any valid type"
@@ -336,6 +316,36 @@ struct ResourceVariant {
         // In ResourceV3, this is just for compatibility - actual storage is in Resource
     }
 };
+
+// Register types defined above (after their definitions)
+REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
+REGISTER_COMPILE_TIME_TYPE(ResourceVariant);
+REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
+
+// ============================================================================
+// DESCRIPTOR HANDLE VARIANT (For inter-node communication)
+// ============================================================================
+
+// DescriptorHandleVariant: Domain-specific runtime variant for descriptor communication
+//
+// DESIGN RATIONALE:
+// ResourceV3 provides compile-time type safety within Resource storage using ZeroOverheadStorage.
+// However, descriptor gathering nodes (DescriptorResourceGathererNode) collect heterogeneous
+// descriptor handles from variadic inputs and pass them to descriptor set creation nodes.
+//
+// This requires runtime polymorphism because:
+// 1. Different bindings have different handle types (VkImageView, VkBuffer, VkSampler, etc.)
+// 2. The binding array is dynamically sized based on shader reflection
+// 3. Each binding's type is only known at runtime from SPIRV reflection metadata
+//
+// This is NOT a violation of ResourceV3's philosophy - it's a domain-specific inter-node
+// communication protocol. ResourceV3 handles type safety WITHIN resource storage; this variant
+// handles type safety for the descriptor binding protocol BETWEEN nodes.
+//
+// Alternative considered: Separate typed outputs (std::vector<VkImageView>, std::vector<VkBuffer>, etc.)
+// Rejected because: Would require NxM connections for N descriptor types x M pipeline stages,
+// and doesn't match the semantic model of "array of bindings" that Vulkan uses.
+// (Forward declared above for type registration - this comment documents the rationale)
 
 // ============================================================================
 // ZERO-OVERHEAD STORAGE
@@ -639,6 +649,10 @@ struct ResourceTypeTraits {
     static constexpr bool isVector = StripContainer<T>::isVector;
     static constexpr bool isArray = StripContainer<T>::isArray;
     static constexpr size_t arraySize = StripContainer<T>::arraySize;
+
+    // Variant detection (for compatibility with old code)
+    static constexpr bool isResourceVariant = std::is_same_v<std::decay_t<T>, ResourceVariant>;
+    static constexpr bool isCustomVariant = false;
 };
 
 // Note: No specialization for pointers because Vulkan handles are typedef'd pointers

@@ -1,7 +1,20 @@
 #pragma once
 
 // ============================================================================
-// Precompiled Header for RenderGraph
+// DEPRECATED - Use Headers.h instead
+// ============================================================================
+// This file has been consolidated into include/Headers.h (the central header).
+// All functionality from pch.h is now in Headers.h.
+// This file is kept temporarily for backward compatibility and will be removed.
+
+#warning "pch.h is deprecated - use Headers.h instead (central header)"
+
+// Forward to central header
+#include "Headers.h"
+
+// Legacy content below (now redundant):
+// ============================================================================
+// Precompiled Header for RenderGraph (DEPRECATED)
 // ============================================================================
 // Common headers used throughout RenderGraph to speed up compilation
 // This file is precompiled once and reused across all translation units

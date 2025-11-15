@@ -220,6 +220,9 @@ endif()
 # C++23 standard
 target_compile_features(RenderGraph PUBLIC cxx_std_23)
 
+# Define macro to enable magic_enum in Headers.h
+target_compile_definitions(RenderGraph PUBLIC RENDERGRAPH_HAS_MAGIC_ENUM)
+
 # ============================================================================
 # Include Directories
 # ============================================================================

@@ -189,7 +189,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
         // Update resource array with fresh value
         uint32_t binding = slotInfo->binding;
-        auto variant = freshResource->GetHandleVariant();
+        auto variant = freshResource->GetDescriptorHandle();
         resourceArray_[binding] = variant;
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) + " (slot " + std::to_string(i) + ")");
