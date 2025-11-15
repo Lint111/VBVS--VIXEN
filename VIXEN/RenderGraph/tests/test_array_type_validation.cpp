@@ -129,7 +129,6 @@ void printTypeInfo(const char* typeName) {
     if (ResourceTypeTraits<T>::isArray) {
         std::cout << "    arraySize: " << ResourceTypeTraits<T>::arraySize << "\n";
     }
-    std::cout << "    isResourceVariant: " << ResourceTypeTraits<T>::isResourceVariant << "\n";
     std::cout << "    isCustomVariant: " << ResourceTypeTraits<T>::isCustomVariant << "\n";
 }
 
@@ -151,9 +150,9 @@ int main() {
     printTypeInfo<std::array<VkBuffer, 5>>("array<VkBuffer, 5>");
     std::cout << "\n";
 
-    std::cout << "Test 4: ResourceVariant\n";
-    printTypeInfo<ResourceVariant>("ResourceVariant");
-    printTypeInfo<std::vector<ResourceVariant>>("vector<ResourceVariant>");
+    std::cout << "Test 4: PassThroughStorage\n";
+    printTypeInfo<PassThroughStorage>("PassThroughStorage");
+    printTypeInfo<std::vector<PassThroughStorage>>("vector<PassThroughStorage>");
     std::cout << "\n";
 
     std::cout << "Test 5: Custom variants\n";

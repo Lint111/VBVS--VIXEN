@@ -238,11 +238,11 @@ class UniversalGatherer {
 public:
     static constexpr size_t INPUT_COUNT = Count;
 
-    std::array<Slot<ResourceVariant>, Count> inputs;
-    Slot<std::vector<ResourceVariant>> gatheredResources;
+    std::array<Slot<PassThroughStorage>, Count> inputs;
+    Slot<std::vector<PassThroughStorage>> gatheredResources;
 
     void execute() {
-        std::vector<ResourceVariant> gathered;
+        std::vector<PassThroughStorage> gathered;
         gathered.reserve(Count);
 
         for (size_t i = 0; i < Count; ++i) {

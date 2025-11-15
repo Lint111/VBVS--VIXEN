@@ -1,22 +1,40 @@
 # Active Context
 
-**Last Updated**: November 12, 2025
+**Last Updated**: November 15, 2025
 
-## Current Focus: Phase H - Voxel Data Infrastructure (24-Task Implementation)
+## Current Focus: Phase H - Type System Refactoring & Cleanup (90% Complete)
 
-**Phase H Started** (November 8, 2025): Implementing baseline brick-based sparse voxel octree (SVO) for comparative research. ECS-optimized variant deferred to Phase N+1 for extended study (180 → 360 configurations).
+**Phase H: Type System Improvements** (November 15, 2025):
+- **shared_ptr<T> pattern support** added to ResourceV3 type system
+- **ShaderDataBundle migration** from raw pointers to shared_ptr throughout pipeline
+- **ResourceVariant deleted** - redundant wrapper around PassThroughStorage
+- **Production code builds cleanly** - RenderGraph.lib, VIXEN.exe, all dependencies
+- 7 test files pending migration to new API (non-blocking)
 
-**Critical ESVO Bit Layout Bug Diagnosed & Fixed** (November 12, 2025):
-- **Layer 1 Issue**: GetChildMask was reading bits 8-15 directly without reversing back to CPU order
-  - CPU SetChild(i) sets bit (15-i) for shader efficiency
-  - GetChildMask returned bits in reversed order
-  - HasChild(i) would check wrong bit, breaking octree construction
-  - **Fix**: Reverse bits when extracting (bit 15-i → bit i)
-- **Root Cause**: ESVO descriptor layout is REVERSED for shader traversal algorithm
-  - Shader does: `descriptor0 << shift` then checks `(result & 0x8000)`
-  - Requires child[i] at bit (15-i) so shifts land at bit 15
-  - CPU octree construction must reverse bits for normal CPU semantics
-- **Status**: ✅ Fixed (80acf78), octree now renders Cornell box with red cube, floor, and walls visible
+**Recent Architectural Changes** (November 15, 2025):
+
+1. **shared_ptr<T> Type System Extension**:
+   - Pattern recognition: `is_specialization_v<shared_ptr, T>` (ResourceV3.h:214-218)
+   - Element extraction: `typename T::element_type` (ResourceV3.h:234-239)
+   - Validation helper: `IsValidSharedPtrType<T>()` (ResourceV3.h:269-278)
+   - Integrated into type validation logic (ResourceV3.h:294)
+
+2. **ShaderDataBundle Pointer Migration**:
+   - **Producer**: ShaderLibraryNodeConfig outputs `shared_ptr<ShaderDataBundle>`
+   - **Consumers Updated**: GraphicsPipelineNodeConfig, ComputePipelineNodeConfig, ComputeDispatchNodeConfig, DescriptorResourceGathererNodeConfig, PushConstantGathererNodeConfig
+   - **Implementation**: All .cpp files updated to use shared_ptr directly
+   - **GraphicsPipelineNode**: Removed no-op deleter wrapper hack (lines 543-546 deleted)
+
+3. **ResourceVariant Elimination**:
+   - Deleted redundant `ResourceVariant` struct wrapper
+   - ResourceGathererNode uses `vector<PassThroughStorage>` directly
+   - Renamed `convertToVariant()` → `convertToStorage()`
+   - Updated UniversalGatherer template class
+
+4. **Test Infrastructure**:
+   - `test_array_type_validation.cpp` updated to use PassThroughStorage
+   - `test_passthroughstorage_handles.cpp` fixed lvalue binding with std::move()
+   - 7 legacy test files identified (use ResourceSlotDescriptor, ResourceVariant)
 
 **Most Recent Completion - Phase G** (November 8, 2025):
 - SlotRole bitwise flags system (Dependency | Execute) enables flexible descriptor binding semantics
