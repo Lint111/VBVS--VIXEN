@@ -304,69 +304,108 @@ public:
     // Setters (compile-time tag dispatch)
     template<typename T>
     void Set(T&& value, ValueTag<std::decay_t<T>>) {
-        data_ = std::forward<T>(value);
+        static_assert(IsValidType_v<std::decay_t<T>>, "Type not registered");
+        // Store by value - copy into type-erased storage
+        valueStorage_ = std::make_any<std::decay_t<T>>(std::forward<T>(value));
         mode_ = Mode::Value;
     }
 
     template<typename T>
     void Set(T& value, RefTag<T>) {
+        static_assert(IsValidType_v<T>, "Type not registered");
         refPtr_ = static_cast<void*>(&value);
+        #ifndef NDEBUG
+        typeInfo_ = &typeid(T);  // Runtime type check in debug builds
+        #endif
         mode_ = Mode::Reference;
     }
 
     template<typename T>
     void Set(const T& value, ConstRefTag<T>) {
+        static_assert(IsValidType_v<T>, "Type not registered");
         constRefPtr_ = static_cast<const void*>(&value);
+        #ifndef NDEBUG
+        typeInfo_ = &typeid(T);  // Runtime type check in debug builds
+        #endif
         mode_ = Mode::Reference;
     }
 
     template<typename T>
     void Set(T* value, PtrTag<T>) {
+        static_assert(IsValidType_v<T>, "Type not registered");
         refPtr_ = static_cast<void*>(value);
+        #ifndef NDEBUG
+        typeInfo_ = &typeid(T);  // Runtime type check in debug builds
+        #endif
         mode_ = Mode::Pointer;
     }
 
     template<typename T>
     void Set(const T* value, ConstPtrTag<T>) {
+        static_assert(IsValidType_v<T>, "Type not registered");
         constRefPtr_ = static_cast<const void*>(value);
+        #ifndef NDEBUG
+        typeInfo_ = &typeid(T);  // Runtime type check in debug builds
+        #endif
         mode_ = Mode::Pointer;
     }
 
     // Getters (compile-time tag dispatch)
     template<typename T>
     T Get(ValueTag<T>) const {
-        if (auto* ptr = std::get_if<T>(&data_)) return *ptr;
-        return T{};
+        static_assert(IsValidType_v<T>, "Type not registered");
+        #ifndef NDEBUG
+        if (!valueStorage_.has_value()) return T{};
+        #endif
+        return std::any_cast<T>(valueStorage_);
     }
 
     template<typename T>
     T& Get(RefTag<T>) const {
+        static_assert(IsValidType_v<T>, "Type not registered");
+        #ifndef NDEBUG
+        assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
+        #endif
         return *static_cast<T*>(refPtr_);
     }
 
     template<typename T>
     const T& Get(ConstRefTag<T>) const {
+        static_assert(IsValidType_v<T>, "Type not registered");
+        #ifndef NDEBUG
+        assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
+        #endif
         return *static_cast<const T*>(constRefPtr_);
     }
 
     template<typename T>
     T* Get(PtrTag<T>) const {
+        static_assert(IsValidType_v<T>, "Type not registered");
+        #ifndef NDEBUG
+        assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
+        #endif
         return static_cast<T*>(refPtr_);
     }
 
     template<typename T>
     const T* Get(ConstPtrTag<T>) const {
+        static_assert(IsValidType_v<T>, "Type not registered");
+        #ifndef NDEBUG
+        assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
+        #endif
         return static_cast<const T*>(constRefPtr_);
     }
 
     bool IsEmpty() const { return mode_ == Mode::Empty; }
 
 private:
-    std::variant<std::monostate, VkImage, VkBuffer, VkImageView, VkSampler, VkBufferView,
-                 ImageSamplerPair, uint32_t, float, bool> data_;
-    void* refPtr_ = nullptr;
-    const void* constRefPtr_ = nullptr;
+    std::any valueStorage_;  // Type-erased value storage (for Mode::Value)
+    void* refPtr_ = nullptr;  // For Mode::Reference and Mode::Pointer
+    const void* constRefPtr_ = nullptr;  // For const references/pointers
     Mode mode_ = Mode::Empty;
+    #ifndef NDEBUG
+    std::type_info const* typeInfo_ = nullptr;  // Runtime type validation in debug builds
+    #endif
 };
 
 // ============================================================================
@@ -567,10 +606,8 @@ struct ResourceTypeTraits {
     // Strip containers to get base type
     using BaseType = typename StripContainer<T>::Type;
 
-    // Check if type or base type is registered
-    static constexpr bool isValid =
-        IsRegisteredType<T>::value ||  // Direct type is registered
-        (StripContainer<T>::isContainer && IsRegisteredType<BaseType>::value);  // Or it's a container of registered type
+    // Use IsValidType_v which handles const, &, *, containers, and variants
+    static constexpr bool isValid = IsValidType_v<T>;
 
     // Provide dummy descriptor type for compatibility
     using DescriptorT = HandleDescriptor;

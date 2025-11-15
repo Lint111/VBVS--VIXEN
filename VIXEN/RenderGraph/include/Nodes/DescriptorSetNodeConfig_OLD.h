@@ -16,7 +16,6 @@ namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice pointer
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
 
 /**
  * @brief Pure constexpr resource configuration for DescriptorSetNode
@@ -78,7 +77,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     CONSTEXPR_INPUT(TEXTURE_SAMPLER, VkSampler, 4, true);
 
     // ShaderDataBundle with reflection data (Phase 2 descriptor automation)
-    CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 5, false);
+    CONSTEXPR_INPUT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 5, false);
 
     // Per-frame resource management (Phase 0.1)
     CONSTEXPR_INPUT(SWAPCHAIN_PUBLIC, SwapChainPublicVariables*, 6, false);
@@ -187,7 +186,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
     // Type validations
     static_assert(std::is_same_v<SHADER_PROGRAM_Slot::Type, const ShaderManagement::CompiledProgram*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);

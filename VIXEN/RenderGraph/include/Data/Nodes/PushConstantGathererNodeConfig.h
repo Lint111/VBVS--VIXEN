@@ -9,8 +9,6 @@ namespace ShaderManagement {
 
 namespace Vixen::RenderGraph {
 
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
-
 /**
  * @brief Configuration for PushConstantGathererNode
  *
@@ -20,13 +18,13 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * push constant data ready for vkCmdPushConstants.
  *
  * Inputs:
- * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Contains push constant metadata from shader reflection
+ * - SHADER_DATA_BUNDLE (ShaderManagement::ShaderDataBundle*) - Contains push constant metadata from shader reflection
  * - VARIADIC_FIELDS (variadic) - Field values (vec3, float, etc.) validated at compile
  *
  * Outputs:
  * - PUSH_CONSTANT_DATA (std::vector<uint8_t>) - Packed push constant bytes
  * - PUSH_CONSTANT_RANGES (std::vector<VkPushConstantRange>) - Stage flags, offset, size
- * - SHADER_DATA_BUNDLE_OUT (ShaderDataBundlePtr) - Pass-through for downstream nodes
+ * - SHADER_DATA_BUNDLE_OUT (ShaderManagement::ShaderDataBundle*) - Pass-through for downstream nodes
  *
  * Workflow:
  * 1. Setup: Read shader bundle to discover push constant fields
@@ -55,7 +53,7 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
                       PushConstantGathererNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1 + dynamic) =====
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 0,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -77,7 +75,7 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderDataBundlePtr, 2,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderManagement::ShaderDataBundle*, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -116,10 +114,10 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
     static_assert(std::is_same_v<PUSH_CONSTANT_DATA_Slot::Type, std::vector<uint8_t>>);
     static_assert(std::is_same_v<PUSH_CONSTANT_RANGES_Slot::Type, std::vector<VkPushConstantRange>>);
-    static_assert(std::is_same_v<PUSH_CONSTANTS_OUT_Slot::Type, std::vector<uint8_t>>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderManagement::ShaderDataBundle*>);
 };
 
 } // namespace Vixen::RenderGraph

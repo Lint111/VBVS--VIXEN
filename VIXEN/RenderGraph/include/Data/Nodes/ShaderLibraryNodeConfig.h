@@ -18,7 +18,6 @@ namespace Vixen::RenderGraph {
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using VulkanShaderPtr = VulkanShader*;
-using ShaderDataBundlePtr = ShaderManagement::ShaderDataBundle*;
 
 /**
  * @brief Shader program descriptor with Vulkan objects (MVP STUB)
@@ -67,7 +66,7 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -96,7 +95,7 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
 };
 
 } // namespace Vixen::RenderGraph

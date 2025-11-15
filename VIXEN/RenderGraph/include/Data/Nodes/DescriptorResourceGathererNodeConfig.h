@@ -11,8 +11,6 @@ using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
 
 namespace Vixen::RenderGraph {
 
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
-
 /**
  * @brief Configuration for DescriptorResourceGathererNode
  *
@@ -22,12 +20,12 @@ using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
  * std::vector<ResourceHandleVariant> containing all descriptor resources.
  *
  * Inputs:
- * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Contains descriptor metadata from shader reflection
+ * - SHADER_DATA_BUNDLE (ShaderManagement::ShaderDataBundle*) - Contains descriptor metadata from shader reflection
  * - VARIADIC_RESOURCES (variadic) - Any number of ResourceHandleVariant connections (validated at compile)
  *
  * Outputs:
  * - DESCRIPTOR_RESOURCES (std::vector<ResourceHandleVariant>) - Resource array in binding order
- * - SHADER_DATA_BUNDLE_OUT (ShaderDataBundlePtr) - Pass-through for downstream nodes
+ * - SHADER_DATA_BUNDLE_OUT (ShaderManagement::ShaderDataBundle*) - Pass-through for downstream nodes
  *
  * Workflow:
  * 1. Setup: Read shader bundle to discover required descriptors
@@ -51,7 +49,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
                       DescriptorResourceGathererNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1 + dynamic) =====
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 0,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -66,7 +64,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderDataBundlePtr, 2,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderManagement::ShaderDataBundle*, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -106,8 +104,8 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
     static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderManagement::ShaderDataBundle*>);
 } // namespace Vixen::RenderGraph

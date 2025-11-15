@@ -12,14 +12,13 @@ namespace Vixen::RenderGraph {
 
 // Type aliases
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
-using ShaderDataBundlePtr = ShaderManagement::ShaderDataBundle*;
 
 /**
  * @brief Pure constexpr resource configuration for GraphicsPipelineNode
  *
  * Inputs:
  * - VULKAN_DEVICE (VulkanDevice*) - VulkanDevice pointer (contains device, gpu, memory properties)
- * - SHADER_DATA_BUNDLE (ShaderDataBundlePtr) - Shader reflection data from ShaderLibraryNode
+ * - SHADER_DATA_BUNDLE (ShaderManagement::ShaderDataBundle*) - Shader reflection data from ShaderLibraryNode
  * - RENDER_PASS (VkRenderPass) - Render pass from RenderPassNode
  * - DESCRIPTOR_SET_LAYOUT (VkDescriptorSetLayout) - Descriptor layout from DescriptorSetNode
  *
@@ -67,7 +66,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundlePtr, 1,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 1,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -141,7 +140,7 @@ CONSTEXPR_NODE_CONFIG(GraphicsPipelineNodeConfig,
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderDataBundlePtr>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);

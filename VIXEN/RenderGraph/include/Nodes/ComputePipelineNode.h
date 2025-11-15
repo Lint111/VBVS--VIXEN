@@ -17,9 +17,6 @@ namespace ShaderManagement {
     struct ShaderDataBundle;
 }
 
-// Type alias for shared_ptr
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
-
 namespace Vixen::RenderGraph {
 
 /**
@@ -89,13 +86,13 @@ private:
     VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv);
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(
         VulkanDevice* device,
-        ShaderDataBundlePtr shaderBundle,
+        ShaderManagement::ShaderDataBundle* shaderBundle,
         VkDescriptorSetLayout descriptorSetLayout
     );
     void CreateComputePipeline(
         VulkanDevice* device,
         VkShaderModule shaderModule,
-        ShaderDataBundlePtr shaderBundle,
+        ShaderManagement::ShaderDataBundle* shaderBundle,
         std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,
         const std::string& layoutKey,
         uint32_t workgroupX,
