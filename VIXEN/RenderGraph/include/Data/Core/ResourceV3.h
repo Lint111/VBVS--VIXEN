@@ -217,10 +217,16 @@ struct IsValidTypeImpl {
     }
 
     static constexpr bool value = []() constexpr {
-        // Check both original pointer type (Bare) and depointed type (Clean)
-        if constexpr (IsRegisteredType<Bare>::value || IsRegisteredType<Clean>::value) {
+        // Check original type first (early exit if registered)
+        if constexpr (IsRegisteredType<T>::value) {
             return true;
-        } else if constexpr (is_vector) {
+        }
+        // Check both pointer type (Bare) and depointed type (Clean)
+        else if constexpr (IsRegisteredType<Bare>::value || IsRegisteredType<Clean>::value) {
+            return true;
+        }
+        // Only decompose if not directly registered
+        else if constexpr (is_vector) {
             return validate_vector_element<Clean>();
         } else if constexpr (is_variant) {
             return all_variant_types_valid(static_cast<Clean*>(nullptr));
@@ -334,7 +340,7 @@ public:
 
     template<typename T>
     void Set(T* value, PtrTag<T>) {
-        static_assert(IsValidType_v<T>, "Type not registered");
+        static_assert(IsValidType_v<T*>, "Type not registered");
         refPtr_ = static_cast<void*>(value);
         #ifndef NDEBUG
         typeInfo_ = &typeid(T);  // Runtime type check in debug builds
@@ -344,7 +350,7 @@ public:
 
     template<typename T>
     void Set(const T* value, ConstPtrTag<T>) {
-        static_assert(IsValidType_v<T>, "Type not registered");
+        static_assert(IsValidType_v<const T*>, "Type not registered");
         constRefPtr_ = static_cast<const void*>(value);
         #ifndef NDEBUG
         typeInfo_ = &typeid(T);  // Runtime type check in debug builds
@@ -382,7 +388,7 @@ public:
 
     template<typename T>
     T* Get(PtrTag<T>) const {
-        static_assert(IsValidType_v<T>, "Type not registered");
+        static_assert(IsValidType_v<T*>, "Type not registered");
         #ifndef NDEBUG
         assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
         #endif
@@ -391,7 +397,7 @@ public:
 
     template<typename T>
     const T* Get(ConstPtrTag<T>) const {
-        static_assert(IsValidType_v<T>, "Type not registered");
+        static_assert(IsValidType_v<const T*>, "Type not registered");
         #ifndef NDEBUG
         assert(typeInfo_ && *typeInfo_ == typeid(T) && "Type mismatch in Get");
         #endif
