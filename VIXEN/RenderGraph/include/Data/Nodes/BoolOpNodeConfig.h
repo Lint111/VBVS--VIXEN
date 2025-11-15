@@ -81,10 +81,8 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
         INIT_OUTPUT_DESC(OUTPUT, "output", ResourceLifetime::Transient, boolDesc);
     }
 
-    // Compile-time validation
-    static_assert(INPUT_COUNT == BoolOpNodeCounts::INPUTS, "Input count mismatch");
-    static_assert(OUTPUT_COUNT == BoolOpNodeCounts::OUTPUTS, "Output count mismatch");
-    static_assert(ARRAY_MODE == BoolOpNodeCounts::ARRAY_MODE, "Array mode mismatch");
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(BoolOpNodeConfig, BoolOpNodeCounts);
 
     static_assert(OPERATION_Slot::index == 0, "OPERATION must be at index 0");
     static_assert(INPUTS_Slot::index == 1, "INPUTS must be at index 1");
@@ -100,9 +98,5 @@ CONSTEXPR_NODE_CONFIG(BoolOpNodeConfig,
 
     
 };
-
-// Global compile-time validations
-static_assert(BoolOpNodeConfig::INPUT_COUNT == BoolOpNodeCounts::INPUTS);
-static_assert(BoolOpNodeConfig::OUTPUT_COUNT == BoolOpNodeCounts::OUTPUTS);
 
 } // namespace Vixen::RenderGraph
