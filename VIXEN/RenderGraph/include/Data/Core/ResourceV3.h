@@ -103,6 +103,15 @@ REGISTER_COMPILE_TIME_TYPE(bool);
 REGISTER_COMPILE_TIME_TYPE(PFN_vkQueuePresentKHR);
 REGISTER_COMPILE_TIME_TYPE(Vixen::RenderGraph::Data::BoolVector);
 
+// Forward declare types defined later in this file
+struct ImageSamplerPair;  // Full definition below, after descriptor variant section
+using DescriptorHandleVariant = std::variant<
+    std::monostate, VkImageView, VkBuffer, VkBufferView, VkSampler, VkImage,
+    VkAccelerationStructureKHR, ImageSamplerPair, SwapChainPublicVariables*,
+    std::vector<VkImageView>, std::vector<VkBuffer>, std::vector<VkBufferView>,
+    std::vector<VkSampler>, std::vector<VkAccelerationStructureKHR>
+>;  // Forward declaration - full definition with rationale below
+
 // Register application types
 REGISTER_COMPILE_TIME_TYPE(CameraData);
 REGISTER_COMPILE_TIME_TYPE(SwapChainPublicVariables);
@@ -117,6 +126,7 @@ REGISTER_COMPILE_TIME_TYPE(BoolOp);
 REGISTER_COMPILE_TIME_TYPE(SlotRole);
 REGISTER_COMPILE_TIME_TYPE(InputState);
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
+REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 
 // Platform-specific types
 #ifdef _WIN32
@@ -156,14 +166,55 @@ struct TypeToTag {
 template<typename T>
 using TypeToTag_t = typename TypeToTag<T>::type;
 
-// Compile-time validation
+// Recursive compile-time validation
+// Handles: direct types, pointers, vectors, variants, and nested combinations
 template<typename T>
-inline constexpr bool IsValidType_v = []() constexpr {
-    using Tag = TypeToTag_t<T>;
-    using BaseType = typename Tag::storage_type;
-    using BareBaseType = std::remove_cv_t<std::remove_pointer_t<BaseType>>;
-    return IsRegisteredType<BareBaseType>::value;
-}();
+struct IsValidTypeImpl {
+    using Bare = std::remove_cv_t<std::remove_reference_t<T>>;
+    using Depointer = std::remove_pointer_t<Bare>;
+    using Clean = std::remove_cv_t<Depointer>;
+
+    // Check if it's a std::vector<U>
+    template<typename U>
+    static constexpr bool is_vector_helper(const std::vector<U>*) { return true; }
+    static constexpr bool is_vector_helper(...) { return false; }
+    static constexpr bool is_vector = is_vector_helper(static_cast<Clean*>(nullptr));
+
+    // Check if it's a std::variant<Us...>
+    template<typename... Us>
+    static constexpr bool is_variant_helper(const std::variant<Us...>*) { return true; }
+    static constexpr bool is_variant_helper(...) { return false; }
+    static constexpr bool is_variant = is_variant_helper(static_cast<Clean*>(nullptr));
+
+    // Extract element type from vector (only valid when is_vector == true)
+    template<typename U>
+    static U vector_element_type(const std::vector<U>*);
+
+    // Validate all types in a variant
+    template<typename... Us>
+    static constexpr bool all_variant_types_valid(const std::variant<Us...>*) {
+        return (IsValidTypeImpl<Us>::value && ...);
+    }
+
+    static constexpr bool value = []() constexpr {
+        if constexpr (IsRegisteredType<Clean>::value) {
+            // Direct registration
+            return true;
+        } else if constexpr (is_vector) {
+            // Recursive check for vector element type (extract type only when needed)
+            using VectorElement = decltype(vector_element_type(static_cast<Clean*>(nullptr)));
+            return IsValidTypeImpl<VectorElement>::value;
+        } else if constexpr (is_variant) {
+            // Check all variant types are valid
+            return all_variant_types_valid(static_cast<Clean*>(nullptr));
+        } else {
+            return false;
+        }
+    }();
+};
+
+template<typename T>
+inline constexpr bool IsValidType_v = IsValidTypeImpl<T>::value;
 
 // ============================================================================
 // DESCRIPTOR HANDLE VARIANT (For inter-node communication)
@@ -202,22 +253,7 @@ struct ImageSamplerPair {
 // Alternative considered: Separate typed outputs (std::vector<VkImageView>, std::vector<VkBuffer>, etc.)
 // Rejected because: Would require NxM connections for N descriptor types x M pipeline stages,
 // and doesn't match the semantic model of "array of bindings" that Vulkan uses.
-using DescriptorHandleVariant = std::variant<
-    std::monostate,                         // Placeholder/empty
-    VkImageView,                            // Sampled/storage images, input attachments
-    VkBuffer,                               // Uniform/storage buffers (regular & dynamic)
-    VkBufferView,                           // Uniform/storage texel buffers
-    VkSampler,                              // Sampler descriptors
-    VkImage,                                // Storage images (when separate from view)
-    VkAccelerationStructureKHR,             // Ray tracing acceleration structures
-    ImageSamplerPair,                       // Combined image sampler (image view + sampler)
-    SwapChainPublicVariables*,              // Swapchain resources (per-frame image views)
-    std::vector<VkImageView>,               // Arrays of image views
-    std::vector<VkBuffer>,                  // Arrays of buffers
-    std::vector<VkBufferView>,              // Arrays of buffer views
-    std::vector<VkSampler>,                 // Arrays of samplers
-    std::vector<VkAccelerationStructureKHR> // Arrays of acceleration structures
->;
+// (Forward declared above for type registration - this comment documents the rationale)
 
 // ResourceVariant: Passthrough type for migration compatibility
 // In ResourceV3, this is a placeholder that represents "any valid type"
