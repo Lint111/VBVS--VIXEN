@@ -12,7 +12,7 @@ namespace Vixen::RenderGraph {
 
 // Type aliases
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
+using ShaderDataBundlePtr = ShaderManagement::ShaderDataBundle*;
 
 /**
  * @brief Pure constexpr resource configuration for ComputePipelineNode

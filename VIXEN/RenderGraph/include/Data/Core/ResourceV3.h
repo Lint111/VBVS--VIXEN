@@ -215,7 +215,8 @@ struct IsValidTypeImpl {
     }
 
     static constexpr bool value = []() constexpr {
-        if constexpr (IsRegisteredType<Clean>::value) {
+        // Check both original pointer type (Bare) and depointed type (Clean)
+        if constexpr (IsRegisteredType<Bare>::value || IsRegisteredType<Clean>::value) {
             return true;
         } else if constexpr (is_vector) {
             return validate_vector_element<Clean>();
@@ -361,7 +362,8 @@ public:
     bool IsEmpty() const { return mode_ == Mode::Empty; }
 
 private:
-    std::variant<std::monostate, VkImage, VkBuffer, VkImageView, uint32_t, float> data_;
+    std::variant<std::monostate, VkImage, VkBuffer, VkImageView, VkSampler, VkBufferView,
+                 ImageSamplerPair, uint32_t, float, bool> data_;
     void* refPtr_ = nullptr;
     const void* constRefPtr_ = nullptr;
     Mode mode_ = Mode::Empty;
