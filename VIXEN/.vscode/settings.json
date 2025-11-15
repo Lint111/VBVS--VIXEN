@@ -164,6 +164,10 @@
     },
     "testExplorer.useNativeTesting": false,
     "testExplorer.sort": "byLocation",
+    "cmake.ctestDefaultArgs": ["--output-on-failure"],
+    "testExplorer.showCollapseButton": true,
+    "testExplorer.showExpandButton": true,
+    "testExplorer.showOnRun": true,
     "cmake.options.advanced": {
         "ctest": {
             "allowParallelJobs": true

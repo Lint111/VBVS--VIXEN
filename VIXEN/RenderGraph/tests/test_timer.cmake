@@ -17,6 +17,9 @@ target_link_libraries(test_timer PRIVATE
     RenderGraph
 )
 
-gtest_discover_tests(test_timer)
+gtest_discover_tests(test_timer
+    PROPERTIES
+        LABELS "RenderGraph;Core"
+)
 
 message(STATUS "[RenderGraph Tests] Added: test_timer")
