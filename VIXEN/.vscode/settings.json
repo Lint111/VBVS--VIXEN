@@ -159,9 +159,12 @@
     "cmake.options.statusBarVisibility": "visible",
     "cmake.buildDirectory": "${workspaceFolder}/build",
     "cmake.ctest.allowParallelJobs": true,
+    "cmake.testEnvironment": {
+        "GTEST_COLOR": "1"
+    },
     "cmakeExplorer.suiteDelimiter": ".",
     "cmakeExplorer.testExplorer.enabled": true,
     "cmakeExplorer.testExplorer.treeMode": "byTestSuite",
-    "testExplorer.useNativeTesting": false,
+    "testExplorer.useNativeTesting": true,
     "testExplorer.sort": "byLocation"
 }
