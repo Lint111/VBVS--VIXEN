@@ -23,6 +23,8 @@
 #include <variant>
 #include <type_traits>
 #include <cstdint>
+#include <any>
+#include <cassert>
 #include "BoolVector.h"  // Include BoolVector wrapper
 
 // Forward declarations (same as ResourceVariant.h)
