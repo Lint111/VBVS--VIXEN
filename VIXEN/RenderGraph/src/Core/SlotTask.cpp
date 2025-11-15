@@ -1,10 +1,7 @@
+#include "Headers.h"
 #include "Core/SlotTask.h"
 #include "Core/NodeInstance.h"
 #include "Core/ResourceBudgetManager.h"
-#include <algorithm>
-#include <thread>
-#include <future>
-#include <chrono>
 
 namespace Vixen::RenderGraph {
 

@@ -4,11 +4,11 @@
 
 using namespace Vixen::RenderGraph;
 
-TEST(ResourceVariant_HandleTypes, CompileTimeRegistrationAndGetSet) {
+TEST(PassThroughStorage_HandleTypes, CompileTimeRegistrationAndGetSet) {
     // This test ensures the common handle types used by nodes are registered
-    // with the variant-based Resource system. If a type is missing from the
-    // RESOURCE_TYPE_REGISTRY, the call to SetHandle/GetHandle will fail to
-    // compile (static_assert in ResourceVariant).
+    // with the PassThroughStorage Resource system. If a type is missing from the
+    // type registry, the call to SetHandle/GetHandle will fail to
+    // compile (static_assert in PassThroughStorage).
 
     Resource r;
 

@@ -1,3 +1,4 @@
+#include "Headers.h"
 #include "Core/Timer.h"
 
 namespace Vixen::RenderGraph {

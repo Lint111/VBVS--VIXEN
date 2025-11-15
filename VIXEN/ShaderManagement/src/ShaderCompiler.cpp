@@ -1,13 +1,10 @@
+#include "Headers.h"
 #include "ShaderManagement/ShaderCompiler.h"
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include <glslang/SPIRV/disassemble.h>
 #include <spirv-tools/libspirv.hpp>
-#include <fstream>
-#include <sstream>
-#include <chrono>
-#include <mutex>
 
 namespace ShaderManagement {
 

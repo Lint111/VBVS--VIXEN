@@ -454,6 +454,13 @@ add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
 target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
 set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
 
+# Precompiled headers for Logger
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(Logger PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
+    )
+endif()
+
 # EventBus library (message passing, worker thread integration)
 add_subdirectory(EventBus)
 
@@ -479,6 +486,13 @@ file(GLOB_RECURSE VULKAN_RESOURCES_CPP
 add_library(VulkanResources STATIC ${VULKAN_RESOURCES_CPP})
 target_link_libraries(VulkanResources PUBLIC ${VULKAN_LIB_LIST} glm::glm Logger)
 set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
+
+# Precompiled headers for VulkanResources
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(VulkanResources PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
+    )
+endif()
 
 # RenderGraph static library (replaces old inline definitions)
 add_subdirectory(RenderGraph)
@@ -549,6 +563,14 @@ set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD_REQUIRED ON)
 # Add /FS flag for MSVC to allow multiple CL.EXE to write to the same PDB file
 if(MSVC)
     target_compile_options(${Recipe_Name} PRIVATE /FS)
+endif()
+
+# Precompiled headers for faster compilation
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(${Recipe_Name} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
+    )
+    message(STATUS "${Recipe_Name}: Precompiled headers enabled (using Headers.h)")
 endif()
 
 # ============================================================================

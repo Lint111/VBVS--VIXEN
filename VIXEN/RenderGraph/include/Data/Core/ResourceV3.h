@@ -6,13 +6,13 @@
  * @file ResourceV3.h
  * @brief Zero-overhead compile-time resource type system (drop-in replacement)
  *
- * This file provides a drop-in replacement for ResourceVariant.h with:
+ * This file provides a drop-in replacement for PassThroughStorage.h with:
  * - Compile-time-only type validation (static_assert)
  * - Zero runtime overhead (type tags disappear after compilation)
  * - Natural C++ syntax (T&, T*, const T&)
  * - Same API as original Resource class
  *
- * Migration: Replace #include "ResourceVariant.h" with #include "ResourceV3.h"
+ * Migration: Replace #include "PassThroughStorage.h" with #include "ResourceV3.h"
  * No code changes required!
  */
 
@@ -27,7 +27,7 @@
 #include <cassert>
 #include "BoolVector.h"  // Include BoolVector wrapper
 
-// Forward declarations (same as ResourceVariant.h)
+// Forward declarations (same as PassThroughStorage.h)
 struct SwapChainPublicVariables;
 struct SwapChainBuffer;
 class VulkanShader;
@@ -144,7 +144,7 @@ REGISTER_COMPILE_TIME_TYPE(BoolOp);
 REGISTER_COMPILE_TIME_TYPE(SlotRole);
 REGISTER_COMPILE_TIME_TYPE(InputState);
 
-// NOTE: ImageSamplerPair, DescriptorHandleVariant, and ResourceVariant
+// NOTE: ImageSamplerPair, DescriptorHandleVariant, and PassThroughStorage
 // are registered later after their definitions
 
 // Platform-specific types
@@ -296,30 +296,33 @@ struct ImageSamplerPair {
     ImageSamplerPair(VkImageView view, VkSampler samp) : imageView(view), sampler(samp) {}
 };
 
-// ResourceVariant: Passthrough type for migration compatibility
+// PassThroughStorage: Passthrough type for migration compatibility
 // In ResourceV3, this is a placeholder that represents "any valid type"
 // The actual type validation happens at compile-time through IsValidType_v
 // This allows slots to accept any registered type and pass it through unchanged
 //
 // NOTE: For inter-node communication of descriptor handles, use DescriptorHandleVariant instead
-struct ResourceVariant {
+struct PassThroughStorage {
     // Empty struct - acts as a type tag for "accepts any valid resource"
     // The actual storage and type handling is done by ZeroOverheadStorage
 
     // Default constructor for monostate-like behavior
-    ResourceVariant() = default;
+    PassThroughStorage() = default;
 
     // Template constructor - accepts any type that passes IsValidType_v
     template<typename T>
-    ResourceVariant(T&&) {
+    PassThroughStorage(T&&) {
         // In the old system, this would store the value
         // In ResourceV3, this is just for compatibility - actual storage is in Resource
     }
 };
 
+// Legacy alias for backward compatibility
+using ResourceVariant = PassThroughStorage;
+
 // Register types defined above (after their definitions)
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
-REGISTER_COMPILE_TIME_TYPE(ResourceVariant);
+REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
 REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 
 // ============================================================================

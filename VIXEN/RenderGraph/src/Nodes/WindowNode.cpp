@@ -1,7 +1,7 @@
+#include "Headers.h"
 #include "Nodes/WindowNode.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "VulkanApplicationBase.h"
-#include <iostream>
 #include "Core/NodeLogging.h"
 #include "EventBus/Message.h"
 #include "EventTypes/RenderGraphEvents.h"

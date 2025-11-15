@@ -160,26 +160,26 @@ endif()  # Disabled due to API incompatibilities
 message(STATUS "⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)")
 
 # ===========================================================================
-# ResourceVariant Handle Types Test
+# PassThroughStorage Handle Types Test
 # ===========================================================================
-# This test validates ResourceVariant accepts platform handle types used by nodes.
+# This test validates PassThroughStorage accepts platform handle types used by nodes.
 # Tests compile-time type registration (no Vulkan runtime required).
 
 if(TARGET GTest::gtest_main)
-    add_executable(test_resourcevariant_handles
-        test_resourcevariant_handles.cpp
+    add_executable(test_passthroughstorage_handles
+        test_passthroughstorage_handles.cpp
     )
 
-    target_link_libraries(test_resourcevariant_handles PRIVATE
+    target_link_libraries(test_passthroughstorage_handles PRIVATE
         GTest::gtest_main
         RenderGraph
     )
 
-    gtest_discover_tests(test_resourcevariant_handles)
+    gtest_discover_tests(test_passthroughstorage_handles)
 
-    message(STATUS "✓ test_resourcevariant_handles configured")
+    message(STATUS "✓ test_passthroughstorage_handles configured")
 else()
-    message(STATUS "⊗ test_resourcevariant_handles skipped (GoogleTest not available)")
+    message(STATUS "⊗ test_passthroughstorage_handles skipped (GoogleTest not available)")
 endif()
 
 # ===========================================================================

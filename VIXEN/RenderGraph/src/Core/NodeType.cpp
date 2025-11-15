@@ -1,6 +1,6 @@
+#include "Headers.h"
 #include "Core/NodeType.h"
 #include "Core/NodeInstance.h"
-#include <unordered_set>
 
 namespace Vixen::RenderGraph {
 

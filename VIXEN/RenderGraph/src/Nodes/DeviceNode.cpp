@@ -1,18 +1,14 @@
+#include "Headers.h"
 #include "Nodes/DeviceNode.h"
 #include "Core/RenderGraph.h"
 #include "EventBus/Message.h"
 #include "EventBus/MessageBus.h"
-#include <iostream>
-#include <filesystem>
-#include <future>
 #include "Core/NodeLogging.h"
 #include "CashSystem/ShaderModuleCacher.h"
 #include "CashSystem/PipelineCacher.h"
 #include "CashSystem/PipelineLayoutCacher.h"
 #include "CashSystem/DescriptorSetLayoutCacher.h"
 #include "CashSystem/TextureCacher.h"
-
-#include <vector>
 extern std::vector<const char*> deviceExtensionNames;
 extern std::vector<const char*> layerNames;
 

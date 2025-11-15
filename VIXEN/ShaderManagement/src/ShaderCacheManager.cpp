@@ -1,9 +1,6 @@
+#include "Headers.h"
 #include "ShaderManagement/ShaderCacheManager.h"
 #include "ShaderManagement/Hash.h"
-#include <fstream>
-#include <sstream>
-#include <chrono>
-#include <algorithm>
 
 namespace ShaderManagement {
 

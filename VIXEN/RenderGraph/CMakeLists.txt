@@ -31,7 +31,7 @@ set(RENDERGRAPH_DATA_CORE_HEADERS
     include/Data/Core/ResourceConfig.h
     include/Data/Core/ResourceTypeTraits.h
     include/Data/Core/ResourceTypes.h
-    include/Data/Core/ResourceVariant.h
+    include/Data/Core/PassThroughStorage.h
     include/Data/Core/ResourceV3.h
     include/Data/Core/BoolVector.h
 )
@@ -114,7 +114,7 @@ set(RENDERGRAPH_CORE_SOURCES
     # src/Core/Resource.cpp  # Excluded - replaced by variant system
     src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
-    src/Core/ResourceVariant.cpp
+    src/Core/PassThroughStorage.cpp
     src/Core/SlotTask.cpp
     src/Core/Timer.cpp
 )
@@ -263,6 +263,14 @@ set_target_properties(RenderGraph PROPERTIES
 # Platform definitions
 if(WIN32)
     target_compile_definitions(RenderGraph PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+endif()
+
+# Precompiled headers for faster compilation
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(RenderGraph PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include/Headers.h"
+    )
+    message(STATUS "RenderGraph: Precompiled headers enabled (using Headers.h)")
 endif()
 
 # ============================================================================
