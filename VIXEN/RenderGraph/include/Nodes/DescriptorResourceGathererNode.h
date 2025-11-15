@@ -117,7 +117,7 @@ private:
     // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);
     void GatherResources(VariadicCompileContext& ctx);
-    void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ::ShaderManagement::ShaderDataBundle* shaderBundle);
+    void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const std::shared_ptr<::ShaderManagement::ShaderDataBundle>& shaderBundle);
 
     // Validation helpers (extracted from ValidateTentativeSlotsAgainstShader)
     void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ::ShaderManagement::DescriptorLayoutSpec* layoutSpec);

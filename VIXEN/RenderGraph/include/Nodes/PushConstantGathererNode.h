@@ -82,7 +82,7 @@ public:
      * Example:
      *   gatherer->PreRegisterPushConstantFields(shaderBundle);
      */
-    void PreRegisterPushConstantFields(const ::ShaderManagement::ShaderDataBundle* shaderBundle);
+    void PreRegisterPushConstantFields(const std::shared_ptr<::ShaderManagement::ShaderDataBundle>& shaderBundle);
 
 protected:
     // Variadic lifecycle overrides with phase-specific contexts

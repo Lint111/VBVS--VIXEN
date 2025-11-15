@@ -67,7 +67,7 @@ void ComputePipelineNode::CompileImpl(TypedCompileContext& ctx) {
     uint32_t workgroupZ = GetParameterValue<uint32_t>(ComputePipelineNodeConfig::WORKGROUP_SIZE_Z, 1);
 
     // Get inputs
-    ShaderManagement::ShaderDataBundle* shaderBundle = ctx.In(ComputePipelineNodeConfig::SHADER_DATA_BUNDLE);
+    auto shaderBundle = ctx.In(ComputePipelineNodeConfig::SHADER_DATA_BUNDLE);
     VkDescriptorSetLayout descriptorSetLayout = ctx.In(ComputePipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
     if (!shaderBundle) {
@@ -153,7 +153,7 @@ VkShaderModule ComputePipelineNode::CreateShaderModule(
 
 std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePipelineLayout(
     VulkanDevice* device,
-    ShaderManagement::ShaderDataBundle* shaderBundle,
+    const std::shared_ptr<ShaderManagement::ShaderDataBundle>& shaderBundle,
     VkDescriptorSetLayout descriptorSetLayout
 ) {
     auto& mainCacher = GetOwningGraph()->GetMainCacher();
@@ -213,7 +213,7 @@ std::shared_ptr<CashSystem::PipelineLayoutWrapper> ComputePipelineNode::CreatePi
 void ComputePipelineNode::CreateComputePipeline(
     VulkanDevice* device,
     VkShaderModule shaderModule,
-    ShaderManagement::ShaderDataBundle* shaderBundle,
+    const std::shared_ptr<ShaderManagement::ShaderDataBundle>& shaderBundle,
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,
     const std::string& layoutKey,
     uint32_t workgroupX,

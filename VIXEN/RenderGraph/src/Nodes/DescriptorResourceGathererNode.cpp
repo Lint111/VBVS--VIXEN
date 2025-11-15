@@ -211,7 +211,7 @@ void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
 // Helper Methods
 //-----------------------------------------------------------------------------
 
-void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ::ShaderManagement::ShaderDataBundle* shaderBundle) {
+void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const std::shared_ptr<::ShaderManagement::ShaderDataBundle>& shaderBundle) {
     const auto* layoutSpec = shaderBundle->descriptorLayout.get();
     if (!layoutSpec) {
         NODE_LOG_INFO("[DescriptorResourceGathererNode::ValidateTentativeSlots] ERROR: No descriptor layout");

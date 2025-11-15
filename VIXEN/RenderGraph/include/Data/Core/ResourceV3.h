@@ -211,6 +211,12 @@ struct IsValidTypeImpl {
     static constexpr bool is_variant_helper(...) { return false; }
     static constexpr bool is_variant = is_variant_helper(static_cast<Clean*>(nullptr));
 
+    // Check if it's a std::shared_ptr<U>
+    template<typename U>
+    static constexpr bool is_shared_ptr_helper(const std::shared_ptr<U>*) { return true; }
+    static constexpr bool is_shared_ptr_helper(...) { return false; }
+    static constexpr bool is_shared_ptr = is_shared_ptr_helper(static_cast<Clean*>(nullptr));
+
     // Extract element type from vector (specialization-based)
     template<typename U>
     struct VectorElementType { using type = void; };  // Default: void for non-vectors
@@ -224,6 +230,13 @@ struct IsValidTypeImpl {
 
     template<typename U, std::size_t N>
     struct ArrayElementType<std::array<U, N>> { using type = U; };
+
+    // Extract element type from std::shared_ptr (specialization-based)
+    template<typename U>
+    struct SharedPtrElementType { using type = void; };  // Default: void for non-shared_ptr
+
+    template<typename U>
+    struct SharedPtrElementType<std::shared_ptr<U>> { using type = U; };
 
     // Validate all types in a variant
     template<typename... Us>
@@ -253,6 +266,17 @@ struct IsValidTypeImpl {
         }
     }
 
+    // Helper: validate shared_ptr element
+    template<typename PtrType>
+    static constexpr bool validate_shared_ptr_element() {
+        using Element = typename SharedPtrElementType<PtrType>::type;
+        if constexpr (std::is_same_v<Element, void>) {
+            return false;  // Not a shared_ptr
+        } else {
+            return IsValidTypeImpl<Element>::value;
+        }
+    }
+
     static constexpr bool value = []() constexpr {
         // Check original type first (early exit if registered)
         if constexpr (IsRegisteredType<T>::value) {
@@ -267,6 +291,8 @@ struct IsValidTypeImpl {
             return validate_vector_element<Clean>();
         } else if constexpr (is_array) {
             return validate_array_element<Clean>();
+        } else if constexpr (is_shared_ptr) {
+            return validate_shared_ptr_element<Clean>();
         } else if constexpr (is_variant) {
             return all_variant_types_valid(static_cast<Clean*>(nullptr));
         } else {
@@ -298,7 +324,6 @@ struct ImageSamplerPair {
 
 // Register types defined above (after their definitions)
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
-REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
 REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 
 // ============================================================================
@@ -418,6 +443,9 @@ private:
     const void* constRefPtr_ = nullptr;  // For const references/pointers
     Mode mode_ = Mode::Empty;
 };
+
+// Register PassThroughStorage after its definition
+REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
 
 // ============================================================================
 // RESOURCE CLASS (Drop-in replacement for old Resource)

@@ -53,7 +53,7 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
                       PushConstantGathererNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1 + dynamic) =====
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderManagement::ShaderDataBundle*, 0,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<ShaderManagement::ShaderDataBundle>, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -75,7 +75,7 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, ShaderManagement::ShaderDataBundle*, 2,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, std::shared_ptr<ShaderManagement::ShaderDataBundle>, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -114,10 +114,10 @@ CONSTEXPR_NODE_CONFIG(PushConstantGathererNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, ShaderManagement::ShaderDataBundle*>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, std::shared_ptr<ShaderManagement::ShaderDataBundle>>);
     static_assert(std::is_same_v<PUSH_CONSTANT_DATA_Slot::Type, std::vector<uint8_t>>);
     static_assert(std::is_same_v<PUSH_CONSTANT_RANGES_Slot::Type, std::vector<VkPushConstantRange>>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ShaderManagement::ShaderDataBundle*>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, std::shared_ptr<ShaderManagement::ShaderDataBundle>>);
 };
 
 } // namespace Vixen::RenderGraph

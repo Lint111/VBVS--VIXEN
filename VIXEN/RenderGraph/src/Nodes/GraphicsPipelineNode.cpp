@@ -73,7 +73,8 @@ void GraphicsPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     frontFace = ParseFrontFace(frontFaceStr);
 
     // Get inputs
-    currentShaderBundle =  ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
+    currentShaderBundle = ctx.In(GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);  // Store for use in helper functions
+
     VkRenderPass renderPass = ctx.In(GraphicsPipelineNodeConfig::RENDER_PASS);
     VkDescriptorSetLayout manualDescriptorSetLayout = ctx.In(GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
     // Note: SWAPCHAIN_INFO not used during pipeline compilation (pipelines are swapchain-independent)

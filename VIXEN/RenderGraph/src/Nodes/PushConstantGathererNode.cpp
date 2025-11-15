@@ -88,7 +88,7 @@ PushConstantGathererNode::PushConstantGathererNode(
 // PRE-REGISTRATION
 // ============================================================================
 
-void PushConstantGathererNode::PreRegisterPushConstantFields(const ShaderManagement::ShaderDataBundle* shaderBundle) {
+void PushConstantGathererNode::PreRegisterPushConstantFields(const std::shared_ptr<ShaderManagement::ShaderDataBundle>& shaderBundle) {
     if (!shaderBundle || !shaderBundle->reflectionData) {
         std::cout << "[PushConstantGatherer] No shader bundle or reflection data for pre-registration\n";
         return;
