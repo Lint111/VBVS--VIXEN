@@ -103,6 +103,11 @@ This is a CMake-based C++ Vulkan application project. The build system is config
 
 ### Build Commands
 
+**IMPORTANT**: Before building, always kill existing compiler processes to prevent background buildup:
+```bash
+taskkill /F /IM MSBuild.exe /T 2>nul; taskkill /F /IM cl.exe /T 2>nul
+```
+
 ```bash
 # Generate build files (run from project root)
 cmake -B build

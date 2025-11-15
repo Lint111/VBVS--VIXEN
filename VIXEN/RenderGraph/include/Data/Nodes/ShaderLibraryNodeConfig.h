@@ -18,7 +18,7 @@ namespace Vixen::RenderGraph {
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 using VulkanShaderPtr = VulkanShader*;
-using ShaderDataBundlePtr = std::shared_ptr<ShaderManagement::ShaderDataBundle>;
+using ShaderDataBundlePtr = ShaderManagement::ShaderDataBundle*;
 
 /**
  * @brief Shader program descriptor with Vulkan objects (MVP STUB)

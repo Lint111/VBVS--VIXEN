@@ -51,6 +51,9 @@ namespace Vixen::RenderGraph {
     enum class SlotRole : uint8_t;
     struct InputState;
 
+    // Type alias for convenience
+    using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
+
 // ============================================================================
 // COMPILE-TIME TYPE REGISTRY
 // ============================================================================
@@ -86,6 +89,7 @@ REGISTER_COMPILE_TIME_TYPE(VkShaderModule);
 REGISTER_COMPILE_TIME_TYPE(VkCommandBuffer);
 REGISTER_COMPILE_TIME_TYPE(VkQueue);
 REGISTER_COMPILE_TIME_TYPE(VkBufferView);
+REGISTER_COMPILE_TIME_TYPE(VkAccelerationStructureKHR);
 REGISTER_COMPILE_TIME_TYPE(VkFormat);
 REGISTER_COMPILE_TIME_TYPE(VkPushConstantRange);
 REGISTER_COMPILE_TIME_TYPE(VkViewport);
@@ -187,7 +191,7 @@ struct IsValidTypeImpl {
     static constexpr bool is_variant = is_variant_helper(static_cast<Clean*>(nullptr));
 
     // Extract element type from vector (specialization-based)
-    template<typename U, typename = void>
+    template<typename U>
     struct VectorElementType { using type = void; };  // Default: void for non-vectors
 
     template<typename U>
