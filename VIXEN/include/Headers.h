@@ -45,13 +45,6 @@
 // GLI - Texture library for compressed formats (DDS/KTX)
 #include <gli/gli.hpp>
 
-// magic_enum - Enum reflection (only available in RenderGraph context)
-// Note: magic_enum is fetched by RenderGraph/CMakeLists.txt via FetchContent
-// Files outside RenderGraph should not rely on this header
-#ifdef RENDERGRAPH_HAS_MAGIC_ENUM
-#include <magic_enum/magic_enum.hpp>
-#endif
-
 // ============================================================================
 // Standard Library - Containers
 // ============================================================================

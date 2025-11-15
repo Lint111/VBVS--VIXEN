@@ -1,18 +1,18 @@
 #pragma once
 
 // ============================================================================
-// DEPRECATED - Use Headers.h instead
+// RenderGraph Precompiled Header
 // ============================================================================
-// This file has been consolidated into include/Headers.h (the central header).
-// All functionality from pch.h is now in Headers.h.
-// This file is kept temporarily for backward compatibility and will be removed.
+// This file consolidates all common headers for RenderGraph.
+// Simply forwards to the central Headers.h.
+//
+// Note: magic_enum is available via RenderGraph's CMakeLists.txt (FetchContent).
+// Include it explicitly where needed: #include <magic_enum/magic_enum.hpp>
 
-#warning "pch.h is deprecated - use Headers.h instead (central header)"
-
-// Forward to central header
+// Include central header
 #include "Headers.h"
 
-// Legacy content below (now redundant):
+// Legacy content below (kept for reference):
 // ============================================================================
 // Precompiled Header for RenderGraph (DEPRECATED)
 // ============================================================================
