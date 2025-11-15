@@ -75,10 +75,12 @@ void DescriptorSetNode::SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std
     SetDevice(devicePtr);
 
     // Phase 2: Read ShaderDataBundle from input
-    outShaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
-    if (!outShaderBundle) {
+    ShaderManagement::ShaderDataBundle* rawBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+    if (!rawBundle) {
         throw std::runtime_error("DescriptorSetNode: ShaderDataBundle input is null");
     }
+    // Wrap raw pointer in non-owning shared_ptr (upstream node owns the data)
+    outShaderBundle = std::shared_ptr<ShaderManagement::ShaderDataBundle>(rawBundle, [](ShaderManagement::ShaderDataBundle*){});
 
     NODE_LOG_INFO("[DescriptorSetNode::Compile] Received ShaderDataBundle: " + outShaderBundle->GetProgramName());
 }

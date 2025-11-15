@@ -83,3 +83,17 @@ target_link_libraries(test_frame_sync_node PRIVATE
 gtest_discover_tests(test_frame_sync_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_frame_sync_node")
+
+# PushConstantGathererNode Tests
+add_executable(test_push_constant_gatherer_node
+    Nodes/test_push_constant_gatherer_node.cpp
+)
+
+target_link_libraries(test_push_constant_gatherer_node PRIVATE
+    GTest::gtest_main
+    RenderGraph
+)
+
+gtest_discover_tests(test_push_constant_gatherer_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_push_constant_gatherer_node")

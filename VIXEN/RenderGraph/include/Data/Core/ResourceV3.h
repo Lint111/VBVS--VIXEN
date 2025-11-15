@@ -116,6 +116,7 @@ REGISTER_COMPILE_TIME_TYPE(LoopReference);
 REGISTER_COMPILE_TIME_TYPE(BoolOp);
 REGISTER_COMPILE_TIME_TYPE(SlotRole);
 REGISTER_COMPILE_TIME_TYPE(InputState);
+REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
 
 // Platform-specific types
 #ifdef _WIN32
@@ -168,16 +169,54 @@ inline constexpr bool IsValidType_v = []() constexpr {
 // DESCRIPTOR HANDLE VARIANT (For inter-node communication)
 // ============================================================================
 
-// Actual std::variant for passing descriptor handles between nodes
-// This is needed because nodes like DescriptorResourceGathererNode output
-// arrays of handles that DescriptorSetNode consumes
+/**
+ * @brief Pair of ImageView and Sampler for VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+ *
+ * Combined image samplers require both an image view and a sampler in a single binding.
+ * This struct bundles them together for type-safe handling.
+ */
+struct ImageSamplerPair {
+    VkImageView imageView = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
+
+    ImageSamplerPair() = default;
+    ImageSamplerPair(VkImageView view, VkSampler samp) : imageView(view), sampler(samp) {}
+};
+
+// DescriptorHandleVariant: Domain-specific runtime variant for descriptor communication
+//
+// DESIGN RATIONALE:
+// ResourceV3 provides compile-time type safety within Resource storage using ZeroOverheadStorage.
+// However, descriptor gathering nodes (DescriptorResourceGathererNode) collect heterogeneous
+// descriptor handles from variadic inputs and pass them to descriptor set creation nodes.
+//
+// This requires runtime polymorphism because:
+// 1. Different bindings have different handle types (VkImageView, VkBuffer, VkSampler, etc.)
+// 2. The binding array is dynamically sized based on shader reflection
+// 3. Each binding's type is only known at runtime from SPIRV reflection metadata
+//
+// This is NOT a violation of ResourceV3's philosophy - it's a domain-specific inter-node
+// communication protocol. ResourceV3 handles type safety WITHIN resource storage; this variant
+// handles type safety for the descriptor binding protocol BETWEEN nodes.
+//
+// Alternative considered: Separate typed outputs (std::vector<VkImageView>, std::vector<VkBuffer>, etc.)
+// Rejected because: Would require NxM connections for N descriptor types x M pipeline stages,
+// and doesn't match the semantic model of "array of bindings" that Vulkan uses.
 using DescriptorHandleVariant = std::variant<
-    std::monostate,              // Placeholder/empty
-    VkImageView,                 // Image/texture descriptors
-    VkBuffer,                    // Buffer descriptors
-    VkSampler,                   // Sampler descriptors
-    SwapChainPublicVariables*,   // Swapchain resources (per-frame image views)
-    VkImage                      // Storage images
+    std::monostate,                         // Placeholder/empty
+    VkImageView,                            // Sampled/storage images, input attachments
+    VkBuffer,                               // Uniform/storage buffers (regular & dynamic)
+    VkBufferView,                           // Uniform/storage texel buffers
+    VkSampler,                              // Sampler descriptors
+    VkImage,                                // Storage images (when separate from view)
+    VkAccelerationStructureKHR,             // Ray tracing acceleration structures
+    ImageSamplerPair,                       // Combined image sampler (image view + sampler)
+    SwapChainPublicVariables*,              // Swapchain resources (per-frame image views)
+    std::vector<VkImageView>,               // Arrays of image views
+    std::vector<VkBuffer>,                  // Arrays of buffers
+    std::vector<VkBufferView>,              // Arrays of buffer views
+    std::vector<VkSampler>,                 // Arrays of samplers
+    std::vector<VkAccelerationStructureKHR> // Arrays of acceleration structures
 >;
 
 // ResourceVariant: Passthrough type for migration compatibility
@@ -351,8 +390,11 @@ public:
     // Extract handle as DescriptorHandleVariant for inter-node communication
     // This method attempts to extract common descriptor handle types
     DescriptorHandleVariant GetDescriptorHandle() const {
-        // Try each common descriptor type in order of likelihood
+        // Try each descriptor type in order of likelihood
         // Note: This uses template specialization - only types that were Set() will succeed
+
+        // Try ImageSamplerPair (for combined image samplers)
+        try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
 
         // Try VkImageView (most common for sampledImage descriptors)
         try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
@@ -360,14 +402,20 @@ public:
         // Try VkBuffer (for uniform/storage buffers)
         try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
 
+        // Try VkBufferView (for texel buffers)
+        try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
+
         // Try VkSampler (for sampler descriptors)
         try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
 
+        // Try VkImage (for storage images when separate from view)
+        try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
+
+        // Try VkAccelerationStructureKHR (for ray tracing)
+        try { return DescriptorHandleVariant{GetHandle<VkAccelerationStructureKHR>()}; } catch (...) {}
+
         // Try SwapChainPublicVariables* (for swapchain resources)
         try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
-
-        // Try VkImage (for storage images)
-        try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
 
         // If nothing matched, return empty monostate
         return DescriptorHandleVariant{std::monostate{}};
