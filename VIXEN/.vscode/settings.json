@@ -162,9 +162,11 @@
     "cmake.testEnvironment": {
         "GTEST_COLOR": "1"
     },
-    "cmakeExplorer.suiteDelimiter": ".",
-    "cmakeExplorer.testExplorer.enabled": true,
-    "cmakeExplorer.testExplorer.treeMode": "byTestSuite",
-    "testExplorer.useNativeTesting": true,
-    "testExplorer.sort": "byLocation"
+    "testExplorer.useNativeTesting": false,
+    "testExplorer.sort": "byLocation",
+    "cmake.options.advanced": {
+        "ctest": {
+            "allowParallelJobs": true
+        }
+    }
 }

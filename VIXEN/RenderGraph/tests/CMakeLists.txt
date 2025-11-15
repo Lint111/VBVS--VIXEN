@@ -199,6 +199,14 @@ include(test_voxel_octree.cmake)
 include(test_scene_generators.cmake)
 
 # ===========================================================================
+# CompileTimeResourceSystem Tests
+# ===========================================================================
+# Test suite for compile-time type system validation, caching, and traits.
+# Moved from root CMakeLists.txt for proper organization.
+
+add_subdirectory(CompileTimeResourceSystem)
+
+# ===========================================================================
 # Voxel Traversal Tests (Phase H.4.5)
 # ===========================================================================
 # This test suite validates Ray-AABB intersection and DDA voxel traversal.

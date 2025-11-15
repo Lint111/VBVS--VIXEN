@@ -1,5 +1,4 @@
 // Minimal test to debug registration issue
-#include "RenderGraph/include/Data/Core/ResourceTypeTraits.h"
 #include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
 #include "RenderGraph/include/Core/FieldExtractor.h"
 #include <iostream>

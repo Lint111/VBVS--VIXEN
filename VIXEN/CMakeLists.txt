@@ -498,9 +498,8 @@ endif()
 # RenderGraph static library (replaces old inline definitions)
 add_subdirectory(RenderGraph)
 
-# Debug test for ResourceTypeTraits (temporary)
-add_executable(test_traits_debug test_traits_debug.cpp)
-target_link_libraries(test_traits_debug PRIVATE RenderGraph)
+# Debug test for ResourceTypeTraits moved to RenderGraph/tests/CompileTimeResourceSystem/
+# (See RenderGraph/tests/CMakeLists.txt for test configuration)
 
 # CashSystem static library (caching and resource management)
 add_subdirectory(CashSystem)
@@ -620,16 +619,5 @@ if(ENABLE_COVERAGE)
     )
 endif()
 
-# Minimal test for CompileTimeResourceSystem
-add_executable(test_minimal test_minimal.cpp)
-target_include_directories(test_minimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES})
-set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# Test compile-time recursive validation
-add_executable(test_compile_time_cache test_compile_time_cache.cpp)
-target_include_directories(test_compile_time_cache PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_compile_time_cache PRIVATE ${Vulkan_LIBRARIES})
-set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
-set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
+# CompileTimeResourceSystem tests moved to RenderGraph/tests/
+# (See RenderGraph/tests/CMakeLists.txt for test configuration)
