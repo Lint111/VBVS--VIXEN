@@ -324,7 +324,6 @@ struct ImageSamplerPair {
 
 // Register types defined above (after their definitions)
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
-REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 
 // ============================================================================
 // DESCRIPTOR HANDLE VARIANT (For inter-node communication)
@@ -446,6 +445,9 @@ private:
 
 // Register PassThroughStorage after its definition
 REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
+
+// Register DescriptorHandleVariant (now that it's fully defined and all elements are registered)
+REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
 
 // ============================================================================
 // RESOURCE CLASS (Drop-in replacement for old Resource)

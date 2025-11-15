@@ -32,6 +32,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "../TestMocks.h"  // Centralized test mocks
 #include "../../include/Nodes/PushConstantGathererNode.h"
 #include "../../include/Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "../../include/Core/NodeTypeRegistry.h"
@@ -41,31 +42,8 @@
 #include <vector>
 #include <cstring>
 
-// Mock ShaderManagement types for testing
-namespace ShaderManagement {
-    struct SpirvTypeInfo {
-        enum class BaseType { Float, Int, UInt, Bool };
-        BaseType baseType;
-        uint32_t vecSize;
-        uint32_t matrixRows;
-        uint32_t matrixCols;
-    };
-
-    struct SpirvStructMember {
-        std::string name;
-        uint32_t offset;
-        uint32_t size;
-        SpirvTypeInfo typeInfo;
-    };
-
-    struct ShaderDataBundle {
-        std::vector<SpirvStructMember> pushConstantMembers;
-        // Add other necessary fields as needed
-    };
-}
-
 using namespace Vixen::RenderGraph;
-using namespace ShaderManagement;
+using namespace RenderGraph::TestMocks;
 
 // ============================================================================
 // Test Fixture
@@ -78,8 +56,8 @@ protected:
         nodeType = std::make_unique<PushConstantGathererNodeType>();
         node = std::make_unique<PushConstantGathererNode>("test_gatherer", nodeType.get());
 
-        // Create mock shader bundle for testing
-        shaderBundle = std::make_unique<ShaderDataBundle>();
+        // Create mock shader bundle for testing (use shared_ptr for Phase H API)
+        shaderBundle = std::make_shared<MockDataBundle>();
     }
 
     void TearDown() override {
@@ -90,23 +68,27 @@ protected:
 
     // Helper to create mock shader bundle with push constant fields
     void createMockShaderBundle() {
+        using BT = MockTypeInfo::BaseType;
         shaderBundle->pushConstantMembers = {
-            {"cameraPos", 0, 12, {SpirvTypeInfo::BaseType::Float, 3, 0, 0}},  // vec3
-            {"time", 16, 4, {SpirvTypeInfo::BaseType::Float, 1, 0, 0}},       // float
-            {"lightIntensity", 20, 4, {SpirvTypeInfo::BaseType::Float, 1, 0, 0}} // float
+            {"cameraPos", 0, 12, {BT::Float, 3, 0, 0}},  // vec3
+            {"time", 16, 4, {BT::Float, 1, 0, 0}},       // float
+            {"lightIntensity", 20, 4, {BT::Float, 1, 0, 0}} // float
         };
+        shaderBundle->pushConstantSize = 24;
     }
 
     // Helper to create a simple shader bundle with one field
     void createSimpleShaderBundle() {
+        using BT = MockTypeInfo::BaseType;
         shaderBundle->pushConstantMembers = {
-            {"deltaTime", 0, 4, {SpirvTypeInfo::BaseType::Float, 1, 0, 0}}  // float
+            {"deltaTime", 0, 4, {BT::Float, 1, 0, 0}}  // float
         };
+        shaderBundle->pushConstantSize = 4;
     }
 
     std::unique_ptr<PushConstantGathererNodeType> nodeType;
     std::unique_ptr<PushConstantGathererNode> node;
-    std::unique_ptr<ShaderDataBundle> shaderBundle;
+    std::shared_ptr<MockDataBundle> shaderBundle;  // Phase H: shared_ptr
 };
 
 // ============================================================================
