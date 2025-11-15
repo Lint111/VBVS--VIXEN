@@ -121,7 +121,7 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     }
 
     // Validate tentative slots against shader requirements
-    ValidateTentativeSlotsAgainstShader(ctx, shaderBundle.get());
+    ValidateTentativeSlotsAgainstShader(ctx, shaderBundle);
 
     // Call base validation (type checks, null checks)
     if (!ValidateVariadicInputsImpl(ctx)) {

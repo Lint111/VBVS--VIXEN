@@ -93,7 +93,7 @@ void ShaderLibraryNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output device and shader data bundle
     ctx.Out(ShaderLibraryNodeConfig::VULKAN_DEVICE_OUT, device);
-    ctx.Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_);
+    ctx.Out(ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE, shaderBundle_.get());
 
     NODE_LOG_INFO("ShaderLibraryNode: All outputs set - ready for downstream nodes");
 }
