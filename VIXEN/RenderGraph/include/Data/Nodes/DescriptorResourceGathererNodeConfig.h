@@ -108,4 +108,5 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
     static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, ::ShaderManagement::ShaderDataBundle*>);
+};
 } // namespace Vixen::RenderGraph

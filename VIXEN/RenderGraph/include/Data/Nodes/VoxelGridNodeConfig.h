@@ -98,7 +98,6 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<OCTREE_NODES_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VulkanBuffer*>);
 };
 
 } // namespace Vixen::RenderGraph

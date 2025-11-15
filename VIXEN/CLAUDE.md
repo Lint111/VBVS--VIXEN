@@ -56,6 +56,33 @@ The `coding-partner` agent will proactively delegate to:
 - Task is purely informational (no coding involved)
 - Task requires specialized agent that coding-partner wouldn't delegate to
 
+### Agent Communication Protocol - MANDATORY
+
+**Always announce agent usage clearly:**
+
+1. **Before launching agent:**
+   - State which agent you're launching and why
+   - Example: "Launching `bug-hunter` agent to investigate the crash..."
+   - Example: "Using `coding-partner` agent to implement this feature..."
+
+2. **After agent completes:**
+   - Summarize the agent's findings/actions
+   - Provide specific file references and changes made
+   - Example: "Agent fixed X in [file.cpp:42](file.cpp#L42) by adding null check."
+
+3. **Tool usage transparency:**
+   - When using Read/Edit/Grep tools directly, proceed without announcement
+   - When launching agents, always announce first
+   - User sees agent activity via progress spinner, but needs context
+
+**Example flow:**
+```
+User: "Fix the rendering bug"
+Assistant: "Launching bug-hunter agent to investigate rendering issue..."
+[agent works - user sees spinner]
+Assistant: "Bug found: missing viewport initialization in [Renderer.cpp:156](Renderer.cpp#L156). Fixed by adding vkCmdSetViewport call."
+```
+
 ## Code Review Philosophy - MANDATORY
 
 **Approach all interactions as a senior developer mentoring a junior developer.**
@@ -142,6 +169,12 @@ cmake --build build --config Release
 # Alternative: Use Visual Studio solution
 # Open build/3_0_DeviceHandshake.sln in Visual Studio and build from IDE
 ```
+
+**Build Error Logging - MANDATORY**:
+- **Always capture build output** to `temp/build-errors.txt` (overwrite existing)
+- Use PowerShell redirection: `cmake --build build --config Debug 2>&1 | Out-File -FilePath "temp/build-errors.txt" -Encoding utf8`
+- This provides persistent error log for user review
+- File location: `c:\cpp\VBVS--VIXEN\VIXEN\temp\build-errors.txt`
 
 ### Project Structure
 
