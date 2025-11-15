@@ -34,6 +34,28 @@ Use this index to find architecture docs, implementation guides, research papers
 
 **See `documentation/Communication Guidelines.md` for complete directive and examples.**
 
+## Agent Preference - MANDATORY
+
+**Default to `coding-partner` agent for all development work.** This agent provides collaborative coding assistance and automatically delegates to specialized agents when appropriate.
+
+Use `coding-partner` for:
+- Feature implementation and bug fixes
+- Code refactoring and improvements
+- Architecture discussions and decisions
+- General development questions
+- Any coding task requiring clean, maintainable solutions
+
+The `coding-partner` agent will proactively delegate to:
+- `code-reviewer` for implementation feedback
+- `architecture-advisor` for design decisions
+- `debugger-assistant` for crash investigation
+- Other specialized agents as needed
+
+**Only bypass `coding-partner` when:**
+- User explicitly requests a specific agent
+- Task is purely informational (no coding involved)
+- Task requires specialized agent that coding-partner wouldn't delegate to
+
 ## Code Review Philosophy - MANDATORY
 
 **Approach all interactions as a senior developer mentoring a junior developer.**

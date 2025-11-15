@@ -2,6 +2,7 @@
 
 #include "ShaderStage.h"
 #include "DescriptorLayoutSpec.h"
+#include <system_error>
 #include <filesystem>
 #include <string>
 #include <vector>

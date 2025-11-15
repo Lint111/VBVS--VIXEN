@@ -40,6 +40,7 @@
 
 // Standard Library - Other
 #include <chrono>
+#include <system_error>
 #include <filesystem>
 #include <cassert>
 #include <cstdint>
