@@ -211,7 +211,7 @@ void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {
 // Helper Methods
 //-----------------------------------------------------------------------------
 
-void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle) {
+void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ::ShaderManagement::ShaderDataBundle* shaderBundle) {
     const auto* layoutSpec = shaderBundle->descriptorLayout.get();
     if (!layoutSpec) {
         NODE_LOG_INFO("[DescriptorResourceGathererNode::ValidateTentativeSlots] ERROR: No descriptor layout");
@@ -241,7 +241,7 @@ void DescriptorResourceGathererNode::ValidateSingleSlotAgainstShader(
     VariadicCompileContext& ctx,
     size_t slotIndex,
     const VariadicSlotInfo* slotInfo,
-    const ShaderManagement::DescriptorLayoutSpec* layoutSpec
+    const ::ShaderManagement::DescriptorLayoutSpec* layoutSpec
 ) {
     // Find matching shader binding
     for (const auto& shaderBinding : layoutSpec->bindings) {
@@ -259,7 +259,7 @@ void DescriptorResourceGathererNode::UpdateSlotWithShaderBinding(
     VariadicCompileContext& ctx,
     size_t slotIndex,
     const VariadicSlotInfo* slotInfo,
-    const ShaderManagement::DescriptorBindingSpec& shaderBinding
+    const ::ShaderManagement::DescriptorBindingSpec& shaderBinding
 ) {
     VariadicSlotInfo updatedSlot = *slotInfo;
 

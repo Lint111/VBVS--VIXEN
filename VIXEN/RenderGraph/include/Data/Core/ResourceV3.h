@@ -118,13 +118,25 @@ using DescriptorHandleVariant = std::variant<
     std::vector<VkSampler>, std::vector<VkAccelerationStructureKHR>
 >;  // Forward declaration - full definition with rationale below
 
+}  // Close namespace Vixen::RenderGraph to register types from other namespaces
+
+// Forward declarations for types in other namespaces
+namespace ShaderManagement {
+    struct ShaderDataBundle;
+    struct CompiledProgram;
+}
+
+// Register types from other namespaces (must be at global scope relative to IsRegisteredType)
+template<> struct Vixen::RenderGraph::IsRegisteredType<::ShaderManagement::ShaderDataBundle> : std::true_type {};
+template<> struct Vixen::RenderGraph::IsRegisteredType<::ShaderManagement::CompiledProgram> : std::true_type {};
+
+namespace Vixen::RenderGraph {  // Reopen namespace
+
 // Register application types
 REGISTER_COMPILE_TIME_TYPE(CameraData);
 REGISTER_COMPILE_TIME_TYPE(SwapChainPublicVariables);
 REGISTER_COMPILE_TIME_TYPE(SwapChainBuffer);
 REGISTER_COMPILE_TIME_TYPE(VulkanShader);
-REGISTER_COMPILE_TIME_TYPE(ShaderManagement::CompiledProgram);
-REGISTER_COMPILE_TIME_TYPE(ShaderManagement::ShaderDataBundle);
 REGISTER_COMPILE_TIME_TYPE(Vixen::Vulkan::Resources::VulkanDevice);
 REGISTER_COMPILE_TIME_TYPE(ShaderProgramDescriptor);
 REGISTER_COMPILE_TIME_TYPE(LoopReference);
@@ -186,6 +198,12 @@ struct IsValidTypeImpl {
     static constexpr bool is_vector_helper(...) { return false; }
     static constexpr bool is_vector = is_vector_helper(static_cast<Clean*>(nullptr));
 
+    // Check if it's a std::array<U, N>
+    template<typename U, std::size_t N>
+    static constexpr bool is_array_helper(const std::array<U, N>*) { return true; }
+    static constexpr bool is_array_helper(...) { return false; }
+    static constexpr bool is_array = is_array_helper(static_cast<Clean*>(nullptr));
+
     // Check if it's a std::variant<Us...>
     template<typename... Us>
     static constexpr bool is_variant_helper(const std::variant<Us...>*) { return true; }
@@ -198,6 +216,13 @@ struct IsValidTypeImpl {
 
     template<typename U>
     struct VectorElementType<std::vector<U>> { using type = U; };
+
+    // Extract element type from std::array (specialization-based)
+    template<typename U>
+    struct ArrayElementType { using type = void; };  // Default: void for non-arrays
+
+    template<typename U, std::size_t N>
+    struct ArrayElementType<std::array<U, N>> { using type = U; };
 
     // Validate all types in a variant
     template<typename... Us>
@@ -216,6 +241,17 @@ struct IsValidTypeImpl {
         }
     }
 
+    // Helper: validate array element
+    template<typename ArrType>
+    static constexpr bool validate_array_element() {
+        using Element = typename ArrayElementType<ArrType>::type;
+        if constexpr (std::is_same_v<Element, void>) {
+            return false;  // Not an array
+        } else {
+            return IsValidTypeImpl<Element>::value;
+        }
+    }
+
     static constexpr bool value = []() constexpr {
         // Check original type first (early exit if registered)
         if constexpr (IsRegisteredType<T>::value) {
@@ -228,6 +264,8 @@ struct IsValidTypeImpl {
         // Only decompose if not directly registered
         else if constexpr (is_vector) {
             return validate_vector_element<Clean>();
+        } else if constexpr (is_array) {
+            return validate_array_element<Clean>();
         } else if constexpr (is_variant) {
             return all_variant_types_valid(static_cast<Clean*>(nullptr));
         } else {

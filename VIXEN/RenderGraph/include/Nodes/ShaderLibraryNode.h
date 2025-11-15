@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderDataBundle.h>
+#include <ShaderManagement/ShaderBundleBuilder.h>
 #include "VulkanShader.h"
 #include <memory>
 #include <functional>
@@ -12,10 +13,6 @@
 namespace CashSystem {
     class ShaderModuleCacher;
     struct ShaderModuleWrapper;
-}
-
-namespace ShaderManagement {
-    class ShaderBundleBuilder;
 }
 
 namespace Vixen::RenderGraph {
@@ -86,7 +83,7 @@ public:
      * @endcode
      */
     void RegisterShaderBuilder(
-        std::function<ShaderManagement::ShaderBundleBuilder(int vulkanVersion, int spirvVersion)> builderFunc
+        std::function<::ShaderManagement::ShaderBundleBuilder(int vulkanVersion, int spirvVersion)> builderFunc
     );
 
 protected:
@@ -104,7 +101,7 @@ private:
     CashSystem::ShaderModuleCacher* shaderModuleCacher = nullptr;
 
     // ShaderManagement integration - Phase 1
-    std::shared_ptr<ShaderManagement::ShaderDataBundle> shaderBundle_;
+    std::shared_ptr<::ShaderManagement::ShaderDataBundle> shaderBundle_;
 
     // Loaded shader modules (cached from ShaderModuleCacher)
     std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;
@@ -122,7 +119,7 @@ private:
     void OnDeviceMetadata(const Vixen::EventBus::BaseEventMessage& message);
 
     // Shader builder functions (registered via RegisterShaderBuilder)
-    std::vector<std::function<ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
+    std::vector<std::function<::ShaderManagement::ShaderBundleBuilder(int, int)>> shaderBuilderFuncs;
 
     // Helper methods
     void RegisterShaderModuleCacher();

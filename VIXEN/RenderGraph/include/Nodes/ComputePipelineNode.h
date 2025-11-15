@@ -86,13 +86,13 @@ private:
     VkShaderModule CreateShaderModule(VulkanDevice* device, const std::vector<uint32_t>& spirv);
     std::shared_ptr<CashSystem::PipelineLayoutWrapper> CreatePipelineLayout(
         VulkanDevice* device,
-        ShaderManagement::ShaderDataBundle* shaderBundle,
+        ::ShaderManagement::ShaderDataBundle* shaderBundle,
         VkDescriptorSetLayout descriptorSetLayout
     );
     void CreateComputePipeline(
         VulkanDevice* device,
         VkShaderModule shaderModule,
-        ShaderManagement::ShaderDataBundle* shaderBundle,
+        ::ShaderManagement::ShaderDataBundle* shaderBundle,
         std::shared_ptr<CashSystem::PipelineLayoutWrapper> layoutWrapper,
         const std::string& layoutKey,
         uint32_t workgroupX,

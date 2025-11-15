@@ -47,7 +47,7 @@ struct PushConstantFieldSlotInfo {
     std::string fieldName;        // e.g., "cameraPos", "time"
     uint32_t offset;              // Byte offset in push constant block
     uint32_t size;                // Size in bytes
-    ShaderManagement::SpirvTypeInfo::BaseType baseType;  // Float, Vec3, etc.
+    ::ShaderManagement::SpirvTypeInfo::BaseType baseType;  // Float, Vec3, etc.
     uint32_t vecSize;             // 1 for scalar, 3 for vec3, etc.
     size_t dynamicInputIndex;     // Index in dynamic input array
 };
@@ -82,7 +82,7 @@ public:
      * Example:
      *   gatherer->PreRegisterPushConstantFields(shaderBundle);
      */
-    void PreRegisterPushConstantFields(const ShaderManagement::ShaderDataBundle* shaderBundle);
+    void PreRegisterPushConstantFields(const ::ShaderManagement::ShaderDataBundle* shaderBundle);
 
 protected:
     // Variadic lifecycle overrides with phase-specific contexts

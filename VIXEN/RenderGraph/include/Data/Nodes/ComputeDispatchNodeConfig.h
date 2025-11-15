@@ -4,11 +4,6 @@
 #include "Data/Core/ResourceV3.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 
-namespace Vixen::ShaderManagement {
-    struct ShaderDataBundle;
-}
-
-using ShaderDataBundle = Vixen::ShaderManagement::ShaderDataBundle;
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace Vixen::RenderGraph {
@@ -158,7 +153,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Shader data bundle with reflection metadata (for push constant detection)
      */
-    INPUT_SLOT(SHADER_DATA_BUNDLE, ShaderDataBundle*, 11,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, ::ShaderManagement::ShaderDataBundle*, 11,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

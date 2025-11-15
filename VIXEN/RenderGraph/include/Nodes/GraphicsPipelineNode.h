@@ -81,8 +81,8 @@ private:
 
     // Shader stage data (built from reflection)
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageInfos;
-    std::unordered_map<ShaderManagement::ShaderStage, std::shared_ptr<CashSystem::ShaderModuleWrapper>> shaderModules;
-    std::shared_ptr<ShaderManagement::ShaderDataBundle> currentShaderBundle;  // Current bundle for reflection
+    std::unordered_map<::ShaderManagement::ShaderStage, std::shared_ptr<CashSystem::ShaderModuleWrapper>> shaderModules;
+    std::shared_ptr<::ShaderManagement::ShaderDataBundle> currentShaderBundle;  // Current bundle for reflection
 
     // Pipeline assembly orchestration
     void CreatePipelineWithCache(TypedNode<GraphicsPipelineNodeConfig>::TypedCompileContext& ctx);

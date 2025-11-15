@@ -94,7 +94,7 @@ public:
     VkDescriptorSet GetDescriptorSet(uint32_t index) const {
         return (index < descriptorSets.size()) ? descriptorSets[index] : VK_NULL_HANDLE;
     }
-    const ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
+    const ::ShaderManagement::DescriptorLayoutSpec* GetLayoutSpec() const { return layoutSpec; }
 
 protected:
 	// Template method pattern - override *Impl() methods
@@ -126,7 +126,7 @@ private:
     inline bool IsRendering() const { return !IsPaused(); }
 
     // Configuration
-    const ShaderManagement::DescriptorLayoutSpec* layoutSpec = nullptr;
+    const ::ShaderManagement::DescriptorLayoutSpec* layoutSpec = nullptr;
 
     // Vulkan resources
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
@@ -147,10 +147,10 @@ private:
     NodeFlags flags = NodeFlags::None;
 
     // Helpers for CompileImpl
-    void SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<ShaderManagement::ShaderDataBundle>& outShaderBundle);
+    void SetupDeviceAndShaderBundle(TypedCompileContext& ctx, std::shared_ptr<::ShaderManagement::ShaderDataBundle>& outShaderBundle);
     void RegisterDescriptorCacher();
-    void CreateDescriptorSetLayout(const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings);
-    void CreateDescriptorPool(const ShaderManagement::ShaderDataBundle& shaderBundle, uint32_t imageCount);
+    void CreateDescriptorSetLayout(const std::vector<::ShaderManagement::SpirvDescriptorBinding>& descriptorBindings);
+    void CreateDescriptorPool(const ::ShaderManagement::ShaderDataBundle& shaderBundle, uint32_t imageCount);
     void AllocateDescriptorSets(uint32_t imageCount);
 
     /**
@@ -165,7 +165,7 @@ private:
     std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
         uint32_t imageIndex,
         const std::vector<DescriptorHandleVariant>& descriptorResources,
-        const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
+        const std::vector<::ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
         std::vector<VkDescriptorImageInfo>& imageInfos,
         std::vector<VkDescriptorBufferInfo>& bufferInfos,
         const std::vector<SlotRole>& slotRoles = {},
@@ -175,13 +175,13 @@ private:
     // Descriptor write helpers - extracted from BuildDescriptorWrites for readability
     VkSampler FindSamplerResource(const std::vector<DescriptorHandleVariant>& descriptorResources, uint32_t targetBinding);
     bool ValidateAndFilterBinding(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const std::vector<DescriptorHandleVariant>& descriptorResources,
         const std::vector<SlotRole>& slotRoles,
         SlotRole roleFilter
     );
     void HandleStorageImage(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         uint32_t imageIndex,
         VkWriteDescriptorSet& write,
@@ -189,7 +189,7 @@ private:
         std::vector<VkWriteDescriptorSet>& writes
     );
     void HandleSampledImage(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         uint32_t imageIndex,
         VkWriteDescriptorSet& write,
@@ -197,14 +197,14 @@ private:
         std::vector<VkWriteDescriptorSet>& writes
     );
     void HandleSampler(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorImageInfo>& imageInfos,
         std::vector<VkWriteDescriptorSet>& writes
     );
     void HandleCombinedImageSampler(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         const std::vector<DescriptorHandleVariant>& descriptorResources,
         uint32_t imageIndex,
@@ -214,7 +214,7 @@ private:
         std::vector<VkWriteDescriptorSet>& writes
     );
     void HandleBuffer(
-        const ShaderManagement::SpirvDescriptorBinding& binding,
+        const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
         VkWriteDescriptorSet& write,
         std::vector<VkDescriptorBufferInfo>& bufferInfos,

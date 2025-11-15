@@ -7,12 +7,6 @@
 #include <memory>
 #include <vector>
 
-// Forward declarations for shader management types
-namespace ShaderManagement {
-    struct DescriptorLayoutSpec;
-    struct DescriptorBindingSpec;
-}
-
 namespace Vixen::RenderGraph {
 
 /**
@@ -123,11 +117,11 @@ private:
     // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);
     void GatherResources(VariadicCompileContext& ctx);
-    void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ShaderManagement::ShaderDataBundle* shaderBundle);
+    void ValidateTentativeSlotsAgainstShader(VariadicCompileContext& ctx, const ::ShaderManagement::ShaderDataBundle* shaderBundle);
 
     // Validation helpers (extracted from ValidateTentativeSlotsAgainstShader)
-    void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorLayoutSpec* layoutSpec);
-    void UpdateSlotWithShaderBinding(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ShaderManagement::DescriptorBindingSpec& shaderBinding);
+    void ValidateSingleSlotAgainstShader(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ::ShaderManagement::DescriptorLayoutSpec* layoutSpec);
+    void UpdateSlotWithShaderBinding(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo, const ::ShaderManagement::DescriptorBindingSpec& shaderBinding);
     void MarkSlotAsInvalid(VariadicCompileContext& ctx, size_t slotIndex, const VariadicSlotInfo* slotInfo);
 
     // Resource gathering helpers (extracted from GatherResources)
