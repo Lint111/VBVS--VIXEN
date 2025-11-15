@@ -36,7 +36,7 @@
 #include "../../include/Data/Nodes/PushConstantGathererNodeConfig.h"
 #include "../../include/Core/NodeTypeRegistry.h"
 #include "../../include/Core/RenderGraph.h"
-#include "../../include/Core/Resource.h"
+#include "../../include/Data/Core/ResourceV3.h"
 #include <memory>
 #include <vector>
 #include <cstring>

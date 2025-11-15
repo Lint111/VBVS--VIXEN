@@ -25,20 +25,8 @@ protected:
 class DummyNodeType : public NodeType {
 public:
     DummyNodeType() : NodeType("Dummy") {
-        ResourceSlotDescriptor inDesc;
-        inDesc.name = "in";
-        inDesc.type = ResourceType::Buffer;
-        inDesc.lifetime = ResourceLifetime::Transient;
-        inDesc.descriptor = HandleDescriptor("handle");
-        inputSchema.push_back(inDesc);
-
-        ResourceSlotDescriptor outDesc;
-        outDesc.name = "out";
-        outDesc.type = ResourceType::Buffer;
-        outDesc.lifetime = ResourceLifetime::Transient;
-        outDesc.descriptor = HandleDescriptor("handle");
-        outputSchema.push_back(outDesc);
-
+        // Phase H: Schema now defined via TypedNode config classes
+        // No manual ResourceSlotDescriptor needed
         allowInputArrays = true;
     }
 

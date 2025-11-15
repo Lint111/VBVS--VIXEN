@@ -100,11 +100,11 @@ using TestGatherer3 = ResourceGathererNode<
 >;
 static_assert(TestGatherer3::INPUT_COUNT == 2, "Should have 2 inputs");
 
-// Test 4: ResourceVariant inputs work
+// Test 4: PassThroughStorage inputs work
 using TestGatherer4 = ResourceGathererNode<
-    ResourceVariant,
-    ResourceVariant,
-    ResourceVariant
+    PassThroughStorage,
+    PassThroughStorage,
+    PassThroughStorage
 >;
 static_assert(TestGatherer4::INPUT_COUNT == 3, "Should have 3 inputs");
 
@@ -262,15 +262,21 @@ void testHomogeneousGatherer() {
 }
 
 void testUniversalGatherer() {
-    std::cout << "\n=== Test 5: Universal Gatherer (ResourceVariant) ===\n";
+    std::cout << "\n=== Test 5: Universal Gatherer (PassThroughStorage) ===\n";
 
     // Accepts ANY registered type
     UniversalGatherer<4> gatherer;
 
-    gatherer.inputs[0].set(ResourceVariant(reinterpret_cast<VkImage>(0x1001)));
-    gatherer.inputs[1].set(ResourceVariant(reinterpret_cast<VkBuffer>(0x2001)));
-    gatherer.inputs[2].set(ResourceVariant(reinterpret_cast<VkSampler>(0x3001)));
-    gatherer.inputs[3].set(ResourceVariant(reinterpret_cast<VkPipeline>(0x4001)));
+    PassThroughStorage pts0, pts1, pts2, pts3;
+    pts0.Set(reinterpret_cast<VkImage>(0x1001), ValueTag<VkImage>{});
+    pts1.Set(reinterpret_cast<VkBuffer>(0x2001), ValueTag<VkBuffer>{});
+    pts2.Set(reinterpret_cast<VkSampler>(0x3001), ValueTag<VkSampler>{});
+    pts3.Set(reinterpret_cast<VkPipeline>(0x4001), ValueTag<VkPipeline>{});
+
+    gatherer.inputs[0].set(pts0);
+    gatherer.inputs[1].set(pts1);
+    gatherer.inputs[2].set(pts2);
+    gatherer.inputs[3].set(pts3);
 
     gatherer.execute();
 
