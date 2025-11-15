@@ -61,7 +61,7 @@ add_executable(test_registration
     test_registration.cpp
 )
 target_include_directories(test_registration PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../.. ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_registration PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_registration PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_registration PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_registration PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -88,5 +88,17 @@ target_include_directories(test_type_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/.
 target_link_libraries(test_type_check PRIVATE ${Vulkan_LIBRARIES})
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)
+
+# Add /FS flag for MSVC to allow parallel PDB writes
+if(MSVC)
+    target_compile_options(test_minimal PRIVATE /FS)
+    target_compile_options(test_compile_time_cache PRIVATE /FS)
+    target_compile_options(test_traits_debug PRIVATE /FS)
+    target_compile_options(test_recursive_validation PRIVATE /FS)
+    target_compile_options(test_registration PRIVATE /FS)
+    target_compile_options(test_simple_traits PRIVATE /FS)
+    target_compile_options(test_syntax_check PRIVATE /FS)
+    target_compile_options(test_type_check PRIVATE /FS)
+endif()
 
 message(STATUS "[CompileTimeResourceSystem Tests] Added: 8 test executables (1 disabled)")
