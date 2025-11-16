@@ -19,7 +19,9 @@ void MainCacher::CleanupGlobalCaches() {
     // Cleanup all device-independent cachers
     std::lock_guard lock(m_globalRegistryMutex);
     for (auto& [typeIndex, cacher] : m_globalCachers) {
-        if (cacher) {
+        // Check for valid pointer (avoid dangling references during static deinitialization)
+        if (cacher && cacher.get() != nullptr &&
+            reinterpret_cast<uintptr_t>(cacher.get()) != 0xFFFFFFFFFFFFFFFF) {
             cacher->Cleanup();
         }
     }

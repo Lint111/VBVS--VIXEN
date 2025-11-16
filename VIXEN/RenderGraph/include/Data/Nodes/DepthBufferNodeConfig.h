@@ -31,7 +31,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts (declared early for reuse)
 namespace DepthBufferNodeCounts {
     static constexpr size_t INPUTS = 3;
-    static constexpr size_t OUTPUTS = 3;
+    static constexpr size_t OUTPUTS = 4;  // Fixed: 4 outputs (DEPTH_IMAGE, DEPTH_IMAGE_VIEW, DEPTH_FORMAT, VULKAN_DEVICE_OUT)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 

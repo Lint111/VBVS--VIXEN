@@ -26,16 +26,6 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Helper macro: add subdirectory only if folder exists and contains CMakeLists.txt
-macro(maybe_add_subdir dir)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
-        message(STATUS "Adding tests subdir: ${dir}")
-        add_subdirectory(${dir})
-    else()
-        message(STATUS "Skipping tests subdir (missing): ${dir}")
-    endif()
-endmacro()
-
 # Helper macro: add external test directory from outside the tests/ folder
 macro(maybe_add_external_subdir dir)
     if(EXISTS "${PROJECT_SOURCE_DIR}/${dir}/CMakeLists.txt")
@@ -46,22 +36,16 @@ macro(maybe_add_external_subdir dir)
     endif()
 endmacro()
 
-# List of test subfolders to include. Add new entries as needed.
-set(TEST_SUBFOLDERS
-    CashSystem
-    EventBus
-    ResourceManagement
-    Logger
-    VulkanResources
-)
-
+# All tests are now in component-local directories.
+# Reference them from their respective component locations.
+# Note: RenderGraph and ShaderManagement tests are included directly from their component CMakeLists.txt
 set(EXTERNAL_TEST_DIRS
-    ShaderManagement/tests
+    logger/tests
+    EventBus/tests
+    CashSystem/tests
+    ResourceManagement/tests
+    source/VulkanResources/tests
 )
-
-foreach(subdir IN LISTS TEST_SUBFOLDERS)
-    maybe_add_subdir(${subdir})
-endforeach()
 
 foreach(external_subdir IN LISTS EXTERNAL_TEST_DIRS)
     maybe_add_external_subdir(${external_subdir})
