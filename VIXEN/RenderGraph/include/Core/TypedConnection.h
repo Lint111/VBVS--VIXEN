@@ -181,10 +181,8 @@ public:
                 if (outputDesc && outputDesc->lifetime != ResourceLifetime::Persistent) {
                     throw std::runtime_error(
                         "Member field extraction requires source slot to have ResourceLifetime::Persistent. "
-                        "Source slot '" + outputDesc->name + "' has lifetime " +
-                        (outputDesc->lifetime == ResourceLifetime::Transient ? "Transient" :
-                         outputDesc->lifetime == ResourceLifetime::Imported ? "Imported" : "Static") +
-                        ". Change the slot configuration to use ResourceLifetime::Persistent."
+                        "Source slot '" + outputDesc->name + "' has lifetime Transient. "
+                        "Change the slot configuration to use ResourceLifetime::Persistent."
                     );
                 }
             }
@@ -626,10 +624,8 @@ public:
                 if (outputDesc && outputDesc->lifetime != ResourceLifetime::Persistent) {
                     throw std::runtime_error(
                         "ConnectVariadic member field extraction requires source slot to have ResourceLifetime::Persistent. "
-                        "Source slot '" + outputDesc->name + "' has lifetime " +
-                        (outputDesc->lifetime == ResourceLifetime::Transient ? "Transient" :
-                         outputDesc->lifetime == ResourceLifetime::Imported ? "Imported" : "Static") +
-                        ". Change the slot configuration to use ResourceLifetime::Persistent."
+                        "Source slot '" + outputDesc->name + "' has lifetime Transient. "
+                        "Change the slot configuration to use ResourceLifetime::Persistent."
                     );
                 }
             }

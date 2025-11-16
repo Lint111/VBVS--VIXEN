@@ -35,7 +35,7 @@ CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
         // Initialize output descriptor as generic handle
         HandleDescriptor genericDesc{"Constant"};
         INIT_OUTPUT_DESC(OUTPUT, "output",
-            ResourceLifetime::Persistent,
+            ResourceLifetime::Transient,
             genericDesc
         );
     }
