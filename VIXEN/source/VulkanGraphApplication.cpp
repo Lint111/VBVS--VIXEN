@@ -1045,13 +1045,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     mainLogger->Info("Successfully wired " + std::to_string(connectionCount) + " connections");
 
-    // Enable logging for descriptor debugging
-    mainLogger->Info("Attempting to enable logging for descriptor nodes...");
-    EnableNodeLogger("compute_desc_gatherer", true);
-    EnableNodeLogger("compute_descriptors", true);
-    EnableNodeLogger("main_swapchain", true);
-    mainLogger->Info("Logger enablement complete");
-
     // --- Phase 0.4: Loop Propagation Connections ---
     // TODO: Re-enable loop propagation connections after implementing proper API
     // Note: AUTO_LOOP slots exist on all nodes, but direct Connect() is not exposed on RenderGraph
