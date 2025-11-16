@@ -24,13 +24,16 @@ set(VULKANRESOURCES_SOURCES
 )
 
 set(VULKANRESOURCES_HEADERS
-    include/VulkanResources/VulkanDevice.h
-    include/VulkanResources/VulkanInstance.h
-    include/VulkanResources/VulkanLayerAndExtension.h
-    include/VulkanResources/VulkanShader.h
-    include/VulkanResources/VulkanSwapChain.h
-    include/VulkanResources/CommandBufferUtility.h
-    include/VulkanResources/VulkanGlobalNames.h
+    include/VulkanDevice.h
+    include/VulkanInstance.h
+    include/VulkanLayerAndExtension.h
+    include/VulkanShader.h
+    include/VulkanSwapChain.h
+    include/CommandBufferUtility.h
+    include/VulkanGlobalNames.h
+    include/TextureHandling/Loading/TextureLoader.h
+    include/TextureHandling/Loading/GLITextureLoader.h
+    include/TextureHandling/Loading/STBTextureLoader.h
 )
 
 # ============================================================================

@@ -68,7 +68,7 @@ class VulkanRenderer {
     inline const std::vector<std::unique_ptr<VulkanDrawable>>& GetDrawingItems() const { return vecDrawables; }
     inline VkCommandPool GetCommandPool() const { return cmdPool; }
     inline VulkanShader* GetShader() const { return shaderObj.get(); }
-    inline VulkanPipeline* GetPipeline() const { return pipelineState.get(); }
+    // inline VulkanPipeline* GetPipeline() const { return pipelineState.get(); } // ARCHIVED
 
 
     #ifdef _WIN32
@@ -131,7 +131,7 @@ class VulkanRenderer {
     std::unique_ptr<VulkanSwapChain> swapChainObj;
 
     std::vector<std::unique_ptr<VulkanDrawable>> vecDrawables;
-    std::unique_ptr<VulkanPipeline> pipelineState;
+    // std::unique_ptr<VulkanPipeline> pipelineState; // ARCHIVED - use CashSystem PipelineCacher
 
     bool isInitialized;
     bool frameBufferResized;
