@@ -144,13 +144,13 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 13,
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 13,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 14,
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 14,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -328,15 +328,11 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<IMAGE_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };
-
-// Global compile-time validations
-static_assert(GeometryRenderNodeConfig::ALLOW_INPUT_ARRAYS); // Array mode enabled
-
 } // namespace Vixen::RenderGraph
 
 

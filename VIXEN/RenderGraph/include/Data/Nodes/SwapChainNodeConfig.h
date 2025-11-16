@@ -79,13 +79,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 6,
+    INPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 6,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 7,
+    INPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 7,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -97,7 +97,7 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(PRESENT_FENCES_ARRAY, std::vector<VkFence>, 9,
+    INPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 9,
         SlotNullability::Required,
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -241,10 +241,10 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
     static_assert(std::is_same_v<HEIGHT_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<INSTANCE_Slot::Type, VkInstance>);
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, std::vector<VkSemaphore>>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
-    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, std::vector<VkFence>>);
+    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, const std::vector<VkFence>&>);
 
     static_assert(std::is_same_v<SWAPCHAIN_HANDLE_Slot::Type, VkSwapchainKHR>);
     static_assert(std::is_same_v<SWAPCHAIN_PUBLIC_Slot::Type, ::SwapChainPublicVariables*>);
