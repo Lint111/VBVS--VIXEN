@@ -207,7 +207,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
 
     static_assert(std::is_same_v<DESCRIPTOR_SET_LAYOUT_Slot::Type, VkDescriptorSetLayout>);
     static_assert(std::is_same_v<DESCRIPTOR_POOL_Slot::Type, VkDescriptorPool>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, std::vector<VkDescriptorSet>>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, const std::vector<VkDescriptorSet>&>);
 
     //-------------------------------------------------------------------------
     // Parameters

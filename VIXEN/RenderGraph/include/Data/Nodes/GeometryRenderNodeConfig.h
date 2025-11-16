@@ -319,7 +319,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
     static_assert(std::is_same_v<PIPELINE_Slot::Type, VkPipeline>);
     static_assert(std::is_same_v<PIPELINE_LAYOUT_Slot::Type, VkPipelineLayout>);
-    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, std::vector<VkDescriptorSet>>);
+    static_assert(std::is_same_v<DESCRIPTOR_SETS_Slot::Type, const std::vector<VkDescriptorSet>&>);
     static_assert(std::is_same_v<VERTEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<INDEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);

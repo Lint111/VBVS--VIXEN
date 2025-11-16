@@ -564,7 +564,8 @@ inline constexpr bool CanBePersistent_v = CanBePersistent<T>::value;
 template<typename SlotType,
          ResourceLifetime Lifetime = ResourceLifetime::Transient,
          SlotRole Role = SlotRole::Dependency,
-         SlotNullability Nullability = SlotNullability::Required>
+         SlotNullability Nullability = SlotNullability::Required,
+         SlotMutability Mutability = SlotMutability::ReadWrite>
 struct SlotValidator {
     // Rule 1: Persistent slots must use pointer/reference types
     static constexpr bool persistence_check =
