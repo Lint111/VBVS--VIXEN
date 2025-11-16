@@ -111,7 +111,7 @@ CONSTEXPR_NODE_CONFIG(DepthBufferNodeConfig,
         );
 
         INIT_OUTPUT_DESC(DEPTH_FORMAT, "depth_format",
-            ResourceLifetime::Persistent,
+            ResourceLifetime::Transient,
             BufferDescription{}  // Format value
         );
 

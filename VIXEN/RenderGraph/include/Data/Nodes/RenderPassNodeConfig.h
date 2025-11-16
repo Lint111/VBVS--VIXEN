@@ -92,7 +92,7 @@ CONSTEXPR_NODE_CONFIG(RenderPassNodeConfig,
         );
 
         INIT_INPUT_DESC(DEPTH_FORMAT, "depth_format",
-            ResourceLifetime::Persistent,
+            ResourceLifetime::Transient,
             BufferDescription{}
         );
 

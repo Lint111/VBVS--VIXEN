@@ -136,13 +136,13 @@ CONSTEXPR_NODE_CONFIG(SwapChainNodeConfig,
 
         // Width parameter
         INIT_INPUT_DESC(WIDTH, "width",
-            ResourceLifetime::Persistent,
+            ResourceLifetime::Transient,
             BufferDescription{}
         );
 
         // Height parameter
         INIT_INPUT_DESC(HEIGHT, "height",
-            ResourceLifetime::Persistent,
+            ResourceLifetime::Transient,
             BufferDescription{}
         );
 

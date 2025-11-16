@@ -53,15 +53,15 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 2,
+    OUTPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, std::vector<VkSemaphore>, 3,
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, std::vector<VkFence>, 4,
+    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 

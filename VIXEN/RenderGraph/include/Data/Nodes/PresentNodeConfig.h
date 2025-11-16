@@ -72,7 +72,7 @@ CONSTEXPR_NODE_CONFIG(PresentNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(PRESENT_FENCE_ARRAY, std::vector<VkFence>, 5,
+    INPUT_SLOT(PRESENT_FENCE_ARRAY, const std::vector<VkFence>&, 5,
         SlotNullability::Optional,
         SlotRole::Execute,
         SlotMutability::ReadOnly,

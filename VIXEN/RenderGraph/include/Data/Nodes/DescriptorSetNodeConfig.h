@@ -117,7 +117,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(DESCRIPTOR_SETS, std::vector<VkDescriptorSet>, 2,
+    OUTPUT_SLOT(DESCRIPTOR_SETS, const std::vector<VkDescriptorSet>&, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 

@@ -90,7 +90,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(DESCRIPTOR_SETS, std::vector<VkDescriptorSet>, 4,
+    INPUT_SLOT(DESCRIPTOR_SETS, const std::vector<VkDescriptorSet>&, 4,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

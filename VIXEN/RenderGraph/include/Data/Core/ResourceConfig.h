@@ -574,18 +574,30 @@ struct SlotValidator {
         "Slot is marked as Persistent but uses a type that cannot be persistent. "
         "Persistent slots must use pointer or reference types, not value types.");
 
-    // Rule 2: Execute role slots should not be persistent (example of additional rule)
-    static constexpr bool execute_role_check =
-        (Role != SlotRole::Execute) || (Lifetime != ResourceLifetime::Static);
+    // Rule 2: Execute role slots work with any lifetime (removed obsolete Static check)
 
-    static_assert(execute_role_check,
-        "Execute role slots should not use Static lifetime as they change every frame.");
+    // Rule 3: ReadOnly slots must have const modifier to prevent data corruption
+    // Valid forms: const T, const T&, const T*
+    template<typename T>
+    struct IsConst {
+        using Decayed = std::remove_reference_t<T>;
+        using PointeeDecayed = std::remove_pointer_t<Decayed>;
 
-    // Rule 3: Optional slots of certain types might need special handling
-    // Add more rules here as needed...
+        static constexpr bool value =
+            std::is_const_v<Decayed> ||                      // const T or const T& (after removing reference)
+            (std::is_pointer_v<Decayed> &&
+             std::is_const_v<PointeeDecayed>);                // const T*
+    };
+
+    static constexpr bool readonly_check =
+        (Mutability != SlotMutability::ReadOnly) || IsConst<SlotType>::value;
+
+    static_assert(readonly_check,
+        "Slot is marked as ReadOnly but type is not const-qualified. "
+        "ReadOnly slots must use const T, const T&, or const T* to prevent data corruption.");
 
     // The validation passes if all checks pass
-    static constexpr bool is_valid = persistence_check && execute_role_check;
+    static constexpr bool is_valid = persistence_check && readonly_check;
 };
 
 /**
