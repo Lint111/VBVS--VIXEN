@@ -449,11 +449,153 @@ using Resource = PassThroughStorage;
 **Affected code**:
 - Deleted: `RenderGraph/include/Data/Core/ResourceVariant.h`
 - Updated: `ResourceGathererNode.h` to use PassThroughStorage
-- Updated: 7 test files to use new API
+- Updated: All test files to use new API
 
 **Rationale**: ResourceVariant added no functionality beyond PassThroughStorage. Eliminating wrapper reduces indirection and clarifies architecture.
 
 **Location**: Phase H refactoring (November 2025)
+
+---
+
+### 19. Slot Type Compatibility Pattern (November 16, 2025 - Phase H)
+**Purpose**: Validate type compatibility before connecting slots, prevent runtime type errors
+
+**Implementation**:
+```cpp
+// TypedConnection.h - Compile-time and runtime type compatibility checks
+template<typename SourceSlotType, typename DestSlotType>
+bool AreTypesCompatible() {
+    using SourceType = typename SourceSlotType::Type;
+    using DestType = typename DestSlotType::Type;
+
+    // Direct type match
+    if constexpr (std::is_same_v<SourceType, DestType>) {
+        return true;
+    }
+
+    // Reference unwrapping: const T& matches T
+    if constexpr (IsConstReference<SourceType> && !IsConstReference<DestType>) {
+        using UnwrappedSource = std::remove_cvref_t<SourceType>;
+        return std::is_same_v<UnwrappedSource, DestType>;
+    }
+
+    // Vector element compatibility: vector<T> matches vector<const T&>
+    if constexpr (IsVector<SourceType> && IsVector<DestType>) {
+        using SourceElement = typename SourceType::value_type;
+        using DestElement = typename DestType::value_type;
+        return std::is_same_v<std::remove_cvref_t<SourceElement>,
+                               std::remove_cvref_t<DestElement>>;
+    }
+
+    return false;
+}
+```
+
+**Benefits**:
+- Catches type mismatches at connection time (not Execute time)
+- Supports const-correctness (const T& → T automatic unwrapping)
+- Handles container types (vector<T> compatibility checks)
+- Clear error messages for incompatible connections
+
+**Location**: `RenderGraph/include/Core/TypedConnection.h` (lines 40-80, November 2025)
+
+---
+
+### 20. Perfect Forwarding Pattern (November 16, 2025 - Phase H)
+**Purpose**: Zero-overhead resource output, avoid unnecessary copies
+
+**Implementation**:
+```cpp
+// TypedNodeInstance.h - Perfect forwarding for Out() and SetResource()
+template<typename SlotType, typename T>
+void Out(SlotType slot, T&& value) {
+    static_assert(SlotType::IS_OUTPUT, "Out() requires output slot");
+    SetResource(SlotType::INDEX, std::forward<T>(value));
+}
+
+template<typename T>
+void SetResource(size_t slotIndex, T&& value) {
+    PassThroughStorage storage;
+
+    // Use perfect forwarding to avoid copies
+    if constexpr (std::is_lvalue_reference_v<T>) {
+        storage = PassThroughStorage::CreateReference(value);  // Reference mode
+    } else {
+        storage = PassThroughStorage::CreateValue(std::forward<T>(value));  // Move semantics
+    }
+
+    outputs[slotIndex][0] = std::move(storage);
+}
+```
+
+**Benefits**:
+- Zero-overhead: lvalues → reference mode, rvalues → move semantics
+- Automatic reference vs value distinction based on value category
+- Type-safe: PassThroughStorage handles lifetime correctly
+- Compiler-optimized: std::forward enables copy elision
+
+**Migration**:
+```cpp
+// Before (Phase G): Always copied
+Out(OUTPUT_SLOT, myResource);
+
+// After (Phase H): Perfect forwarding
+Out(OUTPUT_SLOT, myResource);              // Reference mode (lvalue)
+Out(OUTPUT_SLOT, std::move(myResource));    // Move semantics (rvalue)
+Out(OUTPUT_SLOT, CreateResource());         // Move semantics (temporary)
+```
+
+**Location**: `RenderGraph/include/Core/TypedNodeInstance.h` (lines 200-230, November 2025)
+
+---
+
+### 21. Const-Correctness Pattern (November 16, 2025 - Phase H)
+**Purpose**: Enforce const-correctness across node config slots, enable compiler optimizations
+
+**Implementation**:
+```cpp
+// Node config slots use const references where appropriate
+struct GraphicsPipelineNodeConfig {
+    // Before: INPUT_SLOT(SHADER_DATA, ShaderDataBundle*, ...)
+    // After: INPUT_SLOT(SHADER_DATA, const std::shared_ptr<ShaderDataBundle>&, ...)
+
+    AUTO_INPUT(SHADER_DATA_BUNDLE,
+               const std::shared_ptr<ShaderManagement::ShaderDataBundle>&,
+               SlotNullability::Required,
+               SlotRole::Dependency,
+               SlotMutability::ReadOnly);
+
+    // Vectors of primitives use const references
+    AUTO_INPUT(IMAGE_AVAILABLE_SEMAPHORES,
+               const std::vector<VkSemaphore>&,
+               SlotNullability::Required,
+               SlotRole::Execute,
+               SlotMutability::ReadOnly);
+}
+```
+
+**Enforcement Pattern**:
+```cpp
+// ResourceConfig.h - Slot type assertions
+#define AUTO_INPUT(name, type, ...) \
+    static_assert(!std::is_pointer_v<type> || std::is_const_v<std::remove_pointer_t<type>>, \
+                  #name " pointer must be const"); \
+    static_assert(!IsVector<type> || IsConstReference<type>, \
+                  #name " vector must be const reference");
+```
+
+**Benefits**:
+- Compiler optimizations (const enables caching, reordering)
+- Intent clarity (ReadOnly slots are const, WriteOnly slots are mutable)
+- Type safety (prevents accidental mutation of read-only resources)
+- ABI compatibility (const references are ABI-stable)
+
+**Migration Impact**:
+- All node config headers updated (ComputePipelineNodeConfig, DescriptorSetNodeConfig, etc.)
+- TypedConnection handles const reference unwrapping automatically
+- Zero runtime overhead (const is compile-time only)
+
+**Location**: All `RenderGraph/include/Data/Nodes/*Config.h` files (November 2025)
 
 ---
 

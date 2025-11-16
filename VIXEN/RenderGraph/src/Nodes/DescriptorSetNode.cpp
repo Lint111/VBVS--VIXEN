@@ -312,18 +312,75 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // On first execute after Compile, bind all Dependency descriptors for all frames
     if (HasFlag(NodeFlags::NeedsInitialBind)) {
-        NODE_LOG_DEBUG("[DescriptorSetNode::Execute] First execute - binding Dependency descriptors for all frames");
+        std::cout << "\n========== [DescriptorSetNode::Execute] FIRST EXECUTE - INITIAL BINDING ==========" << std::endl;
+        std::cout << "[DescriptorSetNode::Execute] descriptorResources.size() = " << descriptorResources.size() << std::endl;
+        std::cout << "[DescriptorSetNode::Execute] slotRoles.size() = " << slotRoles.size() << std::endl;
+        std::cout << "[DescriptorSetNode::Execute] descriptorBindings.size() = " << descriptorBindings.size() << std::endl;
+
+        // Log all resources
+        for (size_t i = 0; i < descriptorResources.size(); ++i) {
+            std::cout << "  Resource[" << i << "]: ";
+            if (std::holds_alternative<std::monostate>(descriptorResources[i])) {
+                std::cout << "monostate";
+            } else if (std::holds_alternative<VkImageView>(descriptorResources[i])) {
+                std::cout << "VkImageView = " << std::get<VkImageView>(descriptorResources[i]);
+            } else if (std::holds_alternative<VkBuffer>(descriptorResources[i])) {
+                std::cout << "VkBuffer = " << std::get<VkBuffer>(descriptorResources[i]);
+            } else if (std::holds_alternative<VkSampler>(descriptorResources[i])) {
+                std::cout << "VkSampler = " << std::get<VkSampler>(descriptorResources[i]);
+            } else {
+                std::cout << "unknown variant type (index=" << descriptorResources[i].index() << ")";
+            }
+            std::cout << std::endl;
+        }
+
+        // Log all slot roles
+        std::cout << "\n[DescriptorSetNode::Execute] Slot Roles:" << std::endl;
+        for (size_t i = 0; i < slotRoles.size(); ++i) {
+            uint8_t roleVal = static_cast<uint8_t>(slotRoles[i]);
+            std::cout << "  SlotRole[" << i << "]: role=" << static_cast<int>(roleVal);
+            std::cout << " (Dependency=" << ((roleVal & static_cast<uint8_t>(SlotRole::Dependency)) ? "YES" : "NO");
+            std::cout << ", Execute=" << ((roleVal & static_cast<uint8_t>(SlotRole::Execute)) ? "YES" : "NO") << ")" << std::endl;
+        }
+
+        // Log all shader bindings
+        std::cout << "\n[DescriptorSetNode::Execute] Shader Bindings:" << std::endl;
+        for (size_t i = 0; i < descriptorBindings.size(); ++i) {
+            const auto& binding = descriptorBindings[i];
+            std::cout << "  Binding[" << i << "]: binding=" << binding.binding;
+            std::cout << ", name=" << binding.name;
+            std::cout << ", descriptorType=" << binding.descriptorType << std::endl;
+        }
+
+        std::cout << "\n[DescriptorSetNode::Execute] Building Dependency writes for " << descriptorSets.size() << " frames..." << std::endl;
         for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
+            std::cout << "\n--- Frame " << i << " ---" << std::endl;
             auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
                                                          perFrameImageInfos[i], perFrameBufferInfos[i],
                                                          slotRoles, SlotRole::Dependency);
+            std::cout << "[DescriptorSetNode::Execute] Frame " << i << ": BuildDescriptorWrites returned " << dependencyWrites.size() << " writes" << std::endl;
+
             if (!dependencyWrites.empty()) {
+                // Log each write
+                for (size_t w = 0; w < dependencyWrites.size(); ++w) {
+                    const auto& write = dependencyWrites[w];
+                    std::cout << "  Write[" << w << "]: dstBinding=" << write.dstBinding;
+                    std::cout << ", descriptorType=" << write.descriptorType;
+                    std::cout << ", descriptorCount=" << write.descriptorCount;
+                    if (write.pBufferInfo) {
+                        std::cout << ", buffer=" << write.pBufferInfo->buffer;
+                    }
+                    std::cout << std::endl;
+                }
+
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
-                NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) +
-                              " Dependency descriptor(s) for frame " + std::to_string(i));
+                std::cout << "[DescriptorSetNode::Execute] vkUpdateDescriptorSets called with " << dependencyWrites.size() << " writes" << std::endl;
+            } else {
+                std::cout << "[DescriptorSetNode::Execute] WARNING: No Dependency writes generated for frame " << i << std::endl;
             }
         }
         ClearFlag(NodeFlags::NeedsInitialBind);
+        std::cout << "========== [DescriptorSetNode::Execute] INITIAL BINDING COMPLETE ==========\n" << std::endl;
     }
 
     // Build writes for Execute (transient) bindings for current frame
@@ -370,22 +427,16 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
     const std::vector<SlotRole>& slotRoles,
     SlotRole roleFilter
 ) {
+    std::cout << "  [ValidateAndFilterBinding] Binding " << binding.binding << " (" << binding.name << ") - START" << std::endl;
+
     // Use binding.binding (shader binding number) to index into resources, not loop index
     if (binding.binding >= descriptorResources.size()) {
+        std::cout << "  [ValidateAndFilterBinding] REJECT: Binding " << binding.binding << " exceeds resource array size " << descriptorResources.size() << std::endl;
         NODE_LOG_DEBUG("[DescriptorSetNode::ValidateAndFilterBinding] WARNING: Binding " +
                       std::to_string(binding.binding) + " (" + binding.name + ") exceeds resource array size " +
                       std::to_string(descriptorResources.size()));
         return false;
     }
-
-    const auto& resourceVariant = descriptorResources[binding.binding];
-
-    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
-                  " (" + binding.name + ") resource type: " +
-                  (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
-                   std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
-                   std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
-                   std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
 
     // Filter by slot role FIRST - this determines which descriptors to bind in this pass
     // Support combined roles (e.g., Dependency | Execute)
@@ -395,10 +446,14 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
         uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
         uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
 
+        std::cout << "  [ValidateAndFilterBinding] Role check: bindingFlags=" << static_cast<int>(bindingFlags) << ", filterFlags=" << static_cast<int>(filterFlags) << std::endl;
+
         // Check if binding has any of the filter flags
         // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
         // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
         bool matchesFilter = (bindingFlags & filterFlags) != 0;
+
+        std::cout << "  [ValidateAndFilterBinding] bitwise AND result: " << static_cast<int>(bindingFlags & filterFlags) << ", matchesFilter=" << (matchesFilter ? "YES" : "NO") << std::endl;
 
         NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
                       " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
@@ -406,18 +461,33 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
                       ", matches=" + (matchesFilter ? "YES" : "NO"));
 
         if (!matchesFilter) {
+            std::cout << "  [ValidateAndFilterBinding] REJECT: Role filter mismatch" << std::endl;
             return false;  // Skip this binding - doesn't match filter
         }
     }
 
-    // THEN check monostate - only Execute-only slots should be monostate during Dependency binding
+    // THEN check resource variant - only after role filtering
+    const auto& resourceVariant = descriptorResources[binding.binding];
+
+    std::cout << "  [ValidateAndFilterBinding] Resource variant index=" << resourceVariant.index() << " (0=monostate, 1=ImageView, 2=Buffer, etc.)" << std::endl;
+
+    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
+                  " (" + binding.name + ") resource type: " +
+                  (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
+                   std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
+                   std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
+                   std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
+
+    // Only Execute-only slots should be monostate during Dependency binding
     // If we reach here, the binding passed the role filter, so monostate indicates a real missing resource
     if (std::holds_alternative<std::monostate>(resourceVariant)) {
+        std::cout << "  [ValidateAndFilterBinding] REJECT: Resource is monostate (not yet populated)" << std::endl;
         NODE_LOG_DEBUG("[ValidateAndFilterBinding] Skipping binding " + std::to_string(binding.binding) +
                       " - placeholder not yet populated (Execute-only resource not set)");
         return false;
     }
 
+    std::cout << "  [ValidateAndFilterBinding] ACCEPT: Binding passes all checks" << std::endl;
     return true;
 }
 
@@ -661,13 +731,20 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
 
+    std::cout << "[BuildDescriptorWrites] Processing " << descriptorBindings.size() << " bindings with filter=" << static_cast<int>(roleFilter) << std::endl;
+
     for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size(); bindingIdx++) {
         const auto& binding = descriptorBindings[bindingIdx];
 
+        std::cout << "[BuildDescriptorWrites] Checking binding " << binding.binding << " (" << binding.name << ")" << std::endl;
+
         // Validate and filter binding
         if (!ValidateAndFilterBinding(binding, descriptorResources, slotRoles, roleFilter)) {
+            std::cout << "[BuildDescriptorWrites] Binding " << binding.binding << " FILTERED OUT by ValidateAndFilterBinding" << std::endl;
             continue;
         }
+
+        std::cout << "[BuildDescriptorWrites] Binding " << binding.binding << " PASSED validation" << std::endl;
 
         const auto& resourceVariant = descriptorResources[binding.binding];
 

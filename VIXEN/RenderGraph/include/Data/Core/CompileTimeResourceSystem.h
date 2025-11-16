@@ -522,32 +522,45 @@ public:
     // Extract handle as DescriptorHandleVariant for inter-node communication
     // This method attempts to extract common descriptor handle types
     DescriptorHandleVariant GetDescriptorHandle() const {
-        // Try each descriptor type in order of likelihood
-        // Note: This uses template specialization - only types that were Set() will succeed
+        // Try each descriptor type in order based on ResourceType (not arbitrary ordering)
+        // This prevents ImageSamplerPair from incorrectly matching Buffer resources
+        //
+        // CRITICAL: Try exact type matches FIRST before composite/complex types
+        // - VkBuffer/VkImageView/VkSampler are single handles (simple, exact matches)
+        // - ImageSamplerPair is composite (struct with two handles)
+        // - Try simple types first to avoid incorrect extraction
 
-        // Try ImageSamplerPair (for combined image samplers)
-        try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
+        // Handle based on ResourceType for better type safety
+        switch (type_) {
+            case ResourceType::Buffer:
+                // Try VkBuffer first for buffer resources
+                try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
+                break;
 
-        // Try VkImageView (most common for sampledImage descriptors)
-        try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
+            case ResourceType::Image:
+            case ResourceType::StorageImage:
+            case ResourceType::Image3D:
+                // Try image-related types
+                try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
+                break;
 
-        // Try VkBuffer (for uniform/storage buffers)
+            default:
+                // Fallback: try all types (original behavior for unknown types)
+                break;
+        }
+
+        // Fallback: Try all types in safe order (simple → complex)
         try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
-
-        // Try VkBufferView (for texel buffers)
-        try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
-
-        // Try VkSampler (for sampler descriptors)
+        try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
-
-        // Try VkImage (for storage images when separate from view)
+        try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
-
-        // Try VkAccelerationStructureKHR (for ray tracing)
         try { return DescriptorHandleVariant{GetHandle<VkAccelerationStructureKHR>()}; } catch (...) {}
-
-        // Try SwapChainPublicVariables* (for swapchain resources)
         try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
+        try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}  // Try composite types LAST
 
         // If nothing matched, return empty monostate
         return DescriptorHandleVariant{std::monostate{}};
