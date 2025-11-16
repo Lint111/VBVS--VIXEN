@@ -29,7 +29,6 @@
 // Forward declarations (same as PassThroughStorage.h)
 struct SwapChainPublicVariables;
 struct SwapChainBuffer;
-class VulkanShader;
 
 namespace Vixen::RenderGraph::Data {
     struct BoolVector;
@@ -135,7 +134,6 @@ namespace Vixen::RenderGraph {  // Reopen namespace
 REGISTER_COMPILE_TIME_TYPE(CameraData);
 REGISTER_COMPILE_TIME_TYPE(SwapChainPublicVariables);
 REGISTER_COMPILE_TIME_TYPE(SwapChainBuffer);
-REGISTER_COMPILE_TIME_TYPE(VulkanShader);
 REGISTER_COMPILE_TIME_TYPE(Vixen::Vulkan::Resources::VulkanDevice);
 REGISTER_COMPILE_TIME_TYPE(ShaderProgramDescriptor);
 REGISTER_COMPILE_TIME_TYPE(LoopReference);

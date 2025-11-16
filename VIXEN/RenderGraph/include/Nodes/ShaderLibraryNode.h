@@ -5,7 +5,6 @@
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderDataBundle.h>
 #include <ShaderManagement/ShaderBundleBuilder.h>
-#include "VulkanShader.h"
 #include <memory>
 #include <functional>
 
@@ -106,9 +105,6 @@ private:
     // Loaded shader modules (cached from ShaderModuleCacher)
     std::shared_ptr<CashSystem::ShaderModuleWrapper> vertexShader;
     std::shared_ptr<CashSystem::ShaderModuleWrapper> fragmentShader;
-
-    // VulkanShader wrapper for compatibility with GraphicsPipelineNode (Phase 1)
-    VulkanShader* vulkanShader = nullptr;
 
     // Device metadata (received via EventBus)
     int deviceVulkanVersion = 130;  // Default: Vulkan 1.3

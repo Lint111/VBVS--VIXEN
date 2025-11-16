@@ -108,4 +108,4 @@
 // ============================================================================
 // Project-Specific Error Handling
 // ============================================================================
-#include "error/VulkanError.h"
+// VulkanError.h moved to VulkanResources library - included via that dependency

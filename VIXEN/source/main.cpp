@@ -1,6 +1,5 @@
 #include "Headers.h"
 #include "VulkanApplicationBase.h"
-#include "VulkanApplication.h"
 #include "VulkanGraphApplication.h"
 
 std::vector<const char*> deviceExtensionNames = {

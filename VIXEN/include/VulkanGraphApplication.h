@@ -14,7 +14,6 @@
 // Forward declarations
 class VulkanRenderer;
 class VulkanSwapChain;
-class VulkanShader;
 
 using namespace Vixen::Vulkan::Resources;
 using namespace Vixen::RenderGraph;

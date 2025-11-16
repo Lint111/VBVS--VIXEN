@@ -2,10 +2,6 @@
 
 #include "Data/Core/ResourceConfig.h"
 
-// Forward declare VulkanShader for the shader constant type
-class VulkanShader;
-using VulkanShaderPtr = VulkanShader*;
-
 namespace Vixen::RenderGraph {
 
 /**
@@ -30,8 +26,8 @@ CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
 
     // ===== OUTPUTS (1) =====
     // Generic output - actual type determined by SetValue<T>() call
-    // Using VulkanShaderPtr as the concrete type for now (can be cast to other types)
-    OUTPUT_SLOT(OUTPUT, VulkanShaderPtr, 0,
+    // Using PassThroughStorage for type-erased generic constant storage
+    OUTPUT_SLOT(OUTPUT, PassThroughStorage, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -50,7 +46,7 @@ CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
     static_assert(OUTPUT_Slot::index == 0, "OUTPUT must be at index 0");
     static_assert(!OUTPUT_Slot::nullable, "OUTPUT is required");
 
-    static_assert(std::is_same_v<OUTPUT_Slot::Type, VulkanShaderPtr>);
+    static_assert(std::is_same_v<OUTPUT_Slot::Type, PassThroughStorage>);
 };
 
 } // namespace Vixen::RenderGraph

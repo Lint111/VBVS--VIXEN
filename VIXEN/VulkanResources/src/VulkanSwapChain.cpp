@@ -1,5 +1,4 @@
 #include "VulkanSwapChain.h"
-#include "VulkanApplication.h"
 
 #define INSTANCE_FUNC_PTR(instance, entrypoint){                \
     fp##entrypoint = (PFN_vk##entrypoint) vkGetInstanceProcAddr \

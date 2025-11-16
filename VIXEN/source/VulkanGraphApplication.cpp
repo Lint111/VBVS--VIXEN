@@ -3,7 +3,6 @@
 #include "MeshData.h"
 #include "Logger.h"
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
-#include "VulkanShader.h"  // MVP: Direct shader loading
 #include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "CashSystem/MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system

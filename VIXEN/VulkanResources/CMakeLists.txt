@@ -13,7 +13,6 @@ set(VULKANRESOURCES_SOURCES
     src/VulkanDevice.cpp
     src/VulkanInstance.cpp
     src/VulkanLayerAndExtension.cpp
-    src/VulkanShader.cpp
     src/VulkanSwapChain.cpp
     src/CommandBufferUtility.cpp
     src/error/VulkanError.cpp
@@ -27,7 +26,6 @@ set(VULKANRESOURCES_HEADERS
     include/VulkanDevice.h
     include/VulkanInstance.h
     include/VulkanLayerAndExtension.h
-    include/VulkanShader.h
     include/VulkanSwapChain.h
     include/CommandBufferUtility.h
     include/VulkanGlobalNames.h
