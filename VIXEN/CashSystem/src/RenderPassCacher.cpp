@@ -1,6 +1,6 @@
 #include "CashSystem/RenderPassCacher.h"
 #include "CashSystem/MainCacher.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "VixenHash.h"
 #include <sstream>
 #include <stdexcept>

@@ -1,6 +1,6 @@
 #include "TextureHandling/Loading/TextureLoader.h"
-#include "VulkanResources/VulkanDevice.h"
-#include "VulkanResources/CommandBufferUtility.h"
+#include "VulkanDevice.h"
+#include "CommandBufferUtility.h"
 #include "Logger.h"
 #include <iostream>
 

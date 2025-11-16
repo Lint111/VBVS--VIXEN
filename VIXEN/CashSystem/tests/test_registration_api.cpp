@@ -4,7 +4,7 @@
 #include "CashSystem/ShaderModuleCacher.h"
 #include "CashSystem/ShaderCompilationCacher.h"
 #include "CashSystem/TextureCacher.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 
 using namespace CashSystem;
 

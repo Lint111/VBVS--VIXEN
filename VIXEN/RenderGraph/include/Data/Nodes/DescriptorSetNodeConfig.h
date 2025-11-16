@@ -3,7 +3,7 @@
 #include "Data/Core/ResourceConfig.h"
 // TEMPORARILY REMOVED - using simple descriptor layouts for MVP
 // #include "ShaderManagement/DescriptorLayoutSpec.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 
 using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
 

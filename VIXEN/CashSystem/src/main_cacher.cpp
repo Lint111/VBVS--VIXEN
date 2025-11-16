@@ -5,7 +5,7 @@
 #include "CashSystem/PipelineCacher.h"
 #include "EventBus/MessageBus.h"
 #include "EventBus/Message.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <cassert>
 
 namespace CashSystem {

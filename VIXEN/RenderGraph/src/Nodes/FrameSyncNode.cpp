@@ -1,6 +1,6 @@
-﻿#include "Nodes/FrameSyncNode.h"
+#include "Nodes/FrameSyncNode.h"
 #include "Core/RenderGraph.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
 

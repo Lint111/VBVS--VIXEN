@@ -4,7 +4,7 @@
 #include "ShaderManagement/SpirvReflectionData.h"
 #include "ShaderManagement/ResourceExtractor.h"
 #include "NodeHelpers/ValidationHelpers.h"
-#include "VulkanResources/VulkanDevice.h"  // For device limits validation
+#include "VulkanDevice.h"  // For device limits validation
 #include <cstring>
 #include <iostream>
 

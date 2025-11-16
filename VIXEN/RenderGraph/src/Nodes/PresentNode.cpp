@@ -1,5 +1,5 @@
 #include "Nodes/PresentNode.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {

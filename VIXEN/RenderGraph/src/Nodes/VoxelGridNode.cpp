@@ -1,7 +1,7 @@
 #include "Nodes/VoxelGridNode.h"
 #include "Data/SceneGenerator.h"
 #include "Data/VoxelOctree.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <cmath>
 #include <cstring>

@@ -1,4 +1,4 @@
-#include "VulkanResources/VulkanInstance.h"
+#include "VulkanInstance.h"
 
 namespace Vixen::Vulkan::Resources {
 

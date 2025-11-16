@@ -2,7 +2,7 @@
 #include "CashSystem/SamplerCacher.h"
 #include "VixenHash.h"
 #include "TextureHandling/Loading/TextureLoader.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>

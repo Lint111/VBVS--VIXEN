@@ -1,6 +1,6 @@
 #include "Nodes/ShaderLibraryNode.h"
 #include "Core/RenderGraph.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "CashSystem/MainCacher.h"

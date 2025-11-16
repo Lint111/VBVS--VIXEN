@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Headers.h>
-#include <VulkanResources/VulkanLayerAndExtension.h>
+#include "VulkanLayerAndExtension.h"
 
 namespace Vixen::Vulkan::Resources {
 

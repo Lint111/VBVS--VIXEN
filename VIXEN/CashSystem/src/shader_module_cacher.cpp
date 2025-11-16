@@ -1,5 +1,5 @@
 #include "CashSystem/ShaderModuleCacher.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "VixenHash.h"  // Project-wide hash library (Vixen::Hash namespace)
 #include <fstream>
 #include <sstream>

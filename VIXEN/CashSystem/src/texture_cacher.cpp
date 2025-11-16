@@ -1,6 +1,6 @@
 #include "CashSystem/TextureCacher.h"
 #include "CashSystem/MainCacher.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "TextureHandling/Loading/STBTextureLoader.h"
 #include "VixenHash.h"
 #include <sstream>

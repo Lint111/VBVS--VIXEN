@@ -1,8 +1,8 @@
 #include "Nodes/ComputeDispatchNode.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
-#include "VulkanResources/VulkanSwapChain.h"  // For SwapChainPublicVariables
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>

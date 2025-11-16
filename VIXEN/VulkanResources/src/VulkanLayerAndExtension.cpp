@@ -1,5 +1,5 @@
-#include "VulkanResources/VulkanLayerAndExtension.h"
-#include "VulkanResources/VulkanInstance.h"
+#include "VulkanLayerAndExtension.h"
+#include "VulkanInstance.h"
 
 namespace Vixen::Vulkan::Resources {
 

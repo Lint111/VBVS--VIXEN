@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/CommandPoolNodeConfig.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 
 namespace Vixen::RenderGraph {
 

@@ -1,6 +1,6 @@
 #include "Headers.h"
-#include "VulkanResources/VulkanShader.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanShader.h"
+#include "VulkanDevice.h"
 
 using namespace Vixen::Vulkan::Resources;
 

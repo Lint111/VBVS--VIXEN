@@ -1,10 +1,10 @@
 #include "Nodes/DescriptorResourceGathererNode.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "ShaderManagement/SpirvReflectionData.h"  // For DescriptorLayoutSpecification and DescriptorBindingInfo
-#include "VulkanResources/VulkanSwapChain.h"  // For SwapChainPublicVariables
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "Core/RenderGraph.h"
 #include "Core/NodeLogging.h"
-#include "VulkanResources/VulkanDevice.h"  // For device limits validation
+#include "VulkanDevice.h"  // For device limits validation
 #include <map>  // For descriptor type counting
 
 namespace Vixen::RenderGraph {

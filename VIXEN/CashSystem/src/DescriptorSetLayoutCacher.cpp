@@ -1,5 +1,5 @@
 #include "CashSystem/DescriptorSetLayoutCacher.h"
-#include "VulkanResources/VulkanDevice.h"  // For Vixen::Vulkan::Resources::VulkanDevice
+#include "VulkanDevice.h"  // For Vixen::Vulkan::Resources::VulkanDevice
 #include <iostream>
 #include <sstream>
 #include <functional>

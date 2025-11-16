@@ -2,7 +2,7 @@
 #include "Core/NodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
-#include "VulkanResources/VulkanSwapChain.h"
+#include "VulkanSwapChain.h"
 #include "Data/Nodes/SwapChainNodeConfig.h"
 #include <memory>
 #include <vector>

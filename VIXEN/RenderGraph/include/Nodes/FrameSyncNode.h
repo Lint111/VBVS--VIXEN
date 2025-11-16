@@ -1,8 +1,8 @@
-﻿#pragma once
+#pragma once
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <vector>
 
 namespace Vixen::RenderGraph {

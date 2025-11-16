@@ -2,7 +2,7 @@
 #include "Core/IGraphCompilable.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_set>

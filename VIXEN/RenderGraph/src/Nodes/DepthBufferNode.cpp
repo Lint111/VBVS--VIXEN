@@ -1,12 +1,12 @@
-﻿#include "Nodes/DepthBufferNode.h"
+#include "Nodes/DepthBufferNode.h"
 #include "Core/RenderGraph.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include "NodeHelpers/ValidationHelpers.h"
-#include "VulkanResources/VulkanSwapChain.h"
+#include "VulkanSwapChain.h"
 #include <sstream>
 
 using namespace RenderGraph::NodeHelpers;

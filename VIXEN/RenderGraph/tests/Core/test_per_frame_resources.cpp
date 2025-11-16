@@ -21,7 +21,7 @@
 
 #include <gtest/gtest.h>
 #include "../../include/Core/PerFrameResources.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <memory>
 
 using namespace Vixen::RenderGraph;

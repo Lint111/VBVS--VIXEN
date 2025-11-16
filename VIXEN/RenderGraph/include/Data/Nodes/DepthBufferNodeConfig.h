@@ -1,8 +1,8 @@
-﻿#pragma once
+#pragma once
 
 #include "Data/Core/ResourceConfig.h"
 #include "Core/NodeInstance.h"  // For DepthFormat enum
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
 
 namespace Vixen::RenderGraph {

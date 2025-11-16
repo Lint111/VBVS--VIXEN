@@ -3,7 +3,7 @@
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/GraphLifecycleHooks.h"
 #include "Core/NodeLogging.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <algorithm>
 #include <functional>
 #include <atomic>

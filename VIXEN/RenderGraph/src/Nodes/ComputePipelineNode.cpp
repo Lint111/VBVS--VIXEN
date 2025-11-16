@@ -8,7 +8,7 @@
 #include "CashSystem/PipelineCacher.h"
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "ShaderManagement/ShaderProgram.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>

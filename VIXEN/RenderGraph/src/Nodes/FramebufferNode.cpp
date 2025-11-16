@@ -1,8 +1,8 @@
 #include "Nodes/FramebufferNode.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
-#include "VulkanResources/VulkanSwapChain.h"  // For SwapChainPublicVariables definition
+#include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "NodeHelpers/VulkanStructHelpers.h"
 
 using namespace RenderGraph::NodeHelpers;

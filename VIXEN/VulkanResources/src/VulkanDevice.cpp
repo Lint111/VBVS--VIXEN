@@ -1,4 +1,4 @@
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 
 using namespace Vixen::Vulkan::Resources;
 

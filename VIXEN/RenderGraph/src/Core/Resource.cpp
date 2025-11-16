@@ -1,5 +1,5 @@
 #include "Core/Resource.h"
-#include "VulkanResources/VulkanDevice.h"
+#include "VulkanDevice.h"
 #include <stdexcept>
 
 namespace Vixen::RenderGraph {
