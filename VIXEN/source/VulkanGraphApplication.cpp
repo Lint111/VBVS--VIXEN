@@ -1018,8 +1018,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   &SwapChainPublicVariables::swapChainImageCount)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
                   computeDescriptorSet, DescriptorSetNodeConfig::IMAGE_INDEX)
-         .Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
-                  computeDescriptorSet, DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES)
+         // REMOVED DUPLICATE: descriptorGatherer -> computeDescriptorSet DESCRIPTOR_RESOURCES (already connected at line 919-920)
          .Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                   computeDispatch, ComputeDispatchNodeConfig::SWAPCHAIN_INFO)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,

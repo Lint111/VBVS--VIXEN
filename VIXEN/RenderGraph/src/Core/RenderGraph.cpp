@@ -226,6 +226,22 @@ void RenderGraph::ConnectNodes(
         throw std::runtime_error(error);
     }
 
+    // VALIDATION: Check if input slot is already connected
+    // It's OK for one output to connect to many inputs (fan-out)
+    // But NOT OK for many outputs to connect to one input (multiple drivers)
+    Resource* existingInput = toNode->GetInput(inputIdx, 0);
+    if (existingInput != nullptr) {
+        std::cerr << "\n=== FATAL ERROR: Duplicate Connection Detected ===\n";
+        std::cerr << "Attempting to connect: " << fromNode->GetInstanceName()
+                  << "[output " << outputIdx << "] -> "
+                  << toNode->GetInstanceName() << "[input " << inputIdx << "]\n";
+        std::cerr << "But input slot " << inputIdx << " of " << toNode->GetInstanceName()
+                  << " is ALREADY CONNECTED to another output.\n";
+        std::cerr << "Multiple outputs cannot drive the same input slot.\n";
+        std::cerr << "==============================================\n";
+        std::exit(1);  // Terminate immediately
+    }
+
     // Connect all array elements from output to input
     // Check if the source output has multiple array elements
     size_t outputArraySize = fromNode->GetOutputCount(outputIdx);

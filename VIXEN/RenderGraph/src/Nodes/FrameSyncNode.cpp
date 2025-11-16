@@ -120,6 +120,13 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
+    std::cout << "[FrameSyncNode::CompileImpl] Before Out() - imageAvailableSemaphores address: "
+              << &imageAvailableSemaphores << ", size: " << imageAvailableSemaphores.size()
+              << ", capacity: " << imageAvailableSemaphores.capacity() << std::endl;
+    std::cout << "[FrameSyncNode::CompileImpl] Before Out() - renderCompleteSemaphores address: "
+              << &renderCompleteSemaphores << ", size: " << renderCompleteSemaphores.size()
+              << ", capacity: " << renderCompleteSemaphores.capacity() << std::endl;
+
     ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
     ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
     ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences);

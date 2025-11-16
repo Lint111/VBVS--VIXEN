@@ -163,12 +163,39 @@ public:
 
         /**
          * @brief Get input value bound to this task's index
+         *
+         * Phase H: Broadcast semantics - if producer outputs once during Compile (taskIndex=0)
+         * but consumer reads during Execute with varying taskIndex, fall back to taskIndex=0.
          */
         template<typename SlotType>
         typename SlotType::Type In(SlotType slot) const {
             static_assert(SlotType::index < ConfigType::INPUT_COUNT, "Input index out of bounds");
+
+            // Try current taskIndex first
             Resource* res = typedNode->NodeInstance::GetInput(SlotType::index, this->taskIndex);
+
+            // Phase H: Broadcast fallback - if not found, try taskIndex=0
+            // This handles nodes that output once during Compile but are read during Execute
+            if (!res && this->taskIndex > 0) {
+                res = typedNode->NodeInstance::GetInput(SlotType::index, 0);
+            }
+
             if (!res) return typename SlotType::Type{};
+            auto&& result = res->GetHandle<typename SlotType::Type>();
+
+            // DEBUG: Log vector reference addresses
+            using T = typename SlotType::Type;
+            if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::vector<VkSemaphore>>) {
+                using VecT = std::vector<VkSemaphore>;
+                const VecT* vecPtr = nullptr;
+                if constexpr (std::is_lvalue_reference_v<decltype(result)>) {
+                    vecPtr = &result;
+                }
+                std::cout << "[TypedIOContext::In] After GetHandle (taskIndex=" << this->taskIndex << "), address: "
+                          << vecPtr << ", size: " << (vecPtr ? vecPtr->size() : 0)
+                          << ", capacity: " << (vecPtr ? vecPtr->capacity() : 0) << std::endl;
+            }
+
             return res->GetHandle<typename SlotType::Type>();
         }
 
@@ -184,10 +211,16 @@ public:
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
             typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);
             Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
-            // Static cast to SlotType::Type preserves the original object address for references
-            // For reference slots: cast adds const if needed, preserves lvalue
-            // For value slots: enables copy/move
-            res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
+            // For reference types: pass value directly (std::addressof in SetHandle gets correct address)
+            // For value types: cast to SlotType::Type to handle const/non-const mismatches
+            using SlotT = typename SlotType::Type;
+            if constexpr (std::is_lvalue_reference_v<SlotT>) {
+                // Reference type: pass value directly - SetHandle will use std::addressof
+                res->SetHandle<SlotT>(value);
+            } else {
+                // Value type: use static_cast to handle const conversion
+                res->SetHandle<SlotT>(static_cast<SlotT>(std::forward<U>(value)));
+            }
         }
 
         /**
@@ -555,8 +588,12 @@ private:
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
 
         // Store typed handle in resource variant
-        // Static cast preserves original object address for reference slots
-        res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
+        using SlotT = typename SlotType::Type;
+        if constexpr (std::is_lvalue_reference_v<SlotT>) {
+            res->SetHandle<SlotT>(value);
+        } else {
+            res->SetHandle<SlotT>(static_cast<SlotT>(std::forward<U>(value)));
+        }
     }
 
     /**
@@ -614,8 +651,13 @@ private:
         size_t arrayIndex = 0;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
-        // Static cast preserves original object address for reference slots
-        res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
+        // Handle reference vs value types differently
+        using SlotT = typename SlotType::Type;
+        if constexpr (std::is_lvalue_reference_v<SlotT>) {
+            res->SetHandle<SlotT>(value);
+        } else {
+            res->SetHandle<SlotT>(static_cast<SlotT>(std::forward<U>(value)));
+        }
     }
 
     /**

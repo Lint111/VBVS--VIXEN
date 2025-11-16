@@ -372,18 +372,26 @@ public:
     template<typename T, typename U>
     void Set(U&& value, RefTag<T>) {
         static_assert(IsValidType_v<T>, "Type not registered");
-        // Forward the argument to preserve the original object address
-        refPtr_ = static_cast<void*>(&value);
+        // Use std::addressof to get the actual object address (not the parameter's address)
+        // When U is T&, this correctly captures the address of the original object
+        refPtr_ = const_cast<void*>(static_cast<const void*>(std::addressof(value)));
         mode_ = Mode::Reference;
     }
 
     template<typename T, typename U>
     void Set(U&& value, ConstRefTag<T>) {
         static_assert(IsValidType_v<T>, "Type not registered");
-        // Forward the argument to preserve the original object address
-        // This captures &originalObject, not &parameter
-        constRefPtr_ = static_cast<const void*>(&value);
+        // Use std::addressof to get the actual object address (not the parameter's address)
+        // When U is T&, std::addressof(value) returns the address of the original object
+        constRefPtr_ = static_cast<const void*>(std::addressof(value));
         mode_ = Mode::Reference;
+
+        // DEBUG: Log vector addresses and sizes
+        if constexpr (std::is_same_v<T, std::vector<VkSemaphore>>) {
+            std::cout << "[PassThroughStorage::Set ConstRef] Storing vector address: "
+                      << constRefPtr_ << ", size: " << value.size()
+                      << ", capacity: " << value.capacity() << std::endl;
+        }
     }
 
     template<typename T>
@@ -419,6 +427,15 @@ public:
     template<typename T>
     const T& Get(ConstRefTag<T>) const {
         static_assert(IsValidType_v<T>, "Type not registered");
+
+        // DEBUG: Log vector retrieval
+        if constexpr (std::is_same_v<T, std::vector<VkSemaphore>>) {
+            const T* vecPtr = static_cast<const T*>(constRefPtr_);
+            std::cout << "[PassThroughStorage::Get ConstRef] Reading vector address: "
+                      << constRefPtr_ << ", size: " << vecPtr->size()
+                      << ", capacity: " << vecPtr->capacity() << std::endl;
+        }
+
         return *static_cast<const T*>(constRefPtr_);
     }
 
@@ -478,7 +495,13 @@ public:
     void SetHandle(T&& value) {
         static_assert(IsValidType_v<T>, "Type not registered");
         using Tag = TypeToTag_t<T>;
-        storage_.Set(std::forward<T>(value), Tag{});
+        // For reference types: pass directly to preserve address
+        // For value types: forward to enable move semantics
+        if constexpr (std::is_lvalue_reference_v<T>) {
+            storage_.Set(value, Tag{});
+        } else {
+            storage_.Set(std::forward<T>(value), Tag{});
+        }
         isSet_ = true;
     }
 
@@ -487,6 +510,20 @@ public:
     T GetHandle() const {
         static_assert(IsValidType_v<T>, "Type not registered");
         using Tag = TypeToTag_t<T>;
+        auto&& result = storage_.Get(Tag{});
+
+        // DEBUG: Log vector reference addresses
+        if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::vector<VkSemaphore>>) {
+            using VecT = std::vector<VkSemaphore>;
+            const VecT* vecPtr = nullptr;
+            if constexpr (std::is_lvalue_reference_v<decltype(result)>) {
+                vecPtr = &result;
+            }
+            std::cout << "[Resource::GetHandle] Returning vector reference, address: "
+                      << vecPtr << ", size: " << (vecPtr ? vecPtr->size() : 0)
+                      << ", capacity: " << (vecPtr ? vecPtr->capacity() : 0) << std::endl;
+        }
+
         return storage_.Get(Tag{});
     }
 
