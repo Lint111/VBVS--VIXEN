@@ -131,9 +131,9 @@ void WindowNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(WindowNodeConfig::SURFACE, surface);
     ctx.Out(WindowNodeConfig::HWND_OUT, window);
     ctx.Out(WindowNodeConfig::HINSTANCE_OUT, hInstance);
-    // Output as const references (cast non-const member variables)
-    ctx.Out(WindowNodeConfig::WIDTH_OUT, static_cast<const uint32_t&>(width));
-    ctx.Out(WindowNodeConfig::HEIGHT_OUT, static_cast<const uint32_t&>(height));
+    // Output width/height by value (PassThroughStorage will copy the values)
+    ctx.Out(WindowNodeConfig::WIDTH_OUT, width);
+    ctx.Out(WindowNodeConfig::HEIGHT_OUT, height);
 
     NODE_LOG_INFO("[WindowNode] Surface created and all window data stored in outputs (width=" +
                   std::to_string(width) + ", height=" + std::to_string(height) + ")");

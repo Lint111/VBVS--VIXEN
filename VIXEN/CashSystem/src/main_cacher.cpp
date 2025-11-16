@@ -18,11 +18,21 @@ MainCacher& MainCacher::Instance() {
 void MainCacher::CleanupGlobalCaches() {
     // Cleanup all device-independent cachers
     std::lock_guard lock(m_globalRegistryMutex);
+
+    // Check if m_globalCachers itself is in a valid state (avoid static deinitialization issues)
+    if (reinterpret_cast<uintptr_t>(&m_globalCachers) == 0xFFFFFFFFFFFFFFFF) {
+        return;  // Already destroyed during static deinitialization
+    }
+
     for (auto& [typeIndex, cacher] : m_globalCachers) {
-        // Check for valid pointer (avoid dangling references during static deinitialization)
-        if (cacher && cacher.get() != nullptr &&
-            reinterpret_cast<uintptr_t>(cacher.get()) != 0xFFFFFFFFFFFFFFFF) {
-            cacher->Cleanup();
+        // Extra safety: check if cacher unique_ptr is valid before dereferencing
+        try {
+            if (cacher && cacher.get() != nullptr &&
+                reinterpret_cast<uintptr_t>(cacher.get()) != 0xFFFFFFFFFFFFFFFF) {
+                cacher->Cleanup();
+            }
+        } catch (...) {
+            // Ignore exceptions during cleanup (likely due to static deinitialization)
         }
     }
 }

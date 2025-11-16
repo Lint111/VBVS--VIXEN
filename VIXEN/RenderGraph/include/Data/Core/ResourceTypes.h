@@ -9,11 +9,13 @@ namespace Vixen::RenderGraph {
  */
 enum class ResourceType {
     Image,           // 2D texture, render target
+    ImageView,       // View into an image
     Buffer,          // Vertex, index, uniform, storage buffer
     CubeMap,         // Cubemap texture
     Image3D,         // 3D texture
     StorageImage,    // Storage image for compute
-    AccelerationStructure  // Ray tracing AS
+    AccelerationStructure,  // Ray tracing AS
+    PassThroughStorage,   // Type-erased generic storage
 };
 
 /**

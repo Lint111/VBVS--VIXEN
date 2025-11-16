@@ -51,11 +51,11 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(WIDTH_OUT, const uint32_t&, 3,
+    OUTPUT_SLOT(WIDTH_OUT, uint32_t, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(HEIGHT_OUT, const uint32_t&, 4,
+    OUTPUT_SLOT(HEIGHT_OUT, uint32_t, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
