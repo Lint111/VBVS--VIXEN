@@ -45,25 +45,19 @@ endif()
 #
 # ============================================================================
 
-# Helper macro for external test directories (VulkanResources only)
-macro(maybe_add_external_subdir dir)
-    if(EXISTS "${PROJECT_SOURCE_DIR}/${dir}/CMakeLists.txt")
-        message(STATUS "Adding external tests subdir: ${dir}")
-        add_subdirectory(${PROJECT_SOURCE_DIR}/${dir} ${CMAKE_CURRENT_BINARY_DIR}/${dir})
-    else()
-        message(STATUS "Skipping external tests subdir (missing): ${dir}")
-    endif()
-endmacro()
-
-# Logger and VulkanResources are part of main source tree, not separate libraries
-# So they're still added via the external mechanism
-set(EXTERNAL_TEST_DIRS
-    logger/tests
-    source/VulkanResources/tests
-)
-
-foreach(external_subdir IN LISTS EXTERNAL_TEST_DIRS)
-    maybe_add_external_subdir(${external_subdir})
-endforeach()
+# ============================================================================
+# Test Discovery Complete
+# ============================================================================
+# All component tests are now added via their respective CMakeLists.txt files:
+#   - logger/CMakeLists.txt includes logger/tests/
+#   - EventBus/CMakeLists.txt includes EventBus/tests/
+#   - ResourceManagement/CMakeLists.txt includes ResourceManagement/tests/
+#   - ShaderManagement/CMakeLists.txt includes ShaderManagement/tests/
+#   - source/VulkanResources/CMakeLists.txt includes source/VulkanResources/tests/
+#   - RenderGraph/CMakeLists.txt includes RenderGraph/tests/
+#   - CashSystem/CMakeLists.txt includes CashSystem/tests/
+#
+# This centralized tests/ directory serves only as a common configuration point.
+# No test targets are defined here directly.
 
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")

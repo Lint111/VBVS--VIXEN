@@ -37,11 +37,12 @@ add_library(ShaderManagement STATIC
 target_include_directories(ShaderManagement
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../EventBus/include  # Explicit EventBus include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${spirv_reflect_SOURCE_DIR}
 )
+
+# Note: EventBus includes come from target_link_libraries(ShaderManagement PUBLIC EventBus) below
 
 # Add Vulkan include directories (conditional on build mode)
 if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)

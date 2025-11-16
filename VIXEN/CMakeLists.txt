@@ -438,29 +438,17 @@ if(WIN32)
     source_group("source" REGULAR_EXPRESSION "source/*")
 endif(WIN32)
 
-# Define include path
+# Define include path (for legacy code and main executable)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/logger)
 
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION
 # ============================================================================
-# Each node is a separate OBJECT library - changing one node won't recompile others
-# Core systems are static libraries with proper dependencies
+# Each component is a separate static library with proper CMake target-based dependencies
+# Changing one component won't force recompilation of others
 
 # Logger library (used by everything)
-file(GLOB LOGGER_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.cpp)
-file(GLOB LOGGER_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.h)
-add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
-target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
-set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
-
-# Precompiled headers for Logger
-if(USE_PRECOMPILED_HEADERS)
-    target_precompile_headers(Logger PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
-    )
-endif()
+add_subdirectory(logger)
 
 # EventBus library (message passing, worker thread integration)
 add_subdirectory(EventBus)
@@ -469,37 +457,13 @@ add_subdirectory(EventBus)
 add_subdirectory(ResourceManagement)
 
 # ShaderManagement library (device-agnostic shader compilation and hot reload)
-# Re-enabling for CashSystem integration
 add_subdirectory(ShaderManagement)
 
-# Vulkan Resources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
-file(GLOB_RECURSE VULKAN_RESOURCES_CPP
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanResources/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/TextureHandling/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Time/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/error/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDescriptor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanPipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanShader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanSwapChain.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/wrapper.cpp
-)
-add_library(VulkanResources STATIC ${VULKAN_RESOURCES_CPP})
-target_link_libraries(VulkanResources PUBLIC ${VULKAN_LIB_LIST} glm::glm Logger)
-set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
+# VulkanResources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
+add_subdirectory(source/VulkanResources)
 
-# Precompiled headers for VulkanResources
-if(USE_PRECOMPILED_HEADERS)
-    target_precompile_headers(VulkanResources PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
-    )
-endif()
-
-# RenderGraph static library (replaces old inline definitions)
+# RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)
-
-# Debug test for ResourceTypeTraits moved to RenderGraph/tests/CompileTimeResourceSystem/
-# (See RenderGraph/tests/CMakeLists.txt for test configuration)
 
 # CashSystem static library (caching and resource management)
 add_subdirectory(CashSystem)

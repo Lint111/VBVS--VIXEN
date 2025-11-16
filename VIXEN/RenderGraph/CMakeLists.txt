@@ -225,13 +225,15 @@ target_compile_features(RenderGraph PUBLIC cxx_std_23)
 target_include_directories(RenderGraph
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../CashSystem/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../ShaderManagement/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../binaries/generated/sdi  # For generated SDI headers
+        # Main project includes - use SOURCE_DIR for project root
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        # Generated SDI headers - use SOURCE_DIR for project root
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# Note: CashSystem and ShaderManagement includes come from target_link_libraries below
 
 # ============================================================================
 # Link Dependencies
