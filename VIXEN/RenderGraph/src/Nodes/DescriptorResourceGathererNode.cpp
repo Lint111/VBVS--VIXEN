@@ -204,6 +204,11 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
 
         // Update resource array with fresh value
         uint32_t binding = slotInfo->binding;
+
+        // Debug: Log resource type before extraction
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Fetching resource for binding " + std::to_string(binding) +
+                      " - ResourceType=" + std::to_string(static_cast<int>(freshResource->GetType())));
+
         auto variant = freshResource->GetDescriptorHandle();
 
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) +

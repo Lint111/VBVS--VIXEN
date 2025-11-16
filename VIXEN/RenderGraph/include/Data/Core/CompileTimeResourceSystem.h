@@ -474,6 +474,17 @@ public:
     Resource(Resource&&) noexcept = default;
     Resource& operator=(Resource&&) noexcept = default;
 
+    // Type-to-ResourceType mapping for automatic type deduction
+    template<typename T>
+    static constexpr ResourceType DeduceResourceType() {
+        using BaseType = std::remove_cvref_t<T>;
+        if constexpr (std::is_same_v<BaseType, VkImageView>) return ResourceType::ImageView;
+        else if constexpr (std::is_same_v<BaseType, VkImage>) return ResourceType::Image;
+        else if constexpr (std::is_same_v<BaseType, VkBuffer>) return ResourceType::Buffer;
+        else if constexpr (std::is_same_v<BaseType, VkSampler>) return ResourceType::StorageImage;
+        else return ResourceType::PassThroughStorage;  // Default for non-Vulkan types
+    }
+
     // SetHandle - natural C++ types
     template<typename T>
     void SetHandle(T&& value) {
@@ -486,6 +497,8 @@ public:
         } else {
             storage_.Set(std::forward<T>(value), Tag{});
         }
+        // Automatically deduce and set the correct ResourceType
+        type_ = DeduceResourceType<T>();
         isSet_ = true;
     }
 

@@ -1049,6 +1049,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     mainLogger->Info("Attempting to enable logging for descriptor nodes...");
     EnableNodeLogger("compute_desc_gatherer", true);
     EnableNodeLogger("compute_descriptors", true);
+    EnableNodeLogger("main_swapchain", true);
     mainLogger->Info("Logger enablement complete");
 
     // --- Phase 0.4: Loop Propagation Connections ---

@@ -54,11 +54,22 @@ endif()
 if(MSVC)
     add_compile_options(/MP)  # Multi-processor compilation
 
-    # Suppress LNK4099 warnings for missing PDB files in third-party libraries
-    add_link_options(/ignore:4099)
+    # Suppress warnings from third-party libraries
+    add_link_options(
+        /ignore:4099  # Missing PDB files in third-party libraries
+        /WX-          # Don't treat linker warnings as errors
+    )
+
+    # Suppress common third-party compile warnings
+    add_compile_options(
+        /wd4100  # Unreferenced formal parameter
+        /wd4189  # Local variable initialized but not referenced
+        /wd4244  # Conversion warnings
+        /wd4267  # Size_t conversion warnings
+    )
 
     message(STATUS "MSVC multi-processor compilation enabled")
-    message(STATUS "MSVC LNK4099 warnings suppressed (missing PDB in third-party libs)")
+    message(STATUS "MSVC warnings suppressed for third-party libs (4099, 4100, 4189, 4244, 4267)")
 endif()
 
 # Generate compile_commands.json for better IDE integration

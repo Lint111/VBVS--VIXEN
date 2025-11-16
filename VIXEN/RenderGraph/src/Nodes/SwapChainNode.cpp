@@ -178,6 +178,17 @@ void SwapChainNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkImageView currentFrameImageView = swapChainWrapper->scPublicVars.colorBuffers[currentImageIndex].view;
     ctx.Out(SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW, currentFrameImageView);
 
+    // Debug: Verify what was output
+    Resource* outputResource = GetOutput(SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW.index, 0);
+    if (outputResource) {
+        auto variant = outputResource->GetDescriptorHandle();
+        NODE_LOG_DEBUG("Output CURRENT_FRAME_IMAGE_VIEW: VkImageView=0x" + std::to_string(reinterpret_cast<uint64_t>(currentFrameImageView)) +
+                      ", Resource variant type=" +
+                      (std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
+                       std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" : "other") +
+                      ", ResourceType=" + std::to_string(static_cast<int>(outputResource->GetType())));
+    }
+
     NODE_LOG_INFO("Frame " + std::to_string(currentFrame) + ": acquired image " + std::to_string(currentImageIndex)
                   + ", frameIdx=" + std::to_string(currentFrameIndex)
                   + ", acquireSem[" + std::to_string(currentFrameIndex) + "]=0x" + std::to_string(reinterpret_cast<uint64_t>(acquireSemaphore))

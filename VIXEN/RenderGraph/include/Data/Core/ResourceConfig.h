@@ -69,11 +69,11 @@ enum class SlotRole : uint8_t {
 };
 
 // Bitwise operators for SlotRole
-inline SlotRole operator|(SlotRole a, SlotRole b) {
+constexpr inline SlotRole operator|(SlotRole a, SlotRole b) {
     return static_cast<SlotRole>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
 }
 
-inline SlotRole operator&(SlotRole a, SlotRole b) {
+constexpr inline SlotRole operator&(SlotRole a, SlotRole b) {
     return static_cast<SlotRole>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
 }
 
