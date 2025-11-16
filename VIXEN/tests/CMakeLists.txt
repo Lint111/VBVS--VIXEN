@@ -26,7 +26,26 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Helper macro: add external test directory from outside the tests/ folder
+# ============================================================================
+# Test Organization Note
+# ============================================================================
+#
+# Tests have been migrated to component-local directories:
+#   - CashSystem/tests/
+#   - EventBus/tests/
+#   - logger/tests/
+#   - RenderGraph/tests/
+#   - ResourceManagement/tests/
+#   - ShaderManagement/tests/
+#   - source/VulkanResources/tests/
+#
+# Each component's CMakeLists.txt now includes its own tests/ subdirectory
+# when BUILD_TESTS is enabled. This centralized tests/ directory is deprecated
+# and should be removed once migration is complete.
+#
+# ============================================================================
+
+# Helper macro for external test directories (VulkanResources only)
 macro(maybe_add_external_subdir dir)
     if(EXISTS "${PROJECT_SOURCE_DIR}/${dir}/CMakeLists.txt")
         message(STATUS "Adding external tests subdir: ${dir}")
@@ -36,14 +55,10 @@ macro(maybe_add_external_subdir dir)
     endif()
 endmacro()
 
-# All tests are now in component-local directories.
-# Reference them from their respective component locations.
-# Note: RenderGraph and ShaderManagement tests are included directly from their component CMakeLists.txt
+# Logger and VulkanResources are part of main source tree, not separate libraries
+# So they're still added via the external mechanism
 set(EXTERNAL_TEST_DIRS
     logger/tests
-    EventBus/tests
-    CashSystem/tests
-    ResourceManagement/tests
     source/VulkanResources/tests
 )
 

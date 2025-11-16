@@ -54,3 +54,11 @@ install(TARGETS EventBus
 install(DIRECTORY include/EventBus
     DESTINATION include
 )
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

@@ -165,10 +165,9 @@ else()
 endif()
 
 # Add tests subdirectory (if testing is enabled)
-# Commented out - tests are now added via tests/CMakeLists.txt external macro
-# if(BUILD_TESTING)
-#     add_subdirectory(tests)
-# endif()
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
 
 # Install CMake utility modules for downstream projects
 install(FILES

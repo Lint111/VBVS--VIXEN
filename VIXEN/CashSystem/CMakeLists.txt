@@ -43,3 +43,11 @@ endif()
 
 # Link ProjectHash so CashSystem uses the same hash provider includes/links
 target_link_libraries(CashSystem PRIVATE ProjectHash)
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

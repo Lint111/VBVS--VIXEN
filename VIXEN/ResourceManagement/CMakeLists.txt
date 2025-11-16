@@ -40,3 +40,11 @@ install(TARGETS ResourceManagement
 install(DIRECTORY include/ResourceManagement
     DESTINATION include
 )
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
