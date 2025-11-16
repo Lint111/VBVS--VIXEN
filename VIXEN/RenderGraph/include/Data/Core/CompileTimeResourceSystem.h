@@ -385,13 +385,6 @@ public:
         // When U is T&, std::addressof(value) returns the address of the original object
         constRefPtr_ = static_cast<const void*>(std::addressof(value));
         mode_ = Mode::Reference;
-
-        // DEBUG: Log vector addresses and sizes
-        if constexpr (std::is_same_v<T, std::vector<VkSemaphore>>) {
-            std::cout << "[PassThroughStorage::Set ConstRef] Storing vector address: "
-                      << constRefPtr_ << ", size: " << value.size()
-                      << ", capacity: " << value.capacity() << std::endl;
-        }
     }
 
     template<typename T>
@@ -427,15 +420,6 @@ public:
     template<typename T>
     const T& Get(ConstRefTag<T>) const {
         static_assert(IsValidType_v<T>, "Type not registered");
-
-        // DEBUG: Log vector retrieval
-        if constexpr (std::is_same_v<T, std::vector<VkSemaphore>>) {
-            const T* vecPtr = static_cast<const T*>(constRefPtr_);
-            std::cout << "[PassThroughStorage::Get ConstRef] Reading vector address: "
-                      << constRefPtr_ << ", size: " << vecPtr->size()
-                      << ", capacity: " << vecPtr->capacity() << std::endl;
-        }
-
         return *static_cast<const T*>(constRefPtr_);
     }
 

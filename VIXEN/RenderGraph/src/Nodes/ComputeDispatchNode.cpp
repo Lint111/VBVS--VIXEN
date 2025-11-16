@@ -122,16 +122,6 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     const std::vector<VkSemaphore>& renderCompleteSemaphores = ctx.In(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
     VkFence inFlightFence = ctx.In(ComputeDispatchNodeConfig::IN_FLIGHT_FENCE);
 
-    // DEBUG: Check vector state after In()
-    std::cout << "[ComputeDispatchNode::ExecuteImpl] After In() - imageAvailableSemaphores address: "
-              << &imageAvailableSemaphores << ", size: " << imageAvailableSemaphores.size()
-              << ", capacity: " << imageAvailableSemaphores.capacity()
-              << ", currentFrameIndex: " << currentFrameIndex << std::endl;
-    std::cout << "[ComputeDispatchNode::ExecuteImpl] After In() - renderCompleteSemaphores address: "
-              << &renderCompleteSemaphores << ", size: " << renderCompleteSemaphores.size()
-              << ", capacity: " << renderCompleteSemaphores.capacity()
-              << ", imageIndex: " << imageIndex << std::endl;
-
     // Two-tier indexing: imageAvailable by frame, renderComplete by image
     VkSemaphore imageAvailableSemaphore = imageAvailableSemaphores[currentFrameIndex];
     VkSemaphore renderCompleteSemaphore = renderCompleteSemaphores[imageIndex];

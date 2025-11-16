@@ -181,21 +181,6 @@ public:
             }
 
             if (!res) return typename SlotType::Type{};
-            auto&& result = res->GetHandle<typename SlotType::Type>();
-
-            // DEBUG: Log vector reference addresses
-            using T = typename SlotType::Type;
-            if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::vector<VkSemaphore>>) {
-                using VecT = std::vector<VkSemaphore>;
-                const VecT* vecPtr = nullptr;
-                if constexpr (std::is_lvalue_reference_v<decltype(result)>) {
-                    vecPtr = &result;
-                }
-                std::cout << "[TypedIOContext::In] After GetHandle (taskIndex=" << this->taskIndex << "), address: "
-                          << vecPtr << ", size: " << (vecPtr ? vecPtr->size() : 0)
-                          << ", capacity: " << (vecPtr ? vecPtr->capacity() : 0) << std::endl;
-            }
-
             return res->GetHandle<typename SlotType::Type>();
         }
 

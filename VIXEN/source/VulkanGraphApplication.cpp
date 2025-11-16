@@ -890,9 +890,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_HANDLE,
                   presentNode, PresentNodeConfig::SWAPCHAIN)
          .Connect(swapChainNode, SwapChainNodeConfig::IMAGE_INDEX,
-                  presentNode, PresentNodeConfig::IMAGE_INDEX)
-         .Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);  // Wait on ComputeDispatch's output
+                  presentNode, PresentNodeConfig::IMAGE_INDEX);
+
+    // --- ComputeDispatch → Present semaphore connection (separate to avoid ConnectionBatch duplication bug) ---
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
@@ -1034,9 +1036,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
          .Connect(frameSyncNode, FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
                   computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
 
-    // Connect compute output to Present
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
-                  presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    // REMOVED DUPLICATE: computeDispatch -> present RENDER_COMPLETE_SEMAPHORE (already connected at line 894-895)
 
     // Atomically register all connections
     size_t connectionCount = batch.GetConnectionCount();

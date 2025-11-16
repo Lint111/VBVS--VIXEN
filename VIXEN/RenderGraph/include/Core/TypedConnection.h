@@ -13,9 +13,63 @@
 
 namespace Vixen::RenderGraph {
 
+// Forward declare PassThroughStorage for type checking
+class PassThroughStorage;
+
+/**
+ * @brief Type compatibility checker for slot connections
+ *
+ * Enforces strict type matching for connections:
+ * - `const T&` can connect to `const T&` ✓
+ * - `T&` can connect to `T&` or `const T&` ✓
+ * - `T` can connect to `T` ✓
+ * - `const T&` CANNOT connect to `T` (value) ✗
+ * - `T&` CANNOT connect to `T` (value) ✗
+ *
+ * Special case: `PassThroughStorage` (generic type-erased storage) can connect to any type.
+ * This allows ConstantNode (which outputs PassThroughStorage) to connect to typed inputs.
+ *
+ * Reference-based connections (const T&, T&) require exact reference semantics.
+ * Adding const is allowed (T& → const T&), removing const is not (const T& → T&).
+ */
+template<typename SourceType, typename TargetType>
+struct AreTypesCompatible {
+    // Strip references and cv-qualifiers to get base types
+    using SourceBase = std::remove_cv_t<std::remove_reference_t<SourceType>>;
+    using TargetBase = std::remove_cv_t<std::remove_reference_t<TargetType>>;
+
+    // PassThroughStorage is type-erased and can connect to anything
+    static constexpr bool isGenericSource = std::is_same_v<SourceBase, PassThroughStorage>;
+    static constexpr bool isGenericTarget = std::is_same_v<TargetBase, PassThroughStorage>;
+
+    // Check if types are exactly the same
+    static constexpr bool exactMatch = std::is_same_v<SourceType, TargetType>;
+
+    // Check if we're adding const to a reference (T& → const T&)
+    // This is safe because we're not removing const
+    static constexpr bool addingConst =
+        std::is_lvalue_reference_v<SourceType> &&
+        std::is_lvalue_reference_v<TargetType> &&
+        !std::is_const_v<std::remove_reference_t<SourceType>> &&
+        std::is_const_v<std::remove_reference_t<TargetType>> &&
+        std::is_same_v<
+            std::remove_cv_t<std::remove_reference_t<SourceType>>,
+            std::remove_cv_t<std::remove_reference_t<TargetType>>
+        >;
+
+    // Types are compatible if:
+    // 1. Exactly the same
+    // 2. Adding const to reference
+    // 3. Source or target is PassThroughStorage (generic type-erased)
+    static constexpr bool value = exactMatch || addingConst || isGenericSource || isGenericTarget;
+};
+
+template<typename SourceType, typename TargetType>
+inline constexpr bool AreTypesCompatible_v = AreTypesCompatible<SourceType, TargetType>::value;
+
 /**
  * @brief Type-safe connection descriptor
- * 
+ *
  * Represents a single typed connection between two nodes.
  * Stores edge information that will be registered with RenderGraph.
  */
@@ -84,13 +138,14 @@ public:
         // Extract type information from slots
         using SourceType = typename SourceSlot::Type;
         using TargetType = typename TargetSlot::Type;
-        
-        // Compile-time type validation
-        // Types must match exactly, or both must map to the same ResourceType
+
+        // Compile-time type validation with detailed error message
         static_assert(
-            std::is_same_v<SourceType, TargetType> || 
-            (SourceSlot::resourceType == TargetSlot::resourceType),
-            "Source and target slot types must be compatible"
+            AreTypesCompatible_v<SourceType, TargetType>,
+            "TYPE MISMATCH: Source output slot type is incompatible with target input slot type. "
+            "Check that both slots use the same base type (e.g., both use 'const std::vector<VkSemaphore>&' "
+            "or 'std::vector<VkSemaphore>', not a mix). "
+            "See compiler error for SourceType and TargetType details."
         );
 
         TypedConnectionDescriptor desc;

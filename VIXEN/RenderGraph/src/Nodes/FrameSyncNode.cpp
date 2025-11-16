@@ -120,13 +120,6 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData[currentFrameIndex].inFlightFence);
 
     // Output semaphore arrays (imageAvailable=per-FLIGHT, renderComplete=per-IMAGE)
-    std::cout << "[FrameSyncNode::CompileImpl] Before Out() - imageAvailableSemaphores address: "
-              << &imageAvailableSemaphores << ", size: " << imageAvailableSemaphores.size()
-              << ", capacity: " << imageAvailableSemaphores.capacity() << std::endl;
-    std::cout << "[FrameSyncNode::CompileImpl] Before Out() - renderCompleteSemaphores address: "
-              << &renderCompleteSemaphores << ", size: " << renderCompleteSemaphores.size()
-              << ", capacity: " << renderCompleteSemaphores.capacity() << std::endl;
-
     ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
     ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
     ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences);
@@ -153,8 +146,11 @@ void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, currentFence);
 
-    // Semaphore arrays remain constant (no need to update every frame)
-    // SwapChainNode will index into these arrays using the current frame index
+    // Re-output semaphore arrays for Execute-phase connections
+    // Note: These are const references to member variables - safe to output every frame
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences);
 }
 
 void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
