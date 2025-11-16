@@ -1,7 +1,7 @@
 # RenderGraph static library
 # Render graph system for managing Vulkan resources and execution
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...4.2)
 
 project(RenderGraph)
 

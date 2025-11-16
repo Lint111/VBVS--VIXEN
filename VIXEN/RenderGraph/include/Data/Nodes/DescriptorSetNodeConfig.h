@@ -89,9 +89,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorSetNodeConfig,
         SlotScope::NodeLevel);
 
     // Resource array from DescriptorResourceGathererNode (data-driven binding)
+    // Execute role: Gatherer updates transient resources (like swapchain image views) per frame
     INPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorHandleVariant>, 3,
         SlotNullability::Required,
-        SlotRole::Dependency,
+        SlotRole::Dependency | SlotRole::Execute,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 

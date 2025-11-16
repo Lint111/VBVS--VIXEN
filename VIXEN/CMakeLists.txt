@@ -3,7 +3,7 @@
 # Graph-Based Rendering Environment
 #
 
-cmake_minimum_required(VERSION 3.11..4.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.11..4.2 FATAL_ERROR)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 

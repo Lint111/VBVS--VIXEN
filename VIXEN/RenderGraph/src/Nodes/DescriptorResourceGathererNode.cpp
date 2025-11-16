@@ -166,9 +166,24 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     size_t variadicCount = ctx.InVariadicCount();
     bool hasTransients = false;
 
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Processing " + std::to_string(variadicCount) + " variadic slots for Execute-role resources");
+
     for (size_t i = 0; i < variadicCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo || !HasExecute(slotInfo->slotRole)) {
+        if (!slotInfo) {
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Slot " + std::to_string(i) + " is null, skipping");
+            continue;
+        }
+
+        uint8_t roleVal = static_cast<uint8_t>(slotInfo->slotRole);
+        bool hasExec = HasExecute(slotInfo->slotRole);
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Slot " + std::to_string(i) +
+                      " (binding=" + std::to_string(slotInfo->binding) + "): role=" + std::to_string(roleVal) +
+                      " (Dependency=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Dependency)) +
+                      ", Execute=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Execute)) +
+                      "), hasExecute=" + (hasExec ? "YES" : "NO"));
+
+        if (!hasExec) {
             continue;  // Skip Dependency-only slots (already gathered in Compile)
         }
 
@@ -190,15 +205,33 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         // Update resource array with fresh value
         uint32_t binding = slotInfo->binding;
         auto variant = freshResource->GetDescriptorHandle();
-        resourceArray_[binding] = variant;
 
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) + " (slot " + std::to_string(i) + ")");
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) +
+                      " (slot " + std::to_string(i) + "), variant type: " +
+                      (std::holds_alternative<std::monostate>(variant) ? "monostate" :
+                       std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
+                       std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
+                       std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
+
+        resourceArray_[binding] = variant;
     }
 
     if (hasTransients) {
         // Re-output updated resource array
         ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries (transients updated)");
+
+        // Log what we're outputting
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries (transients updated):");
+        for (size_t i = 0; i < resourceArray_.size(); ++i) {
+            const auto& variant = resourceArray_[i];
+            NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": " +
+                          (std::holds_alternative<std::monostate>(variant) ? "monostate" :
+                           std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
+                           std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
+                           std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
+        }
+    } else {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] No Execute-role resources found - skipping output");
     }
 }
 

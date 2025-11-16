@@ -11,7 +11,7 @@
 #   cmake --build . && ctest --output-on-failure
 #
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...4.2)
 
 # This CMakeLists aggregates all per-library test subdirectories so the top-level
 # CMake can simply call add_subdirectory(tests).

@@ -1,7 +1,7 @@
 # VulkanResources static library
 # Low-level Vulkan abstraction layer: device, swapchain, shaders, textures, utilities
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...4.2)
 
 project(VulkanResources)
 
