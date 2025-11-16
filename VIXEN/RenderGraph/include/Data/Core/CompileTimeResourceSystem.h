@@ -494,20 +494,6 @@ public:
     T GetHandle() const {
         static_assert(IsValidType_v<T>, "Type not registered");
         using Tag = TypeToTag_t<T>;
-        auto&& result = storage_.Get(Tag{});
-
-        // DEBUG: Log vector reference addresses
-        if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, std::vector<VkSemaphore>>) {
-            using VecT = std::vector<VkSemaphore>;
-            const VecT* vecPtr = nullptr;
-            if constexpr (std::is_lvalue_reference_v<decltype(result)>) {
-                vecPtr = &result;
-            }
-            std::cout << "[Resource::GetHandle] Returning vector reference, address: "
-                      << vecPtr << ", size: " << (vecPtr ? vecPtr->size() : 0)
-                      << ", capacity: " << (vecPtr ? vecPtr->capacity() : 0) << std::endl;
-        }
-
         return storage_.Get(Tag{});
     }
 

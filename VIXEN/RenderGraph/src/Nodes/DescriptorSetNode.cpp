@@ -378,7 +378,16 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
         return false;
     }
 
-    // Filter by slot role if provided
+    const auto& resourceVariant = descriptorResources[binding.binding];
+
+    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
+                  " (" + binding.name + ") resource type: " +
+                  (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
+                   std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
+                   std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
+                   std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
+
+    // Filter by slot role FIRST - this determines which descriptors to bind in this pass
     // Support combined roles (e.g., Dependency | Execute)
     // A binding matches the filter if it has ANY of the filter's flags set
     if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
@@ -401,19 +410,11 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
         }
     }
 
-    const auto& resourceVariant = descriptorResources[binding.binding];
-
-    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
-                  " (" + binding.name + ") resource type: " +
-                  (std::holds_alternative<std::monostate>(resourceVariant) ? "monostate" :
-                   std::holds_alternative<VkImageView>(resourceVariant) ? "VkImageView" :
-                   std::holds_alternative<VkBuffer>(resourceVariant) ? "VkBuffer" :
-                   std::holds_alternative<VkSampler>(resourceVariant) ? "VkSampler" : "unknown"));
-
-    // Skip placeholder entries (std::monostate) - these are transient resources not yet populated
+    // THEN check monostate - only Execute-only slots should be monostate during Dependency binding
+    // If we reach here, the binding passed the role filter, so monostate indicates a real missing resource
     if (std::holds_alternative<std::monostate>(resourceVariant)) {
         NODE_LOG_DEBUG("[ValidateAndFilterBinding] Skipping binding " + std::to_string(binding.binding) +
-                      " - placeholder not yet populated (transient resource)");
+                      " - placeholder not yet populated (Execute-only resource not set)");
         return false;
     }
 
