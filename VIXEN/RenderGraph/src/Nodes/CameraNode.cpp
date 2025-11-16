@@ -1,7 +1,7 @@
 #include "Headers.h"  // MUST be first to define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "Nodes/CameraNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "VulkanSwapChain.h"
+#include "VulkanResources/VulkanSwapChain.h"
 #include "EventBus/InputEvents.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>

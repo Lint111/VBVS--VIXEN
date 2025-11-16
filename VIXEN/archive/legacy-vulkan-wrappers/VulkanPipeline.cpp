@@ -2,7 +2,7 @@
 
 #include "VulkanApplication.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "VulkanShader.h"
+#include "VulkanResources/VulkanShader.h"
 #include "VulkanDrawable.h"
 #include "VulkanRenderer.h"
 #include "Logger.h"

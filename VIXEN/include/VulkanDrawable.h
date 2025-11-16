@@ -1,6 +1,6 @@
 #pragma once
 #include "Headers.h"
-#include "wrapper.h"
+#include "VulkanResources/CommandBufferUtility.h"
 #include "VulkanDescriptor.h"
 
 class VulkanRenderer;

@@ -1,4 +1,4 @@
-#include "VulkanSwapChain.h"
+#include "VulkanResources/VulkanSwapChain.h"
 #include "VulkanApplication.h"
 #include "VulkanRenderer.h"
 

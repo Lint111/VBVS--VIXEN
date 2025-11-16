@@ -5,7 +5,7 @@
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
 #include <ShaderManagement/ShaderDataBundle.h>
 #include <ShaderManagement/ShaderBundleBuilder.h>
-#include "VulkanShader.h"
+#include "VulkanResources/VulkanShader.h"
 #include <memory>
 #include <functional>
 

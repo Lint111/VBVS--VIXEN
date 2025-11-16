@@ -6,7 +6,7 @@
 #include "Data/Core/CompileTimeResourceSystem.h"
 #include "NodeHelpers/VulkanStructHelpers.h"
 #include "NodeHelpers/ValidationHelpers.h"
-#include "VulkanSwapChain.h"
+#include "VulkanResources/VulkanSwapChain.h"
 #include <sstream>
 
 using namespace RenderGraph::NodeHelpers;

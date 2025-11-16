@@ -460,7 +460,7 @@ add_subdirectory(ResourceManagement)
 add_subdirectory(ShaderManagement)
 
 # VulkanResources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
-add_subdirectory(source/VulkanResources)
+add_subdirectory(VulkanResources)
 
 # RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)

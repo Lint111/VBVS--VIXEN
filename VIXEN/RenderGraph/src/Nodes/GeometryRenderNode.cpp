@@ -1,6 +1,6 @@
 #include "Nodes/GeometryRenderNode.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "VulkanSwapChain.h"
+#include "VulkanResources/VulkanSwapChain.h"
 #include <cstring>
 #include "Core/NodeLogging.h"
 

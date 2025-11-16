@@ -2,7 +2,7 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanResources/VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
-#include "VulkanSwapChain.h"  // For SwapChainPublicVariables
+#include "VulkanResources/VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderManagement/ShaderDataBundle.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>

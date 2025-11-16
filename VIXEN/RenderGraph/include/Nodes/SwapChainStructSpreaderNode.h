@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "SwapChainStructSpreaderNodeConfig.h"
-#include "VulkanSwapChain.h"
+#include "VulkanResources/VulkanSwapChain.h"
 
 namespace Vixen::RenderGraph {
 

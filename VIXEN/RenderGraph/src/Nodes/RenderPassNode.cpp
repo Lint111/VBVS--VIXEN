@@ -1,7 +1,7 @@
 #include "Nodes/RenderPassNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
+#include "VulkanResources/VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
 #include "CashSystem/RenderPassCacher.h"

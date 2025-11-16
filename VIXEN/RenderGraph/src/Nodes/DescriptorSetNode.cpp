@@ -1,7 +1,7 @@
 #include "Nodes/DescriptorSetNode.h"
 #include "Core/RenderGraph.h"
 #include "VulkanResources/VulkanDevice.h"
-#include "VulkanSwapChain.h"  // Phase 0.1: SwapChainPublicVariables definition
+#include "VulkanResources/VulkanSwapChain.h"  // Phase 0.1: SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
 #include "CashSystem/MainCacher.h"
 #include "CashSystem/DescriptorCacher.h"
