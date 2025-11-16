@@ -530,26 +530,26 @@ ResourceDescriptor MakeDescriptor(
 /**
  * @brief Type trait to check if a type can be persistent
  *
- * Persistent slots must use types that have stable memory addresses:
- * - Pointers (T*)
- * - References (T&)
- * - std::reference_wrapper
+ * LIFETIME MODEL (simplified):
+ * 1. Persistent: Reference to stable node member or external resource
+ *    - Must be pointer/reference type (const T&, T*)
+ *    - Lives across frames, address remains valid
+ *    - Examples: const std::vector<VkSemaphore>&, VkDevice*, const SwapChainPublicVars&
  *
- * Value types cannot be persistent because they are copied each frame,
- * making member extraction unsafe.
+ * 2. Transient: Temporary value copied through graph
+ *    - Value types only (T, not T& or T*)
+ *    - Short-lived, recreated each use via std::any
+ *    - Examples: VkFormat, uint32_t, frame index
+ *
+ * Note: Containers (std::vector, etc.) should be Persistent references to avoid copies.
+ * Enums and POD types can be Transient values.
  */
 template<typename T>
 struct CanBePersistent {
-    // Accept if:
-    // - pointer/reference types, or
-    // - registered resource types (including containers like std::vector<T>)
-    // This is intentionally permissive to match historical behavior where
-    // persistent slots often used registered value types or container types.
     using Decayed = std::remove_cv_t<std::remove_reference_t<T>>;
     static constexpr bool value =
         std::is_pointer_v<Decayed> ||
-        std::is_reference_v<T> ||
-        ResourceTypeTraits<Decayed>::isValid;
+        std::is_reference_v<T>;
 };
 
 template<typename T>

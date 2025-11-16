@@ -66,7 +66,7 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<ShaderManagement::ShaderDataBundle>, 1,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -95,7 +95,7 @@ CONSTEXPR_NODE_CONFIG(ShaderLibraryNodeConfig,
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, std::shared_ptr<ShaderManagement::ShaderDataBundle>>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
 };
 
 } // namespace Vixen::RenderGraph

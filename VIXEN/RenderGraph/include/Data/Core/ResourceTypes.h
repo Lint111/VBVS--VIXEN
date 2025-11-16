@@ -80,8 +80,6 @@ constexpr inline bool HasUsage(ResourceUsage flags, ResourceUsage check) {
 enum class ResourceLifetime {
     Transient,   // Short-lived, can be aliased
     Persistent,  // Long-lived, externally managed
-    Imported,    // External resource (swapchain, etc.)
-    Static       // Immutable after creation (from original enum)
 };
 
 } // namespace Vixen::RenderGraph

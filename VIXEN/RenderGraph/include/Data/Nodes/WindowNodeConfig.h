@@ -88,13 +88,13 @@ CONSTEXPR_NODE_CONFIG(WindowNodeConfig,
         HandleDescriptor hinstanceDesc{"HINSTANCE"};
         INIT_OUTPUT_DESC(HINSTANCE_OUT, "hinstance", ResourceLifetime::Persistent, hinstanceDesc);
 
-        // Width parameter as output
+        // Width parameter as output (value type - transient)
         BufferDescription widthDesc{};
-        INIT_OUTPUT_DESC(WIDTH_OUT, "width", ResourceLifetime::Persistent, widthDesc);
+        INIT_OUTPUT_DESC(WIDTH_OUT, "width", ResourceLifetime::Transient, widthDesc);
 
-        // Height parameter as output
+        // Height parameter as output (value type - transient)
         BufferDescription heightDesc{};
-        INIT_OUTPUT_DESC(HEIGHT_OUT, "height", ResourceLifetime::Persistent, heightDesc);
+        INIT_OUTPUT_DESC(HEIGHT_OUT, "height", ResourceLifetime::Transient, heightDesc);
     }
 
     // Optional: Compile-time validation

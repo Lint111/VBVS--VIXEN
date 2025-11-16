@@ -153,7 +153,7 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
     /**
      * @brief Shader data bundle with reflection metadata (for push constant detection)
      */
-    INPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<::ShaderManagement::ShaderDataBundle>, 11,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 11,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,

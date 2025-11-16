@@ -49,7 +49,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
                       DescriptorResourceGathererNodeCounts::ARRAY_MODE) {
 
     // ===== INPUTS (1 + dynamic) =====
-    INPUT_SLOT(SHADER_DATA_BUNDLE, std::shared_ptr<::ShaderManagement::ShaderDataBundle>, 0,
+    INPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 0,
         SlotNullability::Required,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
@@ -64,7 +64,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, std::shared_ptr<::ShaderManagement::ShaderDataBundle>, 2,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -104,9 +104,9 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, std::shared_ptr<::ShaderManagement::ShaderDataBundle>>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
     static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
-    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, std::shared_ptr<::ShaderManagement::ShaderDataBundle>>);
+    static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
 };
 } // namespace Vixen::RenderGraph
