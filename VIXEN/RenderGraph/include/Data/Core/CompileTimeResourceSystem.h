@@ -551,6 +551,11 @@ public:
                 try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
                 break;
 
+            case ResourceType::ImageView:
+                // Try VkImageView for image view resources
+                try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
+                break;
+
             case ResourceType::Image:
             case ResourceType::StorageImage:
             case ResourceType::Image3D:
