@@ -174,13 +174,20 @@ public:
 
         /**
          * @brief Set output value bound to this task's index
+         *
+         * Uses perfect forwarding to preserve the original argument:
+         * - For reference slots (const T&): Captures address of the ORIGINAL object (not parameter)
+         * - For value slots (T): Forwards as rvalue for move semantics
          */
-        template<typename SlotType>
-        void Out(SlotType slot, typename SlotType::Type value) {
+        template<typename SlotType, typename U>
+        void Out(SlotType slot, U&& value) {
             static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
             typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);
             Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
-            res->SetHandle<typename SlotType::Type>(std::move(value));
+            // Static cast to SlotType::Type preserves the original object address for references
+            // For reference slots: cast adds const if needed, preserves lvalue
+            // For value slots: enables copy/move
+            res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
         }
 
         /**
@@ -540,16 +547,16 @@ private:
      * 
      * Usage: SetOutput(Config::COLOR_IMAGE, 0, myImage);
      */
-    template<typename SlotType>
-    void SetOutput(SlotType /*slot*/, size_t arrayIndex, typename SlotType::Type value) {
+    template<typename SlotType, typename U>
+    void SetOutput(SlotType /*slot*/, size_t arrayIndex, U&& value) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
         // Create resource if needed
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
 
         // Store typed handle in resource variant
-        // SlotType::Type automatically provides the correct type!
-        res->SetHandle<typename SlotType::Type>(std::move(value));
+        // Static cast preserves original object address for reference slots
+        res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
     }
 
     /**
@@ -600,14 +607,15 @@ private:
     // node logic don't need to pass the array index explicitly for the common
     // single-bundle case.
     // DEPRECATED: Use context-based Out() from TypedIOContext instead
-    template<typename SlotType>
-    void Out(SlotType slot, typename SlotType::Type value) {
+    template<typename SlotType, typename U>
+    void Out(SlotType slot, U&& value) {
         static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
         // Fallback to first task
         size_t arrayIndex = 0;
         EnsureOutputSlot(SlotType::index, arrayIndex);
         Resource* res = NodeInstance::GetOutput(SlotType::index, static_cast<uint32_t>(arrayIndex));
-        res->SetHandle<typename SlotType::Type>(std::move(value));
+        // Static cast preserves original object address for reference slots
+        res->SetHandle<typename SlotType::Type>(static_cast<typename SlotType::Type>(std::forward<U>(value)));
     }
 
     /**

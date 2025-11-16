@@ -369,16 +369,19 @@ public:
         mode_ = Mode::Value;
     }
 
-    template<typename T>
-    void Set(T& value, RefTag<T>) {
+    template<typename T, typename U>
+    void Set(U&& value, RefTag<T>) {
         static_assert(IsValidType_v<T>, "Type not registered");
+        // Forward the argument to preserve the original object address
         refPtr_ = static_cast<void*>(&value);
         mode_ = Mode::Reference;
     }
 
-    template<typename T>
-    void Set(const T& value, ConstRefTag<T>) {
+    template<typename T, typename U>
+    void Set(U&& value, ConstRefTag<T>) {
         static_assert(IsValidType_v<T>, "Type not registered");
+        // Forward the argument to preserve the original object address
+        // This captures &originalObject, not &parameter
         constRefPtr_ = static_cast<const void*>(&value);
         mode_ = Mode::Reference;
     }

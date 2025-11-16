@@ -137,7 +137,8 @@
         ".vs/**": true,
         ".cache/**": true,
         "binaries/**": true,
-        "builtAssets/**": true
+        "builtAssets/**": true,
+        "archive/**": true
     },
     "C_Cpp.files.exclude": {
         "**/.git": true,
@@ -154,7 +155,8 @@
         "CashSystem/**": true,
         "docs/**": true,
         "documentation/**": true,
-        "memory-bank/**": true
+        "memory-bank/**": true,
+        "archive/**": true
     },
     "cmake.options.statusBarVisibility": "visible",
     "cmake.buildDirectory": "${workspaceFolder}/build",
