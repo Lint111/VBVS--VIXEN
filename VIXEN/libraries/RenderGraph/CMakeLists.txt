@@ -15,6 +15,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(magic_enum)
 
+# Organize magic_enum in Dependencies folder
+if(TARGET magic_enum)
+    set_target_properties(magic_enum PROPERTIES FOLDER "Dependencies")
+endif()
+
 # ============================================================================
 # Data Headers (Build-Independent)
 # ============================================================================

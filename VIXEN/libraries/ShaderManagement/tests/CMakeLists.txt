@@ -38,6 +38,9 @@ target_link_libraries(ShaderManagementTests
         gtest_main
 )
 
+# Visual Studio solution folder organization
+set_target_properties(ShaderManagementTests PROPERTIES FOLDER "Tests/ShaderManagement Tests")
+
 # Discover tests
 include(GoogleTest)
 gtest_discover_tests(ShaderManagementTests

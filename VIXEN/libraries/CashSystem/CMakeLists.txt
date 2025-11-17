@@ -12,6 +12,9 @@ add_library(CashSystem STATIC ${CASHSYSTEM_SOURCES})
 set_property(TARGET CashSystem PROPERTY CXX_STANDARD 23)
 set_property(TARGET CashSystem PROPERTY CXX_STANDARD_REQUIRED ON)
 
+# Visual Studio solution folder organization
+set_target_properties(CashSystem PROPERTIES FOLDER "Libraries")
+
 target_include_directories(CashSystem PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     # Main application includes (so CashSystem can use common headers)

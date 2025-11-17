@@ -29,6 +29,9 @@ target_include_directories(EventBus
 
 target_compile_features(EventBus PUBLIC cxx_std_23)
 
+# Visual Studio solution folder organization
+set_target_properties(EventBus PROPERTIES FOLDER "Libraries")
+
 # Thread support required for std::thread
 find_package(Threads REQUIRED)
 target_link_libraries(EventBus PUBLIC Threads::Threads)

@@ -26,6 +26,7 @@ if(TARGET glm)
         $<$<CXX_COMPILER_ID:GNU>:-w>
         $<$<CXX_COMPILER_ID:Clang>:-w>
     )
+    set_target_properties(glm PROPERTIES FOLDER "Dependencies")
 endif()
 
 # ============================================================================
@@ -62,6 +63,7 @@ if(TARGET gli)
         $<$<CXX_COMPILER_ID:GNU>:-w>
         $<$<CXX_COMPILER_ID:Clang>:-w>
     )
+    set_target_properties(gli PROPERTIES FOLDER "Dependencies")
 endif()
 
 # ============================================================================
@@ -80,6 +82,7 @@ FetchContent_MakeAvailable(stb)
 # Create interface library for STB (header-only)
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+set_target_properties(stb PROPERTIES FOLDER "Dependencies")
 
 # ============================================================================
 # Hash Provider (OpenSSL or header-only fallback)
@@ -115,6 +118,7 @@ elseif(TARGET stbrumme_hash OR DEFINED stbrumme_hash_SOURCE_DIR)
 else()
     target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
 endif()
+set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 
 # ============================================================================
 # GoogleTest - Testing Framework
@@ -149,6 +153,9 @@ if(BUILD_TESTS)
     if(TARGET gmock_main AND NOT TARGET GTest::gmock_main)
         add_library(GTest::gmock_main ALIAS gmock_main)
     endif()
+
+    # Organize GTest targets in Dependencies folder
+    set_target_properties(gtest gtest_main gmock gmock_main PROPERTIES FOLDER "Dependencies")
 
     message(STATUS "GoogleTest fetched - test targets available to subdirectories")
 endif()

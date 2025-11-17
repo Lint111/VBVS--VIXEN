@@ -31,6 +31,9 @@ target_include_directories(Logger
 # C++23 standard
 target_compile_features(Logger PUBLIC cxx_std_23)
 
+# Visual Studio solution folder organization
+set_target_properties(Logger PROPERTIES FOLDER "Libraries")
+
 # ============================================================================
 # Precompiled Headers (Optional)
 # ============================================================================

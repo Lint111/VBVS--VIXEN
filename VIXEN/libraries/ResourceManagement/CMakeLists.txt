@@ -22,12 +22,16 @@ target_include_directories(ResourceManagement
 
 target_compile_features(ResourceManagement INTERFACE cxx_std_23)
 
+# Visual Studio solution folder organization
+set_target_properties(ResourceManagement PROPERTIES FOLDER "Libraries")
+
 # ============================================================================
 # IDE Support - Show headers in project
 # ============================================================================
 
 # Create a custom target to make headers visible in IDE
 add_custom_target(ResourceManagement_IDE SOURCES ${RM_HEADERS})
+set_target_properties(ResourceManagement_IDE PROPERTIES FOLDER "Libraries")
 
 # ============================================================================
 # Installation (optional)

@@ -57,6 +57,9 @@ set_property(TARGET VIXEN PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET VIXEN PROPERTY C_STANDARD 23)
 set_property(TARGET VIXEN PROPERTY C_STANDARD_REQUIRED ON)
 
+# Visual Studio solution folder organization
+set_target_properties(VIXEN PROPERTIES FOLDER "Application")
+
 # Add /FS flag for MSVC to allow multiple CL.EXE to write to the same PDB file
 if(MSVC)
     target_compile_options(VIXEN PRIVATE /FS)
