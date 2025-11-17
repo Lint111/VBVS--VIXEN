@@ -822,44 +822,85 @@ private:
         size_t bundleIndex,
         const char* hookDescription
     ) {
-        graph->GetLifecycleHooks().RegisterNodeHook(
-            NodeLifecyclePhase::PostCompile,
-            [=](NodeInstance* compiledNode) {
-                if (compiledNode != sourceNodeInst) return;
+        // Check slot role to determine which hooks to register
+        const VariadicSlotInfo* tentativeSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+        if (!tentativeSlot) {
+            std::cout << "[ConnectVariadic] WARNING: No slot info found for binding " << bindingIndex << "\n";
+            return;
+        }
 
-                // Check if slot is Execute-ONLY (not Dependency) - skip population if so
-                // Slots with Dependency flag (including Dependency|Execute) need initial population here
-                const VariadicSlotInfo* currentSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
-                if (currentSlot && !HasDependency(currentSlot->slotRole)) {
-                    std::cout << "[ConnectVariadic PostCompile Hook] Skipping Execute-only slot at binding "
-                              << bindingIndex << " (will populate in Execute phase)\n";
-                    return;
-                }
+        SlotRole slotRole = tentativeSlot->slotRole;
+        bool hasDependency = HasDependency(slotRole);
+        bool hasExecute = HasExecute(slotRole);
 
-                std::cout << "[ConnectVariadic PostCompile Hook] Populating resource for binding "
-                          << bindingIndex << std::endl;
+        // Register PostCompile hook ONLY if slot has Dependency role
+        if (hasDependency) {
+            graph->GetLifecycleHooks().RegisterNodeHook(
+                NodeLifecyclePhase::PostCompile,
+                [=](NodeInstance* compiledNode) {
+                    if (compiledNode != sourceNodeInst) return;
 
-                Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
-                if (!sourceRes || !sourceRes->IsValid()) {
-                    std::cout << "[ConnectVariadic PostCompile Hook] WARNING: Source output " << sourceSlotIndex
-                              << " not yet available or invalid for binding " << bindingIndex
-                              << " (source node may not be fully compiled yet)\n";
-                    return;  // Skip for now, will be populated when source node compiles
-                }
+                    std::cout << "[ConnectVariadic PostCompile Hook] Populating Dependency-role resource for binding "
+                              << bindingIndex << std::endl;
 
-                const VariadicSlotInfo* existingSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
-                if (existingSlot) {
-                    VariadicSlotInfo updatedSlot = *existingSlot;
-                    updatedSlot.resource = sourceRes;
-                    updatedSlot.resourceType = sourceRes->GetType();
-                    variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
+                    Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
+                    if (!sourceRes || !sourceRes->IsValid()) {
+                        std::cout << "[ConnectVariadic PostCompile Hook] WARNING: Source output " << sourceSlotIndex
+                                  << " not yet available or invalid for binding " << bindingIndex
+                                  << " (source node may not be fully compiled yet)\n";
+                        return;
+                    }
 
-                    std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
-                              << bindingIndex << " with type " << static_cast<int>(updatedSlot.resourceType) << std::endl;
-                }
-            },
-            hookDescription
-        );
+                    const VariadicSlotInfo* existingSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (existingSlot) {
+                        VariadicSlotInfo updatedSlot = *existingSlot;
+                        updatedSlot.resource = sourceRes;
+                        updatedSlot.resourceType = sourceRes->GetType();
+                        variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
+
+                        std::cout << "[ConnectVariadic PostCompile Hook] Resource populated for binding "
+                                  << bindingIndex << " with type " << static_cast<int>(updatedSlot.resourceType) << std::endl;
+                    }
+                },
+                hookDescription
+            );
+        }
+
+        // Register PreExecute hook ONLY if slot has Execute role
+        if (hasExecute) {
+            auto* variadicAsNodeInstance = dynamic_cast<NodeInstance*>(variadicNodePtr);
+            graph->GetLifecycleHooks().RegisterNodeHook(
+                NodeLifecyclePhase::PreExecute,
+                [=](NodeInstance* executingNode) {
+                    // PreExecute hook runs BEFORE the target node's Execute() - only populate if this is the target node
+                    if (executingNode != variadicAsNodeInstance) return;
+
+                    std::cout << "[ConnectVariadic PreExecute Hook] Refreshing Execute-role resource for binding "
+                              << bindingIndex << std::endl;
+
+                    // Fetch fresh resource from source node
+                    Resource* sourceRes = sourceNodeInst->GetOutput(static_cast<uint8_t>(sourceSlotIndex), 0);
+                    if (!sourceRes || !sourceRes->IsValid()) {
+                        std::cout << "[ConnectVariadic PreExecute Hook] WARNING: Source output " << sourceSlotIndex
+                                  << " is null or invalid for binding " << bindingIndex << "\n";
+                        return;
+                    }
+
+                    // Update slot with fresh resource (node-side extraction handles hasFieldExtraction)
+                    const VariadicSlotInfo* currentSlot = variadicNodePtr->GetVariadicSlotInfo(bindingIndex, bundleIndex);
+                    if (currentSlot) {
+                        VariadicSlotInfo updatedSlot = *currentSlot;
+                        updatedSlot.resource = sourceRes;
+                        updatedSlot.resourceType = sourceRes->GetType();
+                        variadicNodePtr->UpdateVariadicSlot(bindingIndex, updatedSlot, bundleIndex);
+
+                        std::cout << "[ConnectVariadic PreExecute Hook] Resource refreshed for binding "
+                                  << bindingIndex << " (fieldExtraction=" << (updatedSlot.hasFieldExtraction ? "yes" : "no") << ")\n";
+                    }
+                },
+                std::string(hookDescription) + " (PreExecute refresh)"
+            );
+        }
     }
 
     /**

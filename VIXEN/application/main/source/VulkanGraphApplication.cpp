@@ -478,7 +478,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
     NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode("PushConstantGatherer", "push_constant_gatherer");  // Phase H
-    NodeHandle timeConstant = renderGraph->AddNode("Constant", "time_constant");  // Phase H: Time value for shader
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
@@ -1029,10 +1028,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
                           &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
 
-    // Connect time field (using constant node with value 0.0f for now)
-    // TODO: Replace with actual TimeNode that provides elapsed time
-    batch.ConnectVariadic(timeConstant, ConstantNodeConfig::OUTPUT,
-                          pushConstantGatherer, VoxelRayMarch::time::BINDING, SlotRole::Execute);
+    // Note: time field (index 1) NOT connected - will be filled with zero by gatherer
+    // This will trigger a warning log but shader will receive valid (zero) value
+    // TODO: Connect actual time source when animation is needed
 
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
