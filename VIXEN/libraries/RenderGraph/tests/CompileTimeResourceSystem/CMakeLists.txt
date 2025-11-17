@@ -10,9 +10,9 @@ include(GoogleTest)
 add_executable(test_minimal
     ../test_minimal.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - no relative paths
+# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
 target_include_directories(test_minimal PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES} gli)
+target_link_libraries(test_minimal PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -91,9 +91,9 @@ set_property(TARGET test_syntax_check PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_type_check
     test_type_check.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - no relative paths
+# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
 target_include_directories(test_type_check PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_type_check PRIVATE ${Vulkan_LIBRARIES} gli)
+target_link_libraries(test_type_check PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)
 

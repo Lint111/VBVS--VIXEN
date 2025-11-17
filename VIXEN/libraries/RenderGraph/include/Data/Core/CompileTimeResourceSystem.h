@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <any>
 #include <cassert>
+#include <memory>  // For std::shared_ptr
 #include "BoolVector.h"  // Include BoolVector wrapper
 
 // Forward declarations (same as PassThroughStorage.h)
