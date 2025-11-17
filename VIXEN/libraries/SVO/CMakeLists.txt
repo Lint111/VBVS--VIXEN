@@ -12,11 +12,11 @@ project(SVO VERSION 1.0.0 LANGUAGES CXX)
 
 add_library(SVO STATIC
     # Public headers
-    include/SVO/ISVOStructure.h
-    include/SVO/SVOTypes.h
-    include/SVO/SVOBuilder.h
-    include/SVO/LaineKarrasOctree.h
-    include/SVO/VoxelInjection.h
+    include/ISVOStructure.h
+    include/SVOTypes.h
+    include/SVOBuilder.h
+    include/LaineKarrasOctree.h
+    include/VoxelInjection.h
 
     # Implementation
     src/SVOTypes.cpp

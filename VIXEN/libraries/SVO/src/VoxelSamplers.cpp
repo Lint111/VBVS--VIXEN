@@ -1,4 +1,4 @@
-#include "SVO/VoxelInjection.h"
+#include "VoxelInjection.h"
 #include <cmath>
 #include <algorithm>
 
