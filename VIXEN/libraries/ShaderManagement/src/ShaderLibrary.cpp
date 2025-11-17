@@ -1,5 +1,5 @@
-#include "ShaderManagement/ShaderLibrary.h"
-#include "ShaderManagement/SPIRVReflection.h"
+#include "ShaderLibrary.h"
+#include "SPIRVReflection.h"
 #include "Logger.h"
 #include <fstream>
 #include <stdexcept>

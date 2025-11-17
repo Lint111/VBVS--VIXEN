@@ -2,9 +2,9 @@
 
 #include <Headers.h>
 #include "error/VulkanError.h"
-#include "VulkanInstance.h"
-#include "VulkanDevice.h"
-#include "Logger.h"
+#include "Core/VulkanInstance.h"
+#include "Core/VulkanDevice.h"
+#include "Core/Logger.h"
 
 using namespace Vixen::Vulkan::Resources;
 

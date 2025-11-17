@@ -60,4 +60,16 @@ endif()
 # This centralized tests/ directory serves only as a common configuration point.
 # No test targets are defined here directly.
 
+# ============================================================================
+# Standalone Test Executables (Not Google Test)
+# ============================================================================
+
+# Coordinate System Test - Verifies Vulkan coordinate conventions
+add_executable(coordinate_system_test coordinate_system_test.cpp)
+target_link_libraries(coordinate_system_test PRIVATE glm::glm)
+set_target_properties(coordinate_system_test PROPERTIES
+    FOLDER "Tests/Standalone"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/binaries/tests"
+)
+
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")

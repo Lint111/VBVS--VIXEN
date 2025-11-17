@@ -19,10 +19,10 @@
  *   )
  */
 
-#include "ShaderManagement/ShaderBundleBuilder.h"
-#include "ShaderManagement/SdiRegistryManager.h"
-#include "ShaderManagement/ShaderCompiler.h"
-#include "ShaderManagement/SPIRVReflection.h"
+#include "ShaderBundleBuilder.h"
+#include "SdiRegistryManager.h"
+#include "ShaderCompiler.h"
+#include "SPIRVReflection.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>

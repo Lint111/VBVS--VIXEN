@@ -1,7 +1,7 @@
-#include "CashSystem/ShaderCompilationCacher.h"
+#include "ShaderCompilationCacher.h"
 #include "VixenHash.h"
-#include "ShaderManagement/ShaderCompiler.h"
-#include "ShaderManagement/ShaderPreprocessor.h"
+#include "ShaderCompiler.h"
+#include "ShaderPreprocessor.h"
 #include <fstream>
 #include <functional>
 #include <iostream>

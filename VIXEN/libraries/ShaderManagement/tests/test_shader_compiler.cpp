@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderCompiler.h"
+#include "ShaderCompiler.h"
 #include <filesystem>
 #include <fstream>
 

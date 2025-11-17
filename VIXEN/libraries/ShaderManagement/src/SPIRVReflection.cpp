@@ -1,4 +1,4 @@
-#include "ShaderManagement/SPIRVReflection.h"
+#include "SPIRVReflection.h"
 #include "spirv_reflect.h"
 #include <unordered_map>
 #include <algorithm>

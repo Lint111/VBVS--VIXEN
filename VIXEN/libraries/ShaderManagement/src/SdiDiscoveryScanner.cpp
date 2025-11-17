@@ -1,4 +1,4 @@
-#include "ShaderManagement/SdiDiscoveryScanner.h"
+#include "SdiDiscoveryScanner.h"
 #include <fstream>
 #include <sstream>
 #include <regex>

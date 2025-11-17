@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderBundleBuilder.h"
-#include "ShaderManagement/SdiRegistryManager.h"
+#include "ShaderBundleBuilder.h"
+#include "SdiRegistryManager.h"
 #include <filesystem>
 #include <fstream>
 

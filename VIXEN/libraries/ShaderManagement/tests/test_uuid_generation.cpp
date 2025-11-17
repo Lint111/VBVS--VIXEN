@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderBundleBuilder.h"
+#include "ShaderBundleBuilder.h"
 
 using namespace ShaderManagement;
 

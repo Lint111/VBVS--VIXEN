@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/SdiRegistryManager.h"
+#include "SdiRegistryManager.h"
 
 using namespace ShaderManagement;
 

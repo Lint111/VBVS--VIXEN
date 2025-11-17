@@ -1,5 +1,5 @@
-#include "ShaderManagement/ShaderCacheManager.h"
-#include "ShaderManagement/Hash.h"
+#include "ShaderCacheManager.h"
+#include "Hash.h"
 
 namespace ShaderManagement {
 

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/SpirvReflector.h"
-#include "ShaderManagement/ShaderCompiler.h"
+#include "SpirvReflector.h"
+#include "ShaderCompiler.h"
 
 using namespace ShaderManagement;
 

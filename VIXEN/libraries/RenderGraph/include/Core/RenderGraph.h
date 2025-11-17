@@ -1,21 +1,21 @@
 #pragma once
 
-#include "Headers.h"
+#include "Core/Headers.h"
 
-#include "NodeInstance.h"
-#include "NodeTypeRegistry.h"
-#include "GraphTopology.h"
-#include "Data/Core/CompileTimeResourceSystem.h"
-#include "CleanupStack.h"
-#include "ResourceDependencyTracker.h"
-#include "DeferredDestruction.h"
-#include "EventTypes/RenderGraphEvents.h"
-#include "EventBus/MessageBus.h"
-#include "EventBus/Message.h"
+#include "Core/NodeInstance.h"
+#include "Core/NodeTypeRegistry.h"
+#include "Core/GraphTopology.h"
+#include "Core/CompileTimeResourceSystem.h"
+#include "Core/CleanupStack.h"
+#include "Core/ResourceDependencyTracker.h"
+#include "Core/DeferredDestruction.h"
+#include "Core/RenderGraphEvents.h"
+#include "Core/MessageBus.h"
+#include "Core/Message.h"
 #include "Time/EngineTime.h"
-#include "CashSystem/MainCacher.h"
-#include "LoopManager.h"
-#include "GraphLifecycleHooks.h"
+#include "Core/MainCacher.h"
+#include "Core/LoopManager.h"
+#include "Core/GraphLifecycleHooks.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
-#include "EventTypes/RenderGraphEvents.h"
+#include "Core/RenderGraphEvents.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;

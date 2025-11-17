@@ -1,4 +1,4 @@
-#include "ShaderManagement/SdiRegistryManager.h"
+#include "SdiRegistryManager.h"
 #include <fstream>
 #include <sstream>
 #include <iomanip>

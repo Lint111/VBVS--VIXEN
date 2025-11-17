@@ -1,12 +1,12 @@
 #pragma once
 
-#include "VulkanApplicationBase.h"
+#include "Core/VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
-#include "EventBus/MessageBus.h"
+#include "Core/MessageBus.h"
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

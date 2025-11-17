@@ -1,7 +1,7 @@
-#include "ShaderManagement/SpirvReflector.h"
+#include "SpirvReflector.h"
 #include "Logger.h"
 #include "spirv_reflect.h"
-#include "ShaderManagement/Hash.h"
+#include "Hash.h"
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>

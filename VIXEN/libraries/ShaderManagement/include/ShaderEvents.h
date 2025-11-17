@@ -1,6 +1,6 @@
 #pragma once
 
-#include <EventBus/Message.h>
+#include "Message.h"
 #include "ShaderDataBundle.h"
 #include <string>
 #include <vector>

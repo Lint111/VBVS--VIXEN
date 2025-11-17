@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderCacheManager.h"
-#include "ShaderManagement/ShaderCompiler.h"
+#include "ShaderCacheManager.h"
+#include "ShaderCompiler.h"
 #include <filesystem>
 #include <fstream>
 

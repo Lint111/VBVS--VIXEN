@@ -1,6 +1,6 @@
-#include "CashSystem/DescriptorCacher.h"
+#include "DescriptorCacher.h"
 #include "VixenHash.h"
-#include "ShaderManagement/DescriptorLayoutSpec.h"
+#include "DescriptorLayoutSpec.h"
 #include <sstream>
 #include <stdexcept>
 #include <typeindex>

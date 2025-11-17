@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderLogger.h"
+#include "ShaderLogger.h"
 #include <vector>
 #include <string>
 

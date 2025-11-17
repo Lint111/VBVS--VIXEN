@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ShaderManagement/ShaderBundleBuilder.h"
-#include "ShaderManagement/ShaderDataBundle.h"
+#include "ShaderBundleBuilder.h"
+#include "ShaderDataBundle.h"
 
 using namespace ShaderManagement;
 

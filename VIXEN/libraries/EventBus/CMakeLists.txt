@@ -7,9 +7,10 @@ project(EventBus VERSION 1.0.0 LANGUAGES CXX)
 # ============================================================================
 
 set(EVENTBUS_HEADERS
-    include/EventBus/Message.h
-    include/EventBus/MessageBus.h
-    include/EventBus/WorkerThreadBridge.h
+    include/Message.h
+    include/MessageBus.h
+    include/WorkerThreadBridge.h
+    include/InputEvents.h
 )
 
 set(EVENTBUS_SOURCES
@@ -54,7 +55,7 @@ install(TARGETS EventBus
     RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY include/EventBus
+install(FILES ${EVENTBUS_HEADERS}
     DESTINATION include
 )
 

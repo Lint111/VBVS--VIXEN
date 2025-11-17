@@ -1,4 +1,4 @@
-#include "ShaderManagement/ResourceExtractor.h"
+#include "ResourceExtractor.h"
 #include <glm/glm.hpp>
 #include <array>
 #include <utility>

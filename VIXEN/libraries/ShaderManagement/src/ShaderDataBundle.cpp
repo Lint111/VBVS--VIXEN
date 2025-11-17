@@ -1,5 +1,5 @@
-#include "ShaderManagement/ShaderDataBundle.h"
-#include "ShaderManagement/Hash.h"
+#include "ShaderDataBundle.h"
+#include "Hash.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>

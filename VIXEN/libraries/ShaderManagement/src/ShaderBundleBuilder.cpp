@@ -1,8 +1,8 @@
-#include "ShaderManagement/ShaderBundleBuilder.h"
-#include "ShaderManagement/SPIRVReflection.h"
-#include "ShaderManagement/SdiRegistryManager.h"
-#include "ShaderManagement/ShaderLogger.h"
-#include "ShaderManagement/Hash.h"
+#include "ShaderBundleBuilder.h"
+#include "SPIRVReflection.h"
+#include "SdiRegistryManager.h"
+#include "ShaderLogger.h"
+#include "Hash.h"
 #include "Logger.h"
 #include <sstream>
 #include <fstream>

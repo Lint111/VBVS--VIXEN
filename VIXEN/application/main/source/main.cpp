@@ -1,6 +1,6 @@
-#include "Headers.h"
-#include "VulkanApplicationBase.h"
-#include "VulkanGraphApplication.h"
+#include "Core/Headers.h"
+#include "Core/VulkanApplicationBase.h"
+#include "Core/VulkanGraphApplication.h"
 
 std::vector<const char*> deviceExtensionNames = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,

@@ -9,7 +9,15 @@
                 "${workspaceFolder}/build/_deps/gli-src",
                 "${workspaceFolder}/build/_deps/stb-src",
                 "${workspaceFolder}/build/_deps/glm-src",
-                "${workspaceFolder}/build/_deps/vulkanheaders-src/include"
+                "${workspaceFolder}/libraries/RenderGraph/include",
+                "${workspaceFolder}/libraries/logger",
+                "${workspaceFolder}/libraries/EventBus/include",
+                "${workspaceFolder}/libraries/ResourceManagement/include",
+                "${workspaceFolder}/libraries/CashSystem/include",
+                "${workspaceFolder}/libraries/ShaderManagement/include",
+                "${workspaceFolder}/libraries/VulkanResources/include",
+                "${workspaceFolder}/application/main/include",
+                "${workspaceFolder}/build/application/main/generated/sdi"
             ],
             "defines": [
                 "_DEBUG",
@@ -23,8 +31,7 @@
             "compilerPath": "cl.exe",
             "cStandard": "c23",
             "cppStandard": "c++23",
-            "intelliSenseMode": "windows-msvc-x64",
-            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+            "intelliSenseMode": "windows-msvc-x64"
         }
     ],
     "version": 4

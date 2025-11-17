@@ -1,4 +1,4 @@
-#include "ShaderManagement/SpirvInterfaceGenerator.h"
+#include "SpirvInterfaceGenerator.h"
 #include "Logger.h"
 #include <fstream>
 #include <sstream>
