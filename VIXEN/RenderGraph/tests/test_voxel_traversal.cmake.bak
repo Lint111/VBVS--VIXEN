@@ -13,7 +13,6 @@ add_executable(test_voxel_traversal
 
 
 
-# Link against library target - includes propagate automatically
 target_link_libraries(test_voxel_traversal PRIVATE
     GTest::gtest_main
     RenderGraph

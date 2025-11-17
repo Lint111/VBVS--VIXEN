@@ -12,11 +12,7 @@ add_executable(test_timer
     Core/test_timer.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_timer PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_timer PRIVATE
     GTest::gtest_main
     RenderGraph
