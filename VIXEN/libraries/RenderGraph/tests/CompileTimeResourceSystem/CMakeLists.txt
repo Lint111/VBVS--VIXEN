@@ -97,6 +97,19 @@ target_link_libraries(test_type_check PRIVATE RenderGraph ${Vulkan_LIBRARIES} gl
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)
 
+# Visual Studio solution folder organization
+set_target_properties(
+    test_minimal
+    test_compile_time_cache
+    test_traits_debug
+    test_recursive_validation
+    test_registration
+    test_simple_traits
+    test_syntax_check
+    test_type_check
+    PROPERTIES FOLDER "Tests/RenderGraph Tests/CompileTimeResourceSystem"
+)
+
 # Add /FS flag for MSVC to allow parallel PDB writes
 if(MSVC)
     target_compile_options(test_minimal PRIVATE /FS)

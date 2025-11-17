@@ -49,6 +49,9 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Set C++23 (required for type traits)
     target_compile_features(test_array_type_validation PRIVATE cxx_std_23)
 
+    # Visual Studio solution folder organization
+    set_target_properties(test_array_type_validation PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
     # Platform defines for Vulkan headers
     if(UNIX AND NOT APPLE)
         target_compile_definitions(test_array_type_validation PRIVATE VK_USE_PLATFORM_XCB_KHR)
@@ -130,7 +133,7 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
     # Mark as trimmed build compatible
     set_target_properties(test_field_extraction PROPERTIES
         VULKAN_TRIMMED_BUILD_COMPATIBLE TRUE
-        FOLDER "Tests/RenderGraph"
+        FOLDER "Tests/RenderGraph Tests"
     )
 
     message(STATUS "✓ test_field_extraction configured (trimmed build: ${VULKAN_TRIMMED_BUILD_ACTIVE})")
@@ -175,6 +178,9 @@ if(VULKAN_TRIMMED_BUILD_ACTIVE OR NOT VULKAN_TRIMMED_BUILD)
 
     # Set C++23 (required for variadic template features)
     target_compile_features(test_resource_gatherer PRIVATE cxx_std_23)
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_resource_gatherer PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     # Platform defines for Vulkan headers
     if(UNIX AND NOT APPLE)

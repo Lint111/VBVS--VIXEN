@@ -35,6 +35,9 @@ if(TARGET GTest::gtest_main)
         RenderGraph
     )
 
+    # Visual Studio solution folder organization
+    set_target_properties(test_graph_topology PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
     # Platform-specific settings
     if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
         # Full build mode
@@ -82,6 +85,9 @@ if(TARGET GTest::gtest_main)
         GTest::gtest_main
         RenderGraph
     )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_resource_management PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     # Platform-specific settings
     if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)

@@ -28,6 +28,9 @@ target_link_libraries(test_voxel_octree PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_voxel_octree PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_voxel_octree)
 
 message(STATUS "[RenderGraph Tests] Added: test_voxel_octree")
@@ -55,6 +58,9 @@ target_link_libraries(test_scene_generators PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_scene_generators PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_scene_generators)
 
 message(STATUS "[RenderGraph Tests] Added: test_scene_generators")
@@ -76,6 +82,9 @@ target_link_libraries(test_voxel_traversal PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_voxel_traversal PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_voxel_traversal)
 
 message(STATUS "[RenderGraph Tests] Added: test_voxel_traversal")

@@ -18,6 +18,11 @@ set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "" FORCE)
 set(SPIRV_REFLECT_STATIC_LIB OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(spirv_reflect)
 
+# Organize spirv_reflect in Dependencies folder (if target exists)
+if(TARGET spirv-reflect-static)
+    set_target_properties(spirv-reflect-static PROPERTIES FOLDER "Dependencies")
+endif()
+
 # Collect source files
 file(GLOB SHADER_MGMT_HEADERS "include/ShaderManagement/*.h")
 file(GLOB SHADER_MGMT_SOURCES "src/*.cpp")
@@ -157,6 +162,11 @@ if(NOT VULKAN_TRIMMED_BUILD_ACTIVE)
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(nlohmann_json)
+
+    # Organize nlohmann_json in Dependencies folder
+    if(TARGET nlohmann_json)
+        set_target_properties(nlohmann_json PROPERTIES FOLDER "Dependencies")
+    endif()
 
     # Add tools subdirectory (shader_tool executable)
     add_subdirectory(tools)

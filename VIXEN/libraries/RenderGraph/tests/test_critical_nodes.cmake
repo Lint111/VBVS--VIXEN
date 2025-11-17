@@ -25,6 +25,9 @@ target_link_libraries(test_device_node PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_device_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_device_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_device_node")
@@ -40,6 +43,9 @@ target_link_libraries(test_window_node PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_window_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_window_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_window_node")
@@ -55,6 +61,9 @@ target_link_libraries(test_command_pool_node PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_command_pool_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_command_pool_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_command_pool_node")
@@ -70,6 +79,9 @@ target_link_libraries(test_swap_chain_node PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_swap_chain_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_swap_chain_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_swap_chain_node")
@@ -85,6 +97,9 @@ target_link_libraries(test_frame_sync_node PRIVATE
     RenderGraph
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_frame_sync_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_frame_sync_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_frame_sync_node")
@@ -102,6 +117,9 @@ target_link_libraries(test_push_constant_gatherer_node PRIVATE
     ShaderManagementTestFixtures
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_push_constant_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_push_constant_gatherer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_push_constant_gatherer_node")
@@ -119,6 +137,9 @@ target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE
     ShaderManagementTestFixtures
 )
 
+
+# Visual Studio solution folder organization
+set_target_properties(test_descriptor_resource_gatherer_node PROPERTIES FOLDER "Tests/RenderGraph Tests")
 gtest_discover_tests(test_descriptor_resource_gatherer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_descriptor_resource_gatherer_node")

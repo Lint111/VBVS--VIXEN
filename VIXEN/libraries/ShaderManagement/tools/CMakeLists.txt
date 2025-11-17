@@ -29,5 +29,8 @@ set_target_properties(sdi_tool PROPERTIES
 # Make sdi_tool available as a target for dependent projects
 export(TARGETS sdi_tool FILE SdiToolTargets.cmake)
 
+# Visual Studio solution folder organization
+set_target_properties(sdi_tool PROPERTIES FOLDER "Application")
+
 # Backward compatibility alias
 add_executable(shader_tool ALIAS sdi_tool)

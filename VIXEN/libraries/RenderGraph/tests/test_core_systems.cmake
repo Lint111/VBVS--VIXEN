@@ -28,6 +28,9 @@ target_link_libraries(test_timer PRIVATE
     RenderGraph
 )
 
+# Visual Studio solution folder organization
+set_target_properties(test_timer PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
 gtest_discover_tests(test_timer)
 
 message(STATUS "[RenderGraph Tests] Added: test_timer")
@@ -57,6 +60,9 @@ target_link_libraries(test_loop_manager PRIVATE
     GTest::gtest_main
     RenderGraph
 )
+
+# Visual Studio solution folder organization
+set_target_properties(test_loop_manager PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
 gtest_discover_tests(test_loop_manager)
 
@@ -90,6 +96,9 @@ target_link_libraries(test_resource_dependency_tracker PRIVATE
     RenderGraph
 )
 
+# Visual Studio solution folder organization
+set_target_properties(test_resource_dependency_tracker PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
 gtest_discover_tests(test_resource_dependency_tracker)
 
 message(STATUS "[RenderGraph Tests] Added: test_resource_dependency_tracker")
@@ -121,6 +130,9 @@ target_link_libraries(test_per_frame_resources PRIVATE
     GTest::gtest_main
     RenderGraph
 )
+
+# Visual Studio solution folder organization
+set_target_properties(test_per_frame_resources PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
 gtest_discover_tests(test_per_frame_resources)
 

@@ -17,6 +17,9 @@ else()
     target_link_libraries(test_rendergraph_basic PRIVATE GTest::gtest_main)
 endif()
 
+# Visual Studio solution folder organization
+set_target_properties(test_rendergraph_basic PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
 gtest_discover_tests(test_rendergraph_basic)
 
 add_executable(test_rendergraph_dependency
@@ -32,6 +35,9 @@ else()
     target_link_libraries(test_rendergraph_dependency PRIVATE GTest::gtest_main)
 endif()
 
+# Visual Studio solution folder organization
+set_target_properties(test_rendergraph_dependency PROPERTIES FOLDER "Tests/RenderGraph Tests")
+
 gtest_discover_tests(test_rendergraph_dependency)
 
 add_executable(test_typednode_helpers test_typednode_helpers.cpp)
@@ -42,6 +48,9 @@ if(TARGET RenderGraph)
 else()
     target_link_libraries(test_typednode_helpers PRIVATE GTest::gtest_main)
 endif()
+
+# Visual Studio solution folder organization
+set_target_properties(test_typednode_helpers PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
 gtest_discover_tests(test_typednode_helpers)
 
@@ -150,6 +159,9 @@ if(TARGET GTest::gtest_main)
         GTest::gtest_main
         RenderGraph
     )
+
+    # Visual Studio solution folder organization
+    set_target_properties(test_passthroughstorage_handles PROPERTIES FOLDER "Tests/RenderGraph Tests")
 
     gtest_discover_tests(test_passthroughstorage_handles)
 
