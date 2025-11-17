@@ -36,7 +36,7 @@
 #include "Core/CameraNode.h"  // Ray marching: Camera data
 #include "Core/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Core/InputNode.h"  // Input polling and event publishing
-#include <ShaderManagement/ShaderBundleBuilder.h>  // Phase G: Shader builder API
+#include <ShaderBundleBuilder.h>  // Phase G: Shader builder API
 #include "Core/VoxelRayMarchNames.h"  // Generated shader binding constants
 
 extern std::vector<const char*> instanceExtensionNames;

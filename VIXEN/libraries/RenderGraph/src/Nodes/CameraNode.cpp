@@ -2,7 +2,7 @@
 #include "Nodes/CameraNode.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
-#include "EventBus/InputEvents.h"
+#include "InputEvents.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include <iostream>
 #include <cstring>

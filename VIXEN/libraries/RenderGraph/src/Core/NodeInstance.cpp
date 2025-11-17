@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <functional>
 #include <atomic>
-#include "EventBus/MessageBus.h"
-#include "EventBus/Message.h"
+#include "MessageBus.h"
+#include "Message.h"
 
 namespace Vixen::EventBus {
     class MessageBus;

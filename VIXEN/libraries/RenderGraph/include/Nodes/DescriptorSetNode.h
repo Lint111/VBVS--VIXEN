@@ -4,7 +4,7 @@
 #include "Core/PerFrameResources.h"
 #include "Data/Nodes/DescriptorSetNodeConfig.h"
 // TEMPORARILY REMOVED - MVP uses hardcoded descriptor layouts
-// #include "ShaderManagement/DescriptorLayoutSpec.h"
+// #include "DescriptorLayoutSpec.h"
 #include <memory>
 #include <unordered_map>
 

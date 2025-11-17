@@ -3,7 +3,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/InputNodeConfig.h"
-#include "EventBus/InputEvents.h"
+#include "InputEvents.h"
 #include <Windows.h>
 #include <unordered_map>
 #include <chrono>

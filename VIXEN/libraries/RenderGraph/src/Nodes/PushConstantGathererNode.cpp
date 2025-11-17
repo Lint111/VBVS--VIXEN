@@ -1,8 +1,8 @@
 #include "Nodes/PushConstantGathererNode.h"
 #include "Core/NodeContext.h"
 #include "Core/NodeLogging.h"
-#include "ShaderManagement/SpirvReflectionData.h"
-#include "ShaderManagement/ResourceExtractor.h"
+#include "SpirvReflectionData.h"
+#include "ResourceExtractor.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include "VulkanDevice.h"  // For device limits validation
 #include <cstring>

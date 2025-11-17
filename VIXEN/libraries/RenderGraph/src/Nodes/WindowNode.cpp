@@ -3,7 +3,7 @@
 #include "VulkanDevice.h"
 #include "VulkanApplicationBase.h"
 #include "Core/NodeLogging.h"
-#include "EventBus/Message.h"
+#include "Message.h"
 #include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::RenderGraph {

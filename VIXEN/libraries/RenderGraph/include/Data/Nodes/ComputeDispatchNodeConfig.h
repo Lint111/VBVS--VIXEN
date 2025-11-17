@@ -2,7 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
-#include "ShaderManagement/ShaderDataBundle.h"
+#include "ShaderDataBundle.h"
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 

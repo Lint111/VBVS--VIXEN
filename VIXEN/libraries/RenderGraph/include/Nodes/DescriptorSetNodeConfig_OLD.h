@@ -2,7 +2,7 @@
 
 #include "Data/Core/ResourceConfig.h"
 // TEMPORARILY REMOVED - using simple descriptor layouts for MVP
-// #include "ShaderManagement/DescriptorLayoutSpec.h"
+// #include "DescriptorLayoutSpec.h"
 #include "VulkanDevice.h"
 
 // Forward declaration for shader program type

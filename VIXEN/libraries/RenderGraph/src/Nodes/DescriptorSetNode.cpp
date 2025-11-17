@@ -3,10 +3,10 @@
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"  // Phase 0.1: SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
-#include "CashSystem/MainCacher.h"
-#include "CashSystem/DescriptorCacher.h"
-#include "CashSystem/DescriptorSetLayoutCacher.h"  // Phase 5: Helper functions
-#include <ShaderManagement/ShaderDataBundle.h>
+#include "MainCacher.h"
+#include "DescriptorCacher.h"
+#include "DescriptorSetLayoutCacher.h"  // Phase 5: Helper functions
+#include <ShaderDataBundle.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstring> // for memcpy

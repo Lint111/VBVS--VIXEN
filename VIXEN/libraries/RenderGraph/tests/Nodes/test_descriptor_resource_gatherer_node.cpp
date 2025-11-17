@@ -29,8 +29,8 @@
 #include "../../include/Data/Core/CompileTimeResourceSystem.h"
 
 // Shader management
-#include "ShaderManagement/ShaderDataBundle.h"
-#include "ShaderManagement/SpirvReflectionData.h"
+#include "ShaderDataBundle.h"
+#include "SpirvReflectionData.h"
 
 // Define globals required by DeviceNode
 std::vector<const char*> deviceExtensionNames;

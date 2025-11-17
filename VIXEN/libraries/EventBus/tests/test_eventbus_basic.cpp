@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "EventBus/MessageBus.h"
-#include "EventBus/Message.h"
+#include "MessageBus.h"
+#include "Message.h"
 
 using namespace Vixen::EventBus;
 

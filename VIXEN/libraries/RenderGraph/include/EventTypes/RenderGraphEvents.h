@@ -1,7 +1,7 @@
 #pragma once
 
-#include "EventBus/Message.h"
-#include "EventBus/MessageBus.h"
+#include "Message.h"
+#include "MessageBus.h"
 
 namespace Vixen::EventTypes {
 

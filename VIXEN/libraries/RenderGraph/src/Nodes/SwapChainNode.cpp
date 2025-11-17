@@ -4,7 +4,7 @@
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include "EventTypes/RenderGraphEvents.h"
-#include "EventBus/Message.h"
+#include "Message.h"
 
 namespace Vixen::RenderGraph {
 

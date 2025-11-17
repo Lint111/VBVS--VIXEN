@@ -17,7 +17,7 @@
 #include <variant>
 #include <memory>
 #include "Logger.h"
-#include "EventBus/MessageBus.h"
+#include "MessageBus.h"
 
 // Forward declare Logger to avoid circular dependency
 class Logger;

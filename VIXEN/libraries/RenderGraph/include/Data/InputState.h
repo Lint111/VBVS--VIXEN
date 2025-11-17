@@ -2,7 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <unordered_map>
-#include "EventBus/InputEvents.h"
+#include "InputEvents.h"
 
 namespace Vixen::RenderGraph {
 

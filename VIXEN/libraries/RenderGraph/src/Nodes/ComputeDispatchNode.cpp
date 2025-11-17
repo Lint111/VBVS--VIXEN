@@ -3,7 +3,7 @@
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
-#include "ShaderManagement/ShaderDataBundle.h"
+#include "ShaderDataBundle.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
 #include <chrono>

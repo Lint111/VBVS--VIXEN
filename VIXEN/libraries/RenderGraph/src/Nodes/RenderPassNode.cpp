@@ -4,7 +4,7 @@
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "Core/NodeLogging.h"
 #include "error/VulkanError.h"
-#include "CashSystem/RenderPassCacher.h"
+#include "RenderPassCacher.h"
 #include "NodeHelpers/CacherHelpers.h"
 #include "NodeHelpers/EnumParsers.h"
 

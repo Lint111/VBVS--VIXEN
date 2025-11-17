@@ -28,6 +28,9 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
+// ESVO traversal depth (2^7 = 128 voxel resolution)
+const int S_MAX = 7;
+
 // Push constants for camera
 layout(push_constant) uniform PushConstants {
     vec3 cameraPos;
@@ -78,16 +81,6 @@ bool childIsLeaf(uint nonLeafMask, int childIndex) {
     return (childIndex >= 7) || ((nonLeafMask >> childIndex) & 1u) == 0u;
 }
 
-// Count how many children exist before childIndex (for offset calculation)
-uint countChildrenBefore(uint childMask, int childIndex) {
-    uint count = 0;
-    for (int i = 0; i < childIndex; i++) {
-        if (childExists(childMask, i)) {
-            count++;
-        }
-    }
-    return count;
-}
 
 // Brick node helpers
 bool isConstant(uvec2 node) {
@@ -300,7 +293,6 @@ vec3 debugOctreeLevel(uint nodeIndex, int targetLevel) {
 bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                           out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    const int S_MAX = 7;  // For 128^3 grid (2^7 = 128)
     const float EPSILON_ESVO = exp2(-float(S_MAX));
 
     // World-space AABB test
@@ -308,16 +300,20 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     if (gridT.y < 0.0) return false;
 
     vec3 gridSize = gridMax - gridMin;
+    vec3 invGridSize = 1.0 / gridSize;
     vec3 rayStartWorld = (gridT.x > 0.0) ? (rayOrigin + rayDir * (gridT.x + EPSILON)) : rayOrigin;
 
     // Transform to octree space [1,2] - ESVO standard space
-    vec3 p = ((rayStartWorld - gridMin) / gridSize) + 1.0;
-    vec3 d = normalize(rayDir);
+    vec3 p = ((rayStartWorld - gridMin) * invGridSize) + 1.0;
+    vec3 d = rayDir * invGridSize;
 
     // Avoid division by zero
-    if(abs(d.x) < EPSILON_ESVO) d.x = sign(d.x) * EPSILON_ESVO;
-    if(abs(d.y) < EPSILON_ESVO) d.y = sign(d.y) * EPSILON_ESVO;
-    if(abs(d.z) < EPSILON_ESVO) d.z = sign(d.z) * EPSILON_ESVO;
+    float sx = d.x >= 0.0 ? 1.0 : -1.0;
+    float sy = d.y >= 0.0 ? 1.0 : -1.0;
+    float sz = d.z >= 0.0 ? 1.0 : -1.0;
+    if(abs(d.x) < EPSILON_ESVO) d.x = sx * EPSILON_ESVO;
+    if(abs(d.y) < EPSILON_ESVO) d.y = sy * EPSILON_ESVO;
+    if(abs(d.z) < EPSILON_ESVO) d.z = sz * EPSILON_ESVO;
 
     // Parametric coefficients for ray equation: p + t*d
     float tx_coef = 1.0 / -abs(d.x);
@@ -327,17 +323,19 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     float ty_bias = ty_coef * p.y;
     float tz_bias = tz_coef * p.z;
 
-    // Octant mirroring to handle all ray directions
+    // Octant mirroring for ESVO traversal - CRITICAL: initialize to 7!
+    // This mirrors the coordinate system so ray direction is negative along each axis
     int octant_mask = 7;
     if (d.x > 0.0) { octant_mask ^= 1; tx_bias = 3.0 * tx_coef - tx_bias; }
     if (d.y > 0.0) { octant_mask ^= 2; ty_bias = 3.0 * ty_coef - ty_bias; }
     if (d.z > 0.0) { octant_mask ^= 4; tz_bias = 3.0 * tz_coef - tz_bias; }
 
-    // Root node t-span
+    // Root node t-span (reference line 36-40)
     float t_min = max(max(2.0 * tx_coef - tx_bias, 2.0 * ty_coef - ty_bias), 2.0 * tz_coef - tz_bias);
     float t_max = min(min(tx_coef - tx_bias, ty_coef - ty_bias), tz_coef - tz_bias);
-    float h = t_max;
+    float h = t_max;  // CRITICAL: h must be initialized to t_max, not 1e10!
     t_min = max(t_min, 0.0);
+    t_max = min(t_max, 1.0);  // Clamp to [0,1] range
 
     if (t_min >= t_max) return false;
 
@@ -349,14 +347,13 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
 
     const int STACK_SIZE = 23;
     StackEntry stack[STACK_SIZE];
-    int stackPtr = 0;
 
     // Initialize traversal at root
     uint parentPtr = 0u;
     int scale = S_MAX - 1;
-    float scale_exp2 = exp2(-float(scale));
+    float scale_exp2 = 0.5; // exp2(scale - S_MAX) = exp2(-1) = 0.5
 
-    // Position in mirrored octree space
+    // Position in octree space - ESVO algorithm initializes to corner
     vec3 pos = vec3(1.0);
 
     // Select initial child octant based on ray entry point (1.5 is center of [1,2])
@@ -365,33 +362,9 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
     if (1.5 * ty_coef - ty_bias > t_min) { idx ^= 2; pos.y = 1.5; }
     if (1.5 * tz_coef - tz_bias > t_min) { idx ^= 4; pos.z = 1.5; }
 
-    const int MAX_ITERS = 500;
+    // Main traversal loop (reference line 53)
+    const int MAX_ITERS = 512;  // Safety limit
     for (int iter = 0; iter < MAX_ITERS && scale < S_MAX; ++iter) {
-
-        // Early termination check
-        if (t_min >= h) {
-            // No hit in current subtree, try popping
-            if (stackPtr == 0) break;
-            stackPtr--;
-            parentPtr = stack[stackPtr].parentPtr;
-            t_max = stack[stackPtr].t_max;
-            scale = int(findMSB(parentPtr)) >> 1;
-            scale_exp2 = exp2(-float(scale));
-
-            // Reconstruct position from parent pointer
-            int ofs = int(parentPtr) >> (scale * 3);
-            pos.x = 1.0 + scale_exp2 * float((ofs & 1) != 0 ? 1.0 : 0.0);
-            pos.y = 1.0 + scale_exp2 * float((ofs & 2) != 0 ? 1.0 : 0.0);
-            pos.z = 1.0 + scale_exp2 * float((ofs & 4) != 0 ? 1.0 : 0.0);
-
-            // Update idx for current position
-            idx = ((pos.x > 1.0) ? 1 : 0) |
-                  ((pos.y > 1.0) ? 2 : 0) |
-                  ((pos.z > 1.0) ? 4 : 0);
-
-            h = 0.0;
-            continue;
-        }
 
         // Fetch current parent node
         uvec2 parent_descriptor = fetchESVONode(parentPtr);
@@ -408,11 +381,12 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         int childIndex = idx ^ octant_mask;
 
         if (childExists(childMask, childIndex) && t_min <= t_max) {
+            // INTERSECT: Compute tv_max and check if t-span is non-empty (reference line 77, 100)
             float tv_max = min(t_max, tc_max);
             float halfScale = scale_exp2 * 0.5;
 
-            if (tc_max * halfScale >= scale_exp2 * t_min) {  // Overlap test
-
+            // Descend to child if the resulting t-span is non-empty (reference line 100)
+            if (t_min <= tv_max) {
                 // Check if this is a leaf
                 uint nonLeafMask = getNonLeafMask(parent_descriptor);
                 bool isLeaf = childIsLeaf(nonLeafMask, childIndex);
@@ -448,7 +422,7 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     vec3 brickMax = gridMin + (leafMax - 1.0) * gridSize;
 
                     uint axisMask;
-                    if (marchBrick(rayOrigin, rayDir, t_min * length(gridSize) * 0.5,
+                    if (marchBrick(rayOrigin, rayDir, 0.0,
                                    brickMin, brickMax, brickIndex, hitColor, hitNormal, axisMask)) {
                         hitT = t_min;
                         return true;
@@ -465,58 +439,31 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
                     float ty_center = halfScale * ty_coef + ty_corner;
                     float tz_center = halfScale * tz_coef + tz_corner;
 
-                    // Push far children to stack if they exist
-                    if (t_min < tc_max && stackPtr < STACK_SIZE) {
-                        // Check all 8 potential children
-                        for (int i = 0; i < 8; i++) {
-                            if (i == (idx ^ octant_mask)) continue; // Skip current
-
-                            // Check if child exists
-                            int child_idx = i ^ octant_mask;
-                            if (!childExists(childMask, child_idx)) continue;
-
-                            // Compute child's t-span
-                            vec3 child_pos = pos - vec3(scale_exp2);
-                            if ((i & 1) != 0) child_pos.x += halfScale;
-                            if ((i & 2) != 0) child_pos.y += halfScale;
-                            if ((i & 4) != 0) child_pos.z += halfScale;
-
-                            float ctx = (child_pos.x + halfScale) * tx_coef - tx_bias;
-                            float cty = (child_pos.y + halfScale) * ty_coef - ty_bias;
-                            float ctz = (child_pos.z + halfScale) * tz_coef - tz_bias;
-                            float ct_max = min(min(ctx, cty), ctz);
-
-                            // If ray will intersect this child, push it
-                            if (ct_max > t_min) {
-                                uint childLocalIdx = countChildrenBefore(childMask, child_idx);
-                                uint push_ptr = childOffset + childLocalIdx;
-                                stack[stackPtr].parentPtr = push_ptr;
-                                stack[stackPtr].t_max = min(ct_max, t_max);
-                                stackPtr++;
-                                if (stackPtr >= STACK_SIZE) break;
-                            }
-                        }
+                    // PUSH: Store current parent in stack for backtracking (reference line 107-109)
+                    // Only push if tc_max < h (stack pruning optimization)
+                    if (tc_max < h) {
+                        stack[scale].parentPtr = parentPtr;
+                        stack[scale].t_max = t_max;
                     }
+                    h = tc_max;
 
-                    // Descend to near child
+                    // DESCEND to near child
                     // Only EXISTING children are stored, count how many come before this one
                     uint childLocalIndex = countChildrenBefore(childMask, childIndex);
                     parentPtr = childOffset + childLocalIndex;
 
-                    // Update position for child level
+                    // Update position for child level - CRITICAL: match reference algorithm!
+                    // Reference only ADDS scale_exp2, never subtracts
                     idx = 0;
                     scale--;
                     scale_exp2 = halfScale;
 
                     if (tx_center > t_min) { idx ^= 1; pos.x += scale_exp2; }
-                    else                   { pos.x -= scale_exp2; }
                     if (ty_center > t_min) { idx ^= 2; pos.y += scale_exp2; }
-                    else                   { pos.y -= scale_exp2; }
                     if (tz_center > t_min) { idx ^= 4; pos.z += scale_exp2; }
-                    else                   { pos.z -= scale_exp2; }
 
+                    // Update active t-span (reference line 124)
                     t_max = tv_max;
-                    h = tc_max;
                     continue;
                 }
             }
@@ -531,27 +478,30 @@ bool traverseOctreeSimple(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMa
         t_min = tc_max;
         idx ^= step_mask;
 
-        // Check if we've exited the parent voxel
+        // POP: Check if we need to backtrack to parent (reference line 140-165)
         if ((idx & step_mask) != 0) {
-            // POP - We need to go back up
-            if (stackPtr == 0) break;  // Nothing left to traverse
+            // Find highest differing bit to determine scale (reference line 144-148)
+            uint differing_bits = 0u;
+            if ((step_mask & 1) != 0) differing_bits |= floatBitsToUint(pos.x) ^ floatBitsToUint(pos.x + scale_exp2);
+            if ((step_mask & 2) != 0) differing_bits |= floatBitsToUint(pos.y) ^ floatBitsToUint(pos.y + scale_exp2);
+            if ((step_mask & 4) != 0) differing_bits |= floatBitsToUint(pos.z) ^ floatBitsToUint(pos.z + scale_exp2);
+            scale = int(floatBitsToUint(float(differing_bits)) >> 23) - 127;
+            scale_exp2 = uintBitsToFloat((uint(scale - S_MAX + 127) << 23));
 
-            stackPtr--;
-            parentPtr = stack[stackPtr].parentPtr;
-            t_max = stack[stackPtr].t_max;
-            scale = int(findMSB(parentPtr)) >> 1;
-            scale_exp2 = exp2(-float(scale));
+            // Restore parent from stack (reference line 151-153)
+            parentPtr = stack[scale].parentPtr;
+            t_max = stack[scale].t_max;
 
-            // Reconstruct position
-            int ofs = int(parentPtr) >> (scale * 3);
-            pos.x = 1.0 + scale_exp2 * float((ofs & 1) != 0 ? 1.0 : 0.0);
-            pos.y = 1.0 + scale_exp2 * float((ofs & 2) != 0 ? 1.0 : 0.0);
-            pos.z = 1.0 + scale_exp2 * float((ofs & 4) != 0 ? 1.0 : 0.0);
+            // Round cube position and extract child slot index (reference line 155-161)
+            int shx = int(floatBitsToUint(pos.x)) >> scale;
+            int shy = int(floatBitsToUint(pos.y)) >> scale;
+            int shz = int(floatBitsToUint(pos.z)) >> scale;
+            pos.x = uintBitsToFloat(uint(shx << scale));
+            pos.y = uintBitsToFloat(uint(shy << scale));
+            pos.z = uintBitsToFloat(uint(shz << scale));
+            idx = (shx & 1) | ((shy & 1) << 1) | ((shz & 1) << 2);
 
-            idx = ((pos.x > 1.0) ? 1 : 0) |
-                  ((pos.y > 1.0) ? 2 : 0) |
-                  ((pos.z > 1.0) ? 4 : 0);
-
+            // Prevent same parent from being stored again (reference line 163)
             h = 0.0;
         }
     }
@@ -584,42 +534,35 @@ void main() {
     vec3 hitColor, hitNormal;
     float hitT;
 
-    // Grid bounds for octree
+    // Grid bounds for octree (Cornell box is centered at origin, spans [-8,8])
     vec3 gridMin = vec3(-8.0, -8.0, -8.0);
     vec3 gridMax = vec3(8.0, 8.0, 8.0);
 
-    // DEBUG: Visualize camera/ray data directly (ignore grid intersection)
-    // Show ray direction as color (map [-1,1] to [0,1])
-    vec3 debugColor = rayDir * 0.5 + 0.5;
+    // DEBUG: Test ray-AABB intersection first
+    vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
 
-    // Test: Show camera position in center pixel
-    if (pixelCoords.x == imageSize.x / 2 && pixelCoords.y == imageSize.y / 2) {
-        // Center pixel shows camera position (map to [0,1] range)
-        debugColor = (rayOrigin + vec3(10.0)) / 20.0; // Assuming camera near [-10,10] range
+    // Color based on intersection results:
+    // - Green: Ray hits AABB (gridT.y >= 0 && gridT.x < gridT.y)
+    // - Red: Ray misses AABB (gridT.y < 0)
+    // - Blue: Ray starts inside AABB (gridT.x <= 0 && gridT.y > 0)
+    // - Yellow: Traversal succeeds (normal rendering)
+
+    // ESVO traversal - show hits with actual material colors, misses as black
+    if (gridT.y >= 0.0) {
+        // Ray intersects AABB - try traversal
+        if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax, hitColor, hitNormal, hitT)) {
+            // HIT - show actual material color (should be red/green/white for Cornell box)
+            color = hitColor;
+        } else {
+            // MISS - pure black to clearly see the hit pattern
+            color = vec3(0.0);
+        }
+    } else {
+        // No AABB intersection - background gradient
+        color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
     }
 
-    imageStore(outputImage, pixelCoords, vec4(debugColor, 1.0));
-    return;
-
-    // DISABLED: Grid intersection test
-    // vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
-    // if (gridT.y >= 0.0 && gridT.x <= gridT.y) {
-    //     // Ray hits grid bounds - show intersection visualization
-    //     float t = max(gridT.x, 0.0);
-    //     vec3 hitPos = rayOrigin + rayDir * t;
-    //
-    //     // Color by hit position (normalized to [0,1])
-    //     color = (hitPos - gridMin) / (gridMax - gridMin);
-    //     imageStore(outputImage, pixelCoords, vec4(color, 1.0));
-    //     return;
-    // }
-
-    // 1. ESVO octree traversal (disabled for debug)
-    // if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax, hitColor, hitNormal, hitT)) {
-    //     color = shade(hitColor, hitNormal, rayDir);
-    // }
-
-    // 2. Wall of bricks (fallback test)
+    // 2. Wall of bricks (fallback test) - DISABLED to see pure ESVO results
     //if (traverseWallOfBricks(rayOrigin, rayDir, hitColor, hitNormal, hitT)) {
     //    color = shade(hitColor, hitNormal, rayDir);
     //}
@@ -631,11 +574,11 @@ void main() {
     //    color = shade(hitColor, hitNormal, rayDir);
     //}
 
-    // Background gradient
-    if (all(equal(color, vec3(0.0)))) {
-        float t = uv.y;
-        color = mix(vec3(0.1, 0.15, 0.3), vec3(0.4, 0.6, 0.8), t);
-    }
+    // // Background gradient
+    // if (all(equal(color, vec3(0.0)))) {
+    //     float t = uv.y;
+    //     color = mix(vec3(0.1, 0.15, 0.3), vec3(0.4, 0.6, 0.8), t);
+    // }
 
     imageStore(outputImage, pixelCoords, vec4(color, 1.0));
 }

@@ -17,6 +17,23 @@ Samuli Laine & Tero Karras, NVIDIA Research, 2010
 - ✅ **Hierarchical Construction**: Top-down builder with error metrics
 - ✅ **GPU-Ready Format**: Direct GLSL translation from CUDA reference
 
+### Voxel Data Injection (NEW!)
+- ✅ **Direct Voxel Input**: Bypass mesh conversion for procedural generation
+  - Sparse voxels (particle systems, individual voxels)
+  - Dense grids (volumetric data, medical scans, fog)
+  - Procedural samplers (noise, SDFs, terrain, infinite worlds)
+- ✅ **Common Samplers Included**:
+  - Noise (Perlin/Simplex for terrain, clouds)
+  - SDF (signed distance fields for CSG)
+  - Heightmaps (terrain generation)
+- ✅ **Scene Merging**: Dynamically merge voxel data into existing SVOs
+- ✅ **Use Cases**:
+  - Procedural terrain generation
+  - Noise-based organic shapes
+  - CSG operations (boolean ops on SDFs)
+  - Volumetric effects (fog, clouds, smoke)
+  - Dynamic content updates
+
 ### Extensibility
 - ✅ **Abstract Interface**: Experiment with different SVO variants
 - ⏳ **Future Variants**:
@@ -26,6 +43,8 @@ Samuli Laine & Tero Karras, NVIDIA Research, 2010
   - Hierarchical Z-order curves
 
 ## Quick Start
+
+### Option 1: Build from Mesh (Traditional)
 
 ```cpp
 #include <SVO/LaineKarrasOctree.h>
@@ -45,7 +64,42 @@ SVO::ISVOBuilder::InputGeometry geom = loadMesh("model.obj");
 
 // Build octree (multi-threaded)
 auto svo = builder->build(geom, config);
+```
 
+### Option 2: Inject Voxel Data Directly (Procedural)
+
+```cpp
+#include <SVO/VoxelInjection.h>
+
+// Create procedural noise sampler
+auto sampler = std::make_unique<SVO::LambdaVoxelSampler>(
+    // Sample function: return true if voxel is solid
+    [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
+        float noise = perlin3D(pos * 0.1f);
+        if (noise > 0.0f) {
+            data.position = pos;
+            data.color = glm::vec3(0.3f, 0.7f, 0.3f);
+            data.normal = glm::vec3(0, 1, 0);
+            data.density = 1.0f;
+            return true;
+        }
+        return false;
+    },
+    // Bounds function
+    [](glm::vec3& min, glm::vec3& max) {
+        min = glm::vec3(-100, 0, -100);
+        max = glm::vec3(100, 50, 100);
+    }
+);
+
+// Inject voxels into SVO
+SVO::VoxelInjector injector;
+auto svo = injector.inject(*sampler);
+```
+
+### Common Operations
+
+```cpp
 // Cast rays
 auto hit = svo->castRay(
     glm::vec3(0, 0, 5),           // origin
@@ -232,21 +286,32 @@ Reference implementation: New BSD License (NVIDIA)
 - [x] Abstract interface for extensibility
 - [x] Laine-Karras 64-bit child descriptors
 - [x] 32-bit contour encoding/decoding
+- [x] Voxel injection interface
+  - [x] Sparse voxel input
+  - [x] Dense voxel grid input
+  - [x] Procedural sampler interface
+  - [x] Lambda-based samplers
+  - [x] Common samplers (Noise, SDF, Heightmap)
+  - [x] Scene merging
 - [ ] Builder implementation
   - [ ] Top-down subdivision
   - [ ] Greedy contour construction
   - [ ] Attribute integration
   - [ ] Multi-threading (TBB)
+  - [ ] Voxel injection implementation
 - [ ] Ray caster (CPU + GPU)
 - [ ] Serialization (.oct file format)
 - [ ] Compression variants (DAG, SVDAG)
 - [ ] Unit tests
-- [ ] Examples
+- [x] Examples (voxel injection demos)
 
 ## Next Steps
 
 1. ✅ **Phase 1**: Data structures & interface (DONE)
-2. ⏳ **Phase 2**: CPU builder implementation (IN PROGRESS)
-3. ⏳ **Phase 3**: GLSL ray caster (translate from CUDA)
-4. ⏳ **Phase 4**: Serialization & file I/O
-5. ⏳ **Phase 5**: Integration with VIXEN renderer
+2. ✅ **Phase 1.5**: Voxel injection API (DONE)
+3. ⏳ **Phase 2**: CPU builder implementation
+   - Implement mesh-based builder
+   - Implement voxel injection builder
+4. ⏳ **Phase 3**: GLSL ray caster (translate from CUDA)
+5. ⏳ **Phase 4**: Serialization & file I/O
+6. ⏳ **Phase 5**: Integration with VIXEN renderer
