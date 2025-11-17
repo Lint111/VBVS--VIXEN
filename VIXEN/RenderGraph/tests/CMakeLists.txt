@@ -49,62 +49,31 @@ gtest_discover_tests(test_typednode_helpers)
 target_sources(test_typednode_helpers PRIVATE test_executeonly_behavior.cpp)
 
 # ===========================================================================
-# Standalone array type validation test (no Vulkan runtime required)
+# Type System Tests - CONSOLIDATED
 # ===========================================================================
-# This test validates compile-time type traits only - no Vulkan needed!
-# If this compiles successfully, all static_assert tests passed.
-
-include(test_array_validation.cmake)
-
-# ===========================================================================
-# Standalone field extraction test (no Vulkan runtime required)
-# ===========================================================================
-# This test validates struct field extraction for ergonomic slot connections.
+# Validates compile-time type system features:
+# - Array type validation, field extraction, resource gathering
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
-include(test_field_extraction.cmake)
+include(test_type_system.cmake)
 
 # ===========================================================================
-# Resource gatherer node test (no Vulkan runtime required)
+# Graph Systems Tests - CONSOLIDATED
 # ===========================================================================
-# This test validates the variadic template resource gatherer node works
-# with all type system features (arrays, variants, field extraction).
+# Validates graph-related systems:
+# - Graph topology, resource management
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
-include(test_resource_gatherer.cmake)
+include(test_graph_systems.cmake)
 
 # ===========================================================================
-# Resource Management Tests
+# Core Infrastructure Tests - CONSOLIDATED
 # ===========================================================================
-# This test suite validates resource management systems:
-# - ResourceBudgetManager, DeferredDestruction, StatefulContainer, SlotTask
+# Validates core infrastructure classes:
+# - Timer, LoopManager, ResourceDependencyTracker, PerFrameResources
 # Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
-include(test_resource_management.cmake)
-
-# ===========================================================================
-# Graph Topology Tests
-# ===========================================================================
-# This test suite validates graph topology and dependency tracking:
-# - Circular dependency detection, topological sorting, validation
-# Compatible with VULKAN_TRIMMED_BUILD (headers only).
-
-include(test_graph_topology.cmake)
-
-# ===========================================================================
-# Core Infrastructure Tests
-# ===========================================================================
-# These test suites validate core infrastructure classes:
-# - Timer: High-resolution delta time measurement
-# - LoopManager: Fixed timestep accumulator with catchup modes
-# - ResourceDependencyTracker: Resource-to-producer mapping and dependency tracking
-# - PerFrameResources: Ring buffer pattern for per-frame GPU resources
-# Compatible with VULKAN_TRIMMED_BUILD (headers only).
-
-include(test_timer.cmake)
-include(test_loop_manager.cmake)
-include(test_resource_dependency_tracker.cmake)
-include(test_per_frame_resources.cmake)
+include(test_core_systems.cmake)
 
 # ===========================================================================
 # Critical Nodes Tests (Priority 3)
@@ -190,20 +159,13 @@ else()
 endif()
 
 # ===========================================================================
-# Voxel Octree Tests (Phase H)
+# Voxel Systems Tests - CONSOLIDATED (Phase H)
 # ===========================================================================
-# This test suite validates SparseVoxelOctree functionality:
-# - Octree construction, compression, serialization
-# - Compatible with VULKAN_TRIMMED_BUILD (headers only).
+# Validates voxel infrastructure:
+# - Octree construction, scene generation, ray traversal
+# Compatible with VULKAN_TRIMMED_BUILD (headers only).
 
-include(test_voxel_octree.cmake)
-
-# ===========================================================================
-# Scene Generator Tests (Phase H.2.5)
-# ===========================================================================
-# This test suite validates scene density targets and reproducibility.
-
-include(test_scene_generators.cmake)
+include(test_voxel_systems.cmake)
 
 # ===========================================================================
 # CompileTimeResourceSystem Tests
@@ -212,10 +174,3 @@ include(test_scene_generators.cmake)
 # Moved from root CMakeLists.txt for proper organization.
 
 add_subdirectory(CompileTimeResourceSystem)
-
-# ===========================================================================
-# Voxel Traversal Tests (Phase H.4.5)
-# ===========================================================================
-# This test suite validates Ray-AABB intersection and DDA voxel traversal.
-
-include(test_voxel_traversal.cmake)
