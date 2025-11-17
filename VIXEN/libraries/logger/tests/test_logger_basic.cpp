@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "logger/Logger.h"
+#include "Logger.h"
 #include <memory>
 
 // Test fixture

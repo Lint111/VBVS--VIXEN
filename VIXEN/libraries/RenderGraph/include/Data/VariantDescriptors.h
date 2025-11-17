@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Headers.h"
+#include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 
 
 

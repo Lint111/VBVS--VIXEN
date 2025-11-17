@@ -1,4 +1,3 @@
-#include "Headers.h"
 #include "ShaderManagement/ShaderCompiler.h"
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>

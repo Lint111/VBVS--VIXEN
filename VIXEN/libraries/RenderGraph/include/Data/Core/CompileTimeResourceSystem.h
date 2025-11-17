@@ -15,7 +15,9 @@
  * This is the final form after Phase H refactoring (ResourceVariant eliminated).
  */
 
-#include "Headers.h"  // Include for Vulkan type definitions
+// Vulkan type definitions
+#include <vulkan/vulkan.h>
+
 #include "ResourceTypes.h"
 #include "ResourceTypeTraits.h"  // Include for StripContainer
 #include "../VariantDescriptors.h"

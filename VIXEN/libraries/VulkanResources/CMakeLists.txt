@@ -66,6 +66,8 @@ target_include_directories(VulkanResources
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # STB image loader headers
+        $<BUILD_INTERFACE:${stb_SOURCE_DIR}>
 )
 
 # ============================================================================
@@ -77,6 +79,7 @@ target_link_libraries(VulkanResources
         Logger
         ${VULKAN_LIB_LIST}
         glm::glm
+        gli  # Needed for GLITextureLoader
 )
 
 # ============================================================================

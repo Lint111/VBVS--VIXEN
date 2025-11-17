@@ -12,7 +12,7 @@ add_executable(test_minimal
 )
 # Use CMAKE_SOURCE_DIR for project root - no relative paths
 target_include_directories(test_minimal PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_minimal PRIVATE ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -24,7 +24,7 @@ add_executable(test_compile_time_cache
 )
 # Use CMAKE_SOURCE_DIR for project root - no relative paths
 target_include_directories(test_compile_time_cache PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_compile_time_cache PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_compile_time_cache PRIVATE ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -48,7 +48,7 @@ add_executable(test_recursive_validation
 )
 # Use CMAKE_SOURCE_DIR for project root - no relative paths
 target_include_directories(test_recursive_validation PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_recursive_validation PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_recursive_validation PRIVATE ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_recursive_validation PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -73,9 +73,9 @@ set_property(TARGET test_registration PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_simple_traits
     test_simple_traits.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - no relative paths
+# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
 target_include_directories(test_simple_traits PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_simple_traits PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_simple_traits PRIVATE RenderGraph ${Vulkan_LIBRARIES})
 set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_simple_traits PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -93,7 +93,7 @@ add_executable(test_type_check
 )
 # Use CMAKE_SOURCE_DIR for project root - no relative paths
 target_include_directories(test_type_check PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_type_check PRIVATE ${Vulkan_LIBRARIES})
+target_link_libraries(test_type_check PRIVATE ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_type_check PROPERTY CXX_STANDARD_REQUIRED ON)
 
