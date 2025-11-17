@@ -15,7 +15,6 @@ add_executable(test_voxel_octree
 
 
 
-# Link against library target - includes propagate automatically
 target_link_libraries(test_voxel_octree PRIVATE
     GTest::gtest_main
     RenderGraph

@@ -19,8 +19,11 @@ add_executable(test_per_frame_resources
     Core/test_per_frame_resources.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_per_frame_resources PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
 
-# Link against library target - includes propagate automatically
 target_link_libraries(test_per_frame_resources PRIVATE
     GTest::gtest_main
     RenderGraph

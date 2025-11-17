@@ -19,8 +19,11 @@ add_executable(test_resource_dependency_tracker
     Core/test_resource_dependency_tracker.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_resource_dependency_tracker PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
 
-# Link against library target - includes propagate automatically
 target_link_libraries(test_resource_dependency_tracker PRIVATE
     GTest::gtest_main
     RenderGraph
