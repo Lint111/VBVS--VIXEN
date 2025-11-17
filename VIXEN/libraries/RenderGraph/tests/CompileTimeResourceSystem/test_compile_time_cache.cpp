@@ -1,6 +1,6 @@
 // Test compile-time recursive validation with caching
 #include "Headers.h"
-#include "RenderGraph/include/Data/Core/ResourceTypeValidation.h"
+#include "Data/Core/ResourceTypeValidation.h"
 #include <iostream>
 #include <chrono>
 

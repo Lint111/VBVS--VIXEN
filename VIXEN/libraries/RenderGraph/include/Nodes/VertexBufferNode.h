@@ -2,7 +2,7 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/VertexBufferNodeConfig.h"
-#include "../../include/MeshData.h"
+#include "MeshData.h"  // From application/main/include (available via RenderGraph include paths)
 #include <memory>
 
 // Forward declaration for MeshWrapper

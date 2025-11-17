@@ -66,8 +66,6 @@ target_include_directories(VulkanResources
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        # STB image loader headers
-        $<BUILD_INTERFACE:${stb_SOURCE_DIR}>
 )
 
 # ============================================================================
@@ -80,6 +78,8 @@ target_link_libraries(VulkanResources
         ${VULKAN_LIB_LIST}
         glm::glm
         gli  # Needed for GLITextureLoader
+    PRIVATE
+        stb  # Needed for STBTextureLoader (header-only)
 )
 
 # ============================================================================
@@ -96,6 +96,13 @@ set_target_properties(VulkanResources PROPERTIES
 if(WIN32)
     target_compile_definitions(VulkanResources PRIVATE VK_USE_PLATFORM_WIN32_KHR)
 endif()
+
+# Exclude STBTextureLoader from PCH (needs STB headers not available during PCH generation)
+set_source_files_properties(
+    src/TextureHandling/Loading/STBTextureLoader.cpp
+    PROPERTIES
+        SKIP_PRECOMPILE_HEADERS ON
+)
 
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)

@@ -22,9 +22,9 @@ set_property(TARGET test_minimal PROPERTY CXX_STANDARD_REQUIRED ON)
 add_executable(test_compile_time_cache
     test_compile_time_cache.cpp
 )
-# Use CMAKE_SOURCE_DIR for project root - no relative paths
+# Use CMAKE_SOURCE_DIR for project root - link against RenderGraph for includes
 target_include_directories(test_compile_time_cache PRIVATE ${CMAKE_SOURCE_DIR}/application/main/include ${Vulkan_INCLUDE_DIRS})
-target_link_libraries(test_compile_time_cache PRIVATE ${Vulkan_LIBRARIES} gli)
+target_link_libraries(test_compile_time_cache PRIVATE RenderGraph ${Vulkan_LIBRARIES} gli)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD 23)
 set_property(TARGET test_compile_time_cache PROPERTY CXX_STANDARD_REQUIRED ON)
 

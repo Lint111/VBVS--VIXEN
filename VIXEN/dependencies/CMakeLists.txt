@@ -77,6 +77,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(stb)
 
+# Create interface library for STB (header-only)
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+
 # ============================================================================
 # Hash Provider (OpenSSL or header-only fallback)
 # ============================================================================
