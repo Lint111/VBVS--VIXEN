@@ -89,9 +89,15 @@ add_executable(test_push_constant_gatherer_node
     Nodes/test_push_constant_gatherer_node.cpp
 )
 
+target_include_directories(test_push_constant_gatherer_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include
+)
+
 target_link_libraries(test_push_constant_gatherer_node PRIVATE
     GTest::gtest_main
     RenderGraph
+    ShaderManagement
 )
 
 gtest_discover_tests(test_push_constant_gatherer_node)

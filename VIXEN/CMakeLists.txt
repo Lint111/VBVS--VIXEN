@@ -55,10 +55,10 @@ if(MSVC)
     add_compile_options(/MP)  # Multi-processor compilation
 
     # Suppress warnings from third-party libraries
-    add_link_options(
-        /ignore:4099  # Missing PDB files in third-party libraries
-        /WX-          # Don't treat linker warnings as errors
-    )
+    # Use CMAKE_*_LINKER_FLAGS for compatibility with CMake < 3.13
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099")
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099")
 
     # Suppress common third-party compile warnings
     add_compile_options(
@@ -69,7 +69,8 @@ if(MSVC)
     )
 
     message(STATUS "MSVC multi-processor compilation enabled")
-    message(STATUS "MSVC warnings suppressed for third-party libs (4099, 4100, 4189, 4244, 4267)")
+    message(STATUS "MSVC linker warnings suppressed (LNK4099: missing PDB files)")
+    message(STATUS "MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)")
 endif()
 
 # Generate compile_commands.json for better IDE integration

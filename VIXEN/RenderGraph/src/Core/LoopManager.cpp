@@ -1,6 +1,7 @@
 #include "Core/LoopManager.h"
 #include "Core/NodeLogging.h"
 #include <algorithm>
+#include <cmath>
 
 namespace Vixen::RenderGraph {
 
@@ -42,9 +43,19 @@ void LoopManager::UpdateLoops(double frameTime) {
 
     for (auto& [id, state] : loops) {
         // Apply per-loop max catchup time
+        // Defensive: ensure maxCatchupTime is sane; default to 0.25 if invalid/uninitialized
+        double effectiveMaxCatchup = state.config.maxCatchupTime;
+        if (!std::isfinite(effectiveMaxCatchup) || effectiveMaxCatchup <= 0.0) {
+            effectiveMaxCatchup = 0.25;
+        }
+
+        if (state.config.fixedTimestep > effectiveMaxCatchup) {
+            effectiveMaxCatchup = state.config.fixedTimestep;
+        }
+
         double clampedFrameTime = frameTime;
-        if (clampedFrameTime > state.config.maxCatchupTime) {
-            clampedFrameTime = state.config.maxCatchupTime;
+        if (clampedFrameTime > effectiveMaxCatchup) {
+            clampedFrameTime = effectiveMaxCatchup;
 #if VIXEN_DEBUG_BUILD
             // Log warning if frame time exceeded budget
             // Note: nodeLogger not available here (not a node), use conditional compilation

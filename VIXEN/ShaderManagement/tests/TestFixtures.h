@@ -318,4 +318,379 @@ inline std::shared_ptr<ShaderDataBundle> CreateFullFeaturedBundle() {
     return bundle;
 }
 
+// ============================================================================
+// FLUENT BUILDER FOR DUMMY SHADER BUNDLES
+// ============================================================================
+
+/**
+ * @brief Fluent builder for creating test shader bundles
+ *
+ * Provides method chaining API for constructing ShaderDataBundle instances
+ * with dummy SPIR-V bytecode, descriptors, push constants, and metadata.
+ *
+ * Usage:
+ * ```cpp
+ * auto bundle = ShaderBundleDummyBuilder()
+ *     .addModule(ShaderStage::Vertex)
+ *     .addModule(ShaderStage::Fragment)
+ *     .addUBO(0, 0, "CameraUBO", 128)
+ *     .addPushConstant(0, sizeof(PushConstants))
+ *     .build();
+ * ```
+ */
+class ShaderBundleDummyBuilder {
+public:
+    /**
+     * @brief Add a shader module stage
+     *
+     * Generates minimal valid SPIR-V bytecode for the stage.
+     *
+     * @param stage Shader stage to add
+     * @param entryPoint Entry point name (default: "main")
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addModule(ShaderStage stage, std::string entryPoint = "main") {
+        CompiledShaderStage stageData;
+        stageData.stage = stage;
+        stageData.entryPoint = std::move(entryPoint);
+        stageData.spirvCode = generateDummySpirv(stage);
+        stageData.generation = 1;
+        stages.push_back(std::move(stageData));
+        return *this;
+    }
+
+    /**
+     * @brief Add uniform buffer object descriptor
+     *
+     * @param set Descriptor set index
+     * @param binding Binding index
+     * @param name Descriptor name
+     * @param sizeBytes Buffer size in bytes
+     * @param stageFlags Shader stages (default: ALL)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addUBO(
+        uint32_t set,
+        uint32_t binding,
+        std::string name,
+        uint32_t sizeBytes,
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL
+    ) {
+        SpirvDescriptorBinding desc;
+        desc.set = set;
+        desc.binding = binding;
+        desc.name = std::move(name);
+        desc.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        desc.descriptorCount = 1;
+        desc.stageFlags = stageFlags;
+        desc.typeInfo = MakeScalarType(SpirvTypeInfo::BaseType::Float);
+        desc.typeInfo.sizeInBytes = sizeBytes;
+        descriptorSets[set].push_back(std::move(desc));
+        return *this;
+    }
+
+    /**
+     * @brief Add storage buffer object descriptor
+     *
+     * @param set Descriptor set index
+     * @param binding Binding index
+     * @param name Descriptor name
+     * @param sizeBytes Buffer size in bytes
+     * @param stageFlags Shader stages (default: COMPUTE)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addSSBO(
+        uint32_t set,
+        uint32_t binding,
+        std::string name,
+        uint32_t sizeBytes,
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+    ) {
+        SpirvDescriptorBinding desc;
+        desc.set = set;
+        desc.binding = binding;
+        desc.name = std::move(name);
+        desc.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        desc.descriptorCount = 1;
+        desc.stageFlags = stageFlags;
+        desc.typeInfo = MakeScalarType(SpirvTypeInfo::BaseType::Float);
+        desc.typeInfo.sizeInBytes = sizeBytes;
+        descriptorSets[set].push_back(std::move(desc));
+        return *this;
+    }
+
+    /**
+     * @brief Add combined image sampler descriptor
+     *
+     * @param set Descriptor set index
+     * @param binding Binding index
+     * @param name Descriptor name
+     * @param format Image format (default: R8G8B8A8_UNORM)
+     * @param dimension Image dimension (1D=1, 2D=2, 3D=3, default: 2)
+     * @param stageFlags Shader stages (default: FRAGMENT)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addSampler(
+        uint32_t set,
+        uint32_t binding,
+        std::string name,
+        VkFormat format = VK_FORMAT_R8G8B8A8_UNORM,
+        uint32_t dimension = 2,
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+    ) {
+        SpirvDescriptorBinding desc;
+        desc.set = set;
+        desc.binding = binding;
+        desc.name = std::move(name);
+        desc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        desc.descriptorCount = 1;
+        desc.stageFlags = stageFlags;
+        desc.imageFormat = format;
+        desc.imageDimension = dimension;
+        descriptorSets[set].push_back(std::move(desc));
+        return *this;
+    }
+
+    /**
+     * @brief Add storage image descriptor
+     *
+     * @param set Descriptor set index
+     * @param binding Binding index
+     * @param name Descriptor name
+     * @param format Image format (default: R8G8B8A8_UNORM)
+     * @param dimension Image dimension (1D=1, 2D=2, 3D=3, default: 2)
+     * @param stageFlags Shader stages (default: COMPUTE)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addStorageImage(
+        uint32_t set,
+        uint32_t binding,
+        std::string name,
+        VkFormat format = VK_FORMAT_R8G8B8A8_UNORM,
+        uint32_t dimension = 2,
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+    ) {
+        SpirvDescriptorBinding desc;
+        desc.set = set;
+        desc.binding = binding;
+        desc.name = std::move(name);
+        desc.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        desc.descriptorCount = 1;
+        desc.stageFlags = stageFlags;
+        desc.imageFormat = format;
+        desc.imageDimension = dimension;
+        descriptorSets[set].push_back(std::move(desc));
+        return *this;
+    }
+
+    /**
+     * @brief Add push constant range
+     *
+     * @param offset Offset in bytes
+     * @param size Size in bytes
+     * @param name Push constant block name (default: "PushConstants")
+     * @param stageFlags Shader stages (default: ALL)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addPushConstant(
+        uint32_t offset,
+        uint32_t size,
+        std::string name = "PushConstants",
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL
+    ) {
+        SpirvPushConstantRange range;
+        range.name = std::move(name);
+        range.offset = offset;
+        range.size = size;
+        range.stageFlags = stageFlags;
+        range.structDef = createDummyStruct(range.name, size);
+        pushConstants.push_back(std::move(range));
+        return *this;
+    }
+
+    /**
+     * @brief Add custom push constant range with struct definition
+     *
+     * @param offset Offset in bytes
+     * @param structDef Struct definition with members
+     * @param stageFlags Shader stages (default: ALL)
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& addPushConstantStruct(
+        uint32_t offset,
+        SpirvStructDefinition structDef,
+        VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL
+    ) {
+        SpirvPushConstantRange range;
+        range.name = structDef.name;
+        range.offset = offset;
+        range.size = structDef.sizeInBytes;
+        range.stageFlags = stageFlags;
+        range.structDef = std::move(structDef);
+        pushConstants.push_back(std::move(range));
+        return *this;
+    }
+
+    /**
+     * @brief Set program name
+     *
+     * @param name Program name for debugging
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& setProgramName(std::string name) {
+        programName = std::move(name);
+        return *this;
+    }
+
+    /**
+     * @brief Set pipeline type
+     *
+     * @param type Pipeline type constraint
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& setPipelineType(PipelineTypeConstraint type) {
+        pipelineType = type;
+        return *this;
+    }
+
+    /**
+     * @brief Set bundle UUID
+     *
+     * @param id Unique identifier
+     * @return Reference to builder for chaining
+     */
+    ShaderBundleDummyBuilder& setUUID(std::string id) {
+        uuid = std::move(id);
+        return *this;
+    }
+
+    /**
+     * @brief Build the final ShaderDataBundle
+     *
+     * Assembles all components into a complete bundle.
+     * Generates default values for unset fields.
+     *
+     * @return Shared pointer to constructed bundle
+     */
+    std::shared_ptr<ShaderDataBundle> build() {
+        auto bundle = std::make_shared<ShaderDataBundle>();
+
+        // Set program metadata
+        bundle->program.name = programName.empty() ? "TestShaderProgram" : programName;
+        bundle->program.pipelineType = pipelineType;
+        bundle->program.stages = std::move(stages);
+        bundle->program.generation = 1;
+        bundle->program.compiledAt = std::chrono::steady_clock::now();
+
+        // Create reflection data
+        bundle->reflectionData = std::make_shared<SpirvReflectionData>();
+        bundle->reflectionData->descriptorSets = std::move(descriptorSets);
+        bundle->reflectionData->pushConstants = std::move(pushConstants);
+
+        // Set bundle metadata
+        bundle->uuid = uuid.empty() ? "test-bundle-" + std::to_string(nextBundleId++) : uuid;
+        bundle->createdAt = std::chrono::system_clock::now();
+        bundle->descriptorInterfaceHash = "dummy-hash-" + bundle->uuid;
+
+        // Dummy SDI path (not actually generated)
+        bundle->sdiHeaderPath = "generated/sdi/" + bundle->uuid + "-SDI.h";
+        bundle->sdiNamespace = "TestNamespace::" + bundle->uuid;
+
+        return bundle;
+    }
+
+private:
+    /**
+     * @brief Generate minimal valid SPIR-V bytecode
+     *
+     * Creates a valid SPIR-V header and minimal module structure.
+     *
+     * @param stage Shader stage
+     * @return SPIR-V bytecode (uint32_t words)
+     */
+    static std::vector<uint32_t> generateDummySpirv(ShaderStage stage) {
+        // Minimal SPIR-V header (5 words)
+        std::vector<uint32_t> spirv = {
+            0x07230203,  // Magic number
+            0x00010600,  // Version 1.6
+            0x00000000,  // Generator (0 = unknown)
+            0x0000000F,  // Bound (number of IDs)
+            0x00000000   // Schema (reserved, must be 0)
+        };
+
+        // Add OpCapability based on stage
+        switch (stage) {
+            case ShaderStage::Vertex:
+            case ShaderStage::Fragment:
+            case ShaderStage::Geometry:
+                spirv.push_back(0x00020011); // OpCapability Shader (capability=1)
+                spirv.push_back(0x00000001);
+                break;
+            case ShaderStage::Compute:
+                spirv.push_back(0x00020011); // OpCapability Shader
+                spirv.push_back(0x00000001);
+                break;
+            default:
+                spirv.push_back(0x00020011); // OpCapability Shader
+                spirv.push_back(0x00000001);
+                break;
+        }
+
+        // OpMemoryModel (word count=3, opcode=14)
+        spirv.push_back(0x0003000E);
+        spirv.push_back(0x00000000); // Logical
+        spirv.push_back(0x00000001); // GLSL450
+
+        // OpEntryPoint (minimal - just opcode for validity)
+        uint32_t executionModel = 0;
+        switch (stage) {
+            case ShaderStage::Vertex:       executionModel = 0; break;
+            case ShaderStage::Fragment:     executionModel = 4; break;
+            case ShaderStage::Compute:      executionModel = 5; break;
+            case ShaderStage::Geometry:     executionModel = 3; break;
+            default:                        executionModel = 0; break;
+        }
+        spirv.push_back(0x0004000F); // OpEntryPoint (word count=4, opcode=15)
+        spirv.push_back(executionModel);
+        spirv.push_back(0x00000001); // Entry point ID
+        spirv.push_back(0x6E69616D); // "main" encoded (4 bytes)
+
+        return spirv;
+    }
+
+    /**
+     * @brief Create dummy struct definition
+     *
+     * @param name Struct name
+     * @param sizeBytes Total size in bytes
+     * @return Struct definition with single float member
+     */
+    static SpirvStructDefinition createDummyStruct(const std::string& name, uint32_t sizeBytes) {
+        SpirvStructDefinition structDef;
+        structDef.name = name;
+        structDef.sizeInBytes = sizeBytes;
+        structDef.alignment = 16;
+
+        // Add single dummy member to make struct valid
+        SpirvStructMember member;
+        member.name = "data";
+        member.type = MakeScalarType(SpirvTypeInfo::BaseType::Float);
+        member.offset = 0;
+        structDef.members.push_back(member);
+
+        return structDef;
+    }
+
+    // Builder state
+    std::vector<CompiledShaderStage> stages;
+    std::unordered_map<uint32_t, std::vector<SpirvDescriptorBinding>> descriptorSets;
+    std::vector<SpirvPushConstantRange> pushConstants;
+    std::string programName;
+    std::string uuid;
+    PipelineTypeConstraint pipelineType = PipelineTypeConstraint::Graphics;
+
+    // Global bundle ID counter for unique UUIDs
+    static inline uint32_t nextBundleId = 0;
+};
+
 } // namespace ShaderManagement::TestFixtures

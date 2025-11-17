@@ -475,14 +475,58 @@ public:
     Resource& operator=(Resource&&) noexcept = default;
 
     // Type-to-ResourceType mapping for automatic type deduction
+    // Handles all descriptor handle types from DescriptorHandleVariant
     template<typename T>
     static constexpr ResourceType DeduceResourceType() {
         using BaseType = std::remove_cvref_t<T>;
-        if constexpr (std::is_same_v<BaseType, VkImageView>) return ResourceType::ImageView;
-        else if constexpr (std::is_same_v<BaseType, VkImage>) return ResourceType::Image;
-        else if constexpr (std::is_same_v<BaseType, VkBuffer>) return ResourceType::Buffer;
-        else if constexpr (std::is_same_v<BaseType, VkSampler>) return ResourceType::StorageImage;
-        else return ResourceType::PassThroughStorage;  // Default for non-Vulkan types
+
+        // Single Vulkan handle types (used in descriptors)
+        if constexpr (std::is_same_v<BaseType, VkImageView>) {
+            return ResourceType::ImageView;
+        }
+        else if constexpr (std::is_same_v<BaseType, VkImage>) {
+            return ResourceType::Image;
+        }
+        else if constexpr (std::is_same_v<BaseType, VkBuffer>) {
+            return ResourceType::Buffer;
+        }
+        else if constexpr (std::is_same_v<BaseType, VkBufferView>) {
+            return ResourceType::Buffer;  // BufferView is a view into a buffer
+        }
+        else if constexpr (std::is_same_v<BaseType, VkSampler>) {
+            return ResourceType::ImageView;  // Samplers are typically paired with images
+        }
+        else if constexpr (std::is_same_v<BaseType, VkAccelerationStructureKHR>) {
+            return ResourceType::AccelerationStructure;
+        }
+        // Composite types (combined descriptors)
+        else if constexpr (std::is_same_v<BaseType, ImageSamplerPair>) {
+            return ResourceType::ImageView;  // Combined image sampler
+        }
+        // Vector types (descriptor arrays)
+        else if constexpr (std::is_same_v<BaseType, std::vector<VkImageView>>) {
+            return ResourceType::ImageView;
+        }
+        else if constexpr (std::is_same_v<BaseType, std::vector<VkBuffer>>) {
+            return ResourceType::Buffer;
+        }
+        else if constexpr (std::is_same_v<BaseType, std::vector<VkBufferView>>) {
+            return ResourceType::Buffer;
+        }
+        else if constexpr (std::is_same_v<BaseType, std::vector<VkSampler>>) {
+            return ResourceType::ImageView;
+        }
+        else if constexpr (std::is_same_v<BaseType, std::vector<VkAccelerationStructureKHR>>) {
+            return ResourceType::AccelerationStructure;
+        }
+        // SwapChain and other pointer types
+        else if constexpr (std::is_pointer_v<BaseType>) {
+            return ResourceType::PassThroughStorage;
+        }
+        // Default: PassThroughStorage for non-descriptor types (shared_ptr, custom structs, etc.)
+        else {
+            return ResourceType::PassThroughStorage;
+        }
     }
 
     // SetHandle - natural C++ types
@@ -544,41 +588,68 @@ public:
         // - Try simple types first to avoid incorrect extraction
 
         // Handle based on ResourceType for better type safety
+        // This ensures we try the most likely type first based on the Resource's declared type
         switch (type_) {
             case ResourceType::Buffer:
-                // Try VkBuffer first for buffer resources
+                // Buffer resources: try buffer handles first, then views
                 try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
+                // Try vector types for descriptor arrays
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkBuffer>>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkBufferView>>()}; } catch (...) {}
                 break;
 
             case ResourceType::ImageView:
-                // Try VkImageView for image view resources
+                // ImageView resources: try view first, then sampler (for combined samplers)
                 try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
+                // Try vector types for descriptor arrays
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkSampler>>()}; } catch (...) {}
                 break;
 
             case ResourceType::Image:
             case ResourceType::StorageImage:
             case ResourceType::Image3D:
-                // Try image-related types
+            case ResourceType::CubeMap:
+                // Image resources: try views first (most common), then raw images
                 try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
                 try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
+                // Try vector types for descriptor arrays
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
                 break;
 
+            case ResourceType::AccelerationStructure:
+                // Acceleration structures for ray tracing
+                try { return DescriptorHandleVariant{GetHandle<VkAccelerationStructureKHR>()}; } catch (...) {}
+                try { return DescriptorHandleVariant{GetHandle<std::vector<VkAccelerationStructureKHR>>()}; } catch (...) {}
+                break;
+
+            case ResourceType::PassThroughStorage:
             default:
-                // Fallback: try all types (original behavior for unknown types)
+                // Unknown or pass-through types: try all types (original behavior)
                 break;
         }
 
         // Fallback: Try all types in safe order (simple → complex)
+        // Single handle types first
         try { return DescriptorHandleVariant{GetHandle<VkBuffer>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkImageView>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkSampler>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkBufferView>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkImage>()}; } catch (...) {}
         try { return DescriptorHandleVariant{GetHandle<VkAccelerationStructureKHR>()}; } catch (...) {}
+        // Vector types (descriptor arrays)
+        try { return DescriptorHandleVariant{GetHandle<std::vector<VkBuffer>>()}; } catch (...) {}
+        try { return DescriptorHandleVariant{GetHandle<std::vector<VkImageView>>()}; } catch (...) {}
+        try { return DescriptorHandleVariant{GetHandle<std::vector<VkSampler>>()}; } catch (...) {}
+        try { return DescriptorHandleVariant{GetHandle<std::vector<VkBufferView>>()}; } catch (...) {}
+        try { return DescriptorHandleVariant{GetHandle<std::vector<VkAccelerationStructureKHR>>()}; } catch (...) {}
+        // Pointer and composite types LAST
         try { return DescriptorHandleVariant{GetHandle<SwapChainPublicVariables*>()}; } catch (...) {}
-        try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}  // Try composite types LAST
+        try { return DescriptorHandleVariant{GetHandle<ImageSamplerPair>()}; } catch (...) {}
 
         // If nothing matched, return empty monostate
         return DescriptorHandleVariant{std::monostate{}};

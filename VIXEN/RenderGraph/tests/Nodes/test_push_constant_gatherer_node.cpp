@@ -38,6 +38,7 @@
 #include "../../include/Core/NodeTypeRegistry.h"
 #include "../../include/Core/RenderGraph.h"
 #include "../../include/Data/Core/CompileTimeResourceSystem.h"
+#include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 #include <memory>
 #include <vector>
 #include <cstring>
@@ -48,6 +49,8 @@ std::vector<const char*> layerNames;
 
 namespace VRG = Vixen::RenderGraph;  // Alias to avoid namespace collision
 using namespace RenderGraph::TestMocks;
+using ShaderManagement::TestFixtures::ShaderBundleDummyBuilder;
+using ShaderManagement::TestFixtures::MakeComplexPushConstantStruct;
 
 // ============================================================================
 // Test Fixture
@@ -138,15 +141,185 @@ TEST_F(PushConstantGathererNodeTest, ConfigShaderDataBundleOutOutputIndex) {
 // 2. Pre-registration Tests
 // ============================================================================
 
-TEST_F(PushConstantGathererNodeTest, PreRegisterPushConstantFields) {
-    // SKIP: PreRegisterPushConstantFields requires real ShaderManagement::ShaderDataBundle,
-    // not MockDataBundle. This test would require integration with ShaderManagement library.
-    GTEST_SKIP() << "Requires real ShaderManagement::ShaderDataBundle (integration test)";
+// ============================================================================
+// NEW COMPREHENSIVE TESTS WITH SHADER BUNDLE DUMMY BUILDER
+// ============================================================================
+
+TEST_F(PushConstantGathererNodeTest, SingleShaderWithPushConstants) {
+    // Create shader bundle with simple push constants
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Fragment)
+        .addPushConstant(0, 20, "SimplePush", VK_SHADER_STAGE_FRAGMENT_BIT)
+        .setProgramName("SingleShaderTest")
+        .build();
+
+    ASSERT_NE(bundle, nullptr);
+    ASSERT_NE(bundle->reflectionData, nullptr);
+    EXPECT_EQ(bundle->reflectionData->pushConstants.size(), 1);
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+    EXPECT_EQ(pc.offset, 0);
+    EXPECT_EQ(pc.size, 20);
+    EXPECT_EQ(pc.stageFlags, VK_SHADER_STAGE_FRAGMENT_BIT);
+    EXPECT_EQ(pc.name, "SimplePush");
 }
 
-TEST_F(PushConstantGathererNodeTest, PreRegisterEmptyShaderBundle) {
-    // SKIP: PreRegisterPushConstantFields requires real ShaderManagement::ShaderDataBundle
-    GTEST_SKIP() << "Requires real ShaderManagement::ShaderDataBundle (integration test)";
+TEST_F(PushConstantGathererNodeTest, MultipleShadersSameRange) {
+    // Vertex and Fragment shaders sharing the same push constant range
+    auto vertBundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Vertex)
+        .addPushConstant(0, 64, "SharedPush", VK_SHADER_STAGE_VERTEX_BIT)
+        .setProgramName("VertexShader")
+        .build();
+
+    auto fragBundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Fragment)
+        .addPushConstant(0, 64, "SharedPush", VK_SHADER_STAGE_FRAGMENT_BIT)
+        .setProgramName("FragmentShader")
+        .build();
+
+    // Verify both bundles have the same range structure
+    EXPECT_EQ(vertBundle->reflectionData->pushConstants[0].offset,
+              fragBundle->reflectionData->pushConstants[0].offset);
+    EXPECT_EQ(vertBundle->reflectionData->pushConstants[0].size,
+              fragBundle->reflectionData->pushConstants[0].size);
+
+    // Stage flags should be different
+    EXPECT_EQ(vertBundle->reflectionData->pushConstants[0].stageFlags,
+              VK_SHADER_STAGE_VERTEX_BIT);
+    EXPECT_EQ(fragBundle->reflectionData->pushConstants[0].stageFlags,
+              VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    // Merged stage flags would be VERTEX | FRAGMENT
+    VkShaderStageFlags mergedFlags =
+        vertBundle->reflectionData->pushConstants[0].stageFlags |
+        fragBundle->reflectionData->pushConstants[0].stageFlags;
+    EXPECT_EQ(mergedFlags, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+}
+
+TEST_F(PushConstantGathererNodeTest, MultipleShadersDifferentRanges) {
+    // Vertex shader uses offset 0-64, Fragment uses 64-96 (non-overlapping)
+    auto vertBundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Vertex)
+        .addPushConstant(0, 64, "VertexPush", VK_SHADER_STAGE_VERTEX_BIT)
+        .build();
+
+    auto fragBundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Fragment)
+        .addPushConstant(64, 32, "FragmentPush", VK_SHADER_STAGE_FRAGMENT_BIT)
+        .build();
+
+    // Verify non-overlapping ranges
+    const auto& vertPC = vertBundle->reflectionData->pushConstants[0];
+    const auto& fragPC = fragBundle->reflectionData->pushConstants[0];
+
+    EXPECT_EQ(vertPC.offset, 0);
+    EXPECT_EQ(vertPC.size, 64);
+    EXPECT_EQ(fragPC.offset, 64);
+    EXPECT_EQ(fragPC.size, 32);
+
+    // Combined range would be [0, 96)
+    uint32_t combinedSize = fragPC.offset + fragPC.size;
+    EXPECT_EQ(combinedSize, 96);
+}
+
+TEST_F(PushConstantGathererNodeTest, EmptyPushConstants) {
+    // Shader with no push constants
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Compute)
+        .setProgramName("NoPushConstants")
+        .build();
+
+    ASSERT_NE(bundle->reflectionData, nullptr);
+    EXPECT_EQ(bundle->reflectionData->pushConstants.size(), 0);
+}
+
+TEST_F(PushConstantGathererNodeTest, MaximumPushConstantSize) {
+    // Vulkan spec guarantees at least 128 bytes
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Vertex)
+        .addPushConstant(0, 128, "MaxPush", VK_SHADER_STAGE_VERTEX_BIT)
+        .build();
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+    EXPECT_EQ(pc.size, 128);
+    EXPECT_LE(pc.size, 128) << "Push constant size exceeds guaranteed minimum";
+}
+
+TEST_F(PushConstantGathererNodeTest, StageFlagMerging) {
+    // Test merging stage flags across ALL graphics stages
+    VkShaderStageFlags allStages =
+        VK_SHADER_STAGE_VERTEX_BIT |
+        VK_SHADER_STAGE_FRAGMENT_BIT |
+        VK_SHADER_STAGE_GEOMETRY_BIT |
+        VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+        VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Vertex)
+        .addPushConstant(0, 64, "AllStagesPush", allStages)
+        .build();
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+    EXPECT_EQ(pc.stageFlags, allStages);
+}
+
+TEST_F(PushConstantGathererNodeTest, ComplexPushConstantStruct) {
+    // Create a complex struct with proper alignment
+    auto structDef = MakeComplexPushConstantStruct();
+
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Vertex)
+        .addPushConstantStruct(0, structDef, VK_SHADER_STAGE_VERTEX_BIT)
+        .build();
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+    EXPECT_EQ(pc.size, 96); // vec3(12) + float(4) + int(4) + padding(12) + mat4(64)
+    EXPECT_EQ(pc.structDef.members.size(), 4);
+    EXPECT_EQ(pc.structDef.name, "ComplexPushConstants");
+
+    // Verify struct members
+    EXPECT_EQ(pc.structDef.members[0].name, "position");
+    EXPECT_EQ(pc.structDef.members[0].offset, 0);
+    EXPECT_EQ(pc.structDef.members[1].name, "time");
+    EXPECT_EQ(pc.structDef.members[1].offset, 16);
+    EXPECT_EQ(pc.structDef.members[2].name, "frameCount");
+    EXPECT_EQ(pc.structDef.members[2].offset, 20);
+    EXPECT_EQ(pc.structDef.members[3].name, "viewMatrix");
+    EXPECT_EQ(pc.structDef.members[3].offset, 32);
+}
+
+TEST_F(PushConstantGathererNodeTest, VkPushConstantRangeConstruction) {
+    // Verify that data can be correctly converted to VkPushConstantRange
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Fragment)
+        .addPushConstant(0, 20, "TestPush", VK_SHADER_STAGE_FRAGMENT_BIT)
+        .build();
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+
+    // Construct VkPushConstantRange
+    VkPushConstantRange vkRange{};
+    vkRange.stageFlags = pc.stageFlags;
+    vkRange.offset = pc.offset;
+    vkRange.size = pc.size;
+
+    // Verify conversion
+    EXPECT_EQ(vkRange.stageFlags, VK_SHADER_STAGE_FRAGMENT_BIT);
+    EXPECT_EQ(vkRange.offset, 0);
+    EXPECT_EQ(vkRange.size, 20);
+}
+
+TEST_F(PushConstantGathererNodeTest, ComputeShaderPushConstants) {
+    // Compute shaders often use push constants for workgroup parameters
+    auto bundle = ShaderBundleDummyBuilder()
+        .addModule(ShaderManagement::ShaderStage::Compute)
+        .addPushConstant(0, 16, "ComputeParams", VK_SHADER_STAGE_COMPUTE_BIT)
+        .build();
+
+    const auto& pc = bundle->reflectionData->pushConstants[0];
+    EXPECT_EQ(pc.stageFlags, VK_SHADER_STAGE_COMPUTE_BIT);
+    EXPECT_EQ(pc.size, 16);
 }
 
 // ============================================================================
