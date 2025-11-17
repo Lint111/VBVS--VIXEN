@@ -267,8 +267,9 @@ endif()
 
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)
+    # Use CMAKE_SOURCE_DIR for project root - no relative paths
     target_precompile_headers(RenderGraph PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/include/Headers.h"
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using Headers.h)")
 endif()

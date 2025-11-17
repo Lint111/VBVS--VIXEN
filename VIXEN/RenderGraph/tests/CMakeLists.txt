@@ -9,13 +9,8 @@ add_executable(test_rendergraph_basic
     test_rendergraph_dependency.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_rendergraph_basic PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
-# Link against the RenderGraph library target if it exists in the main project
-# Use the imported target GTest::gtest_main provided by the top-level FetchContent
+# Link against the RenderGraph library target - includes propagate automatically
+# RenderGraph target exposes its include directory as PUBLIC, no manual include_directories needed
 if(TARGET RenderGraph)
     target_link_libraries(test_rendergraph_basic PRIVATE GTest::gtest_main RenderGraph)
 else()
@@ -30,11 +25,7 @@ add_executable(test_rendergraph_dependency
     test_multiple_producers.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_rendergraph_dependency PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against the RenderGraph library target - includes propagate automatically
 if(TARGET RenderGraph)
     target_link_libraries(test_rendergraph_dependency PRIVATE GTest::gtest_main RenderGraph)
 else()
@@ -45,11 +36,7 @@ gtest_discover_tests(test_rendergraph_dependency)
 
 add_executable(test_typednode_helpers test_typednode_helpers.cpp)
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_typednode_helpers PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against the RenderGraph library target - includes propagate automatically
 if(TARGET RenderGraph)
     target_link_libraries(test_typednode_helpers PRIVATE GTest::gtest_main RenderGraph)
 else()
@@ -153,8 +140,9 @@ if(TARGET GTest::gtest_main)
         test_descriptor_gatherer_comprehensive.cpp
     )
 
+    # Link against library targets - includes propagate automatically via CMAKE_SOURCE_DIR
     target_include_directories(test_descriptor_gatherer_comprehensive PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${CMAKE_SOURCE_DIR}
     )
 
     target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE
@@ -188,11 +176,7 @@ if(TARGET GTest::gtest_main)
         test_passthroughstorage_handles.cpp
     )
 
-    # Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-    target_include_directories(test_passthroughstorage_handles PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-    )
-
+    # Link against the RenderGraph library target - includes propagate automatically
     target_link_libraries(test_passthroughstorage_handles PRIVATE
         GTest::gtest_main
         RenderGraph

@@ -11,16 +11,12 @@ add_executable(test_voxel_traversal
     Data/test_voxel_traversal.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_voxel_traversal PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
 
+)
 target_link_libraries(test_voxel_traversal PRIVATE
     GTest::gtest_main
     RenderGraph
 )
-
 gtest_discover_tests(test_voxel_traversal)
 
 message(STATUS "[RenderGraph Tests] Added: test_voxel_traversal")

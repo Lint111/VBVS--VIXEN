@@ -19,11 +19,7 @@ add_executable(test_device_node
     Nodes/test_device_node.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_device_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_device_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -38,11 +34,7 @@ add_executable(test_window_node
     Nodes/test_window_node.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_window_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_window_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -57,11 +49,7 @@ add_executable(test_command_pool_node
     Nodes/test_command_pool_node.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_command_pool_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_command_pool_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -76,11 +64,7 @@ add_executable(test_swap_chain_node
     Nodes/test_swap_chain_node.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_swap_chain_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_swap_chain_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -95,11 +79,7 @@ add_executable(test_frame_sync_node
     Nodes/test_frame_sync_node.cpp
 )
 
-# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
-target_include_directories(test_frame_sync_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-)
-
+# Link against library target - includes propagate automatically
 target_link_libraries(test_frame_sync_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -114,17 +94,12 @@ add_executable(test_push_constant_gatherer_node
     Nodes/test_push_constant_gatherer_node.cpp
 )
 
-# Allow tests to include library headers with clean paths
-target_include_directories(test_push_constant_gatherer_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests  # Test fixtures
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include  # ShaderManagement headers
-)
-
+# Link against library targets - includes and test fixtures propagate automatically
+# ShaderManagementTestFixtures exposes test fixture headers for cross-library testing
 target_link_libraries(test_push_constant_gatherer_node PRIVATE
     GTest::gtest_main
     RenderGraph
-    ShaderManagement
+    ShaderManagementTestFixtures
 )
 
 gtest_discover_tests(test_push_constant_gatherer_node)
@@ -136,17 +111,12 @@ add_executable(test_descriptor_resource_gatherer_node
     Nodes/test_descriptor_resource_gatherer_node.cpp
 )
 
-# Allow tests to include library headers with clean paths
-target_include_directories(test_descriptor_resource_gatherer_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests  # Test fixtures
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include  # ShaderManagement headers
-)
-
+# Link against library targets - includes and test fixtures propagate automatically
+# ShaderManagementTestFixtures exposes test fixture headers for cross-library testing
 target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE
     GTest::gtest_main
     RenderGraph
-    ShaderManagement
+    ShaderManagementTestFixtures
 )
 
 gtest_discover_tests(test_descriptor_resource_gatherer_node)

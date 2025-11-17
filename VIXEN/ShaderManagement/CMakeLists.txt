@@ -121,9 +121,9 @@ set_source_files_properties(
 
 # Precompiled headers for faster compilation (C++ only)
 if(USE_PRECOMPILED_HEADERS)
-    # Use the central Headers.h as PCH for consistency across project
+    # Use CMAKE_SOURCE_DIR for project root - no relative paths
     target_precompile_headers(ShaderManagement PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/include/Headers.h"
     )
     message(STATUS "ShaderManagement: Precompiled headers enabled (using Headers.h)")
 endif()
@@ -168,6 +168,16 @@ endif()
 # Add tests subdirectory (if testing is enabled)
 if(BUILD_TESTS)
     add_subdirectory(tests)
+
+    # Create interface target to expose test fixtures to other libraries
+    # This allows RenderGraph tests to include ShaderManagement test fixtures
+    # without using relative paths like ../../ShaderManagement/tests
+    add_library(ShaderManagementTestFixtures INTERFACE)
+    target_include_directories(ShaderManagementTestFixtures INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    )
+    # Test fixtures depend on ShaderManagement headers
+    target_link_libraries(ShaderManagementTestFixtures INTERFACE ShaderManagement)
 endif()
 
 # Install CMake utility modules for downstream projects

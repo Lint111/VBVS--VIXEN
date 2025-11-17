@@ -5,15 +5,11 @@ add_executable(sdi_tool
     shader_tool.cpp
 )
 
+# Link against library target - includes propagate automatically
 target_link_libraries(sdi_tool
     PRIVATE
         ShaderManagement
         nlohmann_json::nlohmann_json
-)
-
-target_include_directories(sdi_tool
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
 # Set C++17 standard
