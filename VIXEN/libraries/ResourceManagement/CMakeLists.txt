@@ -7,8 +7,8 @@ project(ResourceManagement VERSION 1.0.0 LANGUAGES CXX)
 # ============================================================================
 
 set(RM_HEADERS
-    include/ResourceManagement/ResourceState.h
-    include/ResourceManagement/RM.h
+    include/ResourceState.h
+    include/RM.h
 )
 
 # Header-only library (template-based)

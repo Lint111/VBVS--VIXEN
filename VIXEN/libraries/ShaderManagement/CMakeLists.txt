@@ -147,6 +147,8 @@ if(WIN32)
     target_compile_definitions(ShaderManagement PRIVATE VK_USE_PLATFORM_WIN32_KHR)
 endif()
 
+# MSVC: External warnings already suppressed globally in root CMakeLists.txt
+
 # Organize in IDE
 set_target_properties(ShaderManagement PROPERTIES FOLDER "Libraries")
 

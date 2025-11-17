@@ -60,6 +60,12 @@ if(MSVC)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099 /NOLOGO")
     set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099 /NOLOGO")
 
+    # Suppress warnings from external headers (angle-bracket includes)
+    add_compile_options(
+        /external:W0           # Suppress all warnings from external headers
+        /external:anglebrackets # Treat <> includes as external
+    )
+
     # Suppress common third-party compile warnings
     add_compile_options(
         /wd4100  # Unreferenced formal parameter
