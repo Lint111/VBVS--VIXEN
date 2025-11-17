@@ -12,6 +12,9 @@ else()
     target_link_libraries(test_registration_api PRIVATE GTest::gtest_main Logger)
 endif()
 
+# Visual Studio solution folder organization
+set_target_properties(test_registration_api PROPERTIES FOLDER "Tests/CashSystem Tests")
+
 gtest_discover_tests(test_registration_api)
 
 # Basic CashSystem functionality tests

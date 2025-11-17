@@ -366,3 +366,9 @@ endif()
 
 # CompileTimeResourceSystem tests moved to RenderGraph/tests/
 # (See RenderGraph/tests/CMakeLists.txt for test configuration)
+
+# ============================================================================
+# Visual Studio Solution Organization
+# ============================================================================
+# Set VIXEN as the startup project in Visual Studio
+set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT VIXEN)

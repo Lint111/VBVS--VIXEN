@@ -8,5 +8,8 @@ else()
     target_link_libraries(test_resourcemanagement_basic PRIVATE GTest::gtest_main)
 endif()
 
+# Visual Studio solution folder organization
+set_target_properties(test_resourcemanagement_basic PROPERTIES FOLDER "Tests/ResourceManagement Tests")
+
 # Temporarily disabled - GTest not configured
 # gtest_discover_tests(test_resourcemanagement_basic)

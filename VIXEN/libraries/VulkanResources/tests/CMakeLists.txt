@@ -14,4 +14,7 @@ else()
     target_link_libraries(test_vulkanresources_basic PRIVATE GTest::gtest_main)
 endif()
 
+# Visual Studio solution folder organization
+set_target_properties(test_vulkanresources_basic PROPERTIES FOLDER "Tests/VulkanResources Tests")
+
 gtest_discover_tests(test_vulkanresources_basic)
