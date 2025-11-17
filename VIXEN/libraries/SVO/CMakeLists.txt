@@ -16,6 +16,7 @@ add_library(SVO STATIC
     include/SVO/SVOTypes.h
     include/SVO/SVOBuilder.h
     include/SVO/LaineKarrasOctree.h
+    include/SVO/VoxelInjection.h
 
     # Implementation
     src/SVOTypes.cpp
@@ -24,6 +25,8 @@ add_library(SVO STATIC
     src/AttributeIntegrator.cpp
     src/LaineKarrasOctree.cpp
     src/LaineKarrasBuilder.cpp
+    src/VoxelInjection.cpp
+    src/VoxelSamplers.cpp
     src/RayCaster.cpp
     src/Serialization.cpp
     src/SVOFactory.cpp

@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <optional>
 
 namespace SVO {
 
@@ -130,11 +131,35 @@ private:
     struct BuildContext;
     std::unique_ptr<BuildContext> m_context;
 
-    void initializeBuild(const glm::vec3& worldMin, const glm::vec3& worldMax);
-    void buildRecursive(int level);
-    void constructContours();
-    void integrateAttributes();
-    void finalizeBlocks();
+    // Recursive subdivision
+    void subdivideNode(BuildContext::VoxelNode* node);
+    bool shouldTerminate(const BuildContext::VoxelNode* node) const;
+
+    // Triangle filtering
+    void filterTrianglesToChild(const BuildContext::VoxelNode* parent,
+                                 BuildContext::VoxelNode* child,
+                                 int childIdx);
+    bool triangleIntersectsAABB(const InputTriangle& tri,
+                                const glm::vec3& aabbMin,
+                                const glm::vec3& aabbMax) const;
+
+    // Error estimation
+    float estimateGeometricError(const BuildContext::VoxelNode* node) const;
+    float estimateAttributeError(const BuildContext::VoxelNode* node) const;
+    void sampleSurfacePoints(const BuildContext::VoxelNode* node,
+                            std::vector<glm::vec3>& outPoints,
+                            int samplesPerTriangle) const;
+
+    // Attribute and contour integration
+    UncompressedAttributes integrateAttributes(const BuildContext::VoxelNode* node) const;
+    std::optional<Contour> constructContour(const BuildContext::VoxelNode* node) const;
+
+    // Finalization
+    void finalizeOctree();
+
+    // Helpers
+    size_t estimateNodeCount() const;
+    float calculateBranchingFactor(const BuildContext::VoxelNode* node) const;
 };
 
 /**
@@ -196,6 +221,9 @@ private:
         const glm::vec3& voxelPos,
         float voxelSize,
         const std::vector<InputTriangle>& triangles);
+
+    static uint32_t encodeColor(const glm::vec3& color);
+    static uint32_t encodeNormal(const glm::vec3& normal);
 };
 
 } // namespace SVO
