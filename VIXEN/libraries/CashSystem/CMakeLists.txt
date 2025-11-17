@@ -14,8 +14,8 @@ set_property(TARGET CashSystem PROPERTY CXX_STANDARD_REQUIRED ON)
 
 target_include_directories(CashSystem PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    # Project-level includes (so CashSystem can use common headers)
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    # Main application includes (so CashSystem can use common headers)
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
     # Generated SDI headers
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
 )

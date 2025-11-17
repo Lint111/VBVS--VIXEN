@@ -263,146 +263,14 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# No additional link_directories needed - already configured at line 125
 endif()
 
-# GLM SETUP using FetchContent
-include(FetchContent)
-
-FetchContent_Declare(
-    glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG        1.0.1 # Use tag name directly
-    GIT_SHALLOW    TRUE
-)
-
-FetchContent_MakeAvailable(glm)
-
-# Suppress warnings from glm
-if(TARGET glm)
-    target_compile_options(glm INTERFACE
-        $<$<CXX_COMPILER_ID:MSVC>:/W0>
-        $<$<CXX_COMPILER_ID:GNU>:-w>
-        $<$<CXX_COMPILER_ID:Clang>:-w>
-    )
-endif()
-
-# Fetch the latest Khronos Vulkan header files only if not already provided (e.g., by Vulkan SDK)
-if(NOT TARGET Vulkan::Headers)
-	FetchContent_Declare(
-		VulkanHeaders
-		GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-		GIT_TAG main  # or pick a specific release, e.g., v1.3.300
-	)
-	FetchContent_MakeAvailable(VulkanHeaders)
-endif()
-
-# GLI Setup - header-only library for compressed texture loading (DDS/KTX)
-set(GLI_TEST_ENABLE OFF CACHE BOOL "" FORCE)  # Disable GLI tests
-FetchContent_Declare(
-	gli
-	GIT_REPOSITORY https://github.com/g-truc/gli.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE  # Shallow clone to reduce download size
-)
-
-FetchContent_MakeAvailable(gli)
-
-# Suppress warnings from gli
-if(TARGET gli)
-    target_compile_options(gli INTERFACE
-        $<$<CXX_COMPILER_ID:MSVC>:/W0>
-        $<$<CXX_COMPILER_ID:GNU>:-w>
-        $<$<CXX_COMPILER_ID:Clang>:-w>
-    )
-endif()
-
-# STB Setup - header-only library for uncompressed image loading (PNG/JPG/etc)
-FetchContent_Declare(
-	stb
-	GIT_REPOSITORY https://github.com/nothings/stb.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE
-)
-
-FetchContent_MakeAvailable(stb)
-
-# ===== Global hash provider (OpenSSL or header-only fallback) =====
-find_package(OpenSSL QUIET)
-if(OpenSSL_FOUND)
-	message(STATUS "OpenSSL found - enabling global SHA256 support")
-	add_compile_definitions(HAS_OPENSSL)
-	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
-else()
-	message(STATUS "OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256")
-	FetchContent_Declare(
-		stbrumme_hash
-		GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
-		GIT_TAG        master
-		GIT_SHALLOW    TRUE
-	)
-	FetchContent_MakeAvailable(stbrumme_hash)
-	add_compile_definitions(HAS_STBRUMME_HASH)
-	include_directories(BEFORE ${stbrumme_hash_SOURCE_DIR})
-endif()
-
-# Project-level hash provider interface
-add_library(ProjectHash INTERFACE)
-if(OpenSSL_FOUND)
-	target_link_libraries(ProjectHash INTERFACE OpenSSL::Crypto)
-	target_include_directories(ProjectHash INTERFACE ${OPENSSL_INCLUDE_DIR})
-	target_compile_definitions(ProjectHash INTERFACE HAS_OPENSSL)
-elseif(TARGET stbrumme_hash OR DEFINED stbrumme_hash_SOURCE_DIR)
-	# If we fetched stbrumme_hash, expose its include dir
-	target_include_directories(ProjectHash INTERFACE ${stbrumme_hash_SOURCE_DIR})
-	target_compile_definitions(ProjectHash INTERFACE HAS_STBRUMME_HASH)
-else()
-	# fallback - no external provider, ProjectHash provides compile-time macro for fallback
-	target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
-endif()
-
-# ============================================================================
-# GOOGLE TEST - Fetch early so subdirectories can use it
-# ============================================================================
-# Note: Fetched here (before add_subdirectory calls) so all subdirectories
-# can use GTest targets. enable_testing() is called later when BUILD_TESTS is checked.
-
-option(BUILD_TESTS "Build test executables" ON)
-
-if(BUILD_TESTS)
-    # Fetch Google Test framework
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
-        GIT_SHALLOW    TRUE
-    )
-
-    # For Windows: Prevent overriding the parent project's compiler/linker settings
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-
-    # Don't install GTest when installing our project
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-
-    FetchContent_MakeAvailable(googletest)
-
-    # Create GTest:: namespace aliases for compatibility
-    # FetchContent creates gtest/gtest_main, but some tests expect GTest::gtest/GTest::gtest_main
-    if(TARGET gtest AND NOT TARGET GTest::gtest)
-        add_library(GTest::gtest ALIAS gtest)
-    endif()
-    if(TARGET gtest_main AND NOT TARGET GTest::gtest_main)
-        add_library(GTest::gtest_main ALIAS gtest_main)
-    endif()
-    if(TARGET gmock AND NOT TARGET GTest::gmock)
-        add_library(GTest::gmock ALIAS gmock)
-    endif()
-    if(TARGET gmock_main AND NOT TARGET GTest::gmock_main)
-        add_library(GTest::gmock_main ALIAS gmock_main)
-    endif()
-
-    message(STATUS "GoogleTest fetched - test targets available to subdirectories")
-endif()
-
 # Specify a suitable project name
 project(${Recipe_Name})
+
+# ============================================================================
+# Third-Party Dependencies
+# ============================================================================
+# All FetchContent and external library setup moved to dependencies/
+add_subdirectory(dependencies)
 
 # Suppress warnings from external dependencies
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecation warnings" FORCE)
@@ -428,13 +296,6 @@ endif()
 list(APPEND VULKAN_LIB_LIST "vulkan-1")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	# Vulkan headers include path (only when fetched)
-	if(DEFINED vulkanheaders_SOURCE_DIR)
-		include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
-	endif()
-	include_directories(BEFORE ${gli_SOURCE_DIR})  # GLI is header-only
-	include_directories(BEFORE ${stb_SOURCE_DIR})  # STB is header-only
-
 	# Include Vulkan header files from Vulkan SDK
 	include_directories(AFTER ${VULKAN_PATH}/include)
 
@@ -443,111 +304,19 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
 endif()
 
-
-# Define directories and the contained folder and files inside.
-if(WIN32)
-    source_group("include" REGULAR_EXPRESSION "include/*")
-    source_group("source" REGULAR_EXPRESSION "source/*")
-endif(WIN32)
-
-# Define include path (for legacy code and main executable)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION
 # ============================================================================
 # Each component is a separate static library with proper CMake target-based dependencies
 # Changing one component won't force recompilation of others
 
-# Logger library (used by everything)
-add_subdirectory(logger)
-
-# EventBus library (message passing, worker thread integration)
-add_subdirectory(EventBus)
-
-# ResourceManagement library (RM<T> wrapper with state tracking)
-add_subdirectory(ResourceManagement)
-
-# ShaderManagement library (device-agnostic shader compilation and hot reload)
-add_subdirectory(ShaderManagement)
-
-# VulkanResources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
-add_subdirectory(VulkanResources)
-
-# RenderGraph static library (render graph system for managing Vulkan resources and execution)
-add_subdirectory(RenderGraph)
-
-# CashSystem static library (caching and resource management)
-add_subdirectory(CashSystem)
+add_subdirectory(libraries)
 
 # ============================================================================
-# MAIN EXECUTABLE
+# APPLICATION EXECUTABLES
 # ============================================================================
-# Main application files
-file(GLOB MAIN_CPP_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
-    # Legacy files - commented out for graph-based architecture migration
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplication.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanRenderer.cpp
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDrawable.cpp
-)
-
-# All headers (for IDE project generation)
-file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
-
-# Build main executable
-add_executable(${Recipe_Name}
-    ${MAIN_CPP_FILES}
-    ${HPP_FILES}
-)
-
-# Add include directories for generated SDI headers
-# Primary: Runtime-generated SDI files (generated during shader compilation)
-# Fallback: Build-time generated SDI files (precompiled assets)
-target_include_directories(${Recipe_Name} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/binaries/generated/sdi
-    ${CMAKE_CURRENT_SOURCE_DIR}/BuiltAssets/GeneratedIncludes
-)
-
-# Link libraries to main executable
-target_link_libraries(${Recipe_Name}
-    RenderGraph
-    CashSystem
-    VulkanResources
-    Logger
-    ${VULKAN_LIB_LIST}
-    glm::glm
-)
-
-# Define project properties
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-
-# Define C++ version to be used for building the project
-set_property(TARGET ${Recipe_Name} PROPERTY CXX_STANDARD 23)
-set_property(TARGET ${Recipe_Name} PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# Define C version to be used for building the project
-set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD 23)
-set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD_REQUIRED ON)
-
-# Add /FS flag for MSVC to allow multiple CL.EXE to write to the same PDB file
-if(MSVC)
-    target_compile_options(${Recipe_Name} PRIVATE /FS)
-endif()
-
-# Precompiled headers for faster compilation
-if(USE_PRECOMPILED_HEADERS)
-    target_precompile_headers(${Recipe_Name} PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/Headers.h"
-    )
-    message(STATUS "${Recipe_Name}: Precompiled headers enabled (using Headers.h)")
-endif()
+# All application entry points and executables
+add_subdirectory(application)
 
 # ============================================================================
 # TESTING INFRASTRUCTURE

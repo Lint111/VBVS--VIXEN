@@ -225,8 +225,8 @@ target_compile_features(RenderGraph PUBLIC cxx_std_23)
 target_include_directories(RenderGraph
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        # Main project includes - use SOURCE_DIR for project root
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        # Main application includes - use SOURCE_DIR for project root
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
         # Generated SDI headers - use SOURCE_DIR for project root
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
     PRIVATE
@@ -269,7 +269,7 @@ endif()
 if(USE_PRECOMPILED_HEADERS)
     # Use CMAKE_SOURCE_DIR for project root - no relative paths
     target_precompile_headers(RenderGraph PRIVATE
-        "${CMAKE_SOURCE_DIR}/include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
     )
     message(STATUS "RenderGraph: Precompiled headers enabled (using Headers.h)")
 endif()

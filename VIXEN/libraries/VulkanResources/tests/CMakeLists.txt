@@ -5,7 +5,9 @@ project(VulkanResourcesTests)
 include(GoogleTest)
 
 add_executable(test_vulkanresources_basic test_vulkanresources_basic.cpp)
-target_include_directories(test_vulkanresources_basic PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_vulkanresources_basic PRIVATE
+    ${CMAKE_SOURCE_DIR}/application/main/include
+)
 if(TARGET VulkanResources)
     target_link_libraries(test_vulkanresources_basic PRIVATE GTest::gtest_main VulkanResources)
 else()

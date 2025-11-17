@@ -123,7 +123,7 @@ set_source_files_properties(
 if(USE_PRECOMPILED_HEADERS)
     # Use CMAKE_SOURCE_DIR for project root - no relative paths
     target_precompile_headers(ShaderManagement PRIVATE
-        "${CMAKE_SOURCE_DIR}/include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
     )
     message(STATUS "ShaderManagement: Precompiled headers enabled (using Headers.h)")
 endif()

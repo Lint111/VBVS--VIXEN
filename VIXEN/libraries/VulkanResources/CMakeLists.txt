@@ -62,8 +62,8 @@ target_compile_features(VulkanResources PUBLIC cxx_std_23)
 target_include_directories(VulkanResources
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        # Main project includes - for legacy Headers.h and other shared headers
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        # Main application includes - for Headers.h and other shared headers
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -97,7 +97,7 @@ endif()
 # Precompiled headers for faster compilation
 if(USE_PRECOMPILED_HEADERS)
     target_precompile_headers(VulkanResources PRIVATE
-        "${CMAKE_SOURCE_DIR}/include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
     )
     message(STATUS "VulkanResources: Precompiled headers enabled (using Headers.h)")
 endif()

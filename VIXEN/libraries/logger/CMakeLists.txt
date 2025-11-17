@@ -37,7 +37,7 @@ target_compile_features(Logger PUBLIC cxx_std_23)
 
 if(USE_PRECOMPILED_HEADERS)
     target_precompile_headers(Logger PRIVATE
-        "${CMAKE_SOURCE_DIR}/include/Headers.h"
+        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
     )
     message(STATUS "Logger: Precompiled headers enabled")
 endif()

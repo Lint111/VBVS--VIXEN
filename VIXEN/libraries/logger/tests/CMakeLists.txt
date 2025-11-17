@@ -5,7 +5,9 @@ project(LoggerTests)
 include(GoogleTest)
 
 add_executable(test_logger_basic test_logger_basic.cpp)
-target_include_directories(test_logger_basic PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(test_logger_basic PRIVATE
+    ${CMAKE_SOURCE_DIR}/application/main/include
+)
 if(TARGET Logger)
     target_link_libraries(test_logger_basic PRIVATE GTest::gtest_main Logger)
 else()

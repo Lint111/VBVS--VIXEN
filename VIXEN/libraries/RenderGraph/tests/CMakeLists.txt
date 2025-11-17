@@ -111,7 +111,7 @@ if(TARGET GTest::gtest_main)
 
     # Link against library targets - includes propagate automatically via CMAKE_SOURCE_DIR
     target_include_directories(test_descriptor_gatherer_comprehensive PRIVATE
-        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/application/main/include
     )
 
     target_link_libraries(test_descriptor_gatherer_comprehensive PRIVATE
