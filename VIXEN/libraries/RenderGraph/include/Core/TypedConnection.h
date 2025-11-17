@@ -2,12 +2,12 @@
 
 #include "Core/RenderGraph.h"
 #include "Core/GraphLifecycleHooks.h"
-#include "Core/ResourceConfig.h"
+#include "Data/Core/ResourceConfig.h"
 #include "Core/GraphTopology.h"
 #include "Core/VariadicTypedNode.h"
-#include "Core/DescriptorResourceGathererNodeConfig.h"
-#include "Core/PushConstantGathererNodeConfig.h"
-#include "Core/StructSpreaderNodeConfig.h"
+#include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
+#include "Data/Nodes/PushConstantGathererNodeConfig.h"
+#include "Data/Nodes/StructSpreaderNodeConfig.h"
 #include <vector>
 #include <functional>
 

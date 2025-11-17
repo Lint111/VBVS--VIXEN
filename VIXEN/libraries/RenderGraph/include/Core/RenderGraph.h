@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/Headers.h"
+#include "Headers.h"
 
 #include "Core/NodeInstance.h"
 #include "Core/NodeTypeRegistry.h"
@@ -23,7 +23,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
-#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;

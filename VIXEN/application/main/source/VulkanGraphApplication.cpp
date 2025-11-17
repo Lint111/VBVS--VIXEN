@@ -1,43 +1,43 @@
-#include "Core/VulkanGraphApplication.h"
-#include "Core/VulkanSwapChain.h"
-#include "Core/MeshData.h"
-#include "Core/Logger.h"
+#include "VulkanGraphApplication.h"
+#include "VulkanSwapChain.h"
+#include "MeshData.h"
+#include "Logger.h"
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
-#include "Core/CommandBufferUtility.h"  // MVP: File reading utility
+#include "CommandBufferUtility.h"  // MVP: File reading utility
 #include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
 
 // Include all node types
-#include "Core/InstanceNode.h"  // Phase 1.1: Separated instance creation
-#include "Core/WindowNode.h"
-#include "Core/DeviceNode.h"
-#include "Core/CommandPoolNode.h"
-#include "Core/FrameSyncNode.h"  // Phase 0.2: Frame-in-flight synchronization
-#include "Core/TextureLoaderNode.h"
-#include "Core/DepthBufferNode.h"
-#include "Core/SwapChainNode.h"
-#include "Core/VertexBufferNode.h"
-#include "Core/RenderPassNode.h"
-#include "Core/FramebufferNode.h"
-#include "Core/ShaderLibraryNode.h"
-#include "Core/DescriptorSetNode.h"
-#include "Core/GraphicsPipelineNode.h"
-#include "Core/GeometryRenderNode.h"
-#include "Core/PresentNode.h"
-#include "Core/ConstantNode.h"  // MVP: Generic parameter node
-#include "Core/ConstantNodeType.h"  // MVP: ConstantNode factory
-#include "Core/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
-#include "Core/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
-#include "Core/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
-#include "Core/ComputePipelineNode.h"  // Phase G: Compute pipeline
-#include "Core/ComputeDispatchNode.h"  // Phase G: Compute dispatch
-#include "Core/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
-#include "Core/PushConstantGathererNode.h"  // Phase H: Push constant gatherer
-#include "Core/CameraNode.h"  // Ray marching: Camera data
-#include "Core/VoxelGridNode.h"  // Ray marching: 3D voxel texture
-#include "Core/InputNode.h"  // Input polling and event publishing
+#include "Nodes/InstanceNode.h"  // Phase 1.1: Separated instance creation
+#include "Nodes/WindowNode.h"
+#include "Nodes/DeviceNode.h"
+#include "Nodes/CommandPoolNode.h"
+#include "Nodes/FrameSyncNode.h"  // Phase 0.2: Frame-in-flight synchronization
+#include "Nodes/TextureLoaderNode.h"
+#include "Nodes/DepthBufferNode.h"
+#include "Nodes/SwapChainNode.h"
+#include "Nodes/VertexBufferNode.h"
+#include "Nodes/RenderPassNode.h"
+#include "Nodes/FramebufferNode.h"
+#include "Nodes/ShaderLibraryNode.h"
+#include "Nodes/DescriptorSetNode.h"
+#include "Nodes/GraphicsPipelineNode.h"
+#include "Nodes/GeometryRenderNode.h"
+#include "Nodes/PresentNode.h"
+#include "Nodes/ConstantNode.h"  // MVP: Generic parameter node
+#include "Nodes/ConstantNodeType.h"  // MVP: ConstantNode factory
+#include "Data/Nodes/ConstantNodeConfig.h"  // MVP: ConstantNode configuration
+#include "Nodes/LoopBridgeNode.h"  // Phase 0.4: Loop system bridge
+#include "Nodes/BoolOpNode.h"  // Phase 0.4: Boolean logic for loops
+#include "Nodes/ComputePipelineNode.h"  // Phase G: Compute pipeline
+#include "Nodes/ComputeDispatchNode.h"  // Phase G: Compute dispatch
+#include "Nodes/DescriptorResourceGathererNode.h"  // Phase H: Descriptor resource gatherer
+#include "Nodes/PushConstantGathererNode.h"  // Phase H: Push constant gatherer
+#include "Nodes/CameraNode.h"  // Ray marching: Camera data
+#include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
+#include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API
-#include "Core/VoxelRayMarchNames.h"  // Generated shader binding constants
+#include "VoxelRayMarchNames.h"  // Generated shader binding constants
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;

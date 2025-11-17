@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/VulkanApplicationBase.h"
+#include "VulkanApplicationBase.h"
 #include "Core/RenderGraph.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/TypedConnection.h"

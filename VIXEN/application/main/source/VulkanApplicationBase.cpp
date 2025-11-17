@@ -1,4 +1,4 @@
-#include "Core/VulkanApplicationBase.h"
+#include "VulkanApplicationBase.h"
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
