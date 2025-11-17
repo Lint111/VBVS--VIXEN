@@ -56,9 +56,9 @@ if(MSVC)
 
     # Suppress warnings from third-party libraries
     # Use CMAKE_*_LINKER_FLAGS for compatibility with CMake < 3.13
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099 /NOLOGO")
 
     # Suppress common third-party compile warnings
     add_compile_options(
@@ -303,6 +303,12 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	link_directories(${VULKAN_PATH}/Bin;${VULKAN_PATH}/Lib;)
 
 endif()
+
+# ============================================================================
+# SHADER ASSETS
+# ============================================================================
+# Global shader source directory - GLSL files compiled by applications
+add_subdirectory(shaders)
 
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION

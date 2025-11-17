@@ -493,7 +493,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
 
-    mainLogger->Info("Created 23 node instances (including camera, voxel grid, and push constant gatherer)");
+    mainLogger->Info("Created 29 node instances (including compute pipeline, camera, voxel grid, and gatherers)");
 
     // ===================================================================
     // PHASE 2: Configure node parameters
@@ -576,9 +576,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     graphicsShaderLib->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Find shader paths
+        // Find shader paths - try compile-time shader directory first
         std::vector<std::filesystem::path> possiblePaths = {
-            "Draw.vert", "Shaders/Draw.vert", "../Shaders/Draw.vert", "binaries/Draw.vert"
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            VIXEN_SHADER_SOURCE_DIR "/Draw.vert",
+#endif
+            "shaders/Draw.vert",
+            "Draw.vert",
+            "../shaders/Draw.vert"
         };
         std::filesystem::path vertPath, fragPath;
         for (const auto& path : possiblePaths) {
@@ -619,14 +624,23 @@ void VulkanGraphApplication::BuildRenderGraph() {
     }
 
     // Voxel ray marching compute shader (VoxelRayMarch.comp)
+    // Load from pre-compiled shaders in build directory
     auto* computeShaderLibNode = static_cast<ShaderLibraryNode*>(renderGraph->GetInstance(computeShaderLib));
-    computeShaderLibNode->RegisterShaderBuilder([](int vulkanVer, int spirvVer) {
+
+    computeShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Find voxel ray march shader path
+        // Find voxel ray march shader source
+        // Try compile-time shader directory first, then fallback to runtime search paths
         std::vector<std::filesystem::path> possiblePaths = {
-            "VoxelRayMarch.comp", "Shaders/VoxelRayMarch.comp", "../Shaders/VoxelRayMarch.comp", "binaries/VoxelRayMarch.comp"
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            VIXEN_SHADER_SOURCE_DIR "/VoxelRayMarch.comp",
+#endif
+            "shaders/VoxelRayMarch.comp",
+            "../shaders/VoxelRayMarch.comp",
+            "VoxelRayMarch.comp"
         };
+
         std::filesystem::path compPath;
         for (const auto& path : possiblePaths) {
             if (std::filesystem::exists(path)) {
@@ -635,17 +649,32 @@ void VulkanGraphApplication::BuildRenderGraph() {
             }
         }
 
+        if (compPath.empty()) {
+            if (mainLogger && mainLogger->IsEnabled()) {
+                mainLogger->Error("[BuildRenderGraph] VoxelRayMarch.comp not found in search paths");
+                mainLogger->Error("[BuildRenderGraph] Current working directory: " + std::filesystem::current_path().string());
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " VIXEN_SHADER_SOURCE_DIR);
+#endif
+            }
+            throw std::runtime_error("VoxelRayMarch.comp not found - check shader search paths");
+        }
+
         builder.SetProgramName("VoxelRayMarch")
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(spirvVer)
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
+        if (mainLogger && mainLogger->IsEnabled()) {
+            mainLogger->Info("[BuildRenderGraph] Configured VoxelRayMarch compute shader from: " + compPath.string());
+        }
+
         return builder;
     });
 
     if (mainLogger && mainLogger->IsEnabled()) {
-        mainLogger->Info("[BuildRenderGraph] Configured voxel ray marching compute shader");
+        mainLogger->Info("[BuildRenderGraph] Registered VoxelRayMarch shader builder");
     }
 
     // Phase G: Compute dispatch parameters

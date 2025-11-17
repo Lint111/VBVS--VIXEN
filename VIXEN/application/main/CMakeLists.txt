@@ -78,3 +78,44 @@ if(WIN32)
     source_group("include" REGULAR_EXPRESSION "include/*")
     source_group("source" REGULAR_EXPRESSION "source/*")
 endif()
+
+# ============================================================================
+# Shader Configuration
+# ============================================================================
+# Shaders are compiled at runtime from source in ${VIXEN_SHADER_SOURCE_DIR}
+# Generated files (SDI headers, cached SPIR-V) go to organized output directories
+
+# Set output directories for generated shader files
+set(APP_SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/shaders")
+set(APP_SDI_OUTPUT_DIR "${CMAKE_BINARY_DIR}/application/main/generated/sdi")
+
+# Export paths for runtime use
+target_compile_definitions(VIXEN PRIVATE
+    VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
+    VIXEN_SHADER_OUTPUT_DIR="${APP_SHADER_OUTPUT_DIR}"
+    VIXEN_SDI_OUTPUT_DIR="${APP_SDI_OUTPUT_DIR}"
+)
+
+# Add generated SDI directory to include path for shader interface headers
+target_include_directories(VIXEN PRIVATE
+    ${APP_SDI_OUTPUT_DIR}
+)
+
+# Optional: Pre-compile shaders for faster startup using add_shader_bundle()
+#
+# To enable pre-compilation for specific shaders:
+# 1. Include shader tools: include(${CMAKE_SOURCE_DIR}/libraries/ShaderManagement/cmake/ShaderToolUtils.cmake)
+# 2. Add shader bundle targets as needed
+# 3. Add dependencies: add_dependencies(VIXEN YourShader_Bundle)
+#
+# Example:
+#   add_shader_bundle(MyShader_Bundle
+#       PROGRAM_NAME "MyShader"
+#       COMPUTE ${VIXEN_SHADER_SOURCE_DIR}/MyShader.comp
+#       OUTPUT_DIR ${APP_SHADER_OUTPUT_DIR}
+#       SDI_OUTPUT_DIR ${APP_SDI_OUTPUT_DIR}
+#   )
+
+message(STATUS "VIXEN: Shaders compile at runtime from ${VIXEN_SHADER_SOURCE_DIR}")
+message(STATUS "VIXEN: Generated shader files output to ${APP_SHADER_OUTPUT_DIR}")
+message(STATUS "VIXEN: SDI headers output to ${APP_SDI_OUTPUT_DIR}")
