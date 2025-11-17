@@ -478,6 +478,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
     NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
     NodeHandle pushConstantGatherer = renderGraph->AddNode("PushConstantGatherer", "push_constant_gatherer");  // Phase H
+    NodeHandle timeConstant = renderGraph->AddNode("Constant", "time_constant");  // Phase H: Time value for shader
     NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
     NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
     NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
@@ -690,6 +691,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Ray marching: Camera parameters
     auto* camera = static_cast<CameraNode*>(renderGraph->GetInstance(cameraNode));
+
+    // Enable camera logger to debug position
+    if (auto* cameraLogger = camera->GetLogger()) {
+        cameraLogger->SetEnabled(true);
+        cameraLogger->SetTerminalOutput(true);
+    }
+
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
@@ -699,8 +707,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // PRESET 1: Front view looking into box (camera in front of grid)
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -4.0f);  // Changed from -1.0 to -4.0 (outside grid at z=-6)
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -10.0f);  // Outside grid (grid spans -8 to 8, camera at -10)
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 180.0f);  // Turn 180° to look toward +Z (into grid)
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
     // PRESET 2: Offset to see both left (red) and right (green) walls
@@ -732,8 +740,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Enable logging for VoxelGridNode to see octree generation
     if (auto* voxelLogger = voxelGrid->GetLogger()) {
-        voxelLogger->SetEnabled(false);
+        voxelLogger->SetEnabled(true);  // Enable to debug voxel rendering
         voxelLogger->SetTerminalOutput(true);
+    }
+
+    // Enable logging for descriptor gatherer to debug bindings
+    auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
+    if (auto* gathererLogger = descGatherer->GetLogger()) {
+        gathererLogger->SetEnabled(true);
+        gathererLogger->SetTerminalOutput(true);
+    }
+
+    // Enable logging for compute dispatch to see execution
+    if (auto* dispatchLogger = dispatch->GetLogger()) {
+        dispatchLogger->SetEnabled(true);
+        dispatchLogger->SetTerminalOutput(true);
+    }
+
+    // Enable logging for push constant gatherer to see packing
+    auto* pcGatherer = static_cast<PushConstantGathererNode*>(renderGraph->GetInstance(pushConstantGatherer));
+    if (auto* pcLogger = pcGatherer->GetLogger()) {
+        pcLogger->SetEnabled(true);
+        pcLogger->SetTerminalOutput(true);
     }
 
     mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
@@ -1000,9 +1028,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraPos::BINDING,  // vec3 cameraPos
                           &CameraData::cameraPos, SlotRole::Execute);  // Mark as Execute-only
-    // TODO: Create TimeNode to provide time field
-    //   batch.ConnectVariadic(timeNode, TimeNodeConfig::TIME_OUTPUT,
-    //                         pushConstantGatherer, 1);  // float time
+
+    // Connect time field (using constant node with value 0.0f for now)
+    // TODO: Replace with actual TimeNode that provides elapsed time
+    batch.ConnectVariadic(timeConstant, ConstantNodeConfig::OUTPUT,
+                          pushConstantGatherer, VoxelRayMarch::time::BINDING, SlotRole::Execute);
+
     batch.ConnectVariadic(cameraNode, CameraNodeConfig::CAMERA_DATA,
                           pushConstantGatherer, VoxelRayMarch::cameraDir::BINDING,  // vec3 cameraDir
                           &CameraData::cameraDir, SlotRole::Execute);  // Mark as Execute-only

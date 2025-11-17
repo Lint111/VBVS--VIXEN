@@ -588,10 +588,36 @@ void main() {
     vec3 gridMin = vec3(-8.0, -8.0, -8.0);
     vec3 gridMax = vec3(8.0, 8.0, 8.0);
 
-    // 1. ESVO octree traversal
-    if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax, hitColor, hitNormal, hitT)) {
-        color = shade(hitColor, hitNormal, rayDir);
+    // DEBUG: Visualize camera/ray data directly (ignore grid intersection)
+    // Show ray direction as color (map [-1,1] to [0,1])
+    vec3 debugColor = rayDir * 0.5 + 0.5;
+
+    // Test: Show camera position in center pixel
+    if (pixelCoords.x == imageSize.x / 2 && pixelCoords.y == imageSize.y / 2) {
+        // Center pixel shows camera position (map to [0,1] range)
+        debugColor = (rayOrigin + vec3(10.0)) / 20.0; // Assuming camera near [-10,10] range
     }
+
+    imageStore(outputImage, pixelCoords, vec4(debugColor, 1.0));
+    return;
+
+    // DISABLED: Grid intersection test
+    // vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    // if (gridT.y >= 0.0 && gridT.x <= gridT.y) {
+    //     // Ray hits grid bounds - show intersection visualization
+    //     float t = max(gridT.x, 0.0);
+    //     vec3 hitPos = rayOrigin + rayDir * t;
+    //
+    //     // Color by hit position (normalized to [0,1])
+    //     color = (hitPos - gridMin) / (gridMax - gridMin);
+    //     imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+    //     return;
+    // }
+
+    // 1. ESVO octree traversal (disabled for debug)
+    // if (traverseOctreeSimple(rayOrigin, rayDir, gridMin, gridMax, hitColor, hitNormal, hitT)) {
+    //     color = shade(hitColor, hitNormal, rayDir);
+    // }
 
     // 2. Wall of bricks (fallback test)
     //if (traverseWallOfBricks(rayOrigin, rayDir, hitColor, hitNormal, hitT)) {

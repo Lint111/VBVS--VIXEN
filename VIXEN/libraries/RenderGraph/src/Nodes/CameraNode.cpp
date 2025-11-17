@@ -42,21 +42,18 @@ void CameraNode::SetupImpl(TypedSetupContext& ctx) {
     farPlane = GetParameterValue<float>(CameraNodeConfig::PARAM_FAR_PLANE, 1000.0f);
     gridResolution = GetParameterValue<uint32_t>(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
-    // Only initialize camera position/orientation on FIRST setup
-    // After that, preserve user-controlled position from input
-    if (!initialSetupComplete) {
-        cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-        cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-        cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
+    // ALWAYS read camera parameters on setup (for debugging)
+    // TODO: Restore initialSetupComplete check after fixing camera position
+    cameraPosition.x = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
+    cameraPosition.y = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
+    cameraPosition.z = GetParameterValue<float>(CameraNodeConfig::PARAM_CAMERA_Z, 3.0f);
 
-        yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
-        pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
+    yaw = GetParameterValue<float>(CameraNodeConfig::PARAM_YAW, 0.0f);
+    pitch = GetParameterValue<float>(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
-        initialSetupComplete = true;
-        NODE_LOG_INFO("Camera position initialized from parameters");
-    } else {
-        NODE_LOG_INFO("Camera position preserved from previous state (recompilation)");
-    }
+    NODE_LOG_INFO("Camera position: (" + std::to_string(cameraPosition.x) + ", " +
+                  std::to_string(cameraPosition.y) + ", " + std::to_string(cameraPosition.z) +
+                  "), yaw=" + std::to_string(yaw) + ", pitch=" + std::to_string(pitch));
 
     // Modern polling-based input (GLFW/SDL2 style)
     // No event subscriptions needed - we poll InputState once per frame in ExecuteImpl
