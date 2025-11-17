@@ -24,8 +24,8 @@
 #include "../include/Data/Core/CompileTimeResourceSystem.h"
 
 // Shader management
-#include "../../ShaderManagement/include/ShaderManagement/ShaderDataBundle.h"
-#include "../../ShaderManagement/include/ShaderManagement/SpirvReflectionData.h"
+#include "ShaderDataBundle.h"
+#include "SpirvReflectionData.h"
 
 using namespace Vixen::RenderGraph;
 using namespace ShaderManagement;

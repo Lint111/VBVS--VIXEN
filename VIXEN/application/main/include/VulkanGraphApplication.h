@@ -6,7 +6,7 @@
 #include "Core/TypedConnection.h"
 #include "error/VulkanError.h"
 #include "Time/EngineTime.h"
-#include "Core/MessageBus.h"
+#include "MessageBus.h"
 #include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

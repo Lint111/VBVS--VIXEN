@@ -4,7 +4,7 @@
 #include "Core/Logger.h"
 #include "Core/TypedConnection.h"  // Typed slot connection helpers
 #include "Core/CommandBufferUtility.h"  // MVP: File reading utility
-#include "Core/MainCacher.h"  // Cache system initialization
+#include "MainCacher.h"  // Cache system initialization
 #include "Core/LoopManager.h"  // Phase 0.4: Loop system
 
 // Include all node types

@@ -5,15 +5,15 @@
 #include "Core/NodeInstance.h"
 #include "Core/NodeTypeRegistry.h"
 #include "Core/GraphTopology.h"
-#include "Core/CompileTimeResourceSystem.h"
-#include "Core/CleanupStack.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
+#include "CleanupStack.h"
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/DeferredDestruction.h"
-#include "Core/RenderGraphEvents.h"
-#include "Core/MessageBus.h"
-#include "Core/Message.h"
+#include "EventTypes/RenderGraphEvents.h"
+#include "MessageBus.h"
+#include "Message.h"
 #include "Time/EngineTime.h"
-#include "Core/MainCacher.h"
+#include "MainCacher.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
 #include <memory>
@@ -23,7 +23,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
-#include "Core/RenderGraphEvents.h"
+#include "EventTypes/RenderGraphEvents.h"
 
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;

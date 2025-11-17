@@ -2,8 +2,8 @@
 
 #include "ShaderBundleBuilder.h"
 #include "ShaderEvents.h"
-#include <EventBus/MessageBus.h>
-#include <EventBus/WorkerThreadBridge.h>
+#include "MessageBus.h"
+#include "WorkerThreadBridge.h"
 #include <thread>
 #include <future>
 #include <unordered_map>

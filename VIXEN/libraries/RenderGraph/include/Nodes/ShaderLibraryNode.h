@@ -3,8 +3,8 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/ShaderLibraryNodeConfig.h"
-#include <ShaderManagement/ShaderDataBundle.h>
-#include <ShaderManagement/ShaderBundleBuilder.h>
+#include <ShaderDataBundle.h>
+#include <ShaderBundleBuilder.h>
 #include <memory>
 #include <functional>
 

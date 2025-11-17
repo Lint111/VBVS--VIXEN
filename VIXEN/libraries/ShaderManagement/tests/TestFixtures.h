@@ -23,9 +23,9 @@
  * ```
  */
 
-#include <ShaderManagement/ShaderDataBundle.h>
-#include <ShaderManagement/SpirvReflectionData.h>
-#include <ShaderManagement/ShaderProgram.h>
+#include <ShaderDataBundle.h>
+#include <SpirvReflectionData.h>
+#include <ShaderProgram.h>
 #include <memory>
 #include <vector>
 

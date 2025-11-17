@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
-#include <CashSystem/CashSystem.h>
-#include <CashSystem/TypeRegistry.h>
-#include <CashSystem/MainCacher.h>
-#include <CashSystem/PipelineCacher.h>
-#include <CashSystem/ShaderCompilationCacher.h>
+#include <CashSystem.h>
+#include <TypeRegistry.h>
+#include <MainCacher.h>
+#include <PipelineCacher.h>
+#include <ShaderCompilationCacher.h>
 #include "logger/Logger.h"
 
 // Mock VulkanDevice for testing

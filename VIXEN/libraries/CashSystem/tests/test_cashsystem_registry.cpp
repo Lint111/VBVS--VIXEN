@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
-#include <CashSystem/TypeRegistry.h>
-#include <CashSystem/MainCacher.h>
-#include <CashSystem/PipelineCacher.h>
-#include <CashSystem/ShaderCompilationCacher.h>
+#include <TypeRegistry.h>
+#include <MainCacher.h>
+#include <PipelineCacher.h>
+#include <ShaderCompilationCacher.h>
 
 TEST(CashSystem_Registry, TypeRegistration) {
     TypeRegistry registry;
