@@ -1,6 +1,6 @@
 // Minimal test to verify ResourceTypeTraits works
-#include "RenderGraph/include/Data/Core/ResourceTypeTraits.h"
-#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/ResourceTypeTraits.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <vector>
 
 using namespace Vixen::RenderGraph;

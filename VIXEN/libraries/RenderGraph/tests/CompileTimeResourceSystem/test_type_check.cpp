@@ -1,7 +1,7 @@
 // Test to debug why VkSwapchainKHR is not recognized
 #include "Headers.h"
-#include "RenderGraph/include/Data/Core/ResourceTypeTraits.h"
-#include "RenderGraph/include/Data/Core/CompileTimeResourceSystem.h"
+#include "Data/Core/ResourceTypeTraits.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <iostream>
 
 using namespace Vixen::RenderGraph;

@@ -121,11 +121,11 @@ set_source_files_properties(
 
 # Precompiled headers for faster compilation (C++ only)
 if(USE_PRECOMPILED_HEADERS)
-    # Use CMAKE_SOURCE_DIR for project root - no relative paths
+    # Use library-specific header (no GLI or other app-level dependencies)
     target_precompile_headers(ShaderManagement PRIVATE
-        "${CMAKE_SOURCE_DIR}/application/main/include/Headers.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ShaderManagementHeaders.h"
     )
-    message(STATUS "ShaderManagement: Precompiled headers enabled (using Headers.h)")
+    message(STATUS "ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)")
 endif()
 
 # Unity build support (optional)
