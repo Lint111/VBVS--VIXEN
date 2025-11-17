@@ -8,6 +8,12 @@ add_executable(test_rendergraph_basic
     test_rendergraph_basic.cpp
     test_rendergraph_dependency.cpp
 )
+
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_rendergraph_basic PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 # Link against the RenderGraph library target if it exists in the main project
 # Use the imported target GTest::gtest_main provided by the top-level FetchContent
 if(TARGET RenderGraph)
@@ -23,6 +29,12 @@ add_executable(test_rendergraph_dependency
     test_array_slot_dedup.cpp
     test_multiple_producers.cpp
 )
+
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_rendergraph_dependency PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 if(TARGET RenderGraph)
     target_link_libraries(test_rendergraph_dependency PRIVATE GTest::gtest_main RenderGraph)
 else()
@@ -32,6 +44,12 @@ endif()
 gtest_discover_tests(test_rendergraph_dependency)
 
 add_executable(test_typednode_helpers test_typednode_helpers.cpp)
+
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_typednode_helpers PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 if(TARGET RenderGraph)
     target_link_libraries(test_typednode_helpers PRIVATE GTest::gtest_main RenderGraph)
 else()
@@ -168,6 +186,11 @@ message(STATUS "⊗ test_descriptor_gatherer_comprehensive skipped (outdated API
 if(TARGET GTest::gtest_main)
     add_executable(test_passthroughstorage_handles
         test_passthroughstorage_handles.cpp
+    )
+
+    # Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+    target_include_directories(test_passthroughstorage_handles PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
     )
 
     target_link_libraries(test_passthroughstorage_handles PRIVATE

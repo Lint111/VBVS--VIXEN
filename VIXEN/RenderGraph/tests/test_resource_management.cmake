@@ -21,8 +21,9 @@ if(TARGET GTest::gtest_main)
         test_resource_management.cpp
     )
 
+    # Allow tests to include library headers with clean paths: #include "RenderGraph/..."
     target_include_directories(test_resource_management PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
     )
 
     target_link_libraries(test_resource_management PRIVATE

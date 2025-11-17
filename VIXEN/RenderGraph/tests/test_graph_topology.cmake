@@ -18,8 +18,9 @@ if(TARGET GTest::gtest_main)
         test_graph_topology.cpp
     )
 
+    # Allow tests to include library headers with clean paths: #include "RenderGraph/..."
     target_include_directories(test_graph_topology PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
     )
 
     target_link_libraries(test_graph_topology PRIVATE

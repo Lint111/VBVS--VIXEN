@@ -13,6 +13,11 @@ add_executable(test_voxel_octree
     Data/test_voxel_octree.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_voxel_octree PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 target_link_libraries(test_voxel_octree PRIVATE
     GTest::gtest_main
     RenderGraph

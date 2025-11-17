@@ -19,6 +19,11 @@ add_executable(test_device_node
     Nodes/test_device_node.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_device_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 target_link_libraries(test_device_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -31,6 +36,11 @@ message(STATUS "[RenderGraph Tests] Added: test_device_node")
 # WindowNode Tests
 add_executable(test_window_node
     Nodes/test_window_node.cpp
+)
+
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_window_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
 )
 
 target_link_libraries(test_window_node PRIVATE
@@ -47,6 +57,11 @@ add_executable(test_command_pool_node
     Nodes/test_command_pool_node.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_command_pool_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 target_link_libraries(test_command_pool_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -59,6 +74,11 @@ message(STATUS "[RenderGraph Tests] Added: test_command_pool_node")
 # SwapChainNode Tests
 add_executable(test_swap_chain_node
     Nodes/test_swap_chain_node.cpp
+)
+
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_swap_chain_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
 )
 
 target_link_libraries(test_swap_chain_node PRIVATE
@@ -75,6 +95,11 @@ add_executable(test_frame_sync_node
     Nodes/test_frame_sync_node.cpp
 )
 
+# Allow tests to include library headers with clean paths: #include "RenderGraph/..."
+target_include_directories(test_frame_sync_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+)
+
 target_link_libraries(test_frame_sync_node PRIVATE
     GTest::gtest_main
     RenderGraph
@@ -89,9 +114,11 @@ add_executable(test_push_constant_gatherer_node
     Nodes/test_push_constant_gatherer_node.cpp
 )
 
+# Allow tests to include library headers with clean paths
 target_include_directories(test_push_constant_gatherer_node PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests  # Test fixtures
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include  # ShaderManagement headers
 )
 
 target_link_libraries(test_push_constant_gatherer_node PRIVATE
@@ -103,3 +130,25 @@ target_link_libraries(test_push_constant_gatherer_node PRIVATE
 gtest_discover_tests(test_push_constant_gatherer_node)
 
 message(STATUS "[RenderGraph Tests] Added: test_push_constant_gatherer_node")
+
+# DescriptorResourceGathererNode Tests
+add_executable(test_descriptor_resource_gatherer_node
+    Nodes/test_descriptor_resource_gatherer_node.cpp
+)
+
+# Allow tests to include library headers with clean paths
+target_include_directories(test_descriptor_resource_gatherer_node PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include  # RenderGraph's own headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/tests  # Test fixtures
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ShaderManagement/include  # ShaderManagement headers
+)
+
+target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE
+    GTest::gtest_main
+    RenderGraph
+    ShaderManagement
+)
+
+gtest_discover_tests(test_descriptor_resource_gatherer_node)
+
+message(STATUS "[RenderGraph Tests] Added: test_descriptor_resource_gatherer_node")

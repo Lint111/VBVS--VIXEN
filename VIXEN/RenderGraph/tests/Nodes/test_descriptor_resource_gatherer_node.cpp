@@ -18,8 +18,8 @@
 #include <vector>
 
 // Test utilities
-#include "../../TestMocks.h"
-#include "../../../ShaderManagement/tests/TestFixtures.h"
+#include "../TestMocks.h"  // Centralized test mocks
+#include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 
 // Render graph components
 #include "../../include/Nodes/DescriptorResourceGathererNode.h"
@@ -29,8 +29,8 @@
 #include "../../include/Data/Core/CompileTimeResourceSystem.h"
 
 // Shader management
-#include "../../../ShaderManagement/include/ShaderManagement/ShaderDataBundle.h"
-#include "../../../ShaderManagement/include/ShaderManagement/SpirvReflectionData.h"
+#include "ShaderManagement/ShaderDataBundle.h"
+#include "ShaderManagement/SpirvReflectionData.h"
 
 // Define globals required by DeviceNode
 std::vector<const char*> deviceExtensionNames;

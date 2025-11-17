@@ -37,9 +37,10 @@ target_link_libraries(ShaderManagementTests
         gtest_main
 )
 
+# Allow tests to include library headers with clean paths: #include "ShaderManagement/..."
 target_include_directories(ShaderManagementTests
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include  # ShaderManagement's own headers
 )
 
 # Discover tests
