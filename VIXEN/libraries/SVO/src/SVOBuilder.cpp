@@ -94,6 +94,52 @@ std::unique_ptr<Octree> SVOBuilder::build(
     return std::move(m_context->octree);
 }
 
+std::unique_ptr<Octree> SVOBuilder::buildFromVoxelGrid(
+    const std::vector<uint8_t>& voxelData,
+    uint32_t resolution,
+    const glm::vec3& worldMin,
+    const glm::vec3& worldMax) {
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    // Validate input
+    size_t expectedSize = static_cast<size_t>(resolution) * resolution * resolution;
+    if (voxelData.size() != expectedSize) {
+        return nullptr;
+    }
+
+    // Initialize build context
+    m_context->worldMin = worldMin;
+    m_context->worldMax = worldMax;
+    m_context->params = m_params;
+    m_context->progressCallback = m_progressCallback;
+    m_context->octree = std::make_unique<Octree>();
+
+    // Create root node
+    m_context->rootNode = std::make_unique<BuildContext::VoxelNode>();
+    m_context->rootNode->position = glm::vec3(0.0f);
+    m_context->rootNode->size = 1.0f;
+    m_context->rootNode->level = 0;
+
+    // Recursively build octree from voxel grid
+    subdivideNodeFromVoxels(m_context->rootNode.get(), voxelData, resolution,
+                            glm::ivec3(0), resolution);
+
+    // Finalize octree structure
+    finalizeOctree();
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    float buildTime = std::chrono::duration<float>(endTime - startTime).count();
+
+    // Update statistics
+    m_stats.voxelsProcessed = m_context->nodesProcessed;
+    m_stats.leavesCreated = m_context->leavesCreated;
+    m_stats.buildTimeSeconds = buildTime;
+    m_stats.averageBranchingFactor = calculateBranchingFactor(m_context->rootNode.get());
+
+    return std::move(m_context->octree);
+}
+
 // ============================================================================
 // Recursive Subdivision
 // ============================================================================
@@ -595,6 +641,141 @@ void SVOBuilder::finalizeOctree() {
     // Final progress update
     if (m_context->progressCallback) {
         m_context->progressCallback(1.0f);
+    }
+}
+
+// ============================================================================
+// Voxel Grid Subdivision
+// ============================================================================
+
+void SVOBuilder::subdivideNodeFromVoxels(
+    BuildContext::VoxelNode* node,
+    const std::vector<uint8_t>& voxelData,
+    uint32_t gridResolution,
+    const glm::ivec3& gridOffset,
+    uint32_t gridSize) {
+
+    m_context->nodesProcessed++;
+
+    // Memory leak guard
+    if (!m_context->checkMemoryLimits()) {
+        node->isLeaf = true;
+        m_context->leavesCreated++;
+        return;
+    }
+
+    // Check if region is empty
+    bool hasVoxels = false;
+    for (uint32_t z = 0; z < gridSize && !hasVoxels; ++z) {
+        for (uint32_t y = 0; y < gridSize && !hasVoxels; ++y) {
+            for (uint32_t x = 0; x < gridSize && !hasVoxels; ++x) {
+                glm::ivec3 pos = gridOffset + glm::ivec3(x, y, z);
+                size_t idx = pos.z * gridResolution * gridResolution + pos.y * gridResolution + pos.x;
+                if (voxelData[idx] != 0) {
+                    hasVoxels = true;
+                }
+            }
+        }
+    }
+
+    // If empty, mark as leaf with no data
+    if (!hasVoxels) {
+        node->isLeaf = true;
+        m_context->leavesCreated++;
+        return;
+    }
+
+    // Calculate current voxel size in world space
+    // worldVoxelSize = (worldBoundsSize / gridResolution) * currentGridSize
+    // Example: 4x4x4 world, 128 res grid, gridSize=8 → (4/128)*8 = 0.25 world units
+    glm::vec3 worldSize = m_context->worldMax - m_context->worldMin;
+    float worldVoxelSize = (worldSize.x / static_cast<float>(gridResolution)) * static_cast<float>(gridSize);
+
+    // Check termination criteria
+    // 1. Brick-level termination: depth reached (maxLevels - brickDepthLevels)
+    //    Example: maxLevels=16, brickDepthLevels=3 → stop octree at depth 13
+    //    Leaves contain 2³=8 voxels per side (8×8×8 dense brick)
+    //    Structure: depth 0-13 octree → bottom 3 levels (depth 14-16) stored as dense 8³ bricks
+    //    Total effective depth: still 16, but last 3 levels are dense instead of sparse
+    // 2. Grid size reached 1 (single voxel, fallback if bricks disabled)
+    // 3. World-space voxel size below threshold (prevents over-subdivision)
+    //    Example: 4³ world, depth 22 → voxel = 0.000001 units (too small, stop at 0.01)
+    // 4. Maximum total depth reached
+
+    int octreeMaxDepth = m_params.maxLevels - m_params.brickDepthLevels; // Octree stops here
+    int brickSize = (m_params.brickDepthLevels > 0) ? (1 << m_params.brickDepthLevels) : 0; // 2^N
+
+    bool reachedBrickLevel = (m_params.brickDepthLevels > 0 && node->level >= octreeMaxDepth);
+    bool reachedMinSize = (gridSize <= 1);
+    bool reachedMinVoxelSize = (worldVoxelSize <= m_params.minVoxelSize);
+    bool reachedMaxDepth = (node->level >= m_params.maxLevels);
+
+    if (reachedBrickLevel || reachedMinSize || reachedMinVoxelSize || reachedMaxDepth) {
+        node->isLeaf = true;
+        m_context->leavesCreated++;
+
+        // Compute average color from voxels in this region
+        glm::vec3 avgColor(0.0f);
+        int voxelCount = 0;
+        for (uint32_t z = 0; z < gridSize; ++z) {
+            for (uint32_t y = 0; y < gridSize; ++y) {
+                for (uint32_t x = 0; x < gridSize; ++x) {
+                    glm::ivec3 pos = gridOffset + glm::ivec3(x, y, z);
+                    size_t idx = pos.z * gridResolution * gridResolution + pos.y * gridResolution + pos.x;
+                    uint8_t val = voxelData[idx];
+                    if (val != 0) {
+                        // Use voxel value as grayscale color
+                        float normalized = static_cast<float>(val) / 255.0f;
+                        avgColor += glm::vec3(normalized);
+                        voxelCount++;
+                    }
+                }
+            }
+        }
+
+        if (voxelCount > 0) {
+            avgColor /= static_cast<float>(voxelCount);
+        }
+
+        // Convert color to RGBA bytes
+        node->attributes.red = static_cast<uint8_t>(avgColor.r * 255.0f);
+        node->attributes.green = static_cast<uint8_t>(avgColor.g * 255.0f);
+        node->attributes.blue = static_cast<uint8_t>(avgColor.b * 255.0f);
+        node->attributes.alpha = 255;
+
+        // Default normal (+Y axis, top face of cube)
+        node->attributes.sign_and_axis = 2; // +Y face
+        node->attributes.u_coordinate = 1 << 14; // Center
+        node->attributes.v_coordinate = 1 << 13; // Center
+        return;
+    }
+
+    // Subdivide into 8 children
+    node->children.resize(8);
+    uint32_t childSize = gridSize / 2;
+
+    // Offsets for octree child slots
+    static const glm::ivec3 childOffsets[8] = {
+        {0, 0, 0}, // 000
+        {1, 0, 0}, // 001
+        {0, 1, 0}, // 010
+        {1, 1, 0}, // 011
+        {0, 0, 1}, // 100
+        {1, 0, 1}, // 101
+        {0, 1, 1}, // 110
+        {1, 1, 1}  // 111
+    };
+
+    for (int i = 0; i < 8; ++i) {
+        glm::ivec3 childGridOffset = gridOffset + childOffsets[i] * static_cast<int>(childSize);
+
+        node->children[i] = std::make_unique<BuildContext::VoxelNode>();
+        node->children[i]->position = node->position + glm::vec3(childOffsets[i]) * node->size * 0.5f;
+        node->children[i]->size = node->size * 0.5f;
+        node->children[i]->level = node->level + 1;
+
+        subdivideNodeFromVoxels(node->children[i].get(), voxelData, gridResolution,
+                                childGridOffset, childSize);
     }
 }
 

@@ -174,7 +174,12 @@ struct RayHit {
  * Octree build parameters.
  */
 struct BuildParams {
-    int maxLevels = 16;                    // Maximum octree depth
+    int maxLevels = 16;                    // Maximum octree depth (total hierarchy depth)
+    int brickDepthLevels = 3;              // Bottom N levels reserved for dense brick data (brick size = 2^N)
+                                           // Example: 3 → 2³=8 → 8×8×8 voxel bricks
+                                           // 0 = disabled (pure octree, no bricks)
+                                           // Octree depth = maxLevels - brickDepthLevels
+    float minVoxelSize = 0.01f;            // Minimum voxel size in world units (prevents over-subdivision)
     float geometryErrorThreshold = 0.001f; // Max geometric error (voxel units)
     float colorErrorThreshold = 8.0f;      // Max color error (0-255 scale)
     float normalErrorThreshold = 0.1f;     // Max normal error (radians)

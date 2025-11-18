@@ -105,6 +105,24 @@ public:
                                    const glm::vec3& worldMax);
 
     /**
+     * Build octree from dense voxel grid.
+     *
+     * @param voxelData Flat array of voxels in ZYX order (z * res * res + y * res + x)
+     * @param resolution Grid resolution (cubic grid of resolution^3 voxels)
+     * @param worldMin World-space minimum bounds
+     * @param worldMax World-space maximum bounds
+     * @return Octree structure or nullptr on failure
+     *
+     * Voxel values: 0 = empty, 1-255 = solid (can represent material ID or density)
+     */
+    std::unique_ptr<Octree> buildFromVoxelGrid(
+        const std::vector<uint8_t>& voxelData,
+        uint32_t resolution,
+        const glm::vec3& worldMin,
+        const glm::vec3& worldMax
+    );
+
+    /**
      * Set progress callback.
      * Called periodically during build with progress in [0,1].
      */
@@ -181,6 +199,11 @@ private:
 
     // Recursive subdivision
     void subdivideNode(BuildContext::VoxelNode* node);
+    void subdivideNodeFromVoxels(BuildContext::VoxelNode* node,
+                                  const std::vector<uint8_t>& voxelData,
+                                  uint32_t gridResolution,
+                                  const glm::ivec3& gridOffset,
+                                  uint32_t gridSize);
     bool shouldTerminate(const BuildContext::VoxelNode* node) const;
 
     // Triangle filtering
