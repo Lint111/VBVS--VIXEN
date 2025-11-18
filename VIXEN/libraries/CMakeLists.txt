@@ -32,4 +32,7 @@ add_subdirectory(CashSystem)
 # RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)
 
+# SVO library (Sparse Voxel Octree - Laine & Karras 2010 implementation)
+add_subdirectory(SVO)
+
 message(STATUS "Libraries configured - all static libraries defined")

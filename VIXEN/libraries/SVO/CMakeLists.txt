@@ -75,20 +75,40 @@ target_include_directories(SVO
 # Dependencies
 # ------------------------------------------------------------------------------
 
-# GLM for math
-find_package(glm REQUIRED)
-target_link_libraries(SVO PUBLIC glm::glm)
+# GLM for math (fetched by dependencies/CMakeLists.txt)
+if(TARGET glm)
+    target_link_libraries(SVO PUBLIC glm)
+else()
+    message(FATAL_ERROR "GLM target not found - ensure dependencies/CMakeLists.txt is included before libraries/")
+endif()
 
-# TBB for parallel processing
-find_package(TBB REQUIRED)
-target_link_libraries(SVO PRIVATE TBB::tbb)
+# TBB for parallel processing (optional - fetch if not available)
+find_package(TBB QUIET)
+if(TBB_FOUND)
+    target_link_libraries(SVO PRIVATE TBB::tbb)
+    message(STATUS "TBB found - multi-threading enabled")
+else()
+    message(STATUS "TBB not found - fetching oneTBB from GitHub")
+    include(FetchContent)
+    FetchContent_Declare(
+        TBB
+        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
+        GIT_TAG v2021.11.0
+        GIT_SHALLOW TRUE
+    )
+    set(TBB_TEST OFF CACHE BOOL "" FORCE)
+    set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(TBB)
+    target_link_libraries(SVO PRIVATE TBB::tbb)
+    set_target_properties(tbb PROPERTIES FOLDER "Dependencies")
+endif()
 
 # ------------------------------------------------------------------------------
 # Optional Features
 # ------------------------------------------------------------------------------
 
 option(SVO_BUILD_TESTS "Build SVO unit tests" ON)
-option(SVO_BUILD_EXAMPLES "Build SVO examples" ON)
+option(SVO_BUILD_EXAMPLES "Build SVO examples" OFF)  # Disabled - examples not yet created
 option(SVO_ENABLE_PROFILING "Enable profiling instrumentation" OFF)
 option(SVO_ENABLE_VALIDATION "Enable runtime validation checks" OFF)
 
@@ -116,50 +136,3 @@ endif()
 if(SVO_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
-
-# ------------------------------------------------------------------------------
-# Installation
-# ------------------------------------------------------------------------------
-
-include(GNUInstallDirs)
-
-install(TARGETS SVO
-    EXPORT SVOTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(EXPORT SVOTargets
-    FILE SVOTargets.cmake
-    NAMESPACE SVO::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SVO
-)
-
-# ------------------------------------------------------------------------------
-# Package Config
-# ------------------------------------------------------------------------------
-
-include(CMakePackageConfigHelpers)
-
-configure_package_config_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/SVOConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/SVOConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SVO
-)
-
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/SVOConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/SVOConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/SVOConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SVO
-)

@@ -1,5 +1,6 @@
 #include "SVOTypes.h"
 #include <cmath>
+#include <algorithm>
 
 namespace SVO {
 

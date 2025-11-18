@@ -286,17 +286,40 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
 
         // Add attributes
         if (node->isLeaf) {
-            UncompressedAttributes attr;
-            attr.color = (uint32_t(node->data.color.r * 255) << 0) |
-                        (uint32_t(node->data.color.g * 255) << 8) |
-                        (uint32_t(node->data.color.b * 255) << 16) |
-                        (uint32_t(255) << 24);
+            UncompressedAttributes attr{};
 
-            // Simple normal encoding
+            // Set color components
+            attr.red = static_cast<uint8_t>(glm::clamp(node->data.color.r, 0.0f, 1.0f) * 255);
+            attr.green = static_cast<uint8_t>(glm::clamp(node->data.color.g, 0.0f, 1.0f) * 255);
+            attr.blue = static_cast<uint8_t>(glm::clamp(node->data.color.b, 0.0f, 1.0f) * 255);
+            attr.alpha = 255;
+
+            // Encode normal using point-on-cube
             glm::vec3 n = glm::normalize(node->data.normal);
-            attr.normal = (uint32_t((n.x * 0.5f + 0.5f) * 1023) << 0) |
-                         (uint32_t((n.y * 0.5f + 0.5f) * 1023) << 10) |
-                         (uint32_t((n.z * 0.5f + 0.5f) * 1023) << 20);
+            glm::vec3 absN = glm::abs(n);
+
+            // Find dominant axis
+            int axis = 0;
+            if (absN.y > absN.x && absN.y > absN.z) axis = 1;
+            else if (absN.z > absN.x && absN.z > absN.y) axis = 2;
+
+            // Determine sign bit
+            int sign = (axis == 0 ? n.x : (axis == 1 ? n.y : n.z)) >= 0.0f ? 1 : 0;
+
+            // Project to cube face (remap to [0, 1])
+            glm::vec2 uv;
+            switch (axis) {
+                case 0: uv = glm::vec2(n.y / absN.x, n.z / absN.x); break;
+                case 1: uv = glm::vec2(n.x / absN.y, n.z / absN.y); break;
+                case 2: uv = glm::vec2(n.x / absN.z, n.y / absN.z); break;
+            }
+            uv = (uv + 1.0f) * 0.5f;
+            uv = glm::clamp(uv, glm::vec2(0.0f), glm::vec2(1.0f));
+
+            // Pack into bitfields
+            attr.sign_and_axis = (axis << 1) | sign;
+            attr.u_coordinate = static_cast<uint32_t>(uv.x * 32767.0f);
+            attr.v_coordinate = static_cast<uint32_t>(uv.y * 16383.0f);
 
             rootBlock->attributes.push_back(attr);
         } else {

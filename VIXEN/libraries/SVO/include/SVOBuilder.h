@@ -5,6 +5,7 @@
 #include <memory>
 #include <functional>
 #include <optional>
+#include <string>
 
 namespace SVO {
 
@@ -127,8 +128,47 @@ private:
     BuildStats m_stats;
     std::function<void(float)> m_progressCallback;
 
-    // Build implementation
-    struct BuildContext;
+    // Build implementation - internal state during octree construction
+    struct BuildContext {
+        // Input data
+        std::vector<InputTriangle> triangles;
+        glm::vec3 worldMin;
+        glm::vec3 worldMax;
+        BuildParams params;
+
+        // Output octree
+        std::unique_ptr<Octree> octree;
+
+        // Current build state
+        struct VoxelNode {
+            glm::vec3 position;           // Normalized position [0,1]
+            float size;                   // Size in normalized coords
+            int level;                    // Depth in octree (0 = root)
+            std::vector<int> triangleIndices; // Triangles intersecting this voxel
+            std::vector<Contour> ancestorContours; // Contours from parents
+
+            // Child nodes (8 if subdivided, empty if leaf)
+            std::vector<std::unique_ptr<VoxelNode>> children;
+
+            // Computed data
+            UncompressedAttributes attributes;
+            std::optional<Contour> contour;
+            bool isLeaf = false;
+        };
+
+        std::unique_ptr<VoxelNode> rootNode;
+
+        // Statistics
+        size_t nodesProcessed = 0;
+        size_t leavesCreated = 0;
+        size_t triangleTests = 0;
+
+        // Progress tracking
+        std::function<void(float)> progressCallback;
+        std::atomic<size_t> processedNodes{0};
+        size_t totalEstimatedNodes = 0;
+    };
+
     std::unique_ptr<BuildContext> m_context;
 
     // Recursive subdivision

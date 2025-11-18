@@ -34,9 +34,9 @@ public:
     uint8_t getChildMask(const glm::vec3& position, int scale) const override;
     VoxelBounds getVoxelBounds(const glm::vec3& position, int scale) const override;
 
-    RayHit castRay(const glm::vec3& origin, const glm::vec3& direction,
+    ISVOStructure::RayHit castRay(const glm::vec3& origin, const glm::vec3& direction,
                    float tMin, float tMax) const override;
-    RayHit castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
+    ISVOStructure::RayHit castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
                       float lodBias, float tMin, float tMax) const override;
 
     glm::vec3 getWorldMin() const override { return m_worldMin; }
@@ -50,7 +50,7 @@ public:
     std::vector<uint8_t> serialize() const override;
     bool deserialize(std::span<const uint8_t> data) override;
 
-    GPUBuffers getGPUBuffers() const override;
+    ISVOStructure::GPUBuffers getGPUBuffers() const override;
     std::string getGPUTraversalShader() const override;
 
     // Construction interface (called by builder)
@@ -75,7 +75,7 @@ private:
         glm::vec3 position{0.0f};
     };
 
-    RayHit castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
+    ISVOStructure::RayHit castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
                        float tMin, float tMax, float rayBias) const;
 
     // Traversal helpers (implements algorithm from Appendix A)

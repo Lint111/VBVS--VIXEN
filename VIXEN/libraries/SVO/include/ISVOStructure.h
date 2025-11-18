@@ -5,6 +5,8 @@
 #include <optional>
 #include <span>
 #include <vector>
+#include <string>
+#include <functional>
 
 namespace SVO {
 

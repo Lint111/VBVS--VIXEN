@@ -41,20 +41,20 @@ VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& position, int sca
     return bounds;
 }
 
-RayHit LaineKarrasOctree::castRay(const glm::vec3& origin, const glm::vec3& direction,
+ISVOStructure::RayHit LaineKarrasOctree::castRay(const glm::vec3& origin, const glm::vec3& direction,
                                    float tMin, float tMax) const {
     return castRayImpl(origin, direction, tMin, tMax, 0.0f);
 }
 
-RayHit LaineKarrasOctree::castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
+ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
                                       float lodBias, float tMin, float tMax) const {
     return castRayImpl(origin, direction, tMin, tMax, lodBias);
 }
 
-RayHit LaineKarrasOctree::castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
+ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
                                        float tMin, float tMax, float rayBias) const {
     // TODO: Implement CUDA-style ray caster from paper Appendix A
-    RayHit hit{};
+    ISVOStructure::RayHit hit{};
     hit.hit = false;
     return hit;
 }
@@ -89,8 +89,8 @@ bool LaineKarrasOctree::deserialize(std::span<const uint8_t> data) {
     return false;
 }
 
-GPUBuffers LaineKarrasOctree::getGPUBuffers() const {
-    GPUBuffers buffers{};
+ISVOStructure::GPUBuffers LaineKarrasOctree::getGPUBuffers() const {
+    ISVOStructure::GPUBuffers buffers{};
 
     if (!m_octree || !m_octree->root) {
         return buffers;
