@@ -124,6 +124,19 @@ include(test_per_frame_resources.cmake)
 include(test_critical_nodes.cmake)
 
 # ===========================================================================
+# Pipeline Nodes Tests (Priority 4)
+# ===========================================================================
+# These test suites validate pipeline creation and dispatch nodes:
+# - GraphicsPipelineNode: Graphics pipeline configuration
+# - RenderPassNode: Render pass management
+# - ComputePipelineNode: Compute pipeline creation
+# - ComputeDispatchNode: Compute dispatch operations
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full Vulkan SDK.
+
+include(Pipelines/test_pipeline_nodes.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):
