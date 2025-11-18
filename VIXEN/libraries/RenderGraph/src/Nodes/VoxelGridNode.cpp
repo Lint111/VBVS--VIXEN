@@ -1,19 +1,23 @@
 #include "Nodes/VoxelGridNode.h"
 #include "Data/SceneGenerator.h"
-#include "Data/VoxelOctree.h"
+#include "Data/VoxelOctree.h" // Legacy - will be removed
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <cmath>
 #include <cstring>
 #include <fstream>
 
+// New SVO library integration
+#include "SVOBuilder.h"
+#include "LaineKarrasOctree.h"
+
 using VIXEN::RenderGraph::VoxelGrid;
-using VIXEN::RenderGraph::SparseVoxelOctree;
+using VIXEN::RenderGraph::SparseVoxelOctree; // Legacy - will be removed
 using VIXEN::RenderGraph::CornellBoxGenerator;
 using VIXEN::RenderGraph::CaveSystemGenerator;
 using VIXEN::RenderGraph::UrbanGridGenerator;
-using VIXEN::RenderGraph::OctreeNode;
-using VIXEN::RenderGraph::VoxelBrick;
+using VIXEN::RenderGraph::OctreeNode; // Legacy - will be removed
+using VIXEN::RenderGraph::VoxelBrick; // Legacy - will be removed
 
 namespace Vixen::RenderGraph {
 
@@ -83,37 +87,50 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Generated " + std::to_string(voxelCount) + " voxels, density=" +
                   std::to_string(grid.GetDensityPercent()) + "%");
 
-    // Build sparse voxel octree (ESVO format for 5× memory reduction)
-    std::cout << "[VoxelGridNode] Building ESVO octree..." << std::endl;
-    SparseVoxelOctree octree;
-    octree.BuildFromGrid(grid.GetData(), resolution, VIXEN::RenderGraph::NodeFormat::ESVO);
+    // Build sparse voxel octree using new SVO library
+    std::cout << "[VoxelGridNode] Building SVO octree (Laine-Karras ESVO)..." << std::endl;
 
-    // DEBUG: Check for symmetry issues
-    octree.CheckForSymmetry();
+    SVO::BuildParams params;
+    params.maxLevels = 16;           // Total hierarchy depth
+    params.brickDepthLevels = 3;     // Bottom 3 levels = 8×8×8 bricks
+    params.minVoxelSize = 0.01f;     // Stop if voxels < 0.01 world units
+    params.enableContours = false;   // Disable for now (Week 4)
+    params.enableCompression = false; // Disable for now (Week 3)
 
-    size_t nodeCount = (octree.GetNodeFormat() == VIXEN::RenderGraph::NodeFormat::ESVO)
-                       ? octree.GetESVONodes().size()
-                       : octree.GetNodes().size();
+    SVO::SVOBuilder builder(params);
+    auto svoOctree = builder.buildFromVoxelGrid(
+        grid.GetData(),
+        resolution,
+        glm::vec3(0.0f),  // worldMin
+        glm::vec3(static_cast<float>(resolution)) // worldMax
+    );
 
-    std::cout << "[VoxelGridNode] Built ESVO octree: " << nodeCount << " nodes (8 bytes/node), "
-              << octree.GetBricks().size() << " bricks, compression="
-              << octree.GetCompressionRatio(resolution) << ":1" << std::endl;
-    NODE_LOG_INFO("Built ESVO octree: " +
-                  std::to_string(nodeCount) + " nodes (8 bytes/node), " +
-                  std::to_string(octree.GetBricks().size()) + " bricks, " +
-                  "compression=" + std::to_string(octree.GetCompressionRatio(resolution)) + ":1");
-
-    // DEBUG: Sample voxel material IDs from first brick
-    if (octree.GetBricks().size() > 0) {
-        const auto& bricks = octree.GetBricks();
-        std::cout << "[VoxelGridNode] DEBUG: First brick voxel samples (Z=0, Y=0):" << std::endl;
-        for (int x = 0; x < 8; ++x) {
-            std::cout << "  voxel[0][0][" << x << "] = " << static_cast<int>(bricks[0].voxels[0][0][x]) << std::endl;
-        }
+    if (!svoOctree) {
+        throw std::runtime_error("[VoxelGridNode] Failed to build SVO octree");
     }
 
-    // Upload octree buffers
-    UploadOctreeBuffers(octree);
+    std::cout << "[VoxelGridNode] Built SVO octree: "
+              << svoOctree->root->childDescriptors.size() << " nodes, "
+              << "total voxels=" << svoOctree->totalVoxels << ", "
+              << "memory=" << (svoOctree->memoryUsage / 1024.0f / 1024.0f) << " MB" << std::endl;
+    NODE_LOG_INFO("Built SVO octree: " +
+                  std::to_string(svoOctree->root->childDescriptors.size()) + " nodes, " +
+                  "total voxels=" + std::to_string(svoOctree->totalVoxels));
+
+    // TODO: Re-implement debug output for new SVO structure
+    // DEBUG: Sample voxel material IDs from first brick
+    // if (octree.GetBricks().size() > 0) {
+    //     const auto& bricks = octree.GetBricks();
+    //     std::cout << "[VoxelGridNode] DEBUG: First brick voxel samples (Z=0, Y=0):" << std::endl;
+    //     for (int x = 0; x < 8; ++x) {
+    //         std::cout << "  voxel[0][0][" << x << "] = " << static_cast<int>(bricks[0].voxels[0][0][x]) << std::endl;
+    //     }
+    // }
+
+    // TODO: Implement GPU buffer upload for new SVO structure
+    // For now, create placeholder buffers
+    // UploadOctreeBuffers(octree);
+    std::cout << "[VoxelGridNode] TODO: Implement GPU buffer upload for new SVO structure" << std::endl;
 
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;

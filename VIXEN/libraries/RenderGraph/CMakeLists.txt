@@ -252,6 +252,7 @@ target_link_libraries(RenderGraph
         ResourceManagement
         CashSystem
         ShaderManagement
+        SVO                    # New SVO library for Laine-Karras ESVO octrees
         magic_enum::magic_enum
 )
 
