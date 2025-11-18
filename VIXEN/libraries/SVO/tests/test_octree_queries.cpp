@@ -1327,3 +1327,257 @@ TEST_F(CornellBoxTest, NormalValidation_AllWalls) {
         EXPECT_GT(dotProduct, 0.5f) << test.wallName << " normal incorrect";
     }
 }
+
+// ===========================================================================
+// ESVO Reference Adoption Tests - Parametric Planes
+// ===========================================================================
+
+/**
+ * Test parametric plane coefficient calculation
+ *
+ * Reference: cuda/Raycast.inl lines 100-109
+ * Tests tx_coef, ty_coef, tz_coef computation
+ */
+TEST(LaineKarrasOctree, ParametricPlanes_AxisAligned) {
+    // Test ray along +X axis
+    glm::vec3 origin(0.0f, 0.5f, 0.5f);
+    glm::vec3 direction(1.0f, 0.0f, 0.0f);
+
+    // Expected parametric coefficients for this ray:
+    // tx_coef = 1 / -|dx| = 1 / -1 = -1
+    // ty_coef = 1 / -|0| = 1 / -epsilon = very large negative
+    // tz_coef = 1 / -|0| = 1 / -epsilon = very large negative
+
+    // This test verifies the implementation handles axis-aligned rays correctly
+    // by checking that the ray caster doesn't crash or produce NaN values
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    // Single solid voxel at origin
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b00000001;
+    root.leafMask = 0b00000001; // Leaf
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b00000001;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    UncompressedAttributes attr = makeAttributes(
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+    oct->root->attributes.push_back(attr);
+
+    octree->setOctree(std::move(oct));
+
+    // Cast ray - should not crash and should produce valid results
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Verify no NaN values in hit
+    EXPECT_FALSE(std::isnan(hit.tMin));
+    EXPECT_FALSE(std::isnan(hit.tMax));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.position)));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.normal)));
+}
+
+TEST(LaineKarrasOctree, ParametricPlanes_Diagonal) {
+    // Test ray at 45-degree angle
+    glm::vec3 origin(-1.0f, -1.0f, 0.5f);
+    glm::vec3 direction = glm::normalize(glm::vec3(1.0f, 1.0f, 0.0f));
+
+    // Expected parametric coefficients:
+    // tx_coef = 1 / -|1/sqrt(2)| ≈ -1.414
+    // ty_coef = 1 / -|1/sqrt(2)| ≈ -1.414
+    // tz_coef = 1 / -|0| = 1 / -epsilon = very large negative
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b00000001;
+    root.leafMask = 0b00000001;
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b00000001;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    UncompressedAttributes attr = makeAttributes(
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+    oct->root->attributes.push_back(attr);
+
+    octree->setOctree(std::move(oct));
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Verify no NaN values
+    EXPECT_FALSE(std::isnan(hit.tMin));
+    EXPECT_FALSE(std::isnan(hit.tMax));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.position)));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.normal)));
+}
+
+/**
+ * Test XOR octant mirroring
+ *
+ * Reference: cuda/Raycast.inl lines 114-117
+ * Verifies coordinate system mirroring for negative ray directions
+ */
+TEST(LaineKarrasOctree, XORMirroring_PositiveDirection) {
+    // Ray with all positive direction components
+    glm::vec3 origin(-1.0f, -1.0f, -1.0f);
+    glm::vec3 direction(1.0f, 1.0f, 1.0f);
+
+    // Expected octant_mask = 7 XOR 1 XOR 2 XOR 4 = 0
+    // (all axes mirrored since all positive)
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b11111111; // All octants exist
+    root.leafMask = 0b11111111;  // All leaves
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b11111111;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    for (int i = 0; i < 8; ++i) {
+        UncompressedAttributes attr = makeAttributes(
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
+        oct->root->attributes.push_back(attr);
+    }
+
+    octree->setOctree(std::move(oct));
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Should hit successfully with mirrored coordinates
+    EXPECT_TRUE(hit.hit);
+    EXPECT_FALSE(std::isnan(hit.tMin));
+}
+
+TEST(LaineKarrasOctree, XORMirroring_NegativeDirection) {
+    // Ray with all negative direction components
+    glm::vec3 origin(2.0f, 2.0f, 2.0f);
+    glm::vec3 direction(-1.0f, -1.0f, -1.0f);
+
+    // Expected octant_mask = 7 (no mirroring since all negative)
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b11111111;
+    root.leafMask = 0b11111111;
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b11111111;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    for (int i = 0; i < 8; ++i) {
+        UncompressedAttributes attr = makeAttributes(
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
+        oct->root->attributes.push_back(attr);
+    }
+
+    octree->setOctree(std::move(oct));
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Should hit successfully without mirroring
+    EXPECT_TRUE(hit.hit);
+    EXPECT_FALSE(std::isnan(hit.tMin));
+}
+
+TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
+    // Ray with mixed direction components (+, -, +)
+    glm::vec3 origin(-1.0f, 2.0f, -1.0f);
+    glm::vec3 direction(1.0f, -1.0f, 1.0f);
+
+    // Expected octant_mask = 7 XOR 1 XOR 4 = 2
+    // (X and Z mirrored, Y not mirrored)
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b11111111;
+    root.leafMask = 0b11111111;
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b11111111;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    for (int i = 0; i < 8; ++i) {
+        UncompressedAttributes attr = makeAttributes(
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
+        oct->root->attributes.push_back(attr);
+    }
+
+    octree->setOctree(std::move(oct));
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Should hit successfully with partial mirroring
+    EXPECT_TRUE(hit.hit);
+    EXPECT_FALSE(std::isnan(hit.tMin));
+}

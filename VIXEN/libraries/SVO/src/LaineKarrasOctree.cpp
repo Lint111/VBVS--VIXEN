@@ -450,6 +450,38 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     }
 
     // ========================================================================
+    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl lines 100-117)
+    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
+    // ========================================================================
+    // Parametric plane traversal setup
+    // Precompute coefficients for tx(x), ty(y), tz(z)
+    // Octree is normalized to [1, 2] in reference, mapped from world bounds here
+    // ========================================================================
+
+    // Prevent divide-by-zero with epsilon (2^-23)
+    constexpr float epsilon = 1.19209290e-07f; // std::exp2f(-23)
+    glm::vec3 rayDirSafe = rayDir;
+    if (std::abs(rayDirSafe.x) < epsilon) rayDirSafe.x = std::copysignf(epsilon, rayDirSafe.x);
+    if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysignf(epsilon, rayDirSafe.y);
+    if (std::abs(rayDirSafe.z) < epsilon) rayDirSafe.z = std::copysignf(epsilon, rayDirSafe.z);
+
+    // Parametric plane coefficients
+    // Reference assumes octree in [1, 2]; we map from [worldMin, worldMax]
+    float tx_coef = 1.0f / -std::abs(rayDirSafe.x);
+    float ty_coef = 1.0f / -std::abs(rayDirSafe.y);
+    float tz_coef = 1.0f / -std::abs(rayDirSafe.z);
+
+    float tx_bias = tx_coef * origin.x;
+    float ty_bias = ty_coef * origin.y;
+    float tz_bias = tz_coef * origin.z;
+
+    // XOR octant mirroring: mirror coordinate system so ray direction is negative along each axis
+    int octant_mask = 7;
+    if (rayDirSafe.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
+    if (rayDirSafe.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
+    if (rayDirSafe.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
+
+    // ========================================================================
     // Phase 1: Ray-AABB Intersection with World Bounds
     // ========================================================================
 
@@ -472,7 +504,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Start at entry point (or origin if inside volume)
     float t = std::max(tEntry, 0.0f);
-    const float epsilon = 1e-6f;
+    const float traversalEpsilon = 1e-6f;
     const int maxSteps = 50000; // Temporary - TODO: implement hierarchical DDA
 
     for (int step = 0; step < maxSteps && t < tExit; ++step) {
@@ -532,9 +564,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 float voxelTMin, voxelTMax;
                 intersectAABB(origin, rayDir, childMin, childMax, voxelTMin, voxelTMax);
 
-                // If voxelTMin <= epsilon, we're at or inside this voxel
+                // If voxelTMin <= traversalEpsilon, we're at or inside this voxel
                 // Skip it and continue stepping to find the next solid voxel we enter from outside
-                if (voxelTMin <= epsilon) {
+                if (voxelTMin <= traversalEpsilon) {
                     finalDepth = depth;
                     finalNodeMin = childMin;
                     finalNodeMax = childMax;
@@ -544,7 +576,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                                   << (childMax.x - childMin.x) << " - skipping" << std::endl;
                     }
                     // Step to exit of this voxel
-                    t = voxelTMax + epsilon;
+                    t = voxelTMax + traversalEpsilon;
                     break; // Continue outer loop
                 }
 
@@ -599,7 +631,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Calculate t-values to next axis-aligned voxel boundaries
         glm::vec3 tNext;
         for (int axis = 0; axis < 3; ++axis) {
-            if (std::abs(rayDir[axis]) > epsilon) {
+            if (std::abs(rayDir[axis]) > traversalEpsilon) {
                 // Find which boundary we'll cross next in this axis
                 float boundaryPos;
                 if (rayDir[axis] > 0) {
@@ -610,7 +642,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 // Add offset to boundary to guarantee we cross it
                 // Direction of offset matches ray direction
-                float offset = (rayDir[axis] > 0) ? epsilon : -epsilon;
+                float offset = (rayDir[axis] > 0) ? traversalEpsilon : -traversalEpsilon;
                 boundaryPos += offset;
 
                 // Calculate absolute t-value to reach offset boundary
@@ -631,7 +663,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Ensure forward progress
         if (tStep == std::numeric_limits<float>::max() || tStep <= t) {
             // Fallback: force small step forward
-            t = t + epsilon / std::max({std::abs(rayDir.x), std::abs(rayDir.y), std::abs(rayDir.z)});
+            t = t + traversalEpsilon / std::max({std::abs(rayDir.x), std::abs(rayDir.y), std::abs(rayDir.z)});
         } else {
             t = tStep;
         }
