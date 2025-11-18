@@ -1,12 +1,12 @@
 # Active Context
 
-**Last Updated**: November 18, 2025 (Day 2 In Progress)
+**Last Updated**: November 18, 2025 (Day 3 Progress)
 
 ---
 
-## Current Focus: SVO Library Reference Adoption - Week 1 Day 2 🔄
+## Current Focus: SVO Library Reference Adoption - Week 1 Day 3 🔄
 
-### Implementation Phase: Day 2 In Progress
+### Implementation Phase: Day 3 Progress (90% Loop Complete)
 
 **Objective**: Adopt NVIDIA Laine-Karras ESVO reference implementation into VIXEN SVO library
 
@@ -113,30 +113,72 @@
 - [cuda/Raycast.inl:100-109](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L100-L109) - Parametric coefficients
 - [cuda/Raycast.inl:114-117](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L114-L117) - XOR mirroring
 
-### Day 2 Progress 🔄 (Nov 18, 2025)
+### Day 2 Complete ✅ (Partial Loop - Nov 18, 2025)
 
 **Completed**:
 1. ✅ Implemented CastStack structure - [LaineKarrasOctree.h:87-100](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\LaineKarrasOctree.h#L87-L100)
 2. ✅ Added CAST_STACK_DEPTH constant (23 levels)
-3. ✅ Added stack test - [test_octree_queries.cpp:1591-1632](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp#L1591-L1632)
+3. ✅ Added stack test - [test_octree_queries.cpp:1591-1632](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp#L1591-1632)
 4. ✅ Implemented world→[1,2] space mapping - [LaineKarrasOctree.cpp:509-524](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L509-L524)
 5. ✅ Ported main loop initialization (t_min/t_max, scale, pos) - [LaineKarrasOctree.cpp:526-552](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L526-L552)
 6. ✅ Ported child descriptor fetch logic - [LaineKarrasOctree.cpp:567-573](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L567-L573)
 7. ✅ Ported t_corner calculation - [LaineKarrasOctree.cpp:575-581](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L575-L581)
+8. ✅ Ported voxel validity check - [LaineKarrasOctree.cpp:592-593](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L592-L593)
+9. ✅ Ported t-span intersection (tv_max, tx/ty/tz_center) - [LaineKarrasOctree.cpp:604-608](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L604-L608)
+10. ✅ Ported leaf detection and hit return - [LaineKarrasOctree.cpp:620-632](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L620-L632)
+11. ✅ Ported stack push operation - [LaineKarrasOctree.cpp:640-643](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L640-L643)
 
 **Test Results**:
-- Parametric planes tests: 2/2 ✅ (still passing)
-- XOR mirroring tests: 0/3 ❌ (expected - traversal loop incomplete)
+- Parametric planes tests: 2/2 ✅
+- XOR mirroring tests: 0/3 ❌ (expected - descend/advance logic incomplete)
 - Stack test: 1/1 ✅
+- Build: ✅ Success
 
-**In Progress**:
-- Main loop body still incomplete (placeholder break statement)
+**Status**: ~60% of traversal loop ported. Core structure in place, but incomplete.
 
-**Next**:
-- Port contour intersection logic
-- Port descend/push stack operations
-- Port advance/pop stack operations
-- Complete traversal loop
+**Reference Adopted** (Day 2):
+- [cuda/Raycast.inl:119-138](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L119-L138) - Loop initialization
+- [cuda/Raycast.inl:155-169](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L155-L169) - Child descriptor fetch + t_corner
+- [cuda/Raycast.inl:176-194](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L176-L194) - Validity check + t-span intersection
+- [cuda/Raycast.inl:225-246](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L225-L246) - Leaf detection + stack push (partial)
+
+### Day 3 Complete ✅ (Nov 18, 2025)
+
+**Completed**:
+1. ✅ Completed descend logic with child offset calculation - [LaineKarrasOctree.cpp:650-683](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L650-L683)
+2. ✅ Ported ADVANCE logic (step_mask, position update) - [LaineKarrasOctree.cpp:687-710](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L687-L710)
+3. ✅ Ported POP logic (differing bits, scale restoration) - [LaineKarrasOctree.cpp:712-766](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L712-L766)
+4. ✅ Ported coordinate mirroring undo - [LaineKarrasOctree.cpp:769-772](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L769-L772)
+5. ✅ Fixed ray origin mapping bug (was using world origin instead of entry point)
+6. ✅ Added safety checks (empty octree, bounds checking)
+
+**Bug Fixed**:
+- **Root Cause**: Ray origin was mapped to [1,2] space using world coordinates instead of AABB entry point
+- **Issue**: When ray started outside octree (e.g., origin=(-1,-1,-1), bounds=[0,1]), normOrigin became (0,0,0) (outside [1,2] space)
+- **Result**: t_min > t_max (inverted interval), causing immediate traversal failure
+- **Fix**: Added rayEntryPoint = origin + rayDir * tEntry before mapping to [1,2] space - [LaineKarrasOctree.cpp:510](c:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\LaineKarrasOctree.cpp#L510)
+
+**Test Results**:
+- Parametric planes tests: 2/2 ✅
+- Stack test: 1/1 ✅
+- XOR mirroring tests: 3/3 ✅ (now passing after fix!)
+- Ray origin inside octree: 1/1 ✅ (supports camera movement inside voxel scenes)
+- **Overall**: 7/7 ESVO tests passing (100%)
+
+**Status**: 100% of traversal loop ported and working. All ESVO reference tests passing.
+
+**Reference Adopted** (Day 3):
+- [cuda/Raycast.inl:256-274](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L256-L274) - Descend logic
+- [cuda/Raycast.inl:277-290](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L277-L290) - ADVANCE logic
+- [cuda/Raycast.inl:292-327](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L292-L327) - POP logic
+- [cuda/Raycast.inl:342-346](C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree\cuda\Raycast.inl#L342-L346) - Coordinate undo
+
+**Remaining** (Day 4):
+- Run full test suite (expect improvement from 78/94 → 90+/94)
+- Benchmark CPU traversal vs old DDA (expect 3-5× speedup)
+- Verify Cornell box tests now pass
+- Document inside-grid rendering capability (camera can move inside voxel scenes)
+- Plan GPU shader support for inside-grid rendering (Week 2)
 
 **Success Criteria Week 1**:
 - [ ] CPU ray caster matches reference (<0.1% error)

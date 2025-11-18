@@ -1630,3 +1630,54 @@ TEST(LaineKarrasOctree, CastStack_PushPop) {
     EXPECT_FALSE(std::isnan(hit.tMin));
     EXPECT_FALSE(std::isnan(hit.tMax));
 }
+
+// ============================================================================
+// ESVO Test: Ray origin inside octree grid
+// ============================================================================
+
+TEST(LaineKarrasOctree, RayOriginInsideOctree) {
+    // Ray starting inside the octree grid should still find hits
+    // Origin at center of octree [0,1] space
+    glm::vec3 origin(0.5f, 0.5f, 0.5f);
+    glm::vec3 direction(1.0f, 0.0f, 0.0f);  // Shoot towards +X
+
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    // Create root with all 8 octants as leaves
+    ChildDescriptor root{};
+    root.childPointer = 0;
+    root.farBit = 0;
+    root.validMask = 0b11111111; // All octants exist
+    root.leafMask = 0b11111111;  // All leaves
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    AttributeLookup attrLookup{};
+    attrLookup.valuePointer = 0;
+    attrLookup.mask = 0b11111111;
+    oct->root->attributeLookups.push_back(attrLookup);
+
+    for (int i = 0; i < 8; ++i) {
+        UncompressedAttributes attr = makeAttributes(
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
+        oct->root->attributes.push_back(attr);
+    }
+
+    octree->setOctree(std::move(oct));
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Should hit immediately since we're already inside a voxel
+    EXPECT_TRUE(hit.hit);
+    EXPECT_GE(hit.tMin, 0.0f);  // Can be 0 (immediate) or positive
+    EXPECT_FALSE(std::isnan(hit.tMin));
+    EXPECT_FALSE(std::isnan(hit.tMax));
+}

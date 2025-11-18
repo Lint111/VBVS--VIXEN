@@ -506,10 +506,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Reference uses normalized [1,2] space - we must map world space to this
     // ========================================================================
 
+    // Advance ray to entry point (if ray starts outside octree)
+    glm::vec3 rayEntryPoint = origin + rayDir * tEntry;
+
     // Map world space to [1,2] normalized space for algorithm
     // World [worldMin, worldMax] → Normalized [1, 2]
     glm::vec3 worldSize = m_worldMax - m_worldMin;
-    glm::vec3 normOrigin = (origin - m_worldMin) / worldSize + glm::vec3(1.0f);
+    glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
     glm::vec3 normDir = rayDir; // Direction doesn't change
 
     // Recompute parametric coefficients for normalized space
@@ -538,6 +541,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Initialize traversal state
     // Reference: lines 127-134
     CastStack stack;
+
+    // Safety check: ensure octree has root descriptor
+    if (m_octree->root->childDescriptors.empty()) {
+        return miss;
+    }
+
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
     int idx = 0; // Child octant index
@@ -566,10 +575,15 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
         // Fetch child descriptor unless already valid
         if (child_descriptor == 0) {
-            // In reference: child_descriptor = *(int2*)parent
-            // We access via ChildDescriptor structure
-            child_descriptor = parent->childPointer | (static_cast<uint64_t>(parent->validMask) << 16) |
-                             (static_cast<uint64_t>(parent->leafMask) << 24);
+            // In reference: child_descriptor.x is the first 32 bits with layout:
+            // Bits 0-7: nonLeafMask (inverse of leafMask)
+            // Bits 8-15: validMask
+            // Bits 16-31: childPointer (lower bits) + far bit
+            // We pack it to match this layout for correct bit shifting
+            uint32_t nonLeafMask = ~parent->leafMask & 0xFF; // Invert leaf mask
+            child_descriptor = nonLeafMask |
+                             (static_cast<uint64_t>(parent->validMask) << 8) |
+                             (static_cast<uint64_t>(parent->childPointer) << 16);
         }
 
         // Compute maximum t-value at voxel corner
@@ -581,20 +595,213 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         float tc_max = std::min({tx_corner, ty_corner, tz_corner});
 
         // ====================================================================
-        // ADOPTED FROM: cuda/Raycast.inl lines 174-176
-        // Check if voxel is valid and active t-span is non-empty
+        // ADOPTED FROM: cuda/Raycast.inl lines 174-232
+        // Check if voxel is valid, test termination, descend or advance
         // ====================================================================
 
         // Permute child slots based on octant mirroring
         int child_shift = idx ^ octant_mask;
         uint32_t child_masks = static_cast<uint32_t>(child_descriptor) << child_shift;
 
-        // TODO: Port full traversal logic from reference
-        // For now, return miss to allow compilation
-        // Next steps: Port descend/push, advance/pop, and termination logic
-        break;
+        // Check if voxel is valid (valid mask bit is set) and t-span is non-empty
+        if ((child_masks & 0x8000) != 0 && t_min <= t_max)
+        {
+            // Terminate if voxel is small enough (reference line 181-182)
+            // Note: ray.dir_sz and ray_orig_sz are LOD-related, skipping for now
+            // if (tc_max * ray.dir_sz + ray_orig_sz >= scale_exp2) break;
+
+            // ================================================================
+            // INTERSECT: Compute t-span intersection with current voxel
+            // Reference lines 188-194
+            // ================================================================
+
+            float tv_max = std::min(t_max, tc_max);
+            float half = scale_exp2 * 0.5f;
+            float tx_center = half * tx_coef + tx_corner;
+            float ty_center = half * ty_coef + ty_corner;
+            float tz_center = half * tz_coef + tz_corner;
+
+            // ================================================================
+            // CONTOUR INTERSECTION (Reference lines 196-220)
+            // For now, skip contours (will port in future iteration)
+            // This means t_min stays as-is, tv_max is just min(t_max, tc_max)
+            // ================================================================
+
+            // Descend to first child if resulting t-span is non-empty
+            if (t_min <= tv_max)
+            {
+                // Check if this is a leaf (non-leaf mask bit clear means it's a leaf)
+                if ((child_masks & 0x0080) == 0) {
+                    // Leaf voxel hit! Return intersection
+                    // TODO: Get actual voxel attributes and compute proper normal
+                    ISVOStructure::RayHit hit{};
+                    hit.hit = true;
+                    hit.tMin = t_min;
+                    hit.tMax = tv_max;
+                    hit.position = origin + rayDir * t_min;
+                    hit.scale = CAST_STACK_DEPTH - 1 - scale; // Convert scale to depth
+                    // Placeholder normal - should compute from voxel face
+                    hit.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+                    return hit;
+                }
+
+                // ============================================================
+                // PUSH: Internal node, descend to children
+                // Reference lines 233-246
+                // ============================================================
+
+                // Push current state onto stack if needed
+                if (tc_max < h) {
+                    stack.push(scale, parent, t_max);
+                }
+                h = tc_max;
+
+                // ============================================================
+                // DESCEND: Complete child selection and update traversal state
+                // Reference lines 248-274
+                // ============================================================
+
+                // Calculate offset to child based on popcount of valid mask
+                // Count how many valid children come before current child
+                int child_shift_idx = idx ^ octant_mask;
+                uint32_t child_offset = 0;
+
+                // Count set bits in child_masks before position child_shift_idx
+                // child_masks has valid mask with MSB at position 7 (0x8000 >> child_shift)
+                for (int i = 0; i < child_shift_idx; ++i) {
+                    if ((child_masks >> (15 - i)) & 1) {  // Check valid mask bits
+                        child_offset++;
+                    }
+                }
+
+                // Update parent pointer to point to child
+                // In our structure, childPointer is an index into childDescriptors array
+                uint32_t child_index = parent->childPointer + child_offset;
+
+                // Bounds check
+                if (child_index >= m_octree->root->childDescriptors.size()) {
+                    break; // Invalid child pointer - exit loop
+                }
+
+                parent = &m_octree->root->childDescriptors[child_index];
+
+                // Descend to next level
+                idx = 0;
+                scale--;
+                scale_exp2 = half;
+
+                // Select which octant of the child contains the ray entry point
+                if (tx_center > t_min) idx ^= 1, pos.x += scale_exp2;
+                if (ty_center > t_min) idx ^= 2, pos.y += scale_exp2;
+                if (tz_center > t_min) idx ^= 4, pos.z += scale_exp2;
+
+                // Update active t-span and invalidate child descriptor
+                t_max = tv_max;
+                child_descriptor = 0;
+                continue; // Continue main loop
+            }
+        }
+
+        // ================================================================
+        // ADVANCE: Move to next voxel
+        // Reference lines 277-290
+        // ================================================================
+
+        // Determine which dimensions we need to step in
+        int step_mask = 0;
+        if (tx_corner <= tc_max) step_mask ^= 1, pos.x -= scale_exp2;
+        if (ty_corner <= tc_max) step_mask ^= 2, pos.y -= scale_exp2;
+        if (tz_corner <= tc_max) step_mask ^= 4, pos.z -= scale_exp2;
+
+        // Update active t-span and flip child slot index bits
+        t_min = tc_max;
+        idx ^= step_mask;
+
+        // ================================================================
+        // POP: Backtrack if we've exited the current parent voxel
+        // Reference lines 292-327
+        // ================================================================
+
+        // Check if bit flips disagree with ray direction (means we left parent)
+        if ((idx & step_mask) != 0)
+        {
+            // ============================================================
+            // POP: Find the highest differing bit to determine scale level
+            // Reference lines 296-327
+            // ============================================================
+
+            // Find highest differing bit between current and next position
+            uint32_t differing_bits = 0;
+
+            if ((step_mask & 1) != 0) {
+                uint32_t pos_x_bits = std::bit_cast<uint32_t>(pos.x);
+                uint32_t next_x_bits = std::bit_cast<uint32_t>(pos.x + scale_exp2);
+                differing_bits |= (pos_x_bits ^ next_x_bits);
+            }
+            if ((step_mask & 2) != 0) {
+                uint32_t pos_y_bits = std::bit_cast<uint32_t>(pos.y);
+                uint32_t next_y_bits = std::bit_cast<uint32_t>(pos.y + scale_exp2);
+                differing_bits |= (pos_y_bits ^ next_y_bits);
+            }
+            if ((step_mask & 4) != 0) {
+                uint32_t pos_z_bits = std::bit_cast<uint32_t>(pos.z);
+                uint32_t next_z_bits = std::bit_cast<uint32_t>(pos.z + scale_exp2);
+                differing_bits |= (pos_z_bits ^ next_z_bits);
+            }
+
+            // Extract scale from the position of highest bit
+            // Convert differing_bits to float (value conversion, not bit reinterpretation)
+            // Then reinterpret the float's bits to extract exponent
+            float diff_value_as_float = static_cast<float>(differing_bits);
+            uint32_t diff_float_bits = std::bit_cast<uint32_t>(diff_value_as_float);
+            scale = static_cast<int>((diff_float_bits >> 23) & 0xFF) - 127;
+
+            // Compute scale_exp2 = exp2f(scale - CAST_STACK_DEPTH)
+            int scale_exp = scale - CAST_STACK_DEPTH + 127;
+            scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(scale_exp << 23));
+
+            // Restore parent voxel from stack
+            if (scale >= 0 && scale < CAST_STACK_DEPTH) {
+                parent = stack.nodes[scale];
+                t_max = stack.tMax[scale];
+            } else {
+                // Scale out of bounds - exit loop
+                break;
+            }
+
+            // Round cube position and extract child slot index
+            uint32_t shx = std::bit_cast<uint32_t>(pos.x) >> scale;
+            uint32_t shy = std::bit_cast<uint32_t>(pos.y) >> scale;
+            uint32_t shz = std::bit_cast<uint32_t>(pos.z) >> scale;
+
+            pos.x = std::bit_cast<float>(shx << scale);
+            pos.y = std::bit_cast<float>(shy << scale);
+            pos.z = std::bit_cast<float>(shz << scale);
+
+            idx = (shx & 1) | ((shy & 1) << 1) | ((shz & 1) << 2);
+
+            // Prevent same parent from being stored again and invalidate cached child descriptor
+            h = 0.0f;
+            child_descriptor = 0;
+        }
     }
 
+    // ====================================================================
+    // TERMINATION: Undo mirroring and return result
+    // Reference lines 342-346
+    // ====================================================================
+
+    // If we exited the octree, return miss
+    if (scale >= CAST_STACK_DEPTH || iter >= maxIter) {
+        return miss;
+    }
+
+    // Undo coordinate mirroring
+    if ((octant_mask & 1) == 0) pos.x = 3.0f - scale_exp2 - pos.x;
+    if ((octant_mask & 2) == 0) pos.y = 3.0f - scale_exp2 - pos.y;
+    if ((octant_mask & 4) == 0) pos.z = 3.0f - scale_exp2 - pos.z;
+
+    // If we reach here without hitting, return miss
     return miss;
 }
 

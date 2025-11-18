@@ -89,13 +89,20 @@ private:
         float tMax[CAST_STACK_DEPTH + 1];
 
         void push(int scale, const ChildDescriptor* node, float t) {
-            nodes[scale] = node;
-            tMax[scale] = t;
+            // Bounds check to prevent stack corruption
+            if (scale >= 0 && scale <= CAST_STACK_DEPTH) {
+                nodes[scale] = node;
+                tMax[scale] = t;
+            }
         }
 
         const ChildDescriptor* pop(int scale, float& t) {
-            t = tMax[scale];
-            return nodes[scale];
+            if (scale >= 0 && scale <= CAST_STACK_DEPTH) {
+                t = tMax[scale];
+                return nodes[scale];
+            }
+            t = 0.0f;
+            return nullptr;
         }
     };
 
