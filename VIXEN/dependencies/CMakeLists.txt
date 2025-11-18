@@ -54,7 +54,16 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(gli)
+# Make gli optional - allow build to continue if fetch fails
+FetchContent_GetProperties(gli)
+if(NOT gli_POPULATED)
+    FetchContent_Populate(gli)
+    if(gli_POPULATED)
+        add_subdirectory(${gli_SOURCE_DIR} ${gli_BINARY_DIR} EXCLUDE_FROM_ALL)
+    else()
+        message(WARNING "gli fetch failed - texture loading will be unavailable")
+    endif()
+endif()
 
 # Suppress warnings from gli
 if(TARGET gli)
@@ -169,8 +178,10 @@ if(DEFINED vulkanheaders_SOURCE_DIR)
     include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
 endif()
 
-# GLI is header-only
-include_directories(BEFORE ${gli_SOURCE_DIR})
+# GLI is header-only (only if fetched successfully)
+if(DEFINED gli_SOURCE_DIR)
+    include_directories(BEFORE ${gli_SOURCE_DIR})
+endif()
 
 # STB is header-only
 include_directories(BEFORE ${stb_SOURCE_DIR})
