@@ -34,10 +34,18 @@ public:
     uint8_t getChildMask(const glm::vec3& position, int scale) const override;
     ISVOStructure::VoxelBounds getVoxelBounds(const glm::vec3& position, int scale) const override;
 
-    ISVOStructure::RayHit castRay(const glm::vec3& origin, const glm::vec3& direction,
-                   float tMin, float tMax) const override;
-    ISVOStructure::RayHit castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
-                      float lodBias, float tMin, float tMax) const override;
+    ISVOStructure::RayHit castRay(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        float tMin = 0.0f,
+        float tMax = std::numeric_limits<float>::max()) const override;
+
+    ISVOStructure::RayHit castRayLOD(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        float lodBias,
+        float tMin = 0.0f,
+        float tMax = std::numeric_limits<float>::max()) const override;
 
     glm::vec3 getWorldMin() const override { return m_worldMin; }
     glm::vec3 getWorldMax() const override { return m_worldMax; }

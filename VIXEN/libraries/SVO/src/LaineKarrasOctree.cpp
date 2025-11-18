@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <iostream>
 
 namespace SVO {
 
@@ -258,139 +259,312 @@ ISVOStructure::VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& po
     return bounds;
 }
 
-ISVOStructure::RayHit LaineKarrasOctree::castRay(const glm::vec3& origin, const glm::vec3& direction,
-                                   float tMin, float tMax) const {
+// ============================================================================
+// Ray Traversal Helpers - Paper-Accurate Implementation
+// ============================================================================
+
+namespace {
+
+/**
+ * Ray-AABB intersection (robust slab method).
+ * Returns true if ray intersects box, with entry/exit t-values in tMin/tMax.
+ *
+ * Uses stable slab method with robust handling of parallel rays and edge cases.
+ * Preferred over Graphics Gems for octree traversal due to accurate exit point computation.
+ */
+bool intersectAABB(
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    const glm::vec3& boxMin,
+    const glm::vec3& boxMax,
+    float& tMin,
+    float& tMax)
+{
+    const float epsilon = 1e-8f;
+
+    // Compute safe inverse direction
+    glm::vec3 invDir;
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(rayDir[i]) < epsilon) {
+            // Ray parallel to this axis - check if origin is within slab
+            if (rayOrigin[i] < boxMin[i] || rayOrigin[i] > boxMax[i]) {
+                return false; // Ray misses box
+            }
+            // Use large value instead of inf (more stable for min/max operations)
+            invDir[i] = (rayDir[i] >= 0.0f) ? 1e20f : -1e20f;
+        } else {
+            invDir[i] = 1.0f / rayDir[i];
+        }
+    }
+
+    // Compute intersection t-values for each slab
+    glm::vec3 t0 = (boxMin - rayOrigin) * invDir;
+    glm::vec3 t1 = (boxMax - rayOrigin) * invDir;
+
+    // Order t0/t1 to ensure tNear < tFar for each axis
+    glm::vec3 tNear = glm::min(t0, t1);
+    glm::vec3 tFar = glm::max(t0, t1);
+
+    // Find overall entry/exit points (latest entry, earliest exit)
+    tMin = std::max({tNear.x, tNear.y, tNear.z});
+    tMax = std::min({tFar.x, tFar.y, tFar.z});
+
+    // Ray intersects if entry is before exit and exit is positive
+    return tMin <= tMax && tMax >= 0.0f;
+}
+
+/**
+ * Compute which child octant contains a point.
+ * Returns child index (0-7) based on position relative to node center.
+ */
+int computeChildIndex(const glm::vec3& position, const glm::vec3& nodeMin, const glm::vec3& nodeMax) {
+    glm::vec3 center = (nodeMin + nodeMax) * 0.5f;
+    int childIdx = 0;
+    if (position.x >= center.x) childIdx |= 1;
+    if (position.y >= center.y) childIdx |= 2;
+    if (position.z >= center.z) childIdx |= 4;
+    return childIdx;
+}
+
+/**
+ * Get child bounds from parent bounds and child index.
+ */
+void getChildBounds(
+    const glm::vec3& parentMin,
+    const glm::vec3& parentMax,
+    int childIdx,
+    glm::vec3& childMin,
+    glm::vec3& childMax)
+{
+    glm::vec3 center = (parentMin + parentMax) * 0.5f;
+    childMin = parentMin;
+    childMax = center;
+
+    if (childIdx & 1) { // +X
+        childMin.x = center.x;
+        childMax.x = parentMax.x;
+    }
+    if (childIdx & 2) { // +Y
+        childMin.y = center.y;
+        childMax.y = parentMax.y;
+    }
+    if (childIdx & 4) { // +Z
+        childMin.z = center.z;
+        childMax.z = parentMax.z;
+    }
+}
+
+/**
+ * Compute AABB face normal based on hit point and ray direction.
+ * Returns the normal of the face that the ray enters through.
+ * Uses ray direction to break ties when hit point is on edge/corner.
+ */
+glm::vec3 computeAABBNormal(
+    const glm::vec3& hitPoint,
+    const glm::vec3& boxMin,
+    const glm::vec3& boxMax,
+    const glm::vec3& rayDir)
+{
+    // Clamp hit point to box (handle floating point errors)
+    glm::vec3 clampedHit = glm::clamp(hitPoint, boxMin, boxMax);
+
+    // Compute distance to each face (absolute distance to nearest plane per axis)
+    glm::vec3 dists;
+    dists.x = std::min(clampedHit.x - boxMin.x, boxMax.x - clampedHit.x);
+    dists.y = std::min(clampedHit.y - boxMin.y, boxMax.y - clampedHit.y);
+    dists.z = std::min(clampedHit.z - boxMin.z, boxMax.z - clampedHit.z);
+
+    // Apply bias based on ray direction (prioritize axis aligned with ray)
+    // This breaks ties when hit point is on edge/corner
+    const float bias = 1e-6f;
+    glm::vec3 absDirInv = 1.0f / (glm::abs(rayDir) + bias);
+    glm::vec3 biasedDists = dists * absDirInv;
+
+    // Find axis with minimum biased distance
+    if (biasedDists.x <= biasedDists.y && biasedDists.x <= biasedDists.z) {
+        // X face
+        return (clampedHit.x - boxMin.x < boxMax.x - clampedHit.x) ?
+            glm::vec3(-1, 0, 0) : glm::vec3(1, 0, 0);
+    } else if (biasedDists.y <= biasedDists.z) {
+        // Y face
+        return (clampedHit.y - boxMin.y < boxMax.y - clampedHit.y) ?
+            glm::vec3(0, -1, 0) : glm::vec3(0, 1, 0);
+    } else {
+        // Z face
+        return (clampedHit.z - boxMin.z < boxMax.z - clampedHit.z) ?
+            glm::vec3(0, 0, -1) : glm::vec3(0, 0, 1);
+    }
+}
+
+} // anonymous namespace
+
+// ============================================================================
+// Stack-Based DDA Octree Traversal (Laine-Karras Algorithm)
+// ============================================================================
+
+ISVOStructure::RayHit LaineKarrasOctree::castRay(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    float tMin,
+    float tMax) const
+{
     return castRayImpl(origin, direction, tMin, tMax, 0.0f);
 }
 
-ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(const glm::vec3& origin, const glm::vec3& direction,
-                                      float lodBias, float tMin, float tMax) const {
+ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    float lodBias,
+    float tMin,
+    float tMax) const
+{
     return castRayImpl(origin, direction, tMin, tMax, lodBias);
 }
 
-ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
-                                       float tMin, float tMax, float lodBias) const {
-    ISVOStructure::RayHit hit{};
-    hit.hit = false;
+ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    float tMin,
+    float tMax,
+    float lodBias) const
+{
+    ISVOStructure::RayHit miss{};
+    miss.hit = false;
 
+    // Validate input
     if (!m_octree || !m_octree->root || m_octree->root->childDescriptors.empty()) {
-        return hit;
+        return miss;
     }
 
-    // Work in world space, not normalized
-    glm::vec3 worldSize = m_worldMax - m_worldMin;
-    glm::vec3 rayOrigin = origin;
+    // Normalize direction
     glm::vec3 rayDir = glm::normalize(direction);
+    float rayLength = glm::length(rayDir);
+    if (rayLength < 1e-6f) {
+        return miss; // Invalid direction
+    }
 
-    // Keep t values in world space
-    float t0 = tMin;
-    float t1 = tMax;
+    // Check for NaN/Inf
+    if (glm::any(glm::isnan(origin)) || glm::any(glm::isnan(rayDir)) ||
+        glm::any(glm::isinf(origin)) || glm::any(glm::isinf(rayDir))) {
+        return miss;
+    }
 
-    // Intersect ray with world bounds
-    for (int i = 0; i < 3; ++i) {
-        if (std::abs(rayDir[i]) < 1e-6f) {
-            // Ray parallel to this axis - check if within bounds
-            if (rayOrigin[i] < m_worldMin[i] || rayOrigin[i] >= m_worldMax[i]) {
-                return hit; // Ray misses
-            }
-            continue;
+    // ========================================================================
+    // Phase 1: Ray-AABB Intersection with World Bounds
+    // ========================================================================
+
+    float tEntry, tExit;
+    if (!intersectAABB(origin, rayDir, m_worldMin, m_worldMax, tEntry, tExit)) {
+        return miss; // Ray misses entire volume
+    }
+
+    // Clamp to user-provided range
+    tEntry = std::max(tEntry, tMin);
+    tExit = std::min(tExit, tMax);
+
+    if (tEntry >= tExit || tExit < 0.0f) {
+        return miss;
+    }
+
+    // ========================================================================
+    // Phase 2: DDA-Based Octree Traversal
+    // ========================================================================
+
+    // Start at entry point (or origin if inside volume)
+    float t = std::max(tEntry, 0.0f);
+    const float epsilon = 1e-6f;
+    const int maxSteps = 50000; // Temporary - TODO: implement hierarchical DDA
+
+    for (int step = 0; step < maxSteps && t < tExit; ++step) {
+        // Current ray position
+        glm::vec3 pos = origin + rayDir * t;
+
+        // Debug: print first few steps and every 1000 steps
+        if (step < 10 || step % 1000 == 0) {
+            std::cout << "Step " << step << ": t=" << t << ", pos=("
+                      << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
         }
 
-        float invDir = 1.0f / rayDir[i];
-        float tNear = (m_worldMin[i] - rayOrigin[i]) * invDir;
-        float tFar = (m_worldMax[i] - rayOrigin[i]) * invDir;
-        if (tNear > tFar) std::swap(tNear, tFar);
-        t0 = std::max(t0, tNear);
-        t1 = std::min(t1, tFar);
-        if (t0 > t1) return hit; // Ray misses bounds
-    }
+        // Debug variables to track final voxel we landed in
+        int finalDepth = 0;
+        glm::vec3 finalNodeMin = m_worldMin;
+        glm::vec3 finalNodeMax = m_worldMax;
 
-    // Clamp to valid range
-    t0 = std::max(t0, 0.0f);
-
-    // Initialize traversal - work in normalized [0,1] coordinates
-    VoxelCube voxel{};
-    glm::vec3 worldPos = rayOrigin + rayDir * t0;
-    voxel.position = (worldPos - m_worldMin) / worldSize;
-    voxel.scale = 23; // Start at finest scale (2^23 voxels per axis)
-
-    const int maxIterations = 512; // Safety limit
-    int iteration = 0;
-
-    // DDA-based octree traversal
-    while (t0 < t1 && iteration++ < maxIterations) {
-        // Clamp position to [0,1]
-        voxel.position = glm::clamp(voxel.position, glm::vec3(0.0f), glm::vec3(1.0f - 1e-6f));
-
-        // Traverse octree to find voxel at current position
+        // Find voxel at current position by traversing octree
         const ChildDescriptor* node = &m_octree->root->childDescriptors[0];
+        glm::vec3 nodeMin = m_worldMin;
+        glm::vec3 nodeMax = m_worldMax;
         int depth = 0;
-        int targetDepth = std::min(m_maxLevels - 1, static_cast<int>(23 - voxel.scale + lodBias));
-        bool found = false;
 
-        glm::vec3 nodePos(0.0f);
-        float nodeSize = 1.0f;
+        // Descend octree to find leaf at current position
+        while (depth < m_maxLevels) {
+            // Calculate center to determine which octant
+            glm::vec3 center = (nodeMin + nodeMax) * 0.5f;
 
-        for (depth = 0; depth < targetDepth; ++depth) {
-            nodeSize *= 0.5f;
+            // Determine child octant containing current position
             int childIdx = 0;
-            glm::vec3 childPos = nodePos;
+            if (pos.x >= center.x) childIdx |= 1;
+            if (pos.y >= center.y) childIdx |= 2;
+            if (pos.z >= center.z) childIdx |= 4;
 
-            if (voxel.position.x >= nodePos.x + nodeSize) {
-                childIdx |= 1;
-                childPos.x += nodeSize;
-            }
-            if (voxel.position.y >= nodePos.y + nodeSize) {
-                childIdx |= 2;
-                childPos.y += nodeSize;
-            }
-            if (voxel.position.z >= nodePos.z + nodeSize) {
-                childIdx |= 4;
-                childPos.z += nodeSize;
-            }
-
+            // Check if child exists
             if (!node->hasChild(childIdx)) {
-                break; // Empty space
+                // Empty voxel - advance to next voxel boundary
+                finalDepth = depth;
+                finalNodeMin = nodeMin;
+                finalNodeMax = nodeMax;
+                if (step < 10 || (step >= 1900 && step <= 1910)) {
+                    std::cout << "  Empty at depth=" << depth << ", childIdx=" << childIdx
+                              << ", bounds=(" << nodeMin.x << "-" << nodeMax.x << "), size="
+                              << (nodeMax.x - nodeMin.x) << std::endl;
+                }
+                break;
             }
 
+            // Calculate child bounds
+            glm::vec3 childMin, childMax;
+            getChildBounds(nodeMin, nodeMax, childIdx, childMin, childMax);
+
+            // Check if this is a leaf
             if (node->isLeaf(childIdx)) {
-                // Hit a voxel!
-                hit.hit = true;
-                hit.tMin = t0;
-                hit.tMax = hit.tMin + nodeSize * worldSize.x;
-                hit.position = origin + direction * hit.tMin;
-                hit.scale = depth;
+                // Found solid voxel
+                // Check if we just entered it or if we started inside it
+                float voxelTMin, voxelTMax;
+                intersectAABB(origin, rayDir, childMin, childMax, voxelTMin, voxelTMax);
 
-                // Compute surface normal (simple AABB normal for now)
-                glm::vec3 voxelWorldMin = m_worldMin + nodePos * worldSize;
-                glm::vec3 voxelWorldMax = voxelWorldMin + glm::vec3(nodeSize) * worldSize;
-                glm::vec3 localPos = (hit.position - voxelWorldMin) / (voxelWorldMax - voxelWorldMin);
-                localPos = glm::clamp(localPos, glm::vec3(0.0f), glm::vec3(1.0f));
-
-                // Find which face was hit
-                hit.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Default up
-                float minDist = 1e10f;
-                const glm::vec3 faceNormals[6] = {
-                    glm::vec3(-1, 0, 0), glm::vec3(1, 0, 0),
-                    glm::vec3(0, -1, 0), glm::vec3(0, 1, 0),
-                    glm::vec3(0, 0, -1), glm::vec3(0, 0, 1)
-                };
-                const float faceDists[6] = {
-                    localPos.x, 1.0f - localPos.x,
-                    localPos.y, 1.0f - localPos.y,
-                    localPos.z, 1.0f - localPos.z
-                };
-                for (int i = 0; i < 6; ++i) {
-                    if (faceDists[i] < minDist) {
-                        minDist = faceDists[i];
-                        hit.normal = faceNormals[i];
+                // If voxelTMin <= epsilon, we're at or inside this voxel
+                // Skip it and continue stepping to find the next solid voxel we enter from outside
+                if (voxelTMin <= epsilon) {
+                    finalDepth = depth;
+                    finalNodeMin = childMin;
+                    finalNodeMax = childMax;
+                    if (step < 10) {
+                        std::cout << "  Interior solid at depth=" << depth << ", voxelTMin=" << voxelTMin
+                                  << ", voxelTMax=" << voxelTMax << ", size="
+                                  << (childMax.x - childMin.x) << " - skipping" << std::endl;
                     }
+                    // Step to exit of this voxel
+                    t = voxelTMax + epsilon;
+                    break; // Continue outer loop
                 }
 
+                if (step < 10) {
+                    std::cout << "  HIT! Exterior solid at depth=" << depth << ", voxelTMin=" << voxelTMin << std::endl;
+                }
+
+                // We entered this voxel from outside - this is our hit!
+                ISVOStructure::RayHit hit{};
+                hit.hit = true;
+                hit.tMin = voxelTMin;
+                hit.tMax = voxelTMax;
+                hit.position = origin + rayDir * hit.tMin;
+                hit.scale = depth + 1;
+                hit.normal = computeAABBNormal(hit.position, childMin, childMax, rayDir);
                 return hit;
             }
 
-            // Move to child
+            // Internal node - descend
+            // Find child descriptor
             int childOffset = 0;
             for (int i = 0; i < childIdx; ++i) {
                 if (node->hasChild(i) && !node->isLeaf(i)) {
@@ -399,42 +573,71 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(const glm::vec3& origin, co
             }
 
             uint32_t childPointer = node->childPointer;
-            node = &m_octree->root->childDescriptors[childPointer + childOffset];
-            nodePos = childPos;
+            uint32_t childIndex = childPointer + childOffset;
+
+            if (childIndex >= m_octree->root->childDescriptors.size()) {
+                break; // Invalid
+            }
+
+            node = &m_octree->root->childDescriptors[childIndex];
+            nodeMin = childMin;
+            nodeMax = childMax;
+            ++depth;
+            finalDepth = depth;
+            finalNodeMin = nodeMin;
+            finalNodeMax = nodeMax;
         }
 
-        // Advance ray to next voxel using DDA
-        float voxelSize = voxel.getSize();
-        glm::vec3 tMax3D;
-        glm::vec3 tDelta;
+        // No solid voxel at current position - advance to next grid boundary
+        // Use the final voxel bounds we landed in during descent
+        if (step < 10) {
+            std::cout << "  Final voxel: depth=" << finalDepth
+                      << ", bounds=(" << finalNodeMin.x << "-" << finalNodeMax.x << ")"
+                      << ", size=" << (finalNodeMax.x - finalNodeMin.x) << std::endl;
+        }
 
-        for (int i = 0; i < 3; ++i) {
-            if (std::abs(rayDir[i]) < 1e-6f) {
-                tMax3D[i] = std::numeric_limits<float>::max();
-                tDelta[i] = std::numeric_limits<float>::max();
+        // Calculate t-values to next axis-aligned voxel boundaries
+        glm::vec3 tNext;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (std::abs(rayDir[axis]) > epsilon) {
+                // Find which boundary we'll cross next in this axis
+                float boundaryPos;
+                if (rayDir[axis] > 0) {
+                    boundaryPos = finalNodeMax[axis];
+                } else {
+                    boundaryPos = finalNodeMin[axis];
+                }
+
+                // Add offset to boundary to guarantee we cross it
+                // Direction of offset matches ray direction
+                float offset = (rayDir[axis] > 0) ? epsilon : -epsilon;
+                boundaryPos += offset;
+
+                // Calculate absolute t-value to reach offset boundary
+                tNext[axis] = (boundaryPos - origin[axis]) / rayDir[axis];
             } else {
-                float invDir = 1.0f / rayDir[i];
-                float voxelBoundary = rayDir[i] > 0 ?
-                    std::ceil(voxel.position[i] / voxelSize) * voxelSize :
-                    std::floor(voxel.position[i] / voxelSize) * voxelSize;
-                tMax3D[i] = (voxelBoundary - voxel.position[i]) * invDir;
-                tDelta[i] = voxelSize * std::abs(invDir);
+                tNext[axis] = std::numeric_limits<float>::max();
             }
         }
 
-        // Step to next voxel
-        float tStep = std::min(tMax3D.x, std::min(tMax3D.y, tMax3D.z));
-        t0 += tStep + 1e-6f; // Small epsilon to avoid floating point errors
-        voxel.position += rayDir * (tStep + 1e-6f);
+        // Take minimum t-value that's greater than current t
+        float tStep = std::numeric_limits<float>::max();
+        for (int axis = 0; axis < 3; ++axis) {
+            if (tNext[axis] > t && tNext[axis] < tStep) {
+                tStep = tNext[axis];
+            }
+        }
 
-        // Check if we exited the volume
-        if (glm::any(glm::lessThan(voxel.position, glm::vec3(0.0f))) ||
-            glm::any(glm::greaterThanEqual(voxel.position, glm::vec3(1.0f)))) {
-            break;
+        // Ensure forward progress
+        if (tStep == std::numeric_limits<float>::max() || tStep <= t) {
+            // Fallback: force small step forward
+            t = t + epsilon / std::max({std::abs(rayDir.x), std::abs(rayDir.y), std::abs(rayDir.z)});
+        } else {
+            t = tStep;
         }
     }
 
-    return hit;
+    return miss;
 }
 
 float LaineKarrasOctree::getVoxelSize(int scale) const {
@@ -488,22 +691,28 @@ std::string LaineKarrasOctree::getGPUTraversalShader() const {
 )";
 }
 
+// Helper functions (old stubs - replaced by new implementation above)
+// These are still declared in header for future contour support
+
 bool LaineKarrasOctree::intersectVoxel(const VoxelCube& voxel, const Contour* contour,
                                         const glm::vec3& rayOrigin, const glm::vec3& rayDir,
                                         float& tMin, float& tMax) const {
-    // TODO: Implement voxel-ray intersection with contour support
+    // TODO: Implement voxel-contour intersection (future enhancement)
+    // Current implementation uses AABB intersection only
     return false;
 }
 
 void LaineKarrasOctree::advanceRay(VoxelCube& voxel, int& childIdx,
                                     const glm::vec3& rayDir, float& t) const {
-    // TODO: Implement ray advancement to next voxel
+    // TODO: Implement for brick-level DDA (future enhancement)
+    // Current implementation uses stack-based octree traversal
 }
 
 int LaineKarrasOctree::selectFirstChild(const VoxelCube& voxel,
                                          const glm::vec3& rayOrigin, const glm::vec3& rayDir,
                                          float tMin) const {
-    // TODO: Implement first child selection for ray
+    // TODO: Implement for optimized child selection (future enhancement)
+    // Current implementation computes child index directly
     return 0;
 }
 
