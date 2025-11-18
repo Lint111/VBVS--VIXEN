@@ -167,6 +167,14 @@ private:
         std::function<void(float)> progressCallback;
         std::atomic<size_t> processedNodes{0};
         size_t totalEstimatedNodes = 0;
+
+        // Memory leak guards
+        static constexpr size_t MAX_NODES = 10'000'000;  // 10M node limit (~2GB max)
+        static constexpr size_t MAX_TRIANGLES_PER_NODE = 100'000;  // Prevent triangle explosion
+
+        bool checkMemoryLimits() const {
+            return nodesProcessed < MAX_NODES;
+        }
     };
 
     std::unique_ptr<BuildContext> m_context;

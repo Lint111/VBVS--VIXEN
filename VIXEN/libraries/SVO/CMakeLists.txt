@@ -19,6 +19,7 @@ add_library(SVO STATIC
     include/VoxelInjection.h
 
     # Implementation
+    src/ISVOStructure.cpp
     src/SVOTypes.cpp
     src/SVOBuilder.cpp
     src/ContourBuilder.cpp

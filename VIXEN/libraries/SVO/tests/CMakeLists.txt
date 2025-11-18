@@ -22,6 +22,16 @@ endif()
 # Visual Studio solution folder organization
 set_target_properties(test_svo_builder PROPERTIES FOLDER "Tests/SVO Tests")
 
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_svo_builder POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_svo_builder>
+        COMMENT "Copying TBB DLL for test_svo_builder"
+    )
+endif()
+
 gtest_discover_tests(test_svo_builder)
 
 # ===========================================================================
@@ -40,6 +50,16 @@ else()
 endif()
 
 set_target_properties(test_voxel_injection PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_voxel_injection POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_voxel_injection>
+        COMMENT "Copying TBB DLL for test_voxel_injection"
+    )
+endif()
 
 gtest_discover_tests(test_voxel_injection)
 
@@ -60,6 +80,16 @@ endif()
 
 set_target_properties(test_svo_types PROPERTIES FOLDER "Tests/SVO Tests")
 
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_svo_types POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_svo_types>
+        COMMENT "Copying TBB DLL for test_svo_types"
+    )
+endif()
+
 gtest_discover_tests(test_svo_types)
 
 # ===========================================================================
@@ -78,5 +108,15 @@ else()
 endif()
 
 set_target_properties(test_samplers PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_samplers POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_samplers>
+        COMMENT "Copying TBB DLL for test_samplers"
+    )
+endif()
 
 gtest_discover_tests(test_samplers)

@@ -4,6 +4,7 @@
 #include <numeric>
 #include <chrono>
 #include <queue>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 #include <tbb/parallel_for.h>
 #include <tbb/concurrent_vector.h>
@@ -100,6 +101,21 @@ std::unique_ptr<Octree> SVOBuilder::build(
 void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node) {
     m_context->nodesProcessed++;
 
+    // Memory leak guard: abort if exceeded node limit
+    if (!m_context->checkMemoryLimits()) {
+        node->isLeaf = true;
+        m_context->leavesCreated++;
+        return;
+    }
+
+    // Triangle explosion guard: force leaf if too many triangles
+    if (node->triangleIndices.size() > BuildContext::MAX_TRIANGLES_PER_NODE) {
+        node->isLeaf = true;
+        m_context->leavesCreated++;
+        node->attributes = integrateAttributes(node);
+        return;
+    }
+
     // Update progress
     if (m_context->progressCallback && m_context->nodesProcessed % 1000 == 0) {
         float progress = static_cast<float>(m_context->nodesProcessed) /
@@ -162,12 +178,24 @@ void SVOBuilder::subdivideNode(BuildContext::VoxelNode* node) {
     }
 
     // Recursively subdivide non-empty children
-    // Use parallel_for for multi-threading
-    tbb::parallel_for(size_t(0), size_t(8), [&](size_t i) {
-        if (node->children[i]) {
-            subdivideNode(node->children[i].get());
+    // Use parallel_for only for shallow nodes (depth 0-4) to prevent exponential thread explosion
+    // Deep nodes (depth 5+) use serial execution to limit memory usage
+    const int PARALLEL_DEPTH_LIMIT = 4;
+
+    if (node->level < PARALLEL_DEPTH_LIMIT) {
+        tbb::parallel_for(size_t(0), size_t(8), [&](size_t i) {
+            if (node->children[i]) {
+                subdivideNode(node->children[i].get());
+            }
+        });
+    } else {
+        // Serial execution for deep nodes
+        for (size_t i = 0; i < 8; ++i) {
+            if (node->children[i]) {
+                subdivideNode(node->children[i].get());
+            }
         }
-    });
+    }
 }
 
 bool SVOBuilder::shouldTerminate(const BuildContext::VoxelNode* node) const {

@@ -115,16 +115,17 @@ TEST(AttributeTest, MakeAttributes) {
 
     UncompressedAttributes attr = makeAttributes(color, normal);
 
-    // Decode color (ABGR format)
-    uint8_t r = (attr.color >> 0) & 0xFF;
-    uint8_t g = (attr.color >> 8) & 0xFF;
-    uint8_t b = (attr.color >> 16) & 0xFF;
-    uint8_t a = (attr.color >> 24) & 0xFF;
+    // Check color fields directly
+    EXPECT_NEAR(attr.red / 255.0f, color.r, 0.01f);
+    EXPECT_NEAR(attr.green / 255.0f, color.g, 0.01f);
+    EXPECT_NEAR(attr.blue / 255.0f, color.b, 0.01f);
+    EXPECT_EQ(attr.alpha, 255);
 
-    EXPECT_NEAR(r / 255.0f, color.r, 0.01f);
-    EXPECT_NEAR(g / 255.0f, color.g, 0.01f);
-    EXPECT_NEAR(b / 255.0f, color.b, 0.01f);
-    EXPECT_EQ(a, 255);
+    // Check that getColor() method works
+    glm::vec3 decodedColor = attr.getColor();
+    EXPECT_NEAR(decodedColor.r, color.r, 0.01f);
+    EXPECT_NEAR(decodedColor.g, color.g, 0.01f);
+    EXPECT_NEAR(decodedColor.b, color.b, 0.01f);
 }
 
 // ===========================================================================
