@@ -66,7 +66,7 @@ TEST(ContourTest, EncodeDecode) {
     float thickness = 0.5f;
     float position = 0.25f;
 
-    Contour contour = makeContour(normal, thickness, position);
+    Contour contour = makeContour(normal, position, thickness);  // Correct order: normal, centerPos, thickness
 
     glm::vec3 decodedNormal = decodeContourNormal(contour);
     float decodedThickness = decodeContourThickness(contour);

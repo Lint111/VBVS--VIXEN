@@ -186,13 +186,13 @@ TEST(SDFOperationsTest, Intersection) {
 }
 
 TEST(SDFOperationsTest, SmoothUnion) {
-    float d1 = 5.0f;
-    float d2 = 3.0f;
+    float d1 = 2.0f;
+    float d2 = 2.5f;
     float k = 1.0f;
 
     float result = SDF::smoothUnion(d1, d2, k);
 
-    // Should be less than min (3.0) due to smooth blend
-    EXPECT_LT(result, 3.0f);
-    EXPECT_GT(result, 2.0f);  // But not too much less
+    // Should be less than min (2.0) due to smooth blend
+    EXPECT_LT(result, 2.0f);
+    EXPECT_GT(result, 1.5f);  // But not too much less
 }

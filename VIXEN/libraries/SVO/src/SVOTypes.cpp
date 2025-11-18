@@ -152,13 +152,20 @@ Contour encodeContour(const glm::vec3& normal, float centerPos, float thickness)
     c.nz = encode(normal.z, 6);
 
     // Encode position (7 bits, signed, range [-1,1])
-    int posQuantized = static_cast<int>(centerPos * 63.0f + 0.5f);
+    // Uses 2's complement: -64..63 mapped to 0..127
+    int posQuantized = static_cast<int>(std::round(centerPos * 63.0f));
     posQuantized = std::clamp(posQuantized, -64, 63);
-    c.position = static_cast<uint32_t>(posQuantized) & 0x7F;
+    // Convert to unsigned 7-bit (two's complement)
+    if (posQuantized < 0) {
+        c.position = static_cast<uint32_t>(128 + posQuantized);
+    } else {
+        c.position = static_cast<uint32_t>(posQuantized);
+    }
 
     // Encode thickness (7 bits, unsigned, range [0,1])
-    float scaledThickness = thickness / 0.75f; // Inverse of scale factor
-    uint32_t thickQuantized = static_cast<uint32_t>(scaledThickness * 127.0f + 0.5f);
+    // Scale by 0.75 as per paper (Section 4)
+    float scaledThickness = thickness / 0.75f;
+    uint32_t thickQuantized = static_cast<uint32_t>(std::round(scaledThickness * 127.0f));
     c.thickness = std::min(thickQuantized, 127u);
 
     return c;
