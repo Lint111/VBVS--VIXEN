@@ -192,6 +192,25 @@ Contour makeContour(const glm::vec3& normal, float centerPos, float thickness) {
     return encodeContour(glm::normalize(normal), centerPos, thickness);
 }
 
+glm::vec3 decodeContourNormal(const Contour& contour) {
+    return contour.getNormal();
+}
+
+float decodeContourThickness(const Contour& contour) {
+    // Decode thickness (7 bits, unsigned, range [0, 1] in voxel space)
+    return static_cast<float>(contour.thickness) / 127.0f * 0.75f;
+}
+
+float decodeContourPosition(const Contour& contour) {
+    // Decode position (7 bits, signed, range [-1, 1] in voxel space)
+    const int maxVal = 63; // 2^6 - 1
+    int signed_pos = static_cast<int>(contour.position);
+    if (signed_pos > maxVal) {
+        signed_pos = signed_pos - 128;
+    }
+    return static_cast<float>(signed_pos) / static_cast<float>(maxVal);
+}
+
 // Population count for 8-bit value
 int popc8(uint8_t mask) {
     // Brian Kernighan's algorithm

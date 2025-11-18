@@ -24,12 +24,12 @@ add_library(SVO STATIC
     src/ContourBuilder.cpp
     src/AttributeIntegrator.cpp
     src/LaineKarrasOctree.cpp
-    src/LaineKarrasBuilder.cpp
+    # src/LaineKarrasBuilder.cpp  # TODO: Requires ISVOBuilder::InputGeometry and BuildConfig definitions
     src/VoxelInjection.cpp
     src/VoxelSamplers.cpp
-    src/RayCaster.cpp
-    src/Serialization.cpp
-    src/SVOFactory.cpp
+    # src/RayCaster.cpp  # TODO: Implement
+    # src/Serialization.cpp  # TODO: Implement
+    # src/SVOFactory.cpp  # TODO: Implement
 )
 
 # ------------------------------------------------------------------------------

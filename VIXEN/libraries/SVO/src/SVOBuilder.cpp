@@ -4,6 +4,7 @@
 #include <numeric>
 #include <chrono>
 #include <queue>
+#include <glm/gtx/norm.hpp>
 #include <tbb/parallel_for.h>
 #include <tbb/concurrent_vector.h>
 

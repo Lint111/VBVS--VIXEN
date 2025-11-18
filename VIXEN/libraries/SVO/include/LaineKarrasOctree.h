@@ -30,9 +30,9 @@ public:
 
     // ISVOStructure interface
     bool voxelExists(const glm::vec3& position, int scale) const override;
-    std::optional<VoxelData> getVoxelData(const glm::vec3& position, int scale) const override;
+    std::optional<ISVOStructure::VoxelData> getVoxelData(const glm::vec3& position, int scale) const override;
     uint8_t getChildMask(const glm::vec3& position, int scale) const override;
-    VoxelBounds getVoxelBounds(const glm::vec3& position, int scale) const override;
+    ISVOStructure::VoxelBounds getVoxelBounds(const glm::vec3& position, int scale) const override;
 
     ISVOStructure::RayHit castRay(const glm::vec3& origin, const glm::vec3& direction,
                    float tMin, float tMax) const override;

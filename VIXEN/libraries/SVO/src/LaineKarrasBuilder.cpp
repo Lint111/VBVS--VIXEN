@@ -41,38 +41,22 @@ std::unique_ptr<ISVOStructure> LaineKarrasBuilder::build(
 }
 
 BuildParams LaineKarrasBuilder::convertConfig(const BuildConfig& config) {
+    // TODO: ISVOBuilder::BuildConfig needs proper definition
     BuildParams params;
     params.maxLevels = config.maxLevels;
     params.geometryErrorThreshold = config.errorThreshold;
     params.colorErrorThreshold = config.errorThreshold * 10.0f;
-    params.enableContours = config.enableContours;
-    params.enableCompression = config.enableCompression;
+    // params.enableContours = config.enableContours;  // TODO: Add to BuildConfig
+    // params.enableCompression = config.enableCompression;  // TODO: Add to BuildConfig
     return params;
 }
 
 InputMesh LaineKarrasBuilder::convertGeometry(const InputGeometry& geometry) {
+    // TODO: ISVOBuilder::InputGeometry needs proper definition with positions/normals
     InputMesh mesh;
-
-    // Copy vertex data
-    mesh.vertices = geometry.positions;
-    mesh.normals = geometry.normals;
-    mesh.colors.resize(geometry.positions.size(), glm::vec3(1.0f));  // Default white
-    mesh.uvs.resize(geometry.positions.size(), glm::vec2(0.0f));
-
-    // Copy indices
-    mesh.indices = geometry.indices;
-
-    // Compute bounding box
-    if (!geometry.positions.empty()) {
-        mesh.minBounds = geometry.positions[0];
-        mesh.maxBounds = geometry.positions[0];
-
-        for (const auto& pos : geometry.positions) {
-            mesh.minBounds = glm::min(mesh.minBounds, pos);
-            mesh.maxBounds = glm::max(mesh.maxBounds, pos);
-        }
-    }
-
+    // Placeholder - needs actual geometry data
+    // mesh.vertices = geometry.positions;
+    // mesh.normals = geometry.normals;
     return mesh;
 }
 

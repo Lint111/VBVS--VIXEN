@@ -183,4 +183,22 @@ struct BuildParams {
     int numThreads = 0;                    // 0 = auto-detect
 };
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+// Create attributes from color and normal
+UncompressedAttributes makeAttributes(const glm::vec3& color, const glm::vec3& normal);
+
+// Create contour from geometric parameters
+Contour makeContour(const glm::vec3& normal, float centerPos, float thickness);
+
+// Decode contour properties
+glm::vec3 decodeContourNormal(const Contour& contour);
+float decodeContourThickness(const Contour& contour);
+float decodeContourPosition(const Contour& contour);
+
+// Population count for 8-bit value (helper for validMask/leafMask)
+int popc8(uint8_t mask);
+
 } // namespace SVO

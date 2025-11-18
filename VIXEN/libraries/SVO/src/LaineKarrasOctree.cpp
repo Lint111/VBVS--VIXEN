@@ -24,7 +24,7 @@ bool LaineKarrasOctree::voxelExists(const glm::vec3& position, int scale) const 
     return false;
 }
 
-std::optional<VoxelData> LaineKarrasOctree::getVoxelData(const glm::vec3& position, int scale) const {
+std::optional<ISVOStructure::VoxelData> LaineKarrasOctree::getVoxelData(const glm::vec3& position, int scale) const {
     // TODO: Implement voxel data lookup
     return std::nullopt;
 }
@@ -34,8 +34,8 @@ uint8_t LaineKarrasOctree::getChildMask(const glm::vec3& position, int scale) co
     return 0;
 }
 
-VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& position, int scale) const {
-    VoxelBounds bounds{};
+ISVOStructure::VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& position, int scale) const {
+    ISVOStructure::VoxelBounds bounds{};
     bounds.min = m_worldMin;
     bounds.max = m_worldMax;
     return bounds;
