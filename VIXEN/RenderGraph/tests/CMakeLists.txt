@@ -137,6 +137,61 @@ include(test_critical_nodes.cmake)
 include(Pipelines/test_pipeline_nodes.cmake)
 
 # ===========================================================================
+# Descriptor & Resource Nodes Tests (Priority 5)
+# ===========================================================================
+# These test suites validate descriptor and resource management nodes:
+# - DescriptorSetNode: Descriptor set allocation and updates
+# - TextureLoaderNode: Texture loading and image creation
+# - VertexBufferNode: Vertex buffer allocation and transfer
+# - DepthBufferNode: Depth/stencil buffer management
+# - DescriptorResourceGathererNode: Order-agnostic binding resolution
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full Vulkan SDK.
+
+include(Resources/test_resource_nodes.cmake)
+
+# ===========================================================================
+# Rendering Nodes Tests (Priority 6)
+# ===========================================================================
+# These test suites validate rendering execution nodes:
+# - FramebufferNode: Framebuffer creation and attachment management
+# - GeometryRenderNode: Geometry rendering and draw command recording
+# - PresentNode: Swapchain presentation and synchronization
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full Vulkan SDK.
+
+include(Rendering/test_rendering_nodes.cmake)
+
+# ===========================================================================
+# Data Flow Nodes Tests (Priority 7)
+# ===========================================================================
+# These test suites validate data flow and logic nodes:
+# - ConstantNode: Constant value sources
+# - LoopBridgeNode: Cross-loop data transfer
+# - BoolOpNode: Boolean logic operations (AND, OR, XOR, NAND, NOR)
+# - ShaderLibraryNode: Shader loading and SPIRV reflection
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full graph execution.
+
+include(DataFlow/test_dataflow_nodes.cmake)
+
+# ===========================================================================
+# Utility Classes Tests (Priority 8)
+# ===========================================================================
+# These test suites validate utility classes and interfaces:
+# - NodeType: Type system base class
+# - NodeTypeRegistry: Factory pattern for node creation
+# - TypedConnection: Type-safe slot connections
+# - IGraphCompilable: Compilable interface contract
+# - INodeWiring: Wiring interface contract
+# - UnknownTypeRegistry: Runtime type discovery
+# - NodeLogging: Structured logging for node lifecycle
+# Unit tests compatible with VULKAN_TRIMMED_BUILD.
+# Integration tests require full graph execution.
+
+include(Utilities/test_utilities.cmake)
+
+# ===========================================================================
 # Descriptor Resource Gatherer - Comprehensive Test Suite
 # ===========================================================================
 # This test suite validates DescriptorResourceGathererNode (Phase G):
