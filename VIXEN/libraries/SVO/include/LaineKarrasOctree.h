@@ -75,6 +75,30 @@ private:
     size_t m_voxelCount = 0;
     size_t m_memoryUsage = 0;
 
+    // ========================================================================
+    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
+    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
+    // ========================================================================
+    // Traversal stack depth - matches reference (23 levels for [1,2] normalized space)
+    static constexpr int CAST_STACK_DEPTH = 23;
+
+    // Traversal stack structure
+    // Stores parent node pointers and t_max values for backtracking during traversal
+    struct CastStack {
+        const ChildDescriptor* nodes[CAST_STACK_DEPTH + 1];
+        float tMax[CAST_STACK_DEPTH + 1];
+
+        void push(int scale, const ChildDescriptor* node, float t) {
+            nodes[scale] = node;
+            tMax[scale] = t;
+        }
+
+        const ChildDescriptor* pop(int scale, float& t) {
+            t = tMax[scale];
+            return nodes[scale];
+        }
+    };
+
     // Ray casting helpers
     struct TraversalState {
         ChildDescriptor* parent = nullptr;

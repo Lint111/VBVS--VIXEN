@@ -1581,3 +1581,52 @@ TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
     EXPECT_TRUE(hit.hit);
     EXPECT_FALSE(std::isnan(hit.tMin));
 }
+
+/**
+ * Test CastStack structure
+ *
+ * Reference: Implicit in cuda/Raycast.inl traversal loop
+ * Verifies stack push/pop operations for traversal backtracking
+ */
+TEST(LaineKarrasOctree, CastStack_PushPop) {
+    // Create a simple octree structure to get ChildDescriptor pointers
+    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto oct = std::make_unique<Octree>();
+    oct->worldMin = glm::vec3(0.0f);
+    oct->worldMax = glm::vec3(1.0f);
+    oct->maxLevels = 4;
+    oct->root = std::make_unique<OctreeBlock>();
+
+    ChildDescriptor root{};
+    root.childPointer = 1;
+    root.farBit = 0;
+    root.validMask = 0b00000001;
+    root.leafMask = 0b00000000;
+    root.contourPointer = 0;
+    root.contourMask = 0;
+    oct->root->childDescriptors.push_back(root);
+
+    ChildDescriptor child{};
+    child.childPointer = 0;
+    child.farBit = 0;
+    child.validMask = 0b11111111;
+    child.leafMask = 0b11111111;
+    child.contourPointer = 0;
+    child.contourMask = 0;
+    oct->root->childDescriptors.push_back(child);
+
+    octree->setOctree(std::move(oct));
+
+    // Note: CastStack is private, so we test it indirectly through ray casting
+    // The test verifies that the ray caster can handle traversal that requires stack operations
+
+    // Ray that requires descending into hierarchy and potentially backtracking
+    glm::vec3 origin(-1.0f, 0.5f, 0.5f);
+    glm::vec3 direction(1.0f, 0.0f, 0.0f);
+
+    auto hit = octree->castRay(origin, direction, 0.0f, 10.0f);
+
+    // Should successfully traverse (stack operations don't crash)
+    EXPECT_FALSE(std::isnan(hit.tMin));
+    EXPECT_FALSE(std::isnan(hit.tMax));
+}

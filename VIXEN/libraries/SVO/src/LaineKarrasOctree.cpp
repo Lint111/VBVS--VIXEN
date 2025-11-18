@@ -499,174 +499,100 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     }
 
     // ========================================================================
-    // Phase 2: DDA-Based Octree Traversal
+    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl lines 100-138)
+    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
+    // ========================================================================
+    // Phase 2: ESVO Hierarchical Octree Traversal
+    // Reference uses normalized [1,2] space - we must map world space to this
     // ========================================================================
 
-    // Start at entry point (or origin if inside volume)
-    float t = std::max(tEntry, 0.0f);
-    const float traversalEpsilon = 1e-6f;
-    const int maxSteps = 50000; // Temporary - TODO: implement hierarchical DDA
+    // Map world space to [1,2] normalized space for algorithm
+    // World [worldMin, worldMax] → Normalized [1, 2]
+    glm::vec3 worldSize = m_worldMax - m_worldMin;
+    glm::vec3 normOrigin = (origin - m_worldMin) / worldSize + glm::vec3(1.0f);
+    glm::vec3 normDir = rayDir; // Direction doesn't change
 
-    for (int step = 0; step < maxSteps && t < tExit; ++step) {
-        // Current ray position
-        glm::vec3 pos = origin + rayDir * t;
+    // Recompute parametric coefficients for normalized space
+    // The bias term changes because origin is now in [1,2] space
+    float tx_bias_norm = tx_coef * normOrigin.x;
+    float ty_bias_norm = ty_coef * normOrigin.y;
+    float tz_bias_norm = tz_coef * normOrigin.z;
 
-        // Debug: print first few steps and every 1000 steps
-        if (step < 10 || step % 1000 == 0) {
-            std::cout << "Step " << step << ": t=" << t << ", pos=("
-                      << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
+    // Apply octant mirroring to bias (already computed octant_mask above)
+    if (rayDirSafe.x > 0.0f) tx_bias_norm = 3.0f * tx_coef - tx_bias_norm;
+    if (rayDirSafe.y > 0.0f) ty_bias_norm = 3.0f * ty_coef - ty_bias_norm;
+    if (rayDirSafe.z > 0.0f) tz_bias_norm = 3.0f * tz_coef - tz_bias_norm;
+
+    // Initialize active t-span in normalized [1,2] space
+    // Reference: lines 121-125
+    float t_min = std::max({2.0f * tx_coef - tx_bias_norm,
+                            2.0f * ty_coef - ty_bias_norm,
+                            2.0f * tz_coef - tz_bias_norm});
+    float t_max = std::min({tx_coef - tx_bias_norm,
+                            ty_coef - ty_bias_norm,
+                            tz_coef - tz_bias_norm});
+    float h = t_max;
+    t_min = std::max(t_min, 0.0f);
+    t_max = std::min(t_max, 1.0f);
+
+    // Initialize traversal state
+    // Reference: lines 127-134
+    CastStack stack;
+    const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
+    uint64_t child_descriptor = 0; // Invalid until fetched
+    int idx = 0; // Child octant index
+    glm::vec3 pos(1.0f, 1.0f, 1.0f); // Position in normalized [1,2] space
+    int scale = CAST_STACK_DEPTH - 1; // Current scale level
+    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = CAST_STACK_DEPTH - 1
+
+    // Select initial child based on ray entry point
+    // Reference: lines 136-138
+    if (1.5f * tx_coef - tx_bias_norm > t_min) idx ^= 1, pos.x = 1.5f;
+    if (1.5f * ty_coef - ty_bias_norm > t_min) idx ^= 2, pos.y = 1.5f;
+    if (1.5f * tz_coef - tz_bias_norm > t_min) idx ^= 4, pos.z = 1.5f;
+
+    // Main traversal loop
+    // Traverse voxels along the ray while staying within octree bounds
+    int iter = 0;
+    const int maxIter = 10000; // Safety limit
+
+    while (scale < CAST_STACK_DEPTH && iter < maxIter) {
+        ++iter;
+
+        // ====================================================================
+        // ADOPTED FROM: cuda/Raycast.inl lines 155-169
+        // Fetch child descriptor and compute t_corner
+        // ====================================================================
+
+        // Fetch child descriptor unless already valid
+        if (child_descriptor == 0) {
+            // In reference: child_descriptor = *(int2*)parent
+            // We access via ChildDescriptor structure
+            child_descriptor = parent->childPointer | (static_cast<uint64_t>(parent->validMask) << 16) |
+                             (static_cast<uint64_t>(parent->leafMask) << 24);
         }
 
-        // Debug variables to track final voxel we landed in
-        int finalDepth = 0;
-        glm::vec3 finalNodeMin = m_worldMin;
-        glm::vec3 finalNodeMax = m_worldMax;
+        // Compute maximum t-value at voxel corner
+        // This determines when the ray exits the current voxel
+        // Using normalized bias terms
+        float tx_corner = pos.x * tx_coef - tx_bias_norm;
+        float ty_corner = pos.y * ty_coef - ty_bias_norm;
+        float tz_corner = pos.z * tz_coef - tz_bias_norm;
+        float tc_max = std::min({tx_corner, ty_corner, tz_corner});
 
-        // Find voxel at current position by traversing octree
-        const ChildDescriptor* node = &m_octree->root->childDescriptors[0];
-        glm::vec3 nodeMin = m_worldMin;
-        glm::vec3 nodeMax = m_worldMax;
-        int depth = 0;
+        // ====================================================================
+        // ADOPTED FROM: cuda/Raycast.inl lines 174-176
+        // Check if voxel is valid and active t-span is non-empty
+        // ====================================================================
 
-        // Descend octree to find leaf at current position
-        while (depth < m_maxLevels) {
-            // Calculate center to determine which octant
-            glm::vec3 center = (nodeMin + nodeMax) * 0.5f;
+        // Permute child slots based on octant mirroring
+        int child_shift = idx ^ octant_mask;
+        uint32_t child_masks = static_cast<uint32_t>(child_descriptor) << child_shift;
 
-            // Determine child octant containing current position
-            int childIdx = 0;
-            if (pos.x >= center.x) childIdx |= 1;
-            if (pos.y >= center.y) childIdx |= 2;
-            if (pos.z >= center.z) childIdx |= 4;
-
-            // Check if child exists
-            if (!node->hasChild(childIdx)) {
-                // Empty voxel - advance to next voxel boundary
-                finalDepth = depth;
-                finalNodeMin = nodeMin;
-                finalNodeMax = nodeMax;
-                if (step < 10 || (step >= 1900 && step <= 1910)) {
-                    std::cout << "  Empty at depth=" << depth << ", childIdx=" << childIdx
-                              << ", bounds=(" << nodeMin.x << "-" << nodeMax.x << "), size="
-                              << (nodeMax.x - nodeMin.x) << std::endl;
-                }
-                break;
-            }
-
-            // Calculate child bounds
-            glm::vec3 childMin, childMax;
-            getChildBounds(nodeMin, nodeMax, childIdx, childMin, childMax);
-
-            // Check if this is a leaf
-            if (node->isLeaf(childIdx)) {
-                // Found solid voxel
-                // Check if we just entered it or if we started inside it
-                float voxelTMin, voxelTMax;
-                intersectAABB(origin, rayDir, childMin, childMax, voxelTMin, voxelTMax);
-
-                // If voxelTMin <= traversalEpsilon, we're at or inside this voxel
-                // Skip it and continue stepping to find the next solid voxel we enter from outside
-                if (voxelTMin <= traversalEpsilon) {
-                    finalDepth = depth;
-                    finalNodeMin = childMin;
-                    finalNodeMax = childMax;
-                    if (step < 10) {
-                        std::cout << "  Interior solid at depth=" << depth << ", voxelTMin=" << voxelTMin
-                                  << ", voxelTMax=" << voxelTMax << ", size="
-                                  << (childMax.x - childMin.x) << " - skipping" << std::endl;
-                    }
-                    // Step to exit of this voxel
-                    t = voxelTMax + traversalEpsilon;
-                    break; // Continue outer loop
-                }
-
-                if (step < 10) {
-                    std::cout << "  HIT! Exterior solid at depth=" << depth << ", voxelTMin=" << voxelTMin << std::endl;
-                }
-
-                // We entered this voxel from outside - this is our hit!
-                ISVOStructure::RayHit hit{};
-                hit.hit = true;
-                hit.tMin = voxelTMin;
-                hit.tMax = voxelTMax;
-                hit.position = origin + rayDir * hit.tMin;
-                hit.scale = depth + 1;
-                hit.normal = computeAABBNormal(hit.position, childMin, childMax, rayDir);
-                return hit;
-            }
-
-            // Internal node - descend
-            // Find child descriptor
-            int childOffset = 0;
-            for (int i = 0; i < childIdx; ++i) {
-                if (node->hasChild(i) && !node->isLeaf(i)) {
-                    ++childOffset;
-                }
-            }
-
-            uint32_t childPointer = node->childPointer;
-            uint32_t childIndex = childPointer + childOffset;
-
-            if (childIndex >= m_octree->root->childDescriptors.size()) {
-                break; // Invalid
-            }
-
-            node = &m_octree->root->childDescriptors[childIndex];
-            nodeMin = childMin;
-            nodeMax = childMax;
-            ++depth;
-            finalDepth = depth;
-            finalNodeMin = nodeMin;
-            finalNodeMax = nodeMax;
-        }
-
-        // No solid voxel at current position - advance to next grid boundary
-        // Use the final voxel bounds we landed in during descent
-        if (step < 10) {
-            std::cout << "  Final voxel: depth=" << finalDepth
-                      << ", bounds=(" << finalNodeMin.x << "-" << finalNodeMax.x << ")"
-                      << ", size=" << (finalNodeMax.x - finalNodeMin.x) << std::endl;
-        }
-
-        // Calculate t-values to next axis-aligned voxel boundaries
-        glm::vec3 tNext;
-        for (int axis = 0; axis < 3; ++axis) {
-            if (std::abs(rayDir[axis]) > traversalEpsilon) {
-                // Find which boundary we'll cross next in this axis
-                float boundaryPos;
-                if (rayDir[axis] > 0) {
-                    boundaryPos = finalNodeMax[axis];
-                } else {
-                    boundaryPos = finalNodeMin[axis];
-                }
-
-                // Add offset to boundary to guarantee we cross it
-                // Direction of offset matches ray direction
-                float offset = (rayDir[axis] > 0) ? traversalEpsilon : -traversalEpsilon;
-                boundaryPos += offset;
-
-                // Calculate absolute t-value to reach offset boundary
-                tNext[axis] = (boundaryPos - origin[axis]) / rayDir[axis];
-            } else {
-                tNext[axis] = std::numeric_limits<float>::max();
-            }
-        }
-
-        // Take minimum t-value that's greater than current t
-        float tStep = std::numeric_limits<float>::max();
-        for (int axis = 0; axis < 3; ++axis) {
-            if (tNext[axis] > t && tNext[axis] < tStep) {
-                tStep = tNext[axis];
-            }
-        }
-
-        // Ensure forward progress
-        if (tStep == std::numeric_limits<float>::max() || tStep <= t) {
-            // Fallback: force small step forward
-            t = t + traversalEpsilon / std::max({std::abs(rayDir.x), std::abs(rayDir.y), std::abs(rayDir.z)});
-        } else {
-            t = tStep;
-        }
+        // TODO: Port full traversal logic from reference
+        // For now, return miss to allow compilation
+        // Next steps: Port descend/push, advance/pop, and termination logic
+        break;
     }
 
     return miss;

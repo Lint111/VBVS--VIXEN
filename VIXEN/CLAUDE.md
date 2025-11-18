@@ -115,6 +115,17 @@ Assistant: "Bug found: missing viewport initialization in [Renderer.cpp:156](Ren
 - **Research claims** - verify novelty against existing work
 - **Completion estimates** - point out missing features or risks
 
+## Session Management - CRITICAL
+
+**At the end of every significant unit of work, update `memory-bank/activeContext.md`** with:
+- What was completed
+- Test results
+- Files modified (with line numbers)
+- Next steps
+- Any blockers or issues
+
+This ensures context persistence across sessions and provides a clear history of progress.
+
 ## Memory Bank - CRITICAL
 
 The Memory Bank in `memory-bank/` provides persistent project context across sessions. **Read the appropriate files based on session type.**
