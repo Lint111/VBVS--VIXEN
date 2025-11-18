@@ -29,7 +29,7 @@ add_library(SVO STATIC
     src/VoxelInjection.cpp
     src/VoxelSamplers.cpp
     # src/RayCaster.cpp  # TODO: Implement
-    # src/Serialization.cpp  # TODO: Implement
+    src/Serialization.cpp
     # src/SVOFactory.cpp  # TODO: Implement
 )
 
