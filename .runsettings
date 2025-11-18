@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!-- Configuration for Visual Studio Code Coverage -->
+  <!-- Compatible with Visual Studio Community 2022 -->
+
+  <RunConfiguration>
+    <ResultsDirectory>./TestResults</ResultsDirectory>
+    <TargetPlatform>x64</TargetPlatform>
+    <TargetFrameworkVersion>net6.0</TargetFrameworkVersion>
+    <TestAdaptersPaths>%USERPROFILE%\.nuget\packages\googletest.1.14.0\build\_common</TestAdaptersPaths>
+  </RunConfiguration>
+
+  <!-- Data Collection Configuration -->
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <!-- Code Coverage Data Collector -->
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+        <Configuration>
+          <CodeCoverage>
+            <!-- Match assembly file paths: -->
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*RenderGraph.*\.exe$</ModulePath>
+                <ModulePath>.*test_.*\.exe$</ModulePath>
+              </Include>
+              <Exclude>
+                <!-- Exclude third-party libraries -->
+                <ModulePath>.*\\vcpkg_installed\\.*</ModulePath>
+                <ModulePath>.*\\googletest\\.*</ModulePath>
+                <ModulePath>.*\\vulkan\\.*</ModulePath>
+              </Exclude>
+            </ModulePaths>
+
+            <!-- Match specific functions: -->
+            <Functions>
+              <Exclude>
+                <!-- Exclude Google Test framework functions -->
+                <Function>^testing::.*</Function>
+                <Function>^std::.*</Function>
+              </Exclude>
+            </Functions>
+
+            <!-- Match source files to include/exclude: -->
+            <Sources>
+              <Include>
+                <Source>.*\\RenderGraph\\.*</Source>
+              </Include>
+              <Exclude>
+                <Source>.*\\tests\\.*</Source>
+                <Source>.*\\vcpkg_installed\\.*</Source>
+              </Exclude>
+            </Sources>
+
+            <!-- Attributes to exclude from coverage: -->
+            <Attributes>
+              <Exclude>
+                <Attribute>^System\.Diagnostics\.DebuggerHiddenAttribute$</Attribute>
+                <Attribute>^System\.Diagnostics\.DebuggerNonUserCodeAttribute$</Attribute>
+                <Attribute>^System\.CodeDom\.Compiler\.GeneratedCodeAttribute$</Attribute>
+              </Exclude>
+            </Attributes>
+
+            <!-- Use symbolic information: -->
+            <UseVerifiableInstrumentation>True</UseVerifiableInstrumentation>
+            <AllowLowIntegrityProcesses>True</AllowLowIntegrityProcesses>
+            <CollectFromChildProcesses>True</CollectFromChildProcesses>
+            <CollectAspDotNet>False</CollectAspDotNet>
+
+            <!-- Output format: -->
+            <Format>Cobertura</Format>
+            <OutputPath>./TestResults/Coverage</OutputPath>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+
+      <!-- Performance Data Collector -->
+      <DataCollector friendlyName="blame" enabled="True">
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+
+  <!-- Logging Configuration -->
+  <LoggerRunSettings>
+    <Loggers>
+      <Logger friendlyName="console" enabled="True">
+        <Configuration>
+          <Verbosity>normal</Verbosity>
+        </Configuration>
+      </Logger>
+      <Logger friendlyName="trx" enabled="True">
+        <Configuration>
+          <LogFileName>test-results.trx</LogFileName>
+        </Configuration>
+      </Logger>
+    </Loggers>
+  </LoggerRunSettings>
+
+  <!-- Test Run Parameters -->
+  <TestRunParameters>
+    <Parameter name="VulkanSDK" value="${VULKAN_SDK}" />
+    <Parameter name="BuildConfiguration" value="Debug" />
+  </TestRunParameters>
+</RunSettings>

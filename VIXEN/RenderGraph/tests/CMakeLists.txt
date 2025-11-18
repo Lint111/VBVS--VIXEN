@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.15)
 project(RenderGraphTests)
 
+# ===========================================================================
+# Code Coverage Configuration
+# ===========================================================================
+# Enable with: cmake -DENABLE_COVERAGE=ON ..
+# Visual Studio: Test > Analyze Code Coverage for All Tests
+# See Coverage.cmake for detailed documentation
+include(Coverage.cmake)
+
 # Include Google Test helpers (provided by FetchContent in the top-level CMake)
 include(GoogleTest)
 
