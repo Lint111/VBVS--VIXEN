@@ -58,8 +58,11 @@ TEST(VoxelInjectionTest, DenseGrid) {
         }
     }
 
+    InjectionConfig config;
+    config.maxLevels = 6;  // Smaller for test - 4x4x4 grid doesn't need 16 levels
+
     VoxelInjector injector;
-    auto svo = injector.inject(input);
+    auto svo = injector.inject(input, config);
 
     ASSERT_NE(svo, nullptr);
 
@@ -203,4 +206,52 @@ TEST(VoxelInjectionTest, ProgressCallback) {
     ASSERT_NE(svo, nullptr);
     EXPECT_TRUE(callbackCalled);
     EXPECT_EQ(lastProgress, 1.0f);  // Should end at 100%
+}
+
+// ===========================================================================
+// Minimum Voxel Size Test - Prevent Over-Subdivision
+// ===========================================================================
+
+TEST(VoxelInjectionTest, MinimumVoxelSizePreventsOverSubdivision) {
+    // 4x4x4 grid in 10x10x10 world = 2.5 units per voxel
+    DenseVoxelInput input;
+    input.worldMin = glm::vec3(0, 0, 0);
+    input.worldMax = glm::vec3(10, 10, 10);
+    input.resolution = glm::ivec3(4, 4, 4);
+    input.voxels.resize(64);
+
+    // Fill with checkerboard pattern
+    for (int z = 0; z < 4; ++z) {
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 4; ++x) {
+                size_t idx = input.getIndex(x, y, z);
+                input.voxels[idx].position = glm::vec3(x * 2.5f, y * 2.5f, z * 2.5f);
+                input.voxels[idx].density = ((x + y + z) % 2 == 0) ? 1.0f : 0.0f;
+                input.voxels[idx].color = glm::vec3(1, 1, 1);
+                input.voxels[idx].normal = glm::vec3(0, 1, 0);
+            }
+        }
+    }
+
+    // Test with high maxLevels but constrained by minVoxelSize
+    InjectionConfig config;
+    config.maxLevels = 20;  // Deep subdivision
+    config.minVoxelSize = 2.5f;  // Grid cell size - prevents subdivision beyond data resolution
+
+    VoxelInjector injector;
+    auto svo = injector.inject(input, config);
+
+    ASSERT_NE(svo, nullptr);
+
+    const auto& stats = injector.getLastStats();
+
+    // With minVoxelSize=2.5 and worldSize=10, max effective depth is log2(10/2.5) = 2
+    // So we should have FAR fewer voxels than if we subdivided to level 20 (2^60 nodes!)
+    // Expect reasonable number of nodes (< 1000 for 4x4x4 grid)
+    EXPECT_LT(stats.voxelsProcessed, 1000);
+    EXPECT_GT(stats.leavesCreated, 0);
+    EXPECT_GT(stats.emptyVoxelsCulled, 0);
+
+    // Verify build completed in reasonable time (< 1 second)
+    EXPECT_LT(stats.buildTimeSeconds, 1.0f);
 }

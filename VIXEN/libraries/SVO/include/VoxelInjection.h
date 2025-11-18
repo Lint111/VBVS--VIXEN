@@ -208,6 +208,7 @@ private:
 struct InjectionConfig {
     int maxLevels = 16;
     float errorThreshold = 0.001f;
+    float minVoxelSize = 0.0f;  // Minimum voxel size - prevents over-subdivision (0 = use errorThreshold)
     bool enableContours = true;
     bool enableCompression = true;
 

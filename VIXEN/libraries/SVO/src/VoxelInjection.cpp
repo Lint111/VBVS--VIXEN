@@ -22,8 +22,8 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     m_stats = Stats{};
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // Copy data needed for lambda (avoid dangling reference)
-    std::vector<VoxelData> voxelsCopy = input.voxels;
+    // Use shared_ptr to avoid expensive copies in lambdas
+    auto voxelsPtr = std::make_shared<std::vector<VoxelData>>(input.voxels);
     glm::vec3 worldMinCopy = input.worldMin;
     glm::vec3 worldMaxCopy = input.worldMax;
     int resolutionCopy = input.resolution;
@@ -31,7 +31,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     // Create lambda sampler from sparse voxels
     auto sampler = std::make_unique<LambdaVoxelSampler>(
         // Sample function - lookup voxel in sparse list
-        [voxelsCopy, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
             // Find closest voxel (simple linear search for now)
             // TODO: Use spatial hash or octree for faster lookup
             float minDist = std::numeric_limits<float>::max();
@@ -40,7 +40,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
             glm::vec3 voxelSize = (worldMaxCopy - worldMinCopy) / float(resolutionCopy);
             float searchRadius = glm::length(voxelSize) * 0.5f;
 
-            for (const auto& voxel : voxelsCopy) {
+            for (const auto& voxel : *voxelsPtr) {
                 float dist = glm::length(voxel.position - pos);
                 if (dist < searchRadius && dist < minDist) {
                     minDist = dist;
@@ -58,6 +58,18 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
         [worldMinCopy, worldMaxCopy](glm::vec3& min, glm::vec3& max) {
             min = worldMinCopy;
             max = worldMaxCopy;
+        },
+        // Density estimator - check if region contains voxels
+        [voxelsPtr](const glm::vec3& center, float size) -> float {
+            // Check if any voxel is within this region
+            float halfSize = size * 0.5f;
+            for (const auto& voxel : *voxelsPtr) {
+                glm::vec3 diff = glm::abs(voxel.position - center);
+                if (diff.x <= halfSize && diff.y <= halfSize && diff.z <= halfSize) {
+                    return 1.0f;  // Region contains voxels
+                }
+            }
+            return 0.0f;  // Empty region
         }
     );
 
@@ -81,8 +93,8 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     m_stats = Stats{};
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    // Copy data needed for lambda (avoid dangling reference)
-    std::vector<VoxelData> voxelsCopy = input.voxels;
+    // Use shared_ptr to avoid expensive copies in lambdas
+    auto voxelsPtr = std::make_shared<std::vector<VoxelData>>(input.voxels);
     glm::vec3 worldMinCopy = input.worldMin;
     glm::vec3 worldMaxCopy = input.worldMax;
     glm::ivec3 resolutionCopy = input.resolution;
@@ -90,7 +102,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     // Create lambda sampler from dense grid
     auto sampler = std::make_unique<LambdaVoxelSampler>(
         // Sample function - lookup in grid
-        [voxelsCopy, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
             // Convert world position to grid coordinates
             glm::vec3 normalized = (pos - worldMinCopy) / (worldMaxCopy - worldMinCopy);
             glm::ivec3 gridPos = glm::clamp(
@@ -101,7 +113,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
 
             // Lookup voxel
             size_t idx = gridPos.x + gridPos.y * resolutionCopy.x + gridPos.z * resolutionCopy.x * resolutionCopy.y;
-            const VoxelData& voxel = voxelsCopy[idx];
+            const VoxelData& voxel = (*voxelsPtr)[idx];
 
             if (voxel.isSolid()) {
                 data = voxel;
@@ -115,7 +127,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
             max = worldMaxCopy;
         },
         // Density estimator - count solid voxels in region
-        [voxelsCopy, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& center, float size) -> float {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& center, float size) -> float {
             // Sample region and estimate density
             glm::vec3 halfSize(size * 0.5f);
             glm::vec3 regionMin = center - halfSize;
@@ -145,7 +157,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
                     for (int x = gridMin.x; x <= gridMax.x; ++x) {
                         totalVoxels++;
                         size_t idx = x + y * resolutionCopy.x + z * resolutionCopy.x * resolutionCopy.y;
-                        if (voxelsCopy[idx].isSolid()) {
+                        if ((*voxelsPtr)[idx].isSolid()) {
                             solidVoxels++;
                         }
                     }
@@ -243,7 +255,9 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
         node->level = level;
 
         // Termination criteria
-        bool shouldTerminate = (level >= config.maxLevels) || (density >= 0.99f && size < 0.001f);
+        // Stop at max level, or when voxel is smaller than minimum size
+        float minSize = (config.minVoxelSize > 0.0f) ? config.minVoxelSize : config.errorThreshold;
+        bool shouldTerminate = (level >= config.maxLevels) || (size < minSize);
 
         if (shouldTerminate) {
             // Create leaf - sample voxel data
