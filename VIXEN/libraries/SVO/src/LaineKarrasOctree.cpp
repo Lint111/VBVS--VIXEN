@@ -7,6 +7,105 @@
 
 namespace SVO {
 
+// ============================================================================
+// Debug Utilities
+// ============================================================================
+// Compile-time toggleable debug output for ray traversal
+//
+// Usage:
+//   1. Set LKOCTREE_DEBUG_TRAVERSAL to 1 to enable detailed debug output
+//   2. Rebuild the project
+//   3. Run tests to see traversal state for each iteration
+//
+// Debug output includes:
+//   - Octant mirroring setup
+//   - Initial traversal state (entry point, mirrored coordinates)
+//   - Per-iteration state (scale, idx, pos, t_min, t_max, parent, descriptor)
+//   - Child validity checks (validMask, leafMask, t-span)
+//   - Valid voxel detection and leaf hits
+//   - DESCEND operations (child offset calculation, parent updates)
+//   - ADVANCE operations (step_mask, position updates)
+//
+// Note: Debug output is completely compiled out when disabled (zero runtime cost)
+//
+#define LKOCTREE_DEBUG_TRAVERSAL 0
+
+#if LKOCTREE_DEBUG_TRAVERSAL
+    #define DEBUG_PRINT(...) printf(__VA_ARGS__)
+#else
+    #define DEBUG_PRINT(...) ((void)0)
+#endif
+
+namespace {
+    // Debug helper: Print octant mirroring setup
+    inline void debugOctantMirroring(const glm::vec3& rayDir, const glm::vec3& rayDirSafe, int octant_mask) {
+        DEBUG_PRINT("\n=== Octant Mirroring ===\n");
+        DEBUG_PRINT("  rayDir=(%.6f, %.6f, %.6f), rayDirSafe=(%.6f, %.6f, %.6f)\n",
+                    rayDir.x, rayDir.y, rayDir.z, rayDirSafe.x, rayDirSafe.y, rayDirSafe.z);
+        DEBUG_PRINT("  Initial octant_mask=%d\n", octant_mask);
+    }
+
+    // Debug helper: Print initial traversal state
+    inline void debugInitialState(const glm::vec3& normOrigin, const glm::vec3& mirrored,
+                                   int octant_mask, int idx, const glm::vec3& pos) {
+        DEBUG_PRINT("INIT: norm=(%.3f,%.3f,%.3f), mir=(%.3f,%.3f,%.3f), octant_mask=%d, idx=%d, pos=(%.3f,%.3f,%.3f)\n",
+                    normOrigin.x, normOrigin.y, normOrigin.z,
+                    mirrored.x, mirrored.y, mirrored.z,
+                    octant_mask, idx, pos.x, pos.y, pos.z);
+    }
+
+    // Debug helper: Print iteration state
+    inline void debugIterationState(int iter, int scale, int idx, int octant_mask,
+                                     float t_min, float t_max, const glm::vec3& pos, float scale_exp2,
+                                     const void* parent, uint64_t child_descriptor) {
+        DEBUG_PRINT("\n=== Iter %d ===\n", iter);
+        DEBUG_PRINT("  scale=%d, idx=%d (0b%d%d%d), octant_mask=%d, t_min=%.3f, t_max=%.3f\n",
+                    scale, idx, (idx>>2)&1, (idx>>1)&1, idx&1, octant_mask, t_min, t_max);
+        DEBUG_PRINT("  pos=(%.3f, %.3f, %.3f), scale_exp2=%.6f\n", pos.x, pos.y, pos.z, scale_exp2);
+        DEBUG_PRINT("  parent=%p, child_descriptor=%llu\n", parent, child_descriptor);
+    }
+
+    // Debug helper: Print child validity check
+    inline void debugChildValidity(int child_shift, uint32_t child_masks,
+                                    bool old_valid, bool correct_valid,
+                                    bool old_leaf, bool correct_leaf,
+                                    float t_min, float t_max) {
+        DEBUG_PRINT("  child_shift=%d, child_masks=0x%04X\n", child_shift, child_masks);
+        DEBUG_PRINT("  valid_bit=%d (correct=%d), is_leaf=%d (correct=%d)\n",
+                    old_valid, correct_valid, old_leaf, correct_leaf);
+        DEBUG_PRINT("  Check: child_valid=%d, t_min(%.3f) <= t_max(%.3f) = %d\n",
+                    correct_valid, t_min, t_max, t_min <= t_max);
+    }
+
+    // Debug helper: Print valid voxel found
+    inline void debugValidVoxel(float t_min, float tv_max) {
+        DEBUG_PRINT("  --> Valid voxel, t_min=%.3f <= tv_max=%.3f\n", t_min, tv_max);
+    }
+
+    // Debug helper: Print leaf hit
+    inline void debugLeafHit(int scale) {
+        DEBUG_PRINT("  --> LEAF HIT at scale=%d!\n", scale);
+    }
+
+    // Debug helper: Print descend operation
+    inline void debugDescend(int scale, float t_max, int child_shift_idx, uint8_t validMask,
+                            uint32_t mask_before, uint32_t valid_before, uint32_t child_offset,
+                            uint32_t childPointer, uint32_t child_index, const void* new_parent) {
+        DEBUG_PRINT("  --> Internal node, descending...\n");
+        if (scale >= 0) DEBUG_PRINT("  --> Pushing to stack: scale=%d, t_max=%.3f\n", scale, t_max);
+        DEBUG_PRINT("  --> child_shift_idx=%d, validMask=0x%02X, mask_before=0x%02X, valid_before=0x%02X, child_offset=%u\n",
+                    child_shift_idx, validMask, mask_before, valid_before, child_offset);
+        DEBUG_PRINT("  --> parent->childPointer=%u, child_index=%u\n", childPointer, child_index);
+        DEBUG_PRINT("  --> New parent=%p\n", new_parent);
+    }
+
+    // Debug helper: Print advance operation
+    inline void debugAdvance(int step_mask, float tc_max, int old_idx, int new_idx) {
+        DEBUG_PRINT("  --> ADVANCE: step_mask=%d, tc_max=%.3f\n", step_mask, tc_max);
+        DEBUG_PRINT("  --> idx: %d -> %d\n", old_idx, new_idx);
+    }
+} // anonymous namespace
+
 LaineKarrasOctree::LaineKarrasOctree() = default;
 
 LaineKarrasOctree::~LaineKarrasOctree() = default;
@@ -510,10 +609,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     float tz_bias = tz_coef * normOrigin.z;
 
     // XOR octant mirroring: mirror coordinate system so ray direction is negative along each axis
+    // IMPORTANT: Use ORIGINAL rayDir for sign tests, not rayDirSafe (which has epsilon modifications)
     int octant_mask = 7;
-    if (rayDirSafe.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
-    if (rayDirSafe.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
-    if (rayDirSafe.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
+    debugOctantMirroring(rayDir, rayDirSafe, octant_mask);
+    if (rayDir.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
+    if (rayDir.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
+    if (rayDir.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
 
     // Initialize active t-span in normalized [1,2] space
     // Reference: lines 121-125
@@ -545,9 +646,20 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Select initial child based on ray entry point
     // Reference: lines 136-138
-    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
-    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
-    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    // idx represents the child in MIRRORED coordinate system
+    // octant_mask tells us which axes are mirrored: mirrored_coord = 3 - coord
+    // We need to check which half the entry point is in AFTER applying mirroring
+
+    float mirroredX = (octant_mask & 1) ? (3.0f - normOrigin.x) : normOrigin.x;
+    float mirroredY = (octant_mask & 2) ? (3.0f - normOrigin.y) : normOrigin.y;
+    float mirroredZ = (octant_mask & 4) ? (3.0f - normOrigin.z) : normOrigin.z;
+
+    if (mirroredX > 1.5f) idx ^= 1, pos.x = 1.5f;
+    if (mirroredY > 1.5f) idx ^= 2, pos.y = 1.5f;
+    if (mirroredZ > 1.5f) idx ^= 4, pos.z = 1.5f;
+
+    glm::vec3 mirroredPos(mirroredX, mirroredY, mirroredZ);
+    debugInitialState(normOrigin, mirroredPos, octant_mask, idx, pos);
 
     // Main traversal loop
     // Traverse voxels along the ray while staying within octree bounds
@@ -556,6 +668,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     while (scale < CAST_STACK_DEPTH && iter < maxIter) {
         ++iter;
+        debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 
         // ====================================================================
         // ADOPTED FROM: cuda/Raycast.inl lines 155-169
@@ -578,9 +691,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Compute maximum t-value at voxel corner
         // This determines when the ray exits the current voxel
         // Using normalized bias terms
-        float tx_corner = pos.x * tx_coef - tx_bias;
-        float ty_corner = pos.y * ty_coef - ty_bias;
-        float tz_corner = pos.z * tz_coef - tz_bias;
+        // For axis-parallel rays, ignore that axis (set to infinity)
+        constexpr float axis_parallel_threshold = 1e-5f;
+        float tx_corner = (std::abs(rayDir.x) > axis_parallel_threshold) ?
+                          (pos.x * tx_coef - tx_bias) : std::numeric_limits<float>::infinity();
+        float ty_corner = (std::abs(rayDir.y) > axis_parallel_threshold) ?
+                          (pos.y * ty_coef - ty_bias) : std::numeric_limits<float>::infinity();
+        float tz_corner = (std::abs(rayDir.z) > axis_parallel_threshold) ?
+                          (pos.z * tz_coef - tz_bias) : std::numeric_limits<float>::infinity();
         float tc_max = std::min({tx_corner, ty_corner, tz_corner});
 
         // ====================================================================
@@ -592,8 +710,18 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         int child_shift = idx ^ octant_mask;
         uint32_t child_masks = static_cast<uint32_t>(child_descriptor) << child_shift;
 
+        // Check if THIS specific child exists in parent's validMask
+        // child_shift gives us the UNMIRRORED child index (physical index in octree data)
+        bool child_valid = (parent->validMask & (1u << child_shift)) != 0;
+        bool child_is_leaf = (parent->leafMask & (1u << child_shift)) != 0;
+
+        debugChildValidity(child_shift, child_masks,
+                          (child_masks & 0x8000) != 0, child_valid,
+                          (child_masks & 0x0080) == 0, child_is_leaf,
+                          t_min, t_max);
+
         // Check if voxel is valid (valid mask bit is set) and t-span is non-empty
-        if ((child_masks & 0x8000) != 0 && t_min <= t_max)
+        if (child_valid && t_min <= t_max)
         {
             // Terminate if voxel is small enough (reference line 181-182)
             // Note: ray.dir_sz and ray_orig_sz are LOD-related, skipping for now
@@ -619,16 +747,27 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // Descend to first child if resulting t-span is non-empty
             if (t_min <= tv_max)
             {
-                // Check if this is a leaf (non-leaf mask bit clear means it's a leaf)
-                if ((child_masks & 0x0080) == 0) {
+                debugValidVoxel(t_min, tv_max);
+
+                // Check if this is a leaf
+                if (child_is_leaf) {
+                    debugLeafHit(scale);
                     // Leaf voxel hit! Return intersection
-                    // TODO: Get actual voxel attributes and compute proper normal
+                    // Convert normalized [1,2] t-values back to world t-values
+                    // In [1,2] space, distance 1.0 corresponds to worldSize in world space
+                    float worldSizeLength = glm::length(m_worldMax - m_worldMin);
+                    float t_min_world = tEntry + t_min * worldSizeLength;
+                    float tv_max_world = tEntry + tv_max * worldSizeLength;
+
                     ISVOStructure::RayHit hit{};
                     hit.hit = true;
-                    hit.tMin = t_min;
-                    hit.tMax = tv_max;
-                    hit.position = origin + rayDir * t_min;
-                    hit.scale = CAST_STACK_DEPTH - 1 - scale; // Convert scale to depth
+                    hit.tMin = t_min_world;
+                    hit.tMax = tv_max_world;
+                    hit.position = origin + rayDir * t_min_world;
+                    // Depth is how many times we've descended + 1 (for the leaf we're about to enter)
+                    // scale starts at CAST_STACK_DEPTH-1, decrements with each descent
+                    // Leaf at scale S is at depth = (CAST_STACK_DEPTH-1) - S + 1 = CAST_STACK_DEPTH - S
+                    hit.scale = CAST_STACK_DEPTH - scale;
                     // Placeholder normal - should compute from voxel face
                     hit.normal = glm::vec3(0.0f, 1.0f, 0.0f);
                     return hit;
@@ -652,16 +791,15 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 // Calculate offset to child based on popcount of valid mask
                 // Count how many valid children come before current child
+                // Reference: Raycast.inl:256 - ofs += popc8(child_masks & 0x7F)
                 int child_shift_idx = idx ^ octant_mask;
-                uint32_t child_offset = 0;
 
-                // Count set bits in child_masks before position child_shift_idx
-                // child_masks has valid mask with MSB at position 7 (0x8000 >> child_shift)
-                for (int i = 0; i < child_shift_idx; ++i) {
-                    if ((child_masks >> (15 - i)) & 1) {  // Check valid mask bits
-                        child_offset++;
-                    }
-                }
+                // child_masks has validMask in bits 8-15 after left shift by child_shift
+                // We need to count valid bits BEFORE the current child position
+                // Mask out bits at and after position child_shift (which is at bit 15 - child_shift in child_masks)
+                uint32_t mask_before_child = (1u << child_shift_idx) - 1; // e.g., for idx 7: 0x7F
+                uint32_t valid_before_child = parent->validMask & mask_before_child;
+                uint32_t child_offset = std::popcount(valid_before_child);
 
                 // Update parent pointer to point to child
                 // In our structure, childPointer is an index into childDescriptors array
@@ -672,7 +810,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     break; // Invalid child pointer - exit loop
                 }
 
-                parent = &m_octree->root->childDescriptors[child_index];
+                const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
+                debugDescend(scale, t_max, child_shift_idx, parent->validMask,
+                           mask_before_child, valid_before_child, child_offset,
+                           parent->childPointer, child_index, new_parent);
+                parent = new_parent;
 
                 // Descend to next level
                 idx = 0;
@@ -704,7 +846,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
         // Update active t-span and flip child slot index bits
         t_min = tc_max;
+        int old_idx = idx;
         idx ^= step_mask;
+        debugAdvance(step_mask, tc_max, old_idx, idx);
 
         // ================================================================
         // POP: Backtrack if we've exited the current parent voxel
