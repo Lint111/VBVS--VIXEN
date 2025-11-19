@@ -149,3 +149,32 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_octree_queries)
+
+# ===========================================================================
+# Brick Storage Tests
+# ===========================================================================
+# Tests BrickStorage template, object-of-arrays layout, custom data layouts
+
+add_executable(test_brick_storage
+    test_brick_storage.cpp
+)
+
+if(TARGET SVO)
+    target_link_libraries(test_brick_storage PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_brick_storage PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_brick_storage PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_brick_storage POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_brick_storage>
+        COMMENT "Copying TBB DLL for test_brick_storage"
+    )
+endif()
+
+gtest_discover_tests(test_brick_storage)

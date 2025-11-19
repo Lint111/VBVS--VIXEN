@@ -47,6 +47,7 @@ endif()
 # ============================================================================
 
 set(GLI_TEST_ENABLE OFF CACHE BOOL "" FORCE)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)  # Skip git update - use cached version
 FetchContent_Declare(
     gli
     GIT_REPOSITORY https://github.com/g-truc/gli.git
@@ -54,16 +55,7 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-# Make gli optional - allow build to continue if fetch fails
-FetchContent_GetProperties(gli)
-if(NOT gli_POPULATED)
-    FetchContent_Populate(gli)
-    if(gli_POPULATED)
-        add_subdirectory(${gli_SOURCE_DIR} ${gli_BINARY_DIR} EXCLUDE_FROM_ALL)
-    else()
-        message(WARNING "gli fetch failed - texture loading will be unavailable")
-    endif()
-endif()
+FetchContent_MakeAvailable(gli)
 
 # Suppress warnings from gli
 if(TARGET gli)
@@ -178,10 +170,8 @@ if(DEFINED vulkanheaders_SOURCE_DIR)
     include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
 endif()
 
-# GLI is header-only (only if fetched successfully)
-if(DEFINED gli_SOURCE_DIR)
-    include_directories(BEFORE ${gli_SOURCE_DIR})
-endif()
+# GLI is header-only
+include_directories(BEFORE ${gli_SOURCE_DIR})
 
 # STB is header-only
 include_directories(BEFORE ${stb_SOURCE_DIR})

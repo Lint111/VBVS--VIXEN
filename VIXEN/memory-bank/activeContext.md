@@ -376,10 +376,20 @@ auto svoOctree = builder.buildFromVoxelGrid(
 - [x] Implement world-space minVoxelSize termination
 - [x] Replace legacy SparseVoxelOctree in VoxelGridNode
 - [x] Add SVO library dependency to RenderGraph
-- [ ] Test VoxelGridNode build (blocked by CMake gli dependency issue)
+- [x] Resolve CMake gli dependency issue (FETCHCONTENT_UPDATES_DISCONNECTED)
+- [x] Successfully build VoxelGridNode with SVO integration
 
-**Week 2: GPU Integration** 🔄 IN PROGRESS
-- [ ] Resolve CMake gli dependency issue (GitHub server error)
+**Week 1.5: Brick Storage System** ✅ COMPLETE (Nov 18, 2025)
+- [x] Design flexible, octree-agnostic brick storage architecture
+- [x] Implement cache-aware BrickStorage template with flat arrays
+- [x] Create BrickReference (type-erased brick pointers for octree)
+- [x] Add cache budget analysis (L1/L2 cache fit prediction)
+- [x] Support arbitrary array count (16 arrays, expandable)
+- [x] Create domain-specific layouts (sound, thermal, fluid, AI, etc.)
+- [x] All tests passing (27/27)
+
+**Week 2: GPU Integration** 🔄 STARTING
+- [x] Resolve CMake gli dependency issue (FETCHCONTENT_UPDATES_DISCONNECTED)
 - [ ] Implement GPU buffer packing for new SVO structure
   - [ ] Pack ChildDescriptor data for GPU (compact format)
   - [ ] Pack UncompressedAttributes for GPU
