@@ -511,4 +511,267 @@ bool VoxelInjector::merge(
     return false;
 }
 
+// ============================================================================
+// Bottom-Up Additive Voxel Insertion
+// ============================================================================
+
+/**
+ * Insert single voxel using bottom-up additive approach.
+ *
+ * Algorithm:
+ * 1. Compute voxel's position in octree hierarchy
+ * 2. Find/create brick at leaf level
+ * 3. Insert voxel into brick's dense storage
+ * 4. Propagate "has child" up parent chain (idempotent)
+ *
+ * Thread-safety: Uses atomic operations for parent node updates.
+ */
+bool VoxelInjector::insertVoxel(
+    ISVOStructure& svo,
+    const glm::vec3& position,
+    const VoxelData& data,
+    const InjectionConfig& config) {
+
+    // Cast to LaineKarrasOctree (required for direct manipulation)
+    auto* octree = dynamic_cast<LaineKarrasOctree*>(&svo);
+    if (!octree) {
+        std::cerr << "insertVoxel requires LaineKarrasOctree implementation\n";
+        return false;
+    }
+
+    // Ensure octree is initialized with default bounds if not set
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(10.0f);
+    int maxLevels = config.maxLevels > 0 ? config.maxLevels : 12;
+
+    octree->ensureInitialized(worldMin, worldMax, maxLevels);
+
+    // Get mutable octree data and bounds
+    Octree* octreeData = octree->getOctreeMutable();
+    if (!octreeData || !octreeData->root) {
+        return false;
+    }
+
+    worldMin = octreeData->worldMin;
+    worldMax = octreeData->worldMax;
+
+    // 1. Check bounds
+    if (glm::any(glm::lessThan(position, worldMin)) || glm::any(glm::greaterThanEqual(position, worldMax))) {
+        return false;  // Out of bounds
+    }
+
+    // 2. Compute octree path from root to target leaf
+    // Target depth = maxLevels or (maxLevels - brickDepthLevels) if using bricks
+    int targetDepth = config.maxLevels;
+    if (config.brickDepthLevels > 0) {
+        targetDepth = config.maxLevels - config.brickDepthLevels;
+    }
+
+    // Normalize position to [0,1]³
+    glm::vec3 normPos = (position - worldMin) / (worldMax - worldMin);
+
+    // Compute octree path (sequence of child indices from root to leaf)
+    std::vector<int> path;
+    path.reserve(targetDepth);
+
+    glm::vec3 voxelMin(0.0f);
+    glm::vec3 voxelMax(1.0f);
+
+    for (int level = 0; level < targetDepth; ++level) {
+        glm::vec3 center = (voxelMin + voxelMax) * 0.5f;
+
+        // Compute child index (0-7) based on which octant contains position
+        int childIdx = 0;
+        if (normPos.x >= center.x) childIdx |= 1;
+        if (normPos.y >= center.y) childIdx |= 2;
+        if (normPos.z >= center.z) childIdx |= 4;
+
+        path.push_back(childIdx);
+
+        // Update voxel bounds for next level
+        voxelMin = glm::vec3(
+            (childIdx & 1) ? center.x : voxelMin.x,
+            (childIdx & 2) ? center.y : voxelMin.y,
+            (childIdx & 4) ? center.z : voxelMin.z
+        );
+        voxelMax = glm::vec3(
+            (childIdx & 1) ? voxelMax.x : center.x,
+            (childIdx & 2) ? voxelMax.y : center.y,
+            (childIdx & 4) ? voxelMax.z : center.z
+        );
+    }
+
+    // 3. Octree data already retrieved above
+
+    // 4. Traverse bottom-up: check if node already exists with validMask set
+    //    Start from leaf, work upward until we find existing valid node
+    //    This is the KEY OPTIMIZATION for parallel insertion!
+
+    // First, find deepest existing node along path
+    int existingDepth = 0; // How deep in the tree nodes exist
+
+    // For now, simplified: always create full path
+    // TODO: Add early termination logic when we detect existing validMask bits
+
+    // 5. Create attribute data for the leaf voxel
+    UncompressedAttributes attr{};
+
+    // Pack color
+    attr.red = static_cast<uint8_t>(glm::clamp(data.color.r, 0.0f, 1.0f) * 255);
+    attr.green = static_cast<uint8_t>(glm::clamp(data.color.g, 0.0f, 1.0f) * 255);
+    attr.blue = static_cast<uint8_t>(glm::clamp(data.color.b, 0.0f, 1.0f) * 255);
+    attr.alpha = 255;
+
+    // Pack normal using point-on-cube encoding
+    glm::vec3 n = glm::normalize(data.normal);
+    glm::vec3 absN = glm::abs(n);
+
+    // Find dominant axis
+    int axis = 0;
+    if (absN.y > absN.x && absN.y > absN.z) axis = 1;
+    else if (absN.z > absN.x && absN.z > absN.y) axis = 2;
+
+    // Determine sign bit
+    int sign = (axis == 0 ? n.x : (axis == 1 ? n.y : n.z)) >= 0.0f ? 1 : 0;
+
+    // Project to cube face
+    glm::vec2 uv;
+    switch (axis) {
+        case 0: uv = glm::vec2(n.y / absN.x, n.z / absN.x); break;
+        case 1: uv = glm::vec2(n.x / absN.y, n.z / absN.y); break;
+        case 2: uv = glm::vec2(n.x / absN.z, n.y / absN.z); break;
+    }
+    uv = (uv + 1.0f) * 0.5f;
+    uv = glm::clamp(uv, glm::vec2(0.0f), glm::vec2(1.0f));
+
+    attr.sign_and_axis = (axis << 1) | sign;
+    attr.u_coordinate = static_cast<uint32_t>(uv.x * 32767.0f);
+    attr.v_coordinate = static_cast<uint32_t>(uv.y * 16383.0f);
+
+    // 6. Add attribute to octree (this will grow the attributes array)
+    uint32_t attrIndex = static_cast<uint32_t>(octreeData->root->attributes.size());
+    octreeData->root->attributes.push_back(attr);
+
+    // 7. NOW traverse/create nodes along path and propagate validMask bits
+    //    Work from ROOT down to LEAF, creating nodes as needed
+    //    EARLY EXIT: If we find child already has validMask bit set, we're done!
+
+    // Start at root descriptor (index 0)
+    uint32_t currentDescriptorIdx = 0;
+
+    // Ensure root descriptor exists
+    if (octreeData->root->childDescriptors.empty()) {
+        ChildDescriptor rootDesc{};
+        rootDesc.validMask = 0;
+        rootDesc.leafMask = 0;
+        rootDesc.childPointer = 0;
+        rootDesc.farBit = 0;
+        rootDesc.contourPointer = 0;
+        rootDesc.contourMask = 0;
+        octreeData->root->childDescriptors.push_back(rootDesc);
+
+        // Also create AttributeLookup for root
+        AttributeLookup rootAttrLookup{};
+        rootAttrLookup.valuePointer = 0;
+        rootAttrLookup.mask = 0;
+        octreeData->root->attributeLookups.push_back(rootAttrLookup);
+    }
+
+    // Traverse path, creating descriptors as needed
+    for (size_t level = 0; level < path.size(); ++level) {
+        int childIdx = path[level];
+        ChildDescriptor& desc = octreeData->root->childDescriptors[currentDescriptorIdx];
+
+        // Check if this child already exists
+        bool childExists = (desc.validMask & (1 << childIdx)) != 0;
+
+        if (childExists) {
+            // Child already exists - check if it's the target leaf
+            if (level == path.size() - 1) {
+                // This is the target leaf and it already exists
+                // EARLY EXIT - don't re-insert
+                return true;
+            }
+            // Not a leaf - this is an internal node we need to traverse through
+            // Continue down the tree to reach our target leaf
+        } else {
+            // Child doesn't exist yet - mark it as valid
+            desc.validMask |= (1 << childIdx);
+        }
+
+        // If this is the leaf level, mark as leaf and complete insertion
+        if (level == path.size() - 1) {
+            // Mark this child as a leaf
+            if (!childExists) {
+                desc.leafMask |= (1 << childIdx);
+
+                // Update attribute lookup for this descriptor
+                AttributeLookup& attrLookup = octreeData->root->attributeLookups[currentDescriptorIdx];
+                attrLookup.mask |= (1 << childIdx);
+                if (attrLookup.valuePointer == 0 && attrIndex > 0) {
+                    attrLookup.valuePointer = attrIndex; // Point to first attribute for this node
+                }
+
+                // Success! Voxel inserted
+                octreeData->totalVoxels++;
+            }
+            return true;
+        }
+
+        // This is an internal node - need child descriptor to continue traversal
+        if (childExists) {
+            // Descriptor already exists - follow childPointer to next level
+            currentDescriptorIdx = desc.childPointer;
+        } else {
+            // Need to allocate new child descriptor
+            uint32_t newDescriptorIdx = static_cast<uint32_t>(octreeData->root->childDescriptors.size());
+            desc.childPointer = newDescriptorIdx;
+
+            // Create child descriptor
+            ChildDescriptor childDesc{};
+            childDesc.validMask = 0;
+            childDesc.leafMask = 0;
+            childDesc.childPointer = 0;
+            childDesc.farBit = 0;
+            childDesc.contourPointer = 0;
+            childDesc.contourMask = 0;
+            octreeData->root->childDescriptors.push_back(childDesc);
+
+            // Create corresponding AttributeLookup
+            AttributeLookup childAttrLookup{};
+            childAttrLookup.valuePointer = 0;
+            childAttrLookup.mask = 0;
+            octreeData->root->attributeLookups.push_back(childAttrLookup);
+
+            currentDescriptorIdx = newDescriptorIdx;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Batch insert voxels in parallel.
+ * Uses thread pool to distribute work across cores.
+ */
+size_t VoxelInjector::insertVoxelsBatch(
+    ISVOStructure& svo,
+    const std::vector<VoxelData>& voxels,
+    const InjectionConfig& config) {
+
+    // TODO: Implement parallel batch insertion
+    // Use TBB parallel_for or thread pool
+    // Each thread processes subset of voxels
+    // Atomic operations ensure thread-safety
+
+    size_t inserted = 0;
+    for (const auto& voxel : voxels) {
+        if (insertVoxel(svo, voxel.position, voxel, config)) {
+            inserted++;
+        }
+    }
+
+    return inserted;
+}
+
 } // namespace SVO

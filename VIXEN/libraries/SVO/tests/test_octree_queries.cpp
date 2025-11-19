@@ -3,6 +3,7 @@
 #include "SVOBuilder.h"
 #include "SVOTypes.h"
 #include "VoxelInjection.h"
+#include <chrono>
 
 using namespace SVO;
 
@@ -901,7 +902,129 @@ TEST_F(OctreeQueryTest, TraversalPath_Complex_NearMiss) {
 class CornellBoxTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Build Cornell box using voxel injection
+        // Build Cornell box using ADDITIVE VOXEL INSERTION (new sparse approach)
+        using namespace SVO;
+
+        buildCornellBoxAdditive();
+    }
+
+    // NEW APPROACH: Generate wall voxels directly and insert additively
+    void buildCornellBoxAdditive() {
+        using namespace SVO;
+
+        constexpr float boxSize = 10.0f;
+        constexpr float thickness = 0.2f;
+        constexpr float voxelSize = 0.1f; // Voxel spacing
+
+        // Create empty octree and initialize with world bounds
+        cornellBox = new LaineKarrasOctree();
+        cornellBox->ensureInitialized(glm::vec3(0.0f), glm::vec3(boxSize), 8);
+
+        VoxelInjector injector;
+        InjectionConfig config;
+        config.maxLevels = 8; // Reasonable depth for 10³ world with 0.1 voxels
+
+        std::vector<VoxelData> wallVoxels;
+
+        // Generate floor voxels (y=0 to thickness)
+        for (float x = 0.0f; x < boxSize; x += voxelSize) {
+            for (float z = 0.0f; z < boxSize; z += voxelSize) {
+                for (float y = 0.0f; y < thickness; y += voxelSize) {
+                    VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
+                    v.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Up
+                    v.density = 1.0f;
+                    wallVoxels.push_back(v);
+                }
+            }
+        }
+
+        // Generate ceiling voxels (y=boxSize-thickness to boxSize)
+        for (float x = 0.0f; x < boxSize; x += voxelSize) {
+            for (float z = 0.0f; z < boxSize; z += voxelSize) {
+                for (float y = boxSize - thickness; y < boxSize; y += voxelSize) {
+                    VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    // Check if in light patch (center of ceiling)
+                    glm::vec2 centerXZ(boxSize * 0.5f, boxSize * 0.5f);
+                    float distFromCenter = glm::length(glm::vec2(x, z) - centerXZ);
+                    v.color = (distFromCenter < 2.0f) ? glm::vec3(1.0f) : glm::vec3(0.8f); // White light or grey
+                    v.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Down
+                    v.density = 1.0f;
+                    wallVoxels.push_back(v);
+                }
+            }
+        }
+
+        // Generate left wall (x=0 to thickness) - RED
+        for (float y = 0.0f; y < boxSize; y += voxelSize) {
+            for (float z = 0.0f; z < boxSize; z += voxelSize) {
+                for (float x = 0.0f; x < thickness; x += voxelSize) {
+                    VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.color = glm::vec3(0.8f, 0.1f, 0.1f); // Red
+                    v.normal = glm::vec3(1.0f, 0.0f, 0.0f); // Right
+                    v.density = 1.0f;
+                    wallVoxels.push_back(v);
+                }
+            }
+        }
+
+        // Generate right wall (x=boxSize-thickness to boxSize) - GREEN
+        for (float y = 0.0f; y < boxSize; y += voxelSize) {
+            for (float z = 0.0f; z < boxSize; z += voxelSize) {
+                for (float x = boxSize - thickness; x < boxSize; x += voxelSize) {
+                    VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.color = glm::vec3(0.1f, 0.8f, 0.1f); // Green
+                    v.normal = glm::vec3(-1.0f, 0.0f, 0.0f); // Left
+                    v.density = 1.0f;
+                    wallVoxels.push_back(v);
+                }
+            }
+        }
+
+        // Generate back wall (z=boxSize-thickness to boxSize)
+        for (float x = 0.0f; x < boxSize; x += voxelSize) {
+            for (float y = 0.0f; y < boxSize; y += voxelSize) {
+                for (float z = boxSize - thickness; z < boxSize; z += voxelSize) {
+                    VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
+                    v.normal = glm::vec3(0.0f, 0.0f, -1.0f); // Forward
+                    v.density = 1.0f;
+                    wallVoxels.push_back(v);
+                }
+            }
+        }
+
+        std::cout << "\n=== Building Cornell Box (Additive Insertion) ===\n";
+        std::cout << "Total wall voxels: " << wallVoxels.size() << "\n";
+
+        // Insert all voxels using additive insertion
+        auto startTime = std::chrono::high_resolution_clock::now();
+
+        size_t inserted = 0;
+        size_t failed = 0;
+        for (const auto& voxel : wallVoxels) {
+            if (injector.insertVoxel(*cornellBox, voxel.position, voxel, config)) {
+                inserted++;
+            } else {
+                failed++;
+            }
+        }
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        float buildTime = std::chrono::duration<float>(endTime - startTime).count();
+
+        std::cout << "Build time: " << buildTime << " seconds\n";
+        std::cout << "Inserted: " << inserted << ", Failed: " << failed << "\n";
+        std::cout << cornellBox->getStats() << "\n";
+    }
+
+    // OLD APPROACH (kept for reference, not used)
+    void buildCornellBoxDensityBased() {
         using namespace SVO;
 
         // Create Cornell box sampler
@@ -915,6 +1038,9 @@ protected:
 
                 data.position = pos;
                 data.density = 1.0f;
+
+                // Debug: log samples that return true near (9.375, 4.375, 9.375)
+                bool shouldLog = (pos.x > 9.0f && pos.x < 10.0f && pos.y > 4.0f && pos.y < 5.0f && pos.z > 9.0f && pos.z < 10.0f);
 
                 // Floor (y=0)
                 if (pos.y < thickness) {
@@ -964,9 +1090,11 @@ protected:
                 if (pos.z < thickness) {
                     data.color = glm::vec3(0.8f, 0.8f, 0.8f); // Bright grey
                     data.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Backward
+                    if (shouldLog) std::cout << "[SAMPLE TRUE] pos=(" << pos.x << "," << pos.y << "," << pos.z << ") FRONT WALL\n";
                     return true;
                 }
 
+                if (shouldLog) std::cout << "[SAMPLE FALSE] pos=(" << pos.x << "," << pos.y << "," << pos.z << ") EMPTY\n";
                 return false; // Empty interior
             },
 
@@ -976,7 +1104,7 @@ protected:
                 max = glm::vec3(10.0f);
             },
 
-            // Density estimator
+            // Density estimator - only subdivide regions that CONTAIN wall geometry
             [](const glm::vec3& center, float size) -> float {
                 constexpr float thickness = 0.2f;
                 constexpr float boxSize = 10.0f;
@@ -986,41 +1114,36 @@ protected:
                 glm::vec3 regionMin = center - glm::vec3(halfSize);
                 glm::vec3 regionMax = center + glm::vec3(halfSize);
 
-                // Check if region is FULLY INSIDE empty interior
-                // Interior is [thickness, boxSize-thickness] on all axes
-                bool fullyInsideX = (regionMin.x >= thickness) && (regionMax.x <= boxSize - thickness);
-                bool fullyInsideY = (regionMin.y >= thickness) && (regionMax.y <= boxSize - thickness);
-                bool fullyInsideZ = (regionMin.z >= thickness) && (regionMax.z <= boxSize - thickness);
-
-                if (fullyInsideX && fullyInsideY && fullyInsideZ) {
-                    return 0.0f; // Fully in empty interior - don't subdivide
-                }
-
                 // Check if region is FULLY OUTSIDE the box
                 if (regionMax.x < 0.0f || regionMin.x > boxSize ||
                     regionMax.y < 0.0f || regionMin.y > boxSize ||
                     regionMax.z < 0.0f || regionMin.z > boxSize) {
-                    return 0.0f; // Fully outside - don't subdivide
+                    return 0.0f; // Fully outside
                 }
 
-                // Otherwise region overlaps or is inside walls - subdivide
-                return 1.0f;
+                // Check if region overlaps any WALL (not just interior)
+                // Floor: y ∈ [0, thickness]
+                bool overlapsFloor = (regionMin.y < thickness) && (regionMax.y > 0.0f);
+                // Ceiling: y ∈ [boxSize-thickness, boxSize]
+                bool overlapsCeiling = (regionMin.y < boxSize) && (regionMax.y > boxSize - thickness);
+                // Left wall: x ∈ [0, thickness]
+                bool overlapsLeft = (regionMin.x < thickness) && (regionMax.x > 0.0f);
+                // Right wall: x ∈ [boxSize-thickness, boxSize]
+                bool overlapsRight = (regionMin.x < boxSize) && (regionMax.x > boxSize - thickness);
+                // Back wall: z ∈ [boxSize-thickness, boxSize]
+                bool overlapsBack = (regionMin.z < boxSize) && (regionMax.z > boxSize - thickness);
+                // Front wall: z ∈ [0, thickness]
+                bool overlapsFront = (regionMin.z < thickness) && (regionMax.z > 0.0f);
+
+                if (overlapsFloor || overlapsCeiling || overlapsLeft || overlapsRight || overlapsBack || overlapsFront) {
+                    return 1.0f; // Contains walls - subdivide
+                }
+
+                return 0.0f; // Empty interior - don't subdivide
             }
         );
 
-        // Build the Cornell box octree
-        InjectionConfig config;
-        config.maxLevels = 12; // High detail - walls need fine resolution
-        config.minVoxelSize = 0.05f; // Very fine voxels for thin walls (0.2 thickness)
-
-        VoxelInjector injector;
-        auto svo = injector.inject(*cornellSampler, config);
-
-        ASSERT_NE(svo, nullptr) << "Cornell box octree creation failed";
-
-        // Store as LaineKarrasOctree for testing
-        cornellBox = dynamic_cast<LaineKarrasOctree*>(svo.release());
-        ASSERT_NE(cornellBox, nullptr);
+        // (OLD CODE MOVED TO buildCornellBoxDensityBased() - not used)
     }
 
     void TearDown() override {
@@ -1077,6 +1200,10 @@ TEST_F(CornellBoxTest, CeilingHit_GreyRegion) {
 
     auto hit = cornellBox->castRay(origin, direction, 0.0f, std::numeric_limits<float>::max());
     ASSERT_TRUE(hit.hit) << "Should hit ceiling";
+
+    // Debug: print hit position
+    std::cout << "CeilingHit_GreyRegion: Hit at (" << hit.position.x << ", "
+              << hit.position.y << ", " << hit.position.z << ") scale=" << hit.scale << "\n";
 
     // Should hit ceiling at y~10
     EXPECT_GT(hit.position.y, 9.0f) << "Should hit near ceiling level";

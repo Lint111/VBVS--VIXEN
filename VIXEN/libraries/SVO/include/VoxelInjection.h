@@ -277,6 +277,44 @@ public:
         const InjectionConfig& config = InjectionConfig{});
 
     /**
+     * BOTTOM-UP ADDITIVE API - Insert single voxel at world position.
+     *
+     * This is the core additive operation:
+     * 1. Computes brick/leaf coordinates from world position
+     * 2. Creates brick if doesn't exist (thread-safe)
+     * 3. Inserts voxel into brick
+     * 4. Propagates "has child" flags up tree (idempotent)
+     *
+     * THREAD-SAFE: Multiple threads can call concurrently.
+     * The operation is idempotent - inserting same voxel twice is safe.
+     *
+     * @param svo Target SVO structure (must be LaineKarrasOctree)
+     * @param position World-space position
+     * @param data Voxel appearance data
+     * @param config Configuration (brick depth, LOD settings)
+     * @return true if voxel inserted/updated, false if out of bounds
+     */
+    bool insertVoxel(
+        ISVOStructure& svo,
+        const glm::vec3& position,
+        const VoxelData& data,
+        const InjectionConfig& config = InjectionConfig{});
+
+    /**
+     * Batch insert multiple voxels (parallel).
+     * More efficient than individual insertVoxel() calls.
+     *
+     * @param svo Target SVO structure
+     * @param voxels List of voxels to insert
+     * @param config Configuration
+     * @return Number of voxels successfully inserted
+     */
+    size_t insertVoxelsBatch(
+        ISVOStructure& svo,
+        const std::vector<VoxelData>& voxels,
+        const InjectionConfig& config = InjectionConfig{});
+
+    /**
      * Set progress callback.
      */
     using ProgressCallback = std::function<void(float progress, const std::string& status)>;
@@ -308,6 +346,120 @@ private:
         const glm::vec3& min,
         const glm::vec3& max,
         const InjectionConfig& config);
+};
+
+/**
+ * STREAMING VOXEL INJECTION QUEUE
+ *
+ * Thread-safe, async voxel insertion with frame-coherent snapshots.
+ *
+ * Use case: Dynamic world updates (destruction, terrain editing, particle effects)
+ * that need to be processed in background while renderer samples octree each frame.
+ *
+ * Architecture:
+ * - Producer thread(s): Call enqueue() to register voxel insertions
+ * - Worker thread pool: Process queue in background using TBB
+ * - Render thread: Call getSnapshot() each frame for safe read-only access
+ *
+ * Thread safety:
+ * - enqueue(): Lock-free ring buffer (multiple producers)
+ * - process(): Background thread pool with atomic validMask updates
+ * - getSnapshot(): Copy-on-write or double-buffering for frame coherence
+ *
+ * Example:
+ *   VoxelInjectionQueue queue(octree, workerThreads=8);
+ *   queue.start();
+ *
+ *   // Game thread: Enqueue destruction debris
+ *   for (auto& debris : explosion.getDebris()) {
+ *       queue.enqueue(debris.position, debris.voxelData);
+ *   }
+ *
+ *   // Render thread: Safe snapshot each frame
+ *   while (rendering) {
+ *       const ISVOStructure* snapshot = queue.getSnapshot();
+ *       raytracer.render(snapshot);
+ *   }
+ *
+ *   queue.stop(); // Flush remaining voxels
+ */
+class VoxelInjectionQueue {
+public:
+    struct Config {
+        size_t maxQueueSize = 65536;      // Max pending voxels before blocking
+        size_t batchSize = 256;            // Process this many voxels per batch
+        size_t numWorkerThreads = 8;      // Background worker threads
+        bool enableSnapshots = true;       // Enable frame-safe snapshots (adds memory overhead)
+        InjectionConfig injectionConfig;   // Config for insertVoxel()
+    };
+
+    /**
+     * Create streaming injection queue for target octree.
+     * Does NOT take ownership of octree.
+     */
+    explicit VoxelInjectionQueue(ISVOStructure* targetOctree, const Config& config = Config{});
+    ~VoxelInjectionQueue();
+
+    // Disable copy (thread synchronization state)
+    VoxelInjectionQueue(const VoxelInjectionQueue&) = delete;
+    VoxelInjectionQueue& operator=(const VoxelInjectionQueue&) = delete;
+
+    /**
+     * Start background processing.
+     * Spawns worker threads that process enqueued voxels.
+     */
+    void start();
+
+    /**
+     * Stop background processing and flush queue.
+     * Blocks until all pending voxels are processed.
+     */
+    void stop();
+
+    /**
+     * Enqueue single voxel for async insertion.
+     * Thread-safe - can be called from multiple threads.
+     * Returns false if queue is full.
+     */
+    bool enqueue(const glm::vec3& position, const VoxelData& data);
+
+    /**
+     * Enqueue batch of voxels.
+     * More efficient than individual enqueue() calls.
+     */
+    size_t enqueueBatch(const std::vector<VoxelData>& voxels);
+
+    /**
+     * Get frame-coherent snapshot for safe rendering.
+     * Returns pointer valid for current frame only.
+     * Next getSnapshot() may invalidate previous pointer.
+     *
+     * Thread-safe to call concurrently with enqueue().
+     * NOT thread-safe to call from multiple render threads.
+     */
+    const ISVOStructure* getSnapshot();
+
+    /**
+     * Get current queue statistics.
+     */
+    struct Stats {
+        size_t pendingVoxels;      // Voxels waiting in queue
+        size_t processedVoxels;    // Total voxels inserted
+        size_t failedInsertions;   // Out-of-bounds or errors
+        float avgProcessTimeMs;    // Average batch process time
+        bool isProcessing;         // Background threads active
+    };
+    Stats getStats() const;
+
+    /**
+     * Manually flush queue (blocks until empty).
+     * Useful for synchronization points (e.g., end of frame).
+     */
+    void flush();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 /**

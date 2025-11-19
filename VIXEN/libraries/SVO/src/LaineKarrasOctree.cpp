@@ -126,6 +126,28 @@ void LaineKarrasOctree::setOctree(std::unique_ptr<Octree> octree) {
     }
 }
 
+/**
+ * Ensure octree is initialized for additive insertion.
+ * Creates empty root if needed.
+ */
+void LaineKarrasOctree::ensureInitialized(const glm::vec3& worldMin, const glm::vec3& worldMax, int maxLevels) {
+    if (!m_octree) {
+        m_octree = std::make_unique<Octree>();
+        m_octree->worldMin = worldMin;
+        m_octree->worldMax = worldMax;
+        m_octree->maxLevels = maxLevels;
+        m_octree->totalVoxels = 0;
+        m_octree->memoryUsage = 0;
+        m_octree->root = std::make_unique<OctreeBlock>();
+
+        m_worldMin = worldMin;
+        m_worldMax = worldMax;
+        m_maxLevels = maxLevels;
+        m_voxelCount = 0;
+        m_memoryUsage = 0;
+    }
+}
+
 bool LaineKarrasOctree::voxelExists(const glm::vec3& position, int scale) const {
     if (!m_octree || !m_octree->root) {
         return false;
@@ -757,6 +779,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 if (child_is_leaf) {
                     debugLeafHit(scale);
 
+                    // Debug: print leaf position and scale
+                    std::cout << "[LEAF HIT] scale=" << scale << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") "
+                              << "t_min=" << t_min << " tv_max=" << tv_max << " brickRefs.size=" << m_octree->root->brickReferences.size() << "\n";
+
                     // ============================================================
                     // BRICK TRAVERSAL: Check if leaf has brick reference
                     // ============================================================
@@ -845,10 +871,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.tMin = t_min_world;
                     hit.tMax = tv_max_world;
                     hit.position = origin + rayDir * t_min_world;
-                    // Depth is how many times we've descended + 1 (for the leaf we're about to enter)
-                    // scale starts at CAST_STACK_DEPTH-1, decrements with each descent
-                    // Leaf at scale S is at depth = (CAST_STACK_DEPTH-1) - S + 1 = CAST_STACK_DEPTH - S
-                    hit.scale = CAST_STACK_DEPTH - scale;
+                    hit.scale = scale;  // ESVO scale (22=root, 0=deepest)
                     // Placeholder normal - should compute from voxel face
                     hit.normal = glm::vec3(0.0f, 1.0f, 0.0f);
                     return hit;
@@ -1031,10 +1054,15 @@ float LaineKarrasOctree::getVoxelSize(int scale) const {
 std::string LaineKarrasOctree::getStats() const {
     std::ostringstream oss;
     oss << "Laine-Karras SVO Statistics:\n";
-    oss << "  Total voxels: " << m_voxelCount << "\n";
+
+    // Read from actual octree data (supports additive insertion)
+    size_t voxelCount = m_octree ? m_octree->totalVoxels : m_voxelCount;
+    size_t memoryUsage = m_octree ? m_octree->memoryUsage : m_memoryUsage;
+
+    oss << "  Total voxels: " << voxelCount << "\n";
     oss << "  Max levels: " << m_maxLevels << "\n";
-    oss << "  Memory usage: " << (m_memoryUsage / 1024.0 / 1024.0) << " MB\n";
-    oss << "  Avg bytes/voxel: " << (m_voxelCount > 0 ? m_memoryUsage / m_voxelCount : 0) << "\n";
+    oss << "  Memory usage: " << (memoryUsage / 1024.0 / 1024.0) << " MB\n";
+    oss << "  Avg bytes/voxel: " << (voxelCount > 0 ? memoryUsage / voxelCount : 0) << "\n";
     return oss.str();
 }
 

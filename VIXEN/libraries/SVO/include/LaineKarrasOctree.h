@@ -71,6 +71,10 @@ public:
     // Construction interface (called by builder)
     void setOctree(std::unique_ptr<Octree> octree);
     const Octree* getOctree() const { return m_octree.get(); }
+    Octree* getOctreeMutable() { return m_octree.get(); } // For direct modification (additive insertion)
+
+    // Additive insertion support - ensure octree is initialized
+    void ensureInitialized(const glm::vec3& worldMin, const glm::vec3& worldMax, int maxLevels);
 
 private:
     std::unique_ptr<Octree> m_octree;

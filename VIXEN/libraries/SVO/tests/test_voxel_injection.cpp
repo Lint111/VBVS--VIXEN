@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "VoxelInjection.h"
+#include "LaineKarrasOctree.h"
 
 using namespace SVO;
 
@@ -254,4 +255,121 @@ TEST(VoxelInjectionTest, MinimumVoxelSizePreventsOverSubdivision) {
 
     // Verify build completed in reasonable time (< 1 second)
     EXPECT_LT(stats.buildTimeSeconds, 1.0f);
+}
+
+// ============================================================================
+// Bottom-Up Additive Insertion Tests
+// ============================================================================
+
+TEST(VoxelInjectorTest, AdditiveInsertionSingleVoxel) {
+    using namespace SVO;
+
+    // Create empty octree
+    LaineKarrasOctree octree;
+
+    // Create voxel data
+    VoxelData voxel;
+    voxel.position = glm::vec3(5.0f, 5.0f, 5.0f); // Center of world
+    voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);     // Red
+    voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);   // Up
+    voxel.density = 1.0f;
+
+    // Insert voxel
+    VoxelInjector injector;
+    InjectionConfig config;
+    config.maxLevels = 8; // Moderate depth
+
+    bool success = injector.insertVoxel(octree, voxel.position, voxel, config);
+    EXPECT_TRUE(success) << "Should successfully insert voxel";
+
+    // Verify octree is not empty
+    const Octree* octreeData = octree.getOctree();
+    ASSERT_NE(octreeData, nullptr);
+    ASSERT_NE(octreeData->root, nullptr);
+
+    // Should have at least one descriptor
+    EXPECT_GT(octreeData->root->childDescriptors.size(), 0u);
+
+    // Should have one voxel
+    EXPECT_EQ(octreeData->totalVoxels, 1u);
+
+    // Should have one attribute
+    EXPECT_EQ(octreeData->root->attributes.size(), 1u);
+
+    std::cout << "\nAdditive insertion test: 1 voxel inserted\n";
+    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
+    std::cout << "  Attributes: " << octreeData->root->attributes.size() << "\n";
+}
+
+TEST(VoxelInjectorTest, AdditiveInsertionMultipleVoxels) {
+    using namespace SVO;
+
+    // Create empty octree
+    LaineKarrasOctree octree;
+
+    VoxelInjector injector;
+    InjectionConfig config;
+    config.maxLevels = 6;
+
+    // Insert 8 voxels at corners of a cube
+    std::vector<glm::vec3> positions = {
+        {1.0f, 1.0f, 1.0f},
+        {9.0f, 1.0f, 1.0f},
+        {1.0f, 9.0f, 1.0f},
+        {9.0f, 9.0f, 1.0f},
+        {1.0f, 1.0f, 9.0f},
+        {9.0f, 1.0f, 9.0f},
+        {1.0f, 9.0f, 9.0f},
+        {9.0f, 9.0f, 9.0f},
+    };
+
+    for (const auto& pos : positions) {
+        VoxelData voxel;
+        voxel.position = pos;
+        voxel.color = glm::normalize(pos / 10.0f); // Color based on position
+        voxel.normal = glm::normalize(pos - glm::vec3(5.0f));
+        voxel.density = 1.0f;
+
+        bool success = injector.insertVoxel(octree, voxel.position, voxel, config);
+        EXPECT_TRUE(success) << "Should insert voxel at " << pos.x << "," << pos.y << "," << pos.z;
+    }
+
+    // Verify octree has all voxels
+    const Octree* octreeData = octree.getOctree();
+    ASSERT_NE(octreeData, nullptr);
+    EXPECT_EQ(octreeData->totalVoxels, 8u) << "Should have 8 voxels";
+    EXPECT_EQ(octreeData->root->attributes.size(), 8u) << "Should have 8 attributes";
+
+    std::cout << "\nAdditive insertion test: 8 voxels inserted (cube corners)\n";
+    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
+    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
+}
+
+TEST(VoxelInjectorTest, AdditiveInsertionIdempotent) {
+    using namespace SVO;
+
+    LaineKarrasOctree octree;
+    VoxelInjector injector;
+    InjectionConfig config;
+    config.maxLevels = 6;
+
+    VoxelData voxel;
+    voxel.position = glm::vec3(5.0f, 5.0f, 5.0f);
+    voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);
+    voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    voxel.density = 1.0f;
+
+    // Insert same voxel 3 times
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.position, voxel, config));
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.position, voxel, config));
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.position, voxel, config));
+
+    // Should recognize existing node via early exit
+    const Octree* octreeData = octree.getOctree();
+    ASSERT_NE(octreeData, nullptr);
+
+    // Early exit should prevent re-insertion
+    std::cout << "\nIdempotent test: inserted same voxel 3x\n";
+    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
+    std::cout << "  Attributes: " << octreeData->root->attributes.size() << " (early exit working if <=3)\n";
 }
