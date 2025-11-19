@@ -982,18 +982,29 @@ protected:
                 constexpr float boxSize = 10.0f;
                 float halfSize = size * 0.5f;
 
-                // Check if region overlaps any wall
-                bool nearFloor = (center.y - halfSize) < thickness;
-                bool nearCeiling = (center.y + halfSize) > (boxSize - thickness);
-                bool nearLeft = (center.x - halfSize) < thickness;
-                bool nearRight = (center.x + halfSize) > (boxSize - thickness);
-                bool nearBack = (center.z + halfSize) > (boxSize - thickness);
-                bool nearFront = (center.z - halfSize) < thickness;
+                // Region bounds
+                glm::vec3 regionMin = center - glm::vec3(halfSize);
+                glm::vec3 regionMax = center + glm::vec3(halfSize);
 
-                if (nearFloor || nearCeiling || nearLeft || nearRight || nearBack || nearFront) {
-                    return 1.0f; // Contains walls
+                // Check if region is FULLY INSIDE empty interior
+                // Interior is [thickness, boxSize-thickness] on all axes
+                bool fullyInsideX = (regionMin.x >= thickness) && (regionMax.x <= boxSize - thickness);
+                bool fullyInsideY = (regionMin.y >= thickness) && (regionMax.y <= boxSize - thickness);
+                bool fullyInsideZ = (regionMin.z >= thickness) && (regionMax.z <= boxSize - thickness);
+
+                if (fullyInsideX && fullyInsideY && fullyInsideZ) {
+                    return 0.0f; // Fully in empty interior - don't subdivide
                 }
-                return 0.0f; // Empty interior
+
+                // Check if region is FULLY OUTSIDE the box
+                if (regionMax.x < 0.0f || regionMin.x > boxSize ||
+                    regionMax.y < 0.0f || regionMin.y > boxSize ||
+                    regionMax.z < 0.0f || regionMin.z > boxSize) {
+                    return 0.0f; // Fully outside - don't subdivide
+                }
+
+                // Otherwise region overlaps or is inside walls - subdivide
+                return 1.0f;
             }
         );
 

@@ -1206,27 +1206,52 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
         }
 
         if (voxelOccupied) {
-            // Hit! Compute hit position and return
-            const float hitT = std::min({tNext.x, tNext.y, tNext.z}) - tDelta[0] * 0.5f; // Approximate center
-            const glm::vec3 hitPosition = rayOrigin + rayDir * hitT;
+            // Hit! Ray entered this voxel from the most recent boundary crossing
+            // We need to track which axis was last crossed (before entering this voxel)
 
-            // Compute normal (simple approximation: which face was entered)
-            glm::vec3 normal(0.0f);
-            const float minT = std::min({tNext.x, tNext.y, tNext.z});
-            if (std::abs(tNext.x - minT) < epsilon) {
-                normal = glm::vec3(step.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
-            } else if (std::abs(tNext.y - minT) < epsilon) {
-                normal = glm::vec3(0.0f, step.y > 0 ? -1.0f : 1.0f, 0.0f);
+            // Store the minimum tNext from PREVIOUS iteration (this is the entry point)
+            // Since we're already IN the voxel, we need to look back
+            // The hit is at the boundary we just crossed to enter this voxel
+
+            // Find which tNext values correspond to boundaries we haven't crossed yet
+            // The entry point is the maximum of all tMin values for each axis
+            float entryT = tMin;
+            glm::vec3 entryNormal(0.0f);
+
+            // Determine which face we entered through by checking which boundary
+            // was crossed most recently (has smallest "previous" tNext)
+            // This is approximated by: we stepped along the axis with minimum tNext
+
+            // For correct DDA, we need to track which axis we stepped on to GET HERE
+            // But we're checking AFTER stepping, so look at current position vs entry
+
+            // Better approach: compute entry face from voxel position and ray direction
+            glm::vec3 voxelWorldMin = brickWorldMin + glm::vec3(currentVoxel) * brickVoxelSize;
+            glm::vec3 voxelWorldMax = voxelWorldMin + glm::vec3(brickVoxelSize);
+
+            // Find parametric intersection with voxel AABB
+            glm::vec3 t0 = (voxelWorldMin - rayOrigin) / rayDir;
+            glm::vec3 t1 = (voxelWorldMax - rayOrigin) / rayDir;
+            glm::vec3 tNear = glm::min(t0, t1);
+            glm::vec3 tFar = glm::max(t0, t1);
+
+            float hitT = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
+
+            // Normal points opposite to the face we entered
+            if (tNear.x >= tNear.y && tNear.x >= tNear.z) {
+                entryNormal = glm::vec3(rayDir.x > 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f);
+            } else if (tNear.y >= tNear.z) {
+                entryNormal = glm::vec3(0.0f, rayDir.y > 0.0f ? -1.0f : 1.0f, 0.0f);
             } else {
-                normal = glm::vec3(0.0f, 0.0f, step.z > 0 ? -1.0f : 1.0f);
+                entryNormal = glm::vec3(0.0f, 0.0f, rayDir.z > 0.0f ? -1.0f : 1.0f);
             }
 
             ISVOStructure::RayHit hit;
             hit.hit = true;
             hit.tMin = hitT;
-            hit.tMax = hitT + tDelta[0] * 0.1f;  // Small span for brick voxel
-            hit.position = hitPosition;
-            hit.normal = normal;
+            hit.tMax = hitT + brickVoxelSize;  // Exit point of voxel
+            hit.position = rayOrigin + rayDir * hitT;
+            hit.normal = entryNormal;
             hit.scale = CAST_STACK_DEPTH - 1;  // Finest detail level
 
             return hit;
