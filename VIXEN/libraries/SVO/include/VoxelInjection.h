@@ -207,6 +207,8 @@ private:
  */
 struct InjectionConfig {
     int maxLevels = 16;
+    int brickDepthLevels = 0;   // Bottom N levels stored as dense bricks (0 = no bricks, pure octree)
+                                 // Example: brickDepthLevels=3 → bottom 3 levels = 8×8×8 voxel bricks
     float errorThreshold = 0.001f;
     float minVoxelSize = 0.0f;  // Minimum voxel size - prevents over-subdivision (0 = use errorThreshold)
     bool enableContours = true;

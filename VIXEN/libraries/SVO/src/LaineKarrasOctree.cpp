@@ -465,21 +465,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysignf(epsilon, rayDirSafe.y);
     if (std::abs(rayDirSafe.z) < epsilon) rayDirSafe.z = std::copysignf(epsilon, rayDirSafe.z);
 
-    // Parametric plane coefficients
-    // Reference assumes octree in [1, 2]; we map from [worldMin, worldMax]
+    // Parametric plane coefficients (computed in [1,2] space later)
     float tx_coef = 1.0f / -std::abs(rayDirSafe.x);
     float ty_coef = 1.0f / -std::abs(rayDirSafe.y);
     float tz_coef = 1.0f / -std::abs(rayDirSafe.z);
-
-    float tx_bias = tx_coef * origin.x;
-    float ty_bias = ty_coef * origin.y;
-    float tz_bias = tz_coef * origin.z;
-
-    // XOR octant mirroring: mirror coordinate system so ray direction is negative along each axis
-    int octant_mask = 7;
-    if (rayDirSafe.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
-    if (rayDirSafe.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
-    if (rayDirSafe.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
 
     // ========================================================================
     // Phase 1: Ray-AABB Intersection with World Bounds
@@ -515,25 +504,25 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
     glm::vec3 normDir = rayDir; // Direction doesn't change
 
-    // Recompute parametric coefficients for normalized space
-    // The bias term changes because origin is now in [1,2] space
-    float tx_bias_norm = tx_coef * normOrigin.x;
-    float ty_bias_norm = ty_coef * normOrigin.y;
-    float tz_bias_norm = tz_coef * normOrigin.z;
+    // Compute bias terms for [1,2] normalized space
+    float tx_bias = tx_coef * normOrigin.x;
+    float ty_bias = ty_coef * normOrigin.y;
+    float tz_bias = tz_coef * normOrigin.z;
 
-    // Apply octant mirroring to bias (already computed octant_mask above)
-    if (rayDirSafe.x > 0.0f) tx_bias_norm = 3.0f * tx_coef - tx_bias_norm;
-    if (rayDirSafe.y > 0.0f) ty_bias_norm = 3.0f * ty_coef - ty_bias_norm;
-    if (rayDirSafe.z > 0.0f) tz_bias_norm = 3.0f * tz_coef - tz_bias_norm;
+    // XOR octant mirroring: mirror coordinate system so ray direction is negative along each axis
+    int octant_mask = 7;
+    if (rayDirSafe.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
+    if (rayDirSafe.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
+    if (rayDirSafe.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
 
     // Initialize active t-span in normalized [1,2] space
     // Reference: lines 121-125
-    float t_min = std::max({2.0f * tx_coef - tx_bias_norm,
-                            2.0f * ty_coef - ty_bias_norm,
-                            2.0f * tz_coef - tz_bias_norm});
-    float t_max = std::min({tx_coef - tx_bias_norm,
-                            ty_coef - ty_bias_norm,
-                            tz_coef - tz_bias_norm});
+    float t_min = std::max({2.0f * tx_coef - tx_bias,
+                            2.0f * ty_coef - ty_bias,
+                            2.0f * tz_coef - tz_bias});
+    float t_max = std::min({tx_coef - tx_bias,
+                            ty_coef - ty_bias,
+                            tz_coef - tz_bias});
     float h = t_max;
     t_min = std::max(t_min, 0.0f);
     t_max = std::min(t_max, 1.0f);
@@ -556,9 +545,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Select initial child based on ray entry point
     // Reference: lines 136-138
-    if (1.5f * tx_coef - tx_bias_norm > t_min) idx ^= 1, pos.x = 1.5f;
-    if (1.5f * ty_coef - ty_bias_norm > t_min) idx ^= 2, pos.y = 1.5f;
-    if (1.5f * tz_coef - tz_bias_norm > t_min) idx ^= 4, pos.z = 1.5f;
+    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
 
     // Main traversal loop
     // Traverse voxels along the ray while staying within octree bounds
@@ -589,9 +578,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Compute maximum t-value at voxel corner
         // This determines when the ray exits the current voxel
         // Using normalized bias terms
-        float tx_corner = pos.x * tx_coef - tx_bias_norm;
-        float ty_corner = pos.y * ty_coef - ty_bias_norm;
-        float tz_corner = pos.z * tz_coef - tz_bias_norm;
+        float tx_corner = pos.x * tx_coef - tx_bias;
+        float ty_corner = pos.y * ty_coef - ty_bias;
+        float tz_corner = pos.z * tz_coef - tz_bias;
         float tc_max = std::min({tx_corner, ty_corner, tz_corner});
 
         // ====================================================================

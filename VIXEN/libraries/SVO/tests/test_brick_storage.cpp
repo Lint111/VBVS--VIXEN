@@ -495,7 +495,7 @@ TEST(BrickStorageTest, MortonCode_Decoding) {
     EXPECT_EQ(x, 1); EXPECT_EQ(y, 1); EXPECT_EQ(z, 1);
 
     decodeMorton(94, x, y, z);
-    EXPECT_EQ(x, 2); EXPECT_EQ(y, 3); EXPECT_EQ(z, 4);
+    EXPECT_EQ(x, 6); EXPECT_EQ(y, 3); EXPECT_EQ(z, 1); // 94 = 0b1011110 → x=bits[0,3,6]=110=6, y=bits[1,4]=11=3, z=bits[2,5]=01=1
 }
 
 TEST(BrickStorageTest, MortonCode_RoundTrip) {

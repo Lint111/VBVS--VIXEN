@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <unordered_map>
 
 namespace SVO {
 
@@ -255,20 +256,39 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
         node->level = level;
 
         // Termination criteria
-        // Stop at max level, or when voxel is smaller than minimum size
+        // 1. Brick depth reached: stop octree subdivision, populate brick instead
+        // 2. Max level reached
+        // 3. Voxel smaller than minimum size
+        int brickStartDepth = (config.brickDepthLevels > 0) ? (config.maxLevels - config.brickDepthLevels) : -1;
+        bool atBrickDepth = (brickStartDepth >= 0) && (level >= brickStartDepth);
         float minSize = (config.minVoxelSize > 0.0f) ? config.minVoxelSize : config.errorThreshold;
-        bool shouldTerminate = (level >= config.maxLevels) || (size < minSize);
+        bool shouldTerminate = (level >= config.maxLevels) || (size < minSize) || atBrickDepth;
 
         if (shouldTerminate) {
-            // Create leaf - sample voxel data
-            VoxelData data;
-            if (sampler.sample(center, data)) {
-                node->data = data;
-                node->isLeaf = true;
-                m_stats.leavesCreated++;
-                return node;
+            if (atBrickDepth && config.brickDepthLevels > 0) {
+                // Terminate with brick (not single voxel)
+                // TODO: Populate brick data structure
+                // For now, treat as leaf with sampled data at center
+                VoxelData data;
+                if (sampler.sample(center, data)) {
+                    node->data = data;
+                    node->isLeaf = true;
+                    m_stats.leavesCreated++;
+                    return node;
+                } else {
+                    return nullptr;
+                }
             } else {
-                return nullptr;  // No solid voxel at this location
+                // Create leaf - sample single voxel data
+                VoxelData data;
+                if (sampler.sample(center, data)) {
+                    node->data = data;
+                    node->isLeaf = true;
+                    m_stats.leavesCreated++;
+                    return node;
+                } else {
+                    return nullptr;  // No solid voxel at this location
+                }
             }
         }
 
@@ -308,7 +328,32 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
 
     auto rootBlock = std::make_unique<OctreeBlock>();
 
-    // Traverse and build octree blocks
+    // Two-pass traversal to correctly set childPointer values
+
+    // Pass 1: Count child descriptors per node to calculate offsets
+    std::unordered_map<VoxelNode*, uint32_t> nodeToDescriptorIndex;
+    uint32_t descriptorCounter = 0;
+
+    std::function<void(VoxelNode*)> countDescriptors = [&](VoxelNode* node) {
+        if (!node) return;
+
+        if (!node->isLeaf) {
+            nodeToDescriptorIndex[node] = descriptorCounter++;
+        }
+
+        for (auto& child : node->children) {
+            if (child) {
+                countDescriptors(child.get());
+            }
+        }
+    };
+
+    countDescriptors(root.get());
+
+    // Pass 2: Build octree blocks with correct childPointer values
+    // We need to track attribute indices to build AttributeLookup structures
+    uint32_t attributeCounter = 0;
+
     std::function<void(VoxelNode*)> traverse = [&](VoxelNode* node) {
         if (!node) return;
 
@@ -355,17 +400,54 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
             ChildDescriptor desc{};
             desc.validMask = 0;
             desc.leafMask = 0;
+            desc.childPointer = 0;  // Will be set for first valid non-leaf child
+            desc.farBit = 0;
+            desc.contourPointer = 0;
+            desc.contourMask = 0;
+
+            // ESVO format: childPointer points to first non-leaf child's descriptor
+            // Process children in octant order (0-7)
+            uint32_t firstChildPtr = 0;
+            bool foundFirst = false;
 
             for (int i = 0; i < 8; ++i) {
                 if (node->children[i]) {
                     desc.validMask |= (1 << i);
+
                     if (node->children[i]->isLeaf) {
                         desc.leafMask |= (1 << i);
+                    } else {
+                        // Non-leaf child - point to its descriptor
+                        if (!foundFirst) {
+                            auto it = nodeToDescriptorIndex.find(node->children[i].get());
+                            if (it != nodeToDescriptorIndex.end()) {
+                                firstChildPtr = it->second;
+                                foundFirst = true;
+                            }
+                        }
                     }
                 }
             }
 
+            desc.childPointer = firstChildPtr;
             rootBlock->childDescriptors.push_back(desc);
+
+            // Create AttributeLookup for this node
+            AttributeLookup attrLookup{};
+            attrLookup.valuePointer = attributeCounter;  // Points to first attribute for this node's children
+            attrLookup.mask = 0;
+
+            // Count leaf children to know how many attributes this node has
+            uint8_t leafCount = 0;
+            for (int i = 0; i < 8; ++i) {
+                if (node->children[i] && node->children[i]->isLeaf) {
+                    attrLookup.mask |= (1 << i);
+                    leafCount++;
+                }
+            }
+
+            attributeCounter += leafCount;  // Reserve space for this node's leaf attributes
+            rootBlock->attributeLookups.push_back(attrLookup);
         }
 
         // Recurse
