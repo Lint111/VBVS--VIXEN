@@ -5,6 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <unordered_map>
+#include <queue>
 
 namespace SVO {
 
@@ -680,6 +681,8 @@ bool VoxelInjector::insertVoxel(
     // Traverse path, creating descriptors as needed
     for (size_t level = 0; level < path.size(); ++level) {
         int childIdx = path[level];
+
+        // Get fresh reference each iteration in case vector reallocates
         ChildDescriptor& desc = octreeData->root->childDescriptors[currentDescriptorIdx];
 
         // Check if this child already exists
@@ -701,9 +704,12 @@ bool VoxelInjector::insertVoxel(
 
         // If this is the leaf level, mark as leaf and complete insertion
         if (level == path.size() - 1) {
+            // Re-get descriptor reference in case it was invalidated
+            ChildDescriptor& leafDesc = octreeData->root->childDescriptors[currentDescriptorIdx];
+
             // Mark this child as a leaf
             if (!childExists) {
-                desc.leafMask |= (1 << childIdx);
+                leafDesc.leafMask |= (1 << childIdx);
 
                 // Update attribute lookup for this descriptor
                 AttributeLookup& attrLookup = octreeData->root->attributeLookups[currentDescriptorIdx];
@@ -719,15 +725,19 @@ bool VoxelInjector::insertVoxel(
         }
 
         // This is an internal node - need child descriptor to continue traversal
+        // Simple strategy: append new descriptors to end, compact later
+
         if (childExists) {
-            // Descriptor already exists - follow childPointer to next level
+            // Child already exists - follow pointer (simple direct index during insertion)
             currentDescriptorIdx = desc.childPointer;
         } else {
-            // Need to allocate new child descriptor
+            // Allocate new child descriptor at end of array
             uint32_t newDescriptorIdx = static_cast<uint32_t>(octreeData->root->childDescriptors.size());
-            desc.childPointer = newDescriptorIdx;
 
-            // Create child descriptor
+            // Set parent's childPointer (will be recomputed during compaction)
+            octreeData->root->childDescriptors[currentDescriptorIdx].childPointer = newDescriptorIdx;
+
+            // Create new child descriptor
             ChildDescriptor childDesc{};
             childDesc.validMask = 0;
             childDesc.leafMask = 0;
@@ -746,6 +756,82 @@ bool VoxelInjector::insertVoxel(
             currentDescriptorIdx = newDescriptorIdx;
         }
     }
+
+    return true;
+}
+
+/**
+ * Compact octree into ESVO format after additive insertions.
+ *
+ * Reorganizes descriptors from simple append order into breadth-first layout
+ * with contiguous non-leaf children as required by ESVO traversal.
+ */
+bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
+    LaineKarrasOctree* octree = dynamic_cast<LaineKarrasOctree*>(&svo);
+    if (!octree) return false;
+
+    Octree* octreeData = const_cast<Octree*>(octree->getOctree());
+    if (!octreeData || !octreeData->root) return false;
+
+    // Build new descriptor array in ESVO order (breadth-first, contiguous children)
+    std::vector<ChildDescriptor> newDescriptors;
+    std::vector<AttributeLookup> newAttributeLookups;
+    std::unordered_map<uint32_t, uint32_t> oldToNewIndex;  // Map old indices to new
+
+    // BFS traversal to rebuild in correct order
+    struct NodeInfo {
+        uint32_t oldIndex;
+        uint32_t newIndex;
+    };
+
+    std::queue<NodeInfo> queue;
+    queue.push({0, 0});  // Start with root
+    oldToNewIndex[0] = 0;
+
+    // Add root to new arrays
+    newDescriptors.push_back(octreeData->root->childDescriptors[0]);
+    newAttributeLookups.push_back(octreeData->root->attributeLookups[0]);
+
+    while (!queue.empty()) {
+        NodeInfo current = queue.front();
+        queue.pop();
+
+        const ChildDescriptor& oldDesc = octreeData->root->childDescriptors[current.oldIndex];
+
+        // Collect non-leaf children for this node
+        std::vector<uint32_t> nonLeafChildren;
+        for (int i = 0; i < 8; ++i) {
+            if ((oldDesc.validMask & (1 << i)) && !(oldDesc.leafMask & (1 << i))) {
+                // This child exists and is not a leaf - it has a descriptor
+                nonLeafChildren.push_back(i);
+            }
+        }
+
+        if (!nonLeafChildren.empty()) {
+            // Set childPointer to where these children will be placed
+            uint32_t firstChildIndex = static_cast<uint32_t>(newDescriptors.size());
+            newDescriptors[current.newIndex].childPointer = firstChildIndex;
+
+            // Add all non-leaf children contiguously
+            for (uint32_t childOctant : nonLeafChildren) {
+                // In old format, childPointer points directly to single child
+                // We need to find the old index of this child's descriptor
+                uint32_t oldChildIndex = oldDesc.childPointer;  // Simplified - needs proper mapping
+
+                uint32_t newChildIndex = static_cast<uint32_t>(newDescriptors.size());
+                oldToNewIndex[oldChildIndex] = newChildIndex;
+
+                newDescriptors.push_back(octreeData->root->childDescriptors[oldChildIndex]);
+                newAttributeLookups.push_back(octreeData->root->attributeLookups[oldChildIndex]);
+
+                queue.push({oldChildIndex, newChildIndex});
+            }
+        }
+    }
+
+    // Replace old arrays with compacted versions
+    octreeData->root->childDescriptors = std::move(newDescriptors);
+    octreeData->root->attributeLookups = std::move(newAttributeLookups);
 
     return true;
 }

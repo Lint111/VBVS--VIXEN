@@ -373,3 +373,71 @@ TEST(VoxelInjectorTest, AdditiveInsertionIdempotent) {
     std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
     std::cout << "  Attributes: " << octreeData->root->attributes.size() << " (early exit working if <=3)\n";
 }
+
+TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
+    using namespace SVO;
+
+    // Create empty octree
+    LaineKarrasOctree octree;
+
+    VoxelInjector injector;
+    InjectionConfig config;
+    config.maxLevels = 8;
+
+    // ensureInitialized will be called by insertVoxel with world bounds [0,10]³
+
+    // Insert single voxel at center
+    VoxelData voxel;
+    voxel.position = glm::vec3(5.0f, 5.0f, 5.0f);
+    voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);
+    voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    voxel.density = 1.0f;
+
+    std::cout << "\nInserting voxel at (" << voxel.position.x << ", " << voxel.position.y << ", " << voxel.position.z << ")\n";
+    bool success = injector.insertVoxel(octree, voxel.position, voxel, config);
+    ASSERT_TRUE(success) << "Should insert voxel";
+    std::cout << "Insert returned: " << (success ? "true" : "false") << "\n";
+
+    // Compact to ESVO format for traversal
+    std::cout << "Compacting to ESVO format...\n";
+    bool compacted = injector.compactToESVOFormat(octree);
+    ASSERT_TRUE(compacted) << "Should compact successfully";
+
+    // Debug: Print octree structure
+    const Octree* octreeData = octree.getOctree();
+    ASSERT_NE(octreeData, nullptr);
+    std::cout << "\nOctree structure:\n";
+    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
+    std::cout << "  Attributes: " << octreeData->root->attributes.size() << "\n";
+    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
+    std::cout << "  World bounds: [" << octree.getWorldMin().x << "," << octree.getWorldMax().x << "]\n";
+
+    if (!octreeData->root->childDescriptors.empty()) {
+        const auto& rootDesc = octreeData->root->childDescriptors[0];
+        std::cout << "  Root descriptor:\n";
+        std::cout << "    validMask: 0x" << std::hex << (int)rootDesc.validMask << std::dec << "\n";
+        std::cout << "    leafMask: 0x" << std::hex << (int)rootDesc.leafMask << std::dec << "\n";
+        std::cout << "    childPointer: " << rootDesc.childPointer << "\n";
+    }
+
+    // Cast ray from outside toward center
+    glm::vec3 rayOrigin(-5.0f, 5.0f, 5.0f);  // Start left of world
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right (toward center)
+
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+
+    EXPECT_TRUE(hit.hit) << "Ray should hit voxel at center";
+    if (hit.hit) {
+        std::cout << "\nRay cast test:\n";
+        std::cout << "  Hit: YES\n";
+        std::cout << "  Position: (" << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "  t: " << hit.tMin << "\n";
+        std::cout << "  Scale: " << hit.scale << "\n";
+
+        // Verify hit is near expected position (center of world)
+        float distanceToCenter = glm::length(hit.position - voxel.position);
+        EXPECT_LT(distanceToCenter, 5.0f) << "Hit should be within 5 units of voxel center";
+    } else {
+        std::cout << "\nRay cast test: MISS (BUG - ray should hit!)\n";
+    }
+}

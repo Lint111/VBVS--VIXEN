@@ -301,6 +301,15 @@ public:
         const InjectionConfig& config = InjectionConfig{});
 
     /**
+     * Compact octree into ESVO format after additive insertions.
+     * Call this after using insertVoxel() to reorganize descriptors.
+     *
+     * @param svo Target SVO structure
+     * @return true on success
+     */
+    bool compactToESVOFormat(ISVOStructure& svo);
+
+    /**
      * Batch insert multiple voxels (parallel).
      * More efficient than individual insertVoxel() calls.
      *

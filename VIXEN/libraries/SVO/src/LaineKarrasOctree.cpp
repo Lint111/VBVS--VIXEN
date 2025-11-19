@@ -893,17 +893,19 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // Reference lines 248-274
                 // ============================================================
 
-                // Calculate offset to child based on popcount of valid mask
-                // Count how many valid children come before current child
-                // Reference: Raycast.inl:256 - ofs += popc8(child_masks & 0x7F)
+                // Calculate offset to child based on popcount of NON-LEAF mask
+                // ESVO childPointer points to array of ONLY non-leaf children
+                // Count how many NON-LEAF children come before current child
+                // Reference: OctreeRuntime.cpp:1124 - childIdx = popc8(nonLeafMask & (cmask - 1))
                 int child_shift_idx = idx ^ octant_mask;
 
-                // child_masks has validMask in bits 8-15 after left shift by child_shift
-                // We need to count valid bits BEFORE the current child position
-                // Mask out bits at and after position child_shift (which is at bit 15 - child_shift in child_masks)
+                // Compute nonLeafMask (inverse of leafMask)
+                uint8_t nonLeafMask = ~parent->leafMask & parent->validMask;
+
+                // Count non-leaf children BEFORE current child
                 uint32_t mask_before_child = (1u << child_shift_idx) - 1; // e.g., for idx 7: 0x7F
-                uint32_t valid_before_child = parent->validMask & mask_before_child;
-                uint32_t child_offset = std::popcount(valid_before_child);
+                uint32_t nonleaf_before_child = nonLeafMask & mask_before_child;
+                uint32_t child_offset = std::popcount(nonleaf_before_child);
 
                 // Update parent pointer to point to child
                 // In our structure, childPointer is an index into childDescriptors array
@@ -915,8 +917,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 }
 
                 const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
-                debugDescend(scale, t_max, child_shift_idx, parent->validMask,
-                           mask_before_child, valid_before_child, child_offset,
+                debugDescend(scale, t_max, child_shift_idx, nonLeafMask,
+                           mask_before_child, nonleaf_before_child, child_offset,
                            parent->childPointer, child_index, new_parent);
                 parent = new_parent;
 
