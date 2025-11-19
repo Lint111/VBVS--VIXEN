@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SVOTypes.h"
+#include "BrickReference.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -43,6 +44,7 @@ struct OctreeBlock {
     std::vector<Contour> contours;
     std::vector<UncompressedAttributes> attributes;
     std::vector<AttributeLookup> attributeLookups;
+    std::vector<BrickReference> brickReferences;  // One per leaf node (aligned with childDescriptors)
 
     BlockInfo info;
 

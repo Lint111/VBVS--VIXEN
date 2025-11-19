@@ -752,6 +752,83 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // Check if this is a leaf
                 if (child_is_leaf) {
                     debugLeafHit(scale);
+
+                    // ============================================================
+                    // BRICK TRAVERSAL: Check if leaf has brick reference
+                    // ============================================================
+
+                    // Compute parent descriptor index in childDescriptors array
+                    // This requires tracking the descriptor index during traversal
+                    // For now, check if brick references array exists and is non-empty
+                    const auto& brickRefs = m_octree->root->brickReferences;
+
+                    // TODO: Track descriptor index during traversal to lookup correct brick
+                    // For initial implementation, check if bricks are enabled globally
+                    const bool bricksEnabled = !brickRefs.empty();
+
+                    if (bricksEnabled) {
+                        // Attempt brick traversal
+                        // NOTE: This is a simplified implementation that assumes brick references
+                        // align with leaf nodes. Full implementation needs proper index tracking.
+
+                        // For now, use first brick reference as test (will be fixed with proper indexing)
+                        const BrickReference& brickRef = brickRefs[0];
+
+                        if (brickRef.isValid()) {
+                            // Compute brick world bounds from leaf voxel position
+                            // The leaf voxel spans [pos.x, pos.x+scale_exp2]³ in normalized [1,2] space
+                            // Transform to world space
+                            glm::vec3 normMin(pos.x, pos.y, pos.z);
+                            glm::vec3 normMax = normMin + glm::vec3(scale_exp2);
+
+                            // Un-mirror coordinates back to original space
+                            glm::vec3 worldMin = (normMin - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
+                            glm::vec3 worldMax = (normMax - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
+
+                            // Apply octant mirroring transformation (reverse)
+                            if (octant_mask & 1) {
+                                std::swap(worldMin.x, worldMax.x);
+                                worldMin.x = m_worldMin.x + (m_worldMax.x - worldMin.x);
+                                worldMax.x = m_worldMin.x + (m_worldMax.x - worldMax.x);
+                            }
+                            if (octant_mask & 2) {
+                                std::swap(worldMin.y, worldMax.y);
+                                worldMin.y = m_worldMin.y + (m_worldMax.y - worldMin.y);
+                                worldMax.y = m_worldMin.y + (m_worldMax.y - worldMax.y);
+                            }
+                            if (octant_mask & 4) {
+                                std::swap(worldMin.z, worldMax.z);
+                                worldMin.z = m_worldMin.z + (m_worldMax.z - worldMin.z);
+                                worldMax.z = m_worldMin.z + (m_worldMax.z - worldMax.z);
+                            }
+
+                            // Brick voxel size = leaf voxel size / brick side length
+                            const float leafVoxelSize = scale_exp2 * glm::length(m_worldMax - m_worldMin);
+                            const float brickVoxelSize = leafVoxelSize / static_cast<float>(brickRef.getSideLength());
+
+                            // Convert t-values to world space for brick traversal
+                            const float worldSizeLength = glm::length(m_worldMax - m_worldMin);
+                            const float t_min_world = tEntry + t_min * worldSizeLength;
+                            const float tv_max_world = tEntry + tv_max * worldSizeLength;
+
+                            // Traverse brick
+                            auto brickHit = traverseBrick(brickRef, worldMin, brickVoxelSize,
+                                                         origin, rayDir, t_min_world, tv_max_world);
+
+                            if (brickHit.has_value()) {
+                                // Brick hit! Return it
+                                return brickHit.value();
+                            }
+
+                            // Brick traversal returned no hit - continue octree traversal
+                            // Fall through to ADVANCE/POP logic
+                        }
+                    }
+
+                    // ============================================================
+                    // FALLBACK: No brick or brick missed - return leaf hit
+                    // ============================================================
+
                     // Leaf voxel hit! Return intersection
                     // Convert normalized [1,2] t-values back to world t-values
                     // In [1,2] space, distance 1.0 corresponds to worldSize in world space
@@ -1012,6 +1089,163 @@ int LaineKarrasOctree::selectFirstChild(const VoxelCube& voxel,
     // TODO: Implement for optimized child selection (future enhancement)
     // Current implementation computes child index directly
     return 0;
+}
+
+// ============================================================================
+// Brick DDA Traversal Implementation
+// ============================================================================
+
+/**
+ * 3D DDA ray traversal through dense brick voxels.
+ *
+ * Based on Amanatides & Woo (1987) "A Fast Voxel Traversal Algorithm for Ray Tracing"
+ * with adaptations for brick-based octree storage.
+ *
+ * Key concepts:
+ * - tDelta: Ray parameter increment to cross one voxel along each axis
+ * - tNext: Ray parameter to next voxel boundary on each axis
+ * - step: Direction to advance (+1 or -1) per axis
+ * - currentVoxel: Integer coordinates [0, N-1]³ in brick space
+ *
+ * The algorithm steps through the brick voxel grid, testing the minimum tNext
+ * each iteration to determine which axis boundary to cross next.
+ */
+std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
+    const BrickReference& brickRef,
+    const glm::vec3& brickWorldMin,
+    float brickVoxelSize,
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    float tMin,
+    float tMax) const
+{
+    // Brick dimensions
+    const int brickN = brickRef.getSideLength();  // 2^depth (e.g., 8 for depth=3)
+
+    // 1. Compute ray entry point into brick
+    const glm::vec3 entryPoint = rayOrigin + rayDir * tMin;
+
+    // 2. Transform entry point to brick-local [0, N]³ space
+    const glm::vec3 localEntry = (entryPoint - brickWorldMin) / brickVoxelSize;
+
+    // 3. Initialize current voxel (integer coordinates)
+    glm::ivec3 currentVoxel{
+        static_cast<int>(std::floor(localEntry.x)),
+        static_cast<int>(std::floor(localEntry.y)),
+        static_cast<int>(std::floor(localEntry.z))
+    };
+
+    // Clamp to brick bounds [0, N-1]
+    currentVoxel = glm::clamp(currentVoxel, glm::ivec3(0), glm::ivec3(brickN - 1));
+
+    // 4. Compute DDA step directions and tDelta
+    glm::ivec3 step;
+    glm::vec3 tDelta;  // Ray parameter to cross one voxel
+    glm::vec3 tNext;   // Ray parameter to next voxel boundary
+
+    constexpr float epsilon = 1e-8f;
+
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(rayDir[axis]) < epsilon) {
+            // Ray parallel to axis - never crosses voxel boundaries on this axis
+            step[axis] = 0;
+            tDelta[axis] = std::numeric_limits<float>::max();
+            tNext[axis] = std::numeric_limits<float>::max();
+        } else {
+            // Determine step direction
+            step[axis] = (rayDir[axis] > 0.0f) ? 1 : -1;
+
+            // tDelta = voxel size / |ray direction component|
+            tDelta[axis] = brickVoxelSize / std::abs(rayDir[axis]);
+
+            // tNext = ray parameter to next voxel boundary
+            // For positive direction: distance to upper boundary
+            // For negative direction: distance to lower boundary
+            if (rayDir[axis] > 0.0f) {
+                // Distance from entry point to next upper boundary
+                const float nextBoundary = (currentVoxel[axis] + 1) * brickVoxelSize;
+                const float distToNextBoundary = nextBoundary - (entryPoint[axis] - brickWorldMin[axis]);
+                tNext[axis] = tMin + distToNextBoundary / rayDir[axis];
+            } else {
+                // Distance from entry point to next lower boundary
+                const float nextBoundary = currentVoxel[axis] * brickVoxelSize;
+                const float distToNextBoundary = (entryPoint[axis] - brickWorldMin[axis]) - nextBoundary;
+                tNext[axis] = tMin + distToNextBoundary / std::abs(rayDir[axis]);
+            }
+        }
+    }
+
+    // 5. DDA march through brick voxels
+    int maxSteps = brickN * 3;  // Safety limit (diagonal traversal)
+    int stepCount = 0;
+
+    while (stepCount < maxSteps) {
+        ++stepCount;
+
+        // Check if current voxel is in bounds
+        if (currentVoxel.x < 0 || currentVoxel.x >= brickN ||
+            currentVoxel.y < 0 || currentVoxel.y >= brickN ||
+            currentVoxel.z < 0 || currentVoxel.z >= brickN) {
+            // Exited brick bounds
+            return std::nullopt;
+        }
+
+        // 6. Sample brick voxel for occupancy
+        // NOTE: For now, we assume all brick voxels are occupied (solid brick).
+        // In a full implementation, this would query BrickStorage:
+        //   const size_t localIdx = brickStorage.getIndex(currentVoxel.x, currentVoxel.y, currentVoxel.z);
+        //   const float density = brickStorage.get<0>(brickRef.brickID, localIdx);
+        //   if (density > densityThreshold) { ... }
+        //
+        // For initial implementation, treat first voxel as hit (testing transitions)
+        {
+            // Hit! Compute hit position and return
+            const float hitT = std::min({tNext.x, tNext.y, tNext.z}) - tDelta[0] * 0.5f; // Approximate center
+            const glm::vec3 hitPosition = rayOrigin + rayDir * hitT;
+
+            // Compute normal (simple approximation: which face was entered)
+            glm::vec3 normal(0.0f);
+            const float minT = std::min({tNext.x, tNext.y, tNext.z});
+            if (std::abs(tNext.x - minT) < epsilon) {
+                normal = glm::vec3(step.x > 0 ? -1.0f : 1.0f, 0.0f, 0.0f);
+            } else if (std::abs(tNext.y - minT) < epsilon) {
+                normal = glm::vec3(0.0f, step.y > 0 ? -1.0f : 1.0f, 0.0f);
+            } else {
+                normal = glm::vec3(0.0f, 0.0f, step.z > 0 ? -1.0f : 1.0f);
+            }
+
+            ISVOStructure::RayHit hit;
+            hit.hit = true;
+            hit.tMin = hitT;
+            hit.tMax = hitT + tDelta[0] * 0.1f;  // Small span for brick voxel
+            hit.position = hitPosition;
+            hit.normal = normal;
+            hit.scale = CAST_STACK_DEPTH - 1;  // Finest detail level
+
+            return hit;
+        }
+
+        // 7. Advance to next voxel (step along axis with minimum tNext)
+        if (tNext.x < tNext.y && tNext.x < tNext.z) {
+            // Cross X boundary
+            if (tNext.x > tMax) return std::nullopt;  // Exceeded ray span
+            currentVoxel.x += step.x;
+            tNext.x += tDelta.x;
+        } else if (tNext.y < tNext.z) {
+            // Cross Y boundary
+            if (tNext.y > tMax) return std::nullopt;
+            currentVoxel.y += step.y;
+            tNext.y += tDelta.y;
+        } else {
+            // Cross Z boundary
+            if (tNext.z > tMax) return std::nullopt;
+            currentVoxel.z += step.z;
+            tNext.z += tDelta.z;
+        }
+    }
+
+    // Exceeded step limit (shouldn't happen for reasonable brick sizes)
+    return std::nullopt;
 }
 
 } // namespace SVO

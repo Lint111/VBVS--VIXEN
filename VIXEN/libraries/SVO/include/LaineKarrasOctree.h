@@ -3,7 +3,9 @@
 #include "ISVOStructure.h"
 #include "SVOTypes.h"
 #include "SVOBuilder.h"
+#include "BrickReference.h"
 #include <memory>
+#include <optional>
 
 namespace SVO {
 
@@ -128,6 +130,38 @@ private:
     int selectFirstChild(const VoxelCube& voxel,
                         const glm::vec3& rayOrigin, const glm::vec3& rayDir,
                         float tMin) const;
+
+    // ========================================================================
+    // Brick DDA Traversal (Dense Voxel Grid Ray Marching)
+    // ========================================================================
+
+    /**
+     * 3D DDA ray traversal through dense brick voxels.
+     *
+     * @param brickRef Brick reference (ID + depth) from octree leaf
+     * @param brickWorldMin Brick minimum corner in world space
+     * @param brickVoxelSize Size of one voxel in world units
+     * @param rayOrigin Ray origin in world space
+     * @param rayDir Ray direction in world space (normalized)
+     * @param tMin Ray parameter where brick entry occurs
+     * @param tMax Ray parameter where brick exit would occur
+     * @return RayHit with brick voxel hit, or miss if ray exits brick
+     *
+     * Algorithm:
+     * 1. Transform ray to brick-local [0, N]³ space
+     * 2. Initialize 3D DDA state (current voxel, step dirs, t_delta, t_next)
+     * 3. March through brick voxels using DDA
+     * 4. At each voxel: sample brick storage for occupancy
+     * 5. Return first occupied voxel or miss on brick exit
+     */
+    std::optional<ISVOStructure::RayHit> traverseBrick(
+        const BrickReference& brickRef,
+        const glm::vec3& brickWorldMin,
+        float brickVoxelSize,
+        const glm::vec3& rayOrigin,
+        const glm::vec3& rayDir,
+        float tMin,
+        float tMax) const;
 };
 
 /**
