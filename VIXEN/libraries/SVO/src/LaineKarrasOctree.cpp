@@ -106,7 +106,11 @@ namespace {
     }
 } // anonymous namespace
 
-LaineKarrasOctree::LaineKarrasOctree() = default;
+LaineKarrasOctree::LaineKarrasOctree()
+    : m_brickStorage(nullptr) {}
+
+LaineKarrasOctree::LaineKarrasOctree(BrickStorage<DefaultLeafData>* brickStorage)
+    : m_brickStorage(brickStorage) {}
 
 LaineKarrasOctree::~LaineKarrasOctree() = default;
 
@@ -1191,14 +1195,17 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
         }
 
         // 6. Sample brick voxel for occupancy
-        // NOTE: For now, we assume all brick voxels are occupied (solid brick).
-        // In a full implementation, this would query BrickStorage:
-        //   const size_t localIdx = brickStorage.getIndex(currentVoxel.x, currentVoxel.y, currentVoxel.z);
-        //   const float density = brickStorage.get<0>(brickRef.brickID, localIdx);
-        //   if (density > densityThreshold) { ... }
-        //
-        // For initial implementation, treat first voxel as hit (testing transitions)
-        {
+        // Query BrickStorage for voxel density (if available)
+        bool voxelOccupied = true; // Default: assume solid if no BrickStorage
+
+        if (m_brickStorage) {
+            const size_t localIdx = m_brickStorage->getIndex(currentVoxel.x, currentVoxel.y, currentVoxel.z);
+            const float density = m_brickStorage->get<0>(brickRef.brickID, localIdx);
+            constexpr float densityThreshold = 0.01f;
+            voxelOccupied = (density >= densityThreshold);
+        }
+
+        if (voxelOccupied) {
             // Hit! Compute hit position and return
             const float hitT = std::min({tNext.x, tNext.y, tNext.z}) - tDelta[0] * 0.5f; // Approximate center
             const glm::vec3 hitPosition = rayOrigin + rayDir * hitT;
