@@ -2,6 +2,7 @@
 #include "LaineKarrasOctree.h"
 #include "SVOBuilder.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <iostream>
 #include <unordered_map>
@@ -571,6 +572,10 @@ bool VoxelInjector::insertVoxel(
     // Normalize position to [0,1]³
     glm::vec3 normPos = (position - worldMin) / (worldMax - worldMin);
 
+    std::cout << "DEBUG insertVoxel: position=" << position.x << "," << position.y << "," << position.z
+              << " normPos=" << normPos.x << "," << normPos.y << "," << normPos.z
+              << " targetDepth=" << targetDepth << "\n" << std::flush;
+
     // Compute octree path (sequence of child indices from root to leaf)
     std::vector<int> path;
     path.reserve(targetDepth);
@@ -589,6 +594,10 @@ bool VoxelInjector::insertVoxel(
 
         path.push_back(childIdx);
 
+        if (level < 3) {  // Debug first few levels
+            std::cout << "Level " << level << ": childIdx=" << childIdx << " (normPos=" << normPos.x << "," << normPos.y << "," << normPos.z << " center=" << center.x << "," << center.y << "," << center.z << ")\n" << std::flush;
+        }
+
         // Update voxel bounds for next level
         voxelMin = glm::vec3(
             (childIdx & 1) ? center.x : voxelMin.x,
@@ -601,6 +610,13 @@ bool VoxelInjector::insertVoxel(
             (childIdx & 4) ? voxelMax.z : center.z
         );
     }
+
+    // CRITICAL DEBUG: Print entire path for position (5,5,5)
+    std::cout << "DEBUG: Complete path for position (" << position.x << "," << position.y << "," << position.z << "):";
+    for (size_t i = 0; i < path.size(); ++i) {
+        std::cout << " [" << i << "]=" << path[i];
+    }
+    std::cout << "\n" << std::flush;
 
     // 3. Octree data already retrieved above
 
@@ -728,13 +744,24 @@ bool VoxelInjector::insertVoxel(
         // Simple strategy: append new descriptors to end, compact later
 
         if (childExists) {
-            // Child already exists - follow pointer (simple direct index during insertion)
-            currentDescriptorIdx = desc.childPointer;
+            // Child already exists - look up its descriptor index from mapping
+            auto it = m_childMapping.find(currentDescriptorIdx);
+            if (it != m_childMapping.end()) {
+                currentDescriptorIdx = it->second[childIdx];
+            } else {
+                // Fallback: use childPointer (for backward compatibility)
+                currentDescriptorIdx = desc.childPointer;
+            }
         } else {
             // Allocate new child descriptor at end of array
             uint32_t newDescriptorIdx = static_cast<uint32_t>(octreeData->root->childDescriptors.size());
 
-            // Set parent's childPointer (will be recomputed during compaction)
+            // Track child mapping: currentDescriptor → childOctant → newDescriptor
+            auto& mapping = m_childMapping[currentDescriptorIdx];
+            mapping[childIdx] = newDescriptorIdx;
+
+            // Set parent's childPointer (simplified - points to first child)
+            // This will be properly recomputed during compaction
             octreeData->root->childDescriptors[currentDescriptorIdx].childPointer = newDescriptorIdx;
 
             // Create new child descriptor
@@ -746,6 +773,16 @@ bool VoxelInjector::insertVoxel(
             childDesc.contourPointer = 0;
             childDesc.contourMask = 0;
             octreeData->root->childDescriptors.push_back(childDesc);
+
+            // AFTER adding to vector, mark the next child if we're not at the leaf yet
+            // This must be done AFTER push_back to avoid vector reallocation invalidating references
+            if (level + 1 < path.size()) {
+                int nextChildIdx = path[level + 1];
+                std::cout << "DEBUG: Setting validMask for descriptor " << newDescriptorIdx
+                          << " at level " << level << ", nextChildIdx from path[" << (level+1)
+                          << "] = " << nextChildIdx << "\n" << std::flush;
+                octreeData->root->childDescriptors[newDescriptorIdx].validMask = (1 << nextChildIdx);
+            }
 
             // Create corresponding AttributeLookup
             AttributeLookup childAttrLookup{};
@@ -772,6 +809,15 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
 
     Octree* octreeData = const_cast<Octree*>(octree->getOctree());
     if (!octreeData || !octreeData->root) return false;
+
+    std::cout << "DEBUG_MARKER_XYZ Before compaction:\n" << std::flush;
+    for (size_t i = 0; i < octreeData->root->childDescriptors.size() && i < 10; ++i) {
+        const auto& desc = octreeData->root->childDescriptors[i];
+        std::cout << "  [" << i << "] valid=0x" << std::hex << (int)desc.validMask
+                  << " leaf=0x" << (int)desc.leafMask << std::dec
+                  << " childPtr=" << desc.childPointer << "\n" << std::flush;
+    }
+    std::cout << std::dec << std::flush;
 
     // Build new descriptor array in ESVO order (breadth-first, contiguous children)
     std::vector<ChildDescriptor> newDescriptors;
@@ -814,9 +860,15 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
 
             // Add all non-leaf children contiguously
             for (uint32_t childOctant : nonLeafChildren) {
-                // In old format, childPointer points directly to single child
-                // We need to find the old index of this child's descriptor
-                uint32_t oldChildIndex = oldDesc.childPointer;  // Simplified - needs proper mapping
+                // Look up old descriptor index for this child octant
+                uint32_t oldChildIndex = 0;
+                auto it = m_childMapping.find(current.oldIndex);
+                if (it != m_childMapping.end()) {
+                    oldChildIndex = it->second[childOctant];
+                } else {
+                    // Fallback: use childPointer (should not happen with proper mapping)
+                    oldChildIndex = oldDesc.childPointer;
+                }
 
                 uint32_t newChildIndex = static_cast<uint32_t>(newDescriptors.size());
                 oldToNewIndex[oldChildIndex] = newChildIndex;
@@ -829,9 +881,24 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
         }
     }
 
+    // Debug output
+    std::cout << "Compaction complete:\n";
+    std::cout << "  Old descriptors: " << octreeData->root->childDescriptors.size() << "\n";
+    std::cout << "  New descriptors: " << newDescriptors.size() << "\n";
+    std::cout << "Old descriptor structure:\n";
+    for (size_t i = 0; i < octreeData->root->childDescriptors.size() && i < 10; ++i) {
+        const auto& desc = octreeData->root->childDescriptors[i];
+        std::cout << "  [" << i << "] valid=0x" << std::hex << (int)desc.validMask
+                  << " leaf=0x" << (int)desc.leafMask << std::dec
+                  << " childPtr=" << desc.childPointer << "\n";
+    }
+
     // Replace old arrays with compacted versions
     octreeData->root->childDescriptors = std::move(newDescriptors);
     octreeData->root->attributeLookups = std::move(newAttributeLookups);
+
+    // Clear mapping - it's now invalid since descriptor indices changed
+    m_childMapping.clear();
 
     return true;
 }

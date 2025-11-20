@@ -2,8 +2,10 @@
 
 #include "ISVOStructure.h"
 #include "SVOTypes.h"
+#include <array>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 
 namespace SVO {
 
@@ -347,6 +349,11 @@ public:
 private:
     ProgressCallback m_progressCallback;
     Stats m_stats;
+
+    // Maps parent descriptor index → [octant 0-7] → child descriptor index
+    // Used during additive insertion to track which child octant leads to which descriptor
+    // Cleared after each compactToESVOFormat() call
+    std::unordered_map<uint32_t, std::array<uint32_t, 8>> m_childMapping;
 
     // Implementation helpers
     struct BuildContext;

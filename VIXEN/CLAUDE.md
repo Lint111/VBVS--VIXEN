@@ -126,6 +126,50 @@ Assistant: "Bug found: missing viewport initialization in [Renderer.cpp:156](Ren
 
 This ensures context persistence across sessions and provides a clear history of progress.
 
+### activeContext.md Structure - MANDATORY
+
+The `activeContext.md` file has a **REQUIRED STRUCTURE** that must be preserved across sessions. When updating this file, you MUST:
+
+1. **NEVER delete these sections** - they provide essential long-term context:
+   - **Week 1 & 1.5+ Success Criteria** - tracks project milestones
+   - **Known Limitations** - documents accepted edge cases
+   - **Reference Sources** - ESVO implementation paths and paper citations
+   - **Todo List (Active Tasks)** - comprehensive task tracking across weeks
+
+2. **Always update these sections** with current session info:
+   - **Last Updated** date
+   - **Current Status** summary
+   - **Session Summary** - what was accomplished this session
+   - **Test Results** - current pass/fail counts
+   - **Modified Files** - specific files and line numbers changed
+   - **Next Steps** - immediate priorities for next session
+   - **Session Metrics** - time invested, code changes, lessons learned
+
+3. **Section ordering** (maintain this exact structure):
+   - Current Status
+   - Session Summary
+   - Test Results
+   - Bug Analysis (if applicable)
+   - Modified Files
+   - Key Technical Discoveries (if any)
+   - Next Steps (Priority Order)
+   - Week 1 & 1.5+ Success Criteria ← **NEVER DELETE**
+   - Known Limitations ← **NEVER DELETE**
+   - Production Readiness Assessment
+   - Reference Sources ← **NEVER DELETE**
+   - Session Metrics
+   - Todo List (Active Tasks) ← **NEVER DELETE**
+
+4. **Why these sections persist**:
+   - Success Criteria: Tracks overall project progress across multiple sessions
+   - Known Limitations: Prevents re-investigating known edge cases
+   - Reference Sources: Essential for understanding ESVO algorithm details
+   - Todo List: Maintains work queue spanning weeks, not just current session
+
+**Example violation**: Replacing entire file with only current session info loses critical context about completed milestones, known limitations, and long-term tasks.
+
+**Correct approach**: Update session-specific sections while preserving structural sections that track long-term project state.
+
 ## Memory Bank - CRITICAL
 
 The Memory Bank in `memory-bank/` provides persistent project context across sessions. **Read the appropriate files based on session type.**

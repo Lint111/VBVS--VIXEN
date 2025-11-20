@@ -412,12 +412,13 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
     std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
     std::cout << "  World bounds: [" << octree.getWorldMin().x << "," << octree.getWorldMax().x << "]\n";
 
-    if (!octreeData->root->childDescriptors.empty()) {
-        const auto& rootDesc = octreeData->root->childDescriptors[0];
-        std::cout << "  Root descriptor:\n";
-        std::cout << "    validMask: 0x" << std::hex << (int)rootDesc.validMask << std::dec << "\n";
-        std::cout << "    leafMask: 0x" << std::hex << (int)rootDesc.leafMask << std::dec << "\n";
-        std::cout << "    childPointer: " << rootDesc.childPointer << "\n";
+    // Print all descriptors
+    std::cout << "  All descriptors:\n";
+    for (size_t i = 0; i < octreeData->root->childDescriptors.size(); ++i) {
+        const auto& desc = octreeData->root->childDescriptors[i];
+        std::cout << "    [" << i << "] valid=0x" << std::hex << (int)desc.validMask
+                  << " leaf=0x" << (int)desc.leafMask << std::dec
+                  << " childPtr=" << desc.childPointer << "\n";
     }
 
     // Cast ray from outside toward center
