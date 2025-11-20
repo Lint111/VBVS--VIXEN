@@ -435,7 +435,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
 
     // Cast ray from outside toward voxel
     glm::vec3 rayOrigin(-5.0f, 3.0f, 3.0f);  // Start left of world, aligned with voxel
-    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right (axis-parallel)
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 

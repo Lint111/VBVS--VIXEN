@@ -683,23 +683,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = CAST_STACK_DEPTH - 1
 
     // Select initial child based on ray entry point
-    // Reference: lines 136-138
-    // idx represents the child in MIRRORED coordinate system
-    // octant_mask tells us which axes are mirrored: mirrored_coord = 3 - coord
-    // We need to check which half the entry point is in AFTER applying mirroring
+    // Reference: ESVO lines 136-138
+    // Use parametric time formula, NOT position comparison!
+    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
 
-    float mirroredX = (octant_mask & 1) ? (3.0f - normOrigin.x) : normOrigin.x;
-    float mirroredY = (octant_mask & 2) ? (3.0f - normOrigin.y) : normOrigin.y;
-    float mirroredZ = (octant_mask & 4) ? (3.0f - normOrigin.z) : normOrigin.z;
-
-    if (mirroredX > 1.5f) idx ^= 1, pos.x = 1.5f;
-    if (mirroredY > 1.5f) idx ^= 2, pos.y = 1.5f;
-    if (mirroredZ > 1.5f) idx ^= 4, pos.z = 1.5f;
-
-    glm::vec3 mirroredPos(mirroredX, mirroredY, mirroredZ);
     std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-    std::cout << "  mirroredPos=(" << mirroredX << "," << mirroredY << "," << mirroredZ << ") octant_mask=" << octant_mask << " idx=" << idx << "\n";
-    debugInitialState(normOrigin, mirroredPos, octant_mask, idx, pos);
+    std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 
     // Main traversal loop
     // Traverse voxels along the ray while staying within octree bounds
@@ -980,34 +971,89 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 scale_exp2 = half;
 
                 std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
-                std::cout << "DEBUG: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << "\n";
 
-                // Select which octant of the child contains the ray entry point
-                // Reference: Raycast.inl:265-267 uses parametric plane centers
-                // BUGFIX: For axis-parallel rays, ty_center/tz_center are extreme negative values.
+                // ================================================================
+                // Octant Selection: Recompute center planes for NEW voxel
+                // Reference: Raycast.inl:265-267
+                // ================================================================
+                // IMPORTANT: After descending, we must recompute tx_center using the NEW scale_exp2
+                // (which now represents children of the voxel we just entered).
+                // The tx_center computed before descent was for the PARENT voxel, not this one!
                 //
-                // Logic: if tx_center > t_min, ray hasn't crossed X center plane yet → flip bit
-                // For axis-parallel rays (constant Y/Z), extreme NEGATIVE ty/tz_center means ray is
-                // beyond that plane (already crossed in distant past) → in UPPER half → flip bit
-                constexpr float safe_threshold = 1000.0f;
+                // Recompute corner and center values for current voxel
+                // IMPORTANT: For octant selection, we need the center of the FULL current voxel,
+                // not a sub-region. pos represents the lower corner of the current voxel.
+                tx_corner = pos.x * tx_coef - tx_bias;
+                ty_corner = pos.y * ty_coef - ty_bias;
+                tz_corner = pos.z * tz_coef - tz_bias;
 
-                std::cout << "DEBUG: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
+                // Recompute center using ESVO formula: half * coef + corner
+                // This formula is correct per reference implementation (Raycast.inl:192-194)
+                half = scale_exp2 * 0.5f;
+                tx_center = half * tx_coef + tx_corner;
+                ty_center = half * ty_coef + ty_corner;
+                tz_center = half * tz_coef + tz_corner;
 
-                // Normal case: center > t_min means ray will cross (flip bit)
-                // Axis-parallel case: extreme negative center means ray already crossed (flip bit)
-                // BUGFIX: For non-mirrored axes, the logic is inverted!
-                // If octant_mask bit is 0 (not mirrored), ray travels in positive direction,
-                // so tx_center > t_min means ray is in LOWER half (don't flip), not upper half.
+                // For axis-parallel rays: extreme negative center values (~-45000) occur when
+                // ray direction component is near-zero (epsilon-based). These represent planes
+                // the ray has already crossed in the distant past, so treat as "already crossed".
+                constexpr float extreme_negative_threshold = -1000.0f;
+
+                std::cout << "DEBUG: Recomputed for octant selection: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
+                std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << " half=" << half << "\n";
+                std::cout << "DEBUG: octant_mask=" << octant_mask << " (mirroring: X=" << ((octant_mask & 1) ? "YES" : "NO")
+                          << " Y=" << ((octant_mask & 2) ? "YES" : "NO")
+                          << " Z=" << ((octant_mask & 4) ? "YES" : "NO") << ")\n";
+
+                // Apply ESVO's octant selection logic with mirrored-axis awareness
+                //
+                // For axis-parallel rays, t_center values can be extreme (~±32500) due to epsilon-based coefficients.
+                // In these cases, use POSITION comparison instead of parametric time.
+                //
+                // CRITICAL: Mirrored vs non-mirrored axes have OPPOSITE semantics:
+                // - Mirrored axis: center > t_min → haven't crossed → upper half → FLIP bit
+                // - Non-mirrored axis: center > t_min → haven't crossed → lower half → DON'T FLIP
+                constexpr float extreme_threshold = 1000.0f;  // Absolute value threshold
                 bool x_mirrored = (octant_mask & 1) != 0;
                 bool y_mirrored = (octant_mask & 2) != 0;
                 bool z_mirrored = (octant_mask & 4) != 0;
 
-                bool x_flip = x_mirrored ? ((tx_center > t_min) || (tx_center < -safe_threshold))
-                                         : ((tx_center <= t_min) && (tx_center > -safe_threshold));
-                bool y_flip = y_mirrored ? ((ty_center > t_min) || (ty_center < -safe_threshold))
-                                         : ((ty_center <= t_min) && (ty_center > -safe_threshold));
-                bool z_flip = z_mirrored ? ((tz_center > t_min) || (tz_center < -safe_threshold))
-                                         : ((tz_center <= t_min) && (tz_center > -safe_threshold));
+                // For axis-parallel rays (extreme t_center values), use the ray's constant coordinates
+                // The pos coordinates are in the MIRRORED coordinate system, so we need to compare
+                // against the ray's MIRRORED coordinates.
+                float ray_x_mirrored = x_mirrored ? (3.0f - normOrigin.x) : normOrigin.x;
+                float ray_y_mirrored = y_mirrored ? (3.0f - normOrigin.y) : normOrigin.y;
+                float ray_z_mirrored = z_mirrored ? (3.0f - normOrigin.z) : normOrigin.z;
+
+                float voxel_center = pos.x + half;
+                bool x_flip;
+                if (std::abs(tx_center) > extreme_threshold) {
+                    // Axis-parallel case: check if ray is in upper half of current voxel (in mirrored space)
+                    bool in_upper_half = (ray_x_mirrored >= voxel_center);
+                    x_flip = in_upper_half;  // Upper half → flip bit
+                } else {
+                    // NVIDIA ESVO uses greaterThan (Raycast.inl:265-267)
+                    // If ray hasn't crossed center yet, flip the bit
+                    x_flip = (tx_center > t_min);
+                }
+
+                voxel_center = pos.y + half;
+                bool y_flip;
+                if (std::abs(ty_center) > extreme_threshold) {
+                    bool in_upper_half = (ray_y_mirrored >= voxel_center);
+                    y_flip = in_upper_half;
+                } else {
+                    y_flip = (ty_center > t_min);
+                }
+
+                voxel_center = pos.z + half;
+                bool z_flip;
+                if (std::abs(tz_center) > extreme_threshold) {
+                    bool in_upper_half = (ray_z_mirrored >= voxel_center);
+                    z_flip = in_upper_half;
+                } else {
+                    z_flip = (tz_center > t_min);
+                }
 
                 if (x_flip) {
                     std::cout << "DEBUG: flipping bit 1 (X)\n";
@@ -1022,7 +1068,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     idx ^= 4; pos.z += scale_exp2;
                 }
 
-                std::cout << "DEBUG: After octant selection, idx=" << idx << "\n";
+                std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 
                 // Update active t-span and invalidate child descriptor
                 t_max = tv_max;

@@ -818,6 +818,16 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
                   << " leaf=0x" << (int)desc.leafMask << std::dec
                   << " childPtr=" << desc.childPointer << "\n" << std::flush;
     }
+    std::cout << "Child mapping:\n" << std::flush;
+    for (const auto& [parentIdx, children] : m_childMapping) {
+        std::cout << "  Descriptor [" << parentIdx << "] -> {";
+        for (int i = 0; i < 8; ++i) {
+            if (children[i] != UINT32_MAX) {
+                std::cout << " " << i << ":" << children[i];
+            }
+        }
+        std::cout << " }\n" << std::flush;
+    }
     std::cout << std::dec << std::flush;
 
     // Build new descriptor array in ESVO order (breadth-first, contiguous children)
