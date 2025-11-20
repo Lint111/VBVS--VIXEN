@@ -757,11 +757,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         bool child_valid = (parent->validMask & (1u << idx)) != 0;
         bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
 
-        if (scale >= CAST_STACK_DEPTH - 3) {  // Debug first 3 levels
-            std::cout << "DEBUG LEVEL scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
-                      << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
-                      << " child_valid=" << child_valid << " t_min=" << t_min << " t_max=" << t_max << "\n";
-        }
+        // Debug ALL levels to track parent descriptor
+        std::cout << "DEBUG LEVEL scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
+                  << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
+                  << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
+                  << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf
+                  << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
 
         debugChildValidity(child_shift, child_masks,
                           (child_masks & 0x8000) != 0, child_valid,
@@ -900,10 +901,21 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                     // Leaf voxel hit! Return intersection
                     // Convert normalized [1,2] t-values back to world t-values
-                    // In [1,2] space, distance 1.0 corresponds to worldSize in world space
-                    // NOTE: Use max component, not diagonal length! The [1,2] space is a unit cube, not unit sphere
+                    // CRITICAL: For axis-aligned rays, use the DOMINANT axis for conversion!
+                    // The normalized t-values are along the ray direction, not isotropic.
                     glm::vec3 worldSize = m_worldMax - m_worldMin;
-                    float worldSizeLength = std::max({worldSize.x, worldSize.y, worldSize.z});
+
+                    // Determine dominant axis based on ray direction
+                    float worldSizeLength;
+                    glm::vec3 absDir = glm::abs(rayDir);
+                    if (absDir.x > absDir.y && absDir.x > absDir.z) {
+                        worldSizeLength = worldSize.x;  // X dominant
+                    } else if (absDir.y > absDir.z) {
+                        worldSizeLength = worldSize.y;  // Y dominant
+                    } else {
+                        worldSizeLength = worldSize.z;  // Z dominant
+                    }
+
                     float t_min_world = tEntry + t_min * worldSizeLength;
                     float tv_max_world = tEntry + tv_max * worldSizeLength;
 
@@ -970,10 +982,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
 
-                if (scale == CAST_STACK_DEPTH - 1) {
-                    std::cout << "DEBUG DESCEND: nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
-                              << " child_offset=" << child_offset << " child_index=" << child_index << "\n";
-                }
+                // Debug DESCEND at all levels
+                std::cout << "DEBUG DESCEND scale=" << scale << ": parent=" << (parent - &m_octree->root->childDescriptors[0])
+                          << " idx=" << idx << " nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
+                          << " child_offset=" << child_offset << " → child_index=" << child_index << "\n";
 
                 debugDescend(scale, t_max, child_shift_idx, nonLeafMask,
                            mask_before_child, nonleaf_before_child, child_offset,
@@ -988,41 +1000,35 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
 
                 // ================================================================
-                // Octant Selection: Recompute center planes for NEW voxel
+                // Octant Selection: Use PARENT's center values
                 // Reference: Raycast.inl:265-267
                 // ================================================================
-                // IMPORTANT: After descending, we must recompute tx_center using the NEW scale_exp2
-                // (which now represents children of the voxel we just entered).
-                // The tx_center computed before descent was for the PARENT voxel, not this one!
-                //
-                // Recompute corner and center values for current voxel
-                // IMPORTANT: For octant selection, we need the center of the FULL current voxel,
-                // not a sub-region. pos represents the lower corner of the current voxel.
-                tx_corner = pos.x * tx_coef - tx_bias;
-                ty_corner = pos.y * ty_coef - ty_bias;
-                tz_corner = pos.z * tz_coef - tz_bias;
+                // CRITICAL: ESVO uses the PARENT's tx_center values (computed before DESCEND)
+                // to select which child octant the ray is in. We should NOT recompute them!
+                // The tx_center values from before DESCEND tell us where the ray is relative
+                // to the PARENT's center, which determines which CHILD we're in.
 
-                // Recompute center using ESVO formula: half * coef + corner
-                // This formula is correct per reference implementation (Raycast.inl:192-194)
-                half = scale_exp2 * 0.5f;
-                tx_center = half * tx_coef + tx_corner;
-                ty_center = half * ty_coef + ty_corner;
-                tz_center = half * tz_coef + tz_corner;
-
-                // For axis-parallel rays: extreme negative center values (~-45000) occur when
-                // ray direction component is near-zero (epsilon-based). These represent planes
-                // the ray has already crossed in the distant past, so treat as "already crossed".
-                constexpr float extreme_negative_threshold = -1000.0f;
-
-                std::cout << "DEBUG: Recomputed for octant selection: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
-                std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << " half=" << half << "\n";
+                std::cout << "DEBUG: Using parent's center values: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
+                std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
 
                 // ESVO octant selection (Raycast.inl:265-267)
                 // Simple parametric formula works for physical storage with octant mirroring
                 // The mirroring is handled uniformly by octant_mask, so no special cases needed
-                if (tx_center > t_min) idx ^= 1, pos.x += scale_exp2;
-                if (ty_center > t_min) idx ^= 2, pos.y += scale_exp2;
-                if (tz_center > t_min) idx ^= 4, pos.z += scale_exp2;
+                std::cout << "DEBUG: Before octant selection, idx=" << idx << "\n";
+                std::cout << "  tx_center - t_min = " << (tx_center - t_min)
+                          << " (tx_center > t_min)=" << (tx_center > t_min) << "\n";
+                if (tx_center > t_min) {
+                    std::cout << "  Flipping X bit!\n";
+                    idx ^= 1, pos.x += scale_exp2;
+                }
+                if (ty_center > t_min) {
+                    std::cout << "  Flipping Y bit: " << ty_center << " > " << t_min << "\n";
+                    idx ^= 2, pos.y += scale_exp2;
+                }
+                if (tz_center > t_min) {
+                    std::cout << "  Flipping Z bit: " << tz_center << " > " << t_min << "\n";
+                    idx ^= 4, pos.z += scale_exp2;
+                }
 
                 std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 
