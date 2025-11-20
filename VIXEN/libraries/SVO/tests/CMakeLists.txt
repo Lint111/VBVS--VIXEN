@@ -178,3 +178,34 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_brick_storage)
+
+# ===========================================================================
+# Comprehensive Ray Casting Tests
+# ===========================================================================
+# Tests axis-aligned rays, diagonal rays, inside/outside grid, miss cases,
+# multiple voxel traversal, dense volumes, edge cases, stress testing,
+# performance characteristics, and Cornell box scene rendering
+
+add_executable(test_ray_casting_comprehensive
+    test_ray_casting_comprehensive.cpp
+)
+
+if(TARGET SVO)
+    target_link_libraries(test_ray_casting_comprehensive PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_ray_casting_comprehensive PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_ray_casting_comprehensive PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_ray_casting_comprehensive POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_ray_casting_comprehensive>
+        COMMENT "Copying TBB DLL for test_ray_casting_comprehensive"
+    )
+endif()
+
+gtest_discover_tests(test_ray_casting_comprehensive)
