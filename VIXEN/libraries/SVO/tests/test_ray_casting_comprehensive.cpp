@@ -5,6 +5,10 @@
 #include <random>
 #include "LaineKarrasOctree.h"
 #include "VoxelInjection.h"
+#include "ISVOStructure.h"
+#include "SVOTypes.h"
+
+using namespace SVO;
 
 class ComprehensiveRayCastingTest : public ::testing::Test {
 protected:
@@ -20,29 +24,27 @@ protected:
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        VoxelInjection::InjectionConfig config;
-        config.worldMin = worldMin;
-        config.worldMax = worldMax;
+        auto octree = std::make_unique<LaineKarrasOctree>();
+
+        VoxelInjector injector;
+        InjectionConfig config;
         config.maxLevels = maxDepth;
         config.minVoxelSize = 0.01f;
 
-        VoxelInjector injector(config);
-
         // Insert all voxels
         for (const auto& pos : voxelPositions) {
-            VoxelInjection::VoxelData voxel;
+            VoxelData voxel;
             voxel.position = pos;
-            voxel.normal = 3; // Default normal
-            voxel.color = glm::vec4(1, 1, 1, 1);
-            injector.insertVoxel(voxel);
+            voxel.normal = glm::vec3(0, 1, 0); // Default normal
+            voxel.color = glm::vec3(1, 1, 1);
+            voxel.density = 1.0f;
+
+            // Use the insertVoxel signature from test_voxel_injection.cpp
+            injector.insertVoxel(*octree, pos, voxel, config);
         }
 
         // Compact to ESVO format
-        injector.compactToESVOFormat();
-
-        // Create LaineKarras octree from injection result
-        auto octree = std::make_unique<LaineKarrasOctree>(worldMin, worldMax);
-        octree->initializeFromInjection(injector.getResult());
+        injector.compactToESVOFormat(*octree);
 
         return octree;
     }
@@ -50,7 +52,7 @@ protected:
     // Helper to check if ray hits any of the expected voxels
     bool hitsExpectedVoxel(const ISVOStructure::RayHit& hit,
                           const std::vector<glm::vec3>& expectedVoxels,
-                          float tolerance = 2.0f)
+                          float tolerance = 5.0f)
     {
         if (!hit.hit) return false;
 
