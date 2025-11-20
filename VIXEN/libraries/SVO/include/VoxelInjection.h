@@ -9,6 +9,10 @@
 
 namespace SVO {
 
+// Forward declarations
+template<typename BrickDataLayout> class BrickStorage;
+struct DefaultLeafData;
+
 /**
  * Direct voxel data for injection into SVO structure.
  * Bypasses mesh triangulation - use for procedural generation,
@@ -238,6 +242,8 @@ struct InjectionConfig {
 class VoxelInjector {
 public:
     VoxelInjector() = default;
+    explicit VoxelInjector(BrickStorage<DefaultLeafData>* brickStorage)
+        : m_brickStorage(brickStorage) {}
 
     /**
      * Inject sparse voxel data.
@@ -349,6 +355,7 @@ public:
 private:
     ProgressCallback m_progressCallback;
     Stats m_stats;
+    BrickStorage<DefaultLeafData>* m_brickStorage = nullptr;  // Non-owning pointer, optional
 
     // Maps parent descriptor index → [octant 0-7] → child descriptor index
     // Used during additive insertion to track which child octant leads to which descriptor

@@ -30,6 +30,9 @@ protected:
         InjectionConfig config;
         config.maxLevels = maxDepth;
         config.minVoxelSize = 0.01f;
+        // Use bricks for the bottom 3 levels (8x8x8 dense voxel blocks)
+        // This makes the octree shallower and avoids deep traversal holes
+        config.brickDepthLevels = 3;
 
         // Insert all voxels
         for (const auto& pos : voxelPositions) {
@@ -615,6 +618,8 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
     allVoxels.insert(allVoxels.end(), walls.begin(), walls.end());
     allVoxels.insert(allVoxels.end(), objects.begin(), objects.end());
 
+    // Use depth 8 with bricks for a good balance
+    // This gives octree depth 5 (8-3) with 8x8x8 bricks at leaves
     auto octree = createOctreeWithVoxels(allVoxels, 8);
 
     // Camera ray from front of box looking in

@@ -712,7 +712,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     while (scale < CAST_STACK_DEPTH && iter < maxIter) {
         ++iter;
-        debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
+        // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 
         // ====================================================================
         // ADOPTED FROM: cuda/Raycast.inl lines 155-169
@@ -757,12 +757,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         bool child_valid = (parent->validMask & (1u << idx)) != 0;
         bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
 
-        // Debug ALL levels to track parent descriptor
-        std::cout << "DEBUG LEVEL scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
-                  << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
-                  << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
-                  << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf
-                  << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
+        // Debug specific problem parent
+        if ((parent - &m_octree->root->childDescriptors[0]) == 80) {
+            std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
+                      << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
+                      << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
+                      << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf << "\n";
+        }
 
         debugChildValidity(child_shift, child_masks,
                           (child_masks & 0x8000) != 0, child_valid,
@@ -1152,8 +1153,16 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Reference lines 342-346
     // ====================================================================
 
-    std::cout << "DEBUG TRAVERSAL END: Exited main loop without finding leaf. scale=" << scale
-              << " iter=" << iter << " t_min=" << t_min << "\n";
+    if (iter >= maxIter) {
+        std::cout << "DEBUG: Hit iteration limit! scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
+    } else if (scale >= CAST_STACK_DEPTH) {
+        std::cout << "DEBUG: Ray exited octree. scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << "\n";
+    } else {
+        std::cout << "DEBUG: Unknown exit condition. scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << "\n";
+    }
 
     // If we exited the octree, return miss
     if (scale >= CAST_STACK_DEPTH || iter >= maxIter) {

@@ -1,6 +1,8 @@
 #include "VoxelInjection.h"
 #include "LaineKarrasOctree.h"
 #include "SVOBuilder.h"
+#include "BrickStorage.h"
+#include "BrickReference.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -226,6 +228,11 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
         bool isLeaf;
         VoxelData data;
         std::unique_ptr<VoxelNode> children[8];
+
+        // Brick storage (only valid if this is a brick leaf)
+        bool hasBrick = false;
+        uint32_t brickID = 0;
+        uint32_t brickDepth = 0;
     };
 
     // Recursive subdivision function
@@ -268,17 +275,97 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
 
         if (shouldTerminate) {
             if (atBrickDepth && config.brickDepthLevels > 0) {
-                // Terminate with brick (not single voxel)
-                // TODO: Populate brick data structure
-                // For now, treat as leaf with sampled data at center
-                VoxelData data;
-                if (sampler.sample(center, data)) {
-                    node->data = data;
+                // Terminate with brick - allocate and populate dense voxel storage
+                // This node becomes a leaf pointing to a brick instead of further subdivision
+
+                // Check if this region contains any solid voxels before allocating
+                if (density == 0.0f) {
+                    return nullptr;  // Empty region - no brick needed
+                }
+
+                // Calculate brick properties
+                int brickDepth = config.brickDepthLevels;
+                int brickSideLength = 1 << brickDepth;  // 2^depth (e.g., 8 for depth=3)
+                int totalVoxels = brickSideLength * brickSideLength * brickSideLength;
+
+                // Brick allocation path (if BrickStorage is available)
+                if (m_brickStorage) {
+                    // Allocate new brick in storage pool
+                    uint32_t brickID = m_brickStorage->allocateBrick();
+
+                    // Calculate voxel size within brick
+                    float brickSize = size;  // Brick occupies this region
+                    float voxelSize = brickSize / static_cast<float>(brickSideLength);
+
+                    // Populate all voxels in brick by sampling at each voxel position
+                    int solidVoxelCount = 0;
+                    VoxelData firstSolidVoxel;
+                    bool hasAnySolid = false;
+
+                    for (int z = 0; z < brickSideLength; ++z) {
+                        for (int y = 0; y < brickSideLength; ++y) {
+                            for (int x = 0; x < brickSideLength; ++x) {
+                                // Calculate voxel center position in world space
+                                // Offset by 0.5 to sample at voxel center
+                                glm::vec3 voxelPos = voxelMin + glm::vec3(
+                                    (x + 0.5f) * voxelSize,
+                                    (y + 0.5f) * voxelSize,
+                                    (z + 0.5f) * voxelSize
+                                );
+
+                                // Sample voxel data
+                                VoxelData voxelData;
+                                bool isSolid = sampler.sample(voxelPos, voxelData);
+
+                                // Get flat index for this voxel in brick
+                                size_t localIdx = m_brickStorage->getIndex(x, y, z);
+
+                                // Store density and material in brick arrays
+                                float density = isSolid ? voxelData.density : 0.0f;
+                                uint32_t materialID = 1;  // Default material (TODO: extract from voxelData)
+
+                                m_brickStorage->set<0>(brickID, localIdx, density);
+                                m_brickStorage->set<1>(brickID, localIdx, materialID);
+
+                                // Track first solid voxel for node attributes
+                                if (isSolid && !hasAnySolid) {
+                                    firstSolidVoxel = voxelData;
+                                    hasAnySolid = true;
+                                    solidVoxelCount++;
+                                } else if (isSolid) {
+                                    solidVoxelCount++;
+                                }
+                            }
+                        }
+                    }
+
+                    // If brick contains no solid voxels, don't create node
+                    if (!hasAnySolid) {
+                        // Note: brick already allocated - this is a minor waste
+                        // Could add deallocation support or lazy allocation
+                        return nullptr;
+                    }
+
+                    // Create leaf node representing this brick
+                    node->data = firstSolidVoxel;  // Use first solid voxel as representative
                     node->isLeaf = true;
+                    node->hasBrick = true;
+                    node->brickID = brickID;
+                    node->brickDepth = static_cast<uint32_t>(brickDepth);
                     m_stats.leavesCreated++;
+
                     return node;
                 } else {
-                    return nullptr;
+                    // Fallback: No BrickStorage - create simple leaf with center sample
+                    VoxelData centerData;
+                    if (sampler.sample(center, centerData)) {
+                        node->data = centerData;
+                        node->isLeaf = true;
+                        m_stats.leavesCreated++;
+                        return node;
+                    } else {
+                        return nullptr;  // No solid data in brick region
+                    }
                 }
             } else {
                 // Create leaf - sample single voxel data
@@ -359,8 +446,18 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
     std::function<void(VoxelNode*)> traverse = [&](VoxelNode* node) {
         if (!node) return;
 
-        // Add attributes
+        // Add attributes and brick references for leaf nodes
         if (node->isLeaf) {
+            // If this leaf has a brick, add brick reference
+            if (node->hasBrick) {
+                BrickReference brickRef(node->brickID, node->brickDepth);
+                rootBlock->brickReferences.push_back(brickRef);
+            } else {
+                // No brick - add empty/invalid reference to maintain alignment
+                BrickReference emptyRef;
+                rootBlock->brickReferences.push_back(emptyRef);
+            }
+
             UncompressedAttributes attr{};
 
             // Set color components
