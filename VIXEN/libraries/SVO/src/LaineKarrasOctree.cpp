@@ -684,10 +684,23 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Select initial child based on ray entry point
     // Reference: ESVO lines 136-138
-    // Use parametric time formula, NOT position comparison!
-    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
-    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
-    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    // For axis-parallel rays with extreme coefficients, use position comparison
+    // For diagonal rays, parametric formula works correctly
+    const float EXTREME_COEF_THRESHOLD = 1000.0f;
+    const bool use_position = std::abs(ty_coef) > EXTREME_COEF_THRESHOLD ||
+                              std::abs(tz_coef) > EXTREME_COEF_THRESHOLD;
+
+    if (use_position) {
+        // Position-based (handles axis-parallel edge case)
+        if (normOrigin.x > 1.5f) idx ^= 1, pos.x = 1.5f;
+        if (normOrigin.y > 1.5f) idx ^= 2, pos.y = 1.5f;
+        if (normOrigin.z > 1.5f) idx ^= 4, pos.z = 1.5f;
+    } else {
+        // Parametric formula (standard case)
+        if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+        if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+        if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    }
 
     std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
     std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
@@ -739,9 +752,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         uint32_t child_masks = static_cast<uint32_t>(child_descriptor) << child_shift;
 
         // Check if THIS specific child exists in parent's validMask
-        // child_shift gives us the UNMIRRORED child index (physical index in octree data)
-        bool child_valid = (parent->validMask & (1u << child_shift)) != 0;
-        bool child_is_leaf = (parent->leafMask & (1u << child_shift)) != 0;
+        // For dynamically-inserted octrees stored in PHYSICAL space, use idx directly
+        // (ESVO pre-built octrees may use different layout - needs verification)
+        bool child_valid = (parent->validMask & (1u << idx)) != 0;
+        bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
 
         if (scale >= CAST_STACK_DEPTH - 3) {  // Debug first 3 levels
             std::cout << "DEBUG LEVEL scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
@@ -933,7 +947,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // ESVO childPointer points to array of ONLY non-leaf children
                 // Count how many NON-LEAF children come before current child
                 // Reference: OctreeRuntime.cpp:1124 - childIdx = popc8(nonLeafMask & (cmask - 1))
-                int child_shift_idx = idx ^ octant_mask;
+                // For dynamically-inserted octrees in PHYSICAL space, use idx directly
+                int child_shift_idx = idx;
 
                 // Compute nonLeafMask (inverse of leafMask)
                 uint8_t nonLeafMask = ~parent->leafMask & parent->validMask;
@@ -1001,72 +1016,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 std::cout << "DEBUG: Recomputed for octant selection: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
                 std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << " half=" << half << "\n";
-                std::cout << "DEBUG: octant_mask=" << octant_mask << " (mirroring: X=" << ((octant_mask & 1) ? "YES" : "NO")
-                          << " Y=" << ((octant_mask & 2) ? "YES" : "NO")
-                          << " Z=" << ((octant_mask & 4) ? "YES" : "NO") << ")\n";
 
-                // Apply ESVO's octant selection logic with mirrored-axis awareness
-                //
-                // For axis-parallel rays, t_center values can be extreme (~±32500) due to epsilon-based coefficients.
-                // In these cases, use POSITION comparison instead of parametric time.
-                //
-                // CRITICAL: Mirrored vs non-mirrored axes have OPPOSITE semantics:
-                // - Mirrored axis: center > t_min → haven't crossed → upper half → FLIP bit
-                // - Non-mirrored axis: center > t_min → haven't crossed → lower half → DON'T FLIP
-                constexpr float extreme_threshold = 1000.0f;  // Absolute value threshold
-                bool x_mirrored = (octant_mask & 1) != 0;
-                bool y_mirrored = (octant_mask & 2) != 0;
-                bool z_mirrored = (octant_mask & 4) != 0;
-
-                // For axis-parallel rays (extreme t_center values), use the ray's constant coordinates
-                // The pos coordinates are in the MIRRORED coordinate system, so we need to compare
-                // against the ray's MIRRORED coordinates.
-                float ray_x_mirrored = x_mirrored ? (3.0f - normOrigin.x) : normOrigin.x;
-                float ray_y_mirrored = y_mirrored ? (3.0f - normOrigin.y) : normOrigin.y;
-                float ray_z_mirrored = z_mirrored ? (3.0f - normOrigin.z) : normOrigin.z;
-
-                float voxel_center = pos.x + half;
-                bool x_flip;
-                if (std::abs(tx_center) > extreme_threshold) {
-                    // Axis-parallel case: check if ray is in upper half of current voxel (in mirrored space)
-                    bool in_upper_half = (ray_x_mirrored >= voxel_center);
-                    x_flip = in_upper_half;  // Upper half → flip bit
-                } else {
-                    // NVIDIA ESVO uses greaterThan (Raycast.inl:265-267)
-                    // If ray hasn't crossed center yet, flip the bit
-                    x_flip = (tx_center > t_min);
-                }
-
-                voxel_center = pos.y + half;
-                bool y_flip;
-                if (std::abs(ty_center) > extreme_threshold) {
-                    bool in_upper_half = (ray_y_mirrored >= voxel_center);
-                    y_flip = in_upper_half;
-                } else {
-                    y_flip = (ty_center > t_min);
-                }
-
-                voxel_center = pos.z + half;
-                bool z_flip;
-                if (std::abs(tz_center) > extreme_threshold) {
-                    bool in_upper_half = (ray_z_mirrored >= voxel_center);
-                    z_flip = in_upper_half;
-                } else {
-                    z_flip = (tz_center > t_min);
-                }
-
-                if (x_flip) {
-                    std::cout << "DEBUG: flipping bit 1 (X)\n";
-                    idx ^= 1; pos.x += scale_exp2;
-                }
-                if (y_flip) {
-                    std::cout << "DEBUG: flipping bit 2 (Y)\n";
-                    idx ^= 2; pos.y += scale_exp2;
-                }
-                if (z_flip) {
-                    std::cout << "DEBUG: flipping bit 4 (Z)\n";
-                    idx ^= 4; pos.z += scale_exp2;
-                }
+                // ESVO octant selection (Raycast.inl:265-267)
+                // Simple parametric formula works for physical storage with octant mirroring
+                // The mirroring is handled uniformly by octant_mask, so no special cases needed
+                if (tx_center > t_min) idx ^= 1, pos.x += scale_exp2;
+                if (ty_center > t_min) idx ^= 2, pos.y += scale_exp2;
+                if (tz_center > t_min) idx ^= 4, pos.z += scale_exp2;
 
                 std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 

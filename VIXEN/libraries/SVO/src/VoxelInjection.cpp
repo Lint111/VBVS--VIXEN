@@ -588,6 +588,7 @@ bool VoxelInjector::insertVoxel(
         const float center = 0.5f;
 
         // Compute child index (0-7) based on which octant contains position
+        // Store in PHYSICAL SPACE (standard octree layout)
         int childIdx = 0;
         if (localPos.x >= center) childIdx |= 1;
         if (localPos.y >= center) childIdx |= 2;
