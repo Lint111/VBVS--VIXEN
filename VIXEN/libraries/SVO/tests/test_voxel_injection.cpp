@@ -386,9 +386,9 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
 
     // ensureInitialized will be called by insertVoxel with world bounds [0,10]³
 
-    // Insert single voxel at center
+    // Insert single voxel in clear location (well away from all boundaries)
     VoxelData voxel;
-    voxel.position = glm::vec3(5.0f, 5.0f, 5.0f);
+    voxel.position = glm::vec3(2.0f, 3.0f, 3.0f);
     voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);
     voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);
     voxel.density = 1.0f;
@@ -412,18 +412,30 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
     std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
     std::cout << "  World bounds: [" << octree.getWorldMin().x << "," << octree.getWorldMax().x << "]\n";
 
-    // Print all descriptors
+    // Print attributes
+    if (!octreeData->root->attributes.empty()) {
+        std::cout << "  Attributes array:\n";
+        for (size_t i = 0; i < octreeData->root->attributes.size() && i < 5; ++i) {
+            const auto& attr = octreeData->root->attributes[i];
+            std::cout << "    [" << i << "] normal=" << (int)attr.sign_and_axis << "\n";
+        }
+    }
+
+    // Print all descriptors with attribute info
     std::cout << "  All descriptors:\n";
     for (size_t i = 0; i < octreeData->root->childDescriptors.size(); ++i) {
         const auto& desc = octreeData->root->childDescriptors[i];
+        const auto& attr = octreeData->root->attributeLookups[i];
         std::cout << "    [" << i << "] valid=0x" << std::hex << (int)desc.validMask
                   << " leaf=0x" << (int)desc.leafMask << std::dec
-                  << " childPtr=" << desc.childPointer << "\n";
+                  << " childPtr=" << desc.childPointer
+                  << " attrMask=0x" << std::hex << (int)attr.mask << std::dec
+                  << " attrPtr=" << attr.valuePointer << "\n";
     }
 
-    // Cast ray from outside toward center
-    glm::vec3 rayOrigin(-5.0f, 5.0f, 5.0f);  // Start left of world
-    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right (toward center)
+    // Cast ray from outside toward voxel
+    glm::vec3 rayOrigin(-5.0f, 3.0f, 3.0f);  // Start left of world, aligned with voxel
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 

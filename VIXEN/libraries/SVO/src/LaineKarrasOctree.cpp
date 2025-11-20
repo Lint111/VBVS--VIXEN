@@ -583,8 +583,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Octree is normalized to [1, 2] in reference, mapped from world bounds here
     // ========================================================================
 
-    // Prevent divide-by-zero with epsilon (2^-23)
-    constexpr float epsilon = 1.19209290e-07f; // std::exp2f(-23)
+    // Prevent divide-by-zero with epsilon
+    // NOTE: ESVO uses exp2f(-CAST_STACK_DEPTH) where CAST_STACK_DEPTH=23
+    // This gives epsilon ≈ 1.19e-07, but for axis-parallel rays this creates
+    // extreme coefficient values (±8.4e+06) that corrupt tc_max/tv_max.
+    // Use larger epsilon to reduce numerical issues.
+    constexpr float epsilon = 1e-5f; // Larger than ESVO's 2^-23 to avoid extreme coefficients
     glm::vec3 rayDirSafe = rayDir;
     if (std::abs(rayDirSafe.x) < epsilon) rayDirSafe.x = std::copysignf(epsilon, rayDirSafe.x);
     if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysignf(epsilon, rayDirSafe.y);
@@ -660,8 +664,16 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Safety check: ensure octree has root descriptor
     if (m_octree->root->childDescriptors.empty()) {
+        std::cout << "DEBUG: Empty octree, returning miss\n";
         return miss;
     }
+
+    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
+              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
+              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
+    std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
+    std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
+    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
 
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
@@ -685,6 +697,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     if (mirroredZ > 1.5f) idx ^= 4, pos.z = 1.5f;
 
     glm::vec3 mirroredPos(mirroredX, mirroredY, mirroredZ);
+    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
+    std::cout << "  mirroredPos=(" << mirroredX << "," << mirroredY << "," << mirroredZ << ") octant_mask=" << octant_mask << " idx=" << idx << "\n";
     debugInitialState(normOrigin, mirroredPos, octant_mask, idx, pos);
 
     // Main traversal loop
@@ -715,17 +729,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         }
 
         // Compute maximum t-value at voxel corner
-        // This determines when the ray exits the current voxel
-        // Using normalized bias terms
-        // For axis-parallel rays, ignore that axis (set to infinity)
-        constexpr float axis_parallel_threshold = 1e-5f;
-        float tx_corner = (std::abs(rayDir.x) > axis_parallel_threshold) ?
-                          (pos.x * tx_coef - tx_bias) : std::numeric_limits<float>::infinity();
-        float ty_corner = (std::abs(rayDir.y) > axis_parallel_threshold) ?
-                          (pos.y * ty_coef - ty_bias) : std::numeric_limits<float>::infinity();
-        float tz_corner = (std::abs(rayDir.z) > axis_parallel_threshold) ?
-                          (pos.z * tz_coef - tz_bias) : std::numeric_limits<float>::infinity();
+        // Reference: Raycast.inl:166-169
+        float tx_corner = pos.x * tx_coef - tx_bias;
+        float ty_corner = pos.y * ty_coef - ty_bias;
+        float tz_corner = pos.z * tz_coef - tz_bias;
         float tc_max = std::min({tx_corner, ty_corner, tz_corner});
+
+        // NOTE: Do NOT clamp tc_max here! It's used to update t_min in ADVANCE step.
+        // Extreme negative values from axis-parallel rays are handled in tv_max calculation.
 
         // ====================================================================
         // ADOPTED FROM: cuda/Raycast.inl lines 174-232
@@ -740,6 +751,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // child_shift gives us the UNMIRRORED child index (physical index in octree data)
         bool child_valid = (parent->validMask & (1u << child_shift)) != 0;
         bool child_is_leaf = (parent->leafMask & (1u << child_shift)) != 0;
+
+        if (scale >= CAST_STACK_DEPTH - 3) {  // Debug first 3 levels
+            std::cout << "DEBUG LEVEL scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
+                      << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
+                      << " child_valid=" << child_valid << " t_min=" << t_min << " t_max=" << t_max << "\n";
+        }
 
         debugChildValidity(child_shift, child_masks,
                           (child_masks & 0x8000) != 0, child_valid,
@@ -758,11 +775,24 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // Reference lines 188-194
             // ================================================================
 
-            float tv_max = std::min(t_max, tc_max);
+            // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative values.
+            // Use only valid corner values (those within threshold) for tv_max calculation.
+            constexpr float corner_threshold = 1000.0f;
+            float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
+            float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
+            float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
+            float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
+            float tv_max = std::min(t_max, tc_max_corrected);
             float half = scale_exp2 * 0.5f;
             float tx_center = half * tx_coef + tx_corner;
             float ty_center = half * ty_coef + ty_corner;
             float tz_center = half * tz_coef + tz_corner;
+
+            if (scale >= CAST_STACK_DEPTH - 2) {
+                std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
+                std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
+                std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
+            }
 
             // ================================================================
             // CONTOUR INTERSECTION (Reference lines 196-220)
@@ -771,6 +801,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // ================================================================
 
             // Descend to first child if resulting t-span is non-empty
+            if (scale >= CAST_STACK_DEPTH - 3) {
+                std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
+                          << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
+            }
             if (t_min <= tv_max)
             {
                 debugValidVoxel(t_min, tv_max);
@@ -862,9 +896,20 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     // Leaf voxel hit! Return intersection
                     // Convert normalized [1,2] t-values back to world t-values
                     // In [1,2] space, distance 1.0 corresponds to worldSize in world space
-                    float worldSizeLength = glm::length(m_worldMax - m_worldMin);
+                    // NOTE: Use max component, not diagonal length! The [1,2] space is a unit cube, not unit sphere
+                    glm::vec3 worldSize = m_worldMax - m_worldMin;
+                    float worldSizeLength = std::max({worldSize.x, worldSize.y, worldSize.z});
                     float t_min_world = tEntry + t_min * worldSizeLength;
                     float tv_max_world = tEntry + tv_max * worldSizeLength;
+
+                    std::cout << "DEBUG LEAF HIT: tEntry=" << tEntry << " t_min=" << t_min
+                              << " worldSizeLength=" << worldSizeLength
+                              << " t_min_world=" << t_min_world << "\n";
+                    std::cout << "  origin=(" << origin.x << "," << origin.y << "," << origin.z << ")"
+                              << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")\n";
+                    std::cout << "  computed hit pos=" << (origin + rayDir * t_min_world).x << ","
+                              << (origin + rayDir * t_min_world).y << ","
+                              << (origin + rayDir * t_min_world).z << "\n";
 
                     ISVOStructure::RayHit hit{};
                     hit.hit = true;
@@ -913,10 +958,17 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 // Bounds check
                 if (child_index >= m_octree->root->childDescriptors.size()) {
+                    std::cout << "DEBUG: Invalid child_index=" << child_index << " >= size=" << m_octree->root->childDescriptors.size() << ", breaking\n";
                     break; // Invalid child pointer - exit loop
                 }
 
                 const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
+
+                if (scale == CAST_STACK_DEPTH - 1) {
+                    std::cout << "DEBUG DESCEND: nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
+                              << " child_offset=" << child_offset << " child_index=" << child_index << "\n";
+                }
+
                 debugDescend(scale, t_max, child_shift_idx, nonLeafMask,
                            mask_before_child, nonleaf_before_child, child_offset,
                            parent->childPointer, child_index, new_parent);
@@ -927,14 +979,55 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 scale--;
                 scale_exp2 = half;
 
+                std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
+                std::cout << "DEBUG: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << "\n";
+
                 // Select which octant of the child contains the ray entry point
-                if (tx_center > t_min) idx ^= 1, pos.x += scale_exp2;
-                if (ty_center > t_min) idx ^= 2, pos.y += scale_exp2;
-                if (tz_center > t_min) idx ^= 4, pos.z += scale_exp2;
+                // Reference: Raycast.inl:265-267 uses parametric plane centers
+                // BUGFIX: For axis-parallel rays, ty_center/tz_center are extreme negative values.
+                //
+                // Logic: if tx_center > t_min, ray hasn't crossed X center plane yet → flip bit
+                // For axis-parallel rays (constant Y/Z), extreme NEGATIVE ty/tz_center means ray is
+                // beyond that plane (already crossed in distant past) → in UPPER half → flip bit
+                constexpr float safe_threshold = 1000.0f;
+
+                std::cout << "DEBUG: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
+
+                // Normal case: center > t_min means ray will cross (flip bit)
+                // Axis-parallel case: extreme negative center means ray already crossed (flip bit)
+                // BUGFIX: For non-mirrored axes, the logic is inverted!
+                // If octant_mask bit is 0 (not mirrored), ray travels in positive direction,
+                // so tx_center > t_min means ray is in LOWER half (don't flip), not upper half.
+                bool x_mirrored = (octant_mask & 1) != 0;
+                bool y_mirrored = (octant_mask & 2) != 0;
+                bool z_mirrored = (octant_mask & 4) != 0;
+
+                bool x_flip = x_mirrored ? ((tx_center > t_min) || (tx_center < -safe_threshold))
+                                         : ((tx_center <= t_min) && (tx_center > -safe_threshold));
+                bool y_flip = y_mirrored ? ((ty_center > t_min) || (ty_center < -safe_threshold))
+                                         : ((ty_center <= t_min) && (ty_center > -safe_threshold));
+                bool z_flip = z_mirrored ? ((tz_center > t_min) || (tz_center < -safe_threshold))
+                                         : ((tz_center <= t_min) && (tz_center > -safe_threshold));
+
+                if (x_flip) {
+                    std::cout << "DEBUG: flipping bit 1 (X)\n";
+                    idx ^= 1; pos.x += scale_exp2;
+                }
+                if (y_flip) {
+                    std::cout << "DEBUG: flipping bit 2 (Y)\n";
+                    idx ^= 2; pos.y += scale_exp2;
+                }
+                if (z_flip) {
+                    std::cout << "DEBUG: flipping bit 4 (Z)\n";
+                    idx ^= 4; pos.z += scale_exp2;
+                }
+
+                std::cout << "DEBUG: After octant selection, idx=" << idx << "\n";
 
                 // Update active t-span and invalidate child descriptor
                 t_max = tv_max;
                 child_descriptor = 0;
+                std::cout << "DEBUG: CONTINUE after descent, looping back to process child " << idx << "\n";
                 continue; // Continue main loop
             }
         }
@@ -951,7 +1044,26 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         if (tz_corner <= tc_max) step_mask ^= 4, pos.z -= scale_exp2;
 
         // Update active t-span and flip child slot index bits
-        t_min = tc_max;
+        // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative ty/tz_corner values.
+        // Use only the valid corner values (those < threshold) to update t_min.
+        constexpr float corner_threshold = 1000.0f;
+        float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
+        float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
+        float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
+        float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
+
+        // If all values are extreme (fully axis-parallel), use the least extreme one
+        if (tc_max_corrected == std::numeric_limits<float>::max()) {
+            tc_max_corrected = std::max({tx_corner, ty_corner, tz_corner}); // Pick least negative
+        }
+
+        t_min = std::max(tc_max_corrected, 0.0f);
+
+        if (scale == CAST_STACK_DEPTH - 1 || scale == CAST_STACK_DEPTH - 2) {
+            std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
+                      << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
+        }
+
         int old_idx = idx;
         idx ^= step_mask;
         debugAdvance(step_mask, tc_max, old_idx, idx);
@@ -964,6 +1076,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Check if bit flips disagree with ray direction (means we left parent)
         if ((idx & step_mask) != 0)
         {
+            std::cout << "DEBUG POP: idx=" << idx << " step_mask=" << step_mask
+                      << " idx&step_mask=" << (idx & step_mask) << " triggering POP\n";
             // ============================================================
             // POP: Find the highest differing bit to determine scale level
             // Reference lines 296-327
@@ -1029,6 +1143,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // TERMINATION: Undo mirroring and return result
     // Reference lines 342-346
     // ====================================================================
+
+    std::cout << "DEBUG TRAVERSAL END: Exited main loop without finding leaf. scale=" << scale
+              << " iter=" << iter << " t_min=" << t_min << "\n";
 
     // If we exited the octree, return miss
     if (scale >= CAST_STACK_DEPTH || iter >= maxIter) {
