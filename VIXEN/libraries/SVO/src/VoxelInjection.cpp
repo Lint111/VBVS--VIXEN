@@ -580,34 +580,34 @@ bool VoxelInjector::insertVoxel(
     std::vector<int> path;
     path.reserve(targetDepth);
 
-    glm::vec3 voxelMin(0.0f);
-    glm::vec3 voxelMax(1.0f);
+    // Work with local position that gets transformed at each level
+    glm::vec3 localPos = normPos;
 
     for (int level = 0; level < targetDepth; ++level) {
-        glm::vec3 center = (voxelMin + voxelMax) * 0.5f;
+        // Center is always at 0.5 in local coordinates
+        const float center = 0.5f;
 
         // Compute child index (0-7) based on which octant contains position
         int childIdx = 0;
-        if (normPos.x >= center.x) childIdx |= 1;
-        if (normPos.y >= center.y) childIdx |= 2;
-        if (normPos.z >= center.z) childIdx |= 4;
+        if (localPos.x >= center) childIdx |= 1;
+        if (localPos.y >= center) childIdx |= 2;
+        if (localPos.z >= center) childIdx |= 4;
 
         path.push_back(childIdx);
 
         if (level < 3) {  // Debug first few levels
-            std::cout << "Level " << level << ": childIdx=" << childIdx << " (normPos=" << normPos.x << "," << normPos.y << "," << normPos.z << " center=" << center.x << "," << center.y << "," << center.z << ")\n" << std::flush;
+            std::cout << "Level " << level << ": childIdx=" << childIdx
+                      << " (localPos=" << localPos.x << "," << localPos.y << "," << localPos.z
+                      << " center=" << center << ")\n" << std::flush;
         }
 
-        // Update voxel bounds for next level
-        voxelMin = glm::vec3(
-            (childIdx & 1) ? center.x : voxelMin.x,
-            (childIdx & 2) ? center.y : voxelMin.y,
-            (childIdx & 4) ? center.z : voxelMin.z
-        );
-        voxelMax = glm::vec3(
-            (childIdx & 1) ? voxelMax.x : center.x,
-            (childIdx & 2) ? voxelMax.y : center.y,
-            (childIdx & 4) ? voxelMax.z : center.z
+        // Transform position to the selected child's local coordinate system
+        // If position is in upper half (>= 0.5), map [0.5, 1.0] → [0.0, 1.0]
+        // If position is in lower half (< 0.5), map [0.0, 0.5] → [0.0, 1.0]
+        localPos = glm::vec3(
+            (childIdx & 1) ? (localPos.x - 0.5f) * 2.0f : localPos.x * 2.0f,
+            (childIdx & 2) ? (localPos.y - 0.5f) * 2.0f : localPos.y * 2.0f,
+            (childIdx & 4) ? (localPos.z - 0.5f) * 2.0f : localPos.z * 2.0f
         );
     }
 
@@ -698,6 +698,9 @@ bool VoxelInjector::insertVoxel(
     for (size_t level = 0; level < path.size(); ++level) {
         int childIdx = path[level];
 
+        std::cout << "DEBUG: Level " << level << ", currentDescIdx=" << currentDescriptorIdx
+                  << ", childIdx=" << childIdx << "\n" << std::flush;
+
         // Get fresh reference each iteration in case vector reallocates
         ChildDescriptor& desc = octreeData->root->childDescriptors[currentDescriptorIdx];
 
@@ -745,26 +748,33 @@ bool VoxelInjector::insertVoxel(
 
         if (childExists) {
             // Child already exists - look up its descriptor index from mapping
+            // CRITICAL: Must use mapping, not childPointer! childPointer points to FIRST child created,
+            // not necessarily the child at this octant. Using childPointer causes circular traversal.
             auto it = m_childMapping.find(currentDescriptorIdx);
-            if (it != m_childMapping.end()) {
+            if (it != m_childMapping.end() && it->second[childIdx] != UINT32_MAX) {
                 currentDescriptorIdx = it->second[childIdx];
             } else {
-                // Fallback: use childPointer (for backward compatibility)
-                currentDescriptorIdx = desc.childPointer;
+                std::cerr << "ERROR: Child exists but mapping not found! Parent=" << currentDescriptorIdx
+                          << " childIdx=" << childIdx << " validMask=0x" << std::hex << (int)desc.validMask << std::dec << "\n";
+                return false;
             }
         } else {
             // Allocate new child descriptor at end of array
             uint32_t newDescriptorIdx = static_cast<uint32_t>(octreeData->root->childDescriptors.size());
 
             // Track child mapping: currentDescriptor → childOctant → newDescriptor
-            auto& mapping = m_childMapping[currentDescriptorIdx];
-            mapping[childIdx] = newDescriptorIdx;
+            // Initialize mapping if this is the first child for this descriptor
+            if (m_childMapping.find(currentDescriptorIdx) == m_childMapping.end()) {
+                m_childMapping[currentDescriptorIdx].fill(UINT32_MAX);  // Mark all as invalid
+            }
+            m_childMapping[currentDescriptorIdx][childIdx] = newDescriptorIdx;
 
             // Set parent's childPointer (simplified - points to first child)
             // This will be properly recomputed during compaction
             octreeData->root->childDescriptors[currentDescriptorIdx].childPointer = newDescriptorIdx;
 
             // Create new child descriptor
+            // NOTE: validMask will be properly set during compaction based on which children actually exist
             ChildDescriptor childDesc{};
             childDesc.validMask = 0;
             childDesc.leafMask = 0;
@@ -773,16 +783,6 @@ bool VoxelInjector::insertVoxel(
             childDesc.contourPointer = 0;
             childDesc.contourMask = 0;
             octreeData->root->childDescriptors.push_back(childDesc);
-
-            // AFTER adding to vector, mark the next child if we're not at the leaf yet
-            // This must be done AFTER push_back to avoid vector reallocation invalidating references
-            if (level + 1 < path.size()) {
-                int nextChildIdx = path[level + 1];
-                std::cout << "DEBUG: Setting validMask for descriptor " << newDescriptorIdx
-                          << " at level " << level << ", nextChildIdx from path[" << (level+1)
-                          << "] = " << nextChildIdx << "\n" << std::flush;
-                octreeData->root->childDescriptors[newDescriptorIdx].validMask = (1 << nextChildIdx);
-            }
 
             // Create corresponding AttributeLookup
             AttributeLookup childAttrLookup{};
@@ -835,7 +835,22 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
     oldToNewIndex[0] = 0;
 
     // Add root to new arrays
-    newDescriptors.push_back(octreeData->root->childDescriptors[0]);
+    ChildDescriptor rootDesc = octreeData->root->childDescriptors[0];
+    // For non-leaf nodes, compute validMask from mapping (which children actually exist)
+    // For leaf nodes or nodes with leaf children, preserve original validMask/leafMask
+    if (rootDesc.leafMask == 0) {  // No leaf children - recompute validMask
+        rootDesc.validMask = 0;
+        auto rootMappingIt = m_childMapping.find(0);
+        if (rootMappingIt != m_childMapping.end()) {
+            for (int i = 0; i < 8; ++i) {
+                if (rootMappingIt->second[i] != UINT32_MAX) {
+                    rootDesc.validMask |= (1 << i);
+                }
+            }
+        }
+    }
+    // else: preserve original validMask/leafMask
+    newDescriptors.push_back(rootDesc);
     newAttributeLookups.push_back(octreeData->root->attributeLookups[0]);
 
     while (!queue.empty()) {
@@ -873,7 +888,22 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
                 uint32_t newChildIndex = static_cast<uint32_t>(newDescriptors.size());
                 oldToNewIndex[oldChildIndex] = newChildIndex;
 
-                newDescriptors.push_back(octreeData->root->childDescriptors[oldChildIndex]);
+                // Copy descriptor and recompute validMask from mapping (for non-leaf nodes only)
+                ChildDescriptor childDesc = octreeData->root->childDescriptors[oldChildIndex];
+                if (childDesc.leafMask == 0) {  // No leaf children - recompute validMask
+                    childDesc.validMask = 0;
+                    auto childMappingIt = m_childMapping.find(oldChildIndex);
+                    if (childMappingIt != m_childMapping.end()) {
+                        for (int i = 0; i < 8; ++i) {
+                            if (childMappingIt->second[i] != UINT32_MAX) {
+                                childDesc.validMask |= (1 << i);
+                            }
+                        }
+                    }
+                }
+                // else: preserve original validMask/leafMask for nodes with leaf children
+
+                newDescriptors.push_back(childDesc);
                 newAttributeLookups.push_back(octreeData->root->attributeLookups[oldChildIndex]);
 
                 queue.push({oldChildIndex, newChildIndex});
