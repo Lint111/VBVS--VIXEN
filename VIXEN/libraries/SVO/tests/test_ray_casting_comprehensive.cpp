@@ -5,6 +5,7 @@
 #include <random>
 #include "LaineKarrasOctree.h"
 #include "VoxelInjection.h"
+#include "BrickStorage.h"
 #include "ISVOStructure.h"
 #include "SVOTypes.h"
 
@@ -24,14 +25,17 @@ protected:
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        auto octree = std::make_unique<LaineKarrasOctree>();
+        // Create brick storage for additive insertion with bricks
+        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(3, 2048); // depth 3 = 8x8x8, capacity 2048
 
-        VoxelInjector injector;
+        auto octree = std::make_unique<LaineKarrasOctree>(brickStorage.get());
+
+        // We CAN use bricks with additive insertion - we implemented this!
+        VoxelInjector injector(brickStorage.get()); // Pass brick storage to injector
         InjectionConfig config;
         config.maxLevels = maxDepth;
         config.minVoxelSize = 0.01f;
-        // Use bricks for the bottom 3 levels (8x8x8 dense voxel blocks)
-        // This makes the octree shallower and avoids deep traversal holes
+        // Enable bricks for the bottom 3 levels
         config.brickDepthLevels = 3;
 
         // Insert all voxels

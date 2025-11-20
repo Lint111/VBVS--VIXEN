@@ -274,98 +274,44 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
         bool shouldTerminate = (level >= config.maxLevels) || (size < minSize) || atBrickDepth;
 
         if (shouldTerminate) {
-            if (atBrickDepth && config.brickDepthLevels > 0) {
-                // Terminate with brick - allocate and populate dense voxel storage
-                // This node becomes a leaf pointing to a brick instead of further subdivision
-
+            if (shouldCreateBrick(level, config) && m_brickStorage) {
                 // Check if this region contains any solid voxels before allocating
                 if (density == 0.0f) {
                     return nullptr;  // Empty region - no brick needed
                 }
 
-                // Calculate brick properties
-                int brickDepth = config.brickDepthLevels;
-                int brickSideLength = 1 << brickDepth;  // 2^depth (e.g., 8 for depth=3)
-                int totalVoxels = brickSideLength * brickSideLength * brickSideLength;
+                // Use unified brick allocation helper
+                auto brickResult = allocateAndPopulateBrick(
+                    center,
+                    size,
+                    &sampler,  // Use procedural sampler
+                    nullptr,   // No single voxel data
+                    config
+                );
 
-                // Brick allocation path (if BrickStorage is available)
-                if (m_brickStorage) {
-                    // Allocate new brick in storage pool
-                    uint32_t brickID = m_brickStorage->allocateBrick();
+                if (!brickResult.hasSolidVoxels) {
+                    return nullptr;  // Empty brick
+                }
 
-                    // Calculate voxel size within brick
-                    float brickSize = size;  // Brick occupies this region
-                    float voxelSize = brickSize / static_cast<float>(brickSideLength);
+                // Create leaf node representing this brick
+                node->data = brickResult.firstSolidVoxel;
+                node->isLeaf = true;
+                node->hasBrick = true;
+                node->brickID = brickResult.brickID;
+                node->brickDepth = static_cast<uint32_t>(config.brickDepthLevels);
+                m_stats.leavesCreated++;
 
-                    // Populate all voxels in brick by sampling at each voxel position
-                    int solidVoxelCount = 0;
-                    VoxelData firstSolidVoxel;
-                    bool hasAnySolid = false;
-
-                    for (int z = 0; z < brickSideLength; ++z) {
-                        for (int y = 0; y < brickSideLength; ++y) {
-                            for (int x = 0; x < brickSideLength; ++x) {
-                                // Calculate voxel center position in world space
-                                // Offset by 0.5 to sample at voxel center
-                                glm::vec3 voxelPos = voxelMin + glm::vec3(
-                                    (x + 0.5f) * voxelSize,
-                                    (y + 0.5f) * voxelSize,
-                                    (z + 0.5f) * voxelSize
-                                );
-
-                                // Sample voxel data
-                                VoxelData voxelData;
-                                bool isSolid = sampler.sample(voxelPos, voxelData);
-
-                                // Get flat index for this voxel in brick
-                                size_t localIdx = m_brickStorage->getIndex(x, y, z);
-
-                                // Store density and material in brick arrays
-                                float density = isSolid ? voxelData.density : 0.0f;
-                                uint32_t materialID = 1;  // Default material (TODO: extract from voxelData)
-
-                                m_brickStorage->set<0>(brickID, localIdx, density);
-                                m_brickStorage->set<1>(brickID, localIdx, materialID);
-
-                                // Track first solid voxel for node attributes
-                                if (isSolid && !hasAnySolid) {
-                                    firstSolidVoxel = voxelData;
-                                    hasAnySolid = true;
-                                    solidVoxelCount++;
-                                } else if (isSolid) {
-                                    solidVoxelCount++;
-                                }
-                            }
-                        }
-                    }
-
-                    // If brick contains no solid voxels, don't create node
-                    if (!hasAnySolid) {
-                        // Note: brick already allocated - this is a minor waste
-                        // Could add deallocation support or lazy allocation
-                        return nullptr;
-                    }
-
-                    // Create leaf node representing this brick
-                    node->data = firstSolidVoxel;  // Use first solid voxel as representative
+                return node;
+            } else if (shouldCreateBrick(level, config)) {
+                // Fallback: No BrickStorage - create simple leaf with center sample
+                VoxelData centerData;
+                if (sampler.sample(center, centerData)) {
+                    node->data = centerData;
                     node->isLeaf = true;
-                    node->hasBrick = true;
-                    node->brickID = brickID;
-                    node->brickDepth = static_cast<uint32_t>(brickDepth);
                     m_stats.leavesCreated++;
-
                     return node;
                 } else {
-                    // Fallback: No BrickStorage - create simple leaf with center sample
-                    VoxelData centerData;
-                    if (sampler.sample(center, centerData)) {
-                        node->data = centerData;
-                        node->isLeaf = true;
-                        m_stats.leavesCreated++;
-                        return node;
-                    } else {
-                        return nullptr;  // No solid data in brick region
-                    }
+                    return nullptr;  // No solid data in brick region
                 }
             } else {
                 // Create leaf - sample single voxel data
@@ -564,6 +510,10 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
 
     // Wrap in LaineKarrasOctree
     auto result = std::make_unique<LaineKarrasOctree>();
+    if (m_brickStorage) {
+        // Set brick storage if available
+        // Note: LaineKarrasOctree may need a setBrickStorage method
+    }
     result->setOctree(std::move(octree));
 
     return result;
@@ -820,16 +770,42 @@ bool VoxelInjector::insertVoxel(
             desc.validMask |= (1 << childIdx);
         }
 
-        // If this is the leaf level, mark as leaf and complete insertion
+        // If this is the leaf level, check if we should create a brick
         if (level == path.size() - 1) {
             // Re-get descriptor reference in case it was invalidated
             ChildDescriptor& leafDesc = octreeData->root->childDescriptors[currentDescriptorIdx];
 
-            // Mark this child as a leaf
-            if (!childExists) {
-                leafDesc.leafMask |= (1 << childIdx);
+            // Check if we're at brick depth and should create a brick
+            bool createBrick = shouldCreateBrick(level + 1, config) && m_brickStorage && !childExists;
 
-                // Update attribute lookup for this descriptor
+            if (createBrick) {
+                // Calculate brick position and size
+                float nodeSize = (worldMax.x - worldMin.x) / std::pow(2.0f, level + 1);
+                glm::vec3 nodeCenter = position;  // Approximate - should calculate exact node center
+
+                // Create a brick for this single voxel
+                auto brickResult = allocateAndPopulateBrick(
+                    nodeCenter,
+                    nodeSize,
+                    nullptr,    // No sampler
+                    &data,      // Use single voxel data
+                    config
+                );
+
+                if (brickResult.hasSolidVoxels) {
+                    // Store brick reference for later extraction during compaction
+                    leafDesc.leafMask |= (1 << childIdx);
+
+                    // Track the brick ID for this descriptor
+                    m_descriptorToBrickID[currentDescriptorIdx] = brickResult.brickID;
+                }
+            } else if (!childExists) {
+                // Regular leaf without brick
+                leafDesc.leafMask |= (1 << childIdx);
+            }
+
+            // Update attribute lookup for this descriptor
+            if (!childExists) {
                 AttributeLookup& attrLookup = octreeData->root->attributeLookups[currentDescriptorIdx];
                 attrLookup.mask |= (1 << childIdx);
                 if (attrLookup.valuePointer == 0 && attrIndex > 0) {
@@ -1064,6 +1040,166 @@ size_t VoxelInjector::insertVoxelsBatch(
     }
 
     return inserted;
+}
+
+// ============================================================================
+// Unified Brick Management Helper Functions
+// ============================================================================
+
+bool VoxelInjector::shouldCreateBrick(int level, const InjectionConfig& config) const {
+    if (config.brickDepthLevels <= 0) return false;
+    int brickStartDepth = config.maxLevels - config.brickDepthLevels;
+    return level >= brickStartDepth;
+}
+
+VoxelInjector::BrickAllocation VoxelInjector::allocateAndPopulateBrick(
+    const glm::vec3& worldCenter,
+    float worldSize,
+    const IVoxelSampler* sampler,
+    const VoxelData* singleVoxel,
+    const InjectionConfig& config)
+{
+    // Use the new find-or-allocate approach
+    auto [brickID, isNew] = findOrAllocateBrick(worldCenter, worldSize, config);
+
+    if (brickID == 0xFFFFFFFF) {
+        BrickAllocation result;
+        result.brickID = 0xFFFFFFFF;
+        result.hasSolidVoxels = false;
+        return result;
+    }
+
+    // Populate the brick (updates existing or fills new)
+    return populateBrick(brickID, worldCenter, worldSize, sampler, singleVoxel, config, isNew);
+}
+
+void VoxelInjector::addBrickReferenceToOctree(Octree* octree, uint32_t brickID, uint32_t brickDepth) {
+    if (!octree || !octree->root) return;
+
+    BrickReference ref(brickID, brickDepth);
+    octree->root->brickReferences.push_back(ref);
+}
+
+// Find or allocate a brick for the given spatial region
+std::pair<uint32_t, bool> VoxelInjector::findOrAllocateBrick(
+    const glm::vec3& worldCenter,
+    float worldSize,
+    const InjectionConfig& config)
+{
+    if (!m_brickStorage) {
+        return {0xFFFFFFFF, false};
+    }
+
+    // Compute Morton code for this brick's spatial location
+    // Quantize to brick grid resolution
+    int brickDepth = config.brickDepthLevels;
+    float brickWorldSize = worldSize;
+    glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
+
+    // Simple spatial hash (could use proper Morton encoding)
+    uint64_t spatialKey = 0;
+    spatialKey |= (uint64_t(brickMin.x / brickWorldSize) & 0x1FFFFF) << 42;
+    spatialKey |= (uint64_t(brickMin.y / brickWorldSize) & 0x1FFFFF) << 21;
+    spatialKey |= (uint64_t(brickMin.z / brickWorldSize) & 0x1FFFFF);
+
+    // Check if brick already exists at this location
+    auto it = m_spatialToBrickID.find(spatialKey);
+    if (it != m_spatialToBrickID.end()) {
+        // Brick exists - return existing ID
+        return {it->second, false};
+    }
+
+    // Allocate new brick
+    uint32_t brickID = m_brickStorage->allocateBrick();
+    m_spatialToBrickID[spatialKey] = brickID;
+    return {brickID, true};
+}
+
+// Populate or update a brick with voxel data
+VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
+    uint32_t brickID,
+    const glm::vec3& worldCenter,
+    float worldSize,
+    const IVoxelSampler* sampler,
+    const VoxelData* singleVoxel,
+    const InjectionConfig& config,
+    bool isNewBrick)
+{
+    BrickAllocation result;
+    result.brickID = brickID;
+    result.hasSolidVoxels = false;
+
+    if (!m_brickStorage || brickID == 0xFFFFFFFF) {
+        return result;
+    }
+
+    // Calculate brick properties
+    int brickDepth = config.brickDepthLevels;
+    int brickSideLength = 1 << brickDepth;
+    float voxelSize = worldSize / static_cast<float>(brickSideLength);
+    glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
+
+    // For existing bricks, we only update voxels that match the single voxel position
+    // For new bricks, we populate all voxels
+
+    if (isNewBrick && sampler) {
+        // New brick with sampler - populate all voxels
+        for (int z = 0; z < brickSideLength; ++z) {
+            for (int y = 0; y < brickSideLength; ++y) {
+                for (int x = 0; x < brickSideLength; ++x) {
+                    glm::vec3 voxelPos = brickMin + glm::vec3(
+                        (x + 0.5f) * voxelSize,
+                        (y + 0.5f) * voxelSize,
+                        (z + 0.5f) * voxelSize
+                    );
+
+                    VoxelData voxelData;
+                    bool isSolid = sampler->sample(voxelPos, voxelData);
+
+                    size_t localIdx = m_brickStorage->getIndex(x, y, z);
+                    float density = isSolid ? voxelData.density : 0.0f;
+                    uint32_t materialID = isSolid ? 1 : 0;
+
+                    m_brickStorage->set<0>(brickID, localIdx, density);
+                    m_brickStorage->set<1>(brickID, localIdx, materialID);
+
+                    if (isSolid && !result.hasSolidVoxels) {
+                        result.hasSolidVoxels = true;
+                        result.firstSolidVoxel = voxelData;
+                    }
+                }
+            }
+        }
+    } else if (singleVoxel) {
+        // Update specific voxel(s) in brick
+        // Find which voxel(s) the position maps to
+        glm::vec3 localPos = singleVoxel->position - brickMin;
+        int vx = static_cast<int>(localPos.x / voxelSize);
+        int vy = static_cast<int>(localPos.y / voxelSize);
+        int vz = static_cast<int>(localPos.z / voxelSize);
+
+        // Clamp to brick bounds
+        vx = glm::clamp(vx, 0, brickSideLength - 1);
+        vy = glm::clamp(vy, 0, brickSideLength - 1);
+        vz = glm::clamp(vz, 0, brickSideLength - 1);
+
+        // Update this specific voxel
+        size_t localIdx = m_brickStorage->getIndex(vx, vy, vz);
+        m_brickStorage->set<0>(brickID, localIdx, singleVoxel->density);
+        m_brickStorage->set<1>(brickID, localIdx, 1); // Material ID
+
+        result.hasSolidVoxels = true;
+        result.firstSolidVoxel = *singleVoxel;
+
+        // For existing bricks, check if we already have solid voxels
+        if (!isNewBrick) {
+            // Could scan brick to find first solid voxel for result
+            // For now, just use the newly added voxel
+            result.hasSolidVoxels = true;
+        }
+    }
+
+    return result;
 }
 
 } // namespace SVO

@@ -12,6 +12,7 @@ namespace SVO {
 // Forward declarations
 template<typename BrickDataLayout> class BrickStorage;
 struct DefaultLeafData;
+struct Octree;
 
 /**
  * Direct voxel data for injection into SVO structure.
@@ -362,6 +363,14 @@ private:
     // Cleared after each compactToESVOFormat() call
     std::unordered_map<uint32_t, std::array<uint32_t, 8>> m_childMapping;
 
+    // Maps descriptor index to brick ID for additive insertion
+    // Used to track which descriptors have bricks during insertVoxel
+    std::unordered_map<uint32_t, uint32_t> m_descriptorToBrickID;
+
+    // Maps spatial location (quantized) to brick ID for reusing bricks
+    // Key is Morton code of brick's min corner at brick resolution
+    std::unordered_map<uint64_t, uint32_t> m_spatialToBrickID;
+
     // Implementation helpers
     struct BuildContext;
     std::unique_ptr<ISVOStructure> buildFromSampler(
@@ -369,6 +378,45 @@ private:
         const glm::vec3& min,
         const glm::vec3& max,
         const InjectionConfig& config);
+
+    // Brick management helpers - unified for all insertion paths
+    struct BrickAllocation {
+        uint32_t brickID;
+        bool hasSolidVoxels;
+        VoxelData firstSolidVoxel;  // For node attributes
+    };
+
+    // Find existing brick or allocate new one for the given position
+    // Returns brick ID and whether it's newly allocated
+    std::pair<uint32_t, bool> findOrAllocateBrick(
+        const glm::vec3& worldCenter,
+        float worldSize,
+        const InjectionConfig& config);
+
+    // Populate a brick with voxel data
+    // Can be used for both new and existing bricks
+    BrickAllocation populateBrick(
+        uint32_t brickID,
+        const glm::vec3& worldCenter,
+        float worldSize,
+        const IVoxelSampler* sampler,  // For procedural sampling
+        const VoxelData* singleVoxel,  // For additive insertion
+        const InjectionConfig& config,
+        bool isNewBrick);  // If false, updates existing brick
+
+    // Legacy function - allocates and populates in one step
+    BrickAllocation allocateAndPopulateBrick(
+        const glm::vec3& worldCenter,
+        float worldSize,
+        const IVoxelSampler* sampler,
+        const VoxelData* singleVoxel,
+        const InjectionConfig& config);
+
+    // Check if a voxel should terminate at brick depth
+    bool shouldCreateBrick(int level, const InjectionConfig& config) const;
+
+    // Add brick reference to octree during compaction
+    void addBrickReferenceToOctree(Octree* octree, uint32_t brickID, uint32_t brickDepth);
 };
 
 /**
