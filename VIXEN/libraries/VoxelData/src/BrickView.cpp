@@ -1,6 +1,7 @@
 #include "BrickView.h"
 #include "AttributeRegistry.h"
 #include "AttributeStorage.h"
+#include <glm/glm.hpp>
 #include <stdexcept>
 
 namespace VoxelData {
@@ -56,6 +57,14 @@ void BrickView::set<uint8_t>(const std::string& attrName, size_t voxelIndex, uin
     view[voxelIndex] = value;
 }
 
+template<>
+void BrickView::set<glm::vec3>(const std::string& attrName, size_t voxelIndex, glm::vec3 value) {
+    auto* storage = getStorage(attrName);
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<glm::vec3>(slot);
+    view[voxelIndex] = value;
+}
+
 // Template specializations for get()
 template<>
 float BrickView::get<float>(const std::string& attrName, size_t voxelIndex) const {
@@ -89,6 +98,14 @@ uint8_t BrickView::get<uint8_t>(const std::string& attrName, size_t voxelIndex) 
     return view[voxelIndex];
 }
 
+template<>
+glm::vec3 BrickView::get<glm::vec3>(const std::string& attrName, size_t voxelIndex) const {
+    auto* storage = getStorage(attrName);
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<glm::vec3>(slot);
+    return view[voxelIndex];
+}
+
 // Template specializations for getAttributeArray()
 template<>
 ArrayView<float> BrickView::getAttributeArray<float>(const std::string& attrName) {
@@ -118,6 +135,13 @@ ArrayView<uint8_t> BrickView::getAttributeArray<uint8_t>(const std::string& attr
     return storage->getSlotView<uint8_t>(slot);
 }
 
+template<>
+ArrayView<glm::vec3> BrickView::getAttributeArray<glm::vec3>(const std::string& attrName) {
+    auto* storage = getStorage(attrName);
+    size_t slot = m_allocation.getSlot(attrName);
+    return storage->getSlotView<glm::vec3>(slot);
+}
+
 // Const versions
 template<>
 ConstArrayView<float> BrickView::getAttributeArray<float>(const std::string& attrName) const {
@@ -145,6 +169,13 @@ ConstArrayView<uint8_t> BrickView::getAttributeArray<uint8_t>(const std::string&
     auto* storage = getStorage(attrName);
     size_t slot = m_allocation.getSlot(attrName);
     return storage->getSlotView<uint8_t>(slot);
+}
+
+template<>
+ConstArrayView<glm::vec3> BrickView::getAttributeArray<glm::vec3>(const std::string& attrName) const {
+    auto* storage = getStorage(attrName);
+    size_t slot = m_allocation.getSlot(attrName);
+    return storage->getSlotView<glm::vec3>(slot);
 }
 
 // ============================================================================
@@ -448,6 +479,19 @@ void BrickView::indexToCoords(size_t index, int& x, int& y, int& z) const {
     index -= z * sideLength * sideLength;
     y = index / sideLength;
     x = index % sideLength;
+}
+
+// Template method implementations for 3D coordinate access
+template<typename T>
+void BrickView::setAt3D(const std::string& attrName, int x, int y, int z, T value) {
+    size_t index = coordsToIndex(x, y, z);
+    set<T>(attrName, index, value);
+}
+
+template<typename T>
+T BrickView::getAt3D(const std::string& attrName, int x, int y, int z) const {
+    size_t index = coordsToIndex(x, y, z);
+    return get<T>(attrName, index);
 }
 
 // Explicit template instantiations for common types

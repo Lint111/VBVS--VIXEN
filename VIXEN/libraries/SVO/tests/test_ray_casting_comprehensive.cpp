@@ -27,7 +27,7 @@ protected:
     {
         // Create attribute registry and brick storage
         auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3, 2048); // depth 3 = 8x8x8, capacity 2048
+        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3); // depth 3 = 8x8x8
 
         auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
 
