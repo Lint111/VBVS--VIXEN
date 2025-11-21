@@ -1009,7 +1009,8 @@ protected:
         size_t inserted = 0;
         size_t failed = 0;
         for (const auto& voxel : wallVoxels) {
-            if (injector.insertVoxel(*cornellBox, voxel.get("position"), voxel, config)) {
+            glm::vec3 pos = voxel.get<glm::vec3>("position");
+            if (injector.insertVoxel(*cornellBox, pos, voxel, config)) {
                 inserted++;
             } else {
                 failed++;

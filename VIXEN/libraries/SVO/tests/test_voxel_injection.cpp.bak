@@ -281,7 +281,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionSingleVoxel) {
     InjectionConfig config;
     config.maxLevels = 8; // Moderate depth
 
-    bool success = injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config);
+    bool success = injector.insertVoxel(octree, voxel.get("position"), voxel, config);
     EXPECT_TRUE(success) << "Should successfully insert voxel";
 
     // Verify octree is not empty
@@ -332,7 +332,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionMultipleVoxels) {
         voxel.set("normal", glm::normalize(pos - glm::vec3(5.0f)));
         voxel.set("density", 1.0f);
 
-        bool success = injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config);
+        bool success = injector.insertVoxel(octree, voxel.get("position"), voxel, config);
         EXPECT_TRUE(success) << "Should insert voxel at " << pos.x << "," << pos.y << "," << pos.z;
     }
 
@@ -362,9 +362,9 @@ TEST(VoxelInjectorTest, AdditiveInsertionIdempotent) {
     voxel.set("density", 1.0f);
 
     // Insert same voxel 3 times
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get("position"), voxel, config));
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get("position"), voxel, config));
+    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get("position"), voxel, config));
 
     // Should recognize existing node via early exit
     const Octree* octreeData = octree.getOctree();

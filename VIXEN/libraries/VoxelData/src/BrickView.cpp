@@ -450,4 +450,19 @@ void BrickView::indexToCoords(size_t index, int& x, int& y, int& z) const {
     x = index % sideLength;
 }
 
+// Explicit template instantiations for common types
+template void BrickView::setAt3D<float>(const std::string&, int, int, int, float);
+template void BrickView::setAt3D<uint32_t>(const std::string&, int, int, int, uint32_t);
+template void BrickView::setAt3D<uint16_t>(const std::string&, int, int, int, uint16_t);
+template void BrickView::setAt3D<uint8_t>(const std::string&, int, int, int, uint8_t);
+template void BrickView::setAt3D<glm::vec3>(const std::string&, int, int, int, glm::vec3);
+
+template float BrickView::getAt3D<float>(const std::string&, int, int, int) const;
+template uint32_t BrickView::getAt3D<uint32_t>(const std::string&, int, int, int) const;
+template uint16_t BrickView::getAt3D<uint16_t>(const std::string&, int, int, int) const;
+template uint8_t BrickView::getAt3D<uint8_t>(const std::string&, int, int, int) const;
+template glm::vec3 BrickView::getAt3D<glm::vec3>(const std::string&, int, int, int) const;
+
+template std::span<glm::vec3> BrickView::getAttributeArray<glm::vec3>(const std::string&);
+
 } // namespace VoxelData

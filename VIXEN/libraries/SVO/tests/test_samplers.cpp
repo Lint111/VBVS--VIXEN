@@ -23,9 +23,11 @@ TEST(NoiseSamplerTest, BasicSampling) {
 
     // Should return either solid or empty (deterministic noise)
     if (hasSolid) {
-        EXPECT_GT(data.get("density"), 0.0f);
-        EXPECT_GE(data.get("color").r, 0.0f);
-        EXPECT_LE(data.get("color").r, 1.0f);
+		float density = data.get<float>("density");
+		float colorR = data.get<glm::vec3>("color").r;
+        EXPECT_GT(density, 0.0f);
+        EXPECT_GE(colorR, 0.0f);
+        EXPECT_LE(colorR, 1.0f);
     }
 }
 
@@ -42,7 +44,10 @@ TEST(NoiseSamplerTest, Consistency) {
 
     EXPECT_EQ(result1, result2);
     if (result1) {
-        EXPECT_EQ(data1.get("density"), data2.get("density"));
+		auto desnity1 = data1.get<float>("density");
+		auto desnity2 = data2.get<float>("density");
+
+		EXPECT_EQ(desnity1, desnity2);
     }
 }
 
@@ -112,7 +117,8 @@ TEST(SDFSamplerTest, NormalEstimation) {
     ASSERT_TRUE(sampler.sample(pos, data));
 
     // Normal should point outward (roughly along +X)
-    EXPECT_GT(data.get("normal_x"), 0.5f);
+	auto normal = data.get<glm::vec3>("normal");
+    EXPECT_GT(normal.x, 0.5f);
 }
 
 // ===========================================================================

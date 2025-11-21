@@ -25,10 +25,11 @@ protected:
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        // Create brick storage for additive insertion with bricks
-        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(3, 2048); // depth 3 = 8x8x8, capacity 2048
+        // Create attribute registry and brick storage
+        auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3, 2048); // depth 3 = 8x8x8, capacity 2048
 
-        auto octree = std::make_unique<LaineKarrasOctree>(brickStorage.get());
+        auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
 
         // We CAN use bricks with additive insertion - we implemented this!
         VoxelInjector injector(brickStorage.get()); // Pass brick storage to injector
@@ -41,10 +42,9 @@ protected:
         // Insert all voxels
         for (const auto& pos : voxelPositions) {
             ::VoxelData::DynamicVoxelScalar voxel;
-            voxel.set("position", pos);
-            voxel.set("normal", glm::vec3(0, 1, 0)); // Default normal
-            voxel.set("color", glm::vec3(1, 1, 1));
             voxel.set("density", 1.0f);
+            voxel.set("color", glm::vec3(1, 1, 1));
+            voxel.set("normal", glm::vec3(0, 1, 0)); // Default normal
 
             // Use the insertVoxel signature from test_voxel_injection.cpp
             injector.insertVoxel(*octree, pos, voxel, config);
