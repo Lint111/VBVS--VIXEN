@@ -1421,29 +1421,18 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             const int brickN = brickRef.getSideLength();
             const size_t localIdx = static_cast<size_t>(currentVoxel.x + currentVoxel.y * brickN + currentVoxel.z * brickN * brickN);
 
-            // FAST PATH: Key is ALWAYS AttributeIndex 0 (guaranteed by AttributeRegistry design)
-            // Get typed pointer (zero overhead) and extract value
-            constexpr ::VoxelData::AttributeIndex KEY_INDEX = 0;
 
-            // Get key attribute descriptor to determine type for pointer cast
-            const ::VoxelData::AttributeDescriptor& keyDesc = m_registry->getDescriptor(KEY_INDEX);
+            const std::any& keyAttributeValue = brick.getKeyAttributePointer()[localIdx];
 
-            // Extract key value based on type (evaluateKey handles std::any)
-            std::any keyValue;
-            switch (keyDesc.type) {
-                case ::VoxelData::AttributeType::Float:
-                    keyValue = brick.getAttributePointer<float>(KEY_INDEX)[localIdx];
-                    break;
-                case ::VoxelData::AttributeType::Vec3:
-                    keyValue = brick.getAttributePointer<glm::vec3>(KEY_INDEX)[localIdx];
-                    break;
-                case ::VoxelData::AttributeType::Uint32:
-                    keyValue = brick.getAttributePointer<uint32_t>(KEY_INDEX)[localIdx];
-                    break;
+            if(!keyAttributeValue.has_value()) {
+                std::cout << "  Warning: Voxel at (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
+                          << ") has no key attribute value!\n";
+                voxelOccupied = false;
+                return std::nullopt;
             }
 
             // Evaluate key predicate (respects custom solidity tests)
-            voxelOccupied = m_registry->evaluateKey(keyValue);
+            voxelOccupied = m_registry->evaluateKey(keyAttributeValue);
 
             if (stepCount == 1) {  // First voxel debug
                 std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z

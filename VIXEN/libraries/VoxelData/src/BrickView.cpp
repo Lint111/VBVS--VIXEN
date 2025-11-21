@@ -422,7 +422,18 @@ uint32_t* BrickView::getAttributePointer<uint32_t>(const std::string& attrName) 
 // Coordinate Mapping (Morton/Linear Indexing)
 // ============================================================================
 
-size_t BrickView::coordsToIndex(int x, int y, int z) const {
+std::any* BrickView::getKeyAttributePointer() const
+{
+    // Key attribute is ALWAYS index 0 in AttributeRegistry
+    AttributeIndex keyIndex = 0;
+    auto* storage = m_registry->getStorage(keyIndex);
+    if (!storage) return nullptr;
+    size_t slot = m_allocation.getSlot(keyIndex);
+    return static_cast<std::any*>(storage->getSlotData(slot));
+}
+
+size_t BrickView::coordsToIndex(int x, int y, int z) const
+{
     // Use existing coordsToStorageIndex (defined earlier in file)
     return coordsToStorageIndex(x, y, z);
 }

@@ -157,6 +157,8 @@ public:
     template<typename T>
     T* getAttributePointer(AttributeIndex attrIndex);
 
+    std::any* getKeyAttributePointer() const;
+
     // Legacy name-based API (slower due to string hashing)
     template<typename T>
     const T* getAttributePointer(const std::string& attrName) const;

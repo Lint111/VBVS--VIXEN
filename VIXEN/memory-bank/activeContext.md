@@ -246,9 +246,10 @@ Application creates AttributeRegistry
    - Density estimator config mismatch
    - VoxelInjector parameter tuning needed
 
-4. **BrickStorage Obsolete**
-   - Redundant wrapper over BrickView
-   - 462 lines ready for deletion after octree migration
+4. **BrickStorage Status**
+   - LaineKarrasOctree no longer depends on it (uses AttributeRegistry directly)
+   - Kept as test utility wrapper (317 lines, backward compatible)
+   - Not on hot path - no performance impact
 
 ---
 
@@ -424,7 +425,7 @@ ESVO uses parent's tx_center values for octant selection after DESCEND, NOT reco
 - [x] Multi-voxel insertion with shared paths
 - [x] Comprehensive test suite created
 
-**VoxelData Library Integration** (Current):
+**VoxelData Library Integration** - ✅ COMPLETE:
 - [x] **VoxelData Library Creation** (Nov 21)
   - [x] Created standalone static library (independent of SVO)
   - [x] AttributeRegistry with observer pattern
@@ -433,16 +434,16 @@ ESVO uses parent's tx_center values for octant selection after DESCEND, NOT reco
   - [x] Clear destructive vs non-destructive API
   - [x] Build system integration
   - [x] Documentation (README.md + USAGE.md)
-  - [x] **AttributeIndex system for zero-cost lookups** ✅ NEW!
-- [🔧] **SVO Integration**
+  - [x] **AttributeIndex system for zero-cost lookups** ✅
+- [x] **SVO Integration** ✅ COMPLETE
   - [x] Add VoxelData dependency to SVO CMakeLists.txt
   - [x] VoxelInjection implements IAttributeRegistryObserver
   - [x] Replace BrickStorage with AttributeRegistry in VoxelInjection
   - [x] Update inject() to use BrickView
   - [x] Update VoxelInjection tests to use new API
-  - [ ] **LaineKarrasOctree migration to AttributeRegistry** ← NEXT
-  - [ ] Update LaineKarrasOctree tests to use index-based access
-  - [ ] Delete BrickStorage.h (462 lines obsolete)
+  - [x] **LaineKarrasOctree migration to AttributeRegistry** ✅ DONE
+  - [ ] Update LaineKarrasOctree tests to use AttributeRegistry ← NEXT
+  - [~] BrickStorage kept as test utility (not deleted - still useful)
 
 **Week 2: GPU Integration** (Days 8-14 - NEXT PRIORITY):
 - [ ] **GLSL Compute Shader**
