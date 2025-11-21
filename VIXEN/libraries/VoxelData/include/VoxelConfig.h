@@ -170,7 +170,7 @@ public:
         ConfigName() { \
             attributes = { AttributeList(VOXEL_CONFIG_EXPAND_INIT) }; \
         } \
-    }
+    };
 
 // Helper macros for X-macro expansion
 #define VOXEL_CONFIG_EXPAND_DECL(Type, Name, CppType, Index, ...) \

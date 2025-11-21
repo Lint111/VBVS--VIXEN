@@ -1030,7 +1030,7 @@ protected:
         // Create Cornell box sampler
         auto cornellSampler = std::make_unique<LambdaVoxelSampler>(
             // Sample function - returns material based on position
-            [](const glm::vec3& pos, VoxelData& data) -> bool {
+            [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
                 constexpr float thickness = 0.2f; // Wall thickness
                 constexpr float boxSize = 10.0f;
                 constexpr float lightSize = 2.0f; // Light patch size

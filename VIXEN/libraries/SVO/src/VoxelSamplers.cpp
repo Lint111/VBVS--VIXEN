@@ -64,7 +64,7 @@ NoiseSampler::NoiseSampler(const Params& params)
     : m_params(params) {
 }
 
-bool NoiseSampler::sample(const glm::vec3& position, VoxelData& outData) const {
+bool NoiseSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar & outData) const {
     // Apply frequency and offset
     glm::vec3 p = (position + m_params.offset) * m_params.frequency;
 
@@ -141,7 +141,7 @@ SDFSampler::SDFSampler(SDFFunc sdfFunc, const glm::vec3& min, const glm::vec3& m
     , m_max(max) {
 }
 
-bool SDFSampler::sample(const glm::vec3& position, VoxelData& outData) const {
+bool SDFSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outData) const {
     float dist = m_sdfFunc(position);
 
     // Negative distance = inside surface
@@ -180,7 +180,7 @@ HeightmapSampler::HeightmapSampler(const Params& params)
     : m_params(params) {
 }
 
-bool HeightmapSampler::sample(const glm::vec3& position, VoxelData& outData) const {
+bool HeightmapSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outData) const {
     // Sample heightmap at XZ position
     float height = sampleHeight(position.x, position.z);
 
@@ -237,7 +237,7 @@ float HeightmapSampler::sampleHeight(float x, float z) const {
     int iz = glm::clamp(int(v), 0, m_params.height - 1);
 
     // Lookup height value
-    size_t idx = ix + iz * m_params.width;
+    size_t idx = static_cast<size_t>(ix) + static_cast<size_t>(iz) * m_params.width;
     if (idx >= m_params.heights.size()) {
         return m_params.minHeight;
     }

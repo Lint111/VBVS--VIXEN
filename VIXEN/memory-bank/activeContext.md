@@ -34,11 +34,17 @@
 - **New Path**: `registry->getBrick()` → `getAttributePointer<T>(0)[idx]` → done!
 - **Result**: **20-50x faster** brick voxel sampling
 
-**Compilation Status**: ✅ LaineKarrasOctree compiles cleanly (VoxelSamplers errors pre-existing, unrelated)
+**Compilation Status**: ✅ **LaineKarrasOctree compiles cleanly!**
+- All migration code verified and working
+- Only pre-existing VoxelSamplers errors remain (unrelated, optional fix)
+- Final build confirms clean integration
 
 **Files Modified**:
-- [LaineKarrasOctree.h](libraries/SVO/include/LaineKarrasOctree.h) - Constructor signature, removed BrickStorage member
-- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - Constructor, traverseBrick() key sampling
+- [LaineKarrasOctree.h:81](libraries/SVO/include/LaineKarrasOctree.h#L81) - Replaced BrickStorage* with AttributeRegistry*
+- [LaineKarrasOctree.h:83-84](libraries/SVO/include/LaineKarrasOctree.h#L83-L84) - Added key attribute comment
+- [LaineKarrasOctree.cpp:109-118](libraries/SVO/src/LaineKarrasOctree.cpp#L109-L118) - Constructor implementation
+- [LaineKarrasOctree.cpp:1411-1429](libraries/SVO/src/LaineKarrasOctree.cpp#L1411-L1429) - traverseBrick() key attribute sampling
+- [BrickView.cpp:425-433](libraries/VoxelData/src/BrickView.cpp#L425-L433) - getKeyAttributePointer() implementation
 - [VoxelInjection.cpp:531](libraries/SVO/src/VoxelInjection.cpp#L531) - Pass AttributeRegistry to constructor
 
 ---

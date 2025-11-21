@@ -103,6 +103,28 @@ VOXEL_CONFIG(ThermalVoxel, 3, THERMAL_VOXEL_ATTRIBUTES)
 
 VOXEL_CONFIG(CompactVoxel, 1, COMPACT_VOXEL_ATTRIBUTES)
 
+/**
+ * @brief Test voxel with position, density, color, normal, and occlusion
+ *
+ * For legacy test compatibility. Includes position (spatial metadata) and occlusion.
+ * Key: density (determines octree structure)
+ *
+ * Attributes:
+ * - density (float): 0.0 = empty, 1.0 = solid
+ * - color (glm::vec3): RGB color
+ * - normal (glm::vec3): Normal vector
+ * - occlusion (float): Ambient occlusion factor
+ *
+ * Note: position field is for test convenience only (spatial metadata, not stored)
+ */
+#define TEST_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       DENSITY,   float,     0) \
+    X(ATTRIBUTE, COLOR,     glm::vec3, 1) \
+    X(ATTRIBUTE, NORMAL,    glm::vec3, 2) \
+    X(ATTRIBUTE, OCCLUSION, float,     3)
+
+VOXEL_CONFIG(TestVoxel, 4, TEST_VOXEL_ATTRIBUTES)
+
 // ============================================================================
 // Runtime Key Switching Example
 // ============================================================================

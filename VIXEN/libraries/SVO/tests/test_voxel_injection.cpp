@@ -1,8 +1,13 @@
 #include <gtest/gtest.h>
 #include "VoxelInjection.h"
 #include "LaineKarrasOctree.h"
+#include "DynamicVoxelStruct.h"
+#include "StandardVoxelConfigs.h"
 
 using namespace SVO;
+
+// Test voxel type alias (uses DynamicVoxelScalar with TestVoxel config)
+using VoxelData = VoxelData::DynamicVoxelScalar;
 
 // ===========================================================================
 // Sparse Voxel Injection Tests
@@ -16,11 +21,11 @@ TEST(VoxelInjectionTest, SparseVoxels) {
 
     // Add a few voxels
     for (int i = 0; i < 10; ++i) {
-        SVO::VoxelData voxel;
-        voxel.position = glm::vec3(i, i, i);
-        voxel.color = glm::vec3(1, 0, 0);
-        voxel.normal = glm::vec3(0, 1, 0);
-        voxel.density = 1.0f;
+        VoxelData voxel;
+        voxel.set("density", 1.0f);
+        voxel.set("color", glm::vec3(1, 0, 0));
+        voxel.set("normal", glm::vec3(0, 1, 0));
+        voxel.set("occlusion", 0.0f);
         input.voxels.push_back(voxel);
     }
 
