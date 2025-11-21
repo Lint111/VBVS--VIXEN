@@ -108,24 +108,13 @@ namespace {
 
 LaineKarrasOctree::LaineKarrasOctree()
     : m_registry(nullptr)
-    , m_densityIdx(VoxelData::INVALID_ATTRIBUTE_INDEX)
-    , m_materialIdx(VoxelData::INVALID_ATTRIBUTE_INDEX)
 {}
 
-LaineKarrasOctree::LaineKarrasOctree(VoxelData::AttributeRegistry* registry)
+LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry)
     : m_registry(registry)
 {
-    // Cache attribute indices for zero-cost lookups during traversal
-    if (m_registry) {
-        m_densityIdx = m_registry->getAttributeIndex("density");
-        m_materialIdx = m_registry->getAttributeIndex("material");
-
-        // Validate that required attributes exist
-        if (m_densityIdx == VoxelData::INVALID_ATTRIBUTE_INDEX) {
-            throw std::runtime_error("Required attribute 'density' not found in registry");
-        }
-        // material is optional - if not present, materialIdx stays INVALID
-    }
+    // NOTE: Key attribute is ALWAYS index 0 (AttributeRegistry enforces this)
+    // No need to cache or validate - just use index 0 directly during traversal
 }
 
 LaineKarrasOctree::~LaineKarrasOctree() = default;
@@ -1424,24 +1413,41 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
         // Use AttributeRegistry's evaluateKey() to test voxel solidity
         bool voxelOccupied = true; // Default: assume solid if no registry
 
-        if (m_registry && m_densityIdx != VoxelData::INVALID_ATTRIBUTE_INDEX) {
+        if (m_registry) {
             // Get brick view (zero-copy)
-            VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
+            ::VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
 
             // Compute linear index from 3D coordinates
             const int brickN = brickRef.getSideLength();
             const size_t localIdx = static_cast<size_t>(currentVoxel.x + currentVoxel.y * brickN + currentVoxel.z * brickN * brickN);
 
-            // FAST PATH: Use cached AttributeIndex for O(1) lookup (no hash, no string!)
-            const float* densityArray = brick.getAttributePointer<float>(m_densityIdx);
-            const float density = densityArray[localIdx];
+            // FAST PATH: Key is ALWAYS AttributeIndex 0 (guaranteed by AttributeRegistry design)
+            // Get typed pointer (zero overhead) and extract value
+            constexpr ::VoxelData::AttributeIndex KEY_INDEX = 0;
+
+            // Get key attribute descriptor to determine type for pointer cast
+            const ::VoxelData::AttributeDescriptor& keyDesc = m_registry->getDescriptor(KEY_INDEX);
+
+            // Extract key value based on type (evaluateKey handles std::any)
+            std::any keyValue;
+            switch (keyDesc.type) {
+                case ::VoxelData::AttributeType::Float:
+                    keyValue = brick.getAttributePointer<float>(KEY_INDEX)[localIdx];
+                    break;
+                case ::VoxelData::AttributeType::Vec3:
+                    keyValue = brick.getAttributePointer<glm::vec3>(KEY_INDEX)[localIdx];
+                    break;
+                case ::VoxelData::AttributeType::Uint32:
+                    keyValue = brick.getAttributePointer<uint32_t>(KEY_INDEX)[localIdx];
+                    break;
+            }
 
             // Evaluate key predicate (respects custom solidity tests)
-            voxelOccupied = m_registry->evaluateKey(density);
+            voxelOccupied = m_registry->evaluateKey(keyValue);
 
-            if (stepCount == 1) {  // First voxel
+            if (stepCount == 1) {  // First voxel debug
                 std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                          << ") density=" << density << " occupied=" << voxelOccupied << "\n";
+                          << ") occupied=" << voxelOccupied << "\n";
             }
         }
 

@@ -30,7 +30,7 @@ namespace SVO {
 class LaineKarrasOctree : public ISVOStructure {
 public:
     LaineKarrasOctree();
-    explicit LaineKarrasOctree(VoxelData::AttributeRegistry* registry);
+    explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry);
     ~LaineKarrasOctree() override;
 
     // ISVOStructure interface
@@ -76,11 +76,10 @@ public:
 
 private:
     std::unique_ptr<Octree> m_octree;
-    VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer
+    ::VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer
 
-    // Cached attribute indices for zero-cost lookups
-    VoxelData::AttributeIndex m_densityIdx = VoxelData::INVALID_ATTRIBUTE_INDEX;
-    VoxelData::AttributeIndex m_materialIdx = VoxelData::INVALID_ATTRIBUTE_INDEX;
+    // NOTE: Key attribute is ALWAYS index 0 in AttributeRegistry (guaranteed by design)
+    // This eliminates the need to cache or lookup the key index
 
     // Cached metadata
     glm::vec3 m_worldMin{0.0f};
