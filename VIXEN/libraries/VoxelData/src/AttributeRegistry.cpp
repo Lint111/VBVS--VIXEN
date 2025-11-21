@@ -4,7 +4,7 @@
 
 namespace VoxelData {
 
-void AttributeRegistry::registerKey(std::string name, AttributeType type, std::any defaultValue) {
+AttributeIndex AttributeRegistry::registerKey(std::string name, AttributeType type, std::any defaultValue) {
     if (!m_keyAttributeName.empty()) {
         throw std::runtime_error("Key attribute already registered: " + m_keyAttributeName);
     }
@@ -13,14 +13,24 @@ void AttributeRegistry::registerKey(std::string name, AttributeType type, std::a
         throw std::runtime_error("Attribute already exists: " + name);
     }
 
+    // Assign unique index
+    AttributeIndex index = m_nextAttributeIndex++;
     m_keyAttributeName = name;
+    m_keyAttributeIndex = index;
 
-    // Create descriptor
-    AttributeDescriptor desc(name, type, defaultValue, true);
+    // Create descriptor with index
+    AttributeDescriptor desc(name, type, defaultValue, index, true);
     m_descriptors[name] = desc;
 
     // Create storage
-    m_attributes[name] = std::make_unique<AttributeStorage>(name, type, defaultValue);
+    auto storage = std::make_unique<AttributeStorage>(name, type, defaultValue);
+    m_attributes[name] = std::move(storage);
+
+    // Add to index-based lookups
+    m_storageByIndex.push_back(m_attributes[name].get());
+    m_descriptorByIndex.push_back(desc);
+
+    return index;
 }
 
 bool AttributeRegistry::changeKey(std::string newKeyName) {
@@ -47,26 +57,36 @@ bool AttributeRegistry::changeKey(std::string newKeyName) {
     return true;  // Rebuild required
 }
 
-void AttributeRegistry::addAttribute(std::string name, AttributeType type, std::any defaultValue) {
+AttributeIndex AttributeRegistry::addAttribute(std::string name, AttributeType type, std::any defaultValue) {
     if (hasAttribute(name)) {
         throw std::runtime_error("Attribute already exists: " + name);
     }
 
-    // Create descriptor
-    AttributeDescriptor desc(name, type, defaultValue, false);
+    // Assign unique index
+    AttributeIndex index = m_nextAttributeIndex++;
+
+    // Create descriptor with index
+    AttributeDescriptor desc(name, type, defaultValue, index, false);
     m_descriptors[name] = desc;
 
     // Create storage
-    m_attributes[name] = std::make_unique<AttributeStorage>(name, type, defaultValue);
+    auto storage = std::make_unique<AttributeStorage>(name, type, defaultValue);
+    m_attributes[name] = std::move(storage);
+
+    // Add to index-based lookups
+    m_storageByIndex.push_back(m_attributes[name].get());
+    m_descriptorByIndex.push_back(desc);
 
     // For existing bricks, allocate slots in new attribute
     for (auto& [brickID, allocation] : m_bricks) {
         size_t slot = m_attributes[name]->allocateSlot();
-        allocation.addSlot(name, slot);
+        allocation.addSlot(index, name, slot);
     }
 
     // Notify observers (non-destructive)
     notifyAttributeAdded(name, type);
+
+    return index;
 }
 
 void AttributeRegistry::removeAttribute(const std::string& name) {

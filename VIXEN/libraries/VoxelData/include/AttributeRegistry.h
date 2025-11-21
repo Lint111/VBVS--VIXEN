@@ -115,9 +115,10 @@ public:
      * The key attribute determines octree structure sparsity.
      * Changing the key invalidates all spatial structures.
      *
+     * @returns Unique attribute index for this attribute
      * @throws If key already registered
      */
-    void registerKey(std::string name, AttributeType type, std::any defaultValue);
+    AttributeIndex registerKey(std::string name, AttributeType type, std::any defaultValue);
 
     /**
      * Change key attribute (DESTRUCTIVE - requires caller to rebuild structure)
@@ -138,9 +139,10 @@ public:
      * Does NOT move or copy existing attribute data.
      * BrickViews remain valid.
      *
+     * @returns Unique attribute index for this attribute
      * Cost: O(num_bricks) slot allocations
      */
-    void addAttribute(std::string name, AttributeType type, std::any defaultValue);
+    AttributeIndex addAttribute(std::string name, AttributeType type, std::any defaultValue);
 
     /**
      * Remove attribute (NON-DESTRUCTIVE - existing data unchanged)
@@ -162,17 +164,24 @@ public:
     BrickView getBrick(uint32_t brickID);
     BrickView getBrick(uint32_t brickID) const;
 
-    // Query
+    // Query by name (legacy API)
     bool hasAttribute(const std::string& name) const;
     bool isKeyAttribute(const std::string& name) const;
     AttributeStorage* getStorage(const std::string& name);
     const AttributeStorage* getStorage(const std::string& name) const;
 
+    // Query by index (FAST - zero-cost lookup)
+    AttributeStorage* getStorage(AttributeIndex index);
+    const AttributeStorage* getStorage(AttributeIndex index) const;
+    const AttributeDescriptor& getDescriptor(AttributeIndex index) const;
+    AttributeIndex getAttributeIndex(const std::string& name) const;
+
     // Get all attribute names
     std::vector<std::string> getAttributeNames() const;
 
-    // Get key attribute name
+    // Get key attribute name and index
     const std::string& getKeyAttributeName() const { return m_keyAttributeName; }
+    AttributeIndex getKeyAttributeIndex() const { return m_keyAttributeIndex; }
 
     // Statistics
     size_t getBrickCount() const { return m_bricks.size(); }
@@ -237,6 +246,7 @@ public:
 private:
     // Key attribute (determines octree structure)
     std::string m_keyAttributeName;
+    AttributeIndex m_keyAttributeIndex = INVALID_ATTRIBUTE_INDEX;
 
     // Key predicate (custom filter for vec3 keys)
     KeyPredicate m_keyPredicate;
@@ -244,8 +254,13 @@ private:
     // Attribute storage (owns data)
     std::unordered_map<std::string, std::unique_ptr<AttributeStorage>> m_attributes;
 
-    // Attribute descriptors
+    // Attribute descriptors (name → descriptor)
     std::unordered_map<std::string, AttributeDescriptor> m_descriptors;
+
+    // Index-based lookups (FAST)
+    std::vector<AttributeStorage*> m_storageByIndex;      // index → storage pointer
+    std::vector<AttributeDescriptor> m_descriptorByIndex; // index → descriptor
+    AttributeIndex m_nextAttributeIndex = 0;              // Monotonic counter
 
     // Brick allocations (brickID → allocation)
     std::unordered_map<uint32_t, BrickAllocation> m_bricks;

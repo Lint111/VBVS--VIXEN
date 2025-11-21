@@ -41,18 +41,33 @@ constexpr size_t getComponentCount(AttributeType type) {
 }
 
 /**
+ * Attribute index - compile-time constant for fast attribute lookup
+ *
+ * Each attribute registered in AttributeRegistry gets a unique index.
+ * Indices are stable across application lifetime (assigned at registration).
+ *
+ * Usage:
+ *   - AttributeRegistry returns index when attribute registered
+ *   - BrickView uses index for zero-cost lookups (no string hash)
+ *   - DynamicVoxelScalar stores (index, value) pairs instead of (name, value)
+ */
+using AttributeIndex = uint16_t;
+constexpr AttributeIndex INVALID_ATTRIBUTE_INDEX = static_cast<AttributeIndex>(-1);
+
+/**
  * Attribute descriptor - metadata for a voxel attribute
  */
 struct AttributeDescriptor {
     std::string name;
     AttributeType type;
     std::any defaultValue;
-    bool isKey;  // If true, determines octree structure
+    AttributeIndex index;  // Unique index assigned at registration
+    bool isKey;            // If true, determines octree structure
 
-    AttributeDescriptor() = default;
+    AttributeDescriptor() : index(INVALID_ATTRIBUTE_INDEX), isKey(false) {}
 
-    AttributeDescriptor(std::string n, AttributeType t, std::any def, bool key = false)
-        : name(std::move(n)), type(t), defaultValue(std::move(def)), isKey(key) {}
+    AttributeDescriptor(std::string n, AttributeType t, std::any def, AttributeIndex idx = INVALID_ATTRIBUTE_INDEX, bool key = false)
+        : name(std::move(n)), type(t), defaultValue(std::move(def)), index(idx), isKey(key) {}
 
     // Get total number of arrays needed (1 for scalar, 3 for vec3)
     size_t arrayCount() const {

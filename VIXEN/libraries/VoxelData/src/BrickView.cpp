@@ -8,9 +8,10 @@ namespace VoxelData {
 class DynamicVoxelScalar;
 class DynamicVoxelArrays;
 
-BrickView::BrickView(AttributeRegistry* registry, BrickAllocation allocation)
+BrickView::BrickView(AttributeRegistry* registry, BrickAllocation allocation, uint8_t brickDepth)
     : m_registry(registry)
     , m_allocation(std::move(allocation))
+    , m_brickDepth(brickDepth)
 {
 }
 
@@ -333,6 +334,79 @@ DynamicVoxelArrays BrickView::getBatch() const {
     }
 
     return batch;
+}
+
+// ============================================================================
+// Fast Attribute Access (Performance-Critical Ray Traversal)
+// ============================================================================
+
+template<>
+const float* BrickView::getAttributePointer<float>(const std::string& attrName) const {
+    if (!hasAttribute(attrName)) return nullptr;
+
+    auto* storage = getStorage(attrName);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<float>(slot);
+    return view.data();
+}
+
+template<>
+float* BrickView::getAttributePointer<float>(const std::string& attrName) {
+    if (!hasAttribute(attrName)) return nullptr;
+
+    auto* storage = getStorage(attrName);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<float>(slot);
+    return view.data();
+}
+
+template<>
+const uint32_t* BrickView::getAttributePointer<uint32_t>(const std::string& attrName) const {
+    if (!hasAttribute(attrName)) return nullptr;
+
+    auto* storage = getStorage(attrName);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<uint32_t>(slot);
+    return view.data();
+}
+
+template<>
+uint32_t* BrickView::getAttributePointer<uint32_t>(const std::string& attrName) {
+    if (!hasAttribute(attrName)) return nullptr;
+
+    auto* storage = getStorage(attrName);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrName);
+    auto view = storage->getSlotView<uint32_t>(slot);
+    return view.data();
+}
+
+// ============================================================================
+// Coordinate Mapping (Morton/Linear Indexing)
+// ============================================================================
+
+size_t BrickView::coordsToIndex(int x, int y, int z) const {
+    // Use existing coordsToStorageIndex (defined earlier in file)
+    return coordsToStorageIndex(x, y, z);
+}
+
+void BrickView::indexToCoords(size_t index, int& x, int& y, int& z) const {
+    // Inverse of coordsToStorageIndex
+    // Assumes linear XYZ ordering: x + y*8 + z*64
+    // TODO: Support Morton decoding if needed
+
+    constexpr int sideLength = 8;
+    z = index / (sideLength * sideLength);
+    index -= z * sideLength * sideLength;
+    y = index / sideLength;
+    x = index % sideLength;
 }
 
 } // namespace VoxelData
