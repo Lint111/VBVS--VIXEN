@@ -1,8 +1,12 @@
 #include "BrickView.h"
 #include "AttributeRegistry.h"
+#include "AttributeStorage.h"
 #include <stdexcept>
 
 namespace VoxelData {
+// Forward declarations - implementations will include DynamicVoxelStruct.h later
+class DynamicVoxelScalar;
+class DynamicVoxelArrays;
 
 BrickView::BrickView(AttributeRegistry* registry, BrickAllocation allocation)
     : m_registry(registry)
@@ -210,6 +214,125 @@ template<>
 uint32_t BrickView::getAt3D<uint32_t>(const std::string& attrName, int x, int y, int z) const {
     size_t index = coordsToStorageIndex(x, y, z);
     return get<uint32_t>(attrName, index);
+}
+
+} // namespace VoxelData
+
+// Include DynamicVoxelStruct.h AFTER template specializations to avoid early instantiation
+#include "DynamicVoxelStruct.h"
+
+namespace VoxelData {
+
+// ============================================================================
+// High-Level Integration with DynamicVoxelScalar/Arrays
+// ============================================================================
+
+namespace {
+    // Helper: Dispatch lambda based on AttributeType
+    template<typename Func>
+    void dispatchByType(AttributeType type, Func&& func) {
+        switch (type) {
+            case AttributeType::Float:
+                func.template operator()<float>();
+                break;
+            case AttributeType::Uint32:
+                func.template operator()<uint32_t>();
+                break;
+            case AttributeType::Uint16:
+                func.template operator()<uint16_t>();
+                break;
+            case AttributeType::Uint8:
+                func.template operator()<uint8_t>();
+                break;
+            case AttributeType::Vec3:
+                func.template operator()<glm::vec3>();
+                break;
+        }
+    }
+}
+
+void BrickView::setVoxel(int x, int y, int z, const DynamicVoxelScalar& voxel) {
+    // Iterate over voxel attributes
+    for (const auto& attrName : voxel.getAttributeNames()) {
+        // Check if brick has this attribute
+        if (!hasAttribute(attrName)) continue;
+
+        // Get attribute type from registry
+        auto* storage = getStorage(attrName);
+        if (!storage) continue;
+
+        AttributeType attrType = storage->getType();
+
+        // Dispatch to correct type
+        dispatchByType(attrType, [&]<typename T>() {
+            T val = voxel.get<T>(attrName);
+            setAt3D<T>(attrName, x, y, z, val);
+        });
+    }
+}
+
+DynamicVoxelScalar BrickView::getVoxel(int x, int y, int z) const {
+    DynamicVoxelScalar voxel;
+
+    // Iterate over all brick attributes
+    for (const auto& attrName : getAttributeNames()) {
+        auto* storage = getStorage(attrName);
+        if (!storage) continue;
+
+        AttributeType attrType = storage->getType();
+
+        // Dispatch to correct type
+        dispatchByType(attrType, [&]<typename T>() {
+            T val = getAt3D<T>(attrName, x, y, z);
+            voxel.set(attrName, val);
+        });
+    }
+
+    return voxel;
+}
+
+void BrickView::setBatch(const DynamicVoxelArrays& batch) {
+    if (batch.count() < VOXELS_PER_BRICK) {
+        throw std::runtime_error("DynamicVoxelArrays must contain at least 512 voxels");
+    }
+
+    // Iterate over batch attributes
+    for (const auto& attrName : batch.getAttributeNames()) {
+        // Check if brick has this attribute
+        if (!hasAttribute(attrName)) continue;
+
+        auto* storage = getStorage(attrName);
+        if (!storage) continue;
+
+        AttributeType attrType = storage->getType();
+
+        // Dispatch to correct type and copy array
+        dispatchByType(attrType, [&]<typename T>() {
+            const auto& srcArr = batch.getArray<T>(attrName);
+            auto dstArr = getAttributeArray<T>(attrName);
+            for (size_t i = 0; i < VOXELS_PER_BRICK; ++i) {
+                dstArr[i] = srcArr[i];
+            }
+        });
+    }
+}
+
+DynamicVoxelArrays BrickView::getBatch() const {
+    DynamicVoxelArrays batch;
+
+    // Extract all 512 voxels using scalar extraction
+    // TODO: Optimize with direct array copy once DynamicVoxelArrays supports bulk init
+    for (size_t i = 0; i < VOXELS_PER_BRICK; ++i) {
+        // Convert linear index to 3D coordinates
+        int x = i % 8;
+        int y = (i / 8) % 8;
+        int z = i / 64;
+
+        DynamicVoxelScalar voxel = getVoxel(x, y, z);
+        batch.push_back(voxel);
+    }
+
+    return batch;
 }
 
 } // namespace VoxelData

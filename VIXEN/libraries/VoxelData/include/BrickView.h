@@ -11,6 +11,8 @@ namespace VoxelData {
 // Forward declarations
 class AttributeRegistry;
 class AttributeStorage;
+class DynamicVoxelScalar;
+class DynamicVoxelArrays;
 
 /**
  * BrickAllocation - Tracks which storage slots a brick occupies
@@ -97,6 +99,71 @@ public:
 
     // Get allocation (for debugging)
     const BrickAllocation& getAllocation() const { return m_allocation; }
+
+    // Get voxel count
+    size_t getVoxelCount() const { return VOXELS_PER_BRICK; }
+
+    // ============================================================================
+    // High-Level Integration with DynamicVoxelScalar/Arrays
+    // ============================================================================
+
+    /**
+     * @brief Set a single voxel from DynamicVoxelScalar at 3D coordinates
+     *
+     * Automatically reads all attributes from the scalar and writes to brick.
+     * Handles type conversions behind the scenes.
+     *
+     * Example:
+     * ```cpp
+     * DynamicVoxelScalar voxel;
+     * voxel.set("density", 0.8f);
+     * voxel.set("material", 42u);
+     * brick.setVoxel(x, y, z, voxel);  // Writes both attributes automatically
+     * ```
+     */
+    void setVoxel(int x, int y, int z, const DynamicVoxelScalar& voxel);
+
+    /**
+     * @brief Get a single voxel as DynamicVoxelScalar at 3D coordinates
+     *
+     * Automatically reads all brick attributes into a scalar.
+     *
+     * Example:
+     * ```cpp
+     * DynamicVoxelScalar voxel = brick.getVoxel(x, y, z);
+     * float density = voxel.get<float>("density");
+     * ```
+     */
+    DynamicVoxelScalar getVoxel(int x, int y, int z) const;
+
+    /**
+     * @brief Populate entire brick from DynamicVoxelArrays (batch operation)
+     *
+     * Copies all 512 voxels from arrays into brick.
+     * Arrays must contain at least 512 voxels.
+     *
+     * Example:
+     * ```cpp
+     * DynamicVoxelArrays batch(&registry);
+     * // ... fill batch with 512 voxels ...
+     * brick.setBatch(batch);  // Copy all voxels to brick
+     * ```
+     */
+    void setBatch(const DynamicVoxelArrays& batch);
+
+    /**
+     * @brief Extract entire brick into DynamicVoxelArrays (batch operation)
+     *
+     * Copies all 512 voxels from brick into arrays.
+     * Arrays will be resized to 512 voxels.
+     *
+     * Example:
+     * ```cpp
+     * DynamicVoxelArrays batch = brick.getBatch();
+     * // batch now contains 512 voxels from brick
+     * ```
+     */
+    DynamicVoxelArrays getBatch() const;
 
 private:
     AttributeRegistry* m_registry;

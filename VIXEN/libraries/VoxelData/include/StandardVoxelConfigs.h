@@ -19,14 +19,11 @@ namespace VoxelData {
  * - density (float): 0.0 = empty, 1.0 = solid
  * - material (uint32_t): Material ID for shading
  */
-VOXEL_CONFIG(BasicVoxel, 2) {
-    VOXEL_KEY(DENSITY, float, 0);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
+#define BASIC_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       DENSITY,  float,    0) \
+    X(ATTRIBUTE, MATERIAL, uint32_t, 1)
 
-    BasicVoxel() {
-        VOXEL_CONFIG_INIT(DENSITY, MATERIAL);
-    }
-};
+VOXEL_CONFIG(BasicVoxel, 2, BASIC_VOXEL_ATTRIBUTES)
 
 /**
  * @brief Standard voxel with density, material, and color
@@ -39,15 +36,12 @@ VOXEL_CONFIG(BasicVoxel, 2) {
  * - material (uint32_t): Material ID for shading
  * - color (glm::vec3): RGB color (3 separate arrays)
  */
-VOXEL_CONFIG(StandardVoxel, 3) {
-    VOXEL_KEY(DENSITY, float, 0);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
-    VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2);
+#define STANDARD_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       DENSITY,  float,     0) \
+    X(ATTRIBUTE, MATERIAL, uint32_t,  1) \
+    X(ATTRIBUTE, COLOR,    glm::vec3, 2)
 
-    StandardVoxel() {
-        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, COLOR);
-    }
-};
+VOXEL_CONFIG(StandardVoxel, 3, STANDARD_VOXEL_ATTRIBUTES)
 
 /**
  * @brief Rich voxel with full material properties
@@ -63,18 +57,15 @@ VOXEL_CONFIG(StandardVoxel, 3) {
  * - metallic (float): Metallic factor (0.0 = dielectric, 1.0 = metal)
  * - roughness (float): Roughness factor (0.0 = smooth, 1.0 = rough)
  */
-VOXEL_CONFIG(RichVoxel, 6) {
-    VOXEL_KEY(DENSITY, float, 0);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
-    VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2, glm::vec3(1.0f));  // Custom: white default
-    VOXEL_ATTRIBUTE(NORMAL, glm::vec3, 3, glm::vec3(0.0f, 1.0f, 0.0f));  // Custom: up vector
-    VOXEL_ATTRIBUTE(METALLIC, float, 4);
-    VOXEL_ATTRIBUTE(ROUGHNESS, float, 5, 0.5f);  // Custom: mid-roughness
+#define RICH_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       DENSITY,   float,     0) \
+    X(ATTRIBUTE, MATERIAL,  uint32_t,  1) \
+    X(ATTRIBUTE, COLOR,     glm::vec3, 2, glm::vec3(1.0f)) \
+    X(ATTRIBUTE, NORMAL,    glm::vec3, 3, glm::vec3(0.0f, 1.0f, 0.0f)) \
+    X(ATTRIBUTE, METALLIC,  float,     4) \
+    X(ATTRIBUTE, ROUGHNESS, float,     5, 0.5f)
 
-    RichVoxel() {
-        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, COLOR, NORMAL, METALLIC, ROUGHNESS);
-    }
-};
+VOXEL_CONFIG(RichVoxel, 6, RICH_VOXEL_ATTRIBUTES)
 
 /**
  * @brief Temperature-based voxel for simulation
@@ -89,15 +80,12 @@ VOXEL_CONFIG(RichVoxel, 6) {
  * - density (float): Mass density
  * - material (uint32_t): Material type
  */
-VOXEL_CONFIG(ThermalVoxel, 3) {
-    VOXEL_KEY(TEMPERATURE, float, 0);
-    VOXEL_ATTRIBUTE(DENSITY, float, 1);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 2);
+#define THERMAL_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       TEMPERATURE, float,    0) \
+    X(ATTRIBUTE, DENSITY,     float,    1) \
+    X(ATTRIBUTE, MATERIAL,    uint32_t, 2)
 
-    ThermalVoxel() {
-        VOXEL_CONFIG_INIT(TEMPERATURE, DENSITY, MATERIAL);
-    }
-};
+VOXEL_CONFIG(ThermalVoxel, 3, THERMAL_VOXEL_ATTRIBUTES)
 
 /**
  * @brief Compact voxel with 8-bit material only
@@ -110,13 +98,10 @@ VOXEL_CONFIG(ThermalVoxel, 3) {
  * Attributes:
  * - material (uint8_t): Material ID (0 = empty, >0 = solid)
  */
-VOXEL_CONFIG(CompactVoxel, 1) {
-    VOXEL_KEY(MATERIAL, uint8_t, 0);
+#define COMPACT_VOXEL_ATTRIBUTES(X) \
+    X(KEY, MATERIAL, uint8_t, 0)
 
-    CompactVoxel() {
-        VOXEL_CONFIG_INIT(MATERIAL);
-    }
-};
+VOXEL_CONFIG(CompactVoxel, 1, COMPACT_VOXEL_ATTRIBUTES)
 
 // ============================================================================
 // Runtime Key Switching Example

@@ -25,17 +25,16 @@ using namespace VoxelData;
 
 /**
  * Custom voxel for game world with health and damage
+ *
+ * Uses X-macro pattern - attributes defined ONCE, everything else auto-generated!
  */
-VOXEL_CONFIG(GameVoxel, 4) {
-    VOXEL_KEY(DENSITY, float, 0);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
-    VOXEL_ATTRIBUTE(HEALTH, uint16_t, 2, static_cast<uint16_t>(100));  // Custom default: 100 HP
-    VOXEL_ATTRIBUTE(DAMAGE, float, 3, 1.0f);  // Custom default: 1.0 damage
+#define GAME_VOXEL_ATTRIBUTES(X) \
+    X(KEY,       DENSITY,  float,    0) \
+    X(ATTRIBUTE, MATERIAL, uint32_t, 1) \
+    X(ATTRIBUTE, HEALTH,   uint16_t, 2, static_cast<uint16_t>(100)) \
+    X(ATTRIBUTE, DAMAGE,   float,    3, 1.0f)
 
-    GameVoxel() {
-        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, HEALTH, DAMAGE);
-    }
-};
+VOXEL_CONFIG(GameVoxel, 4, GAME_VOXEL_ATTRIBUTES)
 
 // ============================================================================
 // Example 2: Compile-Time Type Safety

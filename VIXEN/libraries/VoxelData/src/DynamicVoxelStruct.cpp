@@ -255,4 +255,7 @@ void DynamicVoxelArrays::syncWithRegistry(const AttributeRegistry* registry) {
     }
 }
 
+// NOTE: BrickView integration methods (setVoxel, getVoxel, setBatch, getBatch)
+// are implemented in BrickView.cpp
+
 } // namespace VoxelData

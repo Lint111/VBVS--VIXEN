@@ -145,22 +145,51 @@ public:
 // ============================================================================
 
 /**
- * @brief Define a pure constexpr voxel configuration
+ * @brief Define a voxel configuration using X-macro pattern (zero duplication!)
  *
- * All type information is constexpr - compiler optimizes everything away.
+ * Define attributes ONCE in a macro list, everything else auto-generated.
  *
  * Usage:
  * ```cpp
- * VOXEL_CONFIG(StandardVoxel, 3) {
- *     VOXEL_KEY(DENSITY, float, 0);
- *     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
- *     VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2);
- *     VOXEL_CONFIG_INIT();  // Auto-initializes attributes array
- * };
+ * #define STANDARD_VOXEL_ATTRIBUTES(X) \
+ *     X(KEY,       DENSITY,  float,     0) \
+ *     X(ATTRIBUTE, MATERIAL, uint32_t,  1) \
+ *     X(ATTRIBUTE, COLOR,    glm::vec3, 2)
+ *
+ * VOXEL_CONFIG(StandardVoxel, 3, STANDARD_VOXEL_ATTRIBUTES)
  * ```
+ *
+ * The X-macro automatically expands to:
+ * - VOXEL_KEY/VOXEL_ATTRIBUTE declarations
+ * - Constructor with initialized attributes array
+ * - struct definition with base class
  */
-#define VOXEL_CONFIG(ConfigName, NumAttributes) \
-    struct ConfigName : public ::VoxelData::VoxelConfigBase<NumAttributes>
+#define VOXEL_CONFIG(ConfigName, NumAttributes, AttributeList) \
+    struct ConfigName : public ::VoxelData::VoxelConfigBase<NumAttributes> { \
+        AttributeList(VOXEL_CONFIG_EXPAND_DECL) \
+        ConfigName() { \
+            attributes = { AttributeList(VOXEL_CONFIG_EXPAND_INIT) }; \
+        } \
+    }
+
+// Helper macros for X-macro expansion
+#define VOXEL_CONFIG_EXPAND_DECL(Type, Name, CppType, Index, ...) \
+    VOXEL_##Type(Name, CppType, Index, ##__VA_ARGS__);
+
+#define VOXEL_CONFIG_EXPAND_INIT(Type, Name, CppType, Index, ...) \
+    Name##_desc,
+
+/**
+ * @brief Begin/End style (for backward compatibility, requires listing names twice)
+ */
+#define VOXEL_CONFIG_BEGIN(ConfigName, NumAttributes) \
+    struct ConfigName : public ::VoxelData::VoxelConfigBase<NumAttributes> {
+
+#define VOXEL_CONFIG_END(ConfigName, ...) \
+    ConfigName() { \
+        attributes = { __VA_ARGS__##_desc... }; \
+    } \
+}
 
 /**
  * @brief Define key attribute with automatic initialization
