@@ -1019,7 +1019,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.tMin = t_min_world;
                     hit.tMax = tv_max_world;
                     hit.position = origin + rayDir * t_min_world;
-                    hit.scale = scale;  // ESVO scale (22=root, 0=deepest)
+                    // Convert ESVO scale to depth level
+                    // Leaf voxels are conceptually one level deeper than their parent node
+                    // scale=22 (root)→depth=0, scale=21 (level1)→depth=1, leaves→depth=2
+                    hit.scale = 22 - scale + 1;  // +1 because leaves are children of the node at 'scale'
 
                     // Compute surface normal from 3×3×3 neighborhood
                     float voxelSize = scale_exp2 * (m_worldMax.x - m_worldMin.x);

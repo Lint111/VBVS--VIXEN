@@ -420,6 +420,30 @@ uint32_t* BrickView::getAttributePointer<uint32_t>(AttributeIndex attrIndex) {
     return view.data();
 }
 
+template<>
+const glm::vec3* BrickView::getAttributePointer<glm::vec3>(AttributeIndex attrIndex) const {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
+
+    auto* storage = m_registry->getStorage(attrIndex);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrIndex);
+    auto view = storage->getSlotView<glm::vec3>(slot);
+    return view.data();
+}
+
+template<>
+glm::vec3* BrickView::getAttributePointer<glm::vec3>(AttributeIndex attrIndex) {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
+
+    auto* storage = m_registry->getStorage(attrIndex);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrIndex);
+    auto view = storage->getSlotView<glm::vec3>(slot);
+    return view.data();
+}
+
 // Name-based access (legacy - delegates to index-based)
 template<>
 const float* BrickView::getAttributePointer<float>(const std::string& attrName) const {

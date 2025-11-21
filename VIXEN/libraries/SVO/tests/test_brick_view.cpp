@@ -24,73 +24,62 @@ protected:
 
 TEST_F(BrickViewTest, ConstructionParameters) {
     // BrickView always uses 8³ = 512 voxels
-    auto brick = registry->allocateBrick();
-    bool hasBrick = brick.has_value();
-    ASSERT_TRUE(hasBrick);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView brickView = registry->getBrick(brickId);
 
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
 
-    EXPECT_EQ(view->getVoxelCount(), 512); // 8³
+    EXPECT_EQ(brickView.getVoxelCount(), 512); // 8³
 }
 
 TEST_F(BrickViewTest, AllocateMultipleBricks) {
-    auto brick0 = registry->allocateBrick();
-    auto brick1 = registry->allocateBrick();
-    auto brick2 = registry->allocateBrick();
+    uint32_t brickId0 = registry->allocateBrick();
+    uint32_t brickId1 = registry->allocateBrick();
+    uint32_t brickId2 = registry->allocateBrick();
 
-    bool has0 = brick0.has_value();
-    bool has1 = brick1.has_value();
-    bool has2 = brick2.has_value();
-    ASSERT_TRUE(has0);
-    ASSERT_TRUE(has1);
-    ASSERT_TRUE(has2);
+    BrickView view0 = registry->getBrick(brickId0);
+    BrickView view1 = registry->getBrick(brickId1);
+    BrickView view2 = registry->getBrick(brickId2);
+
 
     // Bricks should have different IDs
-    EXPECT_NE(brick0.value(), brick1.value());
-    EXPECT_NE(brick1.value(), brick2.value());
-    EXPECT_NE(brick0.value(), brick2.value());
+    EXPECT_NE(brickId0, brickId1);
+    EXPECT_NE(brickId1, brickId2);
+    EXPECT_NE(brickId0, brickId2);
 }
 
 TEST_F(BrickViewTest, Index3DConversion_Linear) {
     // Test LINEAR ordering (X varies fastest)
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
 
-    auto& v = view.value();
+    
 
     // Corner voxels
-    EXPECT_EQ(v.getLinearIndex(0, 0, 0), 0);
-    EXPECT_EQ(v.getLinearIndex(7, 7, 7), 511); // 8³-1
+    EXPECT_EQ(view.getLinearIndex(0, 0, 0), 0);
+    EXPECT_EQ(view.getLinearIndex(7, 7, 7), 511); // 8³-1
 
     // Edge cases
-    EXPECT_EQ(v.getLinearIndex(1, 0, 0), 1);
-    EXPECT_EQ(v.getLinearIndex(0, 1, 0), 8);
-    EXPECT_EQ(v.getLinearIndex(0, 0, 1), 64);
+    EXPECT_EQ(view.getLinearIndex(1, 0, 0), 1);
+    EXPECT_EQ(view.getLinearIndex(0, 1, 0), 8);
+    EXPECT_EQ(view.getLinearIndex(0, 0, 1), 64);
 
     // Center voxel
-    EXPECT_EQ(v.getLinearIndex(4, 4, 4), 4 + 4*8 + 4*64);
+    EXPECT_EQ(view.getLinearIndex(4, 4, 4), 4 + 4*8 + 4*64);
 }
 
 TEST_F(BrickViewTest, Index3DOutOfBounds) {
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
 
-    auto& v = view.value();
 
     // Out of bounds access should throw or return invalid index
     // (Note: Current BrickView implementation may not throw, adjust test accordingly)
-    EXPECT_THROW(v.getLinearIndex(-1, 0, 0), std::out_of_range);
-    EXPECT_THROW(v.getLinearIndex(0, -1, 0), std::out_of_range);
-    EXPECT_THROW(v.getLinearIndex(0, 0, -1), std::out_of_range);
-    EXPECT_THROW(v.getLinearIndex(8, 0, 0), std::out_of_range);
-    EXPECT_THROW(v.getLinearIndex(0, 8, 0), std::out_of_range);
-    EXPECT_THROW(v.getLinearIndex(0, 0, 8), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(-1, 0, 0), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(0, -1, 0), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(0, 0, -1), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(8, 0, 0), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(0, 8, 0), std::out_of_range);
+    EXPECT_THROW(view.getLinearIndex(0, 0, 8), std::out_of_range);
 }
 
 // ============================================================================
@@ -101,19 +90,14 @@ TEST_F(BrickViewTest, FloatAttribute_SetAndGet) {
     // Register density attribute
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
-
-    auto& v = view.value();
-
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
     // Set density for corner voxel
-    size_t idx = v.getLinearIndex(0, 0, 0);
-    v.set<float>("density", idx, 0.75f);
+    size_t idx = view.getLinearIndex(0, 0, 0);
+    view.set<float>("density", idx, 0.75f);
 
     // Retrieve
-    float density = v.get<float>("density", idx);
+    float density = view.get<float>("density", idx);
     EXPECT_FLOAT_EQ(density, 0.75f);
 }
 
@@ -122,22 +106,17 @@ TEST_F(BrickViewTest, MultipleAttributes_SetAndGet) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
     auto materialIdx = registry->addAttribute("material", AttributeType::Uint32, 0u);
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
-
-    auto& v = view.value();
-
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
     // Set density and material for corner voxel
-    size_t idx = v.getLinearIndex(0, 0, 0);
-    v.set<float>("density", idx, 0.75f);
-    v.set<uint32_t>("material", idx, 42u);
+    size_t idx = view.getLinearIndex(0, 0, 0);
+    view.set<float>("density", idx, 0.75f);
+    view.set<uint32_t>("material", idx, 42u);
 
     // Retrieve
-    float density = v.get<float>("density", idx); 
+    float density = view.get<float>("density", idx); 
     EXPECT_FLOAT_EQ(density, 0.75f);
-    uint32_t material = v.get<uint32_t>("material", idx); 
+    uint32_t material = view.get<uint32_t>("material", idx); 
     EXPECT_EQ(material, 42u);
 }
 
@@ -145,38 +124,30 @@ TEST_F(BrickViewTest, MultipleBricks_DataIsolation) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
     auto materialIdx = registry->addAttribute("material", AttributeType::Uint32, 0u);
 
-    auto brick0 = registry->allocateBrick();
-    auto brick1 = registry->allocateBrick();
+    uint32_t brickId0 = registry->allocateBrick();
+    uint32_t brickId1 = registry->allocateBrick();
 
-    auto view0 = registry->getBrick(brick0.value());
-    auto view1 = registry->getBrick(brick1.value());
+    BrickView view0 = registry->getBrick(brickId0);
+    BrickView view1 = registry->getBrick(brickId1);
 
-    bool has0 = view0.has_value();
-    bool has1 = view1.has_value();
-    ASSERT_TRUE(has0);
-    ASSERT_TRUE(has1);
 
-    auto& v0 = view0.value();
-    auto& v1 = view1.value();
-
-    size_t centerIdx = v0.getLinearIndex(4, 4, 4);
+    size_t centerIdx = view0.getLinearIndex(4, 4, 4);
 
     // Write to brick 0
-    v0.set<float>("density", centerIdx, 1.0f);
-    v0.set<uint32_t>("material", centerIdx, 100u);
-
+    view0.set<float>("density", centerIdx, 1.0f);
+    view0.set<uint32_t>("material", centerIdx, 100u);
     // Write to brick 1
-    v1.set<float>("density", centerIdx, 0.5f);
-    v1.set<uint32_t>("material", centerIdx, 200u);
+    view1.set<float>("density", centerIdx, 0.5f);
+    view1.set<uint32_t>("material", centerIdx, 200u);
 
     // Verify isolation
-    float d0 = v0.get<float>("density", centerIdx); 
+    float d0 = view0.get<float>("density", centerIdx); 
     EXPECT_FLOAT_EQ(d0, 1.0f);
-    uint32_t m0 = v0.get<uint32_t>("material", centerIdx); 
+    uint32_t m0 = view0.get<uint32_t>("material", centerIdx); 
     EXPECT_EQ(m0, 100u);
-    float d1 = v1.get<float>("density", centerIdx); 
+    float d1 = view1.get<float>("density", centerIdx); 
     EXPECT_FLOAT_EQ(d1, 0.5f);
-    uint32_t m1 = v1.get<uint32_t>("material", centerIdx); 
+    uint32_t m1 = view1.get<uint32_t>("material", centerIdx); 
     EXPECT_EQ(m1, 200u);
 }
 
@@ -184,33 +155,30 @@ TEST_F(BrickViewTest, FillBrick_GradientPattern) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
     auto materialIdx = registry->addAttribute("material", AttributeType::Uint32, 0u);
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
 
-    auto& v = view.value();
 
     // Fill brick with gradient pattern (8³ = 512 voxels)
     for (int z = 0; z < 8; ++z) {
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 8; ++x) {
-                size_t idx = v.getLinearIndex(x, y, z);
+                size_t idx = view.getLinearIndex(x, y, z);
                 float density = (x + y + z) / 21.0f; // [0, 1] (max = 7+7+7=21)
                 uint32_t material = x + y * 8 + z * 64;
 
-                v.set<float>("density", idx, density);
-                v.set<uint32_t>("material", idx, material);
+                view.set<float>("density", idx, density);
+                view.set<uint32_t>("material", idx, material);
             }
         }
     }
 
     // Verify corners and center
-    float d000 = v.get<float>("density", v.getLinearIndex(0, 0, 0)); 
+    float d000 = view.get<float>("density", view.getLinearIndex(0, 0, 0)); 
     EXPECT_FLOAT_EQ(d000, 0.0f);
-    float d777 = v.get<float>("density", v.getLinearIndex(7, 7, 7)); 
+    float d777 = view.get<float>("density", view.getLinearIndex(7, 7, 7)); 
     EXPECT_FLOAT_EQ(d777, 1.0f);
-    uint32_t mat123 = v.get<uint32_t>("material", v.getLinearIndex(1, 2, 3)); 
+    uint32_t mat123 = view.get<uint32_t>("material", view.getLinearIndex(1, 2, 3)); 
     EXPECT_EQ(mat123, 1 + 2*8 + 3*64);
 }
 
@@ -221,18 +189,13 @@ TEST_F(BrickViewTest, FillBrick_GradientPattern) {
 TEST_F(BrickViewTest, Vec3Attribute_Color) {
     auto colorIdx = registry->registerKey("color", AttributeType::Vec3, glm::vec3(0.0f));
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
-
-    auto& v = view.value();
-
-    size_t idx = v.getLinearIndex(4, 4, 4);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
+    size_t idx = view.getLinearIndex(4, 4, 4);
     glm::vec3 color(1.0f, 0.5f, 0.25f);
-    v.set<glm::vec3>("color", idx, color);
+    view.set<glm::vec3>("color", idx, color);
 
-    glm::vec3 retrieved = v.get<glm::vec3>("color", idx);
+    glm::vec3 retrieved = view.get<glm::vec3>("color", idx);
     EXPECT_FLOAT_EQ(retrieved.r, 1.0f);
     EXPECT_FLOAT_EQ(retrieved.g, 0.5f);
     EXPECT_FLOAT_EQ(retrieved.b, 0.25f);
@@ -245,23 +208,20 @@ TEST_F(BrickViewTest, Vec3Attribute_Color) {
 TEST_F(BrickViewTest, ThreeDCoordinateAPI) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
 
-    auto& v = view.value();
 
     // Set using 3D coordinates
-    v.setAt3D<float>("density", 3, 5, 7, 0.42f);
+    view.setAt3D<float>("density", 3, 5, 7, 0.42f);
 
     // Get using 3D coordinates
-    float density = v.getAt3D<float>("density", 3, 5, 7);
+    float density = view.getAt3D<float>("density", 3, 5, 7);
     EXPECT_FLOAT_EQ(density, 0.42f);
 
     // Verify same as linear index
-    size_t idx = v.getLinearIndex(3, 5, 7);
-    float dens = v.get<float>("density", idx); 
+    size_t idx = view.getLinearIndex(3, 5, 7);
+    float dens = view.get<float>("density", idx); 
     EXPECT_FLOAT_EQ(dens, 0.42f);
 }
 
@@ -272,15 +232,10 @@ TEST_F(BrickViewTest, ThreeDCoordinateAPI) {
 TEST_F(BrickViewTest, PointerAccess_DirectWrite) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
-
-    auto& v = view.value();
-
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
     // Get direct pointer to density data
-    float* densityPtr = v.getAttributePointer<float>(densityIdx);
+    float* densityPtr = view.getAttributePointer<float>(densityIdx);
     ASSERT_NE(densityPtr, nullptr);
 
     // Write directly via pointer (zero-cost)
@@ -289,9 +244,9 @@ TEST_F(BrickViewTest, PointerAccess_DirectWrite) {
     densityPtr[511] = 0.9f; // Last voxel
 
     // Verify via get<T>
-    float d0 = v.get<float>("density", 0);
-    float d256 = v.get<float>("density", 256);
-    float d511 = v.get<float>("density", 511);
+    float d0 = view.get<float>("density", 0);
+    float d256 = view.get<float>("density", 256);
+    float d511 = view.get<float>("density", 511);
     EXPECT_FLOAT_EQ(d0, 0.1f);
     EXPECT_FLOAT_EQ(d256, 0.5f);
     EXPECT_FLOAT_EQ(d511, 0.9f);
@@ -300,15 +255,10 @@ TEST_F(BrickViewTest, PointerAccess_DirectWrite) {
 TEST_F(BrickViewTest, PointerAccess_Vec3) {
     auto colorIdx = registry->registerKey("color", AttributeType::Vec3, glm::vec3(0.0f));
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
-
-    auto& v = view.value();
-
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
     // Get direct pointer to color data
-    glm::vec3* colorPtr = v.getAttributePointer<glm::vec3>(colorIdx);
+    glm::vec3* colorPtr = view.getAttributePointer<glm::vec3>(colorIdx);
     ASSERT_NE(colorPtr, nullptr);
 
     // Write directly
@@ -316,7 +266,7 @@ TEST_F(BrickViewTest, PointerAccess_Vec3) {
     colorPtr[100] = glm::vec3(0.0f, 1.0f, 0.0f); // Green
 
     // Verify
-    glm::vec3 red = v.get<glm::vec3>("color", 0);
+    glm::vec3 red = view.get<glm::vec3>("color", 0);
     EXPECT_FLOAT_EQ(red.r, 1.0f);
     EXPECT_FLOAT_EQ(red.g, 0.0f);
     EXPECT_FLOAT_EQ(red.b, 0.0f);
@@ -326,27 +276,19 @@ TEST_F(BrickViewTest, PointerAccess_Vec3) {
 // Index-Based Access Tests (AttributeIndex for O(1) lookup)
 // ============================================================================
 
-// NOTE: Commented out due to MSVC template parsing bug
-// MSVC incorrectly reports "v is not initialized" error on line 343
-// even though v is clearly defined on line 342
-// TODO: Report to Microsoft or use GCC/Clang for testing
-/*
 TEST_F(BrickViewTest, IndexBasedAccess_Performance) {
     auto densityIdx = registry->registerKey("density", AttributeType::Float, 0.0f);
     auto colorIdx = registry->addAttribute("color", AttributeType::Vec3, glm::vec3(0.0f));
 
-    auto brick = registry->allocateBrick();
-    auto view = registry->getBrick(brick.value());
-    bool hasView = view.has_value();
-    ASSERT_TRUE(hasView);
+    uint32_t brickId = registry->allocateBrick();
+    BrickView view = registry->getBrick(brickId);
 
     // Use AttributeIndex directly (fastest path)
     EXPECT_EQ(densityIdx, 0); // Key attribute is always index 0
 
     // Get pointers using AttributeIndex (zero-cost O(1) lookup)
-    auto& v = view.value();
-    float* densityPtr = v.getAttributePointer<float>(densityIdx);
-    glm::vec3* colorPtr = v.getAttributePointer<glm::vec3>(colorIdx);
+    float* densityPtr = view.getAttributePointer<float>(densityIdx);
+    glm::vec3* colorPtr = view.getAttributePointer<glm::vec3>(colorIdx);
 
     ASSERT_NE(densityPtr, nullptr);
     ASSERT_NE(colorPtr, nullptr);
@@ -362,7 +304,7 @@ TEST_F(BrickViewTest, IndexBasedAccess_Performance) {
     EXPECT_FLOAT_EQ(densityPtr[511], 511.0f / 512.0f);
     EXPECT_FLOAT_EQ(colorPtr[100].r, 100.0f / 255.0f);
 }
-*/
+
 // ============================================================================
 // Main
 // ============================================================================

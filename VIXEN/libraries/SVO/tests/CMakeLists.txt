@@ -258,7 +258,9 @@ add_executable(test_attribute_registry_integration
     test_attribute_registry_integration.cpp
 )
 
-if(TARGET SVO)
+if(TARGET SVO AND TARGET VoxelData)
+    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main SVO VoxelData)
+elseif(TARGET SVO)
     target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main SVO)
 else()
     target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main)

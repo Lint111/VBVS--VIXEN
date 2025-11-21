@@ -121,6 +121,12 @@ public:
     // Get voxel count
     size_t getVoxelCount() const { return VOXELS_PER_BRICK; }
 
+    // Convert 3D coordinates to linear index (for tests)
+    size_t getLinearIndex(int x, int y, int z) const {
+        // Linear indexing: X varies fastest
+        return x + y * 8 + z * 64;
+    }
+
     // ============================================================================
     // Fast Attribute Access (Performance-Critical Ray Traversal)
     // ============================================================================

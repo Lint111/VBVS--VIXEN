@@ -2,10 +2,12 @@
 #include "LaineKarrasOctree.h"
 #include "VoxelInjection.h"
 #include "AttributeRegistry.h"
+#include "BrickView.h"
 #include "DynamicVoxelStruct.h"
 #include <glm/glm.hpp>
 
 using namespace SVO;
+using namespace VoxelData;
 
 /**
  * Test suite for AttributeRegistry integration with LaineKarrasOctree.
@@ -114,16 +116,10 @@ TEST_F(AttributeRegistryIntegrationTest, MultiAttributeRayHit) {
 // ============================================================================
 TEST_F(AttributeRegistryIntegrationTest, BrickViewPointerAccess) {
     // Create a brick and verify direct pointer access works
-    auto brick = registry->allocateBrick();
-    bool hasBrick = brick.has_value();
-    ASSERT_TRUE(hasBrick) << "Should allocate brick successfully";
+    uint32_t brickID = registry->allocateBrick();
+    ASSERT_NE(brickID, 0) << "Should allocate brick successfully";
 
-    auto brickView = registry->getBrick(brick.value());
-    bool hasView = brickView.has_value();
-    ASSERT_TRUE(hasView) << "Should retrieve brick view";
-
-    // Get direct reference to BrickView (avoids optional-> issues)
-    auto& view = brickView.value();
+    BrickView view = registry->getBrick(brickID);
 
     // Get attribute pointers using index-based access (fastest path)
     float* densityPtr = view.getAttributePointer<float>(0); // Key attribute at index 0
@@ -144,7 +140,7 @@ TEST_F(AttributeRegistryIntegrationTest, BrickViewPointerAccess) {
     EXPECT_FLOAT_EQ(density0, 0.5f);
     EXPECT_FLOAT_EQ(density256, 0.75f);
 
-    auto retrievedColor = view.get<glm::vec3>("color", 0);
+    glm::vec3 retrievedColor = view.get<glm::vec3>("color", 0);
     EXPECT_FLOAT_EQ(retrievedColor.r, 1.0f);
     EXPECT_FLOAT_EQ(retrievedColor.g, 0.0f);
     EXPECT_FLOAT_EQ(retrievedColor.b, 0.0f);
@@ -245,16 +241,10 @@ TEST_F(AttributeRegistryIntegrationTest, CustomKeyPredicate) {
 // ============================================================================
 TEST_F(AttributeRegistryIntegrationTest, BackwardCompatibility_StringLookup) {
     // Verify that string-based attribute lookup still works (delegates to index lookup)
-    auto brick = registry->allocateBrick();
-    bool hasBrick = brick.has_value();
-    ASSERT_TRUE(hasBrick) << "Should allocate brick";
+    uint32_t brickID = registry->allocateBrick();
+    ASSERT_NE(brickID, 0) << "Should allocate brick";
 
-    auto brickView = registry->getBrick(brick.value());
-    bool hasView = brickView.has_value();
-    ASSERT_TRUE(hasView) << "Should get brick view";
-
-    // Get direct reference to BrickView
-    auto& view = brickView.value();
+    BrickView view = registry->getBrick(brickID);
 
     // String-based set/get (legacy path)
     view.set<float>("density", 0, 0.42f);

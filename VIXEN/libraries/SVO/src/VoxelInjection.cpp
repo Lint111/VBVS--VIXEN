@@ -298,7 +298,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
                 }
 
                 // Use unified brick allocation helper
-                auto brickResult = allocateAndPopulateBrick(
+                BrickAllocation brickResult = allocateAndPopulateBrick(
                     center,
                     size,
                     &sampler,  // Use procedural sampler
@@ -801,7 +801,7 @@ bool VoxelInjector::insertVoxel(
                 glm::vec3 nodeCenter = position;  // Approximate - should calculate exact node center
 
                 // Create a brick for this single voxel
-                auto brickResult = allocateAndPopulateBrick(
+                BrickAllocation brickResult = allocateAndPopulateBrick(
                     nodeCenter,
                     nodeSize,
                     nullptr,    // No sampler
