@@ -9,6 +9,7 @@
 
 // VoxelData library
 #include <AttributeRegistry.h>
+#include <DynamicVoxelStruct.h>
 
 namespace SVO {
 
@@ -18,26 +19,11 @@ struct DefaultLeafData;
 struct Octree;
 
 /**
- * Direct voxel data for injection into SVO structure.
- * Bypasses mesh triangulation - use for procedural generation,
- * noise fields, SDFs, terrain, etc.
- */
-struct VoxelData {
-    glm::vec3 position;      // World-space position
-    glm::vec3 color;         // RGB color [0,1]
-    glm::vec3 normal;        // Surface normal (normalized)
-    float density = 1.0f;    // Density/occupancy [0,1]
-    float occlusion = 1.0f;  // Ambient occlusion [0,1]
-
-    bool isSolid() const { return density > 0.5f; }
-};
-
-/**
  * Sparse voxel input - only occupied voxels.
  * Most efficient for sparse data (terrain, noise).
  */
 struct SparseVoxelInput {
-    std::vector<VoxelData> voxels;
+    std::vector<::VoxelData::DynamicVoxelScalar> voxels;
     glm::vec3 worldMin;
     glm::vec3 worldMax;
     int resolution;  // Grid resolution along each axis
@@ -48,7 +34,7 @@ struct SparseVoxelInput {
  * Use for dense volumetric data (fog, clouds, etc.).
  */
 struct DenseVoxelInput {
-    std::vector<VoxelData> voxels;  // Size = resolution^3
+    std::vector<::VoxelData::DynamicVoxelScalar> voxels;  // Size = resolution^3
     glm::vec3 worldMin;
     glm::vec3 worldMax;
     glm::ivec3 resolution;          // Resolution per axis
@@ -57,7 +43,7 @@ struct DenseVoxelInput {
         return x + y * resolution.x + z * resolution.x * resolution.y;
     }
 
-    const VoxelData& at(int x, int y, int z) const {
+    const ::VoxelData::DynamicVoxelScalar& at(int x, int y, int z) const {
         return voxels[getIndex(x, y, z)];
     }
 };
@@ -73,9 +59,11 @@ public:
 
     /**
      * Sample voxel data at given position.
+     * @param position World-space position to sample
+     * @param outVoxel Output voxel (caller provides DynamicVoxelScalar with registry)
      * @return true if voxel is solid, false if empty
      */
-    virtual bool sample(const glm::vec3& position, VoxelData& outData) const = 0;
+    virtual bool sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outVoxel) const = 0;
 
     /**
      * Get bounding box of valid data.
@@ -101,7 +89,7 @@ public:
  */
 class LambdaVoxelSampler : public IVoxelSampler {
 public:
-    using SampleFunc = std::function<bool(const glm::vec3&, VoxelData&)>;
+    using SampleFunc = std::function<bool(const glm::vec3&, ::VoxelData::DynamicVoxelScalar&)>;
     using BoundsFunc = std::function<void(glm::vec3&, glm::vec3&)>;
     using DensityFunc = std::function<float(const glm::vec3&, float)>;
 
@@ -113,8 +101,8 @@ public:
         , m_boundsFunc(std::move(boundsFunc))
         , m_densityFunc(std::move(densityFunc)) {}
 
-    bool sample(const glm::vec3& position, VoxelData& outData) const override {
-        return m_sampleFunc(position, outData);
+    bool sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outVoxel) const override {
+        return m_sampleFunc(position, outVoxel);
     }
 
     void getBounds(glm::vec3& outMin, glm::vec3& outMax) const override {
@@ -154,7 +142,7 @@ public:
 
     explicit NoiseSampler(const Params& params = Params{});
 
-    bool sample(const glm::vec3& position, VoxelData& outData) const override;
+    bool sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outData) const override;
     void getBounds(glm::vec3& outMin, glm::vec3& outMax) const override;
     float estimateDensity(const glm::vec3& center, float size) const override;
 
@@ -172,7 +160,7 @@ public:
 
     explicit SDFSampler(SDFFunc sdfFunc, const glm::vec3& min, const glm::vec3& max);
 
-    bool sample(const glm::vec3& position, VoxelData& outData) const override;
+    bool sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outData) const override;
     void getBounds(glm::vec3& outMin, glm::vec3& outMax) const override;
 
 private:
@@ -199,7 +187,7 @@ public:
 
     explicit HeightmapSampler(const Params& params);
 
-    bool sample(const glm::vec3& position, VoxelData& outData) const override;
+    bool sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScalar& outData) const override;
     void getBounds(glm::vec3& outMin, glm::vec3& outMax) const override;
     float estimateDensity(const glm::vec3& center, float size) const override;
 
@@ -331,7 +319,7 @@ public:
     bool insertVoxel(
         ISVOStructure& svo,
         const glm::vec3& position,
-        const VoxelData& data,
+        const ::VoxelData::DynamicVoxelScalar& data,
         const InjectionConfig& config = InjectionConfig{});
 
     /**
@@ -354,7 +342,7 @@ public:
      */
     size_t insertVoxelsBatch(
         ISVOStructure& svo,
-        const std::vector<VoxelData>& voxels,
+        const std::vector<::VoxelData::DynamicVoxelScalar>& voxels,
         const InjectionConfig& config = InjectionConfig{});
 
     /**
@@ -409,7 +397,7 @@ private:
     struct BrickAllocation {
         uint32_t brickID;
         bool hasSolidVoxels;
-        VoxelData firstSolidVoxel;  // For node attributes
+        ::VoxelData::DynamicVoxelScalar firstSolidVoxel;  // For node attributes (legacy POD)
     };
 
     // Find existing brick or allocate new one for the given position
@@ -419,23 +407,29 @@ private:
         float worldSize,
         const InjectionConfig& config);
 
-    // Populate a brick with voxel data
-    // Can be used for both new and existing bricks
-    BrickAllocation populateBrick(
+    // Populate a brick by sampling all voxels procedurally
+    BrickAllocation populateBrickFromSampler(
         uint32_t brickID,
         const glm::vec3& worldCenter,
         float worldSize,
-        const IVoxelSampler* sampler,  // For procedural sampling
-        const VoxelData* singleVoxel,  // For additive insertion
-        const InjectionConfig& config,
-        bool isNewBrick);  // If false, updates existing brick
+        const IVoxelSampler& sampler,
+        const InjectionConfig& config);
+
+    // Update a single voxel in a brick
+    BrickAllocation updateBrickVoxel(
+        uint32_t brickID,
+        const glm::vec3& worldCenter,
+        float worldSize,
+        const ::VoxelData::DynamicVoxelScalar& voxel,
+        const glm::vec3& voxelPosition,
+        const InjectionConfig& config);
 
     // Legacy function - allocates and populates in one step
     BrickAllocation allocateAndPopulateBrick(
         const glm::vec3& worldCenter,
         float worldSize,
         const IVoxelSampler* sampler,
-        const VoxelData* singleVoxel,
+        const ::VoxelData::DynamicVoxelScalar* singleVoxel,
         const InjectionConfig& config);
 
     // Check if a voxel should terminate at brick depth
@@ -518,13 +512,13 @@ public:
      * Thread-safe - can be called from multiple threads.
      * Returns false if queue is full.
      */
-    bool enqueue(const glm::vec3& position, const VoxelData& data);
+    bool enqueue(const glm::vec3& position, const ::VoxelData::DynamicVoxelScalar& data);
 
     /**
      * Enqueue batch of voxels.
      * More efficient than individual enqueue() calls.
      */
-    size_t enqueueBatch(const std::vector<VoxelData>& voxels);
+    size_t enqueueBatch(const std::vector<::VoxelData::DynamicVoxelScalar>& voxels);
 
     /**
      * Get frame-coherent snapshot for safe rendering.

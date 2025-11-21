@@ -36,7 +36,7 @@ public:
      * ```
      */
     template<size_t N>
-    explicit DynamicVoxelScalar(const VoxelConfigBase<N>* config) {
+    explicit DynamicVoxelScalar(const VoxelConfigBase<N>* config) : m_registry(nullptr) {
         if (config) {
             // Extract schema from config descriptors
             for (const auto& desc : config->getAttributeDescriptors()) {
@@ -71,8 +71,46 @@ public:
     // Sync with registry schema (adds new attributes with defaults)
     void syncWithRegistry(const AttributeRegistry* registry);
 
+    /**
+     * @brief Evaluate if voxel passes the key predicate
+     *
+     * Uses the registry's key attribute and predicate to determine if this voxel
+     * represents "solid" data (should be included in octree structure).
+     *
+     * Returns true if:
+     * - No registry is set (default pass)
+     * - Key attribute exists and passes the registry's predicate
+     *
+     * Example:
+     * ```cpp
+     * // Registry has key "density" with predicate: density > 0.5f
+     * DynamicVoxelScalar voxel(&registry);
+     * voxel.set("density", 0.8f);
+     * bool isSolid = voxel.passesKeyPredicate();  // true
+     * ```
+     */
+    bool passesKeyPredicate() const {
+        if (!m_registry) {
+            return true;  // No registry - default pass
+        }
+
+        const std::string& keyName = m_registry->getKeyAttributeName();
+        if (!has(keyName)) {
+            return false;  // Key attribute not set
+        }
+
+        // Get key value and evaluate against registry's predicate
+        auto it = m_values.find(keyName);
+        if (it == m_values.end()) {
+            return false;
+        }
+
+        return m_registry->evaluateKey(it->second);
+    }
+
 private:
     std::unordered_map<std::string, std::any> m_values;
+    const AttributeRegistry* m_registry = nullptr;
 };
 
 /**

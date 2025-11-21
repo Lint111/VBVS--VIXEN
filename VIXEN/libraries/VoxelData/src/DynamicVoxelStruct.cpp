@@ -7,7 +7,8 @@ namespace VoxelData {
 // DynamicVoxelScalar Implementation
 // ============================================================================
 
-DynamicVoxelScalar::DynamicVoxelScalar(const AttributeRegistry* registry) {
+DynamicVoxelScalar::DynamicVoxelScalar(const AttributeRegistry* registry)
+    : m_registry(registry) {
     syncWithRegistry(registry);
 }
 
@@ -22,6 +23,9 @@ std::vector<std::string> DynamicVoxelScalar::getAttributeNames() const {
 
 void DynamicVoxelScalar::syncWithRegistry(const AttributeRegistry* registry) {
     if (!registry) return;
+
+    // Update registry pointer
+    m_registry = registry;
 
     // Get all attributes from registry
     auto registryAttrs = registry->getAttributeNames();

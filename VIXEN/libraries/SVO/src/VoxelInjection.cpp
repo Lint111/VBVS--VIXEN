@@ -3,6 +3,7 @@
 #include "SVOBuilder.h"
 #include "BrickStorage.h"
 #include "BrickReference.h"
+#include "DynamicVoxelStruct.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -28,7 +29,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     auto startTime = std::chrono::high_resolution_clock::now();
 
     // Use shared_ptr to avoid expensive copies in lambdas
-    auto voxelsPtr = std::make_shared<std::vector<VoxelData>>(input.voxels);
+    auto voxelsPtr = std::make_shared<std::vector<::VoxelData::DynamicVoxelScalar>>(input.voxels);
     glm::vec3 worldMinCopy = input.worldMin;
     glm::vec3 worldMaxCopy = input.worldMax;
     int resolutionCopy = input.resolution;
@@ -36,17 +37,19 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     // Create lambda sampler from sparse voxels
     auto sampler = std::make_unique<LambdaVoxelSampler>(
         // Sample function - lookup voxel in sparse list
-        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& outVoxel) -> bool {
             // Find closest voxel (simple linear search for now)
             // TODO: Use spatial hash or octree for faster lookup
             float minDist = std::numeric_limits<float>::max();
-            const VoxelData* closest = nullptr;
+            const ::VoxelData::DynamicVoxelScalar* closest = nullptr;
 
             glm::vec3 voxelSize = (worldMaxCopy - worldMinCopy) / float(resolutionCopy);
             float searchRadius = glm::length(voxelSize) * 0.5f;
 
             for (const auto& voxel : *voxelsPtr) {
-                float dist = glm::length(voxel.position - pos);
+                if (!voxel.has("position")) continue;
+                glm::vec3 voxelPos = voxel.get<glm::vec3>("position");
+                float dist = glm::length(voxelPos - pos);
                 if (dist < searchRadius && dist < minDist) {
                     minDist = dist;
                     closest = &voxel;
@@ -54,7 +57,8 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
             }
 
             if (closest) {
-                data = *closest;
+                // Copy entire voxel (position is NOT in voxel data - it's spatial metadata)
+                outVoxel = *closest;
                 return true;
             }
             return false;
@@ -69,7 +73,9 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
             // Check if any voxel is within this region
             float halfSize = size * 0.5f;
             for (const auto& voxel : *voxelsPtr) {
-                glm::vec3 diff = glm::abs(voxel.position - center);
+                if (!voxel.has("position")) continue;
+                glm::vec3 voxelPos = voxel.get<glm::vec3>("position");
+                glm::vec3 diff = glm::abs(voxelPos - center);
                 if (diff.x <= halfSize && diff.y <= halfSize && diff.z <= halfSize) {
                     return 1.0f;  // Region contains voxels
                 }
@@ -99,15 +105,16 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
     auto startTime = std::chrono::high_resolution_clock::now();
 
     // Use shared_ptr to avoid expensive copies in lambdas
-    auto voxelsPtr = std::make_shared<std::vector<VoxelData>>(input.voxels);
+    auto voxelsPtr = std::make_shared<std::vector<::VoxelData::DynamicVoxelScalar>>(input.voxels);
     glm::vec3 worldMinCopy = input.worldMin;
     glm::vec3 worldMaxCopy = input.worldMax;
     glm::ivec3 resolutionCopy = input.resolution;
+    auto registryPtr = m_attributeRegistry;  // Capture registry for predicate evaluation
 
     // Create lambda sampler from dense grid
     auto sampler = std::make_unique<LambdaVoxelSampler>(
         // Sample function - lookup in grid
-        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& pos, VoxelData& data) -> bool {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy, registryPtr](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& outVoxel) -> bool {
             // Convert world position to grid coordinates
             glm::vec3 normalized = (pos - worldMinCopy) / (worldMaxCopy - worldMinCopy);
             glm::ivec3 gridPos = glm::clamp(
@@ -118,10 +125,14 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
 
             // Lookup voxel
             size_t idx = gridPos.x + gridPos.y * resolutionCopy.x + gridPos.z * resolutionCopy.x * resolutionCopy.y;
-            const VoxelData& voxel = (*voxelsPtr)[idx];
+            const ::VoxelData::DynamicVoxelScalar& voxel = (*voxelsPtr)[idx];
 
-            if (voxel.isSolid()) {
-                data = voxel;
+            // Check if solid using voxel's predicate method
+            bool isSolid = voxel.passesKeyPredicate();
+
+            if (isSolid) {
+                // Copy entire voxel (DynamicVoxelScalar handles all attributes internally)
+                outVoxel = voxel;
                 return true;
             }
             return false;
@@ -132,7 +143,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
             max = worldMaxCopy;
         },
         // Density estimator - count solid voxels in region
-        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy](const glm::vec3& center, float size) -> float {
+        [voxelsPtr, worldMinCopy, worldMaxCopy, resolutionCopy, registryPtr](const glm::vec3& center, float size) -> float {
             // Sample region and estimate density
             glm::vec3 halfSize(size * 0.5f);
             glm::vec3 regionMin = center - halfSize;
@@ -153,7 +164,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
                 resolutionCopy - 1
             );
 
-            // Count solid voxels in region
+            // Count solid voxels in region using key predicate
             int totalVoxels = 0;
             int solidVoxels = 0;
 
@@ -162,7 +173,10 @@ std::unique_ptr<ISVOStructure> VoxelInjector::inject(
                     for (int x = gridMin.x; x <= gridMax.x; ++x) {
                         totalVoxels++;
                         size_t idx = x + y * resolutionCopy.x + z * resolutionCopy.x * resolutionCopy.y;
-                        if ((*voxelsPtr)[idx].isSolid()) {
+                        const auto& voxel = (*voxelsPtr)[idx];
+
+                        // Use voxel's predicate method (delegates to registry internally)
+                        if (voxel.passesKeyPredicate()) {
                             solidVoxels++;
                         }
                     }
@@ -226,13 +240,16 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
         glm::vec3 aabbMax;
         int level;
         bool isLeaf;
-        VoxelData data;
+        ::VoxelData::DynamicVoxelScalar data;
         std::unique_ptr<VoxelNode> children[8];
 
         // Brick storage (only valid if this is a brick leaf)
         bool hasBrick = false;
         uint32_t brickID = 0;
         uint32_t brickDepth = 0;
+
+        // Constructor needs AttributeRegistry
+        VoxelNode(::VoxelData::AttributeRegistry* registry) : data(registry) {}
     };
 
     // Recursive subdivision function
@@ -259,7 +276,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
             return nullptr;
         }
 
-        auto node = std::make_unique<VoxelNode>();
+        auto node = std::make_unique<VoxelNode>(m_attributeRegistry);
         node->aabbMin = voxelMin;
         node->aabbMax = voxelMax;
         node->level = level;
@@ -304,7 +321,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
                 return node;
             } else if (shouldCreateBrick(level, config)) {
                 // Fallback: No BrickStorage - create simple leaf with center sample
-                VoxelData centerData;
+                ::VoxelData::DynamicVoxelScalar centerData(m_attributeRegistry);
                 if (sampler.sample(center, centerData)) {
                     node->data = centerData;
                     node->isLeaf = true;
@@ -315,7 +332,7 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
                 }
             } else {
                 // Create leaf - sample single voxel data
-                VoxelData data;
+                ::VoxelData::DynamicVoxelScalar data(m_attributeRegistry);
                 if (sampler.sample(center, data)) {
                     node->data = data;
                     node->isLeaf = true;
@@ -406,14 +423,16 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
 
             UncompressedAttributes attr{};
 
-            // Set color components
-            attr.red = static_cast<uint8_t>(glm::clamp(node->data.color.r, 0.0f, 1.0f) * 255);
-            attr.green = static_cast<uint8_t>(glm::clamp(node->data.color.g, 0.0f, 1.0f) * 255);
-            attr.blue = static_cast<uint8_t>(glm::clamp(node->data.color.b, 0.0f, 1.0f) * 255);
+            // Extract color using DynamicVoxelScalar API
+            glm::vec3 color = node->data.has("color") ? node->data.get<glm::vec3>("color") : glm::vec3(1.0f);
+            attr.red = static_cast<uint8_t>(glm::clamp(color.r, 0.0f, 1.0f) * 255);
+            attr.green = static_cast<uint8_t>(glm::clamp(color.g, 0.0f, 1.0f) * 255);
+            attr.blue = static_cast<uint8_t>(glm::clamp(color.b, 0.0f, 1.0f) * 255);
             attr.alpha = 255;
 
-            // Encode normal using point-on-cube
-            glm::vec3 n = glm::normalize(node->data.normal);
+            // Extract and encode normal using DynamicVoxelScalar API
+            glm::vec3 normal = node->data.has("normal") ? node->data.get<glm::vec3>("normal") : glm::vec3(0, 1, 0);
+            glm::vec3 n = glm::normalize(normal);
             glm::vec3 absN = glm::abs(n);
 
             // Find dominant axis
@@ -578,7 +597,7 @@ bool VoxelInjector::merge(
 bool VoxelInjector::insertVoxel(
     ISVOStructure& svo,
     const glm::vec3& position,
-    const VoxelData& data,
+    const ::VoxelData::DynamicVoxelScalar& data,
     const InjectionConfig& config) {
 
     // Cast to LaineKarrasOctree (required for direct manipulation)
@@ -681,14 +700,16 @@ bool VoxelInjector::insertVoxel(
     // 5. Create attribute data for the leaf voxel
     UncompressedAttributes attr{};
 
-    // Pack color
-    attr.red = static_cast<uint8_t>(glm::clamp(data.color.r, 0.0f, 1.0f) * 255);
-    attr.green = static_cast<uint8_t>(glm::clamp(data.color.g, 0.0f, 1.0f) * 255);
-    attr.blue = static_cast<uint8_t>(glm::clamp(data.color.b, 0.0f, 1.0f) * 255);
+    // Extract and pack color using DynamicVoxelScalar API
+    glm::vec3 color = data.has("color") ? data.get<glm::vec3>("color") : glm::vec3(1.0f);
+    attr.red = static_cast<uint8_t>(glm::clamp(color.r, 0.0f, 1.0f) * 255);
+    attr.green = static_cast<uint8_t>(glm::clamp(color.g, 0.0f, 1.0f) * 255);
+    attr.blue = static_cast<uint8_t>(glm::clamp(color.b, 0.0f, 1.0f) * 255);
     attr.alpha = 255;
 
-    // Pack normal using point-on-cube encoding
-    glm::vec3 n = glm::normalize(data.normal);
+    // Extract and pack normal using DynamicVoxelScalar API
+    glm::vec3 normal = data.has("normal") ? data.get<glm::vec3>("normal") : glm::vec3(0, 1, 0);
+    glm::vec3 n = glm::normalize(normal);
     glm::vec3 absN = glm::abs(n);
 
     // Find dominant axis
@@ -1048,7 +1069,7 @@ void VoxelInjector::onAttributeRemoved(const std::string& name) {
  */
 size_t VoxelInjector::insertVoxelsBatch(
     ISVOStructure& svo,
-    const std::vector<VoxelData>& voxels,
+    const std::vector<::VoxelData::DynamicVoxelScalar>& voxels,
     const InjectionConfig& config) {
 
     // TODO: Implement parallel batch insertion
@@ -1058,8 +1079,13 @@ size_t VoxelInjector::insertVoxelsBatch(
 
     size_t inserted = 0;
     for (const auto& voxel : voxels) {
-        if (insertVoxel(svo, voxel.position, voxel, config)) {
-            inserted++;
+        // Position is spatial info (stored in SVO structure), not a voxel attribute
+        // For batch insertion, position must be stored in the voxel data temporarily
+        if (voxel.has("position")) {
+            glm::vec3 position = voxel.get<glm::vec3>("position");
+            if (insertVoxel(svo, position, voxel, config)) {
+                inserted++;
+            }
         }
     }
 
@@ -1080,7 +1106,7 @@ VoxelInjector::BrickAllocation VoxelInjector::allocateAndPopulateBrick(
     const glm::vec3& worldCenter,
     float worldSize,
     const IVoxelSampler* sampler,
-    const VoxelData* singleVoxel,
+    const ::VoxelData::DynamicVoxelScalar* singleVoxel,
     const InjectionConfig& config)
 {
     // Use the new find-or-allocate approach
@@ -1093,8 +1119,20 @@ VoxelInjector::BrickAllocation VoxelInjector::allocateAndPopulateBrick(
         return result;
     }
 
-    // Populate the brick (updates existing or fills new)
-    return populateBrick(brickID, worldCenter, worldSize, sampler, singleVoxel, config, isNew);
+    // Populate the brick using appropriate method
+    if (sampler && isNew) {
+        return populateBrickFromSampler(brickID, worldCenter, worldSize, *sampler, config);
+    } else if (singleVoxel) {
+        // Position comes from worldCenter parameter (injection request), not voxel attributes
+        // Voxel attributes contain only appearance data (density, color, normal, etc.)
+        return updateBrickVoxel(brickID, worldCenter, worldSize, *singleVoxel, worldCenter, config);
+    }
+
+    // Empty brick
+    BrickAllocation result;
+    result.brickID = brickID;
+    result.hasSolidVoxels = false;
+    return result;
 }
 
 void VoxelInjector::addBrickReferenceToOctree(Octree* octree, uint32_t brickID, uint32_t brickDepth) {
@@ -1145,21 +1183,19 @@ std::pair<uint32_t, bool> VoxelInjector::findOrAllocateBrick(
     return {brickID, true};
 }
 
-// Populate or update a brick with voxel data
-VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
+// Populate a brick by sampling all voxels procedurally
+VoxelInjector::BrickAllocation VoxelInjector::populateBrickFromSampler(
     uint32_t brickID,
     const glm::vec3& worldCenter,
     float worldSize,
-    const IVoxelSampler* sampler,
-    const VoxelData* singleVoxel,
-    const InjectionConfig& config,
-    bool isNewBrick)
+    const IVoxelSampler& sampler,
+    const InjectionConfig& config)
 {
     BrickAllocation result;
     result.brickID = brickID;
     result.hasSolidVoxels = false;
 
-    if ((!m_attributeRegistry && !m_brickStorage) || brickID == 0xFFFFFFFF) {
+    if (!m_attributeRegistry || brickID == 0xFFFFFFFF) {
         return result;
     }
 
@@ -1169,146 +1205,78 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
     float voxelSize = worldSize / static_cast<float>(brickSideLength);
     glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
 
-    // NEW PATH: Use AttributeRegistry with BrickView
-    if (m_attributeRegistry) {
-        ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
+    ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
 
-        if (isNewBrick && sampler) {
-            // Calculate voxels per brick: (2^depth)³
-            const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
-            const int stride = brickSideLength;
-            const int planeSize = brickSideLength * brickSideLength;
+    // Calculate voxels per brick: (2^depth)³
+    const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
+    const int stride = brickSideLength;
+    const int planeSize = brickSideLength * brickSideLength;
 
-            // Sample all voxels and populate using 3D coordinates (ordering hidden in BrickView)
-            for (size_t i = 0; i < voxelsPerBrick; ++i) {
-                // Convert linear index to 3D coordinates
-                int x = i % stride;
-                int y = (i / stride) % stride;
-                int z = i / planeSize;
+    // Sample all voxels and populate using 3D coordinates
+    for (size_t i = 0; i < voxelsPerBrick; ++i) {
+        // Convert linear index to 3D coordinates
+        int x = i % stride;
+        int y = (i / stride) % stride;
+        int z = i / planeSize;
 
-                glm::vec3 voxelPos = brickMin + glm::vec3(
-                    (x + 0.5f) * voxelSize,
-                    (y + 0.5f) * voxelSize,
-                    (z + 0.5f) * voxelSize
-                );
+        glm::vec3 voxelPos = brickMin + glm::vec3(
+            (x + 0.5f) * voxelSize,
+            (y + 0.5f) * voxelSize,
+            (z + 0.5f) * voxelSize
+        );
 
-                VoxelData voxelData;
-                bool isSolid = sampler->sample(voxelPos, voxelData);
+        // Create dynamic voxel for sampler to populate
+        ::VoxelData::DynamicVoxelScalar voxel(m_attributeRegistry);
+        bool isSolid = sampler.sample(voxelPos, voxel);
 
-                // Populate all registered attributes dynamically
-                for (const auto& attrName : brick.getAttributeNames()) {
-                    if (attrName == "density") {
-                        brick.setAt3D<float>(attrName, x, y, z, isSolid ? voxelData.density : 0.0f);
-                    } else if (attrName == "color") {
-                        // TODO: Pack RGB into appropriate format based on attribute type
-                    } else if (attrName == "normal") {
-                        // TODO: Pack normal into appropriate format
-                    }
-                    // Additional attributes handled automatically
-                }
+        // BrickView handles all attribute type dispatch
+        brick.setVoxel(x, y, z, voxel);
+    }
 
-                if (isSolid && !result.hasSolidVoxels) {
-                    result.hasSolidVoxels = true;
-                    result.firstSolidVoxel = voxelData;
-                }
-            }
-        } else if (singleVoxel) {
-            // Update specific voxel in brick
-            glm::vec3 localPos = singleVoxel->position - brickMin;
-            int vx = static_cast<int>(localPos.x / voxelSize);
-            int vy = static_cast<int>(localPos.y / voxelSize);
-            int vz = static_cast<int>(localPos.z / voxelSize);
+    return result;
+}
 
-            // Clamp to brick bounds
-            vx = glm::clamp(vx, 0, brickSideLength - 1);
-            vy = glm::clamp(vy, 0, brickSideLength - 1);
-            vz = glm::clamp(vz, 0, brickSideLength - 1);
+// Update a single voxel in a brick
+VoxelInjector::BrickAllocation VoxelInjector::updateBrickVoxel(
+    uint32_t brickID,
+    const glm::vec3& worldCenter,
+    float worldSize,
+    const ::VoxelData::DynamicVoxelScalar& voxel,
+    const glm::vec3& voxelPosition,
+    const InjectionConfig& config)
+{
+    BrickAllocation result;
+    result.brickID = brickID;
+    result.hasSolidVoxels = false;
 
-            // Populate all registered attributes dynamically
-            for (const auto& attrName : brick.getAttributeNames()) {
-                if (attrName == "density") {
-                    brick.setAt3D<float>(attrName, vx, vy, vz, singleVoxel->density);
-                } else if (attrName == "color") {
-                    // TODO: Pack RGB
-                } else if (attrName == "normal") {
-                    // TODO: Pack normal
-                }
-            }
-
-            result.hasSolidVoxels = (singleVoxel->density > 0.0f);
-            result.firstSolidVoxel = *singleVoxel;
-        }
-
+    if (!m_attributeRegistry || brickID == 0xFFFFFFFF) {
         return result;
     }
 
-    // LEGACY PATH: Use BrickStorage directly (fallback for old code)
-    // TODO: Remove this once all code migrates to AttributeRegistry
-    if (!m_brickStorage) {
-        std::cerr << "[VoxelInjector] ERROR: No brick storage system available. Use AttributeRegistry.\n";
-        result.brickID = 0xFFFFFFFF;
-        result.hasSolidVoxels = false;
-        return result;
-    }
+    // Calculate brick properties
+    int brickDepth = config.brickDepthLevels;
+    int brickSideLength = 1 << brickDepth;
+    float voxelSize = worldSize / static_cast<float>(brickSideLength);
+    glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
 
-    if (isNewBrick && sampler) {
-        // Calculate voxels per brick: (2^depth)³
-        const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
-        const int stride = brickSideLength;
-        const int planeSize = brickSideLength * brickSideLength;
+    ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
 
-        // Sample all voxels and populate BrickStorage directly
-        for (size_t i = 0; i < voxelsPerBrick; ++i) {
-            // Convert linear index to 3D coordinates
-            int x = i % stride;
-            int y = (i / stride) % stride;
-            int z = i / planeSize;
+    // Calculate voxel coordinates within brick
+    glm::vec3 localPos = voxelPosition - brickMin;
+    int vx = static_cast<int>(localPos.x / voxelSize);
+    int vy = static_cast<int>(localPos.y / voxelSize);
+    int vz = static_cast<int>(localPos.z / voxelSize);
 
-            glm::vec3 voxelPos = brickMin + glm::vec3(
-                (x + 0.5f) * voxelSize,
-                (y + 0.5f) * voxelSize,
-                (z + 0.5f) * voxelSize
-            );
+    // Clamp to brick bounds
+    vx = glm::clamp(vx, 0, brickSideLength - 1);
+    vy = glm::clamp(vy, 0, brickSideLength - 1);
+    vz = glm::clamp(vz, 0, brickSideLength - 1);
 
-            VoxelData voxelData;
-            bool isSolid = sampler->sample(voxelPos, voxelData);
+    // BrickView handles all attribute type dispatch
+    brick.setVoxel(vx, vy, vz, voxel);
 
-            if (isSolid) {
-                // Access BrickStorage template arrays directly
-                // Template param 0 = density array
-                m_brickStorage->template get<0>(brickID, i) = voxelData.density;
-
-                // Template param 1 = materialID array (if exists)
-                // m_brickStorage->template get<1>(brickID, i) = 0u;
-
-                if (!result.hasSolidVoxels) {
-                    result.hasSolidVoxels = true;
-                    result.firstSolidVoxel = voxelData;
-                }
-            }
-        }
-    } else if (singleVoxel) {
-        // Update specific voxel in brick
-        glm::vec3 localPos = singleVoxel->position - brickMin;
-        int vx = static_cast<int>(localPos.x / voxelSize);
-        int vy = static_cast<int>(localPos.y / voxelSize);
-        int vz = static_cast<int>(localPos.z / voxelSize);
-
-        // Clamp to brick bounds
-        vx = glm::clamp(vx, 0, brickSideLength - 1);
-        vy = glm::clamp(vy, 0, brickSideLength - 1);
-        vz = glm::clamp(vz, 0, brickSideLength - 1);
-
-        // Linear ordering: z * (width*height) + y * width + x
-        const int planeSize = brickSideLength * brickSideLength;
-        size_t localIdx = vz * planeSize + vy * brickSideLength + vx;
-
-        // Access density array directly
-        m_brickStorage->template get<0>(brickID, localIdx) = singleVoxel->density;
-
-        result.hasSolidVoxels = (singleVoxel->density > 0.0f);
-        result.firstSolidVoxel = *singleVoxel;
-    }
+    // Check if voxel passes key predicate
+    result.hasSolidVoxels = voxel.passesKeyPredicate();
 
     return result;
 }

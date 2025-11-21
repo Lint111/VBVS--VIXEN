@@ -1,6 +1,6 @@
 # Active Context
 
-**Last Updated**: November 21, 2025 (VoxelConfig + Data Structures Complete!)
+**Last Updated**: November 21, 2025 (VoxelInjector Refactoring Complete!)
 
 **End of conversation summary for next session:**
 
@@ -17,7 +17,14 @@
   - BasicVoxelScalar + BasicVoxelArrays (minimal)
   - Helper functions for BrickView population
 
-✅ **SVO Integration COMPLETE** - VoxelData library fully integrated with SVO system. All tests compile and run successfully.
+✅ **VoxelInjector Refactoring COMPLETE** - Split brick population into focused functions with DynamicVoxelScalar:
+  - **Split populateBrick()** → `populateBrickFromSampler()` and `updateBrickVoxel()`
+  - [VoxelInjection.cpp:1150-1218](libraries/SVO/src/VoxelInjection.cpp#L1150-L1218) - `populateBrickFromSampler()` samples all 512 voxels procedurally
+  - [VoxelInjection.cpp:1221-1273](libraries/SVO/src/VoxelInjection.cpp#L1221-L1273) - `updateBrickVoxel()` takes DynamicVoxelScalar directly
+  - **No attribute extraction** - DynamicVoxelScalar passed directly to `brick.setVoxel()`
+  - **Removed legacy BrickStorage path** - only AttributeRegistry/BrickView now
+  - **SVO library fully attribute-agnostic** - all attribute handling in VoxelData library
+  - Maintains all functionality: SparseVoxelInput, DenseVoxelInput, IVoxelSampler APIs unchanged
 
 **Architecture Summary:**
 ```
@@ -29,12 +36,14 @@ Application creates AttributeRegistry
     │  - Morton/Linear indexing (configurable via #if in BrickView.cpp)
     │  - 3D coordinate API: setAt3D(x,y,z) hides ordering
     │  - Zero-copy BrickView access via std::span
+    │  - DynamicVoxelScalar for type-safe voxel I/O
     │
     └→ SVO: Observes registry ✅ INTEGRATED
        - VoxelInjector implements IAttributeRegistryObserver
        - onKeyChanged() → rebuild octree
        - onAttributeAdded/Removed() → optional shader updates
-       - Uses brick.setAt3D() for data-driven attribute population
+       - VoxelData (POD) → DynamicVoxelScalar → brick.setVoxel()
+       - BrickView handles all type dispatch (no type code in injector!)
 ```
 
 **What's Complete:**
@@ -84,16 +93,24 @@ Application creates AttributeRegistry
    const int planeSize = brickSideLength²;          // NOT hardcoded 64!
    ```
 
-**Next Session Tasks:**
-1. ✅ ~~Add VoxelData dependency~~ DONE
-2. ✅ ~~VoxelInjection observer pattern~~ DONE
-3. ✅ ~~Replace BrickStorage with AttributeRegistry~~ DONE (both paths supported)
-4. ✅ ~~Update inject() to use BrickView~~ DONE
-5. ✅ ~~Update tests~~ DONE
-6. ✅ ~~Implement VoxelConfig macro system~~ DONE
-7. **TODO**: Add attribute packing for RGB/normals (currently TODOs in code)
-8. **TODO**: Run tests to verify end-to-end functionality
-9. **TODO**: Update VoxelInjector to use VoxelConfig for initialization
+**✅ ALL LEGACY POD CODE ELIMINATED!**
+1. ✅ `inject(SparseVoxelInput)` - Uses DynamicVoxelScalar, filters out "position" attribute
+2. ✅ `inject(DenseVoxelInput)` - Uses DynamicVoxelScalar with isSolid() check
+3. ✅ `VoxelNode::data` - Now DynamicVoxelScalar with AttributeRegistry constructor
+4. ✅ `insertVoxel()` signature - Takes DynamicVoxelScalar reference
+5. ✅ `allocateAndPopulateBrick()` - Uses DynamicVoxelScalar, position from injection request
+6. ✅ Position handling clarified - Position is spatial info (SVO manages), not voxel attributes
+
+**Architecture Clarification - Position vs Attributes:**
+- **SparseVoxelInput**: Voxels have "position" attribute for spatial lookup, but it's NOT copied to output
+- **Injection Request**: Position comes from `insertVoxel(pos, voxel)` parameter, not voxel attributes
+- **Voxel Attributes**: Only appearance data (density, color, normal, material, etc.)
+- **Spatial Information**: Managed by SVO structure (octree coordinates), never stored in attributes
+
+**Remaining Work:**
+1. **TODO**: Update procedural sampler examples (Noise, Sphere, etc.) to use new DynamicVoxelScalar API
+2. **TODO**: Update all test fixtures to use DynamicVoxelScalar instead of POD VoxelData
+3. **TODO**: Run tests to verify end-to-end functionality
 
 ---
 
