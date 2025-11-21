@@ -151,33 +151,40 @@ endif()
 gtest_discover_tests(test_octree_queries)
 
 # ===========================================================================
-# Brick Storage Tests
+# BrickView Tests (Converted from Legacy BrickStorage)
 # ===========================================================================
-# Tests BrickStorage template, object-of-arrays layout, custom data layouts
+# Tests AttributeRegistry + BrickView integration:
+# - Brick allocation and indexing
+# - Multi-attribute access (Float, Uint32, Vec3)
+# - 3D coordinate API (setAt3D / getAt3D)
+# - Pointer-based access (zero-cost path)
+# - Index-based access (AttributeIndex for O(1) lookup)
+# - Data isolation between bricks
+# - Backward compatibility (string-based lookup)
 
-add_executable(test_brick_storage
-    test_brick_storage.cpp
+add_executable(test_brick_view
+    test_brick_view.cpp
 )
 
-if(TARGET SVO)
-    target_link_libraries(test_brick_storage PRIVATE GTest::gtest_main SVO)
+if(TARGET VoxelData)
+    target_link_libraries(test_brick_view PRIVATE GTest::gtest_main VoxelData)
 else()
-    target_link_libraries(test_brick_storage PRIVATE GTest::gtest_main)
+    target_link_libraries(test_brick_view PRIVATE GTest::gtest_main)
 endif()
 
-set_target_properties(test_brick_storage PROPERTIES FOLDER "Tests/SVO Tests")
+set_target_properties(test_brick_view PROPERTIES FOLDER "Tests/VoxelData Tests")
 
 # Copy TBB DLLs to test executable directory for runtime
 if(TARGET TBB::tbb)
-    add_custom_command(TARGET test_brick_storage POST_BUILD
+    add_custom_command(TARGET test_brick_view POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:TBB::tbb>
-            $<TARGET_FILE_DIR:test_brick_storage>
-        COMMENT "Copying TBB DLL for test_brick_storage"
+            $<TARGET_FILE_DIR:test_brick_view>
+        COMMENT "Copying TBB DLL for test_brick_view"
     )
 endif()
 
-gtest_discover_tests(test_brick_storage)
+gtest_discover_tests(test_brick_view)
 
 # ===========================================================================
 # Comprehensive Ray Casting Tests
