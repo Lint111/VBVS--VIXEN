@@ -12,7 +12,7 @@ using namespace SVO;
 TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
     // Create a sphere sampler that generates solid voxels
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, VoxelData& data) -> bool {
+        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
             float dist = glm::length(pos - glm::vec3(50.0f));
             if (dist < 30.0f) {
                 data.position = pos;
@@ -42,8 +42,8 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
     config.minVoxelSize = 0.1f;
 
     // Create AttributeRegistry with density as key attribute
-    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
-    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
+    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
 
     // Inject with AttributeRegistry
     VoxelInjector injector(registry.get());
@@ -78,7 +78,7 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
             solidBricks++;
 
             // Verify we can access the brick data via AttributeRegistry
-            VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
+            ::VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
             EXPECT_TRUE(brick.hasAttribute("density"));
 
             // Sample a voxel from the brick (center voxel at index 256)
@@ -95,7 +95,7 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
 TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
     // Create a simple box sampler
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, VoxelData& data) -> bool {
+        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
             if (pos.x >= 40 && pos.x <= 60 &&
                 pos.y >= 40 && pos.y <= 60 &&
                 pos.z >= 40 && pos.z <= 60) {
@@ -136,8 +136,8 @@ TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
     config.brickDepthLevels = 3;  // Bricks at depth 4
 
     // Create AttributeRegistry with density as key attribute
-    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
-    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
+    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
 
     // Build octree with bricks
     VoxelInjector injector(registry.get());
@@ -181,7 +181,7 @@ TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
 TEST(BrickCreationTest, BrickDensityQueries) {
     // Create a gradient sampler
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, VoxelData& data) -> bool {
+        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
             // Gradient along X axis
             data.position = pos;
             data.density = pos.x / 100.0f;  // 0 to 1 gradient
@@ -208,8 +208,8 @@ TEST(BrickCreationTest, BrickDensityQueries) {
     config.brickDepthLevels = 3;
 
     // Create AttributeRegistry with density as key attribute
-    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
-    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
+    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
 
     // Build octree
     VoxelInjector injector(registry.get());
@@ -228,7 +228,7 @@ TEST(BrickCreationTest, BrickDensityQueries) {
             validBricks++;
 
             // Query brick density at a few positions using AttributeRegistry
-            VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
+            ::VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
             EXPECT_TRUE(brick.hasAttribute("density"));
 
             // Check corner voxels

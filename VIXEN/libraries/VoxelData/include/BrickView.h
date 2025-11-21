@@ -64,12 +64,19 @@ public:
 
     BrickView(AttributeRegistry* registry, BrickAllocation allocation);
 
-    // Type-safe element access
+    // Type-safe element access (1D linear index)
     template<typename T>
     void set(const std::string& attrName, size_t voxelIndex, T value);
 
     template<typename T>
     T get(const std::string& attrName, size_t voxelIndex) const;
+
+    // 3D coordinate access (user-friendly, hides indexing scheme)
+    template<typename T>
+    void setAt3D(const std::string& attrName, int x, int y, int z, T value);
+
+    template<typename T>
+    T getAt3D(const std::string& attrName, int x, int y, int z) const;
 
     // Get array view for attribute
     template<typename T>

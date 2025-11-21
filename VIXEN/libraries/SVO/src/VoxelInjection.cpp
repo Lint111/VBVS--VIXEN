@@ -3,7 +3,6 @@
 #include "SVOBuilder.h"
 #include "BrickStorage.h"
 #include "BrickReference.h"
-#include "VoxelDataFormat.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -1031,7 +1030,7 @@ void VoxelInjector::onKeyChanged(const std::string& oldKey, const std::string& n
     std::cout << "[VoxelInjector] WARNING: Existing octree structure is now invalid and must be rebuilt\n";
 }
 
-void VoxelInjector::onAttributeAdded(const std::string& name, VoxelData::AttributeType type) {
+void VoxelInjector::onAttributeAdded(const std::string& name, ::VoxelData::AttributeType type) {
     // Non-destructive - new attribute added
     // Octree structure remains valid, but may want to update shaders/materials
     std::cout << "[VoxelInjector] Attribute added: " << name << " (type=" << static_cast<int>(type) << ")\n";
@@ -1172,42 +1171,38 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
 
     // NEW PATH: Use AttributeRegistry with BrickView
     if (m_attributeRegistry) {
-        VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
-        const std::string& keyAttr = m_attributeRegistry->getKeyAttributeName();
+        ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
 
         if (isNewBrick && sampler) {
-            // Sample all 512 voxels in the brick
-            for (int z = 0; z < brickSideLength; ++z) {
-                for (int y = 0; y < brickSideLength; ++y) {
-                    for (int x = 0; x < brickSideLength; ++x) {
-                        glm::vec3 voxelPos = brickMin + glm::vec3(
-                            (x + 0.5f) * voxelSize,
-                            (y + 0.5f) * voxelSize,
-                            (z + 0.5f) * voxelSize
-                        );
+            // Get bulk array access for efficient population
+            auto densityArray = brick.getAttributeArray<float>("density");
 
-                        VoxelData voxelData;
-                        bool isSolid = sampler->sample(voxelPos, voxelData);
+            // Calculate voxels per brick: (2^depth)³
+            const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
+            const int stride = brickSideLength;
+            const int planeSize = brickSideLength * brickSideLength;
 
-                        if (isSolid) {
-                            size_t localIdx = z * 64 + y * 8 + x;  // Morton order would be better
+            // Sample all voxels and populate array directly
+            for (size_t i = 0; i < voxelsPerBrick; ++i) {
+                // Convert linear index to 3D coordinates (can be Morton ordering or linear)
+                int x = i % stride;
+                int y = (i / stride) % stride;
+                int z = i / planeSize;
 
-                            // Set key attribute (density)
-                            if (brick.hasAttribute("density")) {
-                                brick.set<float>("density", localIdx, voxelData.density);
-                            }
+                glm::vec3 voxelPos = brickMin + glm::vec3(
+                    (x + 0.5f) * voxelSize,
+                    (y + 0.5f) * voxelSize,
+                    (z + 0.5f) * voxelSize
+                );
 
-                            // Set optional attributes if they exist
-                            if (brick.hasAttribute("material")) {
-                                brick.set<uint32_t>("material", localIdx, 0u);  // TODO: extract from voxelData
-                            }
+                VoxelData voxelData;
+                bool isSolid = sampler->sample(voxelPos, voxelData);
 
-                            if (!result.hasSolidVoxels) {
-                                result.hasSolidVoxels = true;
-                                result.firstSolidVoxel = voxelData;
-                            }
-                        }
-                    }
+                densityArray[i] = isSolid ? voxelData.density : 0.0f;
+
+                if (isSolid && !result.hasSolidVoxels) {
+                    result.hasSolidVoxels = true;
+                    result.firstSolidVoxel = voxelData;
                 }
             }
         } else if (singleVoxel) {
@@ -1222,11 +1217,11 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
             vy = glm::clamp(vy, 0, brickSideLength - 1);
             vz = glm::clamp(vz, 0, brickSideLength - 1);
 
-            size_t localIdx = vz * 64 + vy * 8 + vx;
+            // Linear ordering: z * (width*height) + y * width + x
+            const int planeSize = brickSideLength * brickSideLength;
+            size_t localIdx = vz * planeSize + vy * brickSideLength + vx;
 
-            if (brick.hasAttribute("density")) {
-                brick.set<float>("density", localIdx, singleVoxel->density);
-            }
+            brick.set<float>("density", localIdx, singleVoxel->density);
 
             result.hasSolidVoxels = (singleVoxel->density > 0.0f);
             result.firstSolidVoxel = *singleVoxel;
@@ -1235,60 +1230,53 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
         return result;
     }
 
-    // LEGACY PATH: Use the old BrickStorage system
+    // LEGACY PATH: Use BrickStorage directly (fallback for old code)
+    // TODO: Remove this once all code migrates to AttributeRegistry
+    if (!m_brickStorage) {
+        std::cerr << "[VoxelInjector] ERROR: No brick storage system available. Use AttributeRegistry.\n";
+        result.brickID = 0xFFFFFFFF;
+        result.hasSolidVoxels = false;
+        return result;
+    }
+
     if (isNewBrick && sampler) {
-        // Check if sampler supports bulk region sampling
-        if (auto* dataSource = dynamic_cast<IVoxelDataSource*>(const_cast<IVoxelSampler*>(sampler))) {
-            // Use efficient bulk sampling
-            VoxelDataArrays<512> brickData;  // 8x8x8 = 512
-            brickData.clear();
+        // Calculate voxels per brick: (2^depth)³
+        const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
+        const int stride = brickSideLength;
+        const int planeSize = brickSideLength * brickSideLength;
 
-            glm::vec3 brickMax = brickMin + glm::vec3(worldSize);
-            if (dataSource->sampleRegion(brickMin, brickMax, glm::ivec3(brickSideLength), brickData)) {
-                // Bulk copy to brick storage
-                BrickStorageHelpers::populateBrick(m_brickStorage, brickID, brickData);
+        // Sample all voxels and populate BrickStorage directly
+        for (size_t i = 0; i < voxelsPerBrick; ++i) {
+            // Convert linear index to 3D coordinates
+            int x = i % stride;
+            int y = (i / stride) % stride;
+            int z = i / planeSize;
 
-                // Check if we have any solid voxels
-                for (size_t i = 0; i < 512; ++i) {
-                    if (brickData.getArray<0>()[i] > 0.0f) {  // Check density
-                        result.hasSolidVoxels = true;
-                        result.firstSolidVoxel = VoxelData();
-                        result.firstSolidVoxel.density = brickData.getArray<0>()[i];
-                        break;
-                    }
-                }
-            }
-        } else {
-            // Fallback: sample individually using VoxelDataScalar
-            for (int z = 0; z < brickSideLength; ++z) {
-                for (int y = 0; y < brickSideLength; ++y) {
-                    for (int x = 0; x < brickSideLength; ++x) {
-                        glm::vec3 voxelPos = brickMin + glm::vec3(
-                            (x + 0.5f) * voxelSize,
-                            (y + 0.5f) * voxelSize,
-                            (z + 0.5f) * voxelSize
-                        );
+            glm::vec3 voxelPos = brickMin + glm::vec3(
+                (x + 0.5f) * voxelSize,
+                (y + 0.5f) * voxelSize,
+                (z + 0.5f) * voxelSize
+            );
 
-                        VoxelData voxelData;
-                        bool isSolid = sampler->sample(voxelPos, voxelData);
+            VoxelData voxelData;
+            bool isSolid = sampler->sample(voxelPos, voxelData);
 
-                        if (isSolid) {
-                            // Convert to VoxelDataScalar and update brick
-                            VoxelDataScalar scalar(voxelData);
-                            size_t localIdx = m_brickStorage->getIndex(x, y, z);
-                            BrickStorageHelpers::updateVoxel(m_brickStorage, brickID, localIdx, scalar);
+            if (isSolid) {
+                // Access BrickStorage template arrays directly
+                // Template param 0 = density array
+                m_brickStorage->template get<0>(brickID, i) = voxelData.density;
 
-                            if (!result.hasSolidVoxels) {
-                                result.hasSolidVoxels = true;
-                                result.firstSolidVoxel = voxelData;
-                            }
-                        }
-                    }
+                // Template param 1 = materialID array (if exists)
+                // m_brickStorage->template get<1>(brickID, i) = 0u;
+
+                if (!result.hasSolidVoxels) {
+                    result.hasSolidVoxels = true;
+                    result.firstSolidVoxel = voxelData;
                 }
             }
         }
     } else if (singleVoxel) {
-        // Update specific voxel in brick using VoxelDataScalar
+        // Update specific voxel in brick
         glm::vec3 localPos = singleVoxel->position - brickMin;
         int vx = static_cast<int>(localPos.x / voxelSize);
         int vy = static_cast<int>(localPos.y / voxelSize);
@@ -1299,12 +1287,14 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
         vy = glm::clamp(vy, 0, brickSideLength - 1);
         vz = glm::clamp(vz, 0, brickSideLength - 1);
 
-        // Convert to VoxelDataScalar and update
-        VoxelDataScalar scalar(*singleVoxel);
-        size_t localIdx = m_brickStorage->getIndex(vx, vy, vz);
-        BrickStorageHelpers::updateVoxel(m_brickStorage, brickID, localIdx, scalar);
+        // Linear ordering: z * (width*height) + y * width + x
+        const int planeSize = brickSideLength * brickSideLength;
+        size_t localIdx = vz * planeSize + vy * brickSideLength + vx;
 
-        result.hasSolidVoxels = true;
+        // Access density array directly
+        m_brickStorage->template get<0>(brickID, localIdx) = singleVoxel->density;
+
+        result.hasSolidVoxels = (singleVoxel->density > 0.0f);
         result.firstSolidVoxel = *singleVoxel;
     }
 

@@ -924,13 +924,13 @@ protected:
         InjectionConfig config;
         config.maxLevels = 8; // Reasonable depth for 10³ world with 0.1 voxels
 
-        std::vector<VoxelData> wallVoxels;
+        std::vector<SVO::VoxelData> wallVoxels;
 
         // Generate floor voxels (y=0 to thickness)
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = 0.0f; y < thickness; y += voxelSize) {
-                    VoxelData v;
+                    SVO::VoxelData v;
                     v.position = glm::vec3(x, y, z);
                     v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
                     v.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Up
@@ -944,7 +944,7 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = boxSize - thickness; y < boxSize; y += voxelSize) {
-                    VoxelData v;
+                    SVO::VoxelData v;
                     v.position = glm::vec3(x, y, z);
                     // Check if in light patch (center of ceiling)
                     glm::vec2 centerXZ(boxSize * 0.5f, boxSize * 0.5f);
@@ -961,7 +961,7 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = 0.0f; x < thickness; x += voxelSize) {
-                    VoxelData v;
+                    SVO::VoxelData v;
                     v.position = glm::vec3(x, y, z);
                     v.color = glm::vec3(0.8f, 0.1f, 0.1f); // Red
                     v.normal = glm::vec3(1.0f, 0.0f, 0.0f); // Right
@@ -975,7 +975,7 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = boxSize - thickness; x < boxSize; x += voxelSize) {
-                    VoxelData v;
+                    SVO::VoxelData v;
                     v.position = glm::vec3(x, y, z);
                     v.color = glm::vec3(0.1f, 0.8f, 0.1f); // Green
                     v.normal = glm::vec3(-1.0f, 0.0f, 0.0f); // Left
@@ -989,7 +989,7 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float y = 0.0f; y < boxSize; y += voxelSize) {
                 for (float z = boxSize - thickness; z < boxSize; z += voxelSize) {
-                    VoxelData v;
+                    SVO::VoxelData v;
                     v.position = glm::vec3(x, y, z);
                     v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
                     v.normal = glm::vec3(0.0f, 0.0f, -1.0f); // Forward

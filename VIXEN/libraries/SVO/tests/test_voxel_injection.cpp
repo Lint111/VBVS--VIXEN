@@ -16,7 +16,7 @@ TEST(VoxelInjectionTest, SparseVoxels) {
 
     // Add a few voxels
     for (int i = 0; i < 10; ++i) {
-        VoxelData voxel;
+        SVO::VoxelData voxel;
         voxel.position = glm::vec3(i, i, i);
         voxel.color = glm::vec3(1, 0, 0);
         voxel.normal = glm::vec3(0, 1, 0);
@@ -268,7 +268,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionSingleVoxel) {
     LaineKarrasOctree octree;
 
     // Create voxel data
-    VoxelData voxel;
+    SVO::VoxelData voxel;
     voxel.position = glm::vec3(5.0f, 5.0f, 5.0f); // Center of world
     voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);     // Red
     voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);   // Up
@@ -324,7 +324,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionMultipleVoxels) {
     };
 
     for (const auto& pos : positions) {
-        VoxelData voxel;
+        SVO::VoxelData voxel;
         voxel.position = pos;
         voxel.color = glm::normalize(pos / 10.0f); // Color based on position
         voxel.normal = glm::normalize(pos - glm::vec3(5.0f));
@@ -353,7 +353,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionIdempotent) {
     InjectionConfig config;
     config.maxLevels = 6;
 
-    VoxelData voxel;
+    SVO::VoxelData voxel;
     voxel.position = glm::vec3(5.0f, 5.0f, 5.0f);
     voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);
     voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -387,7 +387,7 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
     // ensureInitialized will be called by insertVoxel with world bounds [0,10]³
 
     // Insert single voxel in clear location (well away from all boundaries)
-    VoxelData voxel;
+    SVO::VoxelData voxel;
     voxel.position = glm::vec3(2.0f, 3.0f, 3.0f);
     voxel.color = glm::vec3(1.0f, 0.0f, 0.0f);
     voxel.normal = glm::vec3(0.0f, 1.0f, 0.0f);
