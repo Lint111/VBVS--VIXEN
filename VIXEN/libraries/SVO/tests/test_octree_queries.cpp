@@ -924,17 +924,18 @@ protected:
         InjectionConfig config;
         config.maxLevels = 8; // Reasonable depth for 10³ world with 0.1 voxels
 
-        std::vector<SVO::VoxelData> wallVoxels;
+        std::vector<::VoxelData::DynamicVoxelScalar> wallVoxels;
+
 
         // Generate floor voxels (y=0 to thickness)
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = 0.0f; y < thickness; y += voxelSize) {
-                    SVO::VoxelData v;
-                    v.position = glm::vec3(x, y, z);
-                    v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
-                    v.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Up
-                    v.density = 1.0f;
+                    ::VoxelData::DynamicVoxelScalar v;
+					v.set("position", glm::vec3(x, y, z));
+					v.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
+					v.set("normal", glm::vec3(0.0f, 1.0f, 0.0f)); // Up
+					v.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -944,14 +945,14 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = boxSize - thickness; y < boxSize; y += voxelSize) {
-                    SVO::VoxelData v;
-                    v.position = glm::vec3(x, y, z);
+                    ::VoxelData::DynamicVoxelScalar v;
+                    v.set("position", glm::vec3(x, y, z));
                     // Check if in light patch (center of ceiling)
                     glm::vec2 centerXZ(boxSize * 0.5f, boxSize * 0.5f);
                     float distFromCenter = glm::length(glm::vec2(x, z) - centerXZ);
-                    v.color = (distFromCenter < 2.0f) ? glm::vec3(1.0f) : glm::vec3(0.8f); // White light or grey
-                    v.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Down
-                    v.density = 1.0f;
+                    v.set("color",(distFromCenter < 2.0f) ? glm::vec3(1.0f) : glm::vec3(0.8f)); // White light or grey
+                    v.set("normal", glm::vec3(0.0f, -1.0f, 0.0f)); // Down
+                    v.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -961,11 +962,11 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = 0.0f; x < thickness; x += voxelSize) {
-                    SVO::VoxelData v;
-                    v.position = glm::vec3(x, y, z);
-                    v.color = glm::vec3(0.8f, 0.1f, 0.1f); // Red
-                    v.normal = glm::vec3(1.0f, 0.0f, 0.0f); // Right
-                    v.density = 1.0f;
+                    ::VoxelData::DynamicVoxelScalar v;
+                    v.set("position", glm::vec3(x, y, z));
+                    v.set("color", glm::vec3(0.8f, 0.1f, 0.1f)); // Red
+                    v.set("normal", glm::vec3(1.0f, 0.0f, 0.0f)); // Right
+                    v.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -975,11 +976,11 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = boxSize - thickness; x < boxSize; x += voxelSize) {
-                    SVO::VoxelData v;
-                    v.position = glm::vec3(x, y, z);
-                    v.color = glm::vec3(0.1f, 0.8f, 0.1f); // Green
-                    v.normal = glm::vec3(-1.0f, 0.0f, 0.0f); // Left
-                    v.density = 1.0f;
+                    ::VoxelData::DynamicVoxelScalar v;
+                    v.set("position", glm::vec3(x, y, z));
+                    v.set("color", glm::vec3(0.1f, 0.8f, 0.1f)); // Green
+                    v.set("normal", glm::vec3(-1.0f, 0.0f, 0.0f)); // Left
+                    v.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -989,11 +990,11 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float y = 0.0f; y < boxSize; y += voxelSize) {
                 for (float z = boxSize - thickness; z < boxSize; z += voxelSize) {
-                    SVO::VoxelData v;
-                    v.position = glm::vec3(x, y, z);
-                    v.color = glm::vec3(0.8f, 0.8f, 0.8f); // Grey
-                    v.normal = glm::vec3(0.0f, 0.0f, -1.0f); // Forward
-                    v.density = 1.0f;
+                    ::VoxelData::DynamicVoxelScalar v;
+                    v.set("position", glm::vec3(x, y, z));
+                    v.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
+                    v.set("normal", glm::vec3(0.0f, 0.0f, -1.0f)); // Forward
+                    v.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -1008,7 +1009,7 @@ protected:
         size_t inserted = 0;
         size_t failed = 0;
         for (const auto& voxel : wallVoxels) {
-            if (injector.insertVoxel(*cornellBox, voxel.position, voxel, config)) {
+            if (injector.insertVoxel(*cornellBox, voxel.get("position"), voxel, config)) {
                 inserted++;
             } else {
                 failed++;
@@ -1036,16 +1037,16 @@ protected:
                 constexpr float lightSize = 2.0f; // Light patch size
                 constexpr float lightY = boxSize - thickness; // Ceiling position
 
-                data.position = pos;
-                data.density = 1.0f;
+                data.set("position",pos);
+                data.set("density", 1.0f);
 
                 // Debug: log samples that return true near (9.375, 4.375, 9.375)
                 bool shouldLog = (pos.x > 9.0f && pos.x < 10.0f && pos.y > 4.0f && pos.y < 5.0f && pos.z > 9.0f && pos.z < 10.0f);
 
                 // Floor (y=0)
                 if (pos.y < thickness) {
-                    data.color = glm::vec3(0.8f, 0.8f, 0.8f); // Bright grey
-                    data.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Up
+                    data.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Bright grey
+                    data.set("normal", glm::vec3(0.0f, 1.0f, 0.0f)); // Up
                     return true;
                 }
 
@@ -1057,39 +1058,39 @@ protected:
                     float distFromCenter = glm::length(posXZ - centerXZ);
 
                     if (distFromCenter < lightSize) {
-                        data.color = glm::vec3(1.0f, 1.0f, 1.0f); // White light
+                        data.set("color", glm::vec3(1.0f, 1.0f, 1.0f)); // White light
                     } else {
-                        data.color = glm::vec3(0.8f, 0.8f, 0.8f); // Bright grey
+                        data.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Bright grey
                     }
-                    data.normal = glm::vec3(0.0f, -1.0f, 0.0f); // Down
+                    data.set("normal", glm::vec3(0.0f, -1.0f, 0.0f)); // Down
                     return true;
                 }
 
                 // Left wall (x=0) - RED
                 if (pos.x < thickness) {
-                    data.color = glm::vec3(0.8f, 0.1f, 0.1f); // Red
-                    data.normal = glm::vec3(1.0f, 0.0f, 0.0f); // Right
+                    data.set("color", glm::vec3(0.8f, 0.1f, 0.1f)); // Red
+                    data.set("normal", glm::vec3(1.0f, 0.0f, 0.0f)); // Right
                     return true;
                 }
 
                 // Right wall (x=10) - GREEN
                 if (pos.x > boxSize - thickness) {
-                    data.color = glm::vec3(0.1f, 0.8f, 0.1f); // Green
-                    data.normal = glm::vec3(-1.0f, 0.0f, 0.0f); // Left
+                    data.set("color", glm::vec3(0.1f, 0.8f, 0.1f)); // Green
+                    data.set("normal", glm::vec3(-1.0f, 0.0f, 0.0f)); // Left
                     return true;
                 }
 
                 // Back wall (z=10)
                 if (pos.z > boxSize - thickness) {
-                    data.color = glm::vec3(0.8f, 0.8f, 0.8f); // Bright grey
-                    data.normal = glm::vec3(0.0f, 0.0f, -1.0f); // Forward
+                    data.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Bright grey
+                    data.set("normal", glm::vec3(0.0f, 0.0f, -1.0f)); // Forward
                     return true;
                 }
 
                 // Front wall (z=0) - open for camera
                 if (pos.z < thickness) {
-                    data.color = glm::vec3(0.8f, 0.8f, 0.8f); // Bright grey
-                    data.normal = glm::vec3(0.0f, 0.0f, 1.0f); // Backward
+                    data.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Bright grey
+                    data.set("normal", glm::vec3(0.0f, 0.0f, 1.0f)); // Backward
                     if (shouldLog) std::cout << "[SAMPLE TRUE] pos=(" << pos.x << "," << pos.y << "," << pos.z << ") FRONT WALL\n";
                     return true;
                 }

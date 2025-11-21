@@ -4,6 +4,7 @@
 #include "BrickStorage.h"
 #include "SVOBuilder.h"
 #include <AttributeRegistry.h>
+#include <DynamicVoxelStruct.h>
 #include <iostream>
 
 using namespace SVO;
@@ -12,13 +13,12 @@ using namespace SVO;
 TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
     // Create a sphere sampler that generates solid voxels
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
+        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
             float dist = glm::length(pos - glm::vec3(50.0f));
             if (dist < 30.0f) {
-                data.position = pos;
-                data.color = glm::vec3(1, 0, 0);
-                data.normal = glm::normalize(pos - glm::vec3(50.0f));
-                data.density = 1.0f;
+                data.set("density", 1.0f);
+                data.set("color", glm::vec3(1, 0, 0));
+                data.set("normal", glm::normalize(pos - glm::vec3(50.0f)));
                 return true;
             }
             return false;
@@ -95,14 +95,13 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
 TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
     // Create a simple box sampler
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
+        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
             if (pos.x >= 40 && pos.x <= 60 &&
                 pos.y >= 40 && pos.y <= 60 &&
                 pos.z >= 40 && pos.z <= 60) {
-                data.position = pos;
-                data.color = glm::vec3(0, 1, 0);
-                data.normal = glm::vec3(0, 1, 0);
-                data.density = 1.0f;
+                data.set("density", 1.0f);
+                data.set("color", glm::vec3(0, 1, 0));
+                data.set("normal", glm::vec3(0, 1, 0));
                 return true;
             }
             return false;
@@ -181,13 +180,13 @@ TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
 TEST(BrickCreationTest, BrickDensityQueries) {
     // Create a gradient sampler
     auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, SVO::VoxelData& data) -> bool {
+        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
             // Gradient along X axis
-            data.position = pos;
-            data.density = pos.x / 100.0f;  // 0 to 1 gradient
-            data.color = glm::vec3(data.density, 0, 0);
-            data.normal = glm::vec3(1, 0, 0);
-            return data.density > 0.1f;  // Only solid above 10%
+            float density = pos.x / 100.0f;  // 0 to 1 gradient
+            data.set("density", density);
+            data.set("color", glm::vec3(density, 0, 0));
+            data.set("normal", glm::vec3(1, 0, 0));
+            return density > 0.1f;  // Only solid above 10%
         },
         [](glm::vec3& min, glm::vec3& max) {
             min = glm::vec3(0);

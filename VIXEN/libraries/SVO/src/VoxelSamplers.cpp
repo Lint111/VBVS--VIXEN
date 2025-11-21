@@ -75,12 +75,11 @@ bool NoiseSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelSc
 
     // Check if solid (below threshold = solid for terrain)
     if (noiseValue > m_params.threshold) {
-        outData.position = position;
-        outData.density = 1.0f;
+        outData.set("density", 1.0f);
 
         // Color based on height/noise value
         float t = glm::clamp((noiseValue - m_params.threshold) / m_params.amplitude, 0.0f, 1.0f);
-        outData.color = glm::mix(glm::vec3(0.3f, 0.5f, 0.3f), glm::vec3(0.8f, 0.8f, 0.9f), t);
+        outData.set("color", glm::mix(glm::vec3(0.3f, 0.5f, 0.3f), glm::vec3(0.8f, 0.8f, 0.9f), t));
 
         // Estimate normal via gradient
         const float eps = 0.01f;
@@ -91,8 +90,7 @@ bool NoiseSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelSc
         float dz = fbm((position + glm::vec3(0, 0, eps) + m_params.offset) * m_params.frequency,
                       m_params.octaves, m_params.lacunarity, m_params.persistence) - noiseValue;
 
-        outData.normal = glm::normalize(glm::vec3(dx, dy, dz));
-        outData.occlusion = 1.0f;
+        outData.set("normal", glm::normalize(glm::vec3(dx, dy, dz)));
 
         return true;
     }
@@ -146,11 +144,9 @@ bool SDFSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVoxelScal
 
     // Negative distance = inside surface
     if (dist < 0.0f) {
-        outData.position = position;
-        outData.density = 1.0f;
-        outData.color = glm::vec3(0.7f, 0.7f, 0.7f);
-        outData.normal = estimateNormal(position);
-        outData.occlusion = 1.0f;
+        outData.set("density", 1.0f);
+        outData.set("color", glm::vec3(0.7f, 0.7f, 0.7f));
+        outData.set("normal", estimateNormal(position));
         return true;
     }
 
@@ -186,11 +182,9 @@ bool HeightmapSampler::sample(const glm::vec3& position, ::VoxelData::DynamicVox
 
     // Check if position is below terrain surface
     if (position.y < height) {
-        outData.position = position;
-        outData.density = 1.0f;
-        outData.color = m_params.baseColor;
-        outData.normal = computeNormal(position.x, position.z);
-        outData.occlusion = 1.0f;
+        outData.set("density", 1.0f);
+        outData.set("color", m_params.baseColor);
+        outData.set("normal", computeNormal(position.x, position.z));
         return true;
     }
 

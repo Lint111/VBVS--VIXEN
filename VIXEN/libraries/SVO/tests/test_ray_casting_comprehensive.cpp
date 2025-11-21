@@ -40,11 +40,11 @@ protected:
 
         // Insert all voxels
         for (const auto& pos : voxelPositions) {
-            VoxelData voxel;
-            voxel.position = pos;
-            voxel.normal = glm::vec3(0, 1, 0); // Default normal
-            voxel.color = glm::vec3(1, 1, 1);
-            voxel.density = 1.0f;
+            ::VoxelData::DynamicVoxelScalar voxel;
+            voxel.set("position", pos);
+            voxel.set("normal", glm::vec3(0, 1, 0)); // Default normal
+            voxel.set("color", glm::vec3(1, 1, 1));
+            voxel.set("density", 1.0f);
 
             // Use the insertVoxel signature from test_voxel_injection.cpp
             injector.insertVoxel(*octree, pos, voxel, config);

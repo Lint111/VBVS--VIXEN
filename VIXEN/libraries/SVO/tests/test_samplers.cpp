@@ -16,16 +16,16 @@ TEST(NoiseSamplerTest, BasicSampling) {
 
     NoiseSampler sampler(params);
 
-    VoxelData data;
+    ::VoxelData::DynamicVoxelScalar data;
 
     // Sample at origin
     bool hasSolid = sampler.sample(glm::vec3(0, 0, 0), data);
 
     // Should return either solid or empty (deterministic noise)
     if (hasSolid) {
-        EXPECT_GT(data.density, 0.0f);
-        EXPECT_GE(data.color.r, 0.0f);
-        EXPECT_LE(data.color.r, 1.0f);
+        EXPECT_GT(data.get("density"), 0.0f);
+        EXPECT_GE(data.get("color").r, 0.0f);
+        EXPECT_LE(data.get("color").r, 1.0f);
     }
 }
 
@@ -33,7 +33,7 @@ TEST(NoiseSamplerTest, Consistency) {
     NoiseSampler::Params params;
     NoiseSampler sampler(params);
 
-    VoxelData data1, data2;
+    ::VoxelData::DynamicVoxelScalar data1, data2;
     glm::vec3 pos(5.0f, 10.0f, 15.0f);
 
     // Same position should give same result
@@ -42,7 +42,7 @@ TEST(NoiseSamplerTest, Consistency) {
 
     EXPECT_EQ(result1, result2);
     if (result1) {
-        EXPECT_EQ(data1.density, data2.density);
+        EXPECT_EQ(data1.get("density"), data2.get("density"));
     }
 }
 
@@ -70,7 +70,7 @@ TEST(SDFSamplerTest, SphereSDF) {
 
     SDFSampler sampler(sdfFunc, glm::vec3(-10), glm::vec3(10));
 
-    VoxelData data;
+    ::VoxelData::DynamicVoxelScalar data;
 
     // Inside sphere
     EXPECT_TRUE(sampler.sample(glm::vec3(0, 0, 0), data));
@@ -89,7 +89,7 @@ TEST(SDFSamplerTest, BoxSDF) {
 
     SDFSampler sampler(sdfFunc, glm::vec3(-10), glm::vec3(10));
 
-    VoxelData data;
+    ::VoxelData::DynamicVoxelScalar data;
 
     // Inside box
     EXPECT_TRUE(sampler.sample(glm::vec3(0, 0, 0), data));
@@ -106,13 +106,13 @@ TEST(SDFSamplerTest, NormalEstimation) {
 
     SDFSampler sampler(sdfFunc, glm::vec3(-10), glm::vec3(10));
 
-    VoxelData data;
+    ::VoxelData::DynamicVoxelScalar data;
     glm::vec3 pos(3, 0, 0);  // On X axis inside sphere
 
     ASSERT_TRUE(sampler.sample(pos, data));
 
     // Normal should point outward (roughly along +X)
-    EXPECT_GT(data.normal.x, 0.5f);
+    EXPECT_GT(data.get("normal_x"), 0.5f);
 }
 
 // ===========================================================================
@@ -129,7 +129,7 @@ TEST(HeightmapSamplerTest, FlatTerrain) {
 
     HeightmapSampler sampler(params);
 
-    VoxelData data;
+    ::VoxelData::DynamicVoxelScalar data;
 
     // Below terrain
     EXPECT_TRUE(sampler.sample(glm::vec3(5, 25, 5), data));  // y=25 < 50
