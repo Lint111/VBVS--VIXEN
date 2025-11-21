@@ -29,8 +29,8 @@ namespace SVO {
  */
 class LaineKarrasOctree : public ISVOStructure {
 public:
-    LaineKarrasOctree();
-    explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry);
+    LaineKarrasOctree(int maxDepth = 23);
+    explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxDepth = 23);
     ~LaineKarrasOctree() override;
 
     // ISVOStructure interface
@@ -85,6 +85,7 @@ private:
     glm::vec3 m_worldMin{0.0f};
     glm::vec3 m_worldMax{1.0f};
     int m_maxLevels = 0;
+    int m_maxDepth = 23;  // ESVO traversal depth (23 for standard [1,2] normalized space)
     size_t m_voxelCount = 0;
     size_t m_memoryUsage = 0;
 
@@ -92,25 +93,25 @@ private:
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
     // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
     // ========================================================================
-    // Traversal stack depth - matches reference (23 levels for [1,2] normalized space)
-    static constexpr int CAST_STACK_DEPTH = 23;
+    // Traversal stack depth - maximum supported
+    static constexpr int MAX_STACK_DEPTH = 32;
 
     // Traversal stack structure
     // Stores parent node pointers and t_max values for backtracking during traversal
     struct CastStack {
-        const ChildDescriptor* nodes[CAST_STACK_DEPTH + 1];
-        float tMax[CAST_STACK_DEPTH + 1];
+        const ChildDescriptor* nodes[MAX_STACK_DEPTH];
+        float tMax[MAX_STACK_DEPTH];
 
         void push(int scale, const ChildDescriptor* node, float t) {
             // Bounds check to prevent stack corruption
-            if (scale >= 0 && scale <= CAST_STACK_DEPTH) {
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
                 nodes[scale] = node;
                 tMax[scale] = t;
             }
         }
 
         const ChildDescriptor* pop(int scale, float& t) {
-            if (scale >= 0 && scale <= CAST_STACK_DEPTH) {
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
                 t = tMax[scale];
                 return nodes[scale];
             }

@@ -104,6 +104,48 @@ namespace {
         DEBUG_PRINT("  --> ADVANCE: step_mask=%d, tc_max=%.3f\n", step_mask, tc_max);
         DEBUG_PRINT("  --> idx: %d -> %d\n", old_idx, new_idx);
     }
+
+    /**
+     * Compute surface normal via central differencing
+     *
+     * Uses 6-sample gradient computation (standard in graphics):
+     * gradient = (sample_neg - sample_pos) for each axis
+     *
+     * Only 6 voxel queries vs 27 for full neighborhood,
+     * while still capturing actual surface geometry.
+     */
+    inline glm::vec3 computeSurfaceNormal(
+        const LaineKarrasOctree* octree,
+        const glm::vec3& hitPos,
+        float voxelSize)
+    {
+        // Sample along each axis (6 samples total)
+        const float offset = voxelSize * 0.5f;  // Half voxel for better accuracy
+
+        bool xPos = octree->voxelExists(hitPos + glm::vec3(offset, 0.0f, 0.0f), 0);
+        bool xNeg = octree->voxelExists(hitPos - glm::vec3(offset, 0.0f, 0.0f), 0);
+        bool yPos = octree->voxelExists(hitPos + glm::vec3(0.0f, offset, 0.0f), 0);
+        bool yNeg = octree->voxelExists(hitPos - glm::vec3(0.0f, offset, 0.0f), 0);
+        bool zPos = octree->voxelExists(hitPos + glm::vec3(0.0f, 0.0f, offset), 0);
+        bool zNeg = octree->voxelExists(hitPos - glm::vec3(0.0f, 0.0f, offset), 0);
+
+        // Compute gradient (points from solid to empty)
+        // If xPos is occupied (1) and xNeg is empty (0), gradient.x = 0 - 1 = -1 (points toward -X)
+        glm::vec3 gradient(
+            static_cast<float>(xNeg) - static_cast<float>(xPos),
+            static_cast<float>(yNeg) - static_cast<float>(yPos),
+            static_cast<float>(zNeg) - static_cast<float>(zPos)
+        );
+
+        // Normalize if non-zero
+        float length = glm::length(gradient);
+        if (length > 1e-6f) {
+            return gradient / length;
+        }
+
+        // Fallback: return upward normal
+        return glm::vec3(0.0f, 1.0f, 0.0f);
+    }
 } // anonymous namespace
 
 LaineKarrasOctree::LaineKarrasOctree()
@@ -665,7 +707,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Initialize traversal state
     // Reference: lines 127-134
-    CastStack stack;
+    CastStack stack(m_maxDepth);
 
     // Safety check: ensure octree has root descriptor
     if (m_octree->root->childDescriptors.empty()) {
@@ -684,8 +726,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     uint64_t child_descriptor = 0; // Invalid until fetched
     int idx = 0; // Child octant index
     glm::vec3 pos(1.0f, 1.0f, 1.0f); // Position in normalized [1,2] space
-    int scale = CAST_STACK_DEPTH - 1; // Current scale level
-    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = CAST_STACK_DEPTH - 1
+    int scale = m_maxDepth- 1; // Current scale level
+    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = m_maxDepth- 1
 
     // Select initial child based on ray entry point
     // Reference: ESVO lines 136-138
@@ -715,7 +757,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     int iter = 0;
     const int maxIter = 10000; // Safety limit
 
-    while (scale < CAST_STACK_DEPTH && iter < maxIter) {
+    while (scale < m_maxDepth&& iter < maxIter) {
         ++iter;
         // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 
@@ -800,7 +842,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             float ty_center = half * ty_coef + ty_corner;
             float tz_center = half * tz_coef + tz_corner;
 
-            if (scale >= CAST_STACK_DEPTH - 2) {
+            if (scale >= m_maxDepth- 2) {
                 std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
                 std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
                 std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
@@ -813,7 +855,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // ================================================================
 
             // Descend to first child if resulting t-span is non-empty
-            if (scale >= CAST_STACK_DEPTH - 3) {
+            if (scale >= m_maxDepth- 3) {
                 std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
                           << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
             }
@@ -976,8 +1018,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.tMax = tv_max_world;
                     hit.position = origin + rayDir * t_min_world;
                     hit.scale = scale;  // ESVO scale (22=root, 0=deepest)
-                    // Placeholder normal - should compute from voxel face
-                    hit.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+
+                    // Compute surface normal from 3×3×3 neighborhood
+                    float voxelSize = scale_exp2 * (m_worldMax.x - m_worldMin.x);
+                    hit.normal = computeSurfaceNormal(this, hit.position, voxelSize);
+
                     return hit;
                 }
 
@@ -1109,7 +1154,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
         t_min = std::max(tc_max_corrected, 0.0f);
 
-        if (scale == CAST_STACK_DEPTH - 1 || scale == CAST_STACK_DEPTH - 2) {
+        if (scale == m_maxDepth- 1 || scale == m_maxDepth- 2) {
             std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
                       << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
         }
@@ -1160,7 +1205,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             scale = static_cast<int>((diff_float_bits >> 23) & 0xFF) - 127;
 
             // Compute scale_exp2 = exp2f(scale - CAST_STACK_DEPTH)
-            int scale_exp = scale - CAST_STACK_DEPTH + 127;
+            int scale_exp = scale - m_maxDepth+ 127;
             scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(scale_exp << 23));
 
             // Restore parent voxel from stack
@@ -1206,7 +1251,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     }
 
     // If we exited the octree, return miss
-    if (scale >= CAST_STACK_DEPTH || iter >= maxIter) {
+    if (scale >= m_maxDepth|| iter >= maxIter) {
         return miss;
     }
 
@@ -1504,7 +1549,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             hit.tMax = hitT + brickVoxelSize;  // Exit point of voxel
             hit.position = rayOrigin + rayDir * hitT;
             hit.normal = entryNormal;
-            hit.scale = CAST_STACK_DEPTH - 1;  // Finest detail level
+            hit.scale = m_maxDepth- 1;  // Finest detail level
 
             return hit;
         }

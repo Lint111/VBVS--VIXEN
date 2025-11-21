@@ -92,7 +92,8 @@
         "coroutine": "cpp",
         "resumable": "cpp",
         "codecvt": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "execution": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "CodeGPT.apiKey": "Ollama",
