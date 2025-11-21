@@ -78,6 +78,10 @@ public:
     const std::vector<uint8_t>& getData() const { return m_data; }
     std::vector<uint8_t>& getData() { return m_data; }
 
+    // GPU buffer access (for BrickStorage compatibility)
+    const void* getGPUBuffer() const { return m_data.data(); }
+    size_t getSizeBytes() const { return m_data.size(); }
+
 private:
     std::string m_name;
     AttributeType m_type;

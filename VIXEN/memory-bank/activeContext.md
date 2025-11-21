@@ -1,8 +1,69 @@
 # Active Context
 
-**Last Updated**: November 21, 2025 (VoxelInjector Refactoring Complete!)
+**Last Updated**: November 21, 2025 (Predicate-Based Voxel System Migration!)
 
 **End of conversation summary for next session:**
+
+## Session Summary: Predicate-Based Voxel Solidity (Nov 21 PM) ✅
+
+**Major Achievement**: Migrated VoxelInjector to use registry-based predicate pattern for voxel solidity testing!
+
+**What Was Accomplished**:
+1. ✅ **Added `passesKeyPredicate()` method** - [DynamicVoxelStruct.h:92-109](libraries/VoxelData/include/DynamicVoxelStruct.h#L92-L109)
+   - Uses registry's key attribute + predicate to determine voxel solidity
+   - Flexible: works with any key attribute (density, normal, custom)
+   - Returns true if no registry (default pass) or if key value passes predicate
+
+2. ✅ **Eliminated manual attribute copying** - Replaced all `for (attrName) { dispatchByType... }` patterns:
+   - [VoxelInjection.cpp:60-62](libraries/SVO/src/VoxelInjection.cpp#L60-L62) - Direct voxel copy (sparse nearest)
+   - [VoxelInjection.cpp:131-137](libraries/SVO/src/VoxelInjection.cpp#L131-L137) - Direct voxel copy (dense lookup)
+   - [VoxelInjection.cpp:196-198](libraries/SVO/src/VoxelInjection.cpp#L196-L198) - Predicate for density estimation
+   - Simple `outVoxel = voxel` replaces complex attribute enumeration
+
+3. ✅ **Position clarified as spatial metadata** - Never stored in voxel attributes:
+   - [VoxelInjection.cpp:1127-1135](libraries/SVO/src/VoxelInjection.cpp#L1127-L1135) - Batch insertion checks "position" only for lookup
+   - Position comes from SVO structure (octree coordinates), not voxel data
+   - Clean separation: appearance data (attributes) vs spatial info (SVO)
+
+4. ✅ **Fixed direct attribute access** - Replaced `.color`, `.normal` member access with `.get<T>()`:
+   - [VoxelInjection.cpp:471-480](libraries/SVO/src/VoxelInjection.cpp#L471-L480) - Extract color/normal from DynamicVoxelScalar
+   - [VoxelInjection.cpp:748-757](libraries/SVO/src/VoxelInjection.cpp#L748-L757) - Second instance fixed
+   - Uses `.has("attr") ? .get<T>("attr") : default` pattern
+
+5. ✅ **Added attribute name mapping to DefaultLeafData** - [BrickStorage.h:441](libraries/SVO/include/BrickStorage.h#L441)
+   - Maps template indices → attribute names: 0="density", 1="material"
+   - Foundation for BrickStorage→AttributeRegistry integration
+
+**Architecture Achieved**:
+```
+Registry stores key attribute + predicate
+    ↓
+DynamicVoxelScalar.passesKeyPredicate()
+    ↓
+    1. Get key attribute name from registry
+    2. Check if voxel has that attribute
+    3. Get attribute value (as std::any)
+    4. Call registry->evaluateKey(value)
+    ↓
+Returns true/false (is voxel solid?)
+```
+
+**Build Status**:
+- ✅ VoxelInjection.cpp compiles successfully!
+- ✅ VoxelData library compiles with new predicate method
+- 🔧 VoxelSamplers.cpp needs updating (old `outData` API - separate task)
+
+**Key Benefits**:
+- **Flexible solidity test**: Not hardcoded to density > 0.5
+- **No attribute enumeration**: SVO code never touches attribute names/types
+- **BrickView handles types**: All type dispatch hidden in VoxelData library
+- **Position never in attributes**: Clear architectural boundary
+
+**Remaining Work**:
+1. VoxelSamplers.cpp - Update to new `DynamicVoxelScalar` API (uses old `outData` param)
+2. BrickStorage integration - Make it delegate to AttributeRegistry (backward-compatible wrapper)
+
+---
 
 ✅ **VoxelConfig System COMPLETE** - Macro-based compile-time validated voxel configuration system:
   - VOXEL_KEY/VOXEL_ATTRIBUTE macros with auto-lowercasing (DENSITY → "density")
