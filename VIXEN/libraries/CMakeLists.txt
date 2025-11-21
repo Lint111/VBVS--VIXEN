@@ -32,6 +32,9 @@ add_subdirectory(CashSystem)
 # RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)
 
+# VoxelData library (voxel data structures and attribute management - independent of SVO)
+add_subdirectory(VoxelData)
+
 # SVO library (Sparse Voxel Octree - Laine & Karras 2010 implementation)
 add_subdirectory(SVO)
 
