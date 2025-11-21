@@ -53,6 +53,18 @@ public:
 };
 
 /**
+ * Key predicate - Custom filter for vec3 keys
+ *
+ * Example: Filter voxels where normal points into upper hemisphere
+ * ```cpp
+ * registry->setKeyPredicate([](const glm::vec3& normal) {
+ *     return normal.y > 0.0f;  // Upper hemisphere
+ * });
+ * ```
+ */
+using KeyPredicate = std::function<bool(const std::any& value)>;
+
+/**
  * AttributeRegistry - Central manager for voxel attributes
  *
  * Responsibilities:
@@ -65,11 +77,19 @@ public:
  * - One AttributeStorage per attribute (owns data)
  * - BrickViews reference slots in AttributeStorage (zero-copy)
  * - Adding/removing attributes doesn't move existing data
+ * - Vec3 keys support custom predicates (e.g., hemisphere filters)
  *
  * Usage:
  *   auto registry = std::make_shared<AttributeRegistry>();
  *   registry->registerKey("density", AttributeType::Float, 0.0f);
  *   registry->addAttribute("material", AttributeType::Uint32, 0u);
+ *
+ *   // Vec3 key with custom predicate
+ *   registry->registerKey("normal", AttributeType::Vec3, glm::vec3(0,1,0));
+ *   registry->setKeyPredicate([](const std::any& val) {
+ *       glm::vec3 normal = std::any_cast<glm::vec3>(val);
+ *       return normal.y > 0.0f;  // Upper hemisphere only
+ *   });
  *
  *   uint32_t brickID = registry->allocateBrick();
  *   BrickView brick = registry->getBrick(brickID);
@@ -161,6 +181,44 @@ public:
     void reserve(size_t maxBricks);
 
     // ========================================================================
+    // KEY PREDICATE - CUSTOM FILTERING FOR VEC3 KEYS
+    // ========================================================================
+
+    /**
+     * Set custom predicate for key evaluation
+     *
+     * Used for vec3 keys with custom filters (e.g., hemisphere normals).
+     * Predicate receives key value as std::any, returns true if voxel should be included.
+     *
+     * Example (hemisphere filter):
+     * ```cpp
+     * registry->setKeyPredicate([](const std::any& val) {
+     *     glm::vec3 normal = std::any_cast<glm::vec3>(val);
+     *     return glm::dot(normal, glm::vec3(0,1,0)) > 0.0f;  // Upper hemisphere
+     * });
+     * ```
+     */
+    void setKeyPredicate(KeyPredicate predicate) {
+        m_keyPredicate = std::move(predicate);
+    }
+
+    /**
+     * Evaluate key value against predicate
+     *
+     * Returns true if:
+     * - No predicate set (default behavior - all voxels pass)
+     * - Predicate returns true
+     *
+     * Returns false if predicate returns false (voxel should be filtered out)
+     */
+    bool evaluateKey(const std::any& keyValue) const {
+        if (!m_keyPredicate) {
+            return true;  // No predicate - all voxels pass
+        }
+        return m_keyPredicate(keyValue);
+    }
+
+    // ========================================================================
     // OBSERVER PATTERN - NOTIFICATION SYSTEM
     // ========================================================================
 
@@ -178,6 +236,9 @@ public:
 private:
     // Key attribute (determines octree structure)
     std::string m_keyAttributeName;
+
+    // Key predicate (custom filter for vec3 keys)
+    KeyPredicate m_keyPredicate;
 
     // Attribute storage (owns data)
     std::unordered_map<std::string, std::unique_ptr<AttributeStorage>> m_attributes;

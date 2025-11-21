@@ -1,8 +1,21 @@
 # Active Context
 
-**Last Updated**: November 21, 2025 (SVO Integration Complete!)
+**Last Updated**: November 21, 2025 (VoxelConfig + Data Structures Complete!)
 
 **End of conversation summary for next session:**
+
+✅ **VoxelConfig System COMPLETE** - Macro-based compile-time validated voxel configuration system:
+  - VOXEL_KEY/VOXEL_ATTRIBUTE macros with auto-lowercasing (DENSITY → "density")
+  - Default defaults from type traits (float → 0.0f, vec3 → vec3(0))
+  - Automatic vec3 expansion (color → color_x, color_y, color_z)
+  - Custom key predicates for filtering (hemisphere normals, color ranges)
+  - Zero runtime overhead (compile-time template magic)
+
+✅ **Voxel Data Structures COMPLETE** - Generated Scalar/Arrays pairs:
+  - StandardVoxelScalar (single voxel) + StandardVoxelArrays (batch)
+  - RichVoxelScalar + RichVoxelArrays (PBR materials)
+  - BasicVoxelScalar + BasicVoxelArrays (minimal)
+  - Helper functions for BrickView population
 
 ✅ **SVO Integration COMPLETE** - VoxelData library fully integrated with SVO system. All tests compile and run successfully.
 
@@ -35,6 +48,15 @@ Application creates AttributeRegistry
 - ✅ No hardcoded types (dynamically handles all registered attributes)
 - ✅ Build system integration (SVO links VoxelData)
 - ✅ All tests updated and compiling
+- ✅ **VoxelConfig macro system** (mirrors ResourceConfig pattern)
+  - ✅ VOXEL_KEY macro for key attributes
+  - ✅ VOXEL_ATTRIBUTE macro for non-key attributes
+  - ✅ Combined declaration + initialization
+  - ✅ Compile-time type safety and validation
+  - ✅ Zero runtime overhead
+  - ✅ StandardVoxelConfigs.h with 5 pre-defined configs
+  - ✅ Comprehensive example (VoxelConfigExample.cpp)
+  - ✅ Documentation (VOXELCONFIG.md)
 
 **Key Improvements This Session:**
 1. **Morton Encoding** - [BrickView.cpp:149-189](libraries/VoxelData/src/BrickView.cpp#L149-L189)
@@ -68,9 +90,10 @@ Application creates AttributeRegistry
 3. ✅ ~~Replace BrickStorage with AttributeRegistry~~ DONE (both paths supported)
 4. ✅ ~~Update inject() to use BrickView~~ DONE
 5. ✅ ~~Update tests~~ DONE
-6. **TODO**: Implement full macro auto-registration system
+6. ✅ ~~Implement VoxelConfig macro system~~ DONE
 7. **TODO**: Add attribute packing for RGB/normals (currently TODOs in code)
 8. **TODO**: Run tests to verify end-to-end functionality
+9. **TODO**: Update VoxelInjector to use VoxelConfig for initialization
 
 ---
 
