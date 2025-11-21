@@ -7,6 +7,9 @@
 #include <memory>
 #include <unordered_map>
 
+// VoxelData library
+#include <AttributeRegistry.h>
+
 namespace SVO {
 
 // Forward declarations
@@ -239,12 +242,34 @@ struct InjectionConfig {
 
 /**
  * Voxel data injector - builds SVO from raw voxel data.
+ *
+ * Observes AttributeRegistry for key attribute changes - when key changes,
+ * spatial structure must be rebuilt.
  */
-class VoxelInjector {
+class VoxelInjector : public VoxelData::IAttributeRegistryObserver {
 public:
     VoxelInjector() = default;
+    explicit VoxelInjector(VoxelData::AttributeRegistry* registry)
+        : m_attributeRegistry(registry) {
+        if (m_attributeRegistry) {
+            m_attributeRegistry->addObserver(this);
+        }
+    }
+
+    // Legacy constructor for backwards compatibility (deprecated)
     explicit VoxelInjector(BrickStorage<DefaultLeafData>* brickStorage)
         : m_brickStorage(brickStorage) {}
+
+    ~VoxelInjector() {
+        if (m_attributeRegistry) {
+            m_attributeRegistry->removeObserver(this);
+        }
+    }
+
+    // IAttributeRegistryObserver implementation
+    void onKeyChanged(const std::string& oldKey, const std::string& newKey) override;
+    void onAttributeAdded(const std::string& name, VoxelData::AttributeType type) override;
+    void onAttributeRemoved(const std::string& name) override;
 
     /**
      * Inject sparse voxel data.
@@ -356,7 +381,8 @@ public:
 private:
     ProgressCallback m_progressCallback;
     Stats m_stats;
-    BrickStorage<DefaultLeafData>* m_brickStorage = nullptr;  // Non-owning pointer, optional
+    VoxelData::AttributeRegistry* m_attributeRegistry = nullptr;  // Non-owning pointer
+    BrickStorage<DefaultLeafData>* m_brickStorage = nullptr;      // Non-owning pointer (legacy, deprecated)
 
     // Maps parent descriptor index → [octant 0-7] → child descriptor index
     // Used during additive insertion to track which child octant leads to which descriptor

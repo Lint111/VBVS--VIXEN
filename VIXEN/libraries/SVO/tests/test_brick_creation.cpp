@@ -3,6 +3,7 @@
 #include "LaineKarrasOctree.h"
 #include "BrickStorage.h"
 #include "SVOBuilder.h"
+#include <AttributeRegistry.h>
 #include <iostream>
 
 using namespace SVO;
@@ -40,11 +41,12 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
     config.brickDepthLevels = 3;  // Bricks at depth 5 (8-3)
     config.minVoxelSize = 0.1f;
 
-    // Create brick storage (depth 3 = 8x8x8 voxels per brick, capacity 1024 bricks)
-    auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(3, 1024);
+    // Create AttributeRegistry with density as key attribute
+    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
+    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
 
-    // Inject with brick storage
-    VoxelInjector injector(brickStorage.get());
+    // Inject with AttributeRegistry
+    VoxelInjector injector(registry.get());
     auto svo = injector.inject(*sampler, config);
 
     ASSERT_NE(svo, nullptr);
@@ -69,16 +71,20 @@ TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
     // The count should match the number of leaf descriptors
     EXPECT_GT(brickCount, 0) << "No bricks were created despite brickDepthLevels=3";
 
-    // Verify brick storage has allocated bricks
-    size_t allocatedBricks = brickStorage->getBrickCount();
-    std::cout << "Bricks allocated in storage: " << allocatedBricks << "\n";
-    EXPECT_GT(allocatedBricks, 0) << "BrickStorage has no allocated bricks";
-
     // Count non-empty brick references (bricks with actual data)
     size_t solidBricks = 0;
     for (const auto& brickRef : octree->getOctree()->root->brickReferences) {
         if (brickRef.brickID != 0xFFFFFFFF) {  // Valid brick ID
             solidBricks++;
+
+            // Verify we can access the brick data via AttributeRegistry
+            VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
+            EXPECT_TRUE(brick.hasAttribute("density"));
+
+            // Sample a voxel from the brick (center voxel at index 256)
+            float density = brick.get<float>("density", 256);
+            EXPECT_GE(density, 0.0f);
+            EXPECT_LE(density, 1.0f);
         }
     }
     std::cout << "Solid bricks (non-empty): " << solidBricks << "\n";
@@ -129,11 +135,12 @@ TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
     config.maxLevels = 7;
     config.brickDepthLevels = 3;  // Bricks at depth 4
 
-    // Create brick storage (depth 3 = 8x8x8 voxels per brick, capacity 512 bricks)
-    auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(3, 512);
+    // Create AttributeRegistry with density as key attribute
+    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
+    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
 
     // Build octree with bricks
-    VoxelInjector injector(brickStorage.get());
+    VoxelInjector injector(registry.get());
     auto svo = injector.inject(*sampler, config);
 
     ASSERT_NE(svo, nullptr);
@@ -200,11 +207,12 @@ TEST(BrickCreationTest, BrickDensityQueries) {
     config.maxLevels = 6;
     config.brickDepthLevels = 3;
 
-    // Create brick storage (depth 3 = 8x8x8 voxels per brick, capacity 256 bricks)
-    auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(3, 256);
+    // Create AttributeRegistry with density as key attribute
+    auto registry = std::make_shared<VoxelData::AttributeRegistry>();
+    registry->registerKey("density", VoxelData::AttributeType::Float, 0.0f);
 
     // Build octree
-    VoxelInjector injector(brickStorage.get());
+    VoxelInjector injector(registry.get());
     auto svo = injector.inject(*sampler, config);
 
     ASSERT_NE(svo, nullptr);
@@ -219,13 +227,13 @@ TEST(BrickCreationTest, BrickDensityQueries) {
         if (brickRef.brickID != 0xFFFFFFFF) {
             validBricks++;
 
-            // Query brick density at a few positions
-            uint32_t brickRes = 1u << brickRef.brickDepth;  // 2^depth = 8 for depth=3
+            // Query brick density at a few positions using AttributeRegistry
+            VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
+            EXPECT_TRUE(brick.hasAttribute("density"));
 
-            // Check corner voxels using the brick data arrays directly
-            // BrickStorage uses template parameter 0 for density array
-            float density0 = brickStorage->template get<0>(brickRef.brickID, 0);  // (0,0,0) in Morton order
-            float density511 = brickStorage->template get<0>(brickRef.brickID, 511);  // (7,7,7) in Morton order
+            // Check corner voxels
+            float density0 = brick.get<float>("density", 0);     // (0,0,0) in Morton order
+            float density511 = brick.get<float>("density", 511); // (7,7,7) in Morton order
 
             // At least one voxel should have non-zero density
             EXPECT_TRUE(density0 > 0 || density511 > 0)

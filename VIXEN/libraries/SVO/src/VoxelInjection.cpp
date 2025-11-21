@@ -1019,6 +1019,30 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
     return true;
 }
 
+// ============================================================================
+// IAttributeRegistryObserver Implementation
+// ============================================================================
+
+void VoxelInjector::onKeyChanged(const std::string& oldKey, const std::string& newKey) {
+    // Key attribute changed - this is DESTRUCTIVE
+    // Any existing octree structure needs to be rebuilt
+    // This is just a notification - actual rebuild happens when user calls inject()
+    std::cout << "[VoxelInjector] Key attribute changed: " << oldKey << " -> " << newKey << "\n";
+    std::cout << "[VoxelInjector] WARNING: Existing octree structure is now invalid and must be rebuilt\n";
+}
+
+void VoxelInjector::onAttributeAdded(const std::string& name, VoxelData::AttributeType type) {
+    // Non-destructive - new attribute added
+    // Octree structure remains valid, but may want to update shaders/materials
+    std::cout << "[VoxelInjector] Attribute added: " << name << " (type=" << static_cast<int>(type) << ")\n";
+}
+
+void VoxelInjector::onAttributeRemoved(const std::string& name) {
+    // Non-destructive - attribute removed
+    // Octree structure remains valid
+    std::cout << "[VoxelInjector] Attribute removed: " << name << "\n";
+}
+
 /**
  * Batch insert voxels in parallel.
  * Uses thread pool to distribute work across cores.
@@ -1087,7 +1111,8 @@ std::pair<uint32_t, bool> VoxelInjector::findOrAllocateBrick(
     float worldSize,
     const InjectionConfig& config)
 {
-    if (!m_brickStorage) {
+    // Check which brick system is available
+    if (!m_attributeRegistry && !m_brickStorage) {
         return {0xFFFFFFFF, false};
     }
 
@@ -1110,8 +1135,13 @@ std::pair<uint32_t, bool> VoxelInjector::findOrAllocateBrick(
         return {it->second, false};
     }
 
-    // Allocate new brick
-    uint32_t brickID = m_brickStorage->allocateBrick();
+    // Allocate new brick using new or legacy system
+    uint32_t brickID;
+    if (m_attributeRegistry) {
+        brickID = m_attributeRegistry->allocateBrick();
+    } else {
+        brickID = m_brickStorage->allocateBrick();
+    }
     m_spatialToBrickID[spatialKey] = brickID;
     return {brickID, true};
 }
@@ -1130,7 +1160,7 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
     result.brickID = brickID;
     result.hasSolidVoxels = false;
 
-    if (!m_brickStorage || brickID == 0xFFFFFFFF) {
+    if ((!m_attributeRegistry && !m_brickStorage) || brickID == 0xFFFFFFFF) {
         return result;
     }
 
@@ -1140,7 +1170,72 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
     float voxelSize = worldSize / static_cast<float>(brickSideLength);
     glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
 
-    // Use the new VoxelDataArrays for efficient bulk operations
+    // NEW PATH: Use AttributeRegistry with BrickView
+    if (m_attributeRegistry) {
+        VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
+        const std::string& keyAttr = m_attributeRegistry->getKeyAttributeName();
+
+        if (isNewBrick && sampler) {
+            // Sample all 512 voxels in the brick
+            for (int z = 0; z < brickSideLength; ++z) {
+                for (int y = 0; y < brickSideLength; ++y) {
+                    for (int x = 0; x < brickSideLength; ++x) {
+                        glm::vec3 voxelPos = brickMin + glm::vec3(
+                            (x + 0.5f) * voxelSize,
+                            (y + 0.5f) * voxelSize,
+                            (z + 0.5f) * voxelSize
+                        );
+
+                        VoxelData voxelData;
+                        bool isSolid = sampler->sample(voxelPos, voxelData);
+
+                        if (isSolid) {
+                            size_t localIdx = z * 64 + y * 8 + x;  // Morton order would be better
+
+                            // Set key attribute (density)
+                            if (brick.hasAttribute("density")) {
+                                brick.set<float>("density", localIdx, voxelData.density);
+                            }
+
+                            // Set optional attributes if they exist
+                            if (brick.hasAttribute("material")) {
+                                brick.set<uint32_t>("material", localIdx, 0u);  // TODO: extract from voxelData
+                            }
+
+                            if (!result.hasSolidVoxels) {
+                                result.hasSolidVoxels = true;
+                                result.firstSolidVoxel = voxelData;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (singleVoxel) {
+            // Update specific voxel in brick
+            glm::vec3 localPos = singleVoxel->position - brickMin;
+            int vx = static_cast<int>(localPos.x / voxelSize);
+            int vy = static_cast<int>(localPos.y / voxelSize);
+            int vz = static_cast<int>(localPos.z / voxelSize);
+
+            // Clamp to brick bounds
+            vx = glm::clamp(vx, 0, brickSideLength - 1);
+            vy = glm::clamp(vy, 0, brickSideLength - 1);
+            vz = glm::clamp(vz, 0, brickSideLength - 1);
+
+            size_t localIdx = vz * 64 + vy * 8 + vx;
+
+            if (brick.hasAttribute("density")) {
+                brick.set<float>("density", localIdx, singleVoxel->density);
+            }
+
+            result.hasSolidVoxels = (singleVoxel->density > 0.0f);
+            result.firstSolidVoxel = *singleVoxel;
+        }
+
+        return result;
+    }
+
+    // LEGACY PATH: Use the old BrickStorage system
     if (isNewBrick && sampler) {
         // Check if sampler supports bulk region sampling
         if (auto* dataSource = dynamic_cast<IVoxelDataSource*>(const_cast<IVoxelSampler*>(sampler))) {

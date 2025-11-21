@@ -83,6 +83,13 @@ else()
     message(FATAL_ERROR "GLM target not found - ensure dependencies/CMakeLists.txt is included before libraries/")
 endif()
 
+# VoxelData for voxel attribute management
+if(TARGET VoxelData)
+    target_link_libraries(SVO PUBLIC VoxelData)
+else()
+    message(FATAL_ERROR "VoxelData target not found - ensure libraries/VoxelData is built before SVO")
+endif()
+
 # TBB for parallel processing (optional - fetch if not available)
 find_package(TBB QUIET)
 if(TBB_FOUND)
