@@ -22,6 +22,10 @@ namespace VoxelData {
 VOXEL_CONFIG(BasicVoxel, 2) {
     VOXEL_KEY(DENSITY, float, 0);
     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
+
+    BasicVoxel() {
+        VOXEL_CONFIG_INIT(DENSITY, MATERIAL);
+    }
 };
 
 /**
@@ -39,6 +43,10 @@ VOXEL_CONFIG(StandardVoxel, 3) {
     VOXEL_KEY(DENSITY, float, 0);
     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
     VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2);
+
+    StandardVoxel() {
+        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, COLOR);
+    }
 };
 
 /**
@@ -62,6 +70,10 @@ VOXEL_CONFIG(RichVoxel, 6) {
     VOXEL_ATTRIBUTE(NORMAL, glm::vec3, 3, glm::vec3(0.0f, 1.0f, 0.0f));  // Custom: up vector
     VOXEL_ATTRIBUTE(METALLIC, float, 4);
     VOXEL_ATTRIBUTE(ROUGHNESS, float, 5, 0.5f);  // Custom: mid-roughness
+
+    RichVoxel() {
+        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, COLOR, NORMAL, METALLIC, ROUGHNESS);
+    }
 };
 
 /**
@@ -81,6 +93,10 @@ VOXEL_CONFIG(ThermalVoxel, 3) {
     VOXEL_KEY(TEMPERATURE, float, 0);
     VOXEL_ATTRIBUTE(DENSITY, float, 1);
     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 2);
+
+    ThermalVoxel() {
+        VOXEL_CONFIG_INIT(TEMPERATURE, DENSITY, MATERIAL);
+    }
 };
 
 /**
@@ -96,6 +112,10 @@ VOXEL_CONFIG(ThermalVoxel, 3) {
  */
 VOXEL_CONFIG(CompactVoxel, 1) {
     VOXEL_KEY(MATERIAL, uint8_t, 0);
+
+    CompactVoxel() {
+        VOXEL_CONFIG_INIT(MATERIAL);
+    }
 };
 
 // ============================================================================

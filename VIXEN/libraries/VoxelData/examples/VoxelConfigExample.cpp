@@ -27,16 +27,13 @@ using namespace VoxelData;
  * Custom voxel for game world with health and damage
  */
 VOXEL_CONFIG(GameVoxel, 4) {
-    VOXEL_KEY(DENSITY, float, 0, "density", 0.0f);
-    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1, "material", 0u);
-    VOXEL_ATTRIBUTE(HEALTH, uint16_t, 2, "health", static_cast<uint16_t>(100));
-    VOXEL_ATTRIBUTE(DAMAGE, float, 3, "damage", 1.0f);
+    VOXEL_KEY(DENSITY, float, 0);
+    VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
+    VOXEL_ATTRIBUTE(HEALTH, uint16_t, 2, static_cast<uint16_t>(100));  // Custom default: 100 HP
+    VOXEL_ATTRIBUTE(DAMAGE, float, 3, 1.0f);  // Custom default: 1.0 damage
 
     GameVoxel() {
-        init_DENSITY();
-        init_MATERIAL();
-        init_HEALTH();
-        init_DAMAGE();
+        VOXEL_CONFIG_INIT(DENSITY, MATERIAL, HEALTH, DAMAGE);
     }
 };
 

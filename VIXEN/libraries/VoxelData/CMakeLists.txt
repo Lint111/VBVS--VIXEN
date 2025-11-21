@@ -6,6 +6,7 @@ set(VOXELDATA_SOURCES
     src/AttributeRegistry.cpp
     src/AttributeStorage.cpp
     src/BrickView.cpp
+    src/DynamicVoxelStruct.cpp
 )
 
 # Library headers
@@ -15,6 +16,9 @@ set(VOXELDATA_HEADERS
     include/AttributeStorage.h
     include/AttributeRegistry.h
     include/BrickView.h
+    include/VoxelConfig.h
+    include/StandardVoxelConfigs.h
+    include/DynamicVoxelStruct.h
 )
 
 # Create static library

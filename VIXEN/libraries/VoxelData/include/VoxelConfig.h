@@ -98,6 +98,17 @@ struct VoxelMember {
     constexpr VoxelMember() = default;
 };
 
+// Forward declarations for detail namespace (defined later)
+namespace detail {
+    inline void RegisterAttributeExpanded(
+        AttributeRegistry* registry,
+        const std::string& name,
+        AttributeType type,
+        const std::any& defaultValue,
+        bool isKey
+    );
+}
+
 // ============================================================================
 // VoxelConfigBase - Base class for voxel configurations
 // ============================================================================
@@ -141,9 +152,10 @@ public:
  * Usage:
  * ```cpp
  * VOXEL_CONFIG(StandardVoxel, 3) {
- *     VOXEL_ATTRIBUTE(DENSITY, float, 0.0f, true);     // Key attribute
- *     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 0u, false);
- *     VOXEL_ATTRIBUTE(COLOR, glm::vec3, glm::vec3(0), false);
+ *     VOXEL_KEY(DENSITY, float, 0);
+ *     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
+ *     VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2);
+ *     VOXEL_CONFIG_INIT();  // Auto-initializes attributes array
  * };
  * ```
  */
@@ -171,12 +183,13 @@ public:
 #define VOXEL_KEY(AttrName, AttrType, Index, ...) \
     using AttrName##_Member = ::VoxelData::VoxelMember<AttrType, Index, true>; \
     static constexpr AttrName##_Member AttrName{}; \
-    inline static const ::VoxelData::AttributeDescriptor AttrName##_desc{ \
+    static inline const ::VoxelData::AttributeDescriptor AttrName##_desc{ \
         ::VoxelData::detail::ToLowercase(#AttrName), \
         ::VoxelData::AttributeTypeTraits<AttrType>::type, \
         std::any(::VoxelData::detail::GetDefaultOrCustom<AttrType>(__VA_ARGS__)), \
         true \
-    }
+    }; \
+    static constexpr size_t AttrName##_INDEX = Index
 
 /**
  * @brief Define non-key attribute with automatic initialization
@@ -198,12 +211,13 @@ public:
 #define VOXEL_ATTRIBUTE(AttrName, AttrType, Index, ...) \
     using AttrName##_Member = ::VoxelData::VoxelMember<AttrType, Index, false>; \
     static constexpr AttrName##_Member AttrName{}; \
-    inline static const ::VoxelData::AttributeDescriptor AttrName##_desc{ \
+    static inline const ::VoxelData::AttributeDescriptor AttrName##_desc{ \
         ::VoxelData::detail::ToLowercase(#AttrName), \
         ::VoxelData::AttributeTypeTraits<AttrType>::type, \
         std::any(::VoxelData::detail::GetDefaultOrCustom<AttrType>(__VA_ARGS__)), \
         false \
-    }
+    }; \
+    static constexpr size_t AttrName##_INDEX = Index
 
 // Helper for default value resolution and string conversion
 namespace detail {
@@ -275,6 +289,27 @@ namespace detail {
         }
     }
 }
+
+/**
+ * @brief Auto-initialize attributes array from descriptor list
+ *
+ * Call this in the config constructor to automatically populate the attributes array.
+ *
+ * Usage:
+ * ```cpp
+ * VOXEL_CONFIG(StandardVoxel, 3) {
+ *     VOXEL_KEY(DENSITY, float, 0);
+ *     VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);
+ *     VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2);
+ *
+ *     StandardVoxel() {
+ *         VOXEL_CONFIG_INIT(DENSITY, MATERIAL, COLOR);
+ *     }
+ * };
+ * ```
+ */
+#define VOXEL_CONFIG_INIT(...) \
+    attributes = { __VA_ARGS__##_desc... }
 
 /**
  * @brief Validate voxel configuration at compile time
