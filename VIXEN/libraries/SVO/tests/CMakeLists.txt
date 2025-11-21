@@ -239,3 +239,65 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_brick_creation)
+
+# ===========================================================================
+# AttributeRegistry Integration Tests
+# ===========================================================================
+# Tests LaineKarrasOctree integration with AttributeRegistry after migration
+# from BrickStorage. Validates key attribute lookup, multi-attribute access,
+# BrickView pointer access, type safety, and custom key predicates.
+
+add_executable(test_attribute_registry_integration
+    test_attribute_registry_integration.cpp
+)
+
+if(TARGET SVO)
+    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_attribute_registry_integration PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_attribute_registry_integration POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_attribute_registry_integration>
+        COMMENT "Copying TBB DLL for test_attribute_registry_integration"
+    )
+endif()
+
+gtest_discover_tests(test_attribute_registry_integration)
+
+# ===========================================================================
+# Brick Traversal Tests
+# ===========================================================================
+# Tests brick DDA traversal within LaineKarrasOctree. Validates brick-to-leaf
+# transitions, brick misses with grid continuation, multi-brick traversal,
+# brick boundary conditions, and axis-parallel rays through bricks.
+
+add_executable(test_brick_traversal
+    test_brick_traversal.cpp
+)
+
+if(TARGET SVO)
+    target_link_libraries(test_brick_traversal PRIVATE GTest::gtest_main SVO)
+else()
+    target_link_libraries(test_brick_traversal PRIVATE GTest::gtest_main)
+endif()
+
+set_target_properties(test_brick_traversal PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_brick_traversal POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_brick_traversal>
+        COMMENT "Copying TBB DLL for test_brick_traversal"
+    )
+endif()
+
+gtest_discover_tests(test_brick_traversal)

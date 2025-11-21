@@ -148,12 +148,14 @@ namespace {
     }
 } // anonymous namespace
 
-LaineKarrasOctree::LaineKarrasOctree()
+LaineKarrasOctree::LaineKarrasOctree(int maxDepth)
     : m_registry(nullptr)
+    , m_maxDepth(maxDepth)
 {}
 
-LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry)
+LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxDepth)
     : m_registry(registry)
+    , m_maxDepth(maxDepth)
 {
     // NOTE: Key attribute is ALWAYS index 0 (AttributeRegistry enforces this)
     // No need to cache or validate - just use index 0 directly during traversal
@@ -707,7 +709,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Initialize traversal state
     // Reference: lines 127-134
-    CastStack stack(m_maxDepth);
+    CastStack stack;
 
     // Safety check: ensure octree has root descriptor
     if (m_octree->root->childDescriptors.empty()) {
@@ -1209,7 +1211,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(scale_exp << 23));
 
             // Restore parent voxel from stack
-            if (scale >= 0 && scale < CAST_STACK_DEPTH) {
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
                 parent = stack.nodes[scale];
                 t_max = stack.tMax[scale];
             } else {
@@ -1242,7 +1244,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     if (iter >= maxIter) {
         std::cout << "DEBUG: Hit iteration limit! scale=" << scale
                   << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
-    } else if (scale >= CAST_STACK_DEPTH) {
+    } else if (scale >= m_maxDepth) {
         std::cout << "DEBUG: Ray exited octree. scale=" << scale
                   << " iter=" << iter << " t_min=" << t_min << "\n";
     } else {
