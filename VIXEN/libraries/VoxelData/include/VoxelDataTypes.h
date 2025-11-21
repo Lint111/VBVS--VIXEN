@@ -86,4 +86,48 @@ inline bool hasFlag(VoxelMemberFlags flags, VoxelMemberFlags flag) {
     return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
 }
 
+// ============================================================================
+// Macro Infrastructure for Voxel Struct Definition
+// ============================================================================
+
+/**
+ * Example usage:
+ *
+ * DEFINE_VOXEL_STRUCT(MyVoxel,
+ *     VOXEL_MEMBER(density, float, 0.0f, VoxelMemberFlags::Key)
+ *     VOXEL_MEMBER(material, uint32_t, 0u, VoxelMemberFlags::None)
+ *     VOXEL_MEMBER(color, glm::vec3, glm::vec3(0), VoxelMemberFlags::Vec3)
+ * )
+ *
+ * This generates:
+ * - struct MyVoxel with members
+ * - static method to register attributes with AttributeRegistry
+ */
+
+#define VOXEL_MEMBER(name, type, defaultVal, flags) \
+    type name = defaultVal;
+
+#define DEFINE_VOXEL_STRUCT(StructName, ...) \
+    struct StructName { \
+        __VA_ARGS__ \
+        \
+        static void registerAttributes(::VoxelData::AttributeRegistry* registry) { \
+            REGISTER_ATTRIBUTES_IMPL(StructName, __VA_ARGS__) \
+        } \
+    };
+
+// Helper to convert C++ type to AttributeType
+namespace detail {
+    template<typename T> struct TypeToAttributeType;
+    template<> struct TypeToAttributeType<float> { static constexpr AttributeType value = AttributeType::Float; };
+    template<> struct TypeToAttributeType<uint32_t> { static constexpr AttributeType value = AttributeType::Uint32; };
+    template<> struct TypeToAttributeType<uint16_t> { static constexpr AttributeType value = AttributeType::Uint16; };
+    template<> struct TypeToAttributeType<uint8_t> { static constexpr AttributeType value = AttributeType::Uint8; };
+}
+
+// Registration implementation (simplified - can be expanded)
+#define REGISTER_ATTRIBUTES_IMPL(StructName, ...) \
+    /* For now, user calls registry->registerKey() / addAttribute() manually */ \
+    /* Full implementation would parse __VA_ARGS__ and auto-register */
+
 } // namespace VoxelData

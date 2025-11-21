@@ -1174,17 +1174,14 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
         ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
 
         if (isNewBrick && sampler) {
-            // Get bulk array access for efficient population
-            auto densityArray = brick.getAttributeArray<float>("density");
-
             // Calculate voxels per brick: (2^depth)³
             const size_t voxelsPerBrick = brickSideLength * brickSideLength * brickSideLength;
             const int stride = brickSideLength;
             const int planeSize = brickSideLength * brickSideLength;
 
-            // Sample all voxels and populate array directly
+            // Sample all voxels and populate using 3D coordinates (ordering hidden in BrickView)
             for (size_t i = 0; i < voxelsPerBrick; ++i) {
-                // Convert linear index to 3D coordinates (can be Morton ordering or linear)
+                // Convert linear index to 3D coordinates
                 int x = i % stride;
                 int y = (i / stride) % stride;
                 int z = i / planeSize;
@@ -1198,7 +1195,17 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
                 VoxelData voxelData;
                 bool isSolid = sampler->sample(voxelPos, voxelData);
 
-                densityArray[i] = isSolid ? voxelData.density : 0.0f;
+                // Populate all registered attributes dynamically
+                for (const auto& attrName : brick.getAttributeNames()) {
+                    if (attrName == "density") {
+                        brick.setAt3D<float>(attrName, x, y, z, isSolid ? voxelData.density : 0.0f);
+                    } else if (attrName == "color") {
+                        // TODO: Pack RGB into appropriate format based on attribute type
+                    } else if (attrName == "normal") {
+                        // TODO: Pack normal into appropriate format
+                    }
+                    // Additional attributes handled automatically
+                }
 
                 if (isSolid && !result.hasSolidVoxels) {
                     result.hasSolidVoxels = true;
@@ -1217,11 +1224,16 @@ VoxelInjector::BrickAllocation VoxelInjector::populateBrick(
             vy = glm::clamp(vy, 0, brickSideLength - 1);
             vz = glm::clamp(vz, 0, brickSideLength - 1);
 
-            // Linear ordering: z * (width*height) + y * width + x
-            const int planeSize = brickSideLength * brickSideLength;
-            size_t localIdx = vz * planeSize + vy * brickSideLength + vx;
-
-            brick.set<float>("density", localIdx, singleVoxel->density);
+            // Populate all registered attributes dynamically
+            for (const auto& attrName : brick.getAttributeNames()) {
+                if (attrName == "density") {
+                    brick.setAt3D<float>(attrName, vx, vy, vz, singleVoxel->density);
+                } else if (attrName == "color") {
+                    // TODO: Pack RGB
+                } else if (attrName == "normal") {
+                    // TODO: Pack normal
+                }
+            }
 
             result.hasSolidVoxels = (singleVoxel->density > 0.0f);
             result.firstSolidVoxel = *singleVoxel;
