@@ -340,52 +340,82 @@ DynamicVoxelArrays BrickView::getBatch() const {
 // Fast Attribute Access (Performance-Critical Ray Traversal)
 // ============================================================================
 
+// Index-based access (FASTEST - no string hashing)
 template<>
-const float* BrickView::getAttributePointer<float>(const std::string& attrName) const {
-    if (!hasAttribute(attrName)) return nullptr;
+const float* BrickView::getAttributePointer<float>(AttributeIndex attrIndex) const {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
 
-    auto* storage = getStorage(attrName);
+    auto* storage = m_registry->getStorage(attrIndex);
     if (!storage) return nullptr;
 
-    size_t slot = m_allocation.getSlot(attrName);
+    size_t slot = m_allocation.getSlot(attrIndex);
     auto view = storage->getSlotView<float>(slot);
     return view.data();
+}
+
+template<>
+float* BrickView::getAttributePointer<float>(AttributeIndex attrIndex) {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
+
+    auto* storage = m_registry->getStorage(attrIndex);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrIndex);
+    auto view = storage->getSlotView<float>(slot);
+    return view.data();
+}
+
+template<>
+const uint32_t* BrickView::getAttributePointer<uint32_t>(AttributeIndex attrIndex) const {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
+
+    auto* storage = m_registry->getStorage(attrIndex);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrIndex);
+    auto view = storage->getSlotView<uint32_t>(slot);
+    return view.data();
+}
+
+template<>
+uint32_t* BrickView::getAttributePointer<uint32_t>(AttributeIndex attrIndex) {
+    if (!m_allocation.hasAttribute(attrIndex)) return nullptr;
+
+    auto* storage = m_registry->getStorage(attrIndex);
+    if (!storage) return nullptr;
+
+    size_t slot = m_allocation.getSlot(attrIndex);
+    auto view = storage->getSlotView<uint32_t>(slot);
+    return view.data();
+}
+
+// Name-based access (legacy - delegates to index-based)
+template<>
+const float* BrickView::getAttributePointer<float>(const std::string& attrName) const {
+    AttributeIndex idx = m_registry->getAttributeIndex(attrName);
+    if (idx == INVALID_ATTRIBUTE_INDEX) return nullptr;
+    return getAttributePointer<float>(idx);
 }
 
 template<>
 float* BrickView::getAttributePointer<float>(const std::string& attrName) {
-    if (!hasAttribute(attrName)) return nullptr;
-
-    auto* storage = getStorage(attrName);
-    if (!storage) return nullptr;
-
-    size_t slot = m_allocation.getSlot(attrName);
-    auto view = storage->getSlotView<float>(slot);
-    return view.data();
+    AttributeIndex idx = m_registry->getAttributeIndex(attrName);
+    if (idx == INVALID_ATTRIBUTE_INDEX) return nullptr;
+    return getAttributePointer<float>(idx);
 }
 
 template<>
 const uint32_t* BrickView::getAttributePointer<uint32_t>(const std::string& attrName) const {
-    if (!hasAttribute(attrName)) return nullptr;
-
-    auto* storage = getStorage(attrName);
-    if (!storage) return nullptr;
-
-    size_t slot = m_allocation.getSlot(attrName);
-    auto view = storage->getSlotView<uint32_t>(slot);
-    return view.data();
+    AttributeIndex idx = m_registry->getAttributeIndex(attrName);
+    if (idx == INVALID_ATTRIBUTE_INDEX) return nullptr;
+    return getAttributePointer<uint32_t>(idx);
 }
 
 template<>
 uint32_t* BrickView::getAttributePointer<uint32_t>(const std::string& attrName) {
-    if (!hasAttribute(attrName)) return nullptr;
-
-    auto* storage = getStorage(attrName);
-    if (!storage) return nullptr;
-
-    size_t slot = m_allocation.getSlot(attrName);
-    auto view = storage->getSlotView<uint32_t>(slot);
-    return view.data();
+    AttributeIndex idx = m_registry->getAttributeIndex(attrName);
+    if (idx == INVALID_ATTRIBUTE_INDEX) return nullptr;
+    return getAttributePointer<uint32_t>(idx);
 }
 
 // ============================================================================

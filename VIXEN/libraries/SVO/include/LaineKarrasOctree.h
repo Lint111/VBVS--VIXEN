@@ -4,14 +4,12 @@
 #include "SVOTypes.h"
 #include "SVOBuilder.h"
 #include "BrickReference.h"
-#include "BrickStorage.h"
+#include "AttributeRegistry.h"
 #include <memory>
 #include <optional>
 
 namespace SVO {
 
-// Forward declaration
-template<typename BrickDataLayout> class BrickStorage;
 
 /**
  * Laine & Karras (2010) Sparse Voxel Octree implementation.
@@ -32,7 +30,7 @@ template<typename BrickDataLayout> class BrickStorage;
 class LaineKarrasOctree : public ISVOStructure {
 public:
     LaineKarrasOctree();
-    explicit LaineKarrasOctree(BrickStorage<DefaultLeafData>* brickStorage);
+    explicit LaineKarrasOctree(VoxelData::AttributeRegistry* registry);
     ~LaineKarrasOctree() override;
 
     // ISVOStructure interface
@@ -78,7 +76,11 @@ public:
 
 private:
     std::unique_ptr<Octree> m_octree;
-    BrickStorage<DefaultLeafData>* m_brickStorage = nullptr; // Non-owning pointer
+    VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer
+
+    // Cached attribute indices for zero-cost lookups
+    VoxelData::AttributeIndex m_densityIdx = VoxelData::INVALID_ATTRIBUTE_INDEX;
+    VoxelData::AttributeIndex m_materialIdx = VoxelData::INVALID_ATTRIBUTE_INDEX;
 
     // Cached metadata
     glm::vec3 m_worldMin{0.0f};

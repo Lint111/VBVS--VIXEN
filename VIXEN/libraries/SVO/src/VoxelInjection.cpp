@@ -527,12 +527,8 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
     octree->root = std::move(rootBlock);
     octree->totalVoxels = m_stats.leavesCreated;
 
-    // Wrap in LaineKarrasOctree
-    auto result = std::make_unique<LaineKarrasOctree>();
-    if (m_brickStorage) {
-        // Set brick storage if available
-        // Note: LaineKarrasOctree may need a setBrickStorage method
-    }
+    // Wrap in LaineKarrasOctree with AttributeRegistry
+    auto result = std::make_unique<LaineKarrasOctree>(m_attributeRegistry);
     result->setOctree(std::move(octree));
 
     return result;

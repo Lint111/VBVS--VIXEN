@@ -107,10 +107,26 @@ namespace {
 } // anonymous namespace
 
 LaineKarrasOctree::LaineKarrasOctree()
-    : m_brickStorage(nullptr) {}
+    : m_registry(nullptr)
+    , m_densityIdx(VoxelData::INVALID_ATTRIBUTE_INDEX)
+    , m_materialIdx(VoxelData::INVALID_ATTRIBUTE_INDEX)
+{}
 
-LaineKarrasOctree::LaineKarrasOctree(BrickStorage<DefaultLeafData>* brickStorage)
-    : m_brickStorage(brickStorage) {}
+LaineKarrasOctree::LaineKarrasOctree(VoxelData::AttributeRegistry* registry)
+    : m_registry(registry)
+{
+    // Cache attribute indices for zero-cost lookups during traversal
+    if (m_registry) {
+        m_densityIdx = m_registry->getAttributeIndex("density");
+        m_materialIdx = m_registry->getAttributeIndex("material");
+
+        // Validate that required attributes exist
+        if (m_densityIdx == VoxelData::INVALID_ATTRIBUTE_INDEX) {
+            throw std::runtime_error("Required attribute 'density' not found in registry");
+        }
+        // material is optional - if not present, materialIdx stays INVALID
+    }
+}
 
 LaineKarrasOctree::~LaineKarrasOctree() = default;
 
@@ -1404,15 +1420,24 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             return std::nullopt;
         }
 
-        // 6. Sample brick voxel for occupancy
-        // Query BrickStorage for voxel density (if available)
-        bool voxelOccupied = true; // Default: assume solid if no BrickStorage
+        // 6. Sample brick voxel for occupancy using key predicate
+        // Use AttributeRegistry's evaluateKey() to test voxel solidity
+        bool voxelOccupied = true; // Default: assume solid if no registry
 
-        if (m_brickStorage) {
-            const size_t localIdx = m_brickStorage->getIndex(currentVoxel.x, currentVoxel.y, currentVoxel.z);
-            const float density = m_brickStorage->get<0>(brickRef.brickID, localIdx);
-            constexpr float densityThreshold = 0.01f;
-            voxelOccupied = (density >= densityThreshold);
+        if (m_registry && m_densityIdx != VoxelData::INVALID_ATTRIBUTE_INDEX) {
+            // Get brick view (zero-copy)
+            VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
+
+            // Compute linear index from 3D coordinates
+            const int brickN = brickRef.getSideLength();
+            const size_t localIdx = static_cast<size_t>(currentVoxel.x + currentVoxel.y * brickN + currentVoxel.z * brickN * brickN);
+
+            // FAST PATH: Use cached AttributeIndex for O(1) lookup (no hash, no string!)
+            const float* densityArray = brick.getAttributePointer<float>(m_densityIdx);
+            const float density = densityArray[localIdx];
+
+            // Evaluate key predicate (respects custom solidity tests)
+            voxelOccupied = m_registry->evaluateKey(density);
 
             if (stepCount == 1) {  // First voxel
                 std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z

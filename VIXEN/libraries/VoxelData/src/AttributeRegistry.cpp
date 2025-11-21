@@ -180,6 +180,36 @@ const AttributeStorage* AttributeRegistry::getStorage(const std::string& name) c
     return it->second.get();
 }
 
+// Index-based queries (FAST - O(1) vector access)
+AttributeStorage* AttributeRegistry::getStorage(AttributeIndex index) {
+    if (index >= m_storageByIndex.size()) {
+        return nullptr;
+    }
+    return m_storageByIndex[index];
+}
+
+const AttributeStorage* AttributeRegistry::getStorage(AttributeIndex index) const {
+    if (index >= m_storageByIndex.size()) {
+        return nullptr;
+    }
+    return m_storageByIndex[index];
+}
+
+const AttributeDescriptor& AttributeRegistry::getDescriptor(AttributeIndex index) const {
+    if (index >= m_descriptorByIndex.size()) {
+        throw std::out_of_range("Invalid attribute index: " + std::to_string(index));
+    }
+    return m_descriptorByIndex[index];
+}
+
+AttributeIndex AttributeRegistry::getAttributeIndex(const std::string& name) const {
+    auto it = m_descriptors.find(name);
+    if (it == m_descriptors.end()) {
+        return INVALID_ATTRIBUTE_INDEX;
+    }
+    return it->second.index;
+}
+
 std::vector<std::string> AttributeRegistry::getAttributeNames() const {
     std::vector<std::string> names;
     names.reserve(m_attributes.size());
@@ -198,9 +228,11 @@ void AttributeRegistry::reserve(size_t maxBricks) {
 BrickAllocation AttributeRegistry::allocateBrickInAllAttributes() {
     BrickAllocation allocation;
 
-    for (auto& [name, storage] : m_attributes) {
+    // Allocate slots using index-based approach
+    for (const auto& desc : m_descriptorByIndex) {
+        auto* storage = m_storageByIndex[desc.index];
         size_t slot = storage->allocateSlot();
-        allocation.addSlot(name, slot);
+        allocation.addSlot(desc.index, desc.name, slot);
     }
 
     return allocation;
