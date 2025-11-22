@@ -244,6 +244,23 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
     return ids;
 }
 
+std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
+    const std::vector<VoxelCreationEntry>& entries) {
+
+    std::vector<EntityID> ids;
+    ids.reserve(entries.size());
+
+    for (const auto& entry : entries) {
+        ids.push_back(createVoxel(
+            entry.position,
+            entry.request.density,
+            entry.request.color,
+            entry.request.normal));
+    }
+
+    return ids;
+}
+
 void GaiaVoxelWorld::destroyVoxelsBatch(const std::vector<EntityID>& ids) {
     for (auto id : ids) {
         destroyVoxel(id);

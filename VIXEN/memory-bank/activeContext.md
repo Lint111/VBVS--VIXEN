@@ -1,12 +1,101 @@
 # Active Context
 
-**Last Updated**: November 22, 2025 (Session 2)
+**Last Updated**: November 22, 2025 (Session 3)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **GaiaVoxelWorld + ECS Integration** | ✅ **Unified Attribute System Design**
+**Status**: ✅ **Async Layer Design** | ✅ **VoxelCreationRequest API** | 🔧 **Ready for Migration**
 
 ---
 
-## Current Session Summary (Nov 22 - Session 2: Unified Attribute System)
+## Current Session Summary (Nov 22 - Session 3: Async Layer Architecture)
+
+### Async Layer Design ✅ COMPLETE
+
+**Achievement**: Designed complete async architecture with VoxelInjectionQueue in GaiaVoxelWorld and clarified layer responsibilities.
+
+**Key Architectural Decision**:
+- **VoxelInjectionQueue** moves to GaiaVoxelWorld (async entity creation)
+- **VoxelInjector** stays in SVO (entity → spatial index insertion)
+- Clean separation: Data layer creates, spatial layer indexes
+
+**Design Documents Created**:
+1. **SVO_AS_VIEW_ARCHITECTURE.md** - [SVO_AS_VIEW_ARCHITECTURE.md](libraries/GaiaVoxelWorld/SVO_AS_VIEW_ARCHITECTURE.md) (650 lines)
+   - SVO as pure spatial index (zero data storage)
+   - GaiaVoxelWorld as authoritative data owner
+   - VoxelInjector moved to GaiaVoxelWorld
+   - Memory savings: 68% reduction (140 → 44 bytes per voxel)
+   - Ray hit optimization: 62% reduction (64 → 24 bytes)
+
+2. **ASYNC_LAYER_DESIGN.md** - [ASYNC_LAYER_DESIGN.md](libraries/GaiaVoxelWorld/ASYNC_LAYER_DESIGN.md) (550 lines)
+   - VoxelInjectionQueue in GaiaVoxelWorld (async entity creation)
+   - VoxelInjector in SVO (SVO insertion helper)
+   - Clean dependency chain: GaiaVoxelWorld ← SVO (not circular!)
+   - Queue creates entities first, SVO insertion is optional
+
+**Architecture Flow**:
+```
+Application
+  ↓
+VoxelInjectionQueue (in GaiaVoxelWorld)
+  ├─ Async entity creation (lock-free ring buffer)
+  ├─ Worker thread pool
+  └─ Returns created entities (8 bytes each)
+
+  ↓ [Optional SVO indexing]
+
+VoxelInjector (in SVO)
+  ├─ Accepts created entities
+  ├─ Groups by brick coordinate
+  └─ Inserts into LaineKarrasOctree
+```
+
+**VoxelCreationRequest Implementation** ✅:
+- [VoxelCreationRequest.h](libraries/GaiaVoxelWorld/include/VoxelCreationRequest.h) - Lightweight request struct (32 bytes)
+- Added `GaiaVoxelWorld::createVoxelsBatch(VoxelCreationEntry[])` overload
+- Queue entry: 40 bytes (MortonKey 8 + VoxelCreationRequest 32) vs 64+ bytes (old)
+- 37% memory reduction in queue entries
+
+**Files Created**:
+- [VoxelCreationRequest.h](libraries/GaiaVoxelWorld/include/VoxelCreationRequest.h) - 32-byte request struct (55 lines)
+- [SVO_AS_VIEW_ARCHITECTURE.md](libraries/GaiaVoxelWorld/SVO_AS_VIEW_ARCHITECTURE.md) - Complete refactoring plan (650 lines)
+- [ASYNC_LAYER_DESIGN.md](libraries/GaiaVoxelWorld/ASYNC_LAYER_DESIGN.md) - Queue migration design (550 lines)
+
+**Files Modified**:
+- [GaiaVoxelWorld.h](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h) - Added VoxelCreationEntry batch creation overload
+- [GaiaVoxelWorld.cpp](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp) - Implemented batch creation from VoxelCreationEntry
+
+**Why This Architecture Works**:
+1. **Queue creates entities first** - Data layer concern (GaiaVoxelWorld)
+2. **SVO insertion is optional** - Can query via `world.queryRegion()` without SVO
+3. **Clean dependencies** - GaiaVoxelWorld has ZERO dependency on SVO
+4. **Decoupled concerns** - Async creation ≠ spatial indexing
+5. **VoxelInjector needs LaineKarrasOctree** - Must stay in SVO library
+
+**Memory Breakdown**:
+```
+OLD System:
+- Queue entry: 64+ bytes (DynamicVoxelScalar copy)
+- Voxel data: 140 bytes (descriptor + AttributeStorage + BrickStorage)
+- Ray hit: 64+ bytes (data copy)
+
+NEW System:
+- Queue entry: 40 bytes (MortonKey + VoxelCreationRequest)
+- Voxel data: 44 bytes (entity components + entity reference)
+- Ray hit: 24 bytes (entity reference + hitPoint + distance)
+
+Total savings: 68% for voxel data, 62% for ray hits, 37% for queue entries
+```
+
+**Next Steps** (8 hours total):
+1. Phase 1A: Move VoxelInjectionQueue to GaiaVoxelWorld (2 hours)
+2. Phase 1B: Refactor VoxelInjector to delegate entity creation (2 hours)
+3. Phase 2: Refactor BrickView to entity spans (2 hours)
+4. Phase 3: Update LaineKarrasOctree entity storage (2 hours)
+
+**Status**: Architecture design complete. Ready for implementation in next session.
+
+---
+
+## Previous Session Summary (Nov 22 - Session 2: Unified Attribute System)
 
 ### ECS-Backed AttributeRegistry Implementation ✅ COMPLETE
 

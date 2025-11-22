@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VoxelComponents.h"
+#include "VoxelCreationRequest.h"
 #include <gaia.h>
 #include <glm/glm.hpp>
 #include <memory>
@@ -141,6 +142,16 @@ public:
     };
 
     std::vector<EntityID> createVoxelsBatch(const std::vector<VoxelData>& voxels);
+
+    /**
+     * Create multiple voxels from creation requests (for VoxelInjectionQueue).
+     * Optimized batch creation with position + attributes.
+     */
+    struct VoxelCreationEntry {
+        glm::vec3 position;
+        VoxelCreationRequest request;
+    };
+    std::vector<EntityID> createVoxelsBatch(const std::vector<VoxelCreationEntry>& entries);
 
     /**
      * Destroy multiple voxels in parallel.

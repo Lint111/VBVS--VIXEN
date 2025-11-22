@@ -13,6 +13,9 @@ add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
     src/VoxelComponents.cpp
     src/ECSBackedRegistry.cpp
+    src/VoxelInjectionQueue.cpp
+    src/VoxelInjector.cpp
+    src/EntityBrickView.cpp
 )
 
 target_include_directories(GaiaVoxelWorld
