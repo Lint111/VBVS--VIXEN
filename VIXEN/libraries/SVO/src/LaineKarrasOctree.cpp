@@ -1219,8 +1219,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             const int MAX_RES = 1 << ESVO_MAX_SCALE;  // 2^22 = 4,194,304
 
             // Compute integer positions in [0, MAX_RES)
+            // Input f is in [0, 1] normalized octree space
             auto floatToInt = [MAX_RES](float f) -> uint32_t {
-                return static_cast<uint32_t>(std::max(0.0f, std::min((f - 1.0f) * MAX_RES, static_cast<float>(MAX_RES - 1))));
+                return static_cast<uint32_t>(std::max(0.0f, std::min(f * MAX_RES, static_cast<float>(MAX_RES - 1))));
             };
 
             uint32_t pos_x_int = floatToInt(pos.x);

@@ -1,14 +1,60 @@
 # Active Context
 
-**Last Updated**: November 21, 2025
+**Last Updated**: November 22, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **100% OctreeQueryTest Pass Rate Achieved** - Ready for Cornell Box Testing
+**Status**: ✅ **OctreeQueryTest 100% Pass Rate** | 🔴 **Cornell Box Investigation Ongoing**
 
 ---
 
-## Current Session Summary
+## Current Session Summary (Nov 22)
 
-### OctreeQueryTest Suite - 100% Pass Rate ✅ COMPLETE
+### Cornell Box Test Debugging - POP Logic Bugs Fixed 🔧 IN PROGRESS
+
+**Achievement**: Fixed 2 critical POP bugs, Cornell Box tests no longer crash but still fail validation
+
+**Bugs Fixed**:
+
+1. **Stack Initialization Bug** - [LaineKarrasOctree.cpp:726-728](libraries/SVO/src/LaineKarrasOctree.cpp#L726-L728)
+   - **Problem**: Stack initialized with user scale [0-7] but accessed with ESVO scale [15-22]
+   - **Fix**: Changed loop to `for (int esvoScale = minScale; esvoScale <= ESVO_MAX_SCALE; esvoScale++)`
+   - **Result**: Eliminated crash from reading uninitialized memory (0xCCCCCCCC pattern)
+
+2. **floatToInt Conversion Bug** - [LaineKarrasOctree.cpp:1223-1224](libraries/SVO/src/LaineKarrasOctree.cpp#L1223-L1224)
+   - **Problem**: Formula `(f - 1.0f) * MAX_RES` for input range [0, 1] gave [-1, 0] → all positions mapped to 0
+   - **Fix**: Changed to `f * MAX_RES` for correct [0, MAX_RES) range
+   - **Result**: POP now calculates correct scale values, exits at valid ESVO scale 20 instead of invalid 14
+
+**Current Status**:
+- ✅ No more crashes (was SEH exception 0xc0000005 - access violation)
+- ❌ Tests still fail - ray exits after 3 iterations without finding voxels
+- ⏱️ Each test takes ~6 seconds (3s build + 3s ray cast @ 1 sec/iteration)
+- 🔍 **Root cause**: Ray traversal exits early, never reaches brick nodes despite 4,868 bricks existing
+
+**Evidence**:
+```
+Build time: 3.16029 seconds
+Batch insertion: 100000 voxels → 4868 bricks (brick size: 8³)
+DEBUG: Ray exited octree. scale=20 iter=3 t_min=0.05
+Hit: FALSE
+```
+
+**Hypothesis**: Configuration issue with Cornell Box voxelization or brick placement, NOT core traversal bug
+- OctreeQueryTest 74/74 passing proves traversal works correctly for depth 4 octrees
+- Cornell Box uses depth 8 with bricks but ray never enters brick traversal code
+- No `[BRICK CHECK]` or `[TRAVERSE BRICK]` debug output during ray cast
+
+**Next Investigation**:
+- Check if bricks are actually attached to octree nodes (BrickReference validation)
+- Verify Cornell Box world bounds [0, 10]³ match octree initialization
+- Examine why ray origin=(5, 8, 5) direction=(0, -1, 0) exits so quickly
+
+**Files Modified**:
+- [LaineKarrasOctree.cpp:726-728](libraries/SVO/src/LaineKarrasOctree.cpp#L726-L728) - Stack init with ESVO scale range
+- [LaineKarrasOctree.cpp:1223-1224](libraries/SVO/src/LaineKarrasOctree.cpp#L1223-L1224) - floatToInt formula fix
+
+---
+
+### Previous Session (Nov 21): OctreeQueryTest Suite - 100% Pass Rate ✅ COMPLETE
 
 **Achievement**: Fixed all remaining OctreeQueryTest failures - **74/74 tests passing (100%)**
 
@@ -490,11 +536,13 @@ Application creates AttributeRegistry
    - Placeholder implementation (returns fixed normal)
    - Lost in git reset, easy to restore
 
-3. **Cornell Box Test Performance** (22 tests - deferred to Week 3)
-   - Additive insertion not optimized for bulk operations (100,000 voxels)
-   - Test runtime: 15-30 minutes per test (debug output enabled)
-   - Valid for integration testing, not unit testing
-   - Core traversal validated via OctreeQueryTest (100% pass rate)
+3. **Cornell Box Test Failures** (22 tests - investigation ongoing)
+   - **Nov 22 Update**: Fixed 2 critical POP bugs (stack init, floatToInt conversion)
+   - Tests no longer crash but fail validation (ray exits early without finding voxels)
+   - Uses depth 8 octrees with 4,868 bricks - never enters brick traversal
+   - Likely configuration issue (voxelization/brick placement), not core traversal bug
+   - Core traversal validated via OctreeQueryTest (74/74 = 100% pass rate)
+   - Build time: 3.2s per test (100,000 voxel insertion via additive API)
 
 4. **BrickStorage Status**
    - LaineKarrasOctree no longer depends on it (uses AttributeRegistry directly)
@@ -515,7 +563,11 @@ Application creates AttributeRegistry
 
 **test_octree_queries**: 74/96 (77.1%) 🟡
 - ✅ **OctreeQueryTest: 74/74 (100%)** ← All core traversal tests passing!
-- 🟡 CornellBoxTest: 0/22 (0%) - Next testing target (density estimator config)
+- 🔴 **CornellBoxTest: 0/22 (0%)** - Depth 8 + bricks, crashes fixed but validation fails
+  - Fixed stack init crash (ESVO scale mismatch)
+  - Fixed floatToInt conversion bug
+  - Ray exits early (3 iterations), never reaches bricks
+  - Investigation ongoing (likely config issue, not traversal bug)
 
 **test_voxel_injection**: 11/11 (100%) ✅
 - AdditiveInsertionSingleVoxel ✅
@@ -588,6 +640,20 @@ const T* getAttributePointer(const std::string& name) const {
 
 ### Discovery 5: Parent tx_center ESVO Bug
 ESVO uses parent's tx_center values for octant selection after DESCEND, NOT recomputed values. This single fix resolved all traversal bugs (11/11 tests passing).
+
+### Discovery 6: ESVO Scale Direction (Nov 22)
+**Critical realization**: ESVO scale goes from **high→low** (coarse→fine):
+- **High scale = coarse/root**: ESVO scale 23 = root node
+- **Low scale = fine/leaves**: ESVO scale 0 = finest leaves
+
+For depth 8 octree, valid ESVO range is [15-22]:
+- Scale 22 → root (user depth 7)
+- Scale 21 → level 1 (user depth 6)
+- Scale 15 → leaves (user depth 0)
+
+**Bugs caught by this understanding**:
+1. Stack init loop used user scale [0-7] instead of ESVO scale [15-22]
+2. floatToInt used `(f - 1.0f)` causing all positions to map to 0
 
 ---
 

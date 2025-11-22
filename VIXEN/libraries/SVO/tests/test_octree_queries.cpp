@@ -919,9 +919,16 @@ protected:
         cornellBox = new LaineKarrasOctree();
         cornellBox->ensureInitialized(glm::vec3(0.0f), glm::vec3(boxSize), 8);
 
-        VoxelInjector injector;
+        // Create AttributeRegistry for brick storage
+        ::VoxelData::AttributeRegistry registry;
+        registry.registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
+        registry.addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+        registry.addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        VoxelInjector injector(&registry);
         InjectionConfig config;
         config.maxLevels = 8; // Reasonable depth for 10³ world with 0.1 voxels
+        config.brickDepthLevels = 3; // Use 8³ bricks at leaf level
 
         std::vector<VoxelInjector::VoxelData> wallVoxels;
 
@@ -930,7 +937,7 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = 0.0f; y < thickness; y += voxelSize) {
-                    VoxelInjector::VoxelData v;
+                    VoxelInjector::VoxelData v(&registry);
                     v.position = glm::vec3(x, y, z);
                     v.attributes.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
                     v.attributes.set("normal", glm::vec3(0.0f, 1.0f, 0.0f)); // Up
@@ -944,7 +951,7 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = boxSize - thickness; y < boxSize; y += voxelSize) {
-                    VoxelInjector::VoxelData v;
+                    VoxelInjector::VoxelData v(&registry);
                     v.position = glm::vec3(x, y, z);
                     // Check if in light patch (center of ceiling)
                     glm::vec2 centerXZ(boxSize * 0.5f, boxSize * 0.5f);
@@ -961,7 +968,7 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = 0.0f; x < thickness; x += voxelSize) {
-                    VoxelInjector::VoxelData v;
+                    VoxelInjector::VoxelData v(&registry);
                     v.position = glm::vec3(x, y, z);
                     v.attributes.set("color", glm::vec3(0.8f, 0.1f, 0.1f)); // Red
                     v.attributes.set("normal", glm::vec3(1.0f, 0.0f, 0.0f)); // Right
@@ -975,7 +982,7 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = boxSize - thickness; x < boxSize; x += voxelSize) {
-                    VoxelInjector::VoxelData v;
+                    VoxelInjector::VoxelData v(&registry);
                     v.position = glm::vec3(x, y, z);
                     v.attributes.set("color", glm::vec3(0.1f, 0.8f, 0.1f)); // Green
                     v.attributes.set("normal", glm::vec3(-1.0f, 0.0f, 0.0f)); // Left
@@ -989,7 +996,7 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float y = 0.0f; y < boxSize; y += voxelSize) {
                 for (float z = boxSize - thickness; z < boxSize; z += voxelSize) {
-                    VoxelInjector::VoxelData v;
+                    VoxelInjector::VoxelData v(&registry);
                     v.position = glm::vec3(x, y, z);
                     v.attributes.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
                     v.attributes.set("normal", glm::vec3(0.0f, 0.0f, -1.0f)); // Forward

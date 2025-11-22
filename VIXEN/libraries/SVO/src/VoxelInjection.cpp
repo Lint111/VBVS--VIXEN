@@ -600,6 +600,13 @@ bool VoxelInjector::insertVoxel(
     const ::VoxelData::DynamicVoxelScalar& data,
     const InjectionConfig& config) {
 
+    // Debug first call
+    static int insertCallCount = 0;
+    if (insertCallCount++ < 3) {
+        std::cout << "[DEBUG insertVoxel] Call #" << insertCallCount
+                  << " position=(" << position.x << "," << position.y << "," << position.z << ")\n" << std::flush;
+    }
+
     // Cast to LaineKarrasOctree (required for direct manipulation)
     auto* octree = dynamic_cast<LaineKarrasOctree*>(&svo);
     if (!octree) {
@@ -629,11 +636,9 @@ bool VoxelInjector::insertVoxel(
     }
 
     // 2. Compute octree path from root to target leaf
-    // Target depth = maxLevels or (maxLevels - brickDepthLevels) if using bricks
+    // Always traverse to full depth - bricks are created at leaf level
+    // (bricks don't reduce tree depth, they provide dense storage at leaves)
     int targetDepth = config.maxLevels;
-    if (config.brickDepthLevels > 0) {
-        targetDepth = config.maxLevels - config.brickDepthLevels;
-    }
 
     // Normalize position to [0,1]³
     glm::vec3 normPos = (position - worldMin) / (worldMax - worldMin);
@@ -766,6 +771,14 @@ bool VoxelInjector::insertVoxel(
         octreeData->root->attributeLookups.push_back(rootAttrLookup);
     }
 
+    // Debug first voxel path
+    static bool firstPath = true;
+    if (firstPath) {
+        std::cout << "[DEBUG PATH] path.size()=" << path.size()
+                  << " targetDepth=" << targetDepth << "\n";
+        firstPath = false;
+    }
+
     // Traverse path, creating descriptors as needed
     for (size_t level = 0; level < path.size(); ++level) {
         int childIdx = path[level];
@@ -799,13 +812,28 @@ bool VoxelInjector::insertVoxel(
             // Re-get descriptor reference in case it was invalidated
             ChildDescriptor& leafDesc = octreeData->root->childDescriptors[currentDescriptorIdx];
 
+            // Debug first few leaf checks
+            static int leafDebugCount = 0;
+            if (leafDebugCount++ < 3) {
+                std::cout << "[DEBUG LEAF] level=" << level << " (level+1)=" << (level+1)
+                          << " path.size()=" << path.size()
+                          << " config.maxLevels=" << config.maxLevels
+                          << " config.brickDepthLevels=" << config.brickDepthLevels
+                          << " childExists=" << childExists << "\n";
+                std::cout << "  shouldCreateBrick(" << (level+1) << ")="
+                          << shouldCreateBrick(level + 1, config) << "\n";
+            }
+
             // Check if we're at brick depth and should create a brick
-            bool createBrick = shouldCreateBrick(level + 1, config) && m_brickStorage && !childExists;
+            // NOTE: Modern architecture uses AttributeRegistry, not BrickStorage
+            bool createBrick = shouldCreateBrick(level + 1, config) && !childExists;
 
             if (createBrick) {
                 // Calculate brick position and size
                 float nodeSize = (worldMax.x - worldMin.x) / std::pow(2.0f, level + 1);
                 glm::vec3 nodeCenter = position;  // Approximate - should calculate exact node center
+
+                std::cout << "[DEBUG] Calling allocateAndPopulateBrick level=" << (level+1) << "\n";
 
                 // Create a brick for this single voxel
                 BrickAllocation brickResult = allocateAndPopulateBrick(
@@ -816,12 +844,17 @@ bool VoxelInjector::insertVoxel(
                     config
                 );
 
+                std::cout << "[DEBUG] brickResult: brickID=" << brickResult.brickID
+                          << " hasSolidVoxels=" << brickResult.hasSolidVoxels << "\n";
+
                 if (brickResult.hasSolidVoxels) {
                     // Store brick reference for later extraction during compaction
                     leafDesc.leafMask |= (1 << childIdx);
 
                     // Track the brick ID for this descriptor
                     m_descriptorToBrickID[currentDescriptorIdx] = brickResult.brickID;
+                    std::cout << "[BRICK CREATED] descriptor=" << currentDescriptorIdx
+                              << " brickID=" << brickResult.brickID << "\n";
                 }
             } else if (!childExists) {
                 // Regular leaf without brick
@@ -1053,6 +1086,37 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
     octreeData->root->childDescriptors = std::move(newDescriptors);
     octreeData->root->attributeLookups = std::move(newAttributeLookups);
 
+    // Transfer brick references from m_descriptorToBrickID to octreeData->root->brickReferences
+    // Ensure brickReferences array has capacity for all descriptors
+    octreeData->root->brickReferences.resize(octreeData->root->childDescriptors.size());
+
+    // Map old descriptor indices to new descriptor indices using oldToNewIndex
+    // Brick depth is typically 3 for 8³ bricks - can be inferred from BrickStorage if needed
+    size_t bricksAttached = 0;
+    for (const auto& [oldDescIdx, brickID] : m_descriptorToBrickID) {
+        auto it = oldToNewIndex.find(oldDescIdx);
+        if (it != oldToNewIndex.end()) {
+            uint32_t newDescIdx = it->second;
+            if (newDescIdx < octreeData->root->brickReferences.size()) {
+                // Query brick depth from BrickStorage if available, otherwise assume depth=3 (8³ voxels)
+                uint8_t brickDepth = 3;  // Default 8³ brick
+                if (m_brickStorage) {
+                    // Brick depth is log2(sideLength) - BrickStorage stores sideLength
+                    // For now, use default depth=3 until we can query BrickStorage for actual depth
+                }
+
+                octreeData->root->brickReferences[newDescIdx].brickID = brickID;
+                octreeData->root->brickReferences[newDescIdx].brickDepth = brickDepth;
+                bricksAttached++;
+            }
+        }
+    }
+
+    std::cout << "[COMPACT] Attached " << bricksAttached << " brick references to octree nodes\n";
+
+    // Clear brick mapping after transfer
+    m_descriptorToBrickID.clear();
+
     // DIAGNOSTIC: Count voxels after compaction
     size_t postCompactionDescriptors = octreeData->root->childDescriptors.size();
     size_t postCompactionLeafVoxels = 0;
@@ -1186,6 +1250,7 @@ size_t VoxelInjector::insertVoxelsBatch(
     size_t insertionFailures = 0;
 
     // Use mutex to serialize tree modifications
+    std::cout << "[DEBUG BATCH] Starting individual insertVoxel calls for " << voxelsByBrick.size() << " bricks\n" << std::flush;
     for (auto& [brickCoord, brickVoxels] : voxelsByBrick) {
         // Insert all voxels in this brick using sequential insertVoxel calls
         // This is still faster than before because:
@@ -1201,6 +1266,7 @@ size_t VoxelInjector::insertVoxelsBatch(
             }
         }
     }
+    std::cout << "[DEBUG BATCH] Finished individual insertVoxel calls\n" << std::flush;
 
     if (insertionFailures > 0) {
         std::cout << "[WARNING] " << insertionFailures << " voxels failed insertion (insertVoxel returned false)\n";
