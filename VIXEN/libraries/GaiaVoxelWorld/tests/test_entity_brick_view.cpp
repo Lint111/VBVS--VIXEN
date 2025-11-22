@@ -297,7 +297,7 @@ TEST(EntityBrickViewTest, SpanIterateAllEntities) {
     // Iterate via span
     size_t validCount = 0;
     for (auto entity : brick.entities()) {
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             validCount++;
         }
     }

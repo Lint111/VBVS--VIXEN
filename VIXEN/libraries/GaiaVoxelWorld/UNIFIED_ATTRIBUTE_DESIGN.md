@@ -105,7 +105,7 @@ float density = brick.get<float>("density", voxelIdx);
 
 // NEW: Entity component access
 gaia::ecs::Entity entity = brick.getEntity(voxelIdx);
-if (entity.valid() && entity.has<Density>()) {
+if ( world.exists(entity) && entity.has<Density>()) {
     float density = entity.get<Density>().value;
 }
 ```
@@ -115,7 +115,7 @@ if (entity.valid() && entity.has<Density>()) {
 template<typename T>
 T BrickView::get(const std::string& name, size_t index) const {
     auto entity = getEntity(index);
-    if (!entity.valid()) return T{};
+    if (! world.exists(entity)) return T{};
 
     auto componentID = m_registry->getComponentID(name);
     return getComponentValue<T>(entity, componentID);
@@ -253,7 +253,7 @@ public:
     template<typename TComponent>
     typename TComponent::ValueType getComponent(size_t voxelIdx) const {
         auto entity = getEntity(voxelIdx);
-        if (!entity.valid() || !entity.has<TComponent>()) {
+        if (! world.exists(entity) || !entity.has<TComponent>()) {
             return TComponent{}.value;
         }
         return entity.get<TComponent>().value;

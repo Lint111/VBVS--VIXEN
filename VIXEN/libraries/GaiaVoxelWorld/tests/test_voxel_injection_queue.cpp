@@ -178,7 +178,7 @@ TEST(VoxelInjectionQueueTest, ProcessMultipleVoxels) {
     EXPECT_EQ(entities.size(), 100);
 
     for (auto entity : entities) {
-        EXPECT_TRUE(entity.valid());
+        EXPECT_TRUE( world.exists(entity));
     }
 
     queue.stop();
@@ -229,7 +229,7 @@ TEST(VoxelInjectionQueueTest, VerifyCreatedEntitiesHaveCorrectAttributes) {
     ASSERT_EQ(entities.size(), 1);
 
     auto entity = entities[0];
-    ASSERT_TRUE(entity.valid());
+    ASSERT_TRUE( world.exists(entity));
 
     // Verify attributes in GaiaVoxelWorld
     auto pos = world.getPosition(entity);

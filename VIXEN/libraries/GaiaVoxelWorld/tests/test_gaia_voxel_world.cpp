@@ -2,6 +2,10 @@
 #include "GaiaVoxelWorld.h"
 #include "DynamicVoxelStruct.h"
 #include <glm/glm.hpp>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <algorithm>
 
 using namespace GaiaVoxel;
 
@@ -20,7 +24,7 @@ TEST(GaiaVoxelWorldTest, CreateSingleVoxel) {
     auto entity = world.createVoxel(pos, density, color, normal);
 
     // Verify entity is valid
-    ASSERT_TRUE(entity.valid());
+    ASSERT_TRUE( world.exists(entity));
     EXPECT_TRUE(world.exists(entity));
 }
 
@@ -30,7 +34,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelDefaultParameters) {
     glm::vec3 pos(5.0f, 5.0f, 5.0f);
     auto entity = world.createVoxel(pos);
 
-    ASSERT_TRUE(entity.valid());
+    ASSERT_TRUE( world.exists(entity));
 
     // Check default values
     auto density = world.getDensity(entity);
@@ -60,7 +64,7 @@ TEST(GaiaVoxelWorldTest, CreateMultipleVoxels) {
 
     // Verify all entities are valid
     for (auto entity : entities) {
-        EXPECT_TRUE(entity.valid());
+        EXPECT_TRUE( world.exists(entity));
         EXPECT_TRUE(world.exists(entity));
     }
 }
@@ -307,7 +311,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_DynamicVoxelScalar) {
 
     EXPECT_EQ(entities.size(), 50);
     for (auto entity : entities) {
-        EXPECT_TRUE(entity.valid());
+        EXPECT_TRUE( world.exists(entity));
     }
 }
 
@@ -394,7 +398,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelInBrick) {
         glm::vec3(0.0f, 1.0f, 0.0f),
         brickID, localX, localY, localZ);
 
-    ASSERT_TRUE(entity.valid());
+    ASSERT_TRUE( world.exists(entity));
 
     // Verify brick ID is stored
     auto storedBrickID = world.getBrickID(entity);

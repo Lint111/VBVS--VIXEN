@@ -40,7 +40,7 @@ class GaiaVoxelWorld;
  *
  *   // Iterate all entities
  *   for (auto entity : brick.entities()) {
- *       if (entity.valid()) {
+ *       if ( world.exists(entity)) {
  *           // Process entity
  *       }
  *   }

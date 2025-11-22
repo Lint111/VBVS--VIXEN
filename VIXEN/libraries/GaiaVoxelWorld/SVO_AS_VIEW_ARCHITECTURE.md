@@ -322,7 +322,7 @@ public:
     template<typename TComponent>
     auto getValue(size_t voxelIdx) const -> typename TComponent::ValueType {
         auto entity = getEntity(voxelIdx);
-        if (!entity.valid() || !entity.has<TComponent>()) {
+        if (! world.exists(entity) || !entity.has<TComponent>()) {
             return TComponent{}.value;
         }
         return entity.get<TComponent>().value;
@@ -332,7 +332,7 @@ public:
     template<typename TComponent>
     void setValue(size_t voxelIdx, typename TComponent::ValueType value) {
         auto entity = getEntity(voxelIdx);
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             entity.set<TComponent>(TComponent{value});
         }
     }
@@ -360,7 +360,7 @@ brick.setValue<CR::Density>(42, 1.0f);
 
 // Iterate entities (zero-copy span)
 for (auto entity : brick.entities()) {
-    if (entity.valid()) {
+    if ( world.exists(entity)) {
         float d = entity.get<CR::Density>().value;
     }
 }

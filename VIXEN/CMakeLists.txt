@@ -272,6 +272,12 @@ endif()
 # Specify a suitable project name
 project(${Recipe_Name})
 
+# MSVC parallel build PDB fix (must be right after project())
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FS")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /FS")
+endif()
+
 # ============================================================================
 # Third-Party Dependencies
 # ============================================================================

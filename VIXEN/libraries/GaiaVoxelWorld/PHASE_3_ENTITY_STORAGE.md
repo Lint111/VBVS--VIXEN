@@ -160,7 +160,7 @@ bool LaineKarrasOctree::traverseBrick(
         gaia::ecs::Entity entity = brick[localIdx];
 
         // Read density from entity (via Gaia ECS)
-        if (entity.valid() && m_world) {
+        if ( world.exists(entity) && m_world) {
             auto density = m_world->getDensity(entity);
             if (density.has_value() && evaluateKey(density.value())) {
                 // Hit!

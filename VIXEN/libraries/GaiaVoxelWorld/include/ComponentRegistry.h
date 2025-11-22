@@ -101,7 +101,7 @@ struct ColorRGB {
     }
 
     static void set(gaia::ecs::Entity entity, float r, float g, float b) {
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             entity.set<Color_R>(Color_R{r});
             entity.set<Color_G>(Color_G{g});
             entity.set<Color_B>(Color_B{b});
@@ -137,7 +137,7 @@ struct NormalXYZ {
     }
 
     static void set(gaia::ecs::Entity entity, float x, float y, float z) {
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             entity.set<Normal_X>(Normal_X{x});
             entity.set<Normal_Y>(Normal_Y{y});
             entity.set<Normal_Z>(Normal_Z{z});
@@ -182,7 +182,7 @@ struct EmissionRGBI {
     }
 
     static void set(gaia::ecs::Entity entity, float r, float g, float b, float intensity) {
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             entity.set<Emission_R>(Emission_R{r});
             entity.set<Emission_G>(Emission_G{g});
             entity.set<Emission_B>(Emission_B{b});

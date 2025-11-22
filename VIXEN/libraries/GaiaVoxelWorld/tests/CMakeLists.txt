@@ -14,13 +14,13 @@ add_executable(test_gaia_voxel_world
     test_gaia_voxel_world.cpp
 )
 
-if(TARGET GaiaVoxelWorld AND TARGET VoxelData)
-    target_link_libraries(test_gaia_voxel_world PRIVATE GTest::gtest_main GaiaVoxelWorld VoxelData)
-elseif(TARGET GaiaVoxelWorld)
-    target_link_libraries(test_gaia_voxel_world PRIVATE GTest::gtest_main GaiaVoxelWorld)
-else()
-    target_link_libraries(test_gaia_voxel_world PRIVATE GTest::gtest_main)
-endif()
+# GaiaVoxelWorld depends on VoxelData, so linking GaiaVoxelWorld should be sufficient
+# But we need VoxelData for DynamicVoxelScalar in test code
+target_link_libraries(test_gaia_voxel_world PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData  # Required for DynamicVoxelScalar access in tests
+)
 
 set_target_properties(test_gaia_voxel_world PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
@@ -40,11 +40,11 @@ add_executable(test_voxel_injection_queue
     test_voxel_injection_queue.cpp
 )
 
-if(TARGET GaiaVoxelWorld)
-    target_link_libraries(test_voxel_injection_queue PRIVATE GTest::gtest_main GaiaVoxelWorld)
-else()
-    target_link_libraries(test_voxel_injection_queue PRIVATE GTest::gtest_main)
-endif()
+target_link_libraries(test_voxel_injection_queue PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
 
 set_target_properties(test_voxel_injection_queue PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
@@ -63,11 +63,11 @@ add_executable(test_voxel_injector
     test_voxel_injector.cpp
 )
 
-if(TARGET GaiaVoxelWorld)
-    target_link_libraries(test_voxel_injector PRIVATE GTest::gtest_main GaiaVoxelWorld)
-else()
-    target_link_libraries(test_voxel_injector PRIVATE GTest::gtest_main)
-endif()
+target_link_libraries(test_voxel_injector PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
 
 set_target_properties(test_voxel_injector PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
@@ -88,11 +88,11 @@ add_executable(test_entity_brick_view
     test_entity_brick_view.cpp
 )
 
-if(TARGET GaiaVoxelWorld)
-    target_link_libraries(test_entity_brick_view PRIVATE GTest::gtest_main GaiaVoxelWorld)
-else()
-    target_link_libraries(test_entity_brick_view PRIVATE GTest::gtest_main)
-endif()
+target_link_libraries(test_entity_brick_view PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
 
 set_target_properties(test_entity_brick_view PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 

@@ -27,7 +27,7 @@ Lightweight IDs referencing component data. Entities themselves have no data—o
 
 ```cpp
 auto entity = world.add();       // Create entity
-bool valid = entity.valid();     // Check validity
+bool valid =  world.exists(entity);     // Check validity
 world.del(entity);                // Delete entity
 ```
 

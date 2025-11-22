@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <optional>
+#include "DynamicVoxelStruct.h"
 
 namespace GaiaVoxel {
 

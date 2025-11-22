@@ -58,7 +58,7 @@ public:
     template<typename TComponent>
     typename TComponent::ValueType getComponent(size_t voxelIdx) const {
         auto entity = getEntity(voxelIdx);
-        if (!entity.valid() || !entity.has<TComponent>()) {
+        if (! world.exists(entity) || !entity.has<TComponent>()) {
             return TComponent{}.value;
         }
         return entity.get<TComponent>().value;
@@ -67,7 +67,7 @@ public:
     template<typename TComponent>
     void setComponent(size_t voxelIdx, typename TComponent::ValueType value) {
         auto entity = getEntity(voxelIdx);
-        if (entity.valid()) {
+        if ( world.exists(entity)) {
             entity.set<TComponent>(TComponent{value});
         }
     }
@@ -230,7 +230,7 @@ TEST(ECSBackedRegistry, EntityCreation) {
     voxel.set("density", 1.0f);
 
     auto entity = registry.createEntity(voxel);
-    EXPECT_TRUE(entity.valid());
+    EXPECT_TRUE( world.exists(entity));
     EXPECT_TRUE(entity.has<Density>());
     EXPECT_FLOAT_EQ(entity.get<Density>().value, 1.0f);
 }

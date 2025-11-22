@@ -18,6 +18,14 @@ add_library(GaiaVoxelWorld STATIC
     src/EntityBrickView.cpp
 )
 
+# MSVC PDB fix - disable parallel compilation for this target only
+if(MSVC)
+    set_target_properties(GaiaVoxelWorld PROPERTIES
+        COMPILE_FLAGS "/FS"
+        VS_NO_COMPILE_BATCHING ON
+    )
+endif()
+
 target_include_directories(GaiaVoxelWorld
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -36,9 +44,9 @@ target_link_libraries(GaiaVoxelWorld
 # C++23 standard
 target_compile_features(GaiaVoxelWorld PUBLIC cxx_std_23)
 
-# Compiler warnings
+# Compiler warnings and MSVC parallel build fix
 if(MSVC)
-    target_compile_options(GaiaVoxelWorld PRIVATE /W4)
+    target_compile_options(GaiaVoxelWorld PRIVATE /W4 /FS)
 else()
     target_compile_options(GaiaVoxelWorld PRIVATE -Wall -Wextra -Wpedantic)
 endif()
