@@ -5,6 +5,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 // VoxelData library
@@ -332,13 +333,43 @@ public:
     bool compactToESVOFormat(ISVOStructure& svo);
 
     /**
-     * Batch insert multiple voxels (parallel).
-     * More efficient than individual insertVoxel() calls.
+     * Voxel data with position for batch insertion.
+     */
+    struct VoxelData {
+        glm::vec3 position;      // World-space position
+        ::VoxelData::DynamicVoxelScalar attributes;  // Voxel attributes (density, color, etc.)
+
+        // Constructor with AttributeRegistry
+        VoxelData(::VoxelData::AttributeRegistry* registry = nullptr)
+            : position(0.0f), attributes(registry) {}
+    };
+
+    /**
+     * Batch insert multiple voxels with brick-level parallelism.
+     * MUCH more efficient than individual insertVoxel() calls.
+     *
+     * Algorithm:
+     * 1. Group voxels by brick coordinate (floor division by brick size)
+     * 2. Process each brick in parallel using std::async
+     * 3. Each brick: ONE tree traversal, then fill all N³ voxels via BrickView
+     * 4. Call compactToESVOFormat() once at the end
+     *
+     * Performance: ~300× faster than individual insertVoxel() for 100k voxels
+     * (400 bricks × 8 levels vs 100k voxels × 8 levels)
      *
      * @param svo Target SVO structure
-     * @param voxels List of voxels to insert
-     * @param config Configuration
+     * @param voxels List of voxels with positions to insert
+     * @param config Configuration (brick depth, maxLevels, etc.)
      * @return Number of voxels successfully inserted
+     */
+    size_t insertVoxelsBatch(
+        ISVOStructure& svo,
+        const std::vector<VoxelData>& voxels,
+        const InjectionConfig& config = InjectionConfig{});
+
+    /**
+     * Legacy batch insert (requires position in DynamicVoxelScalar).
+     * DEPRECATED: Use insertVoxelsBatch(vector<VoxelData>) instead.
      */
     size_t insertVoxelsBatch(
         ISVOStructure& svo,
@@ -371,6 +402,9 @@ private:
     Stats m_stats;
     ::VoxelData::AttributeRegistry* m_attributeRegistry = nullptr;  // Non-owning pointer
     BrickStorage<DefaultLeafData>* m_brickStorage = nullptr;        // Non-owning pointer (legacy, deprecated)
+
+    // Thread safety for brick allocation during batch insertion
+    mutable std::mutex m_brickAllocationMutex;
 
     // Maps parent descriptor index → [octant 0-7] → child descriptor index
     // Used during additive insertion to track which child octant leads to which descriptor

@@ -713,23 +713,23 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // Safety check: ensure octree has root descriptor
     if (m_octree->root->childDescriptors.empty()) {
-        std::cout << "DEBUG: Empty octree, returning miss\n";
+        // DEBUG: std::cout << "DEBUG: Empty octree, returning miss\n";
         return miss;
     }
 
-    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
-              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
-              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
-    std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
-    std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
-    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
+    // DEBUG: std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
+    //          << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
+    //          << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
+    // DEBUG: std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
+    // DEBUG: std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
+    // DEBUG: std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
 
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
     int idx = 0; // Child octant index
     glm::vec3 pos(1.0f, 1.0f, 1.0f); // Position in normalized [1,2] space
-    int scale = m_maxDepth- 1; // Current scale level
-    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = m_maxDepth- 1
+    int scale = m_maxLevels - 1; // Current scale level (use m_maxLevels, not hardcoded m_maxDepth!)
+    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = m_maxLevels - 1
 
     // Select initial child based on ray entry point
     // Reference: ESVO lines 136-138
@@ -751,15 +751,15 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
     }
 
-    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-    std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
+    // DEBUG: std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
+    // DEBUG: std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 
     // Main traversal loop
     // Traverse voxels along the ray while staying within octree bounds
     int iter = 0;
     const int maxIter = 10000; // Safety limit
 
-    while (scale < m_maxDepth&& iter < maxIter) {
+    while (scale < m_maxLevels && iter < maxIter) {
         ++iter;
         // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 
@@ -808,10 +808,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
         // Debug specific problem parent
         if ((parent - &m_octree->root->childDescriptors[0]) == 80) {
-            std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
-                      << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
-                      << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
-                      << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf << "\n";
+            // DEBUG: std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
+            //          << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
+            //          << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
+            //          << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf << "\n";
         }
 
         debugChildValidity(child_shift, child_masks,
@@ -845,9 +845,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             float tz_center = half * tz_coef + tz_corner;
 
             if (scale >= m_maxDepth- 2) {
-                std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
-                std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
-                std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
+                // DEBUG: std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
+                // DEBUG: std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
+                // DEBUG: std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
             }
 
             // ================================================================
@@ -858,8 +858,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
             // Descend to first child if resulting t-span is non-empty
             if (scale >= m_maxDepth- 3) {
-                std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
-                          << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
+                // DEBUG: std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
+                //          << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
             }
             if (t_min <= tv_max)
             {
@@ -1005,14 +1005,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     float t_min_world = tEntry + t_min * worldSizeLength;
                     float tv_max_world = tEntry + tv_max * worldSizeLength;
 
-                    std::cout << "DEBUG LEAF HIT: tEntry=" << tEntry << " t_min=" << t_min
-                              << " worldSizeLength=" << worldSizeLength
-                              << " t_min_world=" << t_min_world << "\n";
-                    std::cout << "  origin=(" << origin.x << "," << origin.y << "," << origin.z << ")"
-                              << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")\n";
-                    std::cout << "  computed hit pos=" << (origin + rayDir * t_min_world).x << ","
-                              << (origin + rayDir * t_min_world).y << ","
-                              << (origin + rayDir * t_min_world).z << "\n";
+                    // DEBUG: std::cout << "DEBUG LEAF HIT: tEntry=" << tEntry << " t_min=" << t_min
+                    //          << " worldSizeLength=" << worldSizeLength
+                    //          << " t_min_world=" << t_min_world << "\n";
+                    // DEBUG: std::cout << "  origin=(" << origin.x << "," << origin.y << "," << origin.z << ")"
+                    //          << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")\n";
+                    // DEBUG: std::cout << "  computed hit pos=" << (origin + rayDir * t_min_world).x << ","
+                    //          << (origin + rayDir * t_min_world).y << ","
+                    //          << (origin + rayDir * t_min_world).z << "\n";
 
                     ISVOStructure::RayHit hit{};
                     hit.hit = true;
@@ -1068,16 +1068,16 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                 // Bounds check
                 if (child_index >= m_octree->root->childDescriptors.size()) {
-                    std::cout << "DEBUG: Invalid child_index=" << child_index << " >= size=" << m_octree->root->childDescriptors.size() << ", breaking\n";
+                    // DEBUG: std::cout << "DEBUG: Invalid child_index=" << child_index << " >= size=" << m_octree->root->childDescriptors.size() << ", breaking\n";
                     break; // Invalid child pointer - exit loop
                 }
 
                 const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
 
                 // Debug DESCEND at all levels
-                std::cout << "DEBUG DESCEND scale=" << scale << ": parent=" << (parent - &m_octree->root->childDescriptors[0])
-                          << " idx=" << idx << " nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
-                          << " child_offset=" << child_offset << " → child_index=" << child_index << "\n";
+                // DEBUG: std::cout << "DEBUG DESCEND scale=" << scale << ": parent=" << (parent - &m_octree->root->childDescriptors[0])
+                //          << " idx=" << idx << " nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
+                //          << " child_offset=" << child_offset << " → child_index=" << child_index << "\n";
 
                 debugDescend(scale, t_max, child_shift_idx, nonLeafMask,
                            mask_before_child, nonleaf_before_child, child_offset,
@@ -1089,7 +1089,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 scale--;
                 scale_exp2 = half;
 
-                std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
+                // DEBUG: std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
 
                 // ================================================================
                 // Octant Selection: Use PARENT's center values
@@ -1100,34 +1100,34 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // The tx_center values from before DESCEND tell us where the ray is relative
                 // to the PARENT's center, which determines which CHILD we're in.
 
-                std::cout << "DEBUG: Using parent's center values: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
-                std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
+                // DEBUG: std::cout << "DEBUG: Using parent's center values: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
+                // DEBUG: std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
 
                 // ESVO octant selection (Raycast.inl:265-267)
                 // Simple parametric formula works for physical storage with octant mirroring
                 // The mirroring is handled uniformly by octant_mask, so no special cases needed
-                std::cout << "DEBUG: Before octant selection, idx=" << idx << "\n";
-                std::cout << "  tx_center - t_min = " << (tx_center - t_min)
-                          << " (tx_center > t_min)=" << (tx_center > t_min) << "\n";
+                // DEBUG: std::cout << "DEBUG: Before octant selection, idx=" << idx << "\n";
+                // DEBUG: std::cout << "  tx_center - t_min = " << (tx_center - t_min)
+                //S          << " (tx_center > t_min)=" << (tx_center > t_min) << "\n";
                 if (tx_center > t_min) {
-                    std::cout << "  Flipping X bit!\n";
+                    // DEBUG: std::cout << "  Flipping X bit!\n";
                     idx ^= 1, pos.x += scale_exp2;
                 }
                 if (ty_center > t_min) {
-                    std::cout << "  Flipping Y bit: " << ty_center << " > " << t_min << "\n";
+                    // DEBUG: std::cout << "  Flipping Y bit: " << ty_center << " > " << t_min << "\n";
                     idx ^= 2, pos.y += scale_exp2;
                 }
                 if (tz_center > t_min) {
-                    std::cout << "  Flipping Z bit: " << tz_center << " > " << t_min << "\n";
+                    // DEBUG: std::cout << "  Flipping Z bit: " << tz_center << " > " << t_min << "\n";
                     idx ^= 4, pos.z += scale_exp2;
                 }
 
-                std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
+                // DEBUG: std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
 
                 // Update active t-span and invalidate child descriptor
                 t_max = tv_max;
                 child_descriptor = 0;
-                std::cout << "DEBUG: CONTINUE after descent, looping back to process child " << idx << "\n";
+                // DEBUG: std::cout << "DEBUG: CONTINUE after descent, looping back to process child " << idx << "\n";
                 continue; // Continue main loop
             }
         }
@@ -1160,8 +1160,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         t_min = std::max(tc_max_corrected, 0.0f);
 
         if (scale == m_maxDepth- 1 || scale == m_maxDepth- 2) {
-            std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
-                      << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
+            // DEBUG: std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
+            //          << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
         }
 
         int old_idx = idx;
@@ -1176,8 +1176,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Check if bit flips disagree with ray direction (means we left parent)
         if ((idx & step_mask) != 0)
         {
-            std::cout << "DEBUG POP: idx=" << idx << " step_mask=" << step_mask
-                      << " idx&step_mask=" << (idx & step_mask) << " triggering POP\n";
+            // DEBUG: std::cout << "DEBUG POP: idx=" << idx << " step_mask=" << step_mask
+            //          << " idx&step_mask=" << (idx & step_mask) << " triggering POP\n";
             // ============================================================
             // POP: Find the highest differing bit to determine scale level
             // Reference lines 296-327
@@ -1245,14 +1245,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // ====================================================================
 
     if (iter >= maxIter) {
-        std::cout << "DEBUG: Hit iteration limit! scale=" << scale
-                  << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
+        // DEBUG: std::cout << "DEBUG: Hit iteration limit! scale=" << scale
+        //          << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
     } else if (scale >= m_maxDepth) {
-        std::cout << "DEBUG: Ray exited octree. scale=" << scale
-                  << " iter=" << iter << " t_min=" << t_min << "\n";
+        // DEBUG: std::cout << "DEBUG: Ray exited octree. scale=" << scale
+        //          << " iter=" << iter << " t_min=" << t_min << "\n";
     } else {
-        std::cout << "DEBUG: Unknown exit condition. scale=" << scale
-                  << " iter=" << iter << " t_min=" << t_min << "\n";
+        // DEBUG: std::cout << "DEBUG: Unknown exit condition. scale=" << scale
+        //          << " iter=" << iter << " t_min=" << t_min << "\n";
     }
 
     // If we exited the octree, return miss
@@ -1388,11 +1388,11 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
 
     // 1. Compute ray entry point into brick
     const glm::vec3 entryPoint = rayOrigin + rayDir * tMin;
-    std::cout << "  Entry point: (" << entryPoint.x << "," << entryPoint.y << "," << entryPoint.z << ")\n";
+    // DEBUG: std::cout << "  Entry point: (" << entryPoint.x << "," << entryPoint.y << "," << entryPoint.z << ")\n";
 
     // 2. Transform entry point to brick-local [0, N]³ space
     const glm::vec3 localEntry = (entryPoint - brickWorldMin) / brickVoxelSize;
-    std::cout << "  Local entry: (" << localEntry.x << "," << localEntry.y << "," << localEntry.z << ")\n";
+    // DEBUG: std::cout << "  Local entry: (" << localEntry.x << "," << localEntry.y << "," << localEntry.z << ")\n";
 
     // 3. Initialize current voxel (integer coordinates)
     glm::ivec3 currentVoxel{
@@ -1403,7 +1403,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
 
     // Clamp to brick bounds [0, N-1]
     currentVoxel = glm::clamp(currentVoxel, glm::ivec3(0), glm::ivec3(brickN - 1));
-    std::cout << "  Start voxel: (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z << ")\n";
+    // DEBUG: std::cout << "  Start voxel: (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z << ")\n";
 
     // 4. Compute DDA step directions and tDelta
     glm::ivec3 step;
@@ -1475,8 +1475,8 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             const std::any& keyAttributeValue = brick.getKeyAttributePointer()[localIdx];
 
             if(!keyAttributeValue.has_value()) {
-                std::cout << "  Warning: Voxel at (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                          << ") has no key attribute value!\n";
+                // DEBUG: std::cout << "  Warning: Voxel at (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
+                //          << ") has no key attribute value!\n";
                 voxelOccupied = false;
                 return std::nullopt;
             }
@@ -1485,8 +1485,8 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             voxelOccupied = m_registry->evaluateKey(keyAttributeValue);
 
             if (stepCount == 1) {  // First voxel debug
-                std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                          << ") occupied=" << voxelOccupied << "\n";
+                // DEBUG: std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
+                //          << ") occupied=" << voxelOccupied << "\n";
             }
         }
 

@@ -923,18 +923,18 @@ protected:
         InjectionConfig config;
         config.maxLevels = 8; // Reasonable depth for 10³ world with 0.1 voxels
 
-        std::vector<::VoxelData::DynamicVoxelScalar> wallVoxels;
+        std::vector<VoxelInjector::VoxelData> wallVoxels;
 
 
         // Generate floor voxels (y=0 to thickness)
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = 0.0f; y < thickness; y += voxelSize) {
-                    ::VoxelData::DynamicVoxelScalar v;
-					v.set("position", glm::vec3(x, y, z));
-					v.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
-					v.set("normal", glm::vec3(0.0f, 1.0f, 0.0f)); // Up
-					v.set("density", 1.0f);
+                    VoxelInjector::VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.attributes.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
+                    v.attributes.set("normal", glm::vec3(0.0f, 1.0f, 0.0f)); // Up
+                    v.attributes.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -944,14 +944,14 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float y = boxSize - thickness; y < boxSize; y += voxelSize) {
-                    ::VoxelData::DynamicVoxelScalar v;
-                    v.set("position", glm::vec3(x, y, z));
+                    VoxelInjector::VoxelData v;
+                    v.position = glm::vec3(x, y, z);
                     // Check if in light patch (center of ceiling)
                     glm::vec2 centerXZ(boxSize * 0.5f, boxSize * 0.5f);
                     float distFromCenter = glm::length(glm::vec2(x, z) - centerXZ);
-                    v.set("color",(distFromCenter < 2.0f) ? glm::vec3(1.0f) : glm::vec3(0.8f)); // White light or grey
-                    v.set("normal", glm::vec3(0.0f, -1.0f, 0.0f)); // Down
-                    v.set("density", 1.0f);
+                    v.attributes.set("color",(distFromCenter < 2.0f) ? glm::vec3(1.0f) : glm::vec3(0.8f)); // White light or grey
+                    v.attributes.set("normal", glm::vec3(0.0f, -1.0f, 0.0f)); // Down
+                    v.attributes.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -961,11 +961,11 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = 0.0f; x < thickness; x += voxelSize) {
-                    ::VoxelData::DynamicVoxelScalar v;
-                    v.set("position", glm::vec3(x, y, z));
-                    v.set("color", glm::vec3(0.8f, 0.1f, 0.1f)); // Red
-                    v.set("normal", glm::vec3(1.0f, 0.0f, 0.0f)); // Right
-                    v.set("density", 1.0f);
+                    VoxelInjector::VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.attributes.set("color", glm::vec3(0.8f, 0.1f, 0.1f)); // Red
+                    v.attributes.set("normal", glm::vec3(1.0f, 0.0f, 0.0f)); // Right
+                    v.attributes.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -975,11 +975,11 @@ protected:
         for (float y = 0.0f; y < boxSize; y += voxelSize) {
             for (float z = 0.0f; z < boxSize; z += voxelSize) {
                 for (float x = boxSize - thickness; x < boxSize; x += voxelSize) {
-                    ::VoxelData::DynamicVoxelScalar v;
-                    v.set("position", glm::vec3(x, y, z));
-                    v.set("color", glm::vec3(0.1f, 0.8f, 0.1f)); // Green
-                    v.set("normal", glm::vec3(-1.0f, 0.0f, 0.0f)); // Left
-                    v.set("density", 1.0f);
+                    VoxelInjector::VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.attributes.set("color", glm::vec3(0.1f, 0.8f, 0.1f)); // Green
+                    v.attributes.set("normal", glm::vec3(-1.0f, 0.0f, 0.0f)); // Left
+                    v.attributes.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
@@ -989,38 +989,31 @@ protected:
         for (float x = 0.0f; x < boxSize; x += voxelSize) {
             for (float y = 0.0f; y < boxSize; y += voxelSize) {
                 for (float z = boxSize - thickness; z < boxSize; z += voxelSize) {
-                    ::VoxelData::DynamicVoxelScalar v;
-                    v.set("position", glm::vec3(x, y, z));
-                    v.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
-                    v.set("normal", glm::vec3(0.0f, 0.0f, -1.0f)); // Forward
-                    v.set("density", 1.0f);
+                    VoxelInjector::VoxelData v;
+                    v.position = glm::vec3(x, y, z);
+                    v.attributes.set("color", glm::vec3(0.8f, 0.8f, 0.8f)); // Grey
+                    v.attributes.set("normal", glm::vec3(0.0f, 0.0f, -1.0f)); // Forward
+                    v.attributes.set("density", 1.0f);
                     wallVoxels.push_back(v);
                 }
             }
         }
 
-        std::cout << "\n=== Building Cornell Box (Additive Insertion) ===\n";
+        std::cout << "\n=== Building Cornell Box (Batch Insertion with Parallelism) ===\n";
         std::cout << "Total wall voxels: " << wallVoxels.size() << "\n";
 
-        // Insert all voxels using additive insertion
+        // Insert all voxels using BATCH insertion (brick-level parallelism)
         auto startTime = std::chrono::high_resolution_clock::now();
 
-        size_t inserted = 0;
-        size_t failed = 0;
-        for (const auto& voxel : wallVoxels) {
-            glm::vec3 pos = voxel.get<glm::vec3>("position");
-            if (injector.insertVoxel(*cornellBox, pos, voxel, config)) {
-                inserted++;
-            } else {
-                failed++;
-            }
-        }
+        size_t inserted = injector.insertVoxelsBatch(*cornellBox, wallVoxels, config);
 
         auto endTime = std::chrono::high_resolution_clock::now();
         float buildTime = std::chrono::duration<float>(endTime - startTime).count();
 
         std::cout << "Build time: " << buildTime << " seconds\n";
-        std::cout << "Inserted: " << inserted << ", Failed: " << failed << "\n";
+        std::cout << "Inserted: " << inserted << " voxels\n";
+        std::cout << "Expected: " << wallVoxels.size() << " voxels\n";
+        std::cout << "Missing: " << (wallVoxels.size() - inserted) << " voxels\n";
         std::cout << cornellBox->getStats() << "\n";
     }
 
@@ -1159,11 +1152,40 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(CornellBoxTest, FloorHit_FromAbove) {
+    // DIAGNOSTIC: Check if floor voxels exist at expected positions
+    std::cout << "\n=== Diagnostic: Checking floor voxel storage ===\n";
+    int voxelsFound = 0;
+    int voxelsMissing = 0;
+    for (float x = 4.0f; x <= 6.0f; x += 0.5f) {
+        for (float z = 4.0f; z <= 6.0f; z += 0.5f) {
+            glm::vec3 testPos(x, 0.05f, z); // Floor level (y=0.05, inside [0, 0.2])
+            auto voxelData = cornellBox->getVoxelData(testPos, 0);
+            if (voxelData.has_value()) {
+                voxelsFound++;
+            } else {
+                voxelsMissing++;
+                std::cout << "  NO VOXEL at (" << x << ", 0.05, " << z << ")\n";
+            }
+        }
+    }
+    std::cout << "Floor voxel storage: " << voxelsFound << " found, " << voxelsMissing << " missing out of 25 samples\n";
+
     // Ray from inside box hitting floor
     glm::vec3 origin(5.0f, 8.0f, 5.0f); // Center, high up
     glm::vec3 direction(0.0f, -1.0f, 0.0f); // Straight down
 
+    std::cout << "\n=== Ray cast test ===\n";
+    std::cout << "Origin: (" << origin.x << ", " << origin.y << ", " << origin.z << ")\n";
+    std::cout << "Direction: (" << direction.x << ", " << direction.y << ", " << direction.z << ")\n";
+
     auto hit = cornellBox->castRay(origin, direction, 0.0f, std::numeric_limits<float>::max());
+
+    std::cout << "Hit: " << (hit.hit ? "TRUE" : "FALSE") << "\n";
+    if (hit.hit) {
+        std::cout << "Hit position: (" << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "Hit distance: " << hit.tMin << "\n";
+    }
+
     ASSERT_TRUE(hit.hit) << "Should hit floor";
 
     // Validate floor material (bright grey)
