@@ -14,10 +14,11 @@
 
 **What Was Fixed**:
 
-1. **Scale Conversion Formula** - [LaineKarrasOctree.cpp:1025](libraries/SVO/src/LaineKarrasOctree.cpp#L1025)
-   - Changed from `(m_maxDepth + 1) - scale` to `22 - scale + 1`
-   - Correct ESVO scale → depth conversion (scale 22=root → depth 1, scale 21 → depth 2)
-   - Fixed 4 BasicHit test failures
+1. **Scale Conversion Formula** - [LaineKarrasOctree.cpp:1047](libraries/SVO/src/LaineKarrasOctree.cpp#L1047)
+   - Changed to use `esvoToUserScale(scale)` directly (no +1 adjustment)
+   - Formula: `esvoScale - (ESVO_MAX_SCALE - m_maxLevels + 1)`
+   - Correct ESVO scale → user depth conversion (ESVO scale 21 → user depth 2 for m_maxLevels=4)
+   - Fixed 4 BasicHit test failures (was returning -17 or 3 instead of 2)
 
 2. **Surface Normal Implementation** - [LaineKarrasOctree.cpp:1027-1029](libraries/SVO/src/LaineKarrasOctree.cpp#L1027-L1029)
    - Uses `computeSurfaceNormal()` for geometric normals (gradient sampling)
@@ -51,7 +52,7 @@
 - **test_brick_view**: Compiles cleanly ✅
 
 **Files Modified**:
-- [LaineKarrasOctree.cpp:1025-1029](libraries/SVO/src/LaineKarrasOctree.cpp#L1025-L1029) - Scale conversion + normal calculation
+- [LaineKarrasOctree.cpp:1047](libraries/SVO/src/LaineKarrasOctree.cpp#L1047) - Scale conversion using esvoToUserScale()
 - [test_octree_queries.cpp](libraries/SVO/tests/test_octree_queries.cpp) - Test expectations updated
 - [BrickView.h:125-128](libraries/VoxelData/include/BrickView.h#L125-L128) - getLinearIndex() helper
 - [BrickView.cpp:423-445](libraries/VoxelData/src/BrickView.cpp#L423-L445) - glm::vec3 specializations

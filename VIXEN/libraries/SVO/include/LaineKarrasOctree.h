@@ -135,12 +135,15 @@ private:
 
     // Scale mapping: Convert between user scale and ESVO internal scale
     // This allows ESVO's bit manipulation tricks to work for any octree depth
+    //
+    // For depth 8: userScales [0-7] map to esvoScales [15-22]
+    // For depth 23: userScales [0-22] map to esvoScales [0-22]
     inline int userToESVOScale(int userScale) const {
         return ESVO_MAX_SCALE - (m_maxLevels - 1 - userScale);
     }
 
     inline int esvoToUserScale(int esvoScale) const {
-        return ESVO_MAX_SCALE - esvoScale + (m_maxLevels - 1);
+        return esvoScale - (ESVO_MAX_SCALE - m_maxLevels + 1);
     }
 
     // Ray casting helpers

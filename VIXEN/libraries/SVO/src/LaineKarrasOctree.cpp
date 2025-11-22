@@ -719,11 +719,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return miss;
     }
 
-    // Initialize stack with root descriptor at starting scale
+    // Initialize stack with root descriptor at all ESVO scales
+    // Stack indexing uses ESVO scale, not user scale
     // This ensures POP operations can always find a valid parent
     const ChildDescriptor* rootDesc = &m_octree->root->childDescriptors[0];
-    for (int s = 0; s < m_maxLevels; s++) {
-        stack.push(s, rootDesc, t_max);
+    const int minScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    for (int esvoScale = minScale; esvoScale <= ESVO_MAX_SCALE; esvoScale++) {
+        stack.push(esvoScale, rootDesc, t_max);
     }
 
     std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
@@ -1041,11 +1043,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.tMin = t_min_world;
                     hit.tMax = tv_max_world;
                     hit.position = origin + rayDir * t_min_world;
-                    // Convert ESVO scale to depth level
-                    // Leaf voxels are conceptually one level deeper than their parent node
-                    // For m_maxLevels=4: scale=3 (root)→depth=0, scale=2 (level1)→depth=1, leaves→depth=2
-                    // For m_maxLevels=23: scale=22 (root)→depth=0, scale=21 (level1)→depth=1, leaves→depth=2
-                    hit.scale = (m_maxLevels - 1) - scale + 1;  // +1 because leaves are children of the node at 'scale'
+                    // Convert ESVO scale to user scale
+                    // The scale represents the depth of the leaf voxel
+                    // Example: m_maxLevels=4, ESVO scale 21 → user scale 2 (correct leaf depth)
+                    hit.scale = esvoToUserScale(scale);
 
                     // Compute surface normal from 3×3×3 neighborhood
                     float voxelSize = scale_exp2 * (m_worldMax.x - m_worldMin.x);
