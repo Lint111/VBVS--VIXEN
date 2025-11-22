@@ -83,6 +83,39 @@ Assistant: "Launching bug-hunter agent to investigate rendering issue..."
 Assistant: "Bug found: missing viewport initialization in [Renderer.cpp:156](Renderer.cpp#L156). Fixed by adding vkCmdSetViewport call."
 ```
 
+## Engineering Philosophy - MANDATORY
+
+### No Quick Fixes - Always Choose Robust Solutions
+
+**CRITICAL RULE**: When faced with implementation choices, ALWAYS select the comprehensive, robust, future-proof solution over quick fixes or workarounds.
+
+**Prohibited Approaches:**
+- ❌ Changing user requirements to fit broken implementation (e.g., "just use depth 23 instead of 8")
+- ❌ Adding hardcoded constants or magic numbers to bypass problems
+- ❌ Commenting out failing tests instead of fixing root causes
+- ❌ Adding special-case logic instead of fixing the general algorithm
+- ❌ Deferring fixes with "we'll come back to this later"
+
+**Required Approaches:**
+- ✅ Fix the underlying algorithm to support user requirements as specified
+- ✅ Refactor broken assumptions to handle general cases
+- ✅ Implement proper abstractions that work for any valid input
+- ✅ Write code that is maintainable and extensible
+- ✅ If user specifies depth 8, the implementation MUST support depth 8
+
+**Example Violation:**
+```
+User: "Cornell Box uses depth 8"
+❌ Bad: "Change it to depth 23 because ESVO is hardcoded for that"
+✅ Good: "Fix ESVO traversal to support arbitrary depths"
+```
+
+**Rationale:**
+- Quick fixes create technical debt that compounds over time
+- Workarounds make code brittle and hard to maintain
+- Future features will hit the same limitations
+- Professional engineering requires solving problems correctly, not duct-taping symptoms
+
 ## Code Review Philosophy - MANDATORY
 
 **Approach all interactions as a senior developer mentoring a junior developer.**

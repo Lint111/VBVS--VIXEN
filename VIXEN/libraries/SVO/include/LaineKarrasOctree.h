@@ -97,26 +97,54 @@ private:
     static constexpr int MAX_STACK_DEPTH = 32;
 
     // Traversal stack structure
-    // Stores parent node pointers and t_max values for backtracking during traversal
+    // Stores complete traversal state for backtracking during POP operations
+    // This approach works for ANY octree depth (not just depth 23)
     struct CastStack {
-        const ChildDescriptor* nodes[MAX_STACK_DEPTH];
-        float tMax[MAX_STACK_DEPTH];
+        // Stack entry for each scale level
+        struct Entry {
+            const ChildDescriptor* parent = nullptr;
+            int idx = 0;
+            int scale = 0;
+            float t_min = 0.0f;
+            float t_max = 0.0f;
+            float tx_center = 0.0f;
+            float ty_center = 0.0f;
+            float tz_center = 0.0f;
+            glm::vec3 pos{0.0f};
+            float scale_exp2 = 0.0f;
+        };
 
-        void push(int scale, const ChildDescriptor* node, float t) {
-            // Bounds check to prevent stack corruption
-            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
-                nodes[scale] = node;
-                tMax[scale] = t;
+        Entry entries[MAX_STACK_DEPTH];
+        int stackPtr = 0;
+
+        void push(const Entry& entry) {
+            if (stackPtr < MAX_STACK_DEPTH) {
+                entries[stackPtr++] = entry;
             }
         }
 
-        const ChildDescriptor* pop(int scale, float& t) {
-            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
-                t = tMax[scale];
-                return nodes[scale];
+        bool pop(Entry& entry) {
+            if (stackPtr > 0) {
+                entry = entries[--stackPtr];
+                return true;
             }
-            t = 0.0f;
-            return nullptr;
+            return false;
+        }
+
+        void clear() {
+            stackPtr = 0;
+        }
+
+        bool isEmpty() const {
+            return stackPtr == 0;
+        }
+
+        // Legacy interface for PUSH operation (tc_max < h check)
+        void push(int scale, const ChildDescriptor* node, float t) {
+            // This is called during DESCEND when tc_max < h
+            // We don't have full state here, so we'll handle this differently
+            // by pushing BEFORE descending instead of during
+            // This method is kept for compatibility but will be replaced
         }
     };
 

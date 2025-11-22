@@ -717,12 +717,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return miss;
     }
 
-    // DEBUG: std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
-    //          << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
-    //          << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
-    // DEBUG: std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
-    // DEBUG: std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
-    // DEBUG: std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
+    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
+              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
+              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
+    std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
+    std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
+    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
+    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " scale=" << (m_maxLevels - 1) << "\n";
 
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
@@ -758,6 +759,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Traverse voxels along the ray while staying within octree bounds
     int iter = 0;
     const int maxIter = 10000; // Safety limit
+
+    // Declare center values at function scope for POP restoration
+    float tx_center = 0.0f;
+    float ty_center = 0.0f;
+    float tz_center = 0.0f;
 
     while (scale < m_maxLevels && iter < maxIter) {
         ++iter;
@@ -840,11 +846,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
             float tv_max = std::min(t_max, tc_max_corrected);
             float half = scale_exp2 * 0.5f;
-            float tx_center = half * tx_coef + tx_corner;
-            float ty_center = half * ty_coef + ty_corner;
-            float tz_center = half * tz_coef + tz_corner;
+            tx_center = half * tx_coef + tx_corner;
+            ty_center = half * ty_coef + ty_corner;
+            tz_center = half * tz_coef + tz_corner;
 
-            if (scale >= m_maxDepth- 2) {
+            if (scale >= m_maxLevels - 2) {
                 // DEBUG: std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
                 // DEBUG: std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
                 // DEBUG: std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
@@ -857,7 +863,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // ================================================================
 
             // Descend to first child if resulting t-span is non-empty
-            if (scale >= m_maxDepth- 3) {
+            if (scale >= m_maxLevels - 3) {
                 // DEBUG: std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
                 //          << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
             }
@@ -1021,8 +1027,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.position = origin + rayDir * t_min_world;
                     // Convert ESVO scale to depth level
                     // Leaf voxels are conceptually one level deeper than their parent node
-                    // scale=22 (root)→depth=0, scale=21 (level1)→depth=1, leaves→depth=2
-                    hit.scale = 22 - scale + 1;  // +1 because leaves are children of the node at 'scale'
+                    // For m_maxLevels=4: scale=3 (root)→depth=0, scale=2 (level1)→depth=1, leaves→depth=2
+                    // For m_maxLevels=23: scale=22 (root)→depth=0, scale=21 (level1)→depth=1, leaves→depth=2
+                    hit.scale = (m_maxLevels - 1) - scale + 1;  // +1 because leaves are children of the node at 'scale'
 
                     // Compute surface normal from 3×3×3 neighborhood
                     float voxelSize = scale_exp2 * (m_worldMax.x - m_worldMin.x);
@@ -1036,9 +1043,26 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // Reference lines 233-246
                 // ============================================================
 
-                // Push current state onto stack if needed
+                // Push current state onto stack before descending
+                // This allows us to POP back to this exact state later
                 if (tc_max < h) {
-                    stack.push(scale, parent, t_max);
+                    CastStack::Entry entry;
+                    entry.parent = parent;
+                    entry.idx = idx;
+                    entry.scale = scale;
+                    entry.t_min = t_min;
+                    entry.t_max = t_max;
+                    entry.tx_center = tx_center;
+                    entry.ty_center = ty_center;
+                    entry.tz_center = tz_center;
+                    entry.pos = pos;
+                    entry.scale_exp2 = scale_exp2;
+                    stack.push(entry);
+
+                    if (scale >= m_maxLevels - 2) {
+                        std::cout << "[PUSH] scale=" << scale << " tc_max=" << tc_max << " h=" << h
+                                  << " stackPtr=" << stack.stackPtr << "\n";
+                    }
                 }
                 h = tc_max;
 
@@ -1159,7 +1183,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
         t_min = std::max(tc_max_corrected, 0.0f);
 
-        if (scale == m_maxDepth- 1 || scale == m_maxDepth- 2) {
+        if (scale == m_maxLevels - 1 || scale == m_maxLevels - 2) {
             // DEBUG: std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
             //          << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
         }
@@ -1176,66 +1200,39 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // Check if bit flips disagree with ray direction (means we left parent)
         if ((idx & step_mask) != 0)
         {
-            // DEBUG: std::cout << "DEBUG POP: idx=" << idx << " step_mask=" << step_mask
-            //          << " idx&step_mask=" << (idx & step_mask) << " triggering POP\n";
             // ============================================================
-            // POP: Find the highest differing bit to determine scale level
-            // Reference lines 296-327
+            // POP: Restore parent state from stack
+            // This is a simple stack-based approach that works for ANY depth
+            // (replaces ESVO's depth-23 float bit manipulation)
             // ============================================================
 
-            // Find highest differing bit between current and next position
-            uint32_t differing_bits = 0;
-
-            if ((step_mask & 1) != 0) {
-                uint32_t pos_x_bits = std::bit_cast<uint32_t>(pos.x);
-                uint32_t next_x_bits = std::bit_cast<uint32_t>(pos.x + scale_exp2);
-                differing_bits |= (pos_x_bits ^ next_x_bits);
-            }
-            if ((step_mask & 2) != 0) {
-                uint32_t pos_y_bits = std::bit_cast<uint32_t>(pos.y);
-                uint32_t next_y_bits = std::bit_cast<uint32_t>(pos.y + scale_exp2);
-                differing_bits |= (pos_y_bits ^ next_y_bits);
-            }
-            if ((step_mask & 4) != 0) {
-                uint32_t pos_z_bits = std::bit_cast<uint32_t>(pos.z);
-                uint32_t next_z_bits = std::bit_cast<uint32_t>(pos.z + scale_exp2);
-                differing_bits |= (pos_z_bits ^ next_z_bits);
-            }
-
-            // Extract scale from the position of highest bit
-            // Convert differing_bits to float (value conversion, not bit reinterpretation)
-            // Then reinterpret the float's bits to extract exponent
-            float diff_value_as_float = static_cast<float>(differing_bits);
-            uint32_t diff_float_bits = std::bit_cast<uint32_t>(diff_value_as_float);
-            scale = static_cast<int>((diff_float_bits >> 23) & 0xFF) - 127;
-
-            // Compute scale_exp2 = exp2f(scale - CAST_STACK_DEPTH)
-            int scale_exp = scale - m_maxDepth+ 127;
-            scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(scale_exp << 23));
-
-            // Restore parent voxel from stack
-            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
-                parent = stack.nodes[scale];
-                t_max = stack.tMax[scale];
-            } else {
-                // Scale out of bounds - exit loop
+            CastStack::Entry parentEntry;
+            if (!stack.pop(parentEntry)) {
+                // Stack empty - we've exited the root, terminate traversal
+                std::cout << "[POP] Stack empty, exiting traversal at scale=" << scale << " iter=" << iter << "\n";
                 break;
             }
 
-            // Round cube position and extract child slot index
-            uint32_t shx = std::bit_cast<uint32_t>(pos.x) >> scale;
-            uint32_t shy = std::bit_cast<uint32_t>(pos.y) >> scale;
-            uint32_t shz = std::bit_cast<uint32_t>(pos.z) >> scale;
-
-            pos.x = std::bit_cast<float>(shx << scale);
-            pos.y = std::bit_cast<float>(shy << scale);
-            pos.z = std::bit_cast<float>(shz << scale);
-
-            idx = (shx & 1) | ((shy & 1) << 1) | ((shz & 1) << 2);
+            // Restore complete parent state
+            parent = parentEntry.parent;
+            idx = parentEntry.idx;
+            scale = parentEntry.scale;
+            t_min = parentEntry.t_min;
+            t_max = parentEntry.t_max;
+            tx_center = parentEntry.tx_center;
+            ty_center = parentEntry.ty_center;
+            tz_center = parentEntry.tz_center;
+            pos = parentEntry.pos;
+            scale_exp2 = parentEntry.scale_exp2;
 
             // Prevent same parent from being stored again and invalidate cached child descriptor
             h = 0.0f;
             child_descriptor = 0;
+
+            if (scale >= m_maxLevels - 2) {
+                std::cout << "[POP] Restored to scale=" << scale << " idx=" << idx
+                          << " stackPtr=" << stack.stackPtr << "\n";
+            }
         }
     }
 
@@ -1245,18 +1242,18 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // ====================================================================
 
     if (iter >= maxIter) {
-        // DEBUG: std::cout << "DEBUG: Hit iteration limit! scale=" << scale
-        //          << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
-    } else if (scale >= m_maxDepth) {
-        // DEBUG: std::cout << "DEBUG: Ray exited octree. scale=" << scale
-        //          << " iter=" << iter << " t_min=" << t_min << "\n";
+        std::cout << "DEBUG: Hit iteration limit! scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
+    } else if (scale >= m_maxLevels) {
+        std::cout << "DEBUG: Ray exited octree. scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << "\n";
     } else {
-        // DEBUG: std::cout << "DEBUG: Unknown exit condition. scale=" << scale
-        //          << " iter=" << iter << " t_min=" << t_min << "\n";
+        std::cout << "DEBUG: Unknown exit condition. scale=" << scale
+                  << " iter=" << iter << " t_min=" << t_min << "\n";
     }
 
     // If we exited the octree, return miss
-    if (scale >= m_maxDepth|| iter >= maxIter) {
+    if (scale >= m_maxLevels || iter >= maxIter) {
         return miss;
     }
 
