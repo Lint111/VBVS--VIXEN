@@ -1,45 +1,62 @@
 # Active Context
 
-**Last Updated**: November 22, 2025 (Session 4)
+**Last Updated**: November 22, 2025 (Session 5)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Phases 1A-2 Complete** | 🔧 **Compilation Fixes Needed** | ⏸️ **Phase 3 Deferred**
+**Status**: ✅ **Component Unification Complete** | 🔧 **Compilation Fixes In Progress**
 
 ---
 
-## Current Session Summary (Nov 22 - Session 4: Architecture Migration Implementation)
+## Current Session Summary (Nov 22 - Session 5: Component Registry Unification)
 
-### Migration Implementation ✅ PHASES 1A-2 COMPLETE
+### Major Architectural Refactor ✅ COMPONENT UNIFICATION COMPLETE
 
-**Achievement**: Implemented async layer architecture migration - moved VoxelInjectionQueue and VoxelInjector to GaiaVoxelWorld, created EntityBrickView.
+**Achievement**: Eliminated duplicate component registries by extracting VoxelComponents library - single source of truth for all component definitions across VoxelData and GaiaVoxelWorld.
 
-**Phases Completed**:
-1. **Phase 1A**: VoxelInjectionQueue → GaiaVoxelWorld ✅
-2. **Phase 1B**: VoxelInjector → GaiaVoxelWorld ✅
-3. **Phase 2**: EntityBrickView (entity-based brick storage) ✅
-4. **Phase 3**: LaineKarrasOctree entity storage ⏸️ DEFERRED
+**Problem Solved**: VoxelData and GaiaVoxelWorld maintained separate, duplicate component registries requiring manual conversion code (switch statements) to translate between systems.
 
-**Files Created**:
-- [VoxelInjectionQueue.h](libraries/GaiaVoxelWorld/include/VoxelInjectionQueue.h) - Async entity creation queue (167 lines)
-- [VoxelInjectionQueue.cpp](libraries/GaiaVoxelWorld/src/VoxelInjectionQueue.cpp) - Queue implementation (210 lines)
-- [VoxelInjector.h](libraries/GaiaVoxelWorld/include/VoxelInjector.h) - Entity-based SVO insertion (141 lines)
-- [VoxelInjector.inl](libraries/GaiaVoxelWorld/include/VoxelInjector.inl) - Template implementations (87 lines)
-- [VoxelInjector.cpp](libraries/GaiaVoxelWorld/src/VoxelInjector.cpp) - Brick grouping logic (45 lines)
-- [EntityBrickView.h](libraries/GaiaVoxelWorld/include/EntityBrickView.h) - Entity span view (149 lines)
-- [EntityBrickView.cpp](libraries/GaiaVoxelWorld/src/EntityBrickView.cpp) - View implementation (159 lines)
-- [PHASE_3_ENTITY_STORAGE.md](libraries/GaiaVoxelWorld/PHASE_3_ENTITY_STORAGE.md) - Phase 3 deferred work plan (280 lines)
+**Solution Implemented**: Created unified VoxelComponents library that both systems depend on.
+
+**New Library Created**:
+- **[VoxelComponents](libraries/VoxelComponents/)** - Pure component definitions (Gaia + GLM only)
+  - [VoxelComponents.h](libraries/VoxelComponents/include/VoxelComponents.h) - Component definitions + ComponentRegistry
+  - [VoxelComponents.cpp](libraries/VoxelComponents/src/VoxelComponents.cpp) - MortonKey implementation
+  - [CMakeLists.txt](libraries/VoxelComponents/CMakeLists.txt) - Build configuration
 
 **Files Modified**:
-- [CMakeLists.txt](libraries/GaiaVoxelWorld/CMakeLists.txt) - Added new source files + fixed Gaia link
+- [StandardVoxelConfigs.h](libraries/VoxelData/include/StandardVoxelConfigs.h) - Component-based configs: `X(KEY, GaiaVoxel::Density, 0)`
+- [VoxelConfig.h](libraries/VoxelData/include/VoxelConfig.h) - Added component-aware macros (VOXEL_KEY_COMPONENT, etc.)
+- [VoxelData/CMakeLists.txt](libraries/VoxelData/CMakeLists.txt) - Depends on VoxelComponents
+- [GaiaVoxelWorld/CMakeLists.txt](libraries/GaiaVoxelWorld/CMakeLists.txt) - Depends on VoxelComponents, removed VoxelComponents.cpp
+- [GaiaVoxelWorld.cpp](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp) - Component visitor pattern (no switch statements)
+- [libraries/CMakeLists.txt](libraries/CMakeLists.txt) - Build order: VoxelComponents → VoxelData → GaiaVoxelWorld
 
-**Build Status**: ✅ **GaiaVoxelWorld compiles successfully!** (PDB lock warning is MSVC parallel build artifact)
+**Architecture Changes**:
+```
+OLD (Duplicate Registries):
+VoxelData::AttributeRegistry ← Independent string-based names
+GaiaVoxelWorld::VoxelComponents ← Independent component types
+  ↓ Manual conversion required (switch statements)
 
-**Compilation Fixes Completed**: ✅ All Gaia API issues resolved
-1. **Gaia API learned from docs**: `w.add<T>(entity, {...})`, `w.has<T>(entity)`, `w.get<T>(entity)` ✅
-2. **ECSBackedRegistry.cpp**: Fixed 36 occurrences `entity.has/get` → `m_world.has/get` ✅
-3. **GaiaVoxelWorld.cpp**: Fixed 7 occurrences `entity.add` → `m_world.add` ✅
-4. **EntityBrickView.cpp**: Fixed 5 entity validity checks ✅
-5. **Include paths**: Fixed VoxelData/X.h → X.h ✅
-6. **isSolid() removed**: Data/logic separation per user request ✅
+NEW (Unified Registry):
+VoxelComponents (canonical) ← Single source of truth
+  ↓ depends on
+VoxelData → Uses component types directly
+  ↓ depends on
+GaiaVoxelWorld → Component visitor pattern (zero conversion)
+```
+
+**Key Technical Improvements**:
+1. **Zero Conversion Code** - `ComponentRegistry::visitByName()` automatically dispatches by component name
+2. **Compile-Time Type Safety** - Component types enforced via `if constexpr` and concepts
+3. **No String Matching** - VoxelConfig uses `GaiaVoxel::Density` directly, not `"density"` strings
+4. **Automatic Type Extraction** - `ComponentValueType<T>::type` extracts underlying types (float, vec3)
+5. **Batch Operations** - `createVoxelsBatch()` uses structured bindings + visitor pattern
+
+**Build Status**: 🔧 **In Progress** - Component refactor complete, fixing legacy code issues
+- ✅ VoxelComponents library compiles
+- ✅ Phase 1 components (Density, Color, Normal, Material, Emission) working
+- 🔧 ECSBackedRegistry.h has template syntax errors (legacy code needs update)
+- 🔧 SVO library errors (unrelated to refactor)
 
 **Memory Improvements**:
 - **Queue entries**: 40 bytes (MortonKey 8 + VoxelCreationRequest 32) vs 64+ bytes OLD (37% reduction)

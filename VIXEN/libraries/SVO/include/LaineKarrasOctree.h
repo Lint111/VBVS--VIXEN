@@ -7,6 +7,7 @@
 #include "AttributeRegistry.h"
 #include <memory>
 #include <optional>
+#include <limits>
 
 namespace SVO {
 
