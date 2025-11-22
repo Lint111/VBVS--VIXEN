@@ -17,6 +17,7 @@ add_library(SVO STATIC
     include/SVOBuilder.h
     include/LaineKarrasOctree.h
     include/VoxelInjection.h
+    include/VoxelInjectionQueue.h
 
     # Implementation
     src/ISVOStructure.cpp
@@ -27,6 +28,7 @@ add_library(SVO STATIC
     src/LaineKarrasOctree.cpp
     # src/LaineKarrasBuilder.cpp  # TODO: Requires ISVOBuilder::InputGeometry and BuildConfig definitions
     src/VoxelInjection.cpp
+    src/VoxelInjectionQueue.cpp
     src/VoxelSamplers.cpp
     # src/RayCaster.cpp  # TODO: Implement
     src/Serialization.cpp

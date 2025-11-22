@@ -7,11 +7,14 @@
 #include "BrickView.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <future>
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <queue>
 
@@ -601,11 +604,11 @@ bool VoxelInjector::insertVoxel(
     const InjectionConfig& config) {
 
     // Debug first call
-    static int insertCallCount = 0;
-    if (insertCallCount++ < 3) {
-        std::cout << "[DEBUG insertVoxel] Call #" << insertCallCount
-                  << " position=(" << position.x << "," << position.y << "," << position.z << ")\n" << std::flush;
-    }
+    // static int insertCallCount = 0;
+    // if (insertCallCount++ < 3) {
+    //     std::cout << "[DEBUG insertVoxel] Call #" << insertCallCount
+    //               << " position=(" << position.x << "," << position.y << "," << position.z << ")\n" << std::flush;
+    // }
 
     // Cast to LaineKarrasOctree (required for direct manipulation)
     auto* octree = dynamic_cast<LaineKarrasOctree*>(&svo);
@@ -798,12 +801,12 @@ bool VoxelInjector::insertVoxel(
     }
 
     // Debug first voxel path
-    static bool firstPath = true;
-    if (firstPath) {
-        std::cout << "[DEBUG PATH] path.size()=" << path.size()
-                  << " targetDepth=" << targetDepth << "\n";
-        firstPath = false;
-    }
+    // static bool firstPath = true;
+    // if (firstPath) {
+    //     std::cout << "[DEBUG PATH] path.size()=" << path.size()
+    //               << " targetDepth=" << targetDepth << "\n";
+    //     firstPath = false;
+    // }
 
     // Traverse path, creating descriptors as needed
     for (size_t level = 0; level < path.size(); ++level) {
@@ -839,16 +842,16 @@ bool VoxelInjector::insertVoxel(
             ChildDescriptor& leafDesc = octreeData->root->childDescriptors[currentDescriptorIdx];
 
             // Debug first few leaf checks
-            static int leafDebugCount = 0;
-            if (leafDebugCount++ < 3) {
-                std::cout << "[DEBUG LEAF] level=" << level << " (level+1)=" << (level+1)
-                          << " path.size()=" << path.size()
-                          << " config.maxLevels=" << config.maxLevels
-                          << " config.brickDepthLevels=" << config.brickDepthLevels
-                          << " childExists=" << childExists << "\n";
-                std::cout << "  shouldCreateBrick(" << (level+1) << ")="
-                          << shouldCreateBrick(level + 1, config) << "\n";
-            }
+            // static int leafDebugCount = 0;
+            // if (leafDebugCount++ < 3) {
+            //     std::cout << "[DEBUG LEAF] level=" << level << " (level+1)=" << (level+1)
+            //               << " path.size()=" << path.size()
+            //               << " config.maxLevels=" << config.maxLevels
+            //               << " config.brickDepthLevels=" << config.brickDepthLevels
+            //               << " childExists=" << childExists << "\n";
+            //     std::cout << "  shouldCreateBrick(" << (level+1) << ")="
+            //               << shouldCreateBrick(level + 1, config) << "\n";
+            // }
 
             // Check if we're at brick depth and should create a brick
             // NOTE: Modern architecture uses AttributeRegistry, not BrickStorage
@@ -1299,29 +1302,70 @@ size_t VoxelInjector::insertVoxelsBatch(
         std::cout << "[WARNING] " << boundsRejected << " voxels rejected (out of bounds)\n";
     }
 
-    // Step 2: Simplified batch insertion - serialize brick creation, but reduce tree traversals
-    // Future optimization: Use proper brick storage with parallel writes
+    // Step 2: Optimized batch insertion - ONE tree traversal per brick
     size_t totalVoxelsInserted = 0;
     size_t insertionFailures = 0;
 
-    // Use mutex to serialize tree modifications
-    std::cout << "[DEBUG BATCH] Starting individual insertVoxel calls for " << voxelsByBrick.size() << " bricks\n" << std::flush;
-    for (auto& [brickCoord, brickVoxels] : voxelsByBrick) {
-        // Insert all voxels in this brick using sequential insertVoxel calls
-        // This is still faster than before because:
-        // 1. We've already grouped voxels by brick (spatial locality)
-        // 2. One descriptor chain creation per brick, not per voxel
-        // 3. Subsequent voxels in same brick hit early-exit in insertVoxel
+    std::cout << "[OPTIMIZED BATCH] Processing " << voxelsByBrick.size() << " bricks (one traversal each)\n" << std::flush;
 
-        for (const auto& voxel : brickVoxels) {
-            if (insertVoxel(svo, voxel.position, voxel.attributes, config)) {
-                totalVoxelsInserted++;
-            } else {
-                insertionFailures++;
+    for (auto& [brickCoord, brickVoxels] : voxelsByBrick) {
+        // Use the FIRST voxel in the brick to create the descriptor chain
+        if (brickVoxels.empty()) continue;
+
+        const auto& firstVoxel = brickVoxels[0];
+
+        // Insert first voxel to create tree path and allocate brick
+        if (!insertVoxel(svo, firstVoxel.position, firstVoxel.attributes, config)) {
+            insertionFailures += brickVoxels.size();
+            continue;
+        }
+        totalVoxelsInserted++;
+
+        // Now fill remaining voxels directly into the brick (if we have AttributeRegistry)
+        if (m_attributeRegistry && brickVoxels.size() > 1) {
+            // Calculate brick center from first voxel
+            glm::vec3 brickMin = glm::vec3(brickCoord) * brickWorldSize + worldMin;
+            glm::vec3 brickCenter = brickMin + glm::vec3(brickWorldSize * 0.5f);
+
+            // Find the brick ID for this spatial location
+            uint64_t spatialKey = 0;
+            spatialKey |= (uint64_t(brickCoord.x) & 0x1FFFFF) << 42;
+            spatialKey |= (uint64_t(brickCoord.y) & 0x1FFFFF) << 21;
+            spatialKey |= (uint64_t(brickCoord.z) & 0x1FFFFF);
+
+            auto it = m_spatialToBrickID.find(spatialKey);
+            if (it != m_spatialToBrickID.end()) {
+                uint32_t brickID = it->second;
+                ::VoxelData::BrickView brick = m_attributeRegistry->getBrick(brickID);
+                float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
+
+                // Fill remaining voxels directly into brick
+                for (size_t i = 1; i < brickVoxels.size(); ++i) {
+                    const auto& voxel = brickVoxels[i];
+
+                    // Calculate voxel coordinates within brick
+                    glm::vec3 localPos = voxel.position - brickMin;
+                    int vx = glm::clamp(static_cast<int>(localPos.x / voxelSize), 0, brickSideLength - 1);
+                    int vy = glm::clamp(static_cast<int>(localPos.y / voxelSize), 0, brickSideLength - 1);
+                    int vz = glm::clamp(static_cast<int>(localPos.z / voxelSize), 0, brickSideLength - 1);
+
+                    // Write directly to brick
+                    brick.setVoxel(vx, vy, vz, voxel.attributes);
+                    totalVoxelsInserted++;
+                }
+            }
+        } else {
+            // No AttributeRegistry - fall back to individual insertVoxel
+            for (size_t i = 1; i < brickVoxels.size(); ++i) {
+                if (insertVoxel(svo, brickVoxels[i].position, brickVoxels[i].attributes, config)) {
+                    totalVoxelsInserted++;
+                } else {
+                    insertionFailures++;
+                }
             }
         }
     }
-    std::cout << "[DEBUG BATCH] Finished individual insertVoxel calls\n" << std::flush;
+    std::cout << "[OPTIMIZED BATCH] Finished processing\n" << std::flush;
 
     if (insertionFailures > 0) {
         std::cout << "[WARNING] " << insertionFailures << " voxels failed insertion (insertVoxel returned false)\n";
