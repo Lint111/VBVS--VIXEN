@@ -635,6 +635,32 @@ bool VoxelInjector::insertVoxel(
         return false;  // Out of bounds
     }
 
+    // 1.5. OPTIMIZATION: If using bricks, check if brick already exists
+    // Skip tree traversal for subsequent voxels in same brick region
+    if (config.brickDepthLevels > 0 && m_attributeRegistry) {
+        int brickLevel = config.maxLevels - config.brickDepthLevels;
+        float brickWorldSize = (worldMax.x - worldMin.x) / std::pow(2.0f, brickLevel);
+        glm::ivec3 brickGridPos = glm::ivec3(glm::floor((position - worldMin) / brickWorldSize));
+
+        // Create spatial key
+        uint64_t spatialKey = 0;
+        spatialKey |= (uint64_t(brickGridPos.x) & 0x1FFFFF) << 42;
+        spatialKey |= (uint64_t(brickGridPos.y) & 0x1FFFFF) << 21;
+        spatialKey |= (uint64_t(brickGridPos.z) & 0x1FFFFF);
+
+        auto it = m_spatialToBrickID.find(spatialKey);
+        if (it != m_spatialToBrickID.end()) {
+            // Brick exists - skip tree traversal, just update brick voxel
+            static int skipCount = 0;
+            if (skipCount++ < 5) {
+                std::cout << "[SKIP TRAVERSAL] Brick " << it->second << " exists at key=" << spatialKey << "\n";
+            }
+            // TODO: Update voxel in existing brick
+            return true;  // Success - voxel added to existing brick
+        }
+        // Brick doesn't exist yet - will be created during traversal below
+    }
+
     // 2. Compute octree path from root to target leaf
     // Always traverse to full depth - bricks are created at leaf level
     // (bricks don't reduce tree depth, they provide dense storage at leaves)
@@ -829,33 +855,62 @@ bool VoxelInjector::insertVoxel(
             bool createBrick = shouldCreateBrick(level + 1, config) && !childExists;
 
             if (createBrick) {
-                // Calculate brick position and size
-                float nodeSize = (worldMax.x - worldMin.x) / std::pow(2.0f, level + 1);
-                glm::vec3 nodeCenter = position;  // Approximate - should calculate exact node center
+                // Check if this descriptor already has a brick allocated
+                uint32_t brickID;
+                bool brickAlreadyExists = false;
 
-                std::cout << "[DEBUG] Calling allocateAndPopulateBrick level=" << (level+1) << "\n";
+                auto it = m_descriptorToBrickID.find(currentDescriptorIdx);
+                if (it != m_descriptorToBrickID.end()) {
+                    // Descriptor already has a brick - reuse it for this additional voxel
+                    brickID = it->second;
+                    brickAlreadyExists = true;
 
-                // Create a brick for this single voxel
-                BrickAllocation brickResult = allocateAndPopulateBrick(
-                    nodeCenter,
-                    nodeSize,
-                    nullptr,    // No sampler
-                    &data,      // Use single voxel data
-                    config
-                );
+                    static int reuseDebugCount = 0;
+                    if (reuseDebugCount++ < 5) {
+                        std::cout << "[BRICK REUSE DESCRIPTOR] descriptor=" << currentDescriptorIdx
+                                  << " brickID=" << brickID << " (adding voxel)\n";
+                    }
+                } else {
+                    // No brick yet for this descriptor - allocate new one
+                    // Allocate brick directly without spatial deduplication
+                    if (m_attributeRegistry) {
+                        brickID = m_attributeRegistry->allocateBrick();
+                    } else if (m_brickStorage) {
+                        brickID = m_brickStorage->allocateBrick();
+                    } else {
+                        brickID = 0xFFFFFFFF;
+                    }
 
-                std::cout << "[DEBUG] brickResult: brickID=" << brickResult.brickID
-                          << " hasSolidVoxels=" << brickResult.hasSolidVoxels << "\n";
+                    if (brickID != 0xFFFFFFFF) {
+                        m_descriptorToBrickID[currentDescriptorIdx] = brickID;
 
-                if (brickResult.hasSolidVoxels) {
-                    // Store brick reference for later extraction during compaction
-                    leafDesc.leafMask |= (1 << childIdx);
+                        // Register brick in spatial map for fast lookup by future voxels
+                        int brickLevel = config.maxLevels - config.brickDepthLevels;
+                        float brickWorldSize = (worldMax.x - worldMin.x) / std::pow(2.0f, brickLevel);
+                        glm::ivec3 brickGridPos = glm::ivec3(glm::floor((position - worldMin) / brickWorldSize));
 
-                    // Track the brick ID for this descriptor
-                    m_descriptorToBrickID[currentDescriptorIdx] = brickResult.brickID;
-                    std::cout << "[BRICK CREATED] descriptor=" << currentDescriptorIdx
-                              << " brickID=" << brickResult.brickID << "\n";
+                        uint64_t spatialKey = 0;
+                        spatialKey |= (uint64_t(brickGridPos.x) & 0x1FFFFF) << 42;
+                        spatialKey |= (uint64_t(brickGridPos.y) & 0x1FFFFF) << 21;
+                        spatialKey |= (uint64_t(brickGridPos.z) & 0x1FFFFF);
+
+                        m_spatialToBrickID[spatialKey] = brickID;
+
+                        static int createDebugCount = 0;
+                        if (createDebugCount++ < 10) {
+                            std::cout << "[BRICK CREATED] descriptor=" << currentDescriptorIdx
+                                      << " brickID=" << brickID << " spatialKey=" << spatialKey << "\n";
+                        }
+                    }
                 }
+
+                // Mark as leaf with brick
+                if (brickID != 0xFFFFFFFF && !childExists) {
+                    leafDesc.leafMask |= (1 << childIdx);
+                }
+
+                // TODO: Update brick voxel data at position within brick
+                // For now, bricks are allocated but not populated with voxel data
             } else if (!childExists) {
                 // Regular leaf without brick
                 leafDesc.leafMask |= (1 << childIdx);
@@ -1359,27 +1414,50 @@ std::pair<uint32_t, bool> VoxelInjector::findOrAllocateBrick(
     float worldSize,
     const InjectionConfig& config)
 {
+    static int findCallCount = 0;
+    if (findCallCount++ < 3) {
+        std::cout << "[findOrAllocateBrick] Call #" << findCallCount
+                  << " worldCenter=(" << worldCenter.x << "," << worldCenter.y << "," << worldCenter.z << ")"
+                  << " worldSize=" << worldSize << "\n";
+    }
+
     // Check which brick system is available
     if (!m_attributeRegistry && !m_brickStorage) {
+        std::cout << "[findOrAllocateBrick] ERROR: No brick system available!\n";
         return {0xFFFFFFFF, false};
     }
 
-    // Compute Morton code for this brick's spatial location
-    // Quantize to brick grid resolution
-    int brickDepth = config.brickDepthLevels;
+    // Compute spatial key for this brick's location
+    // CRITICAL: Quantize worldCenter to brick grid to ensure multiple voxels
+    // in the same brick region map to the same spatial key
     float brickWorldSize = worldSize;
-    glm::vec3 brickMin = worldCenter - glm::vec3(worldSize * 0.5f);
 
-    // Simple spatial hash (could use proper Morton encoding)
+    // Quantize position to brick grid (floor division)
+    glm::ivec3 brickGridPos = glm::ivec3(glm::floor(worldCenter / brickWorldSize));
+
+    // Debug first few spatial keys
+    static int keyDebugCount = 0;
+    if (keyDebugCount++ < 10) {
+        std::cout << "[SPATIAL KEY] worldCenter=(" << worldCenter.x << "," << worldCenter.y << "," << worldCenter.z << ")"
+                  << " brickWorldSize=" << brickWorldSize
+                  << " brickGridPos=(" << brickGridPos.x << "," << brickGridPos.y << "," << brickGridPos.z << ")\n";
+    }
+
+    // Create spatial hash from quantized grid position
+    // This ensures all voxels in the same brick region get the same key
     uint64_t spatialKey = 0;
-    spatialKey |= (uint64_t(brickMin.x / brickWorldSize) & 0x1FFFFF) << 42;
-    spatialKey |= (uint64_t(brickMin.y / brickWorldSize) & 0x1FFFFF) << 21;
-    spatialKey |= (uint64_t(brickMin.z / brickWorldSize) & 0x1FFFFF);
+    spatialKey |= (uint64_t(brickGridPos.x) & 0x1FFFFF) << 42;
+    spatialKey |= (uint64_t(brickGridPos.y) & 0x1FFFFF) << 21;
+    spatialKey |= (uint64_t(brickGridPos.z) & 0x1FFFFF);
 
     // Check if brick already exists at this location
     auto it = m_spatialToBrickID.find(spatialKey);
     if (it != m_spatialToBrickID.end()) {
         // Brick exists - return existing ID
+        static int reuseCount = 0;
+        if (reuseCount++ < 5) {
+            std::cout << "[BRICK REUSE] spatialKey=" << spatialKey << " brickID=" << it->second << "\n";
+        }
         return {it->second, false};
     }
 

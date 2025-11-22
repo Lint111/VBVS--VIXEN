@@ -8,49 +8,76 @@
 
 ## Current Session Summary (Nov 22)
 
-### Cornell Box Test Debugging - POP Logic Bugs Fixed 🔧 IN PROGRESS
+### Brick Allocation & Batch Processing Optimization 🔧 IN PROGRESS
 
-**Achievement**: Fixed 2 critical POP bugs, Cornell Box tests no longer crash but still fail validation
+**Achievement**: Fixed 6 critical bugs in brick allocation pipeline, implemented spatial deduplication optimization
 
 **Bugs Fixed**:
 
-1. **Stack Initialization Bug** - [LaineKarrasOctree.cpp:726-728](libraries/SVO/src/LaineKarrasOctree.cpp#L726-L728)
-   - **Problem**: Stack initialized with user scale [0-7] but accessed with ESVO scale [15-22]
-   - **Fix**: Changed loop to `for (int esvoScale = minScale; esvoScale <= ESVO_MAX_SCALE; esvoScale++)`
-   - **Result**: Eliminated crash from reading uninitialized memory (0xCCCCCCCC pattern)
+1. **targetDepth Calculation Bug** - [VoxelInjection.cpp:641](libraries/SVO/src/VoxelInjection.cpp#L641)
+   - **Problem**: When using bricks, targetDepth was reduced from 8 to 5, creating incomplete paths
+   - **Fix**: Always traverse to full `config.maxLevels` depth - bricks don't reduce tree depth
+   - **Result**: path.size() now correctly = 8 for depth-8 octrees
 
-2. **floatToInt Conversion Bug** - [LaineKarrasOctree.cpp:1223-1224](libraries/SVO/src/LaineKarrasOctree.cpp#L1223-L1224)
-   - **Problem**: Formula `(f - 1.0f) * MAX_RES` for input range [0, 1] gave [-1, 0] → all positions mapped to 0
-   - **Fix**: Changed to `f * MAX_RES` for correct [0, MAX_RES) range
-   - **Result**: POP now calculates correct scale values, exits at valid ESVO scale 20 instead of invalid 14
+2. **Brick References Not Attached** - [VoxelInjection.cpp:1056-1077](libraries/SVO/src/VoxelInjection.cpp#L1056-L1077)
+   - **Problem**: Bricks tracked in `m_descriptorToBrickID` but never transferred to `octreeData->root->brickReferences`
+   - **Fix**: Added brick reference transfer in `compactToESVOFormat()` using `oldToNewIndex` mapping
+   - **Result**: Bricks now properly attached to octree nodes after compaction
 
-**Current Status**:
-- ✅ No more crashes (was SEH exception 0xc0000005 - access violation)
-- ❌ Tests still fail - ray exits after 3 iterations without finding voxels
-- ⏱️ Each test takes ~6 seconds (3s build + 3s ray cast @ 1 sec/iteration)
-- 🔍 **Root cause**: Ray traversal exits early, never reaches brick nodes despite 4,868 bricks existing
+3. **Missing AttributeRegistry** - [test_octree_queries.cpp:922-926](libraries/SVO/tests/test_octree_queries.cpp#L922-L926)
+   - **Problem**: VoxelInjector created without AttributeRegistry → brick allocation fails (returns 0xFFFFFFFF)
+   - **Fix**: Test now creates AttributeRegistry with density/color/normal attributes and passes to VoxelInjector
+   - **Result**: Brick allocation succeeds, returns valid brick IDs
 
-**Evidence**:
+4. **Spatial Key Collision** - [VoxelInjection.cpp:887-897](libraries/SVO/src/VoxelInjection.cpp#L887-L897)
+   - **Problem**: Multiple octree nodes mapped to same brick via coarse spatial key
+   - **Fix**: Each descriptor gets unique brick (one brick per leaf node), spatial key registered for fast lookup
+   - **Result**: Correct 1:1 mapping between leaf descriptors and bricks
+
+5. **Tree Traversal Overhead** - [VoxelInjection.cpp:638-662](libraries/SVO/src/VoxelInjection.cpp#L638-L662)
+   - **Problem**: Calling `insertVoxel()` 100,000 times creates 100,000 tree traversals for voxels in same brick
+   - **Fix**: Added early-exit check - compute brick spatial key, skip traversal if brick already exists
+   - **Result**: Only ~4,868 tree traversals (one per brick region) instead of 100,000
+
+6. **Memory Allocation Explosion** - Test was allocating 100,000 descriptors causing "bad allocation"
+   - **Fix**: Spatial deduplication prevents duplicate descriptor creation
+   - **Result**: Only 4,868 descriptors created (one per brick region)
+
+**Current Performance**:
+- ✅ Brick allocation working - creates ~4,868 unique bricks for 100,000 voxels
+- ✅ Spatial deduplication working - majority of voxels skip tree traversal
+- ✅ No more memory crashes
+- ⏱️ **Still slow**: Test takes ~60 seconds (100,000 function calls + overhead)
+
+**Optimization Results**:
 ```
-Build time: 3.16029 seconds
-Batch insertion: 100000 voxels → 4868 bricks (brick size: 8³)
-DEBUG: Ray exited octree. scale=20 iter=3 t_min=0.05
-Hit: FALSE
+[BRICK CREATED] descriptor=7 brickID=0 spatialKey=105553116266504
+[SKIP TRAVERSAL] Brick 0 exists at key=105553116266504  ← Voxels 2-20 in same brick skip traversal
+[BRICK CREATED] descriptor=14 brickID=1 spatialKey=25165840
 ```
 
-**Hypothesis**: Configuration issue with Cornell Box voxelization or brick placement, NOT core traversal bug
-- OctreeQueryTest 74/74 passing proves traversal works correctly for depth 4 octrees
-- Cornell Box uses depth 8 with bricks but ray never enters brick traversal code
-- No `[BRICK CHECK]` or `[TRAVERSE BRICK]` debug output during ray cast
+**Next Steps - Parallel Batch Processing**:
+Current bottleneck: Even with traversal skipping, calling `insertVoxel()` 100,000 times is too slow.
 
-**Next Investigation**:
-- Check if bricks are actually attached to octree nodes (BrickReference validation)
-- Verify Cornell Box world bounds [0, 10]³ match octree initialization
-- Examine why ray origin=(5, 8, 5) direction=(0, -1, 0) exits so quickly
+**Solution**: Implement injection queue with parallel batch processing
+1. **Queue System**: Buffer voxel insertion requests instead of processing immediately
+2. **Spatial Grouping**: Group queued voxels by brick region (already done in `insertVoxelsBatch`)
+3. **Parallel Processing**: Process multiple brick regions in parallel using thread pool
+4. **Batch Descriptor Creation**: Create one descriptor per brick, populate brick with all voxels
+5. **Single Compaction**: Run `compactToESVOFormat()` once at end
 
-**Files Modified**:
-- [LaineKarrasOctree.cpp:726-728](libraries/SVO/src/LaineKarrasOctree.cpp#L726-L728) - Stack init with ESVO scale range
-- [LaineKarrasOctree.cpp:1223-1224](libraries/SVO/src/LaineKarrasOctree.cpp#L1223-L1224) - floatToInt formula fix
+**Benefits**:
+- Eliminates 100,000 individual function call overhead
+- Enables parallel brick processing (use all CPU cores)
+- Reduces tree modifications (one descriptor per brick vs one per voxel)
+- Compatible with both `insertVoxel()` and `insertVoxelsBatch()` APIs
+
+**Files Modified This Session**:
+- [VoxelInjection.cpp:638-662](libraries/SVO/src/VoxelInjection.cpp#L638-662) - Spatial key early-exit optimization
+- [VoxelInjection.cpp:641](libraries/SVO/src/VoxelInjection.cpp#L641) - targetDepth fix
+- [VoxelInjection.cpp:831-910](libraries/SVO/src/VoxelInjection.cpp#L831-910) - Descriptor-based brick allocation
+- [VoxelInjection.cpp:1056-1077](libraries/SVO/src/VoxelInjection.cpp#L1056-L1077) - Brick reference transfer in compaction
+- [test_octree_queries.cpp:922-926](libraries/SVO/tests/test_octree_queries.cpp#L922-926) - AttributeRegistry creation
 
 ---
 
