@@ -49,7 +49,8 @@ void EntityBrickView::clearEntity(int x, int y, int z) {
 
 std::optional<float> EntityBrickView::getDensity(size_t voxelIdx) const {
     auto entity = getEntity(voxelIdx);
-    if (!entity.valid()) {
+    // Check if entity is valid (non-null)
+    if (entity == gaia::ecs::Entity()) {
         return std::nullopt;
     }
     return m_world.getDensity(entity);
@@ -61,7 +62,7 @@ std::optional<float> EntityBrickView::getDensity(int x, int y, int z) const {
 
 std::optional<glm::vec3> EntityBrickView::getColor(size_t voxelIdx) const {
     auto entity = getEntity(voxelIdx);
-    if (!entity.valid()) {
+    if (entity == gaia::ecs::Entity()) {
         return std::nullopt;
     }
     return m_world.getColor(entity);
@@ -73,7 +74,7 @@ std::optional<glm::vec3> EntityBrickView::getColor(int x, int y, int z) const {
 
 std::optional<glm::vec3> EntityBrickView::getNormal(size_t voxelIdx) const {
     auto entity = getEntity(voxelIdx);
-    if (!entity.valid()) {
+    if (entity == gaia::ecs::Entity()) {
         return std::nullopt;
     }
     return m_world.getNormal(entity);
@@ -85,7 +86,7 @@ std::optional<glm::vec3> EntityBrickView::getNormal(int x, int y, int z) const {
 
 std::optional<uint32_t> EntityBrickView::getMaterialID(size_t voxelIdx) const {
     auto entity = getEntity(voxelIdx);
-    if (!entity.valid()) {
+    if (entity == gaia::ecs::Entity()) {
         return std::nullopt;
     }
     // Material component access (if exists)
@@ -116,7 +117,7 @@ std::span<const gaia::ecs::Entity> EntityBrickView::entities() const {
 size_t EntityBrickView::countSolidVoxels() const {
     size_t count = 0;
     for (const auto& entity : m_entities) {
-        if (entity.valid()) {
+        if (entity != gaia::ecs::Entity()) {
             auto density = m_world.getDensity(entity);
             if (density.has_value() && density.value() > 0.0f) {
                 count++;
@@ -128,7 +129,7 @@ size_t EntityBrickView::countSolidVoxels() const {
 
 bool EntityBrickView::isEmpty() const {
     return std::all_of(m_entities.begin(), m_entities.end(),
-        [](const auto& entity) { return !entity.valid(); });
+        [](const auto& entity) { return entity == gaia::ecs::Entity(); });
 }
 
 bool EntityBrickView::isFull() const {

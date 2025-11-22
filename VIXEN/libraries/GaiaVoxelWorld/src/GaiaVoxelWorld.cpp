@@ -282,10 +282,10 @@ GaiaVoxelWorld::Stats GaiaVoxelWorld::getStats() const {
         stats.totalEntities++;
     });
 
-    // Count solid voxels
+    // Count solid voxels (entities with Density > 0)
     auto solidQuery = m_impl->world.query().all<Density>();
-    solidQuery.each([&](gaia::ecs::Entity entity) {
-        if (entity.get<Density>().isSolid()) {
+    solidQuery.each([&](const Density& density) {
+        if (density.value > 0.0f) {
             stats.solidVoxels++;
         }
     });

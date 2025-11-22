@@ -28,7 +28,7 @@ target_include_directories(GaiaVoxelWorld
 # Link Gaia ECS and dependencies
 target_link_libraries(GaiaVoxelWorld
     PUBLIC
-        gaia::gaia
+        gaia
         glm::glm
         VoxelData  # For AttributeRegistry integration
 )

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "VoxelComponents.h"
-#include <VoxelData/AttributeRegistry.h>
-#include <VoxelData/DynamicVoxelStruct.h>
+#include <AttributeRegistry.h>
+#include <DynamicVoxelStruct.h>
 #include <gaia.h>
 #include <unordered_map>
 #include <string>

@@ -69,7 +69,6 @@ struct MortonKey {
 struct Density {
     static constexpr const char* Name = "density";
     float value = 1.0f;
-    bool isSolid() const { return value > 0.0f; }
 };
 
 // Color components (split RGB for SoA)

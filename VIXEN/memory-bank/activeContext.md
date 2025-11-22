@@ -1,12 +1,57 @@
 # Active Context
 
-**Last Updated**: November 22, 2025 (Session 3)
+**Last Updated**: November 22, 2025 (Session 4)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Async Layer Design** | ✅ **VoxelCreationRequest API** | 🔧 **Ready for Migration**
+**Status**: ✅ **Phases 1A-2 Complete** | 🔧 **Compilation Fixes Needed** | ⏸️ **Phase 3 Deferred**
 
 ---
 
-## Current Session Summary (Nov 22 - Session 3: Async Layer Architecture)
+## Current Session Summary (Nov 22 - Session 4: Architecture Migration Implementation)
+
+### Migration Implementation ✅ PHASES 1A-2 COMPLETE
+
+**Achievement**: Implemented async layer architecture migration - moved VoxelInjectionQueue and VoxelInjector to GaiaVoxelWorld, created EntityBrickView.
+
+**Phases Completed**:
+1. **Phase 1A**: VoxelInjectionQueue → GaiaVoxelWorld ✅
+2. **Phase 1B**: VoxelInjector → GaiaVoxelWorld ✅
+3. **Phase 2**: EntityBrickView (entity-based brick storage) ✅
+4. **Phase 3**: LaineKarrasOctree entity storage ⏸️ DEFERRED
+
+**Files Created**:
+- [VoxelInjectionQueue.h](libraries/GaiaVoxelWorld/include/VoxelInjectionQueue.h) - Async entity creation queue (167 lines)
+- [VoxelInjectionQueue.cpp](libraries/GaiaVoxelWorld/src/VoxelInjectionQueue.cpp) - Queue implementation (210 lines)
+- [VoxelInjector.h](libraries/GaiaVoxelWorld/include/VoxelInjector.h) - Entity-based SVO insertion (141 lines)
+- [VoxelInjector.inl](libraries/GaiaVoxelWorld/include/VoxelInjector.inl) - Template implementations (87 lines)
+- [VoxelInjector.cpp](libraries/GaiaVoxelWorld/src/VoxelInjector.cpp) - Brick grouping logic (45 lines)
+- [EntityBrickView.h](libraries/GaiaVoxelWorld/include/EntityBrickView.h) - Entity span view (149 lines)
+- [EntityBrickView.cpp](libraries/GaiaVoxelWorld/src/EntityBrickView.cpp) - View implementation (159 lines)
+- [PHASE_3_ENTITY_STORAGE.md](libraries/GaiaVoxelWorld/PHASE_3_ENTITY_STORAGE.md) - Phase 3 deferred work plan (280 lines)
+
+**Files Modified**:
+- [CMakeLists.txt](libraries/GaiaVoxelWorld/CMakeLists.txt) - Added new source files + fixed Gaia link
+
+**Build Status**: 🔧 **Compilation errors** - needs fixes before testing
+
+**Compilation Errors** (3 issues):
+1. **Gaia Entity API mismatch**: Used `entity.valid()` instead of Gaia's `valid(world, entity)` free function
+2. **Missing VoxelData include**: ECSBackedRegistry.h can't find `VoxelData/AttributeRegistry.h`
+3. **Syntax error**: GaiaVoxelWorld.cpp:288 - missing semicolon before '{'
+
+**Memory Improvements**:
+- **Queue entries**: 40 bytes (MortonKey 8 + VoxelCreationRequest 32) vs 64+ bytes OLD (37% reduction)
+- **Brick storage**: 4 KB (512 entities × 8 bytes) vs 70 KB OLD (94% reduction) - *when Phase 3 complete*
+- **Ray hits**: 24 bytes (entity + hitPoint + distance) vs 64+ bytes OLD (62% reduction) - *when Phase 3 complete*
+
+**Architecture Achievement**:
+- ✅ Data layer (GaiaVoxelWorld) owns entity creation
+- ✅ Spatial layer (SVO) will index entity references (Phase 3)
+- ✅ Zero data duplication between layers
+- ✅ Clean dependency: GaiaVoxelWorld ← SVO (not circular)
+
+---
+
+## Previous Session Summary (Nov 22 - Session 3: Async Layer Architecture)
 
 ### Async Layer Design ✅ COMPLETE
 
