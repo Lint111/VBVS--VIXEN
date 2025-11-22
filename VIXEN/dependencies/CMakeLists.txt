@@ -122,6 +122,32 @@ endif()
 set_target_properties(ProjectHash PROPERTIES FOLDER "Dependencies")
 
 # ============================================================================
+# Gaia ECS - Entity Component System
+# ============================================================================
+
+FetchContent_Declare(
+    gaia
+    GIT_REPOSITORY https://github.com/richardbiely/gaia-ecs.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
+)
+
+# Configure Gaia ECS options
+set(GAIA_BUILD_UNITTEST OFF CACHE BOOL "Build Gaia unit tests" FORCE)
+set(GAIA_BUILD_EXAMPLES OFF CACHE BOOL "Build Gaia examples" FORCE)
+set(GAIA_PROFILER_CPU OFF CACHE BOOL "Enable Gaia CPU profiler" FORCE)
+
+FetchContent_MakeAvailable(gaia)
+
+# Organize Gaia in Dependencies folder
+if(TARGET gaia)
+    set_target_properties(gaia PROPERTIES FOLDER "Dependencies")
+endif()
+
+message(STATUS "Gaia ECS fetched - available to all libraries")
+
+# ============================================================================
 # GoogleTest - Testing Framework
 # ============================================================================
 
