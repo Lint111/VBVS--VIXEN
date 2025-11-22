@@ -80,6 +80,11 @@ struct VoxelInjectionQueue::Impl {
             }
         }
         workers.clear();
+
+        // Compact octree once after all insertions complete
+        std::cout << "[AsyncQueue] Compacting octree to ESVO format...\n" << std::flush;
+        injector.compactToESVOFormat(*targetOctree);
+        std::cout << "[AsyncQueue] Compaction complete.\n" << std::flush;
     }
 
     bool enqueue(const glm::vec3& position, const ::VoxelData::DynamicVoxelScalar& data) {

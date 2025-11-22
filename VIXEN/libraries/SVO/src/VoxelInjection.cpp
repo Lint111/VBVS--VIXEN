@@ -1306,9 +1306,14 @@ size_t VoxelInjector::insertVoxelsBatch(
     size_t totalVoxelsInserted = 0;
     size_t insertionFailures = 0;
 
-    std::cout << "[OPTIMIZED BATCH] Processing " << voxelsByBrick.size() << " bricks (one traversal each)\n" << std::flush;
+    std::cout << "[BATCH] Processing " << voxelsByBrick.size() << " bricks..." << std::flush;
+    size_t brickIdx = 0;
 
     for (auto& [brickCoord, brickVoxels] : voxelsByBrick) {
+        if (brickIdx % 100 == 0) {
+            std::cout << " [" << brickIdx << "/" << voxelsByBrick.size() << "]" << std::flush;
+        }
+        brickIdx++;
         // Use the FIRST voxel in the brick to create the descriptor chain
         if (brickVoxels.empty()) continue;
 
@@ -1365,16 +1370,20 @@ size_t VoxelInjector::insertVoxelsBatch(
             }
         }
     }
-    std::cout << "[OPTIMIZED BATCH] Finished processing\n" << std::flush;
+    // std::cout << "[OPTIMIZED BATCH] Finished processing\n" << std::flush;
 
     if (insertionFailures > 0) {
         std::cout << "[WARNING] " << insertionFailures << " voxels failed insertion (insertVoxel returned false)\n";
     }
 
-    // Step 4: Compact to ESVO format once at the end
-    compactToESVOFormat(svo);
+    std::cout << " done!\n" << std::flush;
 
-    std::cout << "Batch insertion complete: " << totalVoxelsInserted << " voxels inserted\n";
+    // NOTE: Compaction deferred to caller (e.g., VoxelInjectionQueue::stop())
+    // Calling compactToESVOFormat() after EVERY batch is too expensive.
+    // For async queue: queue will call once when stopped.
+    // For standalone batch: caller must manually call compactToESVOFormat().
+    // compactToESVOFormat(svo);
+
     return totalVoxelsInserted;
 }
 
