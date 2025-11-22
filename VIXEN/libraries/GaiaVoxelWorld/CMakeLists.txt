@@ -12,6 +12,7 @@ project(GaiaVoxelWorld VERSION 1.0.0 LANGUAGES CXX)
 add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
     src/VoxelComponents.cpp
+    src/ECSBackedRegistry.cpp
 )
 
 target_include_directories(GaiaVoxelWorld
@@ -26,6 +27,7 @@ target_link_libraries(GaiaVoxelWorld
     PUBLIC
         gaia::gaia
         glm::glm
+        VoxelData  # For AttributeRegistry integration
 )
 
 # C++23 standard

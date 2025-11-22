@@ -42,6 +42,7 @@ namespace GaiaVoxel {
  * - Enables fast AABB queries via bit masking
  */
 struct MortonKey {
+    static constexpr const char* Name = "position";  // Logical name for position
     uint64_t code = 0;
 
     // Decode position from Morton code
@@ -66,20 +67,39 @@ struct MortonKey {
  * 1 float = 4 bytes
  */
 struct Density {
+    static constexpr const char* Name = "density";
     float value = 1.0f;
     bool isSolid() const { return value > 0.0f; }
 };
 
 // Color components (split RGB for SoA)
 // Stored separately for SIMD-friendly iteration
-struct Color_R { float value = 1.0f; };
-struct Color_G { float value = 1.0f; };
-struct Color_B { float value = 1.0f; };
+struct Color_R {
+    static constexpr const char* Name = "color_r";
+    float value = 1.0f;
+};
+struct Color_G {
+    static constexpr const char* Name = "color_g";
+    float value = 1.0f;
+};
+struct Color_B {
+    static constexpr const char* Name = "color_b";
+    float value = 1.0f;
+};
 
 // Normal components (split XYZ for SoA)
-struct Normal_X { float value = 0.0f; };
-struct Normal_Y { float value = 1.0f; };  // Default: +Y up
-struct Normal_Z { float value = 0.0f; };
+struct Normal_X {
+    static constexpr const char* Name = "normal_x";
+    float value = 0.0f;
+};
+struct Normal_Y {
+    static constexpr const char* Name = "normal_y";
+    float value = 1.0f;  // Default: +Y up
+};
+struct Normal_Z {
+    static constexpr const char* Name = "normal_z";
+    float value = 0.0f;
+};
 
 // ============================================================================
 // Optional Extended Attributes
@@ -89,14 +109,27 @@ struct Normal_Z { float value = 0.0f; };
  * Material ID for multi-material voxel grids.
  */
 struct Material {
+    static constexpr const char* Name = "material";
     uint32_t id = 0;
 };
 
 // Emission components (split RGBI for SoA)
-struct Emission_R { float value = 0.0f; };
-struct Emission_G { float value = 0.0f; };
-struct Emission_B { float value = 0.0f; };
-struct Emission_Intensity { float value = 0.0f; };
+struct Emission_R {
+    static constexpr const char* Name = "emission_r";
+    float value = 0.0f;
+};
+struct Emission_G {
+    static constexpr const char* Name = "emission_g";
+    float value = 0.0f;
+};
+struct Emission_B {
+    static constexpr const char* Name = "emission_b";
+    float value = 0.0f;
+};
+struct Emission_Intensity {
+    static constexpr const char* Name = "emission_intensity";
+    float value = 0.0f;
+};
 
 // ============================================================================
 // Chunk/Brick Metadata (Optional)
@@ -107,6 +140,7 @@ struct Emission_Intensity { float value = 0.0f; };
  * Only added if voxel is part of a brick-based structure.
  */
 struct BrickReference {
+    static constexpr const char* Name = "brick_reference";
     uint32_t brickID = 0xFFFFFFFF;
     uint8_t localX = 0;
     uint8_t localY = 0;
@@ -117,6 +151,7 @@ struct BrickReference {
  * Chunk ID - groups voxels into spatial regions.
  */
 struct ChunkID {
+    static constexpr const char* Name = "chunk_id";
     uint32_t id = 0;
 };
 

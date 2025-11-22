@@ -44,12 +44,17 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
 
     auto entity = m_impl->world.add();
 
-    // Add components using POD initialization
-    entity.add<Position>(Position{position.x, position.y, position.z});
+    // Add MortonKey for position (NO separate Position component)
+    entity.add<MortonKey>(MortonKey::fromPosition(position));
+
+    // Add attribute components
     entity.add<Density>(Density{density});
-    entity.add<Color>(Color{color.x, color.y, color.z});
-    entity.add<Normal>(Normal{normal.x, normal.y, normal.z});
-    entity.add<SpatialHash>(SpatialHash{computeSpatialHash(position)});
+    entity.add<Color_R>(Color_R{color.x});
+    entity.add<Color_G>(Color_G{color.y});
+    entity.add<Color_B>(Color_B{color.z});
+    entity.add<Normal_X>(Normal_X{normal.x});
+    entity.add<Normal_Y>(Normal_Y{normal.y});
+    entity.add<Normal_Z>(Normal_Z{normal.z});
 
     return entity;
 }
@@ -77,8 +82,8 @@ void GaiaVoxelWorld::destroyVoxel(EntityID id) {
 }
 
 void GaiaVoxelWorld::clear() {
-    // Query all entities and delete them
-    auto query = m_impl->world.query().all<Position>();
+    // Query all entities with MortonKey and delete them
+    auto query = m_impl->world.query().all<MortonKey>();
     query.each([this](gaia::ecs::Entity entity) {
         m_impl->world.del(entity);
     });
@@ -89,9 +94,8 @@ void GaiaVoxelWorld::clear() {
 // ============================================================================
 
 std::optional<glm::vec3> GaiaVoxelWorld::getPosition(EntityID id) const {
-    if (!id.valid() || !id.has<Position>()) return std::nullopt;
-    auto pos = id.get<Position>();
-    return pos.toVec3();
+    if (!id.valid() || !id.has<MortonKey>()) return std::nullopt;
+    return id.get<MortonKey>().toWorldPos();
 }
 
 std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
@@ -100,15 +104,23 @@ std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
 }
 
 std::optional<glm::vec3> GaiaVoxelWorld::getColor(EntityID id) const {
-    if (!id.valid() || !id.has<Color>()) return std::nullopt;
-    auto col = id.get<Color>();
-    return col.toVec3();
+    if (!id.valid()) return std::nullopt;
+    if (!id.has<Color_R>() || !id.has<Color_G>() || !id.has<Color_B>()) return std::nullopt;
+    return glm::vec3(
+        id.get<Color_R>().value,
+        id.get<Color_G>().value,
+        id.get<Color_B>().value
+    );
 }
 
 std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
-    if (!id.valid() || !id.has<Normal>()) return std::nullopt;
-    auto nrm = id.get<Normal>();
-    return nrm.toVec3();
+    if (!id.valid()) return std::nullopt;
+    if (!id.has<Normal_X>() || !id.has<Normal_Y>() || !id.has<Normal_Z>()) return std::nullopt;
+    return glm::vec3(
+        id.get<Normal_X>().value,
+        id.get<Normal_Y>().value,
+        id.get<Normal_Z>().value
+    );
 }
 
 std::optional<uint32_t> GaiaVoxelWorld::getBrickID(EntityID id) const {
@@ -118,9 +130,8 @@ std::optional<uint32_t> GaiaVoxelWorld::getBrickID(EntityID id) const {
 
 // Setters
 void GaiaVoxelWorld::setPosition(EntityID id, const glm::vec3& position) {
-    if (id.valid() && id.has<Position>()) {
-        id.set<Position>(Position{position.x, position.y, position.z});
-        id.set<SpatialHash>(SpatialHash{computeSpatialHash(position)});
+    if (id.valid() && id.has<MortonKey>()) {
+        id.set<MortonKey>(MortonKey::fromPosition(position));
     }
 }
 
@@ -131,14 +142,18 @@ void GaiaVoxelWorld::setDensity(EntityID id, float density) {
 }
 
 void GaiaVoxelWorld::setColor(EntityID id, const glm::vec3& color) {
-    if (id.valid() && id.has<Color>()) {
-        id.set<Color>(Color{color.x, color.y, color.z});
+    if (id.valid()) {
+        if (id.has<Color_R>()) id.set<Color_R>(Color_R{color.x});
+        if (id.has<Color_G>()) id.set<Color_G>(Color_G{color.y});
+        if (id.has<Color_B>()) id.set<Color_B>(Color_B{color.z});
     }
 }
 
 void GaiaVoxelWorld::setNormal(EntityID id, const glm::vec3& normal) {
-    if (id.valid() && id.has<Normal>()) {
-        id.set<Normal>(Normal{normal.x, normal.y, normal.z});
+    if (id.valid()) {
+        if (id.has<Normal_X>()) id.set<Normal_X>(Normal_X{normal.x});
+        if (id.has<Normal_Y>()) id.set<Normal_Y>(Normal_Y{normal.y});
+        if (id.has<Normal_Z>()) id.set<Normal_Z>(Normal_Z{normal.z});
     }
 }
 
@@ -156,9 +171,9 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::queryRegion(
 
     std::vector<EntityID> results;
 
-    auto query = m_impl->world.query().all<Position>();
+    auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        auto pos = entity.get<Position>().toVec3();
+        glm::vec3 pos = entity.get<MortonKey>().toWorldPos();
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -195,9 +210,9 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::querySolidVoxels() const {
 size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3& max) const {
     size_t count = 0;
 
-    auto query = m_impl->world.query().all<Position>();
+    auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        auto pos = entity.get<Position>().toVec3();
+        glm::vec3 pos = entity.get<MortonKey>().toWorldPos();
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -240,10 +255,12 @@ void GaiaVoxelWorld::destroyVoxelsBatch(const std::vector<EntityID>& ids) {
 // ============================================================================
 
 GaiaVoxelWorld::Stats GaiaVoxelWorld::getStats() const {
-    Stats stats;
+    Stats stats{};
+    stats.totalEntities = 0;
+    stats.solidVoxels = 0;
 
-    // Count total entities
-    auto allQuery = m_impl->world.query().all<Position>();
+    // Count total entities with MortonKey
+    auto allQuery = m_impl->world.query().all<MortonKey>();
     allQuery.each([&](gaia::ecs::Entity) {
         stats.totalEntities++;
     });
@@ -257,8 +274,8 @@ GaiaVoxelWorld::Stats GaiaVoxelWorld::getStats() const {
     });
 
     // Approximate memory usage
-    // Each entity: ~64 bytes (Position + Density + Color + Normal + SpatialHash + overhead)
-    stats.memoryUsageBytes = stats.totalEntities * 64;
+    // Each entity: ~36 bytes (MortonKey + Density + Color_RGB + Normal_XYZ + overhead)
+    stats.memoryUsageBytes = stats.totalEntities * 36;
 
     return stats;
 }
@@ -280,14 +297,8 @@ const gaia::ecs::World& GaiaVoxelWorld::getWorld() const {
 // ============================================================================
 
 uint64_t GaiaVoxelWorld::computeSpatialHash(const glm::vec3& position) const {
-    // Convert float position to integer grid (assuming unit voxels)
-    glm::ivec3 gridPos(
-        static_cast<int>(std::floor(position.x)),
-        static_cast<int>(std::floor(position.y)),
-        static_cast<int>(std::floor(position.z))
-    );
-
-    return SpatialHash::compute(gridPos);
+    // Use Morton code as spatial hash
+    return MortonKey::fromPosition(position).code;
 }
 
 } // namespace GaiaVoxel
