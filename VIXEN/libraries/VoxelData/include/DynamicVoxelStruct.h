@@ -71,6 +71,83 @@ public:
     // Sync with registry schema (adds new attributes with defaults)
     void syncWithRegistry(const AttributeRegistry* registry);
 
+    // Get registry pointer (for type lookup)
+    const AttributeRegistry* getRegistry() const { return m_registry; }
+
+    // ============================================================================
+    // Iterator Support - Range-based for loops
+    // ============================================================================
+
+    /**
+     * @brief Attribute value pair for iteration
+     */
+    struct AttributeEntry {
+        std::string name;
+        std::any value;
+        const AttributeRegistry* registry;  // For type lookup
+
+        AttributeEntry(const std::string& n, const std::any& v, const AttributeRegistry* r)
+            : name(n), value(v), registry(r) {}
+
+        // Get typed value
+        template<typename T>
+        T get() const { return std::any_cast<T>(value); }
+
+        // Get attribute type from registry
+        AttributeType getType() const {
+            if (registry) {
+                auto index = registry->getAttributeIndex(name);
+                return registry->getDescriptor(index).type;
+            }
+            throw std::runtime_error("No registry available for type lookup");
+        }
+    };
+
+    /**
+     * @brief Iterator for range-based for loops
+     *
+     * Usage:
+     * ```cpp
+     * DynamicVoxelScalar voxel;
+     * voxel.set("density", 1.0f);
+     * voxel.set("color", glm::vec3(1,0,0));
+     *
+     * for (const auto& attr : voxel) {
+     *     std::cout << attr.name << ": type=" << (int)attr.getType() << "\n";
+     *     if (attr.getType() == AttributeType::Float) {
+     *         float val = attr.get<float>();
+     *     }
+     * }
+     * ```
+     */
+    class iterator {
+    public:
+        using MapIterator = std::unordered_map<std::string, std::any>::const_iterator;
+
+        iterator(MapIterator it, const AttributeRegistry* reg)
+            : m_it(it), m_registry(reg) {}
+
+        AttributeEntry operator*() const {
+            return AttributeEntry(m_it->first, m_it->second, m_registry);
+        }
+
+        iterator& operator++() {
+            ++m_it;
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const {
+            return m_it != other.m_it;
+        }
+
+    private:
+        MapIterator m_it;
+        const AttributeRegistry* m_registry;
+    };
+
+    iterator begin() const { return iterator(m_values.begin(), m_registry); }
+    iterator end() const { return iterator(m_values.end(), m_registry); }
+
     /**
      * @brief Evaluate if voxel passes the key predicate
      *

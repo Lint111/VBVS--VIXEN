@@ -9,6 +9,7 @@
                 "${workspaceFolder}/build/_deps/gli-src",
                 "${workspaceFolder}/build/_deps/stb-src",
                 "${workspaceFolder}/build/_deps/glm-src",
+                "${workspaceFolder}/build/_deps/gaia-src/include",
                 "${workspaceFolder}/libraries/RenderGraph/include",
                 "${workspaceFolder}/libraries/logger",
                 "${workspaceFolder}/libraries/EventBus/include",
@@ -16,6 +17,9 @@
                 "${workspaceFolder}/libraries/CashSystem/include",
                 "${workspaceFolder}/libraries/ShaderManagement/include",
                 "${workspaceFolder}/libraries/VulkanResources/include",
+                "${workspaceFolder}/libraries/VoxelData/include",
+                "${workspaceFolder}/libraries/GaiaVoxelWorld/include",
+                "${workspaceFolder}/libraries/SVO/include",
                 "${workspaceFolder}/application/main/include",
                 "${workspaceFolder}/build/application/main/generated/sdi"
             ],

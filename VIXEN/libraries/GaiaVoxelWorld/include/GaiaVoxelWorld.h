@@ -1,13 +1,13 @@
 #pragma once
 
+#include <gaia.h>
 #include "VoxelComponents.h"
 #include "VoxelCreationRequest.h"
-#include <gaia.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
 #include <optional>
-#include "DynamicVoxelStruct.h"
+#include <DynamicVoxelStruct.h>  // VoxelData library (via target_link_libraries)
 
 namespace GaiaVoxel {
 

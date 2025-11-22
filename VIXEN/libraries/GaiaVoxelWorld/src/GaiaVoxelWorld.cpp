@@ -38,23 +38,29 @@ GaiaVoxelWorld::~GaiaVoxelWorld() {
 
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     const glm::vec3& position,
-    float density,
-    const glm::vec3& color,
-    const glm::vec3& normal) {
+	const ::VoxelData::DynamicVoxelScalar& data) {
 
-    auto entity = m_impl->world.add();
+	gaia::ecs::World& wrd = getWorld();
 
-    // Add MortonKey for position (NO separate Position component)
-    m_impl->world.add<MortonKey>(entity, MortonKey::fromPosition(position));
+    gaia::ecs::Entity entity = wrd.add();
 
-    // Add attribute components
-    m_impl->world.add<Density>(entity, Density{density});
-    m_impl->world.add<Color_R>(entity, Color_R{color.x});
-    m_impl->world.add<Color_G>(entity, Color_G{color.y});
-    m_impl->world.add<Color_B>(entity, Color_B{color.z});
-    m_impl->world.add<Normal_X>(entity, Normal_X{normal.x});
-    m_impl->world.add<Normal_Y>(entity, Normal_Y{normal.y});
-    m_impl->world.add<Normal_Z>(entity, Normal_Z{normal.z});
+
+    gaia::ecs::EntityBuilder builder = wrd.build(entity);
+
+    builder.add<MortonKey>();           
+
+    for (const auto& attr : data) {
+        builder.add<attr.getType()>();
+    }
+    builder.name("VoxelEntity");
+
+    builder.commit();
+
+    wrd.set<MortonKey>(entity) = MortonKey::fromPosition(position);
+
+    for (const auto& attr : data) {
+        wrd.set<attr.getType()>(entity) = attr.get<attr.getType()>();
+    }
 
     return entity;
 }
