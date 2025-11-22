@@ -148,14 +148,16 @@ namespace {
     }
 } // anonymous namespace
 
-LaineKarrasOctree::LaineKarrasOctree(int maxDepth)
+LaineKarrasOctree::LaineKarrasOctree(int maxLevels, int brickDepthLevels)
     : m_registry(nullptr)
-    , m_maxDepth(maxDepth)
+    , m_maxLevels(maxLevels)
+    , m_brickDepthLevels(brickDepthLevels)
 {}
 
-LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxDepth)
+LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
     : m_registry(registry)
-    , m_maxDepth(maxDepth)
+    , m_maxLevels(maxLevels)
+    , m_brickDepthLevels(brickDepthLevels)
 {
     // NOTE: Key attribute is ALWAYS index 0 (AttributeRegistry enforces this)
     // No need to cache or validate - just use index 0 directly during traversal
@@ -707,7 +709,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     t_min = std::max(t_min, 0.0f);
     t_max = std::min(t_max, 1.0f);
 
-    // Initialize traversal state
+    // Initialize traversal stack
     // Reference: lines 127-134
     CastStack stack;
 
@@ -717,20 +719,30 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return miss;
     }
 
+    // Initialize stack with root descriptor at starting scale
+    // This ensures POP operations can always find a valid parent
+    const ChildDescriptor* rootDesc = &m_octree->root->childDescriptors[0];
+    for (int s = 0; s < m_maxLevels; s++) {
+        stack.push(s, rootDesc, t_max);
+    }
+
     std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
               << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
               << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
     std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
     std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
     std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
-    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " scale=" << (m_maxLevels - 1) << "\n";
+    // Initialize traversal with ESVO scale (always 22 at root, regardless of user depth)
+    // This allows ESVO's bit manipulation to work correctly for any octree depth
+    int esvoScale = ESVO_MAX_SCALE;
+    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " esvoScale=" << esvoScale << " (userScale=" << esvoToUserScale(esvoScale) << ")\n";
 
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
     int idx = 0; // Child octant index
     glm::vec3 pos(1.0f, 1.0f, 1.0f); // Position in normalized [1,2] space
-    int scale = m_maxLevels - 1; // Current scale level (use m_maxLevels, not hardcoded m_maxDepth!)
-    float scale_exp2 = 0.5f; // 2^(scale - s_max), where s_max = m_maxLevels - 1
+    int scale = esvoScale; // ESVO internal scale (22 at root)
+    float scale_exp2 = 0.5f; // 2^(scale - ESVO_MAX_SCALE)
 
     // Select initial child based on ray entry point
     // Reference: ESVO lines 136-138
@@ -765,7 +777,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     float ty_center = 0.0f;
     float tz_center = 0.0f;
 
-    while (scale < m_maxLevels && iter < maxIter) {
+    // Loop while in valid ESVO scale range
+    // Max ESVO scale = ESVO_MAX_SCALE (22)
+    // Min ESVO scale = ESVO_MAX_SCALE - m_maxLevels + 1 (e.g., 15 for depth 8, 0 for depth 23)
+    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    while (scale >= minESVOScale && iter < maxIter) {
         ++iter;
         // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 
@@ -1044,25 +1060,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 // ============================================================
 
                 // Push current state onto stack before descending
-                // This allows us to POP back to this exact state later
+                // ESVO uses scale-indexed stack: stack.nodes[scale] = parent
                 if (tc_max < h) {
-                    CastStack::Entry entry;
-                    entry.parent = parent;
-                    entry.idx = idx;
-                    entry.scale = scale;
-                    entry.t_min = t_min;
-                    entry.t_max = t_max;
-                    entry.tx_center = tx_center;
-                    entry.ty_center = ty_center;
-                    entry.tz_center = tz_center;
-                    entry.pos = pos;
-                    entry.scale_exp2 = scale_exp2;
-                    stack.push(entry);
-
-                    if (scale >= m_maxLevels - 2) {
-                        std::cout << "[PUSH] scale=" << scale << " tc_max=" << tc_max << " h=" << h
-                                  << " stackPtr=" << stack.stackPtr << "\n";
-                    }
+                    stack.push(scale, parent, t_max);
                 }
                 h = tc_max;
 
@@ -1201,38 +1201,122 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         if ((idx & step_mask) != 0)
         {
             // ============================================================
-            // POP: Restore parent state from stack
-            // This is a simple stack-based approach that works for ANY depth
-            // (replaces ESVO's depth-23 float bit manipulation)
+            // POP: Ascend hierarchy based on differing position bits
+            // This works for ANY depth by using integer arithmetic
+            // (replaces ESVO's depth-23 specific float bit tricks)
             // ============================================================
 
-            CastStack::Entry parentEntry;
-            if (!stack.pop(parentEntry)) {
-                // Stack empty - we've exited the root, terminate traversal
-                std::cout << "[POP] Stack empty, exiting traversal at scale=" << scale << " iter=" << iter << "\n";
+            // ESVO approach: Find highest differing bit between pos and (pos + scale_exp2)
+            // to determine how many levels to ascend.
+            //
+            // For general depths: Convert positions to integers at the finest resolution,
+            // then find highest differing bit using integer operations.
+
+            // Convert normalized [1,2] positions to integer coordinates
+            // Using ESVO's standard 2^22 resolution for bit manipulation
+            // (this is independent of user's m_maxLevels - we always use ESVO scale internally)
+            const int MAX_RES = 1 << ESVO_MAX_SCALE;  // 2^22 = 4,194,304
+
+            // Compute integer positions in [0, MAX_RES)
+            auto floatToInt = [MAX_RES](float f) -> uint32_t {
+                return static_cast<uint32_t>(std::max(0.0f, std::min((f - 1.0f) * MAX_RES, static_cast<float>(MAX_RES - 1))));
+            };
+
+            uint32_t pos_x_int = floatToInt(pos.x);
+            uint32_t pos_y_int = floatToInt(pos.y);
+            uint32_t pos_z_int = floatToInt(pos.z);
+
+            uint32_t next_x_int = floatToInt(pos.x + scale_exp2);
+            uint32_t next_y_int = floatToInt(pos.y + scale_exp2);
+            uint32_t next_z_int = floatToInt(pos.z + scale_exp2);
+
+            // Find differing bits (OR of XOR results)
+            uint32_t differing_bits = 0;
+            if ((step_mask & 1) != 0) differing_bits |= (pos_x_int ^ next_x_int);
+            if ((step_mask & 2) != 0) differing_bits |= (pos_y_int ^ next_y_int);
+            if ((step_mask & 4) != 0) differing_bits |= (pos_z_int ^ next_z_int);
+
+            if (differing_bits == 0) {
+                // No differing bits - we've exited the entire octree
                 break;
             }
 
-            // Restore complete parent state
-            parent = parentEntry.parent;
-            idx = parentEntry.idx;
-            scale = parentEntry.scale;
-            t_min = parentEntry.t_min;
-            t_max = parentEntry.t_max;
-            tx_center = parentEntry.tx_center;
-            ty_center = parentEntry.ty_center;
-            tz_center = parentEntry.tz_center;
-            pos = parentEntry.pos;
-            scale_exp2 = parentEntry.scale_exp2;
+            // Find highest set bit (determines how many levels to ascend)
+            // highest_bit = floor(log2(differing_bits))
+            int highest_bit = 31 - std::countl_zero(differing_bits);
+
+            // Convert bit position to ESVO scale level
+            // highest_bit tells us the voxel size as a power of 2 in integer space
+            // For ESVO space: scale = highest_bit (since finest ESVO scale = 0 corresponds to bit 0)
+            scale = highest_bit;
+
+            // Debug POP
+            std::cout << "[POP] differing_bits=0x" << std::hex << differing_bits << std::dec
+                      << " highest_bit=" << highest_bit << " → esvoScale=" << scale
+                      << " (userScale=" << esvoToUserScale(scale) << ")\n";
+
+            // Clamp scale to valid ESVO range [minESVOScale, ESVO_MAX_SCALE]
+            if (scale < minESVOScale || scale > ESVO_MAX_SCALE) {
+                // Invalid scale - exit traversal
+                std::cout << "[POP] Scale " << scale << " outside ESVO range [" << minESVOScale << ", " << ESVO_MAX_SCALE << "], exiting\n";
+                break;
+            }
+
+            // Recompute scale_exp2 from ESVO scale
+            // scale_exp2 = 2^(scale - ESVO_MAX_SCALE)
+            int exp_val = scale - ESVO_MAX_SCALE + 127;  // +127 is IEEE 754 exponent bias
+            scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(exp_val << 23));
+
+            std::cout << "[POP] Retrieving from stack: scale=" << scale << "\n";
+
+            // Restore parent descriptor and t_max from stack
+            parent = stack.getNode(scale);
+            t_max = stack.getTMax(scale);
+
+            std::cout << "[POP] Retrieved parent=" << static_cast<const void*>(parent) << " t_max=" << t_max << "\n";
+
+            if (parent == nullptr) {
+                // No parent at this scale - exit traversal
+                std::cout << "[POP] parent is null, exiting\n";
+                break;
+            }
+
+            // Round position to voxel boundary at new ESVO scale
+            // This masks off lower bits to snap to grid
+            int shift_amount = ESVO_MAX_SCALE - scale;
+            if (shift_amount < 0 || shift_amount >= 32) {
+                std::cout << "[POP] Invalid shift_amount=" << shift_amount << " (ESVO_MAX_SCALE=" << ESVO_MAX_SCALE << " scale=" << scale << "), exiting\n";
+                break;
+            }
+
+            uint32_t mask = ~((1u << shift_amount) - 1);
+            pos_x_int &= mask;
+            pos_y_int &= mask;
+            pos_z_int &= mask;
+
+            // Convert back to float
+            auto intToFloat = [MAX_RES](uint32_t i) -> float {
+                return 1.0f + static_cast<float>(i) / static_cast<float>(MAX_RES);
+            };
+
+            pos.x = intToFloat(pos_x_int);
+            pos.y = intToFloat(pos_y_int);
+            pos.z = intToFloat(pos_z_int);
+
+            // Extract child index from rounded position
+            int idx_shift = ESVO_MAX_SCALE - scale - 1;
+            if (idx_shift < 0 || idx_shift >= 32) {
+                std::cout << "[POP] Invalid idx_shift=" << idx_shift << " (ESVO_MAX_SCALE=" << ESVO_MAX_SCALE << " scale=" << scale << "), using idx=0\n";
+                idx = 0;
+            } else {
+                idx = ((pos_x_int >> idx_shift) & 1) |
+                      (((pos_y_int >> idx_shift) & 1) << 1) |
+                      (((pos_z_int >> idx_shift) & 1) << 2);
+            }
 
             // Prevent same parent from being stored again and invalidate cached child descriptor
             h = 0.0f;
             child_descriptor = 0;
-
-            if (scale >= m_maxLevels - 2) {
-                std::cout << "[POP] Restored to scale=" << scale << " idx=" << idx
-                          << " stackPtr=" << stack.stackPtr << "\n";
-            }
         }
     }
 
@@ -1551,7 +1635,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             hit.tMax = hitT + brickVoxelSize;  // Exit point of voxel
             hit.position = rayOrigin + rayDir * hitT;
             hit.normal = entryNormal;
-            hit.scale = m_maxDepth- 1;  // Finest detail level
+            hit.scale = m_maxLevels - 1;  // Finest detail level (use m_maxLevels, not hardcoded m_maxDepth)
 
             return hit;
         }

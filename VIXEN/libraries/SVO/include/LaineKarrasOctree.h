@@ -29,8 +29,8 @@ namespace SVO {
  */
 class LaineKarrasOctree : public ISVOStructure {
 public:
-    LaineKarrasOctree(int maxDepth = 23);
-    explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxDepth = 23);
+    LaineKarrasOctree(int maxLevels = 23, int brickDepthLevels = 3);
+    explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels = 23, int brickDepthLevels = 3);
     ~LaineKarrasOctree() override;
 
     // ISVOStructure interface
@@ -84,8 +84,9 @@ private:
     // Cached metadata
     glm::vec3 m_worldMin{0.0f};
     glm::vec3 m_worldMax{1.0f};
-    int m_maxLevels = 0;
-    int m_maxDepth = 23;  // ESVO traversal depth (23 for standard [1,2] normalized space)
+    int m_maxLevels = 23;  // Octree depth - default 23 for standard ESVO [1,2] normalized space
+    int m_brickDepthLevels = 3;  // Brick dense storage depth (3 = 8³ bricks, 4 = 16³ bricks)
+                                  // Traversal switches to brick DDA when depth >= (maxLevels - brickDepthLevels)
     size_t m_voxelCount = 0;
     size_t m_memoryUsage = 0;
 
@@ -93,60 +94,54 @@ private:
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
     // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
     // ========================================================================
+
+    // ESVO internal scale range - normalized to [1,2] space with 23-bit mantissa precision
+    // This constant enables ESVO's float bit manipulation tricks to work for ANY user depth
+    // User scales are mapped: userScale -> ESVO_MAX_SCALE - (m_maxLevels - 1 - userScale)
+    static constexpr int ESVO_MAX_SCALE = 22;  // Root scale in ESVO normalized space
+
     // Traversal stack depth - maximum supported
     static constexpr int MAX_STACK_DEPTH = 32;
 
     // Traversal stack structure
-    // Stores complete traversal state for backtracking during POP operations
-    // This approach works for ANY octree depth (not just depth 23)
+    // Uses SCALE-INDEXED storage like ESVO (not LIFO stack)
+    // Each scale level has one slot: stack.entries[scale]
+    // This works for ANY octree depth (not just depth 23)
     struct CastStack {
-        // Stack entry for each scale level
-        struct Entry {
-            const ChildDescriptor* parent = nullptr;
-            int idx = 0;
-            int scale = 0;
-            float t_min = 0.0f;
-            float t_max = 0.0f;
-            float tx_center = 0.0f;
-            float ty_center = 0.0f;
-            float tz_center = 0.0f;
-            glm::vec3 pos{0.0f};
-            float scale_exp2 = 0.0f;
-        };
+        const ChildDescriptor* nodes[MAX_STACK_DEPTH];
+        float tMax[MAX_STACK_DEPTH];
 
-        Entry entries[MAX_STACK_DEPTH];
-        int stackPtr = 0;
-
-        void push(const Entry& entry) {
-            if (stackPtr < MAX_STACK_DEPTH) {
-                entries[stackPtr++] = entry;
-            }
-        }
-
-        bool pop(Entry& entry) {
-            if (stackPtr > 0) {
-                entry = entries[--stackPtr];
-                return true;
-            }
-            return false;
-        }
-
-        void clear() {
-            stackPtr = 0;
-        }
-
-        bool isEmpty() const {
-            return stackPtr == 0;
-        }
-
-        // Legacy interface for PUSH operation (tc_max < h check)
         void push(int scale, const ChildDescriptor* node, float t) {
-            // This is called during DESCEND when tc_max < h
-            // We don't have full state here, so we'll handle this differently
-            // by pushing BEFORE descending instead of during
-            // This method is kept for compatibility but will be replaced
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
+                nodes[scale] = node;
+                tMax[scale] = t;
+            }
+        }
+
+        const ChildDescriptor* getNode(int scale) const {
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
+                return nodes[scale];
+            }
+            return nullptr;
+        }
+
+        float getTMax(int scale) const {
+            if (scale >= 0 && scale < MAX_STACK_DEPTH) {
+                return tMax[scale];
+            }
+            return 0.0f;
         }
     };
+
+    // Scale mapping: Convert between user scale and ESVO internal scale
+    // This allows ESVO's bit manipulation tricks to work for any octree depth
+    inline int userToESVOScale(int userScale) const {
+        return ESVO_MAX_SCALE - (m_maxLevels - 1 - userScale);
+    }
+
+    inline int esvoToUserScale(int esvoScale) const {
+        return ESVO_MAX_SCALE - esvoScale + (m_maxLevels - 1);
+    }
 
     // Ray casting helpers
     struct TraversalState {
