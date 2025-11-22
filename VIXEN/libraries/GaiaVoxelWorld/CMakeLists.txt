@@ -45,3 +45,8 @@ endif()
 
 # Export target
 add_library(GaiaVoxelWorld::GaiaVoxelWorld ALIAS GaiaVoxelWorld)
+
+# Tests subdirectory
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

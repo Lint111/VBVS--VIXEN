@@ -131,17 +131,12 @@ public:
     // ========================================================================
 
     /**
-     * Create multiple voxels in parallel.
+     * Create multiple voxels from DynamicVoxelScalar (flexible attributes).
+     * Each voxel can have different attribute sets.
      * Returns vector of entity IDs.
      */
-    struct VoxelData {
-        glm::vec3 position;
-        float density;
-        glm::vec3 color;
-        glm::vec3 normal;
-    };
-
-    std::vector<EntityID> createVoxelsBatch(const std::vector<VoxelData>& voxels);
+    std::vector<EntityID> createVoxelsBatch(
+        const std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>>& voxels);
 
     /**
      * Create multiple voxels from creation requests (for VoxelInjectionQueue).
