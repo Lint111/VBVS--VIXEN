@@ -170,40 +170,40 @@ void ECSBackedRegistry::addComponentFromAttribute(
     // This maps string name → compile-time component type
 
     if (name == "density") {
-        entity.add<Density>(Density{std::any_cast<float>(value)});
+        m_world.add<Density>(entity, Density{std::any_cast<float>(value)});
     }
     else if (name == "color_r") {
-        entity.add<Color_R>(Color_R{std::any_cast<float>(value)});
+        m_world.add<Color_R>(entity, Color_R{std::any_cast<float>(value)});
     }
     else if (name == "color_g") {
-        entity.add<Color_G>(Color_G{std::any_cast<float>(value)});
+        m_world.add<Color_G>(entity, Color_G{std::any_cast<float>(value)});
     }
     else if (name == "color_b") {
-        entity.add<Color_B>(Color_B{std::any_cast<float>(value)});
+        m_world.add<Color_B>(entity, Color_B{std::any_cast<float>(value)});
     }
     else if (name == "normal_x") {
-        entity.add<Normal_X>(Normal_X{std::any_cast<float>(value)});
+        m_world.add<Normal_X>(entity, Normal_X{std::any_cast<float>(value)});
     }
     else if (name == "normal_y") {
-        entity.add<Normal_Y>(Normal_Y{std::any_cast<float>(value)});
+        m_world.add<Normal_Y>(entity, Normal_Y{std::any_cast<float>(value)});
     }
     else if (name == "normal_z") {
-        entity.add<Normal_Z>(Normal_Z{std::any_cast<float>(value)});
+        m_world.add<Normal_Z>(entity, Normal_Z{std::any_cast<float>(value)});
     }
     else if (name == "material") {
-        entity.add<Material>(Material{std::any_cast<uint32_t>(value)});
+        m_world.add<Material>(entity, Material{std::any_cast<uint32_t>(value)});
     }
     else if (name == "emission_r") {
-        entity.add<Emission_R>(Emission_R{std::any_cast<float>(value)});
+        m_world.add<Emission_R>(entity, Emission_R{std::any_cast<float>(value)});
     }
     else if (name == "emission_g") {
-        entity.add<Emission_G>(Emission_G{std::any_cast<float>(value)});
+        m_world.add<Emission_G>(entity, Emission_G{std::any_cast<float>(value)});
     }
     else if (name == "emission_b") {
-        entity.add<Emission_B>(Emission_B{std::any_cast<float>(value)});
+        m_world.add<Emission_B>(entity, Emission_B{std::any_cast<float>(value)});
     }
     else if (name == "emission_intensity") {
-        entity.add<Emission_Intensity>(Emission_Intensity{std::any_cast<float>(value)});
+        m_world.add<Emission_Intensity>(entity, Emission_Intensity{std::any_cast<float>(value)});
     }
     else {
         std::cerr << "[ECSBackedRegistry] Unknown component: " << name << "\n";
@@ -218,79 +218,79 @@ std::any ECSBackedRegistry::getComponentAsAny(
     gaia::ecs::Entity entity,
     const std::string& name) const {
 
-    if (!entity.valid()) {
+    if (entity == gaia::ecs::Entity()) {
         throw std::runtime_error("Invalid entity");
     }
 
-    // Dispatch based on attribute name
+    // Dispatch based on attribute name (using Gaia World API)
     if (name == "density") {
-        if (!entity.has<Density>()) throw std::runtime_error("Missing Density");
-        return entity.get<Density>().value;
+        if (!m_world.has<Density>(entity)) throw std::runtime_error("Missing Density");
+        return m_world.get<Density>(entity).value;
     }
     else if (name == "color_r") {
-        if (!entity.has<Color_R>()) throw std::runtime_error("Missing Color_R");
-        return entity.get<Color_R>().value;
+        if (!m_world.has<Color_R>(entity)) throw std::runtime_error("Missing Color_R");
+        return m_world.get<Color_R>(entity).value;
     }
     else if (name == "color_g") {
-        if (!entity.has<Color_G>()) throw std::runtime_error("Missing Color_G");
-        return entity.get<Color_G>().value;
+        if (!m_world.has<Color_G>(entity)) throw std::runtime_error("Missing Color_G");
+        return m_world.get<Color_G>(entity).value;
     }
     else if (name == "color_b") {
-        if (!entity.has<Color_B>()) throw std::runtime_error("Missing Color_B");
-        return entity.get<Color_B>().value;
+        if (!m_world.has<Color_B>(entity)) throw std::runtime_error("Missing Color_B");
+        return m_world.get<Color_B>(entity).value;
     }
     else if (name == "normal_x") {
-        if (!entity.has<Normal_X>()) throw std::runtime_error("Missing Normal_X");
-        return entity.get<Normal_X>().value;
+        if (!m_world.has<Normal_X>(entity)) throw std::runtime_error("Missing Normal_X");
+        return m_world.get<Normal_X>(entity).value;
     }
     else if (name == "normal_y") {
-        if (!entity.has<Normal_Y>()) throw std::runtime_error("Missing Normal_Y");
-        return entity.get<Normal_Y>().value;
+        if (!m_world.has<Normal_Y>(entity)) throw std::runtime_error("Missing Normal_Y");
+        return m_world.get<Normal_Y>(entity).value;
     }
     else if (name == "normal_z") {
-        if (!entity.has<Normal_Z>()) throw std::runtime_error("Missing Normal_Z");
-        return entity.get<Normal_Z>().value;
+        if (!m_world.has<Normal_Z>(entity)) throw std::runtime_error("Missing Normal_Z");
+        return m_world.get<Normal_Z>(entity).value;
     }
     else if (name == "material") {
-        if (!entity.has<Material>()) throw std::runtime_error("Missing Material");
-        return entity.get<Material>().id;
+        if (!m_world.has<Material>(entity)) throw std::runtime_error("Missing Material");
+        return m_world.get<Material>(entity).id;
     }
     else if (name == "emission_r") {
-        if (!entity.has<Emission_R>()) throw std::runtime_error("Missing Emission_R");
-        return entity.get<Emission_R>().value;
+        if (!m_world.has<Emission_R>(entity)) throw std::runtime_error("Missing Emission_R");
+        return m_world.get<Emission_R>(entity).value;
     }
     else if (name == "emission_g") {
-        if (!entity.has<Emission_G>()) throw std::runtime_error("Missing Emission_G");
-        return entity.get<Emission_G>().value;
+        if (!m_world.has<Emission_G>(entity)) throw std::runtime_error("Missing Emission_G");
+        return m_world.get<Emission_G>(entity).value;
     }
     else if (name == "emission_b") {
-        if (!entity.has<Emission_B>()) throw std::runtime_error("Missing Emission_B");
-        return entity.get<Emission_B>().value;
+        if (!m_world.has<Emission_B>(entity)) throw std::runtime_error("Missing Emission_B");
+        return m_world.get<Emission_B>(entity).value;
     }
     else if (name == "emission_intensity") {
-        if (!entity.has<Emission_Intensity>()) throw std::runtime_error("Missing Emission_Intensity");
-        return entity.get<Emission_Intensity>().value;
+        if (!m_world.has<Emission_Intensity>(entity)) throw std::runtime_error("Missing Emission_Intensity");
+        return m_world.get<Emission_Intensity>(entity).value;
     }
     else if (name == "color") {
         // Reconstruct vec3 from split components
-        if (!entity.has<Color_R>() || !entity.has<Color_G>() || !entity.has<Color_B>()) {
+        if (!m_world.has<Color_R>(entity) || !m_world.has<Color_G>(entity) || !m_world.has<Color_B>(entity)) {
             throw std::runtime_error("Missing color components");
         }
         return glm::vec3(
-            entity.get<Color_R>().value,
-            entity.get<Color_G>().value,
-            entity.get<Color_B>().value
+            m_world.get<Color_R>(entity).value,
+            m_world.get<Color_G>(entity).value,
+            m_world.get<Color_B>(entity).value
         );
     }
     else if (name == "normal") {
         // Reconstruct vec3 from split components
-        if (!entity.has<Normal_X>() || !entity.has<Normal_Y>() || !entity.has<Normal_Z>()) {
+        if (!m_world.has<Normal_X>(entity) || !m_world.has<Normal_Y>(entity) || !m_world.has<Normal_Z>(entity)) {
             throw std::runtime_error("Missing normal components");
         }
         return glm::vec3(
-            entity.get<Normal_X>().value,
-            entity.get<Normal_Y>().value,
-            entity.get<Normal_Z>().value
+            m_world.get<Normal_X>(entity).value,
+            m_world.get<Normal_Y>(entity).value,
+            m_world.get<Normal_Z>(entity).value
         );
     }
     else {

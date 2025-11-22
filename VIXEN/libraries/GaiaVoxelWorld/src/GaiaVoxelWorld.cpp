@@ -45,16 +45,16 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     auto entity = m_impl->world.add();
 
     // Add MortonKey for position (NO separate Position component)
-    entity.add<MortonKey>(MortonKey::fromPosition(position));
+    m_impl->world.add<MortonKey>(entity, MortonKey::fromPosition(position));
 
     // Add attribute components
-    entity.add<Density>(Density{density});
-    entity.add<Color_R>(Color_R{color.x});
-    entity.add<Color_G>(Color_G{color.y});
-    entity.add<Color_B>(Color_B{color.z});
-    entity.add<Normal_X>(Normal_X{normal.x});
-    entity.add<Normal_Y>(Normal_Y{normal.y});
-    entity.add<Normal_Z>(Normal_Z{normal.z});
+    m_impl->world.add<Density>(entity, Density{density});
+    m_impl->world.add<Color_R>(entity, Color_R{color.x});
+    m_impl->world.add<Color_G>(entity, Color_G{color.y});
+    m_impl->world.add<Color_B>(entity, Color_B{color.z});
+    m_impl->world.add<Normal_X>(entity, Normal_X{normal.x});
+    m_impl->world.add<Normal_Y>(entity, Normal_Y{normal.y});
+    m_impl->world.add<Normal_Z>(entity, Normal_Z{normal.z});
 
     return entity;
 }
