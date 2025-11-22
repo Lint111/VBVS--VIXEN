@@ -111,22 +111,14 @@ std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
 
 std::optional<glm::vec3> GaiaVoxelWorld::getColor(EntityID id) const {
     if (!id.valid()) return std::nullopt;
-    if (!id.has<Color_R>() || !id.has<Color_G>() || !id.has<Color_B>()) return std::nullopt;
-    return glm::vec3(
-        id.get<Color_R>().value,
-        id.get<Color_G>().value,
-        id.get<Color_B>().value
-    );
+    if (!id.has<Color>()) return std::nullopt;
+    return glm::vec3(id.get<Color>());  // Automatic conversion
 }
 
 std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
     if (!id.valid()) return std::nullopt;
-    if (!id.has<Normal_X>() || !id.has<Normal_Y>() || !id.has<Normal_Z>()) return std::nullopt;
-    return glm::vec3(
-        id.get<Normal_X>().value,
-        id.get<Normal_Y>().value,
-        id.get<Normal_Z>().value
-    );
+    if (!id.has<Normal>()) return std::nullopt;
+    return glm::vec3(id.get<Normal>());  // Automatic conversion
 }
 
 std::optional<uint32_t> GaiaVoxelWorld::getBrickID(EntityID id) const {
@@ -148,18 +140,14 @@ void GaiaVoxelWorld::setDensity(EntityID id, float density) {
 }
 
 void GaiaVoxelWorld::setColor(EntityID id, const glm::vec3& color) {
-    if (id.valid()) {
-        if (id.has<Color_R>()) id.set<Color_R>(Color_R{color.x});
-        if (id.has<Color_G>()) id.set<Color_G>(Color_G{color.y});
-        if (id.has<Color_B>()) id.set<Color_B>(Color_B{color.z});
+    if (id.valid() && id.has<Color>()) {
+        id.set<Color>(Color(color));
     }
 }
 
 void GaiaVoxelWorld::setNormal(EntityID id, const glm::vec3& normal) {
-    if (id.valid()) {
-        if (id.has<Normal_X>()) id.set<Normal_X>(Normal_X{normal.x});
-        if (id.has<Normal_Y>()) id.set<Normal_Y>(Normal_Y{normal.y});
-        if (id.has<Normal_Z>()) id.set<Normal_Z>(Normal_Z{normal.z});
+    if (id.valid() && id.has<Normal>()) {
+        id.set<Normal>(Normal(normal));
     }
 }
 

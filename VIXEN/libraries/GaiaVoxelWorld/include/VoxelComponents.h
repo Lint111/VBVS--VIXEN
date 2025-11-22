@@ -7,151 +7,180 @@
 namespace GaiaVoxel {
 
 /**
- * ECS Components for SPARSE voxel data.
+ * ECS Components for voxel data using Gaia's native multi-member support.
  *
- * Design principles:
- * - Morton codes encode position (NO explicit Position component)
- * - Sparse-only storage (entities created ONLY for solid voxels)
- * - Split vec3 into 3 float components for optimal SoA layout
- * - Max 4 members per component for Gaia ECS optimization
- *
- * Following Gaia ECS conventions:
- * - Simple POD structs (Plain Old Data)
- * - Default-constructible
- * - Automatically registered on first use
+ * Design:
+ * - Vec3 types use {x,y,z} or {r,g,b} members (Gaia handles SoA internally)
+ * - Macro generates component + trait metadata
+ * - Natural glm::vec3 conversion via helper functions
  */
 
 // ============================================================================
-// Spatial Indexing (NO Position component - Morton code IS position)
+// Component Definition Macros (Simplified - Gaia Handles Layout)
+// ============================================================================
+
+// Scalar component (single value)
+#define VOXEL_COMPONENT_SCALAR(ComponentName, LogicalName, Type, DefaultVal) \
+    struct ComponentName { \
+        static constexpr const char* Name = LogicalName; \
+        Type value = DefaultVal; \
+    };
+
+// Vec3 component (float only, Gaia controls layout)
+// Layout: AoS or SoA (passed directly to GAIA_LAYOUT macro)
+#define VOXEL_COMPONENT_VEC3(ComponentName, LogicalName, S0, S1, S2, Layout, D0, D1, D2) \
+    struct ComponentName { \
+        static constexpr const char* Name = LogicalName; \
+        static constexpr const char* Suffixes[3] = {#S0, #S1, #S2}; \
+        GAIA_LAYOUT(Layout); \
+        \
+        float S0 = D0; \
+        float S1 = D1; \
+        float S2 = D2; \
+        \
+        /* glm::vec3 conversion */ \
+        ComponentName() = default; \
+        ComponentName(const glm::vec3& v) : S0(v[0]), S1(v[1]), S2(v[2]) {} \
+        operator glm::vec3() const { return glm::vec3(S0, S1, S2); } \
+        glm::vec3 toVec3() const { return glm::vec3(S0, S1, S2); } \
+    };
+
+// ============================================================================
+// Spatial Indexing
 // ============================================================================
 
 /**
  * Morton code - encodes 3D position in single uint64.
- *
- * Bit layout (63 bits total, 21 bits per axis):
- * [62:42] Z coordinate (21 bits, signed via offset)
- * [41:21] Y coordinate (21 bits, signed via offset)
- * [20:0]  X coordinate (21 bits, signed via offset)
- *
- * Range: [-1,048,576 to +1,048,575] per axis
- *
- * Benefits:
- * - 8 bytes vs 12 bytes (Position {x,y,z})
- * - Spatial locality preserved (nearby voxels = similar codes)
- * - O(1) position encoding/decoding
- * - Enables fast AABB queries via bit masking
+ * 8 bytes vs 12 bytes for glm::vec3.
  */
-struct MortonKey {
-    static constexpr const char* Name = "position";  // Logical name for position
-    uint64_t code = 0;
+VOXEL_COMPONENT_SCALAR(MortonKey, "position", uint64_t, 0)
 
-    // Decode position from Morton code
-    glm::ivec3 toGridPos() const;
-    glm::vec3 toWorldPos() const {
-        glm::ivec3 grid = toGridPos();
-        return glm::vec3(grid);
-    }
-
-    // Static factory
-    static MortonKey fromPosition(const glm::vec3& pos);
-    static MortonKey fromPosition(const glm::ivec3& pos);
-};
+// Helper functions for MortonKey
+namespace MortonKeyUtils {
+    glm::ivec3 decode(uint64_t code);
+    glm::vec3 toWorldPos(uint64_t code);
+    uint64_t encode(const glm::vec3& pos);
+    uint64_t encode(const glm::ivec3& pos);
+}
 
 // ============================================================================
-// Attribute Components (Split vec3 into floats for SoA optimization)
+// Core Voxel Attributes
+// ============================================================================
+
+// Scalar attributes
+VOXEL_COMPONENT_SCALAR(Density, "density", float, 1.0f)
+VOXEL_COMPONENT_SCALAR(Material, "material", uint32_t, 0)
+VOXEL_COMPONENT_SCALAR(EmissionIntensity, "emission_intensity", float, 0.0f)
+
+// Vec3 attributes with Gaia layout control
+VOXEL_COMPONENT_VEC3(Color, "color", r, g, b, AoS, 1.0f, 1.0f, 1.0f)
+VOXEL_COMPONENT_VEC3(Normal, "normal", x, y, z, AoS, 0.0f, 1.0f, 0.0f)
+VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
+
+// ============================================================================
+// Metadata Components
 // ============================================================================
 
 /**
- * Voxel density/opacity (key attribute).
- * Range: [0.0, 1.0] where 0=empty, 1=solid
- * 1 float = 4 bytes
- */
-struct Density {
-    static constexpr const char* Name = "density";
-    float value = 1.0f;
-};
-
-// Color components (split RGB for SoA)
-// Stored separately for SIMD-friendly iteration
-struct Color_R {
-    static constexpr const char* Name = "color_r";
-    float value = 1.0f;
-};
-struct Color_G {
-    static constexpr const char* Name = "color_g";
-    float value = 1.0f;
-};
-struct Color_B {
-    static constexpr const char* Name = "color_b";
-    float value = 1.0f;
-};
-
-// Normal components (split XYZ for SoA)
-struct Normal_X {
-    static constexpr const char* Name = "normal_x";
-    float value = 0.0f;
-};
-struct Normal_Y {
-    static constexpr const char* Name = "normal_y";
-    float value = 1.0f;  // Default: +Y up
-};
-struct Normal_Z {
-    static constexpr const char* Name = "normal_z";
-    float value = 0.0f;
-};
-
-// ============================================================================
-// Optional Extended Attributes
-// ============================================================================
-
-/**
- * Material ID for multi-material voxel grids.
- */
-struct Material {
-    static constexpr const char* Name = "material";
-    uint32_t id = 0;
-};
-
-// Emission components (split RGBI for SoA)
-struct Emission_R {
-    static constexpr const char* Name = "emission_r";
-    float value = 0.0f;
-};
-struct Emission_G {
-    static constexpr const char* Name = "emission_g";
-    float value = 0.0f;
-};
-struct Emission_B {
-    static constexpr const char* Name = "emission_b";
-    float value = 0.0f;
-};
-struct Emission_Intensity {
-    static constexpr const char* Name = "emission_intensity";
-    float value = 0.0f;
-};
-
-// ============================================================================
-// Chunk/Brick Metadata (Optional)
-// ============================================================================
-
-/**
- * Brick reference - links voxel to AttributeRegistry brick.
- * Only added if voxel is part of a brick-based structure.
+ * Brick reference - links voxel to dense brick storage.
  */
 struct BrickReference {
     static constexpr const char* Name = "brick_reference";
-    uint32_t brickID = 0xFFFFFFFF;
-    uint8_t localX = 0;
-    uint8_t localY = 0;
-    uint8_t localZ = 0;
+    uint32_t brickID;
+    uint8_t localX;
+    uint8_t localY;
+    uint8_t localZ;
 };
 
 /**
- * Chunk ID - groups voxels into spatial regions.
+ * Chunk ID - spatial grouping.
  */
-struct ChunkID {
-    static constexpr const char* Name = "chunk_id";
-    uint32_t id = 0;
+VOXEL_COMPONENT_SCALAR(ChunkID, "chunk_id", uint32_t, 0)
+
+/**
+ * Tag component - marks voxels that should be in octree.
+ * Empty struct = zero memory overhead.
+ */
+struct Solid {};
+
+// ============================================================================
+// Component Traits (MINIMAL - Just Name!)
+// ============================================================================
+
+template<typename T>
+struct ComponentTraits;
+
+// Single macro for all components - no type differentiation
+#define DEFINE_COMPONENT_TRAITS(Component) \
+    template<> \
+    struct ComponentTraits<Component> { \
+        static constexpr const char* Name = Component::Name; \
+    };
+
+// Register all components (same macro for all!)
+DEFINE_COMPONENT_TRAITS(MortonKey)
+DEFINE_COMPONENT_TRAITS(Density)
+DEFINE_COMPONENT_TRAITS(Material)
+DEFINE_COMPONENT_TRAITS(EmissionIntensity)
+DEFINE_COMPONENT_TRAITS(ChunkID)
+DEFINE_COMPONENT_TRAITS(Color)
+DEFINE_COMPONENT_TRAITS(Normal)
+DEFINE_COMPONENT_TRAITS(Emission)
+
+#undef DEFINE_COMPONENT_TRAITS
+
+// ============================================================================
+// Type Detection (Automatic via C++20 Concepts)
+// ============================================================================
+
+// Detect scalar component (has .value member)
+template<typename T>
+concept HasValueMember = requires(T t) {
+    { t.value };
 };
+
+// Detect vec3 component (has toVec3() method)
+template<typename T>
+concept HasToVec3Method = requires(const T t) {
+    { t.toVec3() } -> std::convertible_to<glm::vec3>;
+};
+
+// ============================================================================
+// Component Concepts (Type-Based Detection - No Bools!)
+// ============================================================================
+
+template<typename T>
+concept VoxelComponent = requires {
+    { ComponentTraits<T>::Name } -> std::convertible_to<const char*>;
+};
+
+// Vec3 component = has toVec3() method
+template<typename T>
+concept Vec3Component = VoxelComponent<T> && HasToVec3Method<T>;
+
+// Scalar component = has .value member
+template<typename T>
+concept ScalarComponent = VoxelComponent<T> && HasValueMember<T>;
+
+// Get component value (works for both scalar and vec3)
+template<VoxelComponent T>
+auto getValue(const T& component) {
+    if constexpr (Vec3Component<T>) {
+        return component.toVec3();
+    } else {
+        return component.value;
+    }
+}
+
+// Set component value (works for both scalar and vec3)
+template<ScalarComponent T, typename ValueType>
+void setValue(T& component, const ValueType& value) {
+    component.value = value;
+}
+
+template<Vec3Component T>
+void setValue(T& component, const glm::vec3& value) {
+    component = T(value);  // Uses conversion constructor
+}
 
 } // namespace GaiaVoxel

@@ -59,12 +59,6 @@ GaiaVoxelWorld::EntityID createVoxelExample(
                 float val = attr.get<float>();
                 if (attr.name == "density") {
                     world.add<Density>(entity, {val});
-                } else if (attr.name == "color_r") {
-                    world.add<Color_R>(entity, {val});
-                } else if (attr.name == "color_g") {
-                    world.add<Color_G>(entity, {val});
-                } else if (attr.name == "color_b") {
-                    world.add<Color_B>(entity, {val});
                 }
                 // ... etc for other float attributes
                 break;
@@ -78,15 +72,11 @@ GaiaVoxelWorld::EntityID createVoxelExample(
             }
             case VoxelData::AttributeType::Vec3: {
                 glm::vec3 val = attr.get<glm::vec3>();
-                // Split vec3 into components
+                // Use multi-member components directly
                 if (attr.name == "color") {
-                    world.add<Color_R>(entity, {val.r});
-                    world.add<Color_G>(entity, {val.g});
-                    world.add<Color_B>(entity, {val.b});
+                    world.add<Color>(entity, Color(val));
                 } else if (attr.name == "normal") {
-                    world.add<Normal_X>(entity, {val.x});
-                    world.add<Normal_Y>(entity, {val.y});
-                    world.add<Normal_Z>(entity, {val.z});
+                    world.add<Normal>(entity, Normal(val));
                 }
                 break;
             }
