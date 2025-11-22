@@ -38,28 +38,51 @@ GaiaVoxelWorld::~GaiaVoxelWorld() {
 
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     const glm::vec3& position,
-	const ::VoxelData::DynamicVoxelScalar& data) {
+    float density,
+    const glm::vec3& color,
+    const glm::vec3& normal) {
 
-	gaia::ecs::World& wrd = getWorld();
+    auto& world = m_impl->world;
+    gaia::ecs::Entity entity = world.add();
 
-    gaia::ecs::Entity entity = wrd.add();
+    // Add all components
+    world.add<MortonKey>(entity, MortonKey::fromPosition(position));
+    world.add<Density>(entity, Density{density});
+    world.add<Color>(entity, Color(color));
+    world.add<Normal>(entity, Normal(normal));
 
+    return entity;
+}
 
-    gaia::ecs::EntityBuilder builder = wrd.build(entity);
+// DynamicVoxelScalar overload - converts attribute names to components
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
+    const glm::vec3& position,
+    const ::VoxelData::DynamicVoxelScalar& data) {
 
-    builder.add<MortonKey>();           
+    auto& world = m_impl->world;
+    gaia::ecs::Entity entity = world.add();
 
+    // Always add MortonKey
+    world.add<MortonKey>(entity, MortonKey::fromPosition(position));
+
+    // Convert DynamicVoxelScalar attributes to ECS components
     for (const auto& attr : data) {
-        builder.add<attr.getType()>();
-    }
-    builder.name("VoxelEntity");
-
-    builder.commit();
-
-    wrd.set<MortonKey>(entity) = MortonKey::fromPosition(position);
-
-    for (const auto& attr : data) {
-        wrd.set<attr.getType()>(entity) = attr.get<attr.getType()>();
+        if (attr.name == "density") {
+            world.add<Density>(entity, Density{attr.get<float>()});
+        }
+        else if (attr.name == "color") {
+            world.add<Color>(entity, Color(attr.get<glm::vec3>()));
+        }
+        else if (attr.name == "normal") {
+            world.add<Normal>(entity, Normal(attr.get<glm::vec3>()));
+        }
+        else if (attr.name == "material") {
+            world.add<Material>(entity, Material{attr.get<uint32_t>()});
+        }
+        else if (attr.name == "emission") {
+            world.add<Emission>(entity, Emission(attr.get<glm::vec3>()));
+        }
+        // Add other known components as needed
     }
 
     return entity;
@@ -76,13 +99,13 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxelInBrick(
     uint8_t localZ) {
 
     auto entity = createVoxel(position, density, color, normal);
-    entity.add<BrickReference>(BrickReference{brickID, localX, localY, localZ});
+    m_impl->world.add<BrickReference>(entity, BrickReference{brickID, localX, localY, localZ});
 
     return entity;
 }
 
 void GaiaVoxelWorld::destroyVoxel(EntityID id) {
-    if (id.valid()) {
+    if (m_impl->world.valid(id)) {
         m_impl->world.del(id);
     }
 }
@@ -100,59 +123,57 @@ void GaiaVoxelWorld::clear() {
 // ============================================================================
 
 std::optional<glm::vec3> GaiaVoxelWorld::getPosition(EntityID id) const {
-    if (!id.valid() || !id.has<MortonKey>()) return std::nullopt;
-    return id.get<MortonKey>().toWorldPos();
+    if (!m_impl->world.valid(id) || !m_impl->world.has<MortonKey>(id)) return std::nullopt;
+    return m_impl->world.get<MortonKey>(id).toWorldPos();
 }
 
 std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
-    if (!id.valid() || !id.has<Density>()) return std::nullopt;
-    return id.get<Density>().value;
+    if (!m_impl->world.valid(id) || !m_impl->world.has<Density>(id)) return std::nullopt;
+    return m_impl->world.get<Density>(id).value;
 }
 
 std::optional<glm::vec3> GaiaVoxelWorld::getColor(EntityID id) const {
-    if (!id.valid()) return std::nullopt;
-    if (!id.has<Color>()) return std::nullopt;
-    return glm::vec3(id.get<Color>());  // Automatic conversion
+    if (!m_impl->world.valid(id) || !m_impl->world.has<Color>(id)) return std::nullopt;
+    return glm::vec3(m_impl->world.get<Color>(id));  // Automatic conversion
 }
 
 std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
-    if (!id.valid()) return std::nullopt;
-    if (!id.has<Normal>()) return std::nullopt;
-    return glm::vec3(id.get<Normal>());  // Automatic conversion
+    if (!m_impl->world.valid(id) || !m_impl->world.has<Normal>(id)) return std::nullopt;
+    return glm::vec3(m_impl->world.get<Normal>(id));  // Automatic conversion
 }
 
 std::optional<uint32_t> GaiaVoxelWorld::getBrickID(EntityID id) const {
-    if (!id.valid() || !id.has<BrickReference>()) return std::nullopt;
-    return id.get<BrickReference>().brickID;
+    if (!m_impl->world.valid(id) || !m_impl->world.has<BrickReference>(id)) return std::nullopt;
+    return m_impl->world.get<BrickReference>(id).brickID;
 }
 
 // Setters
 void GaiaVoxelWorld::setPosition(EntityID id, const glm::vec3& position) {
-    if (id.valid() && id.has<MortonKey>()) {
-        id.set<MortonKey>(MortonKey::fromPosition(position));
+    if (m_impl->world.valid(id) && m_impl->world.has<MortonKey>(id)) {
+        m_impl->world.set<MortonKey>(id) = MortonKey::fromPosition(position);
     }
 }
 
 void GaiaVoxelWorld::setDensity(EntityID id, float density) {
-    if (id.valid() && id.has<Density>()) {
-        id.set<Density>(Density{density});
+    if (m_impl->world.valid(id) && m_impl->world.has<Density>(id)) {
+        m_impl->world.set<Density>(id) = Density{density};
     }
 }
 
 void GaiaVoxelWorld::setColor(EntityID id, const glm::vec3& color) {
-    if (id.valid() && id.has<Color>()) {
-        id.set<Color>(Color(color));
+    if (m_impl->world.valid(id) && m_impl->world.has<Color>(id)) {
+        m_impl->world.set<Color>(id) = Color(color);
     }
 }
 
 void GaiaVoxelWorld::setNormal(EntityID id, const glm::vec3& normal) {
-    if (id.valid() && id.has<Normal>()) {
-        id.set<Normal>(Normal(normal));
+    if (m_impl->world.valid(id) && m_impl->world.has<Normal>(id)) {
+        m_impl->world.set<Normal>(id) = Normal(normal);
     }
 }
 
 bool GaiaVoxelWorld::exists(EntityID id) const {
-    return id.valid();
+    return  m_impl->world.valid(id);
 }
 
 // ============================================================================
@@ -167,7 +188,7 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::queryRegion(
 
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        glm::vec3 pos = entity.get<MortonKey>().toWorldPos();
+        glm::vec3 pos = m_impl->world.get<MortonKey>(entity).toWorldPos();
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -193,7 +214,7 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::querySolidVoxels() const {
 
     auto query = m_impl->world.query().all<Density>();
     query.each([&](gaia::ecs::Entity entity) {
-        if (entity.get<Density>().isSolid()) {
+        if (m_impl->world.get<Density>(entity).value > 0.0f) {
             results.push_back(entity);
         }
     });
@@ -206,7 +227,7 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        glm::vec3 pos = entity.get<MortonKey>().toWorldPos();
+        glm::vec3 pos = m_impl->world.get<MortonKey>(entity).toWorldPos();
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -222,7 +243,7 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 // ============================================================================
 
 std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
-    const std::vector<VoxelData>& voxels) {
+    const std::vector<::VoxelData::DynamicVoxelScalar>& voxels) {
 
     std::vector<EntityID> ids;
     ids.reserve(voxels.size());

@@ -58,6 +58,14 @@ public:
         const glm::vec3& normal = glm::vec3(0.0f, 1.0f, 0.0f));
 
     /**
+     * Create voxel from DynamicVoxelScalar (supports dynamic attribute sets).
+     * Converts attribute names (density, color, normal, etc.) to ECS components.
+     */
+    EntityID createVoxel(
+        const glm::vec3& position,
+        const ::VoxelData::DynamicVoxelScalar& data);
+
+    /**
      * Create voxel with brick reference (for dense brick storage).
      */
     EntityID createVoxelInBrick(
@@ -69,6 +77,12 @@ public:
         uint8_t localX,
         uint8_t localY,
         uint8_t localZ);
+
+    /**
+     * Create an array of voxels from DynamicVoxelScalar (flexible attributes).
+     * Each voxel can have different attribute sets.
+     */
+    std::vector<EntityID> createVoxelsBatch(const std::vector<::VoxelData::DynamicVoxelScalar>& voxels);
 
     /**
      * Destroy voxel entity.

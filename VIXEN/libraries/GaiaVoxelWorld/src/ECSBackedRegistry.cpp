@@ -1,6 +1,7 @@
 #include "ECSBackedRegistry.h"
 #include <glm/glm.hpp>
 #include <iostream>
+#include "VoxelComponents.h"
 
 namespace GaiaVoxel {
 
@@ -27,7 +28,7 @@ gaia::ecs::Entity ECSBackedRegistry::createEntity(
     if (voxel.has("position")) {
         try {
             glm::vec3 pos = voxel.get<glm::vec3>("position");
-            entity.add<MortonKey>(MortonKey::fromPosition(pos));
+            m_world.add<MortonKey>(entity, MortonKey::fromPosition(pos));
         } catch (...) {
             // Position extraction failed, skip MortonKey
         }
@@ -55,8 +56,8 @@ gaia::ecs::Entity ECSBackedRegistry::createEntity(
 
     auto entity = m_world.add();
 
-    // Add MortonKey for position
-    entity.add<MortonKey>(MortonKey::fromPosition(position));
+    // Add MortonKey for position        
+    m_world.add<MortonKey>(entity, MortonKey::fromPosition(position));
 
     // Add each attribute as component
     for (const auto& [name, value] : attributes) {
@@ -71,11 +72,11 @@ VoxelData::DynamicVoxelScalar ECSBackedRegistry::getVoxelFromEntity(
 
     VoxelData::DynamicVoxelScalar voxel(this);
 
-    if (!entity.valid()) return voxel;
+    if (! m_world.valid(entity)) return voxel;
 
     // Add position if MortonKey exists
-    if (entity.has<MortonKey>()) {
-        glm::vec3 pos = entity.get<MortonKey>().toWorldPos();
+    if (m_world.has<MortonKey>(entity)) {
+        glm::vec3 pos = m_world.get<MortonKey>(entity).toWorldPos();
         voxel.set("position", pos);
     }
 
@@ -93,10 +94,10 @@ VoxelData::DynamicVoxelScalar ECSBackedRegistry::getVoxelFromEntity(
 }
 
 std::optional<glm::vec3> ECSBackedRegistry::getPosition(gaia::ecs::Entity entity) const {
-    if (!entity.valid() || !entity.has<MortonKey>()) {
+    if (!m_world.valid(entity) || !m_world.has<MortonKey>(entity)) {
         return std::nullopt;
     }
-    return entity.get<MortonKey>().toWorldPos();
+    return m_world.get<MortonKey>(entity).toWorldPos();
 }
 
 // ============================================================================
@@ -117,7 +118,7 @@ std::vector<gaia::ecs::Entity> ECSBackedRegistry::createEntitiesBatch(
 }
 
 void ECSBackedRegistry::destroyEntity(gaia::ecs::Entity entity) {
-    if (entity.valid()) {
+    if (m_world.valid(entity)) {
         m_world.del(entity);
     }
 }
@@ -144,7 +145,7 @@ const std::string& ECSBackedRegistry::getComponentName(uint32_t componentID) con
 }
 
 bool ECSBackedRegistry::hasAttribute(gaia::ecs::Entity entity, const std::string& name) const {
-    if (!entity.valid()) return false;
+    if (!m_world.valid(entity)) return false;
 
     auto it = m_nameToComponentID.find(name);
     if (it == m_nameToComponentID.end()) return false;
@@ -172,38 +173,17 @@ void ECSBackedRegistry::addComponentFromAttribute(
     if (name == "density") {
         m_world.add<Density>(entity, Density{std::any_cast<float>(value)});
     }
-    else if (name == "color_r") {
-        m_world.add<Color_R>(entity, Color_R{std::any_cast<float>(value)});
+    else if (name == "color") {
+        m_world.add<Color>(entity, Color(std::any_cast<glm::vec3>(value)));
     }
-    else if (name == "color_g") {
-        m_world.add<Color_G>(entity, Color_G{std::any_cast<float>(value)});
-    }
-    else if (name == "color_b") {
-        m_world.add<Color_B>(entity, Color_B{std::any_cast<float>(value)});
-    }
-    else if (name == "normal_x") {
-        m_world.add<Normal_X>(entity, Normal_X{std::any_cast<float>(value)});
-    }
-    else if (name == "normal_y") {
-        m_world.add<Normal_Y>(entity, Normal_Y{std::any_cast<float>(value)});
-    }
-    else if (name == "normal_z") {
-        m_world.add<Normal_Z>(entity, Normal_Z{std::any_cast<float>(value)});
+    else if (name == "normal") {
+        m_world.add<Normal>(entity, Normal(std::any_cast<glm::vec3>(value)));
     }
     else if (name == "material") {
         m_world.add<Material>(entity, Material{std::any_cast<uint32_t>(value)});
     }
-    else if (name == "emission_r") {
-        m_world.add<Emission_R>(entity, Emission_R{std::any_cast<float>(value)});
-    }
-    else if (name == "emission_g") {
-        m_world.add<Emission_G>(entity, Emission_G{std::any_cast<float>(value)});
-    }
-    else if (name == "emission_b") {
-        m_world.add<Emission_B>(entity, Emission_B{std::any_cast<float>(value)});
-    }
-    else if (name == "emission_intensity") {
-        m_world.add<Emission_Intensity>(entity, Emission_Intensity{std::any_cast<float>(value)});
+    else if (name == "emission") {
+        m_world.add<Emission>(entity, Emission(std::any_cast<glm::vec3>(value)));
     }
     else {
         std::cerr << "[ECSBackedRegistry] Unknown component: " << name << "\n";
@@ -215,8 +195,9 @@ void ECSBackedRegistry::addComponentFromAttribute(
 // ============================================================================
 
 std::any ECSBackedRegistry::getComponentAsAny(
+    gaia::ecs::World& world,
     gaia::ecs::Entity entity,
-    const std::string& name) const {
+    const std::string& name) {
 
     if (entity == gaia::ecs::Entity()) {
         throw std::runtime_error("Invalid entity");
@@ -224,74 +205,24 @@ std::any ECSBackedRegistry::getComponentAsAny(
 
     // Dispatch based on attribute name (using Gaia World API)
     if (name == "density") {
-        if (!m_world.has<Density>(entity)) throw std::runtime_error("Missing Density");
-        return m_world.get<Density>(entity).value;
-    }
-    else if (name == "color_r") {
-        if (!m_world.has<Color_R>(entity)) throw std::runtime_error("Missing Color_R");
-        return m_world.get<Color_R>(entity).value;
-    }
-    else if (name == "color_g") {
-        if (!m_world.has<Color_G>(entity)) throw std::runtime_error("Missing Color_G");
-        return m_world.get<Color_G>(entity).value;
-    }
-    else if (name == "color_b") {
-        if (!m_world.has<Color_B>(entity)) throw std::runtime_error("Missing Color_B");
-        return m_world.get<Color_B>(entity).value;
-    }
-    else if (name == "normal_x") {
-        if (!m_world.has<Normal_X>(entity)) throw std::runtime_error("Missing Normal_X");
-        return m_world.get<Normal_X>(entity).value;
-    }
-    else if (name == "normal_y") {
-        if (!m_world.has<Normal_Y>(entity)) throw std::runtime_error("Missing Normal_Y");
-        return m_world.get<Normal_Y>(entity).value;
-    }
-    else if (name == "normal_z") {
-        if (!m_world.has<Normal_Z>(entity)) throw std::runtime_error("Missing Normal_Z");
-        return m_world.get<Normal_Z>(entity).value;
-    }
-    else if (name == "material") {
-        if (!m_world.has<Material>(entity)) throw std::runtime_error("Missing Material");
-        return m_world.get<Material>(entity).id;
-    }
-    else if (name == "emission_r") {
-        if (!m_world.has<Emission_R>(entity)) throw std::runtime_error("Missing Emission_R");
-        return m_world.get<Emission_R>(entity).value;
-    }
-    else if (name == "emission_g") {
-        if (!m_world.has<Emission_G>(entity)) throw std::runtime_error("Missing Emission_G");
-        return m_world.get<Emission_G>(entity).value;
-    }
-    else if (name == "emission_b") {
-        if (!m_world.has<Emission_B>(entity)) throw std::runtime_error("Missing Emission_B");
-        return m_world.get<Emission_B>(entity).value;
-    }
-    else if (name == "emission_intensity") {
-        if (!m_world.has<Emission_Intensity>(entity)) throw std::runtime_error("Missing Emission_Intensity");
-        return m_world.get<Emission_Intensity>(entity).value;
+        if (!world.has<Density>(entity)) throw std::runtime_error("Missing Density");
+        return world.get<Density>(entity).value;
     }
     else if (name == "color") {
-        // Reconstruct vec3 from split components
-        if (!m_world.has<Color_R>(entity) || !m_world.has<Color_G>(entity) || !m_world.has<Color_B>(entity)) {
-            throw std::runtime_error("Missing color components");
-        }
-        return glm::vec3(
-            m_world.get<Color_R>(entity).value,
-            m_world.get<Color_G>(entity).value,
-            m_world.get<Color_B>(entity).value
-        );
+        if (!world.has<Color>(entity)) throw std::runtime_error("Missing Color");
+        return glm::vec3(world.get<Color>(entity));
     }
     else if (name == "normal") {
-        // Reconstruct vec3 from split components
-        if (!m_world.has<Normal_X>(entity) || !m_world.has<Normal_Y>(entity) || !m_world.has<Normal_Z>(entity)) {
-            throw std::runtime_error("Missing normal components");
-        }
-        return glm::vec3(
-            m_world.get<Normal_X>(entity).value,
-            m_world.get<Normal_Y>(entity).value,
-            m_world.get<Normal_Z>(entity).value
-        );
+        if (!world.has<Normal>(entity)) throw std::runtime_error("Missing Normal");
+        return glm::vec3(world.get<Normal>(entity));
+    }
+    else if (name == "material") {
+        if (!world.has<Material>(entity)) throw std::runtime_error("Missing Material");
+        return world.get<Material>(entity);
+    }
+    else if (name == "emission") {
+        if (!world.has<Emission>(entity)) throw std::runtime_error("Missing Emission");
+        return glm::vec3(world.get<Emission>(entity));
     }
     else {
         throw std::runtime_error("Unknown component: " + name);

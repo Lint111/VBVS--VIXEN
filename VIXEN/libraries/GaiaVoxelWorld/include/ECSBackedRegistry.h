@@ -6,6 +6,7 @@
 #include <gaia.h>
 #include <unordered_map>
 #include <string>
+#include <optional>
 
 namespace GaiaVoxel {
 
@@ -38,7 +39,7 @@ namespace GaiaVoxel {
 class ECSBackedRegistry : public VoxelData::AttributeRegistry {
 public:
     explicit ECSBackedRegistry(gaia::ecs::World& world);
-    ~ECSBackedRegistry() override = default;
+    ~ECSBackedRegistry(){}
 
     // ========================================================================
     // Component Registration (NEW API - Single Source of Truth)
@@ -229,7 +230,7 @@ std::optional<T> ECSBackedRegistry::getComponentValue(
     gaia::ecs::Entity entity,
     const std::string& name) const {
 
-    if (!entity.valid()) return std::nullopt;
+    if (! m_world.valid(entity)) return std::nullopt;
 
     auto it = m_nameToComponentID.find(name);
     if (it == m_nameToComponentID.end()) return std::nullopt;
@@ -251,7 +252,7 @@ void ECSBackedRegistry::setComponentValue(
     const std::string& name,
     const T& value) {
 
-    if (!entity.valid()) return;
+    if (!m_world.valid(entity)) return;
 
     auto it = m_nameToComponentID.find(name);
     if (it == m_nameToComponentID.end()) return;

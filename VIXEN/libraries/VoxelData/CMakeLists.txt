@@ -34,12 +34,11 @@ target_include_directories(VoxelData
         $<INSTALL_INTERFACE:include>
 )
 
-# Link GLM (required for vec3 types in VoxelDataTypes.h)
-if(TARGET glm)
-    target_link_libraries(VoxelData PUBLIC glm)
-else()
-    message(FATAL_ERROR "GLM target not found - required for VoxelData")
-endif()
+# Link dependencies
+target_link_libraries(VoxelData
+    PUBLIC
+        VoxelComponents  # Component definitions (Gaia + GLM included transitively)
+)
 
 # Platform-specific settings
 if(MSVC)

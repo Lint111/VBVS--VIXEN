@@ -53,7 +53,21 @@ namespace GaiaVoxel {
  * Morton code - encodes 3D position in single uint64.
  * 8 bytes vs 12 bytes for glm::vec3.
  */
-VOXEL_COMPONENT_SCALAR(MortonKey, "position", uint64_t, 0)
+struct MortonKey {
+    static constexpr const char* Name = "position";
+    uint64_t code = 0;
+
+    // Decode position from Morton code
+    glm::ivec3 toGridPos() const;
+    glm::vec3 toWorldPos() const {
+        glm::ivec3 grid = toGridPos();
+        return glm::vec3(grid);
+    }
+
+    // Static factory methods
+    static MortonKey fromPosition(const glm::vec3& pos);
+    static MortonKey fromPosition(const glm::ivec3& pos);
+};
 
 // Helper functions for MortonKey
 namespace MortonKeyUtils {

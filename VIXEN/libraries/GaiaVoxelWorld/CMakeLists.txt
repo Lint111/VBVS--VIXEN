@@ -33,12 +33,11 @@ target_include_directories(GaiaVoxelWorld
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Link Gaia ECS and dependencies
+# Link dependencies
 target_link_libraries(GaiaVoxelWorld
     PUBLIC
-        gaia
-        glm::glm
-        VoxelData  # For AttributeRegistry integration
+        VoxelComponents  # Component definitions (includes Gaia + GLM)
+        VoxelData        # Attribute storage and brick management
 )
 
 # C++23 standard

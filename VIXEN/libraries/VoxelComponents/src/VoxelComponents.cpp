@@ -80,6 +80,9 @@ static glm::ivec3 decodeMorton(uint64_t morton) {
 glm::ivec3 MortonKey::toGridPos() const {
     return decodeMorton(code);
 }
+glm::vec3 MortonKey::toWorldPos() const {
+    return decodeMorton(code);
+}
 
 MortonKey MortonKey::fromPosition(const glm::vec3& pos) {
     return fromPosition(glm::ivec3(

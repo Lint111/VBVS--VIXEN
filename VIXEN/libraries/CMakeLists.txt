@@ -32,11 +32,14 @@ add_subdirectory(CashSystem)
 # RenderGraph static library (render graph system for managing Vulkan resources and execution)
 add_subdirectory(RenderGraph)
 
-# GaiaVoxelWorld library (ECS-based voxel data management - central backend for all voxel data)
-add_subdirectory(GaiaVoxelWorld)
+# VoxelComponents library (pure component definitions - no heavy dependencies, just Gaia + GLM)
+add_subdirectory(VoxelComponents)
 
-# VoxelData library (voxel data structures and attribute management - uses GaiaVoxelWorld backend)
+# VoxelData library (attribute storage, brick management - depends on VoxelComponents)
 add_subdirectory(VoxelData)
+
+# GaiaVoxelWorld library (ECS world management - depends on VoxelComponents + VoxelData)
+add_subdirectory(GaiaVoxelWorld)
 
 # SVO library (Sparse Voxel Octree - Laine & Karras 2010 implementation)
 add_subdirectory(SVO)
