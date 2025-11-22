@@ -54,7 +54,7 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     return entity;
 }
 
-// DynamicVoxelScalar overload - converts attribute names to components
+// DynamicVoxelScalar overload - type-safe component iteration
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     const glm::vec3& position,
     const ::VoxelData::DynamicVoxelScalar& data) {
@@ -66,23 +66,27 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     world.add<MortonKey>(entity, MortonKey::fromPosition(position));
 
     // Convert DynamicVoxelScalar attributes to ECS components
+    // Uses compile-time component registry - NO manual switch statements!
     for (const auto& attr : data) {
-        if (attr.name == "density") {
-            world.add<Density>(entity, Density{attr.get<float>()});
-        }
-        else if (attr.name == "color") {
-            world.add<Color>(entity, Color(attr.get<glm::vec3>()));
-        }
-        else if (attr.name == "normal") {
-            world.add<Normal>(entity, Normal(attr.get<glm::vec3>()));
-        }
-        else if (attr.name == "material") {
-            world.add<Material>(entity, Material{attr.get<uint32_t>()});
-        }
-        else if (attr.name == "emission") {
-            world.add<Emission>(entity, Emission(attr.get<glm::vec3>()));
-        }
-        // Add other known components as needed
+        GaiaVoxel::ComponentRegistry::visitByName(attr.name, [&](auto component_type) {
+            using Component = std::decay_t<decltype(component_type)>;
+
+            // Extract value from std::any based on component type
+            if constexpr (std::is_same_v<Component, MortonKey>) {
+                // Skip - already added above
+            }
+            else if constexpr (requires { component_type.value; }) {
+                // Scalar component (has .value member)
+                using ValueType = decltype(component_type.value);
+                auto value = attr.get<ValueType>();
+                world.add<Component>(entity, Component{value});
+            }
+            else if constexpr (requires { component_type.toVec3(); }) {
+                // Vec3 component (has toVec3() method)
+                auto vec = attr.get<glm::vec3>();
+                world.add<Component>(entity, Component(vec));
+            }
+        });
     }
 
     return entity;
@@ -243,17 +247,14 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 // ============================================================================
 
 std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
-    const std::vector<::VoxelData::DynamicVoxelScalar>& voxels) {
+    const std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>>& voxels) {
 
     std::vector<EntityID> ids;
     ids.reserve(voxels.size());
 
-    for (const auto& voxel : voxels) {
-        ids.push_back(createVoxel(
-            voxel.position,
-            voxel.density,
-            voxel.color,
-            voxel.normal));
+    // Use the DynamicVoxelScalar overload (with component-based dispatch)
+    for (const auto& [position, data] : voxels) {
+        ids.push_back(createVoxel(position, data));
     }
 
     return ids;

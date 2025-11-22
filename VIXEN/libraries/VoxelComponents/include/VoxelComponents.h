@@ -92,6 +92,57 @@ VOXEL_COMPONENT_VEC3(Normal, "normal", x, y, z, AoS, 0.0f, 1.0f, 0.0f)
 VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
 
 // ============================================================================
+// Component Registry - For iteration and lookup
+// ============================================================================
+
+/**
+ * Type-safe component visitor pattern.
+ * Allows compile-time iteration over all known components.
+ *
+ * Usage:
+ * ```cpp
+ * ComponentVisitor::visitAll([](auto component_type) {
+ *     using Component = decltype(component_type);
+ *     std::cout << Component::Name << "\n";
+ * });
+ * ```
+ */
+namespace ComponentRegistry {
+    // All registered components (add new components here)
+    using AllComponents = std::tuple<
+        Density,
+        Material,
+        Color,
+        Normal,
+        Emission,
+        EmissionIntensity,
+        MortonKey
+    >;
+
+    // Visit all components with a lambda
+    template<typename Visitor>
+    constexpr void visitAll(Visitor&& visitor) {
+        std::apply([&](auto... components) {
+            (visitor(components), ...);
+        }, AllComponents{});
+    }
+
+    // Find component by name (compile-time)
+    template<typename Visitor>
+    constexpr bool visitByName(std::string_view name, Visitor&& visitor) {
+        bool found = false;
+        visitAll([&](auto component) {
+            using Component = std::decay_t<decltype(component)>;
+            if (Component::Name == name) {
+                visitor(component);
+                found = true;
+            }
+        });
+        return found;
+    }
+}
+
+// ============================================================================
 // Metadata Components
 // ============================================================================
 

@@ -2,12 +2,34 @@
 
 #include "VoxelDataTypes.h"
 #include "AttributeRegistry.h"
+#include <VoxelComponents.h>  // Canonical component registry
 #include <array>
 #include <string_view>
 #include <type_traits>
 #include <glm/glm.hpp>
 
 namespace VoxelData {
+
+// ============================================================================
+// Component Type Extraction - Get underlying type from Gaia component
+// ============================================================================
+
+template<typename Component>
+struct ComponentValueType {
+    // Default: assume component has .value member (scalar components)
+    using type = decltype(std::declval<Component>().value);
+};
+
+// Specialization for Vec3 components (they don't have .value, they ARE the vec3)
+template<typename T>
+concept Vec3Component = requires(const T t) {
+    { t.toVec3() } -> std::convertible_to<glm::vec3>;
+};
+
+template<Vec3Component Component>
+struct ComponentValueType<Component> {
+    using type = glm::vec3;
+};
 
 // ============================================================================
 // Type Traits - Map C++ types to AttributeType with default values
@@ -172,12 +194,13 @@ public:
         } \
     };
 
-// Helper macros for X-macro expansion
-#define VOXEL_CONFIG_EXPAND_DECL(Type, Name, CppType, Index, ...) \
-    VOXEL_##Type(Name, CppType, Index, ##__VA_ARGS__);
+// Helper macros for X-macro expansion (component-based)
+// Now extracts name and type from Component type
+#define VOXEL_CONFIG_EXPAND_DECL(Type, Component, Index) \
+    VOXEL_##Type##_COMPONENT(Component, Index);
 
-#define VOXEL_CONFIG_EXPAND_INIT(Type, Name, CppType, Index, ...) \
-    Name##_desc,
+#define VOXEL_CONFIG_EXPAND_INIT(Type, Component, Index) \
+    component_desc_##Index,
 
 /**
  * @brief Begin/End style (for backward compatibility, requires listing names twice)
@@ -192,22 +215,64 @@ public:
 }
 
 /**
- * @brief Define key attribute with automatic initialization
+ * @brief Define key attribute from component type (NEW - component-based)
  *
  * The key attribute determines octree structure.
- * Changing the key triggers octree rebuild (DESTRUCTIVE).
+ * Component name and type extracted automatically from VoxelComponents.
  *
  * Parameters:
- * - AttrName: Attribute constant name (e.g., DENSITY) - auto-lowercased to "density"
- * - AttrType: C++ type (float, uint32_t, glm::vec3)
+ * - Component: Component type from VoxelComponents (e.g., GaiaVoxel::Density)
  * - Index: Attribute index (must be 0 for key)
- * - ...: Optional custom default value (uses type default if omitted)
  *
  * Example:
  * ```cpp
- * VOXEL_KEY(DENSITY, float, 0);              // "density", uses 0.0f
- * VOXEL_KEY(HEALTH, uint16_t, 0, 100);       // "health", custom default 100
+ * VOXEL_KEY_COMPONENT(GaiaVoxel::Density, 0);
  * ```
+ */
+#define VOXEL_KEY_COMPONENT(Component, Index) \
+    using ValueType_##Index = typename ::VoxelData::ComponentValueType<Component>::type; \
+    using Member_##Index = ::VoxelData::VoxelMember<ValueType_##Index, Index, true>; \
+    static constexpr Member_##Index component_member_##Index{}; \
+    static inline const ::VoxelData::AttributeDescriptor component_desc_##Index{ \
+        Component::Name, \
+        ::VoxelData::AttributeTypeTraits<ValueType_##Index>::type, \
+        std::any(Component{}), \
+        true \
+    }
+
+/**
+ * @brief Define non-key attribute from component type (NEW - component-based)
+ *
+ * Non-key attributes can be added/removed at runtime (NON-DESTRUCTIVE).
+ * Component name and type extracted automatically from VoxelComponents.
+ *
+ * Parameters:
+ * - Component: Component type from VoxelComponents (e.g., GaiaVoxel::Color)
+ * - Index: Attribute index (0..N-1)
+ *
+ * Example:
+ * ```cpp
+ * VOXEL_ATTRIBUTE_COMPONENT(GaiaVoxel::Material, 1);
+ * VOXEL_ATTRIBUTE_COMPONENT(GaiaVoxel::Color, 2);
+ * ```
+ */
+#define VOXEL_ATTRIBUTE_COMPONENT(Component, Index) \
+    using ValueType_##Index = typename ::VoxelData::ComponentValueType<Component>::type; \
+    using Member_##Index = ::VoxelData::VoxelMember<ValueType_##Index, Index, false>; \
+    static constexpr Member_##Index component_member_##Index{}; \
+    static inline const ::VoxelData::AttributeDescriptor component_desc_##Index{ \
+        Component::Name, \
+        ::VoxelData::AttributeTypeTraits<ValueType_##Index>::type, \
+        std::any(Component{}), \
+        false \
+    }
+
+// ============================================================================
+// OLD Macros (deprecated - kept for backward compatibility)
+// ============================================================================
+
+/**
+ * @brief Define key attribute with automatic initialization (DEPRECATED)
  */
 #define VOXEL_KEY(AttrName, AttrType, Index, ...) \
     using AttrName##_Member = ::VoxelData::VoxelMember<AttrType, Index, true>; \
@@ -221,21 +286,7 @@ public:
     static constexpr size_t AttrName##_INDEX = Index
 
 /**
- * @brief Define non-key attribute with automatic initialization
- *
- * Non-key attributes can be added/removed at runtime (NON-DESTRUCTIVE).
- *
- * Parameters:
- * - AttrName: Attribute constant name (e.g., MATERIAL) - auto-lowercased to "material"
- * - AttrType: C++ type (float, uint32_t, glm::vec3)
- * - Index: Attribute index (0..N-1)
- * - ...: Optional custom default value (uses type default if omitted)
- *
- * Example:
- * ```cpp
- * VOXEL_ATTRIBUTE(MATERIAL, uint32_t, 1);         // "material", uses 0u
- * VOXEL_ATTRIBUTE(COLOR, glm::vec3, 2, glm::vec3(1)); // "color", custom white
- * ```
+ * @brief Define non-key attribute with automatic initialization (DEPRECATED)
  */
 #define VOXEL_ATTRIBUTE(AttrName, AttrType, Index, ...) \
     using AttrName##_Member = ::VoxelData::VoxelMember<AttrType, Index, false>; \
