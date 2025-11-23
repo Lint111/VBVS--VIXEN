@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <iostream>
 
+using namespace GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
+
 namespace GaiaVoxel {
 
 // ============================================================================
@@ -46,7 +48,8 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     gaia::ecs::Entity entity = world.add();
 
     // Add all components
-    world.add<MortonKey>(entity, MortonKey::fromPosition(position));
+    MortonKey key = fromPosition(position);
+    world.add<MortonKey>(entity, key);
     world.add<Density>(entity, Density{density});
     world.add<Color>(entity, Color(color));
     world.add<Normal>(entity, Normal(normal));
@@ -61,7 +64,8 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest&
     gaia::ecs::Entity entity = world.add();
 
     // Always add MortonKey first
-    world.add<MortonKey>(entity, MortonKey::fromPosition(request.position));
+    MortonKey key = fromPosition(request.position);
+    world.add<MortonKey>(entity, key);
 
     // Add components using std::visit (compile-time dispatch)
     for (const auto& compReq : request.components) {
@@ -101,7 +105,7 @@ void GaiaVoxelWorld::clear() {
 
 std::optional<glm::vec3> GaiaVoxelWorld::getPosition(EntityID id) const {
     if (!m_impl->world.valid(id) || !m_impl->world.has<MortonKey>(id)) return std::nullopt;
-    return m_impl->world.get<MortonKey>(id).toWorldPos();
+    return toWorldPos(m_impl->world.get<MortonKey>(id));
 }
 
 std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
@@ -125,7 +129,7 @@ std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
 // Setters
 void GaiaVoxelWorld::setPosition(EntityID id, const glm::vec3& position) {
     if (m_impl->world.valid(id) && m_impl->world.has<MortonKey>(id)) {
-        m_impl->world.set<MortonKey>(id) = MortonKey::fromPosition(position);
+        m_impl->world.set<MortonKey>(id) = fromPosition(position);
     }
 }
 
@@ -176,7 +180,7 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::queryRegion(
 
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        glm::vec3 pos = m_impl->world.get<MortonKey>(entity).toWorldPos();
+        glm::vec3 pos = toWorldPos(m_impl->world.get<MortonKey>(entity));
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -215,7 +219,7 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        glm::vec3 pos = m_impl->world.get<MortonKey>(entity).toWorldPos();
+        glm::vec3 pos = toWorldPos(m_impl->world.get<MortonKey>(entity));
         if (pos.x >= min.x && pos.x <= max.x &&
             pos.y >= min.y && pos.y <= max.y &&
             pos.z >= min.z && pos.z <= max.z) {
@@ -293,12 +297,113 @@ const gaia::ecs::World& GaiaVoxelWorld::getWorld() const {
 }
 
 // ============================================================================
+// Chunk Operations (Bulk Insert for Spatial Locality)
+// ============================================================================
+
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::insertChunk(
+    const glm::ivec3& chunkOrigin,
+    std::span<const VoxelCreationRequest> voxels) {
+
+    auto& world = m_impl->world;
+
+    // 1. Create voxel entities FIRST (for offset reference)
+    std::vector<EntityID> voxelEntities;
+    voxelEntities.reserve(voxels.size());
+
+    for (const auto& voxelReq : voxels) {
+        voxelEntities.push_back(createVoxel(voxelReq));
+    }
+
+    // 2. Create chunk metadata entity with span reference
+    gaia::ecs::Entity chunkEntity = world.add();
+    world.add<ChunkOrigin>(chunkEntity, ChunkOrigin(chunkOrigin));
+
+    uint8_t chunkDepth = static_cast<uint8_t>(std::cbrt(voxels.size())); // e.g., 8 for 512 voxels
+    ChunkMetadata metadata;
+    metadata.entityOffset = voxelEntities[0].id();
+    metadata.chunkDepth = chunkDepth;
+    metadata.flags = 0x01; // isDirty = true
+    world.add<ChunkMetadata>(chunkEntity, metadata);
+
+    return chunkEntity;
+}
+
+std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::getVoxelsInChunk(EntityID chunkEntity) const {
+    std::vector<EntityID> results;
+
+    if (!m_impl->world.valid(chunkEntity))
+        return results;
+
+    // Query all entities with ChildOf(chunkEntity) relation
+    // NOTE: Gaia queries are built at compile-time, so we iterate all voxels and filter
+    auto query = m_impl->world.query().all<MortonKey>();
+
+    query.each([&](gaia::ecs::Entity entity) {
+        // Check if this voxel has ChildOf relation to chunkEntity
+        if (m_impl->world.has(entity, gaia::ecs::Pair(gaia::ecs::ChildOf, chunkEntity))) {
+            results.push_back(entity);
+        }
+    });
+
+    return results;
+}
+
+std::optional<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::findChunkByOrigin(
+    const glm::ivec3& chunkOrigin) const {
+
+    std::optional<EntityID> result;
+
+    // Query all entities with ChunkOrigin component
+    auto query = m_impl->world.query().all<ChunkOrigin>();
+
+    query.each([&](gaia::ecs::Entity entity, const ChunkOrigin& origin) {
+        if (result.has_value())
+            return; // Already found, skip rest
+
+        glm::ivec3 entityOrigin = origin; // Automatic conversion via operator glm::ivec3()
+        if (entityOrigin == chunkOrigin) {
+            result = entity;
+        }
+    });
+
+    return result;
+}
+
+// ============================================================================
+// Fast Entity Lookup (Direct Gaia Query - Zero Memory Overhead!)
+// ============================================================================
+
+std::optional<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::findVoxelEntity(const MortonKey& key) const {
+    std::optional<EntityID> result;
+
+    // Direct query - Gaia's chunk-based iteration is already fast
+    // No hash map overhead (saves 24+ bytes per voxel!)
+    auto query = m_impl->world.query().all<MortonKey>();
+
+    query.each([&](EntityID entity, const MortonKey& mk) {
+        if (result.has_value())
+            return; // Already found, skip rest
+
+        if (mk.code == key.code) {
+            result = entity;
+        }
+    });
+
+    return result;
+}
+
+std::optional<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::findVoxelEntity(const glm::vec3& position) const {
+    MortonKey key = fromPosition(position);
+    return findVoxelEntity(key);
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
 uint64_t GaiaVoxelWorld::computeSpatialHash(const glm::vec3& position) const {
     // Use Morton code as spatial hash
-    return MortonKey::fromPosition(position).code;
+    return fromPosition(position).code;
 }
 
 } // namespace GaiaVoxel

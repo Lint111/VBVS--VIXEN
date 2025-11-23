@@ -1,12 +1,92 @@
 # Active Context
 
-**Last Updated**: November 22, 2025 (Session 5)
+**Last Updated**: November 23, 2025 (Session 6)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Component Unification Complete** | 🔧 **Compilation Fixes In Progress**
+**Status**: ✅ **Macro-Based Component Registry Complete** | ✅ **Brick Architecture Removed**
 
 ---
 
-## Current Session Summary (Nov 22 - Session 5: Component Registry Unification)
+## Current Session Summary (Nov 23 - Session 6: Single Source of Truth Component Registry)
+
+### Macro-Based Automatic Component Registration ✅ COMPLETE
+
+**Achievement**: Implemented X-macro pattern for automatic component registration - single source of truth that generates ComponentVariant, AllComponents tuple, and ComponentTraits from one macro list.
+
+**Problem Solved**: Previously required manually updating ComponentVariant, AllComponents tuple, and ComponentTraits in 3+ separate locations whenever adding a new component type.
+
+**Solution Implemented**: `FOR_EACH_COMPONENT` macro automatically generates all derived types.
+
+**Architecture**:
+```cpp
+// SINGLE SOURCE OF TRUTH - Add component ONCE
+#define FOR_EACH_COMPONENT(macro) \
+    APPLY_MACRO(macro, Density) \
+    APPLY_MACRO(macro, Material) \
+    APPLY_MACRO(macro, EmissionIntensity) \
+    APPLY_MACRO(macro, Color) \
+    APPLY_MACRO(macro, Normal) \
+    APPLY_MACRO(macro, Emission) \
+    APPLY_MACRO(macro, MortonKey)
+
+// Auto-generates:
+// 1. ComponentVariant = std::variant<Density, Material, ...>
+// 2. ComponentRegistry::AllComponents = std::tuple<...>
+// 3. ComponentTraits<T> specializations for all types
+```
+
+**Files Modified**:
+- [VoxelComponents.h:122-130](libraries/VoxelComponents/include/VoxelComponents.h#L122-L130) - FOR_EACH_COMPONENT macro registry
+- [VoxelComponents.h:189](libraries/VoxelComponents/include/VoxelComponents.h#L189) - Auto-generated ComponentVariant
+- [VoxelComponents.h:226](libraries/VoxelComponents/include/VoxelComponents.h#L226) - Auto-generated ComponentTraits
+- [ComponentData.h:30](libraries/VoxelComponents/include/ComponentData.h#L30) - Renamed ComponentData → ComponentQueryRequest
+- [VoxelInjectionQueue.h](libraries/GaiaVoxelWorld/include/VoxelInjectionQueue.h) - Uses VoxelCreationRequest directly
+- [GaiaVoxelWorld.h:72](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h#L72) - Consolidated API to use VoxelCreationRequest
+
+**Benefits**:
+1. ✅ **Single edit point** - Add component name once, everything updates
+2. ✅ **Zero duplication** - No manual synchronization needed
+3. ✅ **Compile-time safety** - Impossible to have mismatched variant/tuple/traits
+4. ✅ **Maintainable** - New developers can't forget to update all locations
+
+### API Consolidation ✅ COMPLETE
+
+**Achievement**: Consolidated VoxelInjectionQueue and GaiaVoxelWorld APIs to use VoxelCreationRequest struct instead of separate position + components parameters.
+
+**Changes**:
+- `enqueue(position, components)` → `enqueue(VoxelCreationRequest)`
+- `createVoxel(position, components)` → `createVoxel(VoxelCreationRequest)`
+- Removed duplicate `QueueEntry` struct - now uses `VoxelCreationRequest` directly
+
+**Memory Savings**:
+- Queue uses VoxelCreationRequest (single struct) instead of duplicating fields
+- Cleaner API surface (1 parameter vs 2)
+
+### Deprecated Brick Storage Removal ✅ COMPLETE
+
+**Achievement**: Removed entity-based brick storage pattern in favor of future BrickView architecture.
+
+**Removed**:
+- `createVoxelInBrick()` method - [GaiaVoxelWorld.h:74-87](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h#L74-L87)
+- `BrickReference` component - [VoxelComponents.h:196-199](libraries/VoxelComponents/include/VoxelComponents.h#L196-L199)
+- `getBrickID()` accessor method
+
+**New Architecture (Documented)**:
+```cpp
+// Future: BrickView pattern for dense regions
+BrickView brick(mortonKeyOffset, brickDepth);
+auto voxel = brick.getVoxel(localX, localY, localZ);  // const ref view
+
+// Benefits:
+// - Zero allocation (view = offset + stride math)
+// - Cache-friendly (contiguous dense storage)
+// - Clean separation: Sparse (ECS) vs Dense (brick arrays)
+```
+
+**Build Status**: ✅ VoxelComponents.lib compiles successfully
+
+---
+
+## Previous Session Summary (Nov 22 - Session 5: Component Registry Unification)
 
 ### Major Architectural Refactor ✅ COMPONENT UNIFICATION COMPLETE
 

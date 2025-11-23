@@ -164,6 +164,74 @@ public:
     size_t countVoxelsInRegion(const glm::vec3& min, const glm::vec3& max) const;
 
     // ========================================================================
+    // Chunk Operations (Bulk Insert for Spatial Locality)
+    // ========================================================================
+
+    /**
+     * Insert bulk voxels as a spatial chunk (e.g., 8³ = 512 voxels).
+     * Creates ChunkOrigin + ChunkMetadata entity, then creates voxel entities
+     * with ChildOf relation for fast spatial queries.
+     *
+     * @param chunkOrigin World-space chunk origin (e.g., {0, 0, 0} for first 8³ region)
+     * @param voxels Voxels to insert (typically 512 for 8³ chunk)
+     * @return Chunk entity ID (use for spatial queries)
+     *
+     * Example:
+     *   VoxelCreationRequest voxels[512];
+     *   // Fill voxels array...
+     *   auto chunkID = world.insertChunk({0, 0, 0}, voxels);
+     *   auto voxelsInChunk = world.getVoxelsInChunk(chunkID);
+     */
+    EntityID insertChunk(const glm::ivec3& chunkOrigin,
+                         std::span<const VoxelCreationRequest> voxels);
+
+    /**
+     * Get all voxels in a chunk (fast via ChildOf relation).
+     * @param chunkEntity Chunk entity ID (from insertChunk)
+     * @return Vector of voxel entity IDs in this chunk
+     */
+    std::vector<EntityID> getVoxelsInChunk(EntityID chunkEntity) const;
+
+    /**
+     * Find chunk entity by world-space origin.
+     * @param chunkOrigin World-space chunk origin
+     * @return Chunk entity ID if found, nullopt otherwise
+     */
+    std::optional<EntityID> findChunkByOrigin(const glm::ivec3& chunkOrigin) const;
+
+    // ========================================================================
+    // Fast Entity Lookup (O(1) Spatial Hash)
+    // ========================================================================
+
+    /**
+     * Find voxel entity by Morton key (direct Gaia query - zero memory overhead!).
+     * Uses Gaia's chunk-based iteration for fast lookups without hash map cost.
+     *
+     * Performance: O(N/chunks) - typically fast for <1M voxels
+     * Memory: 0 bytes overhead (vs 24+ bytes/voxel for hash map)
+     *
+     * @param key Morton key for position
+     * @return Entity ID if voxel exists at this position, nullopt otherwise
+     *
+     * Example:
+     *   auto key = MortonKey::fromPosition(glm::vec3(5, 10, 3));
+     *   auto entity = world.findVoxelEntity(key);
+     *   if (entity) {
+     *       world.setDensity(*entity, 0.5f); // Update existing
+     *   } else {
+     *       world.createVoxel(pos, 0.5f); // Create new
+     *   }
+     */
+    std::optional<EntityID> findVoxelEntity(const MortonKey& key) const;
+
+    /**
+     * Find voxel entity by world position (convenience wrapper).
+     * @param position World-space position
+     * @return Entity ID if voxel exists at this position, nullopt otherwise
+     */
+    std::optional<EntityID> findVoxelEntity(const glm::vec3& position) const;
+
+    // ========================================================================
     // Batch Operations (for VoxelInjectionQueue)
     // ========================================================================
     // Note: createVoxelsBatch is defined above in Entity Creation section

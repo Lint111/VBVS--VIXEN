@@ -47,6 +47,24 @@ namespace GaiaVoxel {
         glm::vec3 toVec3() const { return glm::vec3(S0, S1, S2); } \
     };
 
+// Macro for integer vec3 components (glm::ivec3)
+#define VOXEL_COMPONENT_IVEC3(ComponentName, LogicalName, S0, S1, S2, Layout, D0, D1, D2) \
+    struct ComponentName { \
+        static constexpr const char* Name = LogicalName; \
+        static constexpr const char* Suffixes[3] = {#S0, #S1, #S2}; \
+        GAIA_LAYOUT(Layout); \
+        \
+        int S0 = D0; \
+        int S1 = D1; \
+        int S2 = D2; \
+        \
+        /* glm::ivec3 conversion */ \
+        ComponentName() = default; \
+        ComponentName(const glm::ivec3& v) : S0(v[0]), S1(v[1]), S2(v[2]) {} \
+        operator glm::ivec3() const { return glm::ivec3(S0, S1, S2); } \
+        glm::ivec3 toIVec3() const { return glm::ivec3(S0, S1, S2); } \
+    };
+
 // ============================================================================
 // Spatial Indexing
 // ============================================================================
@@ -54,29 +72,32 @@ namespace GaiaVoxel {
 /**
  * Morton code - encodes 3D position in single uint64.
  * 8 bytes vs 12 bytes for glm::vec3.
+ *
+ * Plain struct (no member functions) for Gaia-ECS compatibility.
+ * Use MortonKeyUtils free functions for encode/decode operations.
  */
 struct MortonKey {
     static constexpr const char* Name = "position";
     uint64_t code = 0;
-
-    // Decode position from Morton code
-    glm::ivec3 toGridPos() const;
-    glm::vec3 toWorldPos() const {
-        glm::ivec3 grid = toGridPos();
-        return glm::vec3(grid);
-    }
-
-    // Static factory methods
-    static MortonKey fromPosition(const glm::vec3& pos);
-    static MortonKey fromPosition(const glm::ivec3& pos);
 };
 
-// Helper functions for MortonKey
+// Helper functions for MortonKey (pure functions, ECS system-friendly)
 namespace MortonKeyUtils {
+    // Decode Morton code to grid position
     glm::ivec3 decode(uint64_t code);
+    glm::ivec3 decode(const MortonKey& key);
+
+    // Decode to world position
     glm::vec3 toWorldPos(uint64_t code);
+    glm::vec3 toWorldPos(const MortonKey& key);
+
+    // Encode position to Morton code
     uint64_t encode(const glm::vec3& pos);
     uint64_t encode(const glm::ivec3& pos);
+
+    // Create MortonKey from position (factory functions)
+    MortonKey fromPosition(const glm::vec3& pos);
+    MortonKey fromPosition(const glm::ivec3& pos);
 }
 
 // ============================================================================
@@ -201,7 +222,56 @@ using ComponentVariant = std::variant<FOR_EACH_COMPONENT(AS_VARIANT_TYPE) std::m
 // See GaiaVoxelWorld.h for BrickView architecture.
 
 /**
- * Chunk ID - spatial grouping.
+ * Chunk origin in world space - identifies spatial chunk (e.g., 8³ region).
+ * Used for bulk voxel insertion and spatial query optimization.
+ */
+VOXEL_COMPONENT_IVEC3(ChunkOrigin, "chunk_origin", x, y, z, AoS, 0, 0, 0)
+
+/**
+ * Chunk metadata - references voxel data via offset into contiguous storage.
+ *
+ * Architecture: Chunks store OFFSET into global voxel entity array, not individual entities.
+ * This enables:
+ * - Cache-friendly iteration (contiguous entity IDs)
+ * - Zero ChildOf relation overhead (no graph traversal)
+ * - Direct indexing: voxelEntities[offset + localIdx]
+ *
+ * Memory: 12 bytes total (vs 8 bytes per voxel for ChildOf relations!)
+ * For 512 voxels: 12 bytes vs 4096 bytes = 99.7% savings
+ *
+ * Format: chunkDepth^3 voxels (e.g., depth=8 → 8³ = 512 voxels)
+ *
+ * NOTE: Plain struct (no member functions) for Gaia-ECS compatibility.
+ * Use free functions for voxelCount() calculation if needed.
+ */
+struct ChunkMetadata {
+    static constexpr const char* Name = "chunk_metadata";
+
+    uint32_t entityOffset = 0;  // Offset into global voxel entity array
+    uint8_t  chunkDepth = 0;    // Chunk depth (8 = 8³ = 512 voxels, max 16 = 4096)
+    uint8_t  flags = 0;         // Bit 0: isDirty, Bit 1-7: reserved
+    uint16_t _reserved = 0;     // Reserved for future use
+    uint32_t brickID = 0xFFFFFFFF; // SVO brick ID (0xFFFFFFFF if not allocated)
+};
+
+// Free functions for ChunkMetadata accessors
+inline uint32_t getVoxelCount(const ChunkMetadata& chunk) {
+    return static_cast<uint32_t>(chunk.chunkDepth) *
+           static_cast<uint32_t>(chunk.chunkDepth) *
+           static_cast<uint32_t>(chunk.chunkDepth);
+}
+
+inline bool isChunkDirty(const ChunkMetadata& chunk) {
+    return (chunk.flags & 0x01) != 0;
+}
+
+inline void setChunkDirty(ChunkMetadata& chunk, bool dirty) {
+    if (dirty) chunk.flags |= 0x01;
+    else chunk.flags &= ~0x01;
+}
+
+/**
+ * Chunk ID - spatial grouping (legacy, kept for compatibility).
  */
 VOXEL_COMPONENT_SCALAR(ChunkID, "chunk_id", uint32_t, 0)
 
@@ -229,7 +299,17 @@ FOR_EACH_COMPONENT(GENERATE_TRAIT)
 
 #undef GENERATE_TRAIT
 
-// ChunkID is metadata, not in main registry but needs traits
+// Chunk components are metadata, not in main registry but need traits
+template<>
+struct ComponentTraits<ChunkOrigin> {
+    static constexpr const char* Name = ChunkOrigin::Name;
+};
+
+template<>
+struct ComponentTraits<ChunkMetadata> {
+    static constexpr const char* Name = ChunkMetadata::Name;
+};
+
 template<>
 struct ComponentTraits<ChunkID> {
     static constexpr const char* Name = ChunkID::Name;

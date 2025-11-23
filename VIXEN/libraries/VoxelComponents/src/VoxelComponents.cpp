@@ -74,24 +74,48 @@ static glm::ivec3 decodeMorton(uint64_t morton) {
 }
 
 // ============================================================================
-// MortonKey Implementation
+// MortonKeyUtils Implementation (Free Functions)
 // ============================================================================
 
-glm::ivec3 MortonKey::toGridPos() const {
+namespace MortonKeyUtils {
+
+glm::ivec3 decode(uint64_t code) {
     return decodeMorton(code);
 }
-// toWorldPos() is inline in header (calls toGridPos())
 
-MortonKey MortonKey::fromPosition(const glm::vec3& pos) {
-    return fromPosition(glm::ivec3(
+glm::ivec3 decode(const MortonKey& key) {
+    return decodeMorton(key.code);
+}
+
+glm::vec3 toWorldPos(uint64_t code) {
+    glm::ivec3 grid = decodeMorton(code);
+    return glm::vec3(grid);
+}
+
+glm::vec3 toWorldPos(const MortonKey& key) {
+    return toWorldPos(key.code);
+}
+
+uint64_t encode(const glm::vec3& pos) {
+    return encodeMorton(
         static_cast<int>(std::floor(pos.x)),
         static_cast<int>(std::floor(pos.y)),
         static_cast<int>(std::floor(pos.z))
-    ));
+    );
 }
 
-MortonKey MortonKey::fromPosition(const glm::ivec3& pos) {
-    return MortonKey{encodeMorton(pos.x, pos.y, pos.z)};
+uint64_t encode(const glm::ivec3& pos) {
+    return encodeMorton(pos.x, pos.y, pos.z);
 }
+
+MortonKey fromPosition(const glm::vec3& pos) {
+    return MortonKey{encode(pos)};
+}
+
+MortonKey fromPosition(const glm::ivec3& pos) {
+    return MortonKey{encode(pos)};
+}
+
+} // namespace MortonKeyUtils
 
 } // namespace GaiaVoxel
