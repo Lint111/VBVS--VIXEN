@@ -44,7 +44,7 @@ add_executable(test_voxel_injection
 )
 
 if(TARGET SVO)
-    target_link_libraries(test_voxel_injection PRIVATE GTest::gtest_main SVO)
+    target_link_libraries(test_voxel_injection PRIVATE GTest::gtest_main SVO GaiaVoxelWorld)
 else()
     target_link_libraries(test_voxel_injection PRIVATE GTest::gtest_main)
 endif()

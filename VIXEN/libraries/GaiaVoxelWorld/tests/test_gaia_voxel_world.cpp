@@ -296,26 +296,10 @@ TEST(GaiaVoxelWorldTest, CountVoxelsInRegion) {
 // Batch Operation Tests
 // ===========================================================================
 
-TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_DynamicVoxelScalar) {
-    GaiaVoxelWorld world;
-
-	VoxelCreationBatch batchRequest;
-    std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>> batch;
-    for (int i = 0; i < 50; ++i) {
-        ::VoxelData::DynamicVoxelScalar voxel;
-        voxel.set("density", 1.0f);
-        voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));
-        voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));
-
-        batch.emplace_back(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), voxel);
-    }
-
-    auto entities = world.createVoxelsBatch(batch);
-
-    EXPECT_EQ(entities.size(), 50);
-    for (auto entity : entities) {
-        EXPECT_TRUE( world.exists(entity));
-    }
+// NOTE: DynamicVoxelScalar batch API removed - use VoxelCreationRequest instead
+TEST(GaiaVoxelWorldTest, DISABLED_CreateVoxelsBatch_DynamicVoxelScalar) {
+    // TODO: Remove or convert to new API
+    SUCCEED();
 }
 
 TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_CreationEntry) {
@@ -389,35 +373,19 @@ TEST(GaiaVoxelWorldTest, GetStats) {
 // Brick Storage Tests
 // ===========================================================================
 
-TEST(GaiaVoxelWorldTest, CreateVoxelInBrick) {
-    GaiaVoxelWorld world;
+// NOTE: createVoxelInBrick() API REMOVED (Session 6 - Nov 23, 2025)
+// Reason: Brick storage moved to BrickView pattern (not entity-based)
+// See: memory-bank/activeContext.md lines 74-83
+//
+// New architecture uses BrickView for dense regions:
+//   BrickView brick(mortonKeyOffset, brickDepth);
+//   auto voxel = brick.getVoxel(localX, localY, localZ);
+//
+// This test is disabled until BrickView integration is complete.
 
-    glm::vec3 pos(10.0f, 5.0f, 3.0f);
-    uint32_t brickID = 42;
-    uint8_t localX = 3, localY = 2, localZ = 1;
-
-	VoxelCreationRequest request;
-	request.position = pos;
-    ComponentQueryRequest attrs[] = {
-        Density{1.0f},
-        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
-        Normal{glm::vec3(0.0f, 1.0f, 0.0f)},
-	};
-	request.components = attrs;
-
-
-    auto entity = world.createVoxelInBrick(
-        pos, 1.0f,
-        glm::vec3(1.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 1.0f, 0.0f),
-        brickID, localX, localY, localZ);
-
-    ASSERT_TRUE( world.exists(entity));
-
-    // Verify brick ID is stored
-    auto storedBrickID = world.getBrickID(entity);
-    ASSERT_TRUE(storedBrickID.has_value());
-    EXPECT_EQ(storedBrickID.value(), brickID);
+TEST(GaiaVoxelWorldTest, DISABLED_CreateVoxelInBrick) {
+    // TODO: Rewrite test using BrickView pattern when implemented
+    SUCCEED();
 }
 
 // ===========================================================================
