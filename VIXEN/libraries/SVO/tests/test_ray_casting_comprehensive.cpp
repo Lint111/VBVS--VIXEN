@@ -27,6 +27,10 @@ protected:
     {
         // Create attribute registry and brick storage
         auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+        registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
+        registry->addAttribute("material", ::VoxelData::AttributeType::Uint32, 0u);
+        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+        registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
         auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3); // depth 3 = 8x8x8
 
         auto octree = std::make_unique<LaineKarrasOctree>(registry.get());

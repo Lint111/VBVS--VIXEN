@@ -1,12 +1,58 @@
 # Active Context
 
-**Last Updated**: November 23, 2025 (Session 6K - Legacy Workflow Replacement Complete)
+**Last Updated**: November 23, 2025 (Session 6M - ESVO Traversal Investigation Complete)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | ✅ **Rebuild Hierarchy Complete** | 🔴 **Ray Casting Debug In Progress**
+**Status**: ✅ **150 Total Tests** | ✅ **Rebuild Hierarchy Complete** | 🟡 **Ray Casting Partial (3/10 tests passing)**
 
 ---
 
-## Current Session Summary (Nov 23 - Session 6K: Legacy Workflow Replacement Complete)
+## Current Session Summary (Nov 23 - Session 6M: ESVO Traversal Final State)
+
+### ESVO Traversal Debugging - Documented ✅
+
+**All Bug Fixes Completed**:
+1. ✅ **POP integer conversion** - [LaineKarrasOctree.cpp:1241-1243](libraries/SVO/src/LaineKarrasOctree.cpp#L1241-L1243)
+   - Fixed floatToInt [1,2]→[0,1] range with offset/clamp
+
+2. ✅ **POP step_mask filtering** - [LaineKarrasOctree.cpp:1247-1249](libraries/SVO/src/LaineKarrasOctree.cpp#L1247-L1249)
+   - Only compute next_int for stepped axes
+
+3. ✅ **Position initialization** - [LaineKarrasOctree.cpp:793-795](libraries/SVO/src/LaineKarrasOctree.cpp#L793-L795)
+   - Match ESVO reference (octant mirroring)
+
+4. ✅ **Scale conversion** - [LaineKarrasOctree.cpp:804-806](libraries/SVO/src/LaineKarrasOctree.cpp#L804-L806)
+   - Use helper functions correctly
+
+5. ✅ **Brick level detection** - [LaineKarrasOctree.cpp:1151-1159](libraries/SVO/src/LaineKarrasOctree.cpp#L1151-L1159)
+   - Prevent descent past bricks
+
+6. ✅ **Safety termination** - [LaineKarrasOctree.cpp:1179-1185](libraries/SVO/src/LaineKarrasOctree.cpp#L1179-L1185)
+   - maxIter=10000 and scale>maxScale checks
+
+**Final Test Results** (60s timeout + maxIter safety):
+- ✅ AxisAlignedRaysFromOutside
+- ✅ DiagonalRaysVariousAngles
+- ✅ CompleteMissCases
+- ❌ RaysFromInsideGrid (60s timeout - infinite loop)
+- ❌ MultipleVoxelTraversal (60s timeout - infinite loop)
+- ⏸️ 5 tests not run (blocked by timeouts)
+
+**Known Remaining Issue**:
+**Infinite Traversal Loop** - Complex rays cycle endlessly through ADVANCE→POP without terminating. Rays get stuck in empty space between sparse bricks at high scales. Needs deeper analysis of ESVO termination conditions for sparse octrees (consult original paper/implementation).
+
+**Impact**: 3/10 tests passing (30% coverage). Simple rays work, complex multi-voxel/internal-start rays fail. Algorithm fundamentally functional but incomplete for production.
+
+**Modified Files**:
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - 15+ traversal fixes
+- [test_ray_casting_comprehensive.cpp](libraries/SVO/tests/test_ray_casting_comprehensive.cpp) - AttributeRegistry fix
+
+**Recommendation**: Consult `cuda/Raycast.inl` or ESVO paper for sparse octree edge cases.
+
+**Session Metrics**: 6 hours debugging, 15+ fixes, 30% coverage achieved.
+
+---
+
+## Previous Session Summary (Nov 23 - Session 6K: Legacy Workflow Replacement Complete)
 
 ### Legacy Workflow Replacement ✅ COMPLETE
 

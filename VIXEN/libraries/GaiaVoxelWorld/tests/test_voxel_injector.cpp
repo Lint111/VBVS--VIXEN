@@ -504,7 +504,7 @@ TEST(VoxelInjectorTest, InsertedEntitiesRetainAttributes) {
 
     // Verify attributes are still accessible after insertion
     for (size_t i = 0; i < entities.size(); ++i) {
-        auto color = world.getColor(entities[i]);
+        auto color = world.getComponentValue<Color>(entities[i]);
         ASSERT_TRUE(color.has_value());
         EXPECT_EQ(color.value(), expectedColors[i]);
     }
@@ -539,7 +539,7 @@ TEST(VoxelInjectorTest, VerifyBrickGroupingPreservesEntityData) {
     size_t entityIdx = 0;
     for (const auto& [coord, brickEntities] : groups) {
         for (auto entity : brickEntities) {
-            auto density = world.getDensity(entity);
+            auto density = world.getComponentValue<Density>(entity);
             ASSERT_TRUE(density.has_value());
 
             // Find matching expected density

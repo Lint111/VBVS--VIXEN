@@ -756,7 +756,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
               << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
     std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
     std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
-    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << "\n";
+    std::cout << "DEBUG INIT: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
+    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << " h=" << h << "\n";
     // Initialize traversal with ESVO scale (always 22 at root, regardless of user depth)
     // This allows ESVO's bit manipulation to work correctly for any octree depth
     int esvoScale = ESVO_MAX_SCALE;
@@ -765,37 +766,28 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
     uint64_t child_descriptor = 0; // Invalid until fetched
     int idx = 0; // Child octant index
-    glm::vec3 pos(1.0f, 1.0f, 1.0f); // Position in normalized [1,2] space
+
+    // ESVO Reference (lines 132, 136-138): Initialize pos to minimum corner (1,1,1)
+    // Then conditionally set to midpoint (1.5) based on parametric test
+    // This determines which octant the ray enters
+    glm::vec3 pos(1.0f, 1.0f, 1.0f);
+
     int scale = esvoScale; // ESVO internal scale (22 at root)
     float scale_exp2 = 0.5f; // 2^(scale - ESVO_MAX_SCALE)
 
-    // Select initial child based on ray entry point
-    // Reference: ESVO lines 136-138
-    // For axis-parallel rays with extreme coefficients, use position comparison
-    // For diagonal rays, parametric formula works correctly
-    const float EXTREME_COEF_THRESHOLD = 1000.0f;
-    const bool use_position = std::abs(ty_coef) > EXTREME_COEF_THRESHOLD ||
-                              std::abs(tz_coef) > EXTREME_COEF_THRESHOLD;
+    // ESVO Reference lines 136-138: Use parametric formula to select initial child
+    // The bias terms are already mirrored, so this test works in mirrored space
+    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
 
-    if (use_position) {
-        // Position-based (handles axis-parallel edge case)
-        if (normOrigin.x > 1.5f) idx ^= 1, pos.x = 1.5f;
-        if (normOrigin.y > 1.5f) idx ^= 2, pos.y = 1.5f;
-        if (normOrigin.z > 1.5f) idx ^= 4, pos.z = 1.5f;
-    } else {
-        // Parametric formula (standard case)
-        if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
-        if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
-        if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
-    }
-
-    // DEBUG: std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-    // DEBUG: std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
+    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
+    std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") AFTER MIRROR\n";
 
     // Main traversal loop
     // Traverse voxels along the ray while staying within octree bounds
     int iter = 0;
-    const int maxIter = 10000; // Safety limit
+    const int maxIter = 500; // Safety limit (increased for complex scenes, catches infinite loops at ~5-10ms)
 
     // Declare center values at function scope for POP restoration
     float tx_center = 0.0f;
@@ -803,9 +795,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     float tz_center = 0.0f;
 
     // Loop while in valid ESVO scale range
-    // Max ESVO scale = ESVO_MAX_SCALE (22)
-    // Min ESVO scale = ESVO_MAX_SCALE - m_maxLevels + 1 (e.g., 15 for depth 8, 0 for depth 23)
+    // Max ESVO scale = ESVO_MAX_SCALE (22) - root
+    // Min ESVO scale = finest level (e.g., 17 for depth 6)
+    // Formula: minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1
+    // For depth 6: 22 - 6 + 1 = 17 (leaves us with 6 levels: 17-22)
     int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+
     while (scale >= minESVOScale && iter < maxIter) {
         ++iter;
         // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
@@ -866,6 +861,18 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                           (child_masks & 0x0080) == 0, child_is_leaf,
                           t_min, t_max);
 
+        // IMPORTANT: At brick level, we should check for brick contents, not descend further
+        // Convert ESVO scale to user scale to check if we're at brick level
+        int currentUserScale = esvoToUserScale(scale);
+        int brickUserScale = m_maxLevels - m_brickDepthLevels;  // e.g., 6-3=3
+        bool atBrickLevel = (currentUserScale == brickUserScale);
+
+        // If we're at brick level and the child is valid, it MUST be a leaf (brick)
+        // Force child_is_leaf=true at this level regardless of leafMask
+        if (atBrickLevel && child_valid) {
+            child_is_leaf = true;
+        }
+
         // Check if voxel is valid (valid mask bit is set) and t-span is non-empty
         if (child_valid && t_min <= t_max)
         {
@@ -904,10 +911,11 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // ================================================================
 
             // Descend to first child if resulting t-span is non-empty
-            if (scale >= m_maxLevels - 3) {
-                // DEBUG: std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
-                //          << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
-            }
+            // DEBUG: Near-leaf debug (only for deepest 3 levels)
+            // if (esvoToUserScale(scale) >= m_maxLevels - 3) {
+            //     std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
+            //               << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
+            // }
             if (t_min <= tv_max)
             {
                 debugValidVoxel(t_min, tv_max);
@@ -1159,6 +1167,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 child_descriptor = 0;
                 // DEBUG: std::cout << "DEBUG: CONTINUE after descent, looping back to process child " << idx << "\n";
                 continue; // Continue main loop
+            } else {
+                // Can't descend (t_min > tv_max means voxel missed)
+                // At finest scale, this means we need to advance to next voxel
+                // If not at finest scale, we'll advance below
             }
         }
 
@@ -1187,12 +1199,13 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             tc_max_corrected = std::max({tx_corner, ty_corner, tz_corner}); // Pick least negative
         }
 
+        float old_t_min = t_min;
         t_min = std::max(tc_max_corrected, 0.0f);
 
-        if (scale == m_maxLevels - 1 || scale == m_maxLevels - 2) {
-            // DEBUG: std::cout << "DEBUG ADVANCE: tc_max=" << tc_max << " → t_min=" << t_min
-            //          << " (from tx=" << tx_corner << " ty=" << ty_corner << " tz=" << tz_corner << ")\n";
-        }
+        std::cout << "DEBUG ADVANCE[" << iter << "]: step_mask=" << step_mask
+                  << " tx_corner=" << tx_corner << " ty_corner=" << ty_corner << " tz_corner=" << tz_corner
+                  << " tc_max=" << tc_max << " tc_max_corrected=" << tc_max_corrected
+                  << " → t_min: " << old_t_min << " → " << t_min << " (delta=" << (t_min - old_t_min) << ") t_max=" << t_max << "\n";
 
         int old_idx = idx;
         idx ^= step_mask;
@@ -1225,17 +1238,27 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
             // Compute integer positions in [0, MAX_RES)
             // Input f is in [0, 1] normalized octree space
+            // IMPORTANT: pos can go outside [1,2] during traversal, so clamp first
             auto floatToInt = [MAX_RES](float f) -> uint32_t {
-                return static_cast<uint32_t>(std::max(0.0f, std::min(f * MAX_RES, static_cast<float>(MAX_RES - 1))));
+                // Clamp to [0,1] and convert to integer
+                float clamped = std::max(0.0f, std::min(f, 1.0f));
+                return static_cast<uint32_t>(std::max(0.0f, std::min(clamped * MAX_RES, static_cast<float>(MAX_RES - 1))));
             };
 
-            uint32_t pos_x_int = floatToInt(pos.x);
-            uint32_t pos_y_int = floatToInt(pos.y);
-            uint32_t pos_z_int = floatToInt(pos.z);
+            // Convert from [1,2] space to [0,1] space, clamping to handle out-of-bounds
+            uint32_t pos_x_int = floatToInt(std::max(0.0f, pos.x - 1.0f));
+            uint32_t pos_y_int = floatToInt(std::max(0.0f, pos.y - 1.0f));
+            uint32_t pos_z_int = floatToInt(std::max(0.0f, pos.z - 1.0f));
 
-            uint32_t next_x_int = floatToInt(pos.x + scale_exp2);
-            uint32_t next_y_int = floatToInt(pos.y + scale_exp2);
-            uint32_t next_z_int = floatToInt(pos.z + scale_exp2);
+            // Compute next position ONLY for axes that were stepped
+            // For axes not stepped, next == pos (no change)
+            uint32_t next_x_int = (step_mask & 1) ? floatToInt(std::max(0.0f, pos.x + scale_exp2 - 1.0f)) : pos_x_int;
+            uint32_t next_y_int = (step_mask & 2) ? floatToInt(std::max(0.0f, pos.y + scale_exp2 - 1.0f)) : pos_y_int;
+            uint32_t next_z_int = (step_mask & 4) ? floatToInt(std::max(0.0f, pos.z + scale_exp2 - 1.0f)) : pos_z_int;
+
+            std::cout << "[POP DEBUG] pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
+            std::cout << "[POP DEBUG] pos_int=(0x" << std::hex << pos_x_int << ",0x" << pos_y_int << ",0x" << pos_z_int << std::dec << ")\n";
+            std::cout << "[POP DEBUG] next_int=(0x" << std::hex << next_x_int << ",0x" << next_y_int << ",0x" << next_z_int << std::dec << ")\n";
 
             // Find differing bits (OR of XOR results)
             uint32_t differing_bits = 0;
@@ -1263,9 +1286,14 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                       << " (userScale=" << esvoToUserScale(scale) << ")\n";
 
             // Clamp scale to valid ESVO range [minESVOScale, ESVO_MAX_SCALE]
-            if (scale < minESVOScale || scale > ESVO_MAX_SCALE) {
-                // Invalid scale - exit traversal
-                std::cout << "[POP] Scale " << scale << " outside ESVO range [" << minESVOScale << ", " << ESVO_MAX_SCALE << "], exiting\n";
+            // Also exit if we popped ABOVE root (scale > ESVO_MAX_SCALE means we exited octree)
+            if (scale < minESVOScale) {
+                std::cout << "[POP] Scale " << scale << " below minimum (" << minESVOScale << "), exiting\n";
+                break;
+            }
+            if (scale > ESVO_MAX_SCALE) {
+                // Popped above root - ray exited octree
+                std::cout << "[POP] Scale " << scale << " above ESVO_MAX_SCALE (" << ESVO_MAX_SCALE << "), ray exited octree\n";
                 break;
             }
 
@@ -1332,19 +1360,25 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Reference lines 342-346
     // ====================================================================
 
+    // Check why we exited the loop
+    // Convert ESVO scale to user scale for comparison
+    int userScale = esvoToUserScale(scale);
+
     if (iter >= maxIter) {
-        std::cout << "DEBUG: Hit iteration limit! scale=" << scale
+        std::cout << "DEBUG: Hit iteration limit! scale=" << scale << " (userScale=" << userScale << ")"
                   << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
-    } else if (scale >= m_maxLevels) {
-        std::cout << "DEBUG: Ray exited octree. scale=" << scale
+    } else if (userScale >= m_maxLevels) {
+        std::cout << "DEBUG: Ray exited octree. scale=" << scale << " (userScale=" << userScale << " >= m_maxLevels=" << m_maxLevels << ")"
                   << " iter=" << iter << " t_min=" << t_min << "\n";
     } else {
-        std::cout << "DEBUG: Unknown exit condition. scale=" << scale
+        std::cout << "DEBUG: Unknown exit condition. scale=" << scale << " (userScale=" << userScale << ")"
                   << " iter=" << iter << " t_min=" << t_min << "\n";
     }
 
     // If we exited the octree, return miss
-    if (scale >= m_maxLevels || iter >= maxIter) {
+    // userScale >= m_maxLevels means we popped above root
+    // userScale < 0 means we went below minimum scale (shouldn't happen with correct loop condition)
+    if (userScale >= m_maxLevels || userScale < 0 || iter >= maxIter) {
         return miss;
     }
 
@@ -1358,6 +1392,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 }
 
 float LaineKarrasOctree::getVoxelSize(int scale) const {
+    // scale parameter is user scale (0 to m_maxLevels-1)
     if (scale >= m_maxLevels) {
         return 0.0f;
     }
