@@ -391,3 +391,132 @@ TEST(GaiaVoxelWorldCoverageTest, BatchVsIndividualCreation_SameResult) {
     EXPECT_EQ(individual.size(), batch.size());
     EXPECT_EQ(individual.size(), 100);
 }
+
+// ===========================================================================
+// Spatial Chunk Coherence Tests (Auto-parenting to nearby chunks)
+// ===========================================================================
+
+TEST(GaiaVoxelWorldCoverageTest, CreateVoxel_AutoParentToExistingChunk) {
+    GaiaVoxelWorld world;
+
+    // 1. Create chunk at origin (0, 0, 0) with 8 voxels (cbrt(8) = 2, bounds = [0, 2))
+    ComponentQueryRequest comps[] = {Density{1.0f}, Color{glm::vec3(1, 0, 0)}};
+    VoxelCreationRequest chunkVoxels[8] = {
+        {glm::vec3(0, 0, 0), comps}, {glm::vec3(0.5f, 0, 0), comps},
+        {glm::vec3(1, 0, 0), comps}, {glm::vec3(1.5f, 0, 0), comps},
+        {glm::vec3(0, 0.5f, 0), comps}, {glm::vec3(0.5f, 0.5f, 0), comps},
+        {glm::vec3(1, 0.5f, 0), comps}, {glm::vec3(1.5f, 0.5f, 0), comps}
+    };
+    auto chunkEntity = world.insertChunk(glm::ivec3(0, 0, 0), chunkVoxels);
+
+    ASSERT_TRUE(world.exists(chunkEntity));
+
+    // 2. Create individual voxel WITHIN chunk bounds [0, 2) (should auto-parent)
+    VoxelCreationRequest individualVoxel{glm::vec3(1.0f, 1.0f, 0.5f), comps};
+    auto voxelEntity = world.createVoxel(individualVoxel);
+
+    ASSERT_TRUE(world.exists(voxelEntity));
+
+    // 3. Verify voxel is parented to chunk
+    auto voxelsInChunk = world.getVoxelsInChunk(chunkEntity);
+    EXPECT_EQ(voxelsInChunk.size(), 9) << "Chunk should contain 8 original + 1 auto-parented voxel";
+
+    // Verify the individual voxel is in the chunk
+    bool found = std::find(voxelsInChunk.begin(), voxelsInChunk.end(), voxelEntity) != voxelsInChunk.end();
+    EXPECT_TRUE(found) << "Individually created voxel should be auto-parented to existing chunk";
+}
+
+TEST(GaiaVoxelWorldCoverageTest, CreateVoxel_NoAutoParent_OutsideChunkBounds) {
+    GaiaVoxelWorld world;
+
+    // 1. Create chunk at origin (0, 0, 0)
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+    VoxelCreationRequest chunkVoxel{glm::vec3(0, 0, 0), comps};
+    auto chunkEntity = world.insertChunk(glm::ivec3(0, 0, 0), std::span(&chunkVoxel, 1));
+
+    // 2. Create voxel OUTSIDE chunk bounds (should NOT auto-parent)
+    VoxelCreationRequest outsideVoxel{glm::vec3(10.0f, 10.0f, 10.0f), comps};
+    auto voxelEntity = world.createVoxel(outsideVoxel);
+
+    // 3. Verify voxel is NOT in chunk
+    auto voxelsInChunk = world.getVoxelsInChunk(chunkEntity);
+    EXPECT_EQ(voxelsInChunk.size(), 1) << "Chunk should only contain original voxel";
+
+    bool found = std::find(voxelsInChunk.begin(), voxelsInChunk.end(), voxelEntity) != voxelsInChunk.end();
+    EXPECT_FALSE(found) << "Voxel outside chunk bounds should NOT be auto-parented";
+}
+
+TEST(GaiaVoxelWorldCoverageTest, CreateVoxel_AutoParent_MultipleChunks) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+
+    // Create two chunks at different origins with 8 voxels each (cbrt(8) = 2, span = 8)
+    VoxelCreationRequest chunk1Init[8] = {
+        {glm::vec3(0, 0, 0), comps}, {glm::vec3(0.5f, 0, 0), comps},
+        {glm::vec3(1, 0, 0), comps}, {glm::vec3(1.5f, 0, 0), comps},
+        {glm::vec3(0, 0.5f, 0), comps}, {glm::vec3(0.5f, 0.5f, 0), comps},
+        {glm::vec3(1, 0.5f, 0), comps}, {glm::vec3(1.5f, 0.5f, 0), comps}
+    };
+    auto chunk1 = world.insertChunk(glm::ivec3(0, 0, 0), chunk1Init);
+
+    VoxelCreationRequest chunk2Init[8] = {
+        {glm::vec3(16, 0, 0), comps}, {glm::vec3(16.5f, 0, 0), comps},
+        {glm::vec3(17, 0, 0), comps}, {glm::vec3(17.5f, 0, 0), comps},
+        {glm::vec3(16, 0.5f, 0), comps}, {glm::vec3(16.5f, 0.5f, 0), comps},
+        {glm::vec3(17, 0.5f, 0), comps}, {glm::vec3(17.5f, 0.5f, 0), comps}
+    };
+    auto chunk2 = world.insertChunk(glm::ivec3(16, 0, 0), chunk2Init);
+
+    // Create voxel in chunk1's bounds [0, 2) per axis
+    VoxelCreationRequest inChunk1{glm::vec3(0.25f, 0.25f, 0.25f), comps};
+    auto voxel1Entity = world.createVoxel(inChunk1);
+
+    // Create voxel in chunk2's bounds [16, 18) per axis
+    VoxelCreationRequest inChunk2{glm::vec3(16.25f, 0.25f, 0.25f), comps};
+    auto voxel2Entity = world.createVoxel(inChunk2);
+
+    // Verify correct parenting
+    auto chunk1Voxels = world.getVoxelsInChunk(chunk1);
+    auto chunk2Voxels = world.getVoxelsInChunk(chunk2);
+
+    EXPECT_EQ(chunk1Voxels.size(), 9); // 8 original + 1 auto-parented
+    EXPECT_EQ(chunk2Voxels.size(), 9); // 8 original + 1 auto-parented
+
+    EXPECT_TRUE(std::find(chunk1Voxels.begin(), chunk1Voxels.end(), voxel1Entity) != chunk1Voxels.end());
+    EXPECT_TRUE(std::find(chunk2Voxels.begin(), chunk2Voxels.end(), voxel2Entity) != chunk2Voxels.end());
+}
+
+TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_AutoParent_ToExistingChunk) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+
+    // Create chunk at origin with 8 voxels (cbrt(8) = 2, bounds [0, 2), span = 8)
+    VoxelCreationRequest chunkVoxels[8] = {
+        {glm::vec3(0, 0, 0), comps}, {glm::vec3(0.5f, 0, 0), comps},
+        {glm::vec3(1, 0, 0), comps}, {glm::vec3(1.5f, 0, 0), comps},
+        {glm::vec3(0, 0.5f, 0), comps}, {glm::vec3(0.5f, 0.5f, 0), comps},
+        {glm::vec3(1, 0.5f, 0), comps}, {glm::vec3(1.5f, 0.5f, 0), comps}
+    };
+    auto chunkEntity = world.insertChunk(glm::ivec3(0, 0, 0), chunkVoxels);
+
+    // Create batch of voxels within chunk bounds [0, 2)
+    VoxelCreationRequest batchVoxels[] = {
+        {glm::vec3(0.25f, 0, 0), comps},
+        {glm::vec3(0.75f, 0, 0), comps},
+        {glm::vec3(1.25f, 0, 0), comps}
+    };
+
+    auto entities = world.createVoxelsBatch(batchVoxels);
+    ASSERT_EQ(entities.size(), 3);
+
+    // All batch voxels should be auto-parented to chunk
+    auto voxelsInChunk = world.getVoxelsInChunk(chunkEntity);
+    EXPECT_EQ(voxelsInChunk.size(), 11) << "8 original + 3 auto-parented from batch";
+
+    for (auto entity : entities) {
+        bool found = std::find(voxelsInChunk.begin(), voxelsInChunk.end(), entity) != voxelsInChunk.end();
+        EXPECT_TRUE(found) << "Batch voxel should be auto-parented to existing chunk";
+    }
+}

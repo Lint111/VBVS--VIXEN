@@ -270,6 +270,9 @@ private:
 
     // Helper: Compute spatial hash for position
     uint64_t computeSpatialHash(const glm::vec3& position) const;
+
+    // Helper: Auto-parent voxel to existing chunk if within bounds
+    void tryAutoParentToChunk(EntityID voxelEntity, const glm::vec3& position);
 };
 
 // ============================================================================

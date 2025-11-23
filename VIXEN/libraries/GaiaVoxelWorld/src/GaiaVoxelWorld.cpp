@@ -79,7 +79,57 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest&
         }, compReq.component);
     }
 
+    // Auto-parent to existing chunk if position falls within chunk bounds
+    tryAutoParentToChunk(entity, request.position);
+
     return entity;
+}
+
+// Helper: Find chunk that contains given position and add ChildOf relation
+void GaiaVoxelWorld::tryAutoParentToChunk(EntityID voxelEntity, const glm::vec3& position) {
+    auto& world = m_impl->world;
+
+    // Get voxel's Morton key
+    if (!world.has<MortonKey>(voxelEntity)) return;
+    MortonKey voxelKey = world.get<MortonKey>(voxelEntity);
+
+    // Find matching chunk (can't modify world during query, so collect first)
+    std::optional<EntityID> matchingChunk;
+
+    // Query all chunks (entities with ChunkOrigin component)
+    auto query = world.query().all<ChunkOrigin>();
+
+    query.each([&](gaia::ecs::Entity chunkEntity, const ChunkOrigin& origin) {
+        if (matchingChunk.has_value()) return; // Already found a match
+
+        // Get chunk metadata to determine span
+        if (!world.has<ChunkMetadata>(chunkEntity)) return;
+        const auto& metadata = world.get<ChunkMetadata>(chunkEntity);
+
+        // Calculate chunk Morton key span
+        // Chunk root key = Morton key of chunk origin
+        MortonKey chunkRootKey = fromPosition(glm::vec3(origin.x, origin.y, origin.z));
+
+        // Chunk span = depth³ voxels (e.g., 8³ = 512)
+        // Morton keys are ordered spatially, so we can use range check
+        // For a chunk of size D, the span is approximately D³ Morton keys
+        uint64_t chunkSpan = static_cast<uint64_t>(metadata.chunkDepth) *
+                              static_cast<uint64_t>(metadata.chunkDepth) *
+                              static_cast<uint64_t>(metadata.chunkDepth);
+
+        // Check if voxel's Morton key is within chunk range
+        // NOTE: Morton keys aren't perfectly contiguous for cubes, but this is a good approximation
+        // for spatial locality (voxels near each other have similar Morton keys)
+        if (voxelKey.code >= chunkRootKey.code &&
+            voxelKey.code < (chunkRootKey.code + chunkSpan)) {
+            matchingChunk = chunkEntity;
+        }
+    });
+
+    // Add ChildOf relation outside of query (world is no longer locked)
+    if (matchingChunk.has_value()) {
+        world.add(voxelEntity, gaia::ecs::Pair(gaia::ecs::ChildOf, *matchingChunk));
+    }
 }
 
 // createVoxelInBrick() REMOVED - See header comment
