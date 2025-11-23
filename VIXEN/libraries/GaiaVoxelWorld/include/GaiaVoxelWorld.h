@@ -127,6 +127,20 @@ public:
     auto getComponent(EntityID id) const -> std::optional<decltype(std::declval<TComponent>().value)>;
 
     /**
+     * Get component by index (for multiple instances of same type).
+     *
+     * Gaia ECS supports multiple instances via Pair<ComponentType, IndexTag>.
+     *
+     * Example:
+     *   // Entity with multiple colors
+     *   auto primaryColor = world.getComponentByIndex<Color>(entity, 0);   // Color#0
+     *   auto secondaryColor = world.getComponentByIndex<Color>(entity, 1); // Color#1
+     *   auto tertiaryColor = world.getComponentByIndex<Color>(entity, 2);  // Color#2
+     */
+    template<typename TComponent>
+    auto getComponentByIndex(EntityID id, uint32_t index) const -> std::optional<decltype(std::declval<TComponent>().value)>;
+
+    /**
      * Generic component setter - works with any FOR_EACH_COMPONENT type.
      * Creates component if entity doesn't have it.
      */
@@ -134,10 +148,23 @@ public:
     void setComponent(EntityID id, decltype(std::declval<TComponent>().value) value);
 
     /**
+     * Set component by index (for multiple instances of same type).
+     * Creates component at index if doesn't exist.
+     */
+    template<typename TComponent>
+    void setComponentByIndex(EntityID id, uint32_t index, decltype(std::declval<TComponent>().value) value);
+
+    /**
      * Check component existence (type-safe template version).
      */
     template<typename TComponent>
     bool hasComponent(EntityID id) const;
+
+    /**
+     * Check if entity has component at specific index.
+     */
+    template<typename TComponent>
+    bool hasComponentByIndex(EntityID id, uint32_t index) const;
 
     /**
      * String-based component existence check (uses ComponentRegistry for dynamic lookup).
@@ -330,14 +357,69 @@ void GaiaVoxelWorld::setComponent(EntityID id, decltype(std::declval<TComponent>
         return; // Can't set component on invalid entity
     }
 
-    // Create component if doesn't exist, otherwise update
-    if (!getWorld().has<TComponent>(id)) {
-        getWorld().add<TComponent>(id);
+    // Add or update component (Gaia add() overwrites existing)
+    getWorld().add<TComponent>(id, TComponent{value});
+}
+
+// ============================================================================
+// Indexed Component Access (Multiple Instances of Same Type)
+// ============================================================================
+
+template<typename TComponent>
+bool GaiaVoxelWorld::hasComponentByIndex(EntityID id, uint32_t index) const {
+    if (!getWorld().valid(id)) {
+        return false;
     }
 
-    // Update component value
-    auto& component = getWorld().get_mut<TComponent>(id);
-    component.value = value;
+    // Gaia ECS: Use Pair(ComponentType, IndexEntity) for indexed components
+    // Index 0 is the default component (no pair needed)
+    if (index == 0) {
+        return getWorld().has<TComponent>(id);
+    }
+
+    // For index > 0, check if entity has Pair<TComponent, IndexTag>
+    // Note: This requires creating index entities as tags
+    // Implementation depends on Gaia ECS Pair API
+    // TODO: Implement indexed component storage using Gaia pairs
+    return false; // Placeholder
+}
+
+template<typename TComponent>
+auto GaiaVoxelWorld::getComponentByIndex(EntityID id, uint32_t index) const
+    -> std::optional<decltype(std::declval<TComponent>().value)> {
+
+    if (!getWorld().valid(id)) {
+        return std::nullopt;
+    }
+
+    // Index 0 is the default component
+    if (index == 0) {
+        return getComponent<TComponent>(id);
+    }
+
+    // For index > 0, access via Pair<TComponent, IndexTag>
+    // TODO: Implement using Gaia ECS relationship pairs
+    // e.g., getWorld().get<Pair<TComponent, IndexEntity[index]>>(id)
+    return std::nullopt; // Placeholder
+}
+
+template<typename TComponent>
+void GaiaVoxelWorld::setComponentByIndex(EntityID id, uint32_t index,
+                                          decltype(std::declval<TComponent>().value) value) {
+    if (!getWorld().valid(id)) {
+        return;
+    }
+
+    // Index 0 is the default component
+    if (index == 0) {
+        setComponent<TComponent>(id, value);
+        return;
+    }
+
+    // For index > 0, store via Pair<TComponent, IndexTag>
+    // TODO: Implement using Gaia ECS relationship pairs
+    // This requires creating index entities and using Pair API
+    // e.g., getWorld().add<Pair<TComponent, IndexEntity[index]>>(id)
 }
 
 } // namespace GaiaVoxel

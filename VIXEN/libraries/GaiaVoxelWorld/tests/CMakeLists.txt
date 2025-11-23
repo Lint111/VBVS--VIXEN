@@ -106,3 +106,31 @@ target_link_libraries(test_gaia_voxel_world_coverage PRIVATE
 set_target_properties(test_gaia_voxel_world_coverage PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
 gtest_discover_tests(test_gaia_voxel_world_coverage)
+
+# ===========================================================================
+# VoxelData Integration Tests (Phase H Session 6)
+# ===========================================================================
+# Tests bidirectional conversion between:
+# - Gaia ECS entities (macro components: Density, Color, Normal, etc.)
+# - VoxelData's DynamicVoxelScalar (string-based attribute access)
+#
+# Validates:
+# - Component → DynamicVoxelScalar → Component round-trip
+# - All macro components (Density, Color, Normal, Material, Emission, EmissionIntensity)
+# - Batch conversion
+# - Missing components (should return defaults)
+# - ComponentRegistry integration with FOR_EACH_COMPONENT macro
+
+add_executable(test_voxeldata_integration
+    test_voxeldata_integration.cpp
+)
+
+target_link_libraries(test_voxeldata_integration PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
+
+set_target_properties(test_voxeldata_integration PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
+
+gtest_discover_tests(test_voxeldata_integration)
