@@ -10,6 +10,7 @@
 #include <optional>
 #include <limits>
 #include <unordered_map>
+#include <shared_mutex>  // For std::shared_mutex concurrency control
 
 namespace SVO {
 
@@ -101,6 +102,51 @@ public:
      */
     void remove(gaia::ecs::Entity entity);
 
+    // ========================================================================
+    // Octree Rebuild API (Phase 3)
+    // ========================================================================
+
+    /**
+     * Rebuild entire octree from GaiaVoxelWorld entities.
+     * Queries all entities, builds ESVO hierarchy, creates EntityBrickView instances.
+     *
+     * @param world Source of entity data (must match constructor voxelWorld)
+     * @param worldMin AABB minimum for octree bounds
+     * @param worldMax AABB maximum for octree bounds
+     *
+     * NOTE: Clears existing octree structure. Use updateBlock() for incremental changes.
+     */
+    void rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax);
+
+    /**
+     * Update specific octree block region.
+     * Re-queries entities in block region, updates ChildDescriptors + EntityBrickView.
+     *
+     * @param blockWorldMin Lower-left corner of block to update
+     * @param blockDepth Block depth (matches brick depth, typically 3 for 8³)
+     */
+    void updateBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth);
+
+    /**
+     * Remove block from octree (e.g., all entities in region destroyed).
+     * More efficient than updateBlock() when block is known to be empty.
+     */
+    void removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth);
+
+    /**
+     * Lock octree for read-only access during frame rendering.
+     * Prevents rebuild/update operations that would invalidate EntityBrickView spans.
+     *
+     * USAGE:
+     *   octree.lockForRendering();  // At frame start
+     *   // ... ray casting ...
+     *   octree.unlockAfterRendering();  // At frame end
+     *
+     * NOTE: rebuild() and updateBlock() will block if rendering lock is held.
+     */
+    void lockForRendering();
+    void unlockAfterRendering();
+
 private:
     std::unique_ptr<Octree> m_octree;
 
@@ -110,6 +156,10 @@ private:
     // Temporary entity mapping (descriptor index → entity)
     // TODO: Replace with proper entity storage in OctreeBlock
     std::unordered_map<size_t, gaia::ecs::Entity> m_leafEntityMap;
+
+    // Concurrency control - prevents rebuild during frame rendering
+    mutable std::shared_mutex m_renderLock;
+    // Write lock held during rendering, read lock held during rebuild/update
 
     // DEPRECATED: Will be removed once migration to entity-based storage is complete
     ::VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer

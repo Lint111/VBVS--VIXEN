@@ -345,3 +345,33 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_brick_traversal)
+
+# ===========================================================================
+# Rebuild Hierarchy Tests
+# ===========================================================================
+# Tests rebuild() hierarchical structure construction (Phase 3)
+
+add_executable(test_rebuild_hierarchy
+    test_rebuild_hierarchy.cpp
+)
+
+target_link_libraries(test_rebuild_hierarchy PRIVATE
+    GTest::gtest_main
+    SVO
+    GaiaVoxelWorld
+    VoxelComponents
+)
+
+set_target_properties(test_rebuild_hierarchy PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_rebuild_hierarchy POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_rebuild_hierarchy>
+        COMMENT "Copying TBB DLL for test_rebuild_hierarchy"
+    )
+endif()
+
+gtest_discover_tests(test_rebuild_hierarchy)

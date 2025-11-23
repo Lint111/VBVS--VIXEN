@@ -2014,3 +2014,152 @@ TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
 
     std::cout << "[MissReturnsInvalidEntity] ✓ Empty octree returns miss correctly\n";
 }
+
+// ============================================================================
+// Octree Rebuild API Tests (Phase 3)
+// ============================================================================
+
+/**
+ * Test rebuild() API design (stub implementation).
+ * Verifies API exists and compiles correctly.
+ */
+TEST(EntityBasedRebuildTest, RebuildAPIStub) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    GaiaVoxelWorld world;
+
+    // Create some test entities
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+
+    auto entity1 = world.createVoxel(VoxelCreationRequest{glm::vec3(10, 10, 10), components});
+    auto entity2 = world.createVoxel(VoxelCreationRequest{glm::vec3(20, 20, 20), components});
+    auto entity3 = world.createVoxel(VoxelCreationRequest{glm::vec3(30, 30, 30), components});
+
+    ASSERT_TRUE(world.exists(entity1));
+    ASSERT_TRUE(world.exists(entity2));
+    ASSERT_TRUE(world.exists(entity3));
+
+    // Create octree with entity-based constructor
+    LaineKarrasOctree octree(world);
+
+    // Test rebuild API (stub - prints "NOT YET IMPLEMENTED")
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
+    octree.rebuild(world, worldMin, worldMax);
+
+    // Test partial update API (stub)
+    octree.updateBlock(glm::vec3(10, 10, 10), 3);
+
+    // Test block removal API (stub)
+    octree.removeBlock(glm::vec3(20, 20, 20), 3);
+
+    // Test concurrency control API
+    octree.lockForRendering();
+    // ... ray casting would happen here ...
+    octree.unlockAfterRendering();
+
+    std::cout << "[RebuildAPIStub] ✓ Rebuild API compiles and can be called\n";
+}
+
+/**
+ * Test rebuild() with hierarchical structure validation.
+ * Creates entities in multiple bricks, rebuilds octree, verifies:
+ * - Brick-level descriptors created for populated bricks
+ * - Parent descriptors created for each hierarchy level
+ * - Root descriptor exists
+ * - BFS ordering maintained (contiguous children)
+ */
+TEST(EntityBasedRebuildTest, RebuildHierarchicalStructure) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[RebuildHierarchicalStructure] Testing hierarchical octree construction...\n";
+
+    GaiaVoxelWorld world;
+
+    // Create entities in 4 separate bricks (depth 3 = 8³ voxels per brick)
+    // This ensures we have multiple bricks and need parent hierarchy
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+
+    // Brick 1: (0-8, 0-8, 0-8)
+    auto e1 = world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+    auto e2 = world.createVoxel(VoxelCreationRequest{glm::vec3(5, 5, 5), components});
+
+    // Brick 2: (16-24, 0-8, 0-8)
+    auto e3 = world.createVoxel(VoxelCreationRequest{glm::vec3(18, 2, 2), components});
+    auto e4 = world.createVoxel(VoxelCreationRequest{glm::vec3(20, 5, 5), components});
+
+    // Brick 3: (0-8, 16-24, 0-8)
+    auto e5 = world.createVoxel(VoxelCreationRequest{glm::vec3(2, 18, 2), components});
+    auto e6 = world.createVoxel(VoxelCreationRequest{glm::vec3(5, 20, 5), components});
+
+    // Brick 4: (16-24, 16-24, 0-8)
+    auto e7 = world.createVoxel(VoxelCreationRequest{glm::vec3(18, 18, 2), components});
+    auto e8 = world.createVoxel(VoxelCreationRequest{glm::vec3(20, 20, 5), components});
+
+    ASSERT_TRUE(world.exists(e1));
+    ASSERT_TRUE(world.exists(e8));
+
+    std::cout << "[RebuildHierarchicalStructure] Created 8 entities in 4 bricks\n";
+
+    // Create octree and rebuild from world
+    LaineKarrasOctree octree(world, 23, 3);  // depth 23, brick depth 3
+
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(1024.0f, 1024.0f, 1024.0f);  // Large world
+    octree.rebuild(world, worldMin, worldMax);
+
+    std::cout << "[RebuildHierarchicalStructure] Rebuild complete - validating structure...\n";
+
+    // Validate: Should have more than just brick descriptors (need parents + root)
+    // With 4 bricks at depth 3 (maxLevels 23 → 20 levels above bricks):
+    // - 4 brick descriptors (depth 3)
+    // - Parent descriptors at each level (depth 4, 5, ..., 23)
+    // - Minimum: 4 bricks + 1 parent at depth 4 + ... + 1 root at depth 23
+
+    // We can't predict exact count (depends on spatial distribution), but:
+    // - Must have at least 4 descriptors (4 bricks)
+    // - Must have more than 4 (parents + root)
+    // - Should have root at index 0 (BFS order)
+
+    const auto& descriptors = octree.getOctree()->root->childDescriptors;
+    const auto& brickViews = octree.getOctree()->root->brickViews;
+
+    std::cout << "[RebuildHierarchicalStructure] Descriptors: " << descriptors.size() << "\n";
+    std::cout << "[RebuildHierarchicalStructure] BrickViews: " << brickViews.size() << "\n";
+
+    // Validation 1: Must have at least 4 brick views (one per populated brick)
+    ASSERT_GE(brickViews.size(), 4) << "Expected at least 4 brick views";
+
+    // Validation 2: Must have more descriptors than bricks (parents + root)
+    ASSERT_GT(descriptors.size(), brickViews.size())
+        << "Expected parent descriptors above brick level";
+
+    // Validation 3: Root descriptor (index 0) should have non-zero validMask
+    ASSERT_GT(descriptors[0].validMask, 0)
+        << "Root descriptor should have valid children";
+
+    // Validation 4: Root should not be a leaf (leafMask should be 0x00 or partial)
+    ASSERT_NE(descriptors[0].leafMask, 0xFF)
+        << "Root should not have all leaf children (has intermediate nodes)";
+
+    std::cout << "[RebuildHierarchicalStructure] Root descriptor: "
+              << "validMask=0x" << std::hex << (int)descriptors[0].validMask
+              << " leafMask=0x" << (int)descriptors[0].leafMask
+              << " childPointer=" << std::dec << descriptors[0].childPointer << "\n";
+
+    // Validation 5: If root has childPointer, it should point to valid index
+    if (descriptors[0].childPointer > 0) {
+        ASSERT_LT(descriptors[0].childPointer, descriptors.size())
+            << "Root childPointer should be valid index";
+    }
+
+    std::cout << "[RebuildHierarchicalStructure] ✓ Hierarchical structure validated\n";
+}

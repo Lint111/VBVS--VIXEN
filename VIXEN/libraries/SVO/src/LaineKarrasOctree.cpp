@@ -7,6 +7,8 @@
 #include <limits>
 #include <cmath>
 #include <iostream>
+#include <queue>
+#include <unordered_map>
 
 namespace SVO {
 
@@ -1892,6 +1894,343 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
 
     // Exceeded step limit
     return std::nullopt;
+}
+
+// ============================================================================
+// Octree Rebuild API (Phase 3)
+// ============================================================================
+
+void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax) {
+    using namespace ::GaiaVoxel;
+
+    std::cout << "[rebuild] Building octree from GaiaVoxelWorld via per-brick queries...\n";
+
+    // 1. Acquire write lock (blocks rendering)
+    std::unique_lock<std::shared_mutex> lock(m_renderLock);
+
+    // 2. Clear existing octree structure
+    m_octree = std::make_unique<Octree>();
+    m_octree->root = std::make_unique<OctreeBlock>();
+    m_octree->worldMin = worldMin;
+    m_octree->worldMax = worldMax;
+    m_worldMin = worldMin;
+    m_worldMax = worldMax;
+
+    // 3. Calculate brick grid dimensions
+    int brickDepth = m_brickDepthLevels;
+    int brickSideLength = 1 << brickDepth;  // 2^3 = 8 for depth 3
+
+    glm::vec3 worldSize = worldMax - worldMin;
+    // Assume voxelSize = 1.0, so worldSize in voxels = worldSize
+    int voxelsPerAxis = static_cast<int>(worldSize.x);  // Assume uniform cube world
+    int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;  // Round up
+    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
+
+    std::cout << "[rebuild] Brick configuration: depth=" << brickDepth
+              << " sideLength=" << brickSideLength
+              << " worldSize=" << brickWorldSize
+              << " bricksPerAxis=" << bricksPerAxis << "\n";
+
+    // 4. PHASE 1: Collect populated bricks
+    struct BrickInfo {
+        glm::ivec3 gridCoord;     // Brick grid coordinate (0 to bricksPerAxis-1)
+        glm::vec3 worldMin;       // World-space minimum corner
+        uint64_t baseMortonKey;   // Morton key for brick minimum
+        size_t entityCount;       // Number of entities in brick
+    };
+
+    std::vector<BrickInfo> populatedBricks;
+    size_t totalVoxels = 0;
+
+    for (int bz = 0; bz < bricksPerAxis; ++bz) {
+        for (int by = 0; by < bricksPerAxis; ++by) {
+            for (int bx = 0; bx < bricksPerAxis; ++bx) {
+                glm::vec3 brickWorldMin = worldMin + glm::vec3(
+                    bx * brickWorldSize,
+                    by * brickWorldSize,
+                    bz * brickWorldSize
+                );
+
+                // Query entities in this brick region (cached query, very fast)
+                auto entitySpan = world.getEntityBlockRef(brickWorldMin, static_cast<uint8_t>(brickDepth));
+
+                // Skip empty bricks
+                if (entitySpan.empty()) {
+                    continue;
+                }
+
+                totalVoxels += entitySpan.size();
+
+                // Store populated brick info
+                MortonKey brickMortonKey = MortonKeyUtils::fromPosition(brickWorldMin);
+                populatedBricks.push_back(BrickInfo{
+                    glm::ivec3(bx, by, bz),
+                    brickWorldMin,
+                    brickMortonKey.code,
+                    entitySpan.size()
+                });
+            }
+        }
+    }
+
+    std::cout << "[rebuild] Phase 1 complete: " << populatedBricks.size() << " populated bricks (out of "
+              << (bricksPerAxis * bricksPerAxis * bricksPerAxis) << " total)\n";
+    std::cout << "[rebuild] Total voxels: " << totalVoxels << "\n";
+
+    if (populatedBricks.empty()) {
+        std::cout << "[rebuild] No voxels found - octree is empty\n";
+        m_octree->totalVoxels = 0;
+        return;
+    }
+
+    // 5. PHASE 2: Build hierarchy bottom-up with child mapping
+    // Based on VoxelInjection.cpp compaction algorithm
+    std::cout << "[rebuild] Phase 2: Building hierarchy bottom-up...\n";
+
+    // Node key for mapping grid coordinates to descriptor indices
+    struct NodeKey {
+        int depth;
+        glm::ivec3 coord;
+
+        bool operator==(const NodeKey& other) const {
+            return depth == other.depth && coord == other.coord;
+        }
+    };
+
+    struct NodeKeyHash {
+        size_t operator()(const NodeKey& key) const {
+            size_t h1 = std::hash<int>{}(key.depth);
+            size_t h2 = std::hash<int>{}(key.coord.x);
+            size_t h3 = std::hash<int>{}(key.coord.y);
+            size_t h4 = std::hash<int>{}(key.coord.z);
+            return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
+        }
+    };
+
+    std::unordered_map<NodeKey, uint32_t, NodeKeyHash> nodeToDescriptorIndex;
+    std::vector<ChildDescriptor> tempDescriptors;
+    std::vector<EntityBrickView> tempBrickViews;
+
+    // Child mapping: parentDescriptorIndex → [8 child descriptor indices]
+    // UINT32_MAX means octant is empty
+    std::unordered_map<uint32_t, std::array<uint32_t, 8>> childMapping;
+
+    // Initialize brick-level nodes (depth = brickDepth)
+    for (const auto& brick : populatedBricks) {
+        NodeKey key{brickDepth, brick.gridCoord};
+        uint32_t descriptorIndex = static_cast<uint32_t>(tempDescriptors.size());
+        nodeToDescriptorIndex[key] = descriptorIndex;
+
+        // Create brick descriptor (all children are leaf voxels)
+        ChildDescriptor desc{};
+        desc.validMask = 0xFF;  // All 8 octants populated (simplified)
+        desc.leafMask = 0xFF;   // All children are leaves (voxel level)
+        desc.childPointer = 0;  // No further subdivision
+        desc.farBit = 0;
+        desc.contourPointer = 0;
+        desc.contourMask = 0;
+
+        tempDescriptors.push_back(desc);
+
+        // Create EntityBrickView for this brick
+        EntityBrickView brickView(world, brick.baseMortonKey, static_cast<uint8_t>(brickDepth));
+        tempBrickViews.push_back(brickView);
+    }
+
+    std::cout << "[rebuild] Brick level (depth " << brickDepth << "): " << populatedBricks.size() << " descriptors\n";
+
+    // Build parent levels bottom-up
+    for (int currentDepth = brickDepth + 1; currentDepth <= m_maxLevels; ++currentDepth) {
+        struct IVec3Hash {
+            size_t operator()(const glm::ivec3& v) const {
+                size_t h1 = std::hash<int>{}(v.x);
+                size_t h2 = std::hash<int>{}(v.y);
+                size_t h3 = std::hash<int>{}(v.z);
+                return h1 ^ (h2 << 1) ^ (h3 << 2);
+            }
+        };
+        std::unordered_map<glm::ivec3, std::vector<std::pair<int, uint32_t>>, IVec3Hash> parentToChildren;
+        // Maps: parentCoord → [(octant, childDescriptorIndex), ...]
+
+        // Group child nodes by parent coordinate
+        int childDepth = currentDepth - 1;
+
+        for (const auto& [key, descriptorIndex] : nodeToDescriptorIndex) {
+            if (key.depth != childDepth) continue;
+
+            // Calculate parent coordinate (divide by 2 in grid space)
+            glm::ivec3 parentCoord = key.coord / 2;
+
+            // Calculate which octant this child belongs to in parent
+            glm::ivec3 octantBit = key.coord % 2;
+            int octant = octantBit.x + (octantBit.y << 1) + (octantBit.z << 2);
+
+            parentToChildren[parentCoord].push_back({octant, descriptorIndex});
+        }
+
+        if (parentToChildren.empty()) {
+            break;
+        }
+
+        // Create parent descriptors
+        size_t parentsCreated = 0;
+        for (const auto& [parentCoord, children] : parentToChildren) {
+            uint32_t parentDescriptorIndex = static_cast<uint32_t>(tempDescriptors.size());
+            NodeKey parentKey{currentDepth, parentCoord};
+            nodeToDescriptorIndex[parentKey] = parentDescriptorIndex;
+
+            // Compute validMask and leafMask from which octants have children
+            uint8_t validMask = 0;
+            uint8_t leafMask = 0;
+            std::array<uint32_t, 8> childIndices;
+            childIndices.fill(UINT32_MAX);
+
+            for (const auto& [octant, childIndex] : children) {
+                validMask |= (1 << octant);
+                childIndices[octant] = childIndex;
+
+                // If child is a brick descriptor, mark as leaf
+                if (childDepth == brickDepth) {
+                    leafMask |= (1 << octant);
+                }
+            }
+
+            // Store child mapping for BFS reordering phase
+            childMapping[parentDescriptorIndex] = childIndices;
+
+            ChildDescriptor parentDesc{};
+            parentDesc.validMask = validMask;
+            parentDesc.leafMask = leafMask;  // Marks which children are brick descriptors (leaves)
+            parentDesc.childPointer = 0;  // Will be set during BFS reordering
+            parentDesc.farBit = 0;
+            parentDesc.contourPointer = 0;
+            parentDesc.contourMask = 0;
+
+            tempDescriptors.push_back(parentDesc);
+            parentsCreated++;
+        }
+
+        std::cout << "[rebuild] Depth " << currentDepth << ": " << parentsCreated << " parent descriptors\n";
+
+        if (parentsCreated == 1) {
+            std::cout << "[rebuild] Root node created at depth " << currentDepth << "\n";
+            break;
+        }
+    }
+
+    // 6. PHASE 3: BFS reordering for contiguous child storage
+    std::cout << "[rebuild] Phase 3: BFS reordering...\n";
+
+    std::vector<ChildDescriptor> finalDescriptors;
+    std::vector<EntityBrickView> finalBrickViews;
+    std::unordered_map<uint32_t, uint32_t> oldToNewIndex;
+
+    // Find root descriptor (highest depth in nodeToDescriptorIndex)
+    uint32_t rootOldIndex = UINT32_MAX;
+    int rootDepth = -1;
+    for (const auto& [key, index] : nodeToDescriptorIndex) {
+        if (key.depth > rootDepth) {
+            rootDepth = key.depth;
+            rootOldIndex = index;
+        }
+    }
+
+    if (rootOldIndex == UINT32_MAX) {
+        std::cout << "[rebuild] ERROR: No root node found!\n";
+        return;
+    }
+
+    // BFS traversal starting from root
+    struct NodeInfo {
+        uint32_t oldIndex;
+        uint32_t newIndex;
+    };
+
+    std::queue<NodeInfo> bfsQueue;
+    bfsQueue.push({rootOldIndex, 0});
+    oldToNewIndex[rootOldIndex] = 0;
+
+    finalDescriptors.push_back(tempDescriptors[rootOldIndex]);
+
+    while (!bfsQueue.empty()) {
+        NodeInfo current = bfsQueue.front();
+        bfsQueue.pop();
+
+        const ChildDescriptor& desc = tempDescriptors[current.oldIndex];
+
+        // Find non-leaf children using child mapping and leafMask
+        auto it = childMapping.find(current.oldIndex);
+        if (it != childMapping.end()) {
+            std::vector<uint32_t> nonLeafChildren;
+            for (int octant = 0; octant < 8; ++octant) {
+                // Check: valid child AND not a leaf AND has descriptor index
+                if ((desc.validMask & (1 << octant)) &&
+                    !(desc.leafMask & (1 << octant)) &&
+                    it->second[octant] != UINT32_MAX) {
+                    nonLeafChildren.push_back(it->second[octant]);
+                }
+            }
+
+            if (!nonLeafChildren.empty()) {
+                // Set childPointer to where first child will be placed
+                uint32_t firstChildIndex = static_cast<uint32_t>(finalDescriptors.size());
+                finalDescriptors[current.newIndex].childPointer = firstChildIndex;
+
+                // Add all children contiguously
+                for (uint32_t oldChildIndex : nonLeafChildren) {
+                    uint32_t newChildIndex = static_cast<uint32_t>(finalDescriptors.size());
+                    oldToNewIndex[oldChildIndex] = newChildIndex;
+
+                    finalDescriptors.push_back(tempDescriptors[oldChildIndex]);
+                    bfsQueue.push({oldChildIndex, newChildIndex});
+                }
+            }
+        }
+    }
+
+    // Move brick views (order preserved from Phase 2)
+    finalBrickViews = std::move(tempBrickViews);
+
+    // 7. Store final hierarchy in octree
+    m_octree->root->childDescriptors = std::move(finalDescriptors);
+    m_octree->root->brickViews = std::move(finalBrickViews);
+    m_octree->totalVoxels = totalVoxels;
+
+    std::cout << "[rebuild] Final octree: " << m_octree->root->childDescriptors.size() << " descriptors, "
+              << m_octree->root->brickViews.size() << " brick views\n";
+
+    // Lock automatically released when lock goes out of scope
+}
+
+void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
+    // TODO: Implement partial block update
+    // 1. Lock octree for write
+    // 2. Lock specific block in GaiaVoxelWorld
+    // 3. Query entities via getEntityBlockRef()
+    // 4. Update ChildDescriptor for this block
+    // 5. Create/update EntityBrickView
+    // 6. Unlock block, unlock octree
+    std::cout << "[updateBlock] NOT YET IMPLEMENTED\n";
+}
+
+void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
+    // TODO: Implement block removal
+    // 1. Lock octree for write
+    // 2. Find ChildDescriptor for this block
+    // 3. Remove EntityBrickView
+    // 4. Mark block as empty (clear validMask/leafMask)
+    // 5. Unlock octree
+    std::cout << "[removeBlock] NOT YET IMPLEMENTED\n";
+}
+
+void LaineKarrasOctree::lockForRendering() {
+    // Acquire write lock - blocks rebuild/update operations
+    m_renderLock.lock();
+}
+
+void LaineKarrasOctree::unlockAfterRendering() {
+    // Release write lock - allows rebuild/update operations
+    m_renderLock.unlock();
 }
 
 } // namespace SVO
