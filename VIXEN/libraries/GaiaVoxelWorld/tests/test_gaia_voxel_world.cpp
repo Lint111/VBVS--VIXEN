@@ -41,7 +41,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelDefaultParameters) {
     // Check default values
     auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, 1.0f);
+    EXPECT_FLOAT_EQ(density.value(), 1.0f);
 
     auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
@@ -120,7 +120,7 @@ TEST(GaiaVoxelWorldTest, GetDensity) {
 
     auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, expectedDensity);
+    EXPECT_FLOAT_EQ(density.value(), expectedDensity);
 }
 
 TEST(GaiaVoxelWorldTest, GetColor) {
@@ -164,11 +164,11 @@ TEST(GaiaVoxelWorldTest, SetDensity) {
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f);
 
     float newDensity = 0.25f;
-    world.setComponent<Density>(entity, Density{newDensity});
+    world.setComponent<Density>(entity, newDensity);
 
     auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, newDensity);
+    EXPECT_FLOAT_EQ(density.value(), newDensity);
 }
 
 TEST(GaiaVoxelWorldTest, SetColor) {
@@ -333,7 +333,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_CreationEntry) {
     // Verify attributes from first entity
     auto density = world.getComponentValue<Density>(entities[0]);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, 0.8f);
+    EXPECT_FLOAT_EQ(density.value(), 0.8f);
 
     auto color = world.getComponentValue<Color>(entities[0]);
     ASSERT_TRUE(color.has_value());
@@ -447,7 +447,7 @@ TEST(GaiaVoxelWorldTest, ZeroDensity) {
 
     auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, 0.0f);
+    EXPECT_FLOAT_EQ(density.value(), 0.0f);
 
     // Should NOT appear in solid voxels query
     auto solidVoxels = world.querySolidVoxels();

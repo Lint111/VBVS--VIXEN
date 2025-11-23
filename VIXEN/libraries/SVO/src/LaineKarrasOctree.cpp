@@ -2015,9 +2015,8 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         tempDescriptors.push_back(desc);
 
         // Create EntityBrickView for this brick
-        // Convert Morton key to world position for EntityBrickView
-        glm::vec3 brickWorldPos = MortonKeyUtils::toWorldPos(brick.baseMortonKey);
-        EntityBrickView brickView(world, brickWorldPos, static_cast<uint8_t>(brickDepth));
+        // Use the actual world position stored in BrickInfo (don't recalculate from Morton!)
+        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth));
         tempBrickViews.push_back(brickView);
     }
 

@@ -27,6 +27,9 @@ TEST(RebuildHierarchyTest, MultipleBricksHierarchy) {
     std::cout << "\n[MultipleBricksHierarchy] Testing hierarchical octree construction...\n";
 
     GaiaVoxelWorld world;
+    VoxelData::AttributeRegistry registry;
+    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
+    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
     // Create entities in 4 separate bricks (depth 3 = 8³ voxels per brick)
     // This ensures we have multiple bricks and need parent hierarchy
@@ -58,7 +61,7 @@ TEST(RebuildHierarchyTest, MultipleBricksHierarchy) {
 
     // Create octree and rebuild from world
     // maxLevels=8, brick depth=3 → 2^8 = 256 voxels, 2^(8-3) = 32 bricks per axis
-    LaineKarrasOctree octree(world, 8, 3);
+    LaineKarrasOctree octree(world, &registry, 8, 3);
 
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(32.0f, 32.0f, 32.0f);  // 32³ world
@@ -108,6 +111,9 @@ TEST(RebuildHierarchyTest, SingleBrick) {
     std::cout << "\n[SingleBrick] Testing single brick rebuild...\n";
 
     GaiaVoxelWorld world;
+    VoxelData::AttributeRegistry registry;
+    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
+    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
     ComponentQueryRequest components[] = {
         Density{1.0f},
@@ -121,7 +127,7 @@ TEST(RebuildHierarchyTest, SingleBrick) {
     ASSERT_TRUE(world.exists(e1));
     ASSERT_TRUE(world.exists(e2));
 
-    LaineKarrasOctree octree(world, 8, 3);  // depth 8, brick depth 3
+    LaineKarrasOctree octree(world, &registry, 8, 3);  // depth 8, brick depth 3
     octree.rebuild(world, glm::vec3(0, 0, 0), glm::vec3(16, 16, 16));
 
     const auto& descriptors = octree.getOctree()->root->childDescriptors;
@@ -147,7 +153,10 @@ TEST(RebuildHierarchyTest, EmptyWorld) {
     std::cout << "\n[EmptyWorld] Testing empty world rebuild...\n";
 
     GaiaVoxelWorld world;
-    LaineKarrasOctree octree(world, 8, 3);  // depth 8, brick depth 3
+    VoxelData::AttributeRegistry registry;
+    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
+    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    LaineKarrasOctree octree(world, &registry, 8, 3);  // depth 8, brick depth 3
 
     octree.rebuild(world, glm::vec3(0, 0, 0), glm::vec3(16, 16, 16));
 
@@ -175,6 +184,9 @@ TEST(RebuildHierarchyTest, StressTest_NoiseGenerated) {
     std::cout << "\n[StressTest_NoiseGenerated] Testing large sparse scene with procedural noise...\n";
 
     GaiaVoxelWorld world;
+    VoxelData::AttributeRegistry registry;
+    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
+    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
     // Simple 3D noise function (hash-based)
     auto noise3D = [](int x, int y, int z) -> float {
@@ -218,7 +230,7 @@ TEST(RebuildHierarchyTest, StressTest_NoiseGenerated) {
     ASSERT_GT(voxelsCreated, 0) << "Should have created some voxels";
 
     // Create octree and rebuild
-    LaineKarrasOctree octree(world, 8, 3);  // depth 8 → 256³ max, brick depth 3
+    LaineKarrasOctree octree(world, &registry, 8, 3);  // depth 8 → 256³ max, brick depth 3
 
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(static_cast<float>(worldSize), static_cast<float>(worldSize), static_cast<float>(worldSize));

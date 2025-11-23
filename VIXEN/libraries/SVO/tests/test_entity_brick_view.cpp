@@ -145,7 +145,7 @@ TEST(EntityBrickViewTest, GetDensity_LinearIndex) {
 
     auto density = brick.getComponentValue<Density>(10);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, 0.75f);
+    EXPECT_FLOAT_EQ(density.value(), 0.75f);
 }
 
 TEST(EntityBrickViewTest, GetDensity_3DCoords) {
@@ -157,7 +157,7 @@ TEST(EntityBrickViewTest, GetDensity_3DCoords) {
 
     auto density = brick.getComponentValue<Density>(3, 2, 1);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value().value, 0.5f);
+    EXPECT_FLOAT_EQ(density.value(), 0.5f);
 }
 
 TEST(EntityBrickViewTest, GetColor_LinearIndex) {
