@@ -85,22 +85,13 @@ public:
     void ensureInitialized(const glm::vec3& worldMin, const glm::vec3& worldMax, int maxLevels);
 
     // ========================================================================
-    // Entity-Based Insertion (NEW API)
+    // DEPRECATED: Incremental Insertion API (removed in favor of rebuild())
     // ========================================================================
-
-    /**
-     * Insert entity into spatial index.
-     * Extracts position from entity's MortonKey component.
-     * Stores entity reference (8 bytes) instead of copying voxel data.
-     *
-     * @param entity Gaia ECS entity with MortonKey component
-     */
-    void insert(gaia::ecs::Entity entity);
-
-    /**
-     * Remove entity from spatial index.
-     */
-    void remove(gaia::ecs::Entity entity);
+    // Use rebuild() for octree population from GaiaVoxelWorld entities.
+    // For incremental updates, use updateBlock() API (Phase 3 TODO).
+    //
+    // void insert(gaia::ecs::Entity entity);  // REMOVED - use rebuild()
+    // void remove(gaia::ecs::Entity entity);  // REMOVED - use rebuild()
 
     // ========================================================================
     // Octree Rebuild API (Phase 3)
@@ -152,10 +143,6 @@ private:
 
     // Entity-based storage (NEW architecture)
     ::GaiaVoxel::GaiaVoxelWorld* m_voxelWorld = nullptr;  // Non-owning pointer to voxel world
-
-    // Temporary entity mapping (descriptor index → entity)
-    // TODO: Replace with proper entity storage in OctreeBlock
-    std::unordered_map<size_t, gaia::ecs::Entity> m_leafEntityMap;
 
     // Concurrency control - prevents rebuild during frame rendering
     mutable std::shared_mutex m_renderLock;

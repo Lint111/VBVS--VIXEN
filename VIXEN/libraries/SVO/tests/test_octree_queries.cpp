@@ -1859,11 +1859,11 @@ TEST(LaineKarrasOctree, RayOriginInsideOctree) {
 // ===========================================================================
 
 /**
- * Test entity-based octree insertion and ray casting retrieval.
+ * Test entity-based octree rebuild and ray casting retrieval.
  *
  * Validates the complete entity workflow:
  * 1. Create voxel entity via GaiaVoxelWorld
- * 2. Insert entity into spatial index (LaineKarrasOctree)
+ * 2. Rebuild octree from entities (LaineKarrasOctree::rebuild)
  * 3. Ray cast to find voxel
  * 4. Retrieve entity from RayHit result
  * 5. Read entity components via ECS world
@@ -1873,14 +1873,8 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
 
     // 1. Create ECS world
     GaiaVoxelWorld world;
-    LaineKarrasOctree octree(world.getWorld());
 
-    // 2. Initialize octree with simple bounds
-    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
-    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
-    octree.ensureInitialized(worldMin, worldMax, 8);
-
-    // 3. Create voxel entity at known position
+    // 2. Create voxel entity at known position
     glm::vec3 voxelPos(10.0f, 20.0f, 30.0f);
 
     // Create entity with components
@@ -1894,25 +1888,28 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
     auto entity = world.createVoxel(request);
     ASSERT_TRUE(world.exists(entity));
 
-    // 4. Insert entity into octree spatial index
-    octree.insert(entity);
+    // 3. Create octree and rebuild from entities
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
+    LaineKarrasOctree octree(world, 5, 3);  // depth 5, brick depth 3
+    octree.rebuild(world, worldMin, worldMax);
 
-    // 5. Ray cast toward the voxel
+    // 4. Ray cast toward the voxel
     glm::vec3 rayOrigin(0.0f, 20.0f, 30.0f);  // From -X direction
     glm::vec3 rayDir(1.0f, 0.0f, 0.0f);       // Shoot +X toward voxel
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
-    // 6. Verify hit occurred
-    ASSERT_TRUE(hit.hit) << "Ray should hit the inserted voxel";
+    // 5. Verify hit occurred
+    ASSERT_TRUE(hit.hit) << "Ray should hit the voxel";
 
-    // 7. Verify entity was returned in hit result
+    // 6. Verify entity was returned in hit result
     ASSERT_TRUE(world.exists(hit.entity)) << "Hit should contain valid entity reference";
 
-    // 8. Verify it's the same entity we inserted
-    EXPECT_EQ(hit.entity, entity) << "Ray casting should return the exact entity we inserted";
+    // 7. Verify it's the same entity we created
+    EXPECT_EQ(hit.entity, entity) << "Ray casting should return the exact entity we created";
 
-    // 9. Read entity components from ECS world
+    // 8. Read entity components from ECS world
     auto density = world.getComponentValue<Density>(hit.entity);
     ASSERT_TRUE(density.has_value()) << "Entity should have Density component";
     EXPECT_FLOAT_EQ(density.value(), 1.0f);
@@ -1927,7 +1924,7 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
     ASSERT_TRUE(normal.has_value()) << "Entity should have Normal component";
     EXPECT_FLOAT_EQ(normal.value().y, 1.0f);
 
-    std::cout << "[EntityOctreeIntegrationTest] ✓ Entity-based ray casting validated\n";
+    std::cout << "[EntityOctreeIntegrationTest] ✓ Entity-based ray casting validated (rebuild workflow)\n";
     std::cout << "  Entity ID: " << hit.entity.id() << "\n";
     std::cout << "  Hit position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
     std::cout << "  Density: " << density.value() << "\n";
@@ -1935,17 +1932,12 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
 }
 
 /**
- * Test multiple entity insertions and selective ray casting.
+ * Test multiple entity creation and selective ray casting.
  */
 TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
     using namespace GaiaVoxel;
 
     GaiaVoxelWorld world;
-    LaineKarrasOctree octree(world.getWorld());
-
-    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
-    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
-    octree.ensureInitialized(worldMin, worldMax, 8);
 
     // Create 3 voxels at different positions with different colors
     struct VoxelSpec {
@@ -1954,9 +1946,9 @@ TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
     };
 
     VoxelSpec voxels[] = {
-        {{10.0f, 50.0f, 50.0f}, {1.0f, 0.0f, 0.0f}},  // Red at X=10
-        {{30.0f, 50.0f, 50.0f}, {0.0f, 1.0f, 0.0f}},  // Green at X=30
-        {{50.0f, 50.0f, 50.0f}, {0.0f, 0.0f, 1.0f}}   // Blue at X=50
+        {{10.0f, 16.0f, 16.0f}, {1.0f, 0.0f, 0.0f}},  // Red at X=10
+        {{14.0f, 16.0f, 16.0f}, {0.0f, 1.0f, 0.0f}},  // Green at X=14
+        {{18.0f, 16.0f, 16.0f}, {0.0f, 0.0f, 1.0f}}   // Blue at X=18
     };
 
     std::vector<gaia::ecs::Entity> entities;
@@ -1967,12 +1959,17 @@ TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
         };
         VoxelCreationRequest request{spec.position, components};
         auto entity = world.createVoxel(request);
-        octree.insert(entity);
         entities.push_back(entity);
     }
 
+    // Rebuild octree from entities
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
+    LaineKarrasOctree octree(world, 5, 3);  // depth 5, brick depth 3
+    octree.rebuild(world, worldMin, worldMax);
+
     // Cast ray along +X axis - should hit voxels in order
-    glm::vec3 rayOrigin(0.0f, 50.0f, 50.0f);
+    glm::vec3 rayOrigin(0.0f, 16.0f, 16.0f);
     glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
@@ -1987,7 +1984,7 @@ TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
     EXPECT_FLOAT_EQ(color.value().g, 0.0f);
     EXPECT_FLOAT_EQ(color.value().b, 0.0f);
 
-    std::cout << "[MultipleEntitiesRayCasting] ✓ Verified first voxel hit (red)\n";
+    std::cout << "[MultipleEntitiesRayCasting] ✓ Verified first voxel hit (red) (rebuild workflow)\n";
 }
 
 /**
@@ -1997,14 +1994,15 @@ TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
     using namespace GaiaVoxel;
 
     GaiaVoxelWorld world;
-    LaineKarrasOctree octree(world.getWorld());
 
+    // Rebuild octree from empty world
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
-    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
-    octree.ensureInitialized(worldMin, worldMax, 8);
+    glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
+    LaineKarrasOctree octree(world, 5, 3);
+    octree.rebuild(world, worldMin, worldMax);
 
     // Cast ray through empty space
-    glm::vec3 rayOrigin(0.0f, 50.0f, 50.0f);
+    glm::vec3 rayOrigin(0.0f, 16.0f, 16.0f);
     glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
@@ -2012,7 +2010,7 @@ TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
     EXPECT_FALSE(hit.hit) << "Ray should miss in empty octree";
     EXPECT_FALSE(world.exists(hit.entity)) << "Miss should return invalid entity";
 
-    std::cout << "[MissReturnsInvalidEntity] ✓ Empty octree returns miss correctly\n";
+    std::cout << "[MissReturnsInvalidEntity] ✓ Empty octree returns miss correctly (rebuild workflow)\n";
 }
 
 // ============================================================================

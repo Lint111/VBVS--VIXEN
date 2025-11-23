@@ -170,47 +170,13 @@ LaineKarrasOctree::~LaineKarrasOctree() = default;
 // Entity-Based Insertion API
 // ============================================================================
 
-void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
-    using namespace GaiaVoxel;
-
-    if (!m_voxelWorld) {
-        return;  // Entity mode not enabled
-    }
-
-    // 1. Extract position from entity's MortonKey component
-    auto posOpt = m_voxelWorld->getPosition(entity);
-    if (!posOpt) {
-        return; // Entity must have MortonKey for spatial indexing
-    }
-
-    glm::vec3 position = *posOpt;
-
-    // 2. Compute Morton key for spatial indexing
-    GaiaVoxel::MortonKey key = GaiaVoxel::MortonKeyUtils::fromPosition(position);
-
-    // 3. For Phase 3, we're not doing actual octree insertion yet
-    //    Just store the entity mapping for ray casting retrieval
-    //    Phase 3 will implement proper additive insertion into octree structure
-
-    // Store entity in map with Morton code as key
-    // This allows ray casting to retrieve entities by hit position
-    m_leafEntityMap[key.code] = entity;
-
-    std::cout << "[LaineKarrasOctree] Inserted entity " << entity.id()
-              << " at position (" << position.x << ", " << position.y << ", " << position.z << ")"
-              << " with Morton code " << key.code << "\n";
-}
-
-void LaineKarrasOctree::remove(gaia::ecs::Entity entity) {
-    // TODO: Implement entity removal
-    // This will find and remove entity from leaf entity map
-    if (!m_voxelWorld) {
-        return;
-    }
-
-    // Find entity in leaf map and remove
-    // Update octree structure if needed
-}
+// ============================================================================
+// REMOVED: insert() and remove() methods (Phase 2 temporary bridge)
+// ============================================================================
+// Replaced by rebuild() API. Use:
+//   octree.rebuild(world, worldMin, worldMax)
+// to populate octree from entities.
+// ============================================================================
 
 void LaineKarrasOctree::setOctree(std::unique_ptr<Octree> octree) {
     m_octree = std::move(octree);
@@ -1077,35 +1043,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     float voxelSize = getVoxelSize(hit.scale);
                     hit.normal = computeSurfaceNormal(this, hit.hitPoint, voxelSize);
 
-                    // NEW: Look up entity from leaf entity map
-                    // Try two lookup strategies:
-                    // 1. By descriptor index (for voxels inserted via old API)
-                    // 2. By Morton code computed from hit position (for voxels inserted via new entity API)
-
-                    if (m_voxelWorld != nullptr) {
-                        using namespace GaiaVoxel;
-
-                        // Strategy 1: Descriptor index lookup
-                        size_t leafDescIndex = parent - &m_octree->root->childDescriptors[0];
-                        auto it = m_leafEntityMap.find(leafDescIndex);
-                        if (it != m_leafEntityMap.end()) {
-                            hit.entity = it->second;
-                        } else {
-                            // Strategy 2: Morton code lookup (for entity-based insertion)
-                            // Compute Morton key from hit position
-                            GaiaVoxel::MortonKey mortonCode = GaiaVoxel::MortonKeyUtils::fromPosition(hit.hitPoint);
-                            auto it2 = m_leafEntityMap.find(mortonCode.code);
-                            if (it2 != m_leafEntityMap.end()) {
-                                hit.entity = it2->second;
-                            } else {
-                                // No entity found - create invalid entity
-                                hit.entity = gaia::ecs::Entity();
-                            }
-                        }
-                    } else {
-                        // No voxel world - create invalid entity
-                        hit.entity = gaia::ecs::Entity();
-                    }
+                    // Legacy descriptor-based leaf hit (no entity data available)
+                    // Use rebuild() workflow to populate EntityBrickView instances
+                    hit.entity = gaia::ecs::Entity();  // Invalid entity
 
                     return hit;
                 }
