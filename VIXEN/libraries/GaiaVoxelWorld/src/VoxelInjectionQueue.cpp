@@ -60,7 +60,12 @@ bool VoxelInjectionQueue::isRunning() const {
 // Enqueue Operations
 // ============================================================================
 
-bool VoxelInjectionQueue::enqueue(const glm::vec3& position, const VoxelCreationRequest& request) {
+bool VoxelInjectionQueue::enqueue(
+    const glm::vec3& position,
+    float density,
+    const glm::vec3& color,
+    const glm::vec3& normal) {
+
     size_t currentWrite = m_writeIndex.load(std::memory_order_relaxed);
     size_t nextWrite = (currentWrite + 1) % m_capacity;
 
@@ -71,7 +76,9 @@ bool VoxelInjectionQueue::enqueue(const glm::vec3& position, const VoxelCreation
 
     // Write to queue
     m_ringBuffer[currentWrite].key = MortonKey::fromPosition(position);
-    m_ringBuffer[currentWrite].request = request;
+    m_ringBuffer[currentWrite].density = density;
+    m_ringBuffer[currentWrite].color = color;
+    m_ringBuffer[currentWrite].normal = normal;
 
     m_writeIndex.store(nextWrite, std::memory_order_release);
 
@@ -79,18 +86,6 @@ bool VoxelInjectionQueue::enqueue(const glm::vec3& position, const VoxelCreation
     m_cv.notify_one();
 
     return true;
-}
-
-size_t VoxelInjectionQueue::enqueueBatch(const std::vector<std::pair<glm::vec3, VoxelCreationRequest>>& batch) {
-    size_t count = 0;
-    for (const auto& [position, request] : batch) {
-        if (enqueue(position, request)) {
-            count++;
-        } else {
-            break; // Queue full
-        }
-    }
-    return count;
 }
 
 // ============================================================================
@@ -146,7 +141,13 @@ void VoxelInjectionQueue::flush() {
 
 void VoxelInjectionQueue::processWorker() {
     constexpr size_t BATCH_SIZE = 256;
-    std::span<VoxelCreationRequest> batch;
+    struct BatchEntry {
+        glm::vec3 position;
+        float density;
+        glm::vec3 color;
+        glm::vec3 normal;
+    };
+    std::vector<BatchEntry> batch;
     batch.reserve(BATCH_SIZE);
 
     while (m_running.load(std::memory_order_relaxed)) {
@@ -176,16 +177,28 @@ void VoxelInjectionQueue::processWorker() {
             glm::ivec3 gridPos = entry.key.toGridPos();
             glm::vec3 position(gridPos.x, gridPos.y, gridPos.z);
 
-            batch.push_back({position, entry.request});
+            batch.push_back({position, entry.density, entry.color, entry.normal});
             currentRead = (currentRead + 1) % m_capacity;
         }
 
         m_readIndex.store(currentRead, std::memory_order_release);
 
-        // Process batch - create entities
+        // Process batch - create entities using simple API
         if (!batch.empty()) {
             try {
-                std::vector<gaia::ecs::Entity> entities = m_world.createVoxelsBatch(batch);
+                std::vector<gaia::ecs::Entity> entities;
+                entities.reserve(batch.size());
+
+                // Create entities using simple API
+                for (const auto& entry : batch) {
+                    auto entity = m_world.createVoxel(
+                        entry.position,
+                        entry.density,
+                        entry.color,
+                        entry.normal
+                    );
+                    entities.push_back(entity);
+                }
 
                 // Store created entities
                 {

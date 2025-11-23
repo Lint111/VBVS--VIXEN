@@ -1,7 +1,7 @@
 #pragma once
 
 #include "VoxelComponents.h"
-#include "VoxelCreationRequest.h"
+#include "ComponentData.h"
 #include <glm/glm.hpp>
 #include <atomic>
 #include <condition_variable>
@@ -34,8 +34,7 @@ class GaiaVoxelWorld;
  *   queue.start(4); // 4 worker threads
  *
  *   // Enqueue voxel creation
- *   VoxelCreationRequest req(1.0f, red, normal);
- *   queue.enqueue(glm::vec3(10, 5, 3), req);
+ *   queue.enqueue(glm::vec3(10, 5, 3), 1.0f, red, normal);
  *
  *   // Get created entities for SVO insertion
  *   auto entities = queue.getCreatedEntities();
@@ -87,14 +86,11 @@ public:
      * Lock-free, non-blocking.
      * @return false if queue is full
      */
-    bool enqueue(const glm::vec3& position, const VoxelCreationRequest& request);
-
-    /**
-     * Enqueue batch of voxels.
-     * More efficient than individual enqueue() calls.
-     * @return Number of voxels successfully enqueued
-     */
-    size_t enqueueBatch(const std::vector<std::pair<glm::vec3, VoxelCreationRequest>>& batch);
+    bool enqueue(
+        const glm::vec3& position,
+        float density = 1.0f,
+        const glm::vec3& color = glm::vec3(1.0f),
+        const glm::vec3& normal = glm::vec3(0.0f, 1.0f, 0.0f));
 
     // ========================================================================
     // Entity Access
@@ -138,9 +134,11 @@ public:
 
 private:
     struct QueueEntry {
-        MortonKey key;                 // 8 bytes - encoded position
-        VoxelCreationRequest request;  // 32 bytes - attributes
-        // Total: 40 bytes (vs 64+ with DynamicVoxelScalar)
+        MortonKey key;         // 8 bytes - encoded position
+        float density;         // 4 bytes
+        glm::vec3 color;       // 12 bytes
+        glm::vec3 normal;      // 12 bytes
+        // Total: 36 bytes (compact, cache-friendly)
     };
 
     GaiaVoxelWorld& m_world;
