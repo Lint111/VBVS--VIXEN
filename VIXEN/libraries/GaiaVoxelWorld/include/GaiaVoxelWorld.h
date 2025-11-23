@@ -112,30 +112,57 @@ public:
     void clear();
 
     // ========================================================================
-    // Component Access (Thread-Safe)
+    // Component Access (Generic Template API)
     // ========================================================================
 
-    // Getters
-    std::optional<glm::vec3> getPosition(EntityID id) const;
-    std::optional<float> getDensity(EntityID id) const;
-    std::optional<glm::vec3> getColor(EntityID id) const;
-    std::optional<glm::vec3> getNormal(EntityID id) const;
-    // getBrickID() REMOVED - Use BrickView pattern instead
+    /**
+     * Generic component getter - works with any FOR_EACH_COMPONENT type.
+     *
+     * Example:
+     *   auto density = world.getComponent<Density>(entity);     // returns std::optional<float>
+     *   auto color = world.getComponent<Color>(entity);         // returns std::optional<glm::vec3>
+     *   auto material = world.getComponent<Material>(entity);   // returns std::optional<uint32_t>
+     */
+    template<typename TComponent>
+    auto getComponent(EntityID id) const -> std::optional<decltype(std::declval<TComponent>().value)>;
 
-    // Setters
-    void setPosition(EntityID id, const glm::vec3& position);
-    void setDensity(EntityID id, float density);
-    void setColor(EntityID id, const glm::vec3& color);
-    void setNormal(EntityID id, const glm::vec3& normal);
+    /**
+     * Generic component setter - works with any FOR_EACH_COMPONENT type.
+     * Creates component if entity doesn't have it.
+     */
+    template<typename TComponent>
+    void setComponent(EntityID id, decltype(std::declval<TComponent>().value) value);
 
-    // Check component existence (type-safe template version preferred)
-    template<typename Component>
+    /**
+     * Check component existence (type-safe template version).
+     */
+    template<typename TComponent>
     bool hasComponent(EntityID id) const;
 
-    // String-based overload (uses ComponentRegistry for dynamic lookup)
+    /**
+     * String-based component existence check (uses ComponentRegistry for dynamic lookup).
+     * Prefer template version for compile-time safety.
+     */
     bool hasComponent(EntityID id, const char* componentName) const;
 
+    /**
+     * Check if entity exists and is valid.
+     */
     bool exists(EntityID id) const;
+
+    // ========================================================================
+    // Special Accessors (MortonKey requires position conversion)
+    // ========================================================================
+
+    /**
+     * Get world-space position (converts from MortonKey).
+     */
+    std::optional<glm::vec3> getPosition(EntityID id) const;
+
+    /**
+     * Set world-space position (converts to MortonKey).
+     */
+    void setPosition(EntityID id, const glm::vec3& position);
 
     // ========================================================================
     // Spatial Queries
@@ -276,12 +303,41 @@ private:
 };
 
 // ============================================================================
-// Template Implementations
+// Template Implementations (Header-only for implicit instantiation)
 // ============================================================================
 
-template<typename Component>
+template<typename TComponent>
 bool GaiaVoxelWorld::hasComponent(EntityID id) const {
-    return getWorld().valid(id) && getWorld().has<Component>(id);
+    return getWorld().valid(id) && getWorld().has<TComponent>(id);
+}
+
+template<typename TComponent>
+auto GaiaVoxelWorld::getComponent(EntityID id) const -> std::optional<decltype(std::declval<TComponent>().value)> {
+    if (!getWorld().valid(id) || !getWorld().has<TComponent>(id)) {
+        return std::nullopt;
+    }
+
+    // Get component from Gaia ECS
+    auto& component = getWorld().get<TComponent>(id);
+
+    // Return the value (scalar or vec3)
+    return component.value;
+}
+
+template<typename TComponent>
+void GaiaVoxelWorld::setComponent(EntityID id, decltype(std::declval<TComponent>().value) value) {
+    if (!getWorld().valid(id)) {
+        return; // Can't set component on invalid entity
+    }
+
+    // Create component if doesn't exist, otherwise update
+    if (!getWorld().has<TComponent>(id)) {
+        getWorld().add<TComponent>(id);
+    }
+
+    // Update component value
+    auto& component = getWorld().get_mut<TComponent>(id);
+    component.value = value;
 }
 
 } // namespace GaiaVoxel

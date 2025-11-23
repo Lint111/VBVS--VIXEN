@@ -16,20 +16,24 @@ class GaiaVoxelWorld;
  * EntityBrickView - Lightweight span over brick entity array.
  *
  * Does NOT own entity data - just provides convenient access to
- * the 512-entity array representing an 8³ brick.
+ * entity array representing a depth³ brick (e.g., 8³ = 512 entities).
  *
  * Architecture:
  * - Read/write entity references (8 bytes each)
  * - Component access via Gaia ECS (no data duplication)
  * - Zero-copy iteration via std::span
+ * - Depth-driven sizing (depth → brickSize → voxelsPerBrick)
  *
- * Memory Layout:
+ * Memory Layout (depth = 8):
  * - 512 entities × 8 bytes = 4 KB per brick
  * - vs OLD: 512 voxels × 140 bytes = 70 KB per brick (17.5× reduction!)
  *
- * Example:
+ * Example (depth 3 → 2³ = 8 → 8³ = 512 voxels):
  *   std::array<gaia::ecs::Entity, 512> brickEntities;
- *   EntityBrickView brick(world, brickEntities);
+ *   EntityBrickView brick(world, brickEntities, 3);
+ *
+ *   // Derived values: brickSize = 2^3 = 8, voxelsPerBrick = 8³ = 512
+ *   // For SVO: depth typically 3-5 → brickSize 8-32 → voxels 512-32768
  *
  *   // Set entity at voxel (4, 2, 1)
  *   auto entity = world.createVoxel(pos, 1.0f, red, normal);
@@ -47,15 +51,21 @@ class GaiaVoxelWorld;
  */
 class EntityBrickView {
 public:
-    static constexpr size_t BRICK_SIZE = 8;
-    static constexpr size_t VOXELS_PER_BRICK = 512; // 8³
-
     /**
      * Create brick view over entity array.
      * @param world GaiaVoxelWorld for component access
-     * @param entities Reference to brick's entity array (512 entities)
+     * @param entities Reference to brick's entity array
+     * @param depth Brick depth in octree (depth → 2^depth = brickSize)
+     *              Example: depth=3 → brickSize=8 → 8³=512 voxels
+     *                       depth=4 → brickSize=16 → 16³=4096 voxels
+     *                       depth=5 → brickSize=32 → 32³=32768 voxels
      */
-    EntityBrickView(GaiaVoxelWorld& world, std::array<gaia::ecs::Entity, 512>& entities);
+    EntityBrickView(GaiaVoxelWorld& world, std::span<gaia::ecs::Entity> entities, uint8_t depth);
+
+    // Depth-derived properties (set in constructor)
+    [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
+    [[nodiscard]] size_t getVoxelsPerBrick() const { return m_voxelsPerBrick; }
+    [[nodiscard]] uint8_t getDepth() const { return m_depth; }
 
     // ========================================================================
     // Entity Access (Direct)
@@ -88,21 +98,47 @@ public:
     void clearEntity(int x, int y, int z);
 
     // ========================================================================
-    // Component Access (Convenience)
+    // Component Access (Generic Template API)
     // ========================================================================
 
-    // Read component values
-    std::optional<float> getDensity(size_t voxelIdx) const;
-    std::optional<float> getDensity(int x, int y, int z) const;
+    /**
+     * Get component value at linear voxel index.
+     * Uses VoxelComponents API - works with any registered component.
+     *
+     * Example:
+     *   auto density = brick.getComponent<Density>(42);      // returns std::optional<float>
+     *   auto color = brick.getComponent<Color>(4, 2, 1);     // returns std::optional<glm::vec3>
+     */
+    template<typename TComponent>
+    auto getComponent(size_t voxelIdx) const -> std::optional<decltype(std::declval<TComponent>().value)>;
 
-    std::optional<glm::vec3> getColor(size_t voxelIdx) const;
-    std::optional<glm::vec3> getColor(int x, int y, int z) const;
+    template<typename TComponent>
+    auto getComponent(int x, int y, int z) const -> std::optional<decltype(std::declval<TComponent>().value)> {
+        return getComponent<TComponent>(coordToLinearIndex(x, y, z));
+    }
 
-    std::optional<glm::vec3> getNormal(size_t voxelIdx) const;
-    std::optional<glm::vec3> getNormal(int x, int y, int z) const;
+    /**
+     * Set component value at voxel index.
+     * Creates component if entity doesn't have it.
+     */
+    template<typename TComponent>
+    void setComponent(size_t voxelIdx, decltype(std::declval<TComponent>().value) value);
 
-    std::optional<uint32_t> getMaterialID(size_t voxelIdx) const;
-    std::optional<uint32_t> getMaterialID(int x, int y, int z) const;
+    template<typename TComponent>
+    void setComponent(int x, int y, int z, decltype(std::declval<TComponent>().value) value) {
+        setComponent<TComponent>(coordToLinearIndex(x, y, z), value);
+    }
+
+    /**
+     * Check if entity has component.
+     */
+    template<typename TComponent>
+    bool hasComponent(size_t voxelIdx) const;
+
+    template<typename TComponent>
+    bool hasComponent(int x, int y, int z) const {
+        return hasComponent<TComponent>(coordToLinearIndex(x, y, z));
+    }
 
     // ========================================================================
     // Span Access (Zero-Copy Iteration)
@@ -138,16 +174,59 @@ public:
      * Convert 3D coordinate to linear index.
      * Uses Morton code ordering for cache locality.
      */
-    static size_t coordToLinearIndex(int x, int y, int z);
+    size_t coordToLinearIndex(int x, int y, int z) const;
 
     /**
      * Convert linear index to 3D coordinate.
      */
-    static void linearIndexToCoord(size_t idx, int& x, int& y, int& z);
+    void linearIndexToCoord(size_t idx, int& x, int& y, int& z) const;
 
 private:
     GaiaVoxelWorld& m_world;
-    std::array<gaia::ecs::Entity, 512>& m_entities;
+    std::span<gaia::ecs::Entity> m_entities;
+
+    // Depth-derived sizing
+    uint8_t m_depth;                // Brick depth (3-8 typical for SVO)
+    size_t m_brickSize;             // 2^depth (8, 16, 32, ... 256)
+    size_t m_voxelsPerBrick;        // brickSize³ (512, 4096, 32768, ...)
 };
+
+// ============================================================================
+// Template Implementation (Header-only for implicit instantiation)
+// ============================================================================
+
+// Forward declare GaiaVoxelWorld methods we need
+// (actual implementation requires GaiaVoxelWorld.h included in .cpp files that use this)
+
+template<typename TComponent>
+auto EntityBrickView::getComponent(size_t voxelIdx) const -> std::optional<decltype(std::declval<TComponent>().value)> {
+    auto entity = getEntity(voxelIdx);
+    if (entity == gaia::ecs::Entity()) {
+        return std::nullopt;
+    }
+
+    // Delegate to GaiaVoxelWorld's generic template API
+    return m_world.getComponent<TComponent>(entity);
+}
+
+template<typename TComponent>
+void EntityBrickView::setComponent(size_t voxelIdx, decltype(std::declval<TComponent>().value) value) {
+    auto entity = getEntity(voxelIdx);
+    if (entity == gaia::ecs::Entity()) {
+        return; // Can't set component on invalid entity
+    }
+
+    // Delegate to GaiaVoxelWorld's generic template API
+    m_world.setComponent<TComponent>(entity, value);
+}
+
+template<typename TComponent>
+bool EntityBrickView::hasComponent(size_t voxelIdx) const {
+    auto entity = getEntity(voxelIdx);
+    if (entity == gaia::ecs::Entity()) {
+        return false;
+    }
+    return m_world.hasComponent<TComponent>(entity);
+}
 
 } // namespace GaiaVoxel

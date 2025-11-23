@@ -78,30 +78,9 @@ set_target_properties(test_voxel_injector PROPERTIES FOLDER "Tests/GaiaVoxelWorl
 
 gtest_discover_tests(test_voxel_injector)
 
-# ===========================================================================
-# EntityBrickView Tests
-# ===========================================================================
-# Tests zero-copy entity span access:
-# - Linear and 3D coordinate entity access
-# - Component access (density, color, normal, material)
-# - Span iteration (std::span over 512 entities)
-# - Utility functions (countSolidVoxels, isEmpty, isFull)
-# - Index conversion (Morton code ordering)
-# - Memory efficiency validation (4 KB vs 70 KB)
-
-add_executable(test_entity_brick_view
-    test_entity_brick_view.cpp
-)
-
-target_link_libraries(test_entity_brick_view PRIVATE
-    GTest::gtest_main
-    GaiaVoxelWorld
-    VoxelData
-)
-
-set_target_properties(test_entity_brick_view PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
-
-gtest_discover_tests(test_entity_brick_view)
+# NOTE: EntityBrickView tests moved to SVO/tests/ (Phase H.3)
+# EntityBrickView is a spatial view pattern - belongs with spatial indexing (SVO)
+# Location: libraries/SVO/tests/test_entity_brick_view.cpp
 
 # ===========================================================================
 # GaiaVoxelWorld Coverage Tests (Additional API Coverage)

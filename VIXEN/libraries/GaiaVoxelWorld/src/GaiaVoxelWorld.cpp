@@ -153,51 +153,20 @@ void GaiaVoxelWorld::clear() {
 // Component Access (Thread-Safe via Gaia's Lock-Free SoA)
 // ============================================================================
 
+// ============================================================================
+// Special Accessors (MortonKey position conversion)
+// ============================================================================
+
 std::optional<glm::vec3> GaiaVoxelWorld::getPosition(EntityID id) const {
+    // MortonKey is special - needs conversion to world position
     if (!m_impl->world.valid(id) || !m_impl->world.has<MortonKey>(id)) return std::nullopt;
     return toWorldPos(m_impl->world.get<MortonKey>(id));
 }
 
-std::optional<float> GaiaVoxelWorld::getDensity(EntityID id) const {
-    if (!m_impl->world.valid(id) || !m_impl->world.has<Density>(id)) return std::nullopt;
-    return m_impl->world.get<Density>(id).value;
-}
-
-std::optional<glm::vec3> GaiaVoxelWorld::getColor(EntityID id) const {
-    if (!m_impl->world.valid(id) || !m_impl->world.has<Color>(id)) return std::nullopt;
-    return glm::vec3(m_impl->world.get<Color>(id));  // Automatic conversion
-}
-
-std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
-    if (!m_impl->world.valid(id) || !m_impl->world.has<Normal>(id)) return std::nullopt;
-    return glm::vec3(m_impl->world.get<Normal>(id));  // Automatic conversion
-}
-
-// getBrickID() REMOVED - BrickReference is deprecated
-// Use BrickView pattern instead to query brick storage
-
-// Setters
 void GaiaVoxelWorld::setPosition(EntityID id, const glm::vec3& position) {
+    // MortonKey is special - needs conversion from world position
     if (m_impl->world.valid(id) && m_impl->world.has<MortonKey>(id)) {
         m_impl->world.set<MortonKey>(id) = fromPosition(position);
-    }
-}
-
-void GaiaVoxelWorld::setDensity(EntityID id, float density) {
-    if (m_impl->world.valid(id) && m_impl->world.has<Density>(id)) {
-        m_impl->world.set<Density>(id) = Density{density};
-    }
-}
-
-void GaiaVoxelWorld::setColor(EntityID id, const glm::vec3& color) {
-    if (m_impl->world.valid(id) && m_impl->world.has<Color>(id)) {
-        m_impl->world.set<Color>(id) = Color(color);
-    }
-}
-
-void GaiaVoxelWorld::setNormal(EntityID id, const glm::vec3& normal) {
-    if (m_impl->world.valid(id) && m_impl->world.has<Normal>(id)) {
-        m_impl->world.set<Normal>(id) = Normal(normal);
     }
 }
 

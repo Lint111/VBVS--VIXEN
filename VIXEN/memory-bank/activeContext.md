@@ -1,65 +1,90 @@
 # Active Context
 
-**Last Updated**: November 23, 2025 (Session 6E - VoxelData Integration Testing)
+**Last Updated**: November 23, 2025 (Session 6E - Integration Testing & Test Reorganization)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **141 Total Tests** | ✅ **Macro System Validated** | ✅ **Integration Complete**
+**Status**: ✅ **123 Total Tests** | ✅ **Macro System Validated** | ✅ **Tests Reorganized by Architecture**
 
 ---
 
-## Current Session Summary (Nov 23 - Session 6E: VoxelData Integration Testing)
+## Current Session Summary (Nov 23 - Session 6E: Integration Testing & Test Reorganization)
 
-### VoxelData Integration Tests ✅ COMPLETE
+### Integration Testing & Test Reorganization ✅ COMPLETE
 
-**Achievement**: Added 8 comprehensive integration tests validating macro-based component system works end-to-end with VoxelData API.
+**Achievement**: Added comprehensive integration tests, then reorganized test suite to match architectural boundaries.
 
-**New Test Suite** - [test_gaia_voxel_world_coverage.cpp:524-694](libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world_coverage.cpp#L524-L694):
+### Test Reorganization ✅
 
-1. **Macro Component Registry** (1 test):
-   - All 7 components accessible via FOR_EACH_COMPONENT macro
-   - Template API: `hasComponent<Density>()`, `hasComponent<Color>()`
-   - Value retrieval: `getDensity()`, `getColor()`, `getNormal()`
-
-2. **ComponentVariant Type Safety** (1 test):
-   - Variant holds any component type (Density, Color, Material, Normal)
-   - Type checking via `std::holds_alternative<T>`
-   - Value extraction via `std::get<T>`
-
-3. **ComponentRegistry Iteration** (2 tests):
-   - `visitAll()` iterates all 7 registered components
-   - `visitByName()` finds components by string ("density", "color")
-   - Invalid names return false (no crash)
-
-4. **MortonKey Encoding** (2 tests):
-   - Encode/decode round-trip (floors fractional positions to integer grid)
-   - Integer grid position exact round-trip (glm::ivec3)
-
-5. **Batch Operations** (1 test):
-   - `VoxelCreationRequest` works with `std::span` for batches
-   - Mixed component sets (voxel 1: Color, voxel 2: Normal)
-
-6. **Vec3 Component Conversion** (1 test):
-   - Color/Normal/Emission convert to/from `glm::vec3`
-   - Member access: `color.r`, `normal.x`, `emission.b`
-   - Implicit conversion operator works
+**VoxelComponents/tests/** (NEW - 8 tests) - [test_component_system.cpp](libraries/VoxelComponents/tests/test_component_system.cpp):
+1. **Macro registry tests** (2): `visitAll()`, `visitByName()`
+2. **ComponentVariant** (1): Type safety, `std::holds_alternative<T>`
+3. **MortonKey encoding** (2): Float→int flooring, exact int round-trip
+4. **Vec3 conversions** (1): Color/Normal/Emission ↔ glm::vec3
+5. **Scalar components** (2): Default values, custom initialization
 
 **Test Results**: ✅ **8/8 passing** (100%)
 
+**GaiaVoxelWorld/tests/** (26 tests) - [test_gaia_voxel_world_coverage.cpp](libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world_coverage.cpp#L524-L583):
+- **24 coverage tests**: VoxelCreationRequest API, chunk operations, spatial queries, edge cases, stress tests
+- **2 integration tests**: ComponentCreation_AllMacroComponents, BatchCreation_MixedComponents
+
+**Test Results**: ✅ **26/26 passing** (100%)
+
+### Architectural Clarification ✅
+
+**Key Decision**: VoxelInjector **stays in GaiaVoxelWorld** (NOT moving to SVO)
+
+**Rationale**:
+- SVO is now **view object** - stores only entity references (8 bytes), doesn't own data
+- VoxelInjector is **data ingestion** - merges voxel sources (procedural, mesh, noise) into entity storage
+- SVO is **optional** - not all workflows need spatial indexing (physics sim, serialization)
+
+**Correct Architecture**:
+```
+VoxelInjectionQueue (async creation) ← GaiaVoxelWorld
+  ↓
+GaiaVoxelWorld::createVoxelsBatch() ← GaiaVoxelWorld
+  ↓
+VoxelInjector (brick grouping) ← GaiaVoxelWorld ✅ STAYS
+  ↓ (optional)
+SVO::insertEntities() (indexing) ← SVO (view only)
+```
+
+### EntityBrickView Migration to SVO ✅ COMPLETE
+
+**Achievement**: Moved EntityBrickView tests from GaiaVoxelWorld to SVO - spatial view pattern belongs with spatial indexing.
+
+**Rationale**:
+- **EntityBrickView** is spatial view pattern - zero-copy span over 8³ entity regions
+- Belongs with spatial indexing concerns (SVO), not data storage (GaiaVoxelWorld)
+- Used by SVO ray casting to access dense brick regions efficiently
+
+**Migration**:
+- **Moved**: [test_entity_brick_view.cpp](libraries/SVO/tests/test_entity_brick_view.cpp) (36 tests)
+- **Updated**: SVO/tests/CMakeLists.txt - added EntityBrickView target
+- **Updated**: GaiaVoxelWorld/tests/CMakeLists.txt - removed EntityBrickView (added note)
+
+**Test Results**: ✅ **36/36 passing** in new location (SVO/tests/)
+
 ### Test Suite Status ✅
 
-**GaiaVoxelWorld Tests** (141 total):
-- test_gaia_voxel_world_coverage.cpp: **32 tests ✅** (24 coverage + 8 integration)
+**VoxelComponents**: 8 tests ✅
+**GaiaVoxelWorld**: 79 tests
+- test_gaia_voxel_world_coverage.cpp: **26 tests ✅**
 - test_gaia_voxel_world.cpp: 28 tests (2 pre-existing failures)
 - test_voxel_injection_queue.cpp: 25 tests ✅
-- test_voxel_injector.cpp: 24 tests (1 pre-existing failure)
-- test_entity_brick_view.cpp: **36 tests ✅**
+- test_voxel_injector.cpp: 24 tests ✅
+
+**SVO**: 36 tests ✅ (NEW)
+- test_entity_brick_view.cpp: **36 tests ✅** (moved from GaiaVoxelWorld)
+
+**Total**: 123 tests (8 VoxelComponents + 79 GaiaVoxelWorld + 36 SVO)
 
 **Key Validation**:
-- ✅ Macro-based component registration works end-to-end
-- ✅ ComponentVariant type safety verified
-- ✅ ComponentRegistry iteration validated
-- ✅ MortonKey encoding/decoding confirmed
-- ✅ VoxelCreationRequest batch operations functional
-- ✅ Vec3 component conversions working
+- ✅ Macro system tested in correct library (VoxelComponents)
+- ✅ Integration tests in correct library (GaiaVoxelWorld)
+- ✅ Spatial view tests in correct library (SVO)
+- ✅ Test suite fully organized by architectural boundaries
+- ✅ VoxelInjector correctly stays in GaiaVoxelWorld
 
 ---
 

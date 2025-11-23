@@ -187,6 +187,41 @@ endif()
 gtest_discover_tests(test_brick_view)
 
 # ===========================================================================
+# EntityBrickView Tests (Spatial View Pattern)
+# ===========================================================================
+# Tests entity-based brick view pattern (SVO spatial indexing concern):
+# - Zero-copy entity span access over 8³ brick regions
+# - Linear and 3D coordinate entity access
+# - Component access (density, color, normal, material)
+# - Span iteration (std::span over 512 entities)
+# - Utility functions (countSolidVoxels, isEmpty, isFull)
+# - Memory efficiency validation (4 KB entity refs vs 70 KB data copies)
+
+add_executable(test_entity_brick_view
+    test_entity_brick_view.cpp
+)
+
+target_link_libraries(test_entity_brick_view PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
+
+set_target_properties(test_entity_brick_view PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_entity_brick_view POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_entity_brick_view>
+        COMMENT "Copying TBB DLL for test_entity_brick_view"
+    )
+endif()
+
+gtest_discover_tests(test_entity_brick_view)
+
+# ===========================================================================
 # Comprehensive Ray Casting Tests
 # ===========================================================================
 # Tests axis-aligned rays, diagonal rays, inside/outside grid, miss cases,
