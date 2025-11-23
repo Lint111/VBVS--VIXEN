@@ -16,8 +16,7 @@ add_library(SVO STATIC
     include/SVOTypes.h
     include/SVOBuilder.h
     include/LaineKarrasOctree.h
-    include/VoxelInjection.h
-    # VoxelInjectionQueue moved to GaiaVoxelWorld
+    # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
     # Implementation
     src/ISVOStructure.cpp
@@ -27,8 +26,7 @@ add_library(SVO STATIC
     src/AttributeIntegrator.cpp
     src/LaineKarrasOctree.cpp
     # src/LaineKarrasBuilder.cpp  # TODO: Requires ISVOBuilder::InputGeometry and BuildConfig definitions
-    src/VoxelInjection.cpp
-    # VoxelInjectionQueue.cpp moved to GaiaVoxelWorld
+    # VoxelInjection.cpp DEPRECATED - removed in favor of rebuild() API
     src/VoxelSamplers.cpp
     # src/RayCaster.cpp  # TODO: Implement
     src/Serialization.cpp

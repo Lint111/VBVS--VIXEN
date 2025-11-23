@@ -21,7 +21,7 @@ protected:
         registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
         // Create GaiaVoxelWorld (modern ECS-based system)
-         voxelWorld = std::make_shared<GaiaVoxelWorld>(registry);
+        voxelWorld = std::make_shared<GaiaVoxelWorld>();
 
 
         // Create a 10x10x10 world

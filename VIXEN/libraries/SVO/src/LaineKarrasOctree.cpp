@@ -1797,7 +1797,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             // Use GaiaVoxelWorld's clean API for component access
             using namespace GaiaVoxel;
             auto density = m_voxelWorld->getComponentValue<Density>(entity);
-            if (density.has_value() && density.value().value > 0.0f) {
+            if (density.has_value() && *density > 0.0f) {
                 voxelOccupied = true;
             }
         }
@@ -2015,7 +2015,9 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         tempDescriptors.push_back(desc);
 
         // Create EntityBrickView for this brick
-        EntityBrickView brickView(world, brick.baseMortonKey, static_cast<uint8_t>(brickDepth));
+        // Convert Morton key to world position for EntityBrickView
+        glm::vec3 brickWorldPos = MortonKeyUtils::toWorldPos(brick.baseMortonKey);
+        EntityBrickView brickView(world, brickWorldPos, static_cast<uint8_t>(brickDepth));
         tempBrickViews.push_back(brickView);
     }
 
