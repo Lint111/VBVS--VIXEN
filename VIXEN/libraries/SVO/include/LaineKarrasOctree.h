@@ -20,25 +20,39 @@ namespace SVO {
  *
  * Features:
  * - 64-bit child descriptors (15-bit pointers, masks)
- * - 32-bit contours (parallel planes for tight surface approximation)
- * - Compressed attributes (DXT-style color + custom normal compression)
+ * - EntityBrickView zero-copy entity access (8 bytes/entity vs 64+)
+ * - Hierarchical rebuild from GaiaVoxelWorld entities
  * - Page headers every 8KB for block management
  * - Beam optimization support for primary rays
  *
- * Memory layout per voxel: ~5 bytes average
- * - 1 byte: hierarchy (child descriptor amortized over children)
- * - 1 byte: contours (optional, amortized)
- * - 1 byte: color (DXT compression)
- * - 2 bytes: normals (custom compression)
+ * ============================================================================
+ * RECOMMENDED WORKFLOW:
+ * ============================================================================
+ * 1. Create GaiaVoxelWorld and populate with entities:
+ *      GaiaVoxelWorld world;
+ *      world.createVoxel(VoxelCreationRequest{position, {Density{1.0f}, Color{red}}});
+ *
+ * 2. Create octree and rebuild from entities:
+ *      LaineKarrasOctree octree(world, maxLevels, brickDepth);
+ *      octree.rebuild(world, worldMin, worldMax);
+ *
+ * 3. Ray cast using entity-based SVO:
+ *      auto hit = octree.castRay(origin, direction);
+ *      if (hit.hit) {
+ *          auto color = world.getComponentValue<Color>(hit.entity);
+ *      }
+ *
+ * Legacy VoxelInjector::inject() workflow deprecated - use rebuild() instead.
+ * ============================================================================
  */
 class LaineKarrasOctree : public ISVOStructure {
 public:
     // DEPRECATED: Old constructor with AttributeRegistry (will be removed in Phase 4)
     explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels = 23, int brickDepthLevels = 3);
 
-    // NEW: Entity-based constructor (pure spatial index)
-    // SVO stores only entity IDs (8 bytes each), not voxel data
-    // Caller reads entity components via GaiaVoxelWorld
+    // Entity-based constructor (pure spatial index)
+    // SVO stores entity IDs via EntityBrickView (8 bytes/entity)
+    // Use rebuild() to populate octree from GaiaVoxelWorld entities
     explicit LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld, int maxLevels = 23, int brickDepthLevels = 3);
 
     ~LaineKarrasOctree() override;

@@ -230,6 +230,22 @@ struct InjectionConfig {
 };
 
 /**
+ * ============================================================================
+ * DEPRECATED: VoxelInjector::inject() workflow
+ * ============================================================================
+ * This class builds temporary VoxelNode trees, then compacts to ESVO.
+ * Replaced by LaineKarrasOctree::rebuild() which builds directly from
+ * GaiaVoxelWorld entities using per-brick queries.
+ *
+ * RECOMMENDED: Use LaineKarrasOctree::rebuild() instead:
+ *   GaiaVoxelWorld world;
+ *   world.createVoxel(VoxelCreationRequest{...});
+ *   LaineKarrasOctree octree(world, maxLevels, brickDepth);
+ *   octree.rebuild(world, worldMin, worldMax);
+ *
+ * This class remains for legacy compatibility with existing tests.
+ * ============================================================================
+ *
  * Voxel data injector - builds SVO from raw voxel data.
  *
  * Observes AttributeRegistry for key attribute changes - when key changes,
