@@ -520,3 +520,64 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_AutoParent_ToExistingChunk) {
         EXPECT_TRUE(found) << "Batch voxel should be auto-parented to existing chunk";
     }
 }
+
+// ===========================================================================
+// GaiaVoxelWorld Integration Tests
+// ===========================================================================
+// Tests integration between VoxelComponents (macro system) and GaiaVoxelWorld (ECS)
+
+TEST(GaiaVoxelWorldIntegrationTest, ComponentCreation_AllMacroComponents) {
+    // Verify GaiaVoxelWorld can create entities with all macro-registered components
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest allComponents[] = {
+        Density{0.8f},
+        Material{42},
+        EmissionIntensity{1.5f},
+        Color{glm::vec3(1, 0, 0)},
+        Normal{glm::vec3(0, 1, 0)},
+        Emission{glm::vec3(0.5f, 0.5f, 0)}
+    };
+
+    VoxelCreationRequest request{glm::vec3(5, 10, 15), allComponents};
+    auto entity = world.createVoxel(request);
+
+    ASSERT_TRUE(world.exists(entity));
+
+    // Verify all components accessible via GaiaVoxelWorld API
+    EXPECT_TRUE(world.hasComponent<Density>(entity));
+    EXPECT_TRUE(world.hasComponent<Material>(entity));
+    EXPECT_TRUE(world.hasComponent<EmissionIntensity>(entity));
+    EXPECT_TRUE(world.hasComponent<Color>(entity));
+    EXPECT_TRUE(world.hasComponent<Normal>(entity));
+    EXPECT_TRUE(world.hasComponent<Emission>(entity));
+    EXPECT_TRUE(world.hasComponent<MortonKey>(entity)); // Always present
+
+    // Verify values via GaiaVoxelWorld getters
+    EXPECT_FLOAT_EQ(world.getDensity(entity).value(), 0.8f);
+    EXPECT_EQ(world.getColor(entity).value(), glm::vec3(1, 0, 0));
+    EXPECT_EQ(world.getNormal(entity).value(), glm::vec3(0, 1, 0));
+}
+
+TEST(GaiaVoxelWorldIntegrationTest, BatchCreation_MixedComponents) {
+    // Verify VoxelCreationRequest batch operations with mixed component sets
+    ComponentQueryRequest batch1[] = {Density{1.0f}, Color{glm::vec3(1, 0, 0)}};
+    ComponentQueryRequest batch2[] = {Density{0.5f}, Normal{glm::vec3(0, 0, 1)}};
+
+    VoxelCreationRequest requests[] = {
+        {glm::vec3(0, 0, 0), batch1},
+        {glm::vec3(1, 0, 0), batch2}
+    };
+
+    GaiaVoxelWorld world;
+    auto entities = world.createVoxelsBatch(requests);
+
+    ASSERT_EQ(entities.size(), 2);
+
+    // Verify component presence differs per voxel
+    EXPECT_TRUE(world.hasComponent<Color>(entities[0]));
+    EXPECT_FALSE(world.hasComponent<Normal>(entities[0]));
+
+    EXPECT_TRUE(world.hasComponent<Normal>(entities[1]));
+    EXPECT_FALSE(world.hasComponent<Color>(entities[1]));
+}

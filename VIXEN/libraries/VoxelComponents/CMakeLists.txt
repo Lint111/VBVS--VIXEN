@@ -36,6 +36,11 @@ endif()
 # Export target
 add_library(VoxelComponents::VoxelComponents ALIAS VoxelComponents)
 
+# Tests
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 # Installation rules
 install(TARGETS VoxelComponents
     EXPORT VoxelComponentsTargets
