@@ -131,7 +131,7 @@ add_executable(test_octree_queries
 )
 
 if(TARGET SVO)
-    target_link_libraries(test_octree_queries PRIVATE GTest::gtest_main SVO)
+    target_link_libraries(test_octree_queries PRIVATE GTest::gtest_main SVO GaiaVoxelWorld VoxelComponents)
 else()
     target_link_libraries(test_octree_queries PRIVATE GTest::gtest_main)
 endif()

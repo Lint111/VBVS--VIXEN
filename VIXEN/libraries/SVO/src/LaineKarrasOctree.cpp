@@ -1,5 +1,7 @@
 #define NOMINMAX
 #include "LaineKarrasOctree.h"
+#include "VoxelComponents.h"  // For GaiaVoxel components
+#include "ComponentData.h"
 #include <sstream>
 #include <algorithm>
 #include <limits>
@@ -184,16 +186,31 @@ LaineKarrasOctree::~LaineKarrasOctree() = default;
 // ============================================================================
 
 void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
-    // TODO: Implement entity insertion
-    // This will extract position from MortonKey component and insert into octree
-    // For now, this is a placeholder stub
+    using namespace GaiaVoxel;
+
     if (!m_world) {
         return;  // Entity mode not enabled
     }
 
-    // Extract position from entity (requires MortonKey component)
-    // Store entity in leaf entity map
-    // Update octree structure if needed
+    // 1. Extract position from entity's MortonKey component
+    if (!m_world->has<MortonKey>(entity)) {
+        return; // Entity must have MortonKey for spatial indexing
+    }
+
+    MortonKey key = m_world->get<MortonKey>(entity);
+    glm::vec3 position = MortonKeyUtils::toWorldPos(key);
+
+    // 2. For Phase 2, we're not doing actual octree insertion
+    //    Just store the entity mapping for ray casting retrieval
+    //    Phase 3 will implement proper additive insertion into octree structure
+
+    // Store entity in map with Morton code as key
+    // This allows ray casting to retrieve entities by hit position
+    m_leafEntityMap[key.code] = entity;
+
+    std::cout << "[LaineKarrasOctree] Inserted entity " << entity.id()
+              << " at position (" << position.x << ", " << position.y << ", " << position.z << ")"
+              << " with Morton code " << key.code << "\n";
 }
 
 void LaineKarrasOctree::remove(gaia::ecs::Entity entity) {
@@ -1087,16 +1104,38 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.hitPoint = origin + rayDir * t_min_world;  // Renamed from position
                     hit.scale = esvoToUserScale(scale);
 
-                    // NEW: Look up entity from leaf entity map
-                    // Parent descriptor index identifies the leaf node
-                    size_t leafDescIndex = parent - &m_octree->root->childDescriptors[0];
+                    // Compute gradient-based surface normal from 6-neighbor sampling
+                    float voxelSize = getVoxelSize(hit.scale);
+                    hit.normal = computeSurfaceNormal(this, hit.hitPoint, voxelSize);
 
-                    // Entity-based mode: retrieve entity reference
-                    if (m_world != nullptr && m_leafEntityMap.find(leafDescIndex) != m_leafEntityMap.end()) {
-                        hit.entity = m_leafEntityMap.at(leafDescIndex);
+                    // NEW: Look up entity from leaf entity map
+                    // Try two lookup strategies:
+                    // 1. By descriptor index (for voxels inserted via old API)
+                    // 2. By Morton code computed from hit position (for voxels inserted via new entity API)
+
+                    if (m_world != nullptr) {
+                        using namespace GaiaVoxel;
+
+                        // Strategy 1: Descriptor index lookup
+                        size_t leafDescIndex = parent - &m_octree->root->childDescriptors[0];
+                        auto it = m_leafEntityMap.find(leafDescIndex);
+                        if (it != m_leafEntityMap.end()) {
+                            hit.entity = it->second;
+                        } else {
+                            // Strategy 2: Morton code lookup (for entity-based insertion)
+                            // Compute Morton key from hit position
+                            uint64_t mortonCode = MortonKeyUtils::encode(hit.hitPoint);
+                            auto it2 = m_leafEntityMap.find(mortonCode);
+                            if (it2 != m_leafEntityMap.end()) {
+                                hit.entity = it2->second;
+                            } else {
+                                // No entity found - create invalid entity
+                                hit.entity = gaia::ecs::Entity();
+                            }
+                        }
                     } else {
-                        // Fallback: create invalid entity (no entity stored for this leaf)
-                        hit.entity = gaia::ecs::Entity();  // Invalid entity
+                        // No ECS world - create invalid entity
+                        hit.entity = gaia::ecs::Entity();
                     }
 
                     return hit;
@@ -1684,6 +1723,9 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             hit.tMax = hitT + brickVoxelSize;  // Exit point of voxel
             hit.hitPoint = rayOrigin + rayDir * hitT;  // Renamed from position
             hit.scale = m_maxLevels - 1;  // Finest detail level
+
+            // Use entry normal computed from DDA step direction
+            hit.normal = entryNormal;
 
             // NEW: Retrieve entity from brick storage
             // In entity-based mode, bricks store entity references, not attribute data

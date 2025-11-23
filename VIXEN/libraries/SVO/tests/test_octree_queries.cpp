@@ -4,6 +4,9 @@
 #include "SVOBuilder.h"
 #include "SVOTypes.h"
 #include "VoxelInjection.h"
+#include "GaiaVoxelWorld.h"  // For entity-based testing
+#include "VoxelComponents.h"
+#include "ComponentData.h"
 #include <chrono>
 
 using namespace SVO;
@@ -1849,4 +1852,165 @@ TEST(LaineKarrasOctree, RayOriginInsideOctree) {
     EXPECT_GE(hit.tMin, 0.0f);  // Can be 0 (immediate) or positive
     EXPECT_FALSE(std::isnan(hit.tMin));
     EXPECT_FALSE(std::isnan(hit.tMax));
+}
+
+// ===========================================================================
+// Entity-Based Ray Casting Tests (Phase 2 Integration)
+// ===========================================================================
+
+/**
+ * Test entity-based octree insertion and ray casting retrieval.
+ *
+ * Validates the complete entity workflow:
+ * 1. Create voxel entity via GaiaVoxelWorld
+ * 2. Insert entity into spatial index (LaineKarrasOctree)
+ * 3. Ray cast to find voxel
+ * 4. Retrieve entity from RayHit result
+ * 5. Read entity components via ECS world
+ */
+TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
+    using namespace GaiaVoxel;
+
+    // 1. Create ECS world
+    GaiaVoxelWorld world;
+    LaineKarrasOctree octree(world.getWorld());
+
+    // 2. Initialize octree with simple bounds
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
+    octree.ensureInitialized(worldMin, worldMax, 8);
+
+    // 3. Create voxel entity at known position
+    glm::vec3 voxelPos(10.0f, 20.0f, 30.0f);
+
+    // Create entity with components
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},  // Red
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}  // Up
+    };
+    VoxelCreationRequest request{voxelPos, components};
+
+    auto entity = world.createVoxel(request);
+    ASSERT_TRUE(world.exists(entity));
+
+    // 4. Insert entity into octree spatial index
+    octree.insert(entity);
+
+    // 5. Ray cast toward the voxel
+    glm::vec3 rayOrigin(0.0f, 20.0f, 30.0f);  // From -X direction
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);       // Shoot +X toward voxel
+
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+
+    // 6. Verify hit occurred
+    ASSERT_TRUE(hit.hit) << "Ray should hit the inserted voxel";
+
+    // 7. Verify entity was returned in hit result
+    ASSERT_TRUE(world.exists(hit.entity)) << "Hit should contain valid entity reference";
+
+    // 8. Verify it's the same entity we inserted
+    EXPECT_EQ(hit.entity, entity) << "Ray casting should return the exact entity we inserted";
+
+    // 9. Read entity components from ECS world
+    auto density = world.getComponentValue<Density>(hit.entity);
+    ASSERT_TRUE(density.has_value()) << "Entity should have Density component";
+    EXPECT_FLOAT_EQ(density.value(), 1.0f);
+
+    auto color = world.getComponentValue<Color>(hit.entity);
+    ASSERT_TRUE(color.has_value()) << "Entity should have Color component";
+    EXPECT_FLOAT_EQ(color.value().r, 1.0f);
+    EXPECT_FLOAT_EQ(color.value().g, 0.0f);
+    EXPECT_FLOAT_EQ(color.value().b, 0.0f);
+
+    auto normal = world.getComponentValue<Normal>(hit.entity);
+    ASSERT_TRUE(normal.has_value()) << "Entity should have Normal component";
+    EXPECT_FLOAT_EQ(normal.value().y, 1.0f);
+
+    std::cout << "[EntityOctreeIntegrationTest] ✓ Entity-based ray casting validated\n";
+    std::cout << "  Entity ID: " << hit.entity.id() << "\n";
+    std::cout << "  Hit position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
+    std::cout << "  Density: " << density.value() << "\n";
+    std::cout << "  Color: (" << color.value().r << ", " << color.value().g << ", " << color.value().b << ")\n";
+}
+
+/**
+ * Test multiple entity insertions and selective ray casting.
+ */
+TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
+    using namespace GaiaVoxel;
+
+    GaiaVoxelWorld world;
+    LaineKarrasOctree octree(world.getWorld());
+
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
+    octree.ensureInitialized(worldMin, worldMax, 8);
+
+    // Create 3 voxels at different positions with different colors
+    struct VoxelSpec {
+        glm::vec3 position;
+        glm::vec3 color;
+    };
+
+    VoxelSpec voxels[] = {
+        {{10.0f, 50.0f, 50.0f}, {1.0f, 0.0f, 0.0f}},  // Red at X=10
+        {{30.0f, 50.0f, 50.0f}, {0.0f, 1.0f, 0.0f}},  // Green at X=30
+        {{50.0f, 50.0f, 50.0f}, {0.0f, 0.0f, 1.0f}}   // Blue at X=50
+    };
+
+    std::vector<gaia::ecs::Entity> entities;
+    for (const auto& spec : voxels) {
+        ComponentQueryRequest components[] = {
+            Density{1.0f},
+            Color{spec.color}
+        };
+        VoxelCreationRequest request{spec.position, components};
+        auto entity = world.createVoxel(request);
+        octree.insert(entity);
+        entities.push_back(entity);
+    }
+
+    // Cast ray along +X axis - should hit voxels in order
+    glm::vec3 rayOrigin(0.0f, 50.0f, 50.0f);
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
+
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+
+    ASSERT_TRUE(hit.hit) << "Ray should hit first voxel";
+    EXPECT_EQ(hit.entity, entities[0]) << "Should hit the red voxel first";
+
+    // Verify it's the red voxel
+    auto color = world.getComponentValue<Color>(hit.entity);
+    ASSERT_TRUE(color.has_value());
+    EXPECT_FLOAT_EQ(color.value().r, 1.0f);
+    EXPECT_FLOAT_EQ(color.value().g, 0.0f);
+    EXPECT_FLOAT_EQ(color.value().b, 0.0f);
+
+    std::cout << "[MultipleEntitiesRayCasting] ✓ Verified first voxel hit (red)\n";
+}
+
+/**
+ * Test entity lookup failure when no entity exists at position.
+ */
+TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
+    using namespace GaiaVoxel;
+
+    GaiaVoxelWorld world;
+    LaineKarrasOctree octree(world.getWorld());
+
+    glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
+    glm::vec3 worldMax(100.0f, 100.0f, 100.0f);
+    octree.ensureInitialized(worldMin, worldMax, 8);
+
+    // Cast ray through empty space
+    glm::vec3 rayOrigin(0.0f, 50.0f, 50.0f);
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
+
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+
+    EXPECT_FALSE(hit.hit) << "Ray should miss in empty octree";
+    EXPECT_FALSE(world.exists(hit.entity)) << "Miss should return invalid entity";
+
+    std::cout << "[MissReturnsInvalidEntity] ✓ Empty octree returns miss correctly\n";
 }

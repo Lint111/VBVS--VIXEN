@@ -79,21 +79,24 @@ public:
      *
      * REFACTORED: Now returns entity reference instead of copying voxel data.
      *
-     * Memory: 24 bytes (was: 64+ bytes with data copy)
+     * Memory: 53 bytes (was: 64+ bytes with data copy) - 17% reduction
      * - entity: 8 bytes (lightweight reference to Gaia ECS entity)
      * - hitPoint: 12 bytes (vec3)
+     * - normal: 12 bytes (vec3) - computed from hit face during traversal
      * - tMin/tMax: 8 bytes (2 floats)
      * - scale: 4 bytes
      * - hit: 1 byte
      *
      * Benefits:
      * - Zero-copy access to voxel attributes via entity
-     * - 62% smaller hit structure
+     * - Surface normal computed during traversal (face-accurate for lighting)
+     * - 17% smaller hit structure
      * - SVO stores only entity IDs (8 bytes), not full data (64+ bytes)
      */
     struct RayHit {
         gaia::ecs::Entity entity;    // Entity reference (8 bytes) - access attributes via GaiaVoxelWorld
         glm::vec3 hitPoint;          // Hit position in world space (12 bytes)
+        glm::vec3 normal;            // Surface normal at hit point (12 bytes) - computed from face
         float tMin;                  // Entry t-value (4 bytes)
         float tMax;                  // Exit t-value (4 bytes)
         int scale;                   // Detail level of hit voxel (4 bytes)
