@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include <gtest/gtest.h>
 #include "LaineKarrasOctree.h"
 #include "SVOBuilder.h"

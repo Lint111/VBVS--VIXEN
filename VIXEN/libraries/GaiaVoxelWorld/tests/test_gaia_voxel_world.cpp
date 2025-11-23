@@ -6,6 +6,8 @@
 #include <atomic>
 #include <vector>
 #include <algorithm>
+#include "ComponentData.h"
+#include <span>
 
 using namespace GaiaVoxel;
 
@@ -297,6 +299,7 @@ TEST(GaiaVoxelWorldTest, CountVoxelsInRegion) {
 TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_DynamicVoxelScalar) {
     GaiaVoxelWorld world;
 
+	VoxelCreationBatch batchRequest;
     std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>> batch;
     for (int i = 0; i < 50; ++i) {
         ::VoxelData::DynamicVoxelScalar voxel;
@@ -318,18 +321,19 @@ TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_DynamicVoxelScalar) {
 TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_CreationEntry) {
     GaiaVoxelWorld world;
 
-    std::vector<GaiaVoxelWorld::VoxelCreationEntry> batch;
+    std::vector<VoxelCreationRequest> batch;
     for (int i = 0; i < 100; ++i) {
         VoxelCreationRequest request;
-        request.density = 0.8f;
-        request.color = glm::vec3(0.0f, 1.0f, 0.0f); // Green
-        request.normal = glm::vec3(0.0f, 0.0f, 1.0f); // +Z
 
-        GaiaVoxelWorld::VoxelCreationEntry entry{
-            glm::vec3(static_cast<float>(i), 0.0f, 0.0f),
-            request
+		request.position = glm::vec3(static_cast<float>(i), 0.0f, 0.0f);
+        ComponentQueryRequest attrs[] = {
+            Density{0.8f},
+            Color{glm::vec3(1, 0, 0)},
+            Normal{glm::vec3(0, 1, 0)},
+            Material{42}
         };
-        batch.push_back(entry);
+        request.components = attrs;
+        batch.push_back(request);
     }
 
     auto entities = world.createVoxelsBatch(batch);
@@ -391,6 +395,16 @@ TEST(GaiaVoxelWorldTest, CreateVoxelInBrick) {
     glm::vec3 pos(10.0f, 5.0f, 3.0f);
     uint32_t brickID = 42;
     uint8_t localX = 3, localY = 2, localZ = 1;
+
+	VoxelCreationRequest request;
+	request.position = pos;
+    ComponentQueryRequest attrs[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)},
+	};
+	request.components = attrs;
+
 
     auto entity = world.createVoxelInBrick(
         pos, 1.0f,

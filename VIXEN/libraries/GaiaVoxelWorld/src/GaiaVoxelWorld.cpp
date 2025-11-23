@@ -72,8 +72,8 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest&
         std::visit([&](auto&& component) {
             using T = std::decay_t<decltype(component)>;
 
-            // Skip MortonKey (already added)
-            if constexpr (!std::is_same_v<T, MortonKey>) {
+            // Skip MortonKey (already added) and monostate (empty variant)
+            if constexpr (!std::is_same_v<T, MortonKey> && !std::is_same_v<T, std::monostate>) {
                 world.add<T>(entity, component);
             }
         }, compReq.component);

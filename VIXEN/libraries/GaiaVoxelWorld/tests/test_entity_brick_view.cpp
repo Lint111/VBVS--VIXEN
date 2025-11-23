@@ -3,6 +3,7 @@
 #include "GaiaVoxelWorld.h"
 #include <glm/glm.hpp>
 #include <array>
+#include <unordered_set>
 
 using namespace GaiaVoxel;
 
@@ -57,18 +58,18 @@ TEST(EntityBrickViewTest, GetSetEntity_AllVoxels) {
 }
 
 TEST(EntityBrickViewTest, ClearEntity_LinearIndex) {
-    GaiaVoxelWorld world;
+    GaiaVoxelWorld world ;
     std::array<gaia::ecs::Entity, 512> brickEntities{};
     EntityBrickView brick(world, brickEntities);
 
     auto entity = world.createVoxel(glm::vec3(0.0f));
     brick.setEntity(10, entity);
 
-    EXPECT_TRUE(brick.getEntity(10).valid());
+    EXPECT_TRUE(world.getWorld().valid(brick.getEntity(10)));
 
     brick.clearEntity(10);
 
-    EXPECT_FALSE(brick.getEntity(10).valid());
+    EXPECT_FALSE(world.getWorld().valid(brick.getEntity(10)));
 }
 
 // ===========================================================================
@@ -127,11 +128,11 @@ TEST(EntityBrickViewTest, ClearEntity_3DCoords) {
     auto entity = world.createVoxel(glm::vec3(0.0f));
     brick.setEntity(4, 2, 1, entity);
 
-    EXPECT_TRUE(brick.getEntity(4, 2, 1).valid());
+    EXPECT_TRUE( world.getWorld().valid(brick.getEntity(4, 2, 1)));
 
     brick.clearEntity(4, 2, 1);
 
-    EXPECT_FALSE(brick.getEntity(4, 2, 1).valid());
+    EXPECT_FALSE(world.getWorld().valid(brick.getEntity(4, 2, 1)));
 }
 
 // ===========================================================================
@@ -270,7 +271,7 @@ TEST(EntityBrickViewTest, GetEntitiesSpan) {
 
     // Verify first 10 entities are valid
     for (size_t i = 0; i < 10; ++i) {
-        EXPECT_TRUE(span[i].valid());
+        EXPECT_TRUE(world.getWorld().valid(span[i]));
     }
 }
 

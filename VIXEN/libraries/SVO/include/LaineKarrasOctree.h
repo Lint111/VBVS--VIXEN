@@ -88,8 +88,8 @@ private:
     int m_maxLevels = 23;  // Octree depth - default 23 for standard ESVO [1,2] normalized space
     int m_brickDepthLevels = 3;  // Brick dense storage depth (3 = 8³ bricks, 4 = 16³ bricks)
                                   // Traversal switches to brick DDA when depth >= (maxLevels - brickDepthLevels)
-    size_t m_voxelCount = 0;
-    size_t m_memoryUsage = 0;
+    size_t m_voxelCount{ 0 };
+    size_t m_memoryUsage{ 0 };
 
     // ========================================================================
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)

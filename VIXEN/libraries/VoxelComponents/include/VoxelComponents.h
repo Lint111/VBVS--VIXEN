@@ -153,14 +153,6 @@ VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
     APPLY_MACRO(macro, MortonKey)
 
 namespace ComponentRegistry {
-    // Generate AllComponents tuple from macro registry
-    // NOTE: Tuple is only instantiated temporarily in visitAll() - not stored
-    // Size when instantiated: ~56 bytes (7 components × ~8 bytes default-constructed)
-
-    #define AS_TYPE(Component) Component,
-    using AllComponents = std::tuple<FOR_EACH_COMPONENT(AS_TYPE) std::monostate>;
-    #undef AS_TYPE
-
     // Visit all components with a lambda
     template<typename Visitor>
     constexpr void visitAll(Visitor&& visitor) {
