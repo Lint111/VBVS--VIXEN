@@ -306,18 +306,22 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::insertChunk(
 
     auto& world = m_impl->world;
 
-    // 1. Create voxel entities FIRST (for offset reference)
+    // 1. Create chunk metadata entity FIRST (for ChildOf relation)
+    gaia::ecs::Entity chunkEntity = world.add();
+    world.add<ChunkOrigin>(chunkEntity, ChunkOrigin(chunkOrigin));
+
+    // 2. Create voxel entities and link them to chunk via ChildOf relation
     std::vector<EntityID> voxelEntities;
     voxelEntities.reserve(voxels.size());
 
     for (const auto& voxelReq : voxels) {
-        voxelEntities.push_back(createVoxel(voxelReq));
+        auto voxelEntity = createVoxel(voxelReq);
+        // Add ChildOf relation to link voxel to chunk
+        world.add(voxelEntity, gaia::ecs::Pair(gaia::ecs::ChildOf, chunkEntity));
+        voxelEntities.push_back(voxelEntity);
     }
 
-    // 2. Create chunk metadata entity with span reference
-    gaia::ecs::Entity chunkEntity = world.add();
-    world.add<ChunkOrigin>(chunkEntity, ChunkOrigin(chunkOrigin));
-
+    // 3. Add chunk metadata (voxel span reference)
     uint8_t chunkDepth = static_cast<uint8_t>(std::cbrt(voxels.size())); // e.g., 8 for 512 voxels
     ChunkMetadata metadata;
     metadata.entityOffset = voxelEntities[0].id();

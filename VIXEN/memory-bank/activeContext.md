@@ -1,18 +1,82 @@
 # Active Context
 
-**Last Updated**: November 23, 2025 (Session 6C - Final Build Fixes)
+**Last Updated**: November 23, 2025 (Session 6D - Test Coverage & Async Queue Integration)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **ALL ERRORS FIXED** | ✅ **Clean Build** | ✅ **40+ Tests Compiled**
+**Status**: ✅ **133 Total Tests** | ✅ **Async Queue Working** | ✅ **Comprehensive Coverage**
 
 ---
 
-## Current Session Summary (Nov 23 - Session 6C: Final Build Fixes & Clean State)
+## Current Session Summary (Nov 23 - Session 6D: Test Coverage Expansion & Async Queue Integration)
 
-### Build Error Resolution ✅ COMPLETE
+### Async Queue Test Migration ✅ COMPLETE
 
-**Achievement**: Fixed all remaining compilation errors - clean build achieved with 40+ tests compiling successfully.
+**Achievement**: Migrated deprecated async queue test to new GaiaVoxelWorld API - test completes successfully without stalling.
 
-**Session 6C Fixes**:
+**Test Migration** - [test_voxel_injection.cpp:469-549](libraries/SVO/tests/test_voxel_injection.cpp#L469-L549):
+- **Old API**: SVO `VoxelInjectionQueue` with `Config` object (removed in Session 6A)
+- **New API**: GaiaVoxelWorld `VoxelInjectionQueue` with direct world reference
+- **Test Result**: ✅ 100K voxels processed in 2.3s (43.7K voxels/sec)
+- **Behavior**: No stalling - `flush()` successfully processes all pending voxels
+
+**Performance Metrics**:
+- Enqueue rate: 6.6M voxels/sec (lock-free ring buffer)
+- Processing throughput: 43.7K voxels/sec (ECS entity creation)
+- Total time: 2.3s for 100K voxels
+- Zero failures: 100,000/100,000 entities created successfully
+
+### Comprehensive Test Coverage ✅ COMPLETE
+
+**Achievement**: Added 20 comprehensive tests for GaiaVoxelWorld API coverage - all passing.
+
+**New Test File** - [test_gaia_voxel_world_coverage.cpp](libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world_coverage.cpp):
+
+1. **VoxelCreationRequest API** (4 tests):
+   - Minimal components (Density only)
+   - All components (Density, Color, Normal, Material, Emission, EmissionIntensity)
+   - Empty batch creation
+   - Mixed component batches
+
+2. **Chunk Operations** (5 tests):
+   - Single voxel chunk
+   - Full 8³ brick (512 voxels)
+   - Multiple chunks with separate origins
+   - Find chunk by origin (exists + not found)
+
+3. **Component Queries** (2 tests):
+   - Template API (`hasComponent<T>()`)
+   - String-based API (`hasComponent(id, "name")`)
+
+4. **Spatial Queries** (4 tests):
+   - Query brick (empty + with voxels)
+   - Count voxels in region (empty + matches)
+
+5. **Edge Cases** (3 tests):
+   - Destroy non-existent voxel (no throw)
+   - Get component from destroyed voxel (returns nullopt)
+   - Set component on non-existent voxel (no throw)
+
+6. **Stress Tests** (2 tests):
+   - Create and destroy 10K voxels (performance validation)
+   - Batch vs individual creation comparison (result equivalence)
+
+**Bug Fixed** - [GaiaVoxelWorld.cpp:309-322](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L309-L322):
+- **Issue**: `insertChunk()` never added `ChildOf` relation between voxels and chunk entity
+- **Symptom**: `getVoxelsInChunk()` returned empty vector (expects `ChildOf` relation)
+- **Fix**: Create chunk entity FIRST, then link voxels via `world.add(voxel, Pair(ChildOf, chunk))`
+- **Impact**: All 3 chunk tests now passing
+
+### Test Suite Status ✅
+
+**GaiaVoxelWorld Tests** (133 total):
+- test_gaia_voxel_world.cpp: 28 tests ✅
+- test_gaia_voxel_world_coverage.cpp: 20 tests ✅ (NEW)
+- test_voxel_injection_queue.cpp: 25 tests ✅
+- test_voxel_injector.cpp: 24 tests ✅
+- test_entity_brick_view.cpp: 36 tests ✅
+
+**All SVO Tests**: 40+ tests compiling ✅
+
+**Previous Session 6C Fixes**:
 
 1. **VoxelConfig macro static member initialization** - [VoxelConfig.h:235,262](libraries/VoxelData/include/VoxelConfig.h#L235)
    - **Issue**: `static constexpr Member_##Index` missing `inline` keyword for C++17+ compatibility
