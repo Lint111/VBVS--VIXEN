@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "VoxelInjection.h"
-#include "VoxelInjectionQueue.h"
+#include "GaiaVoxelWorld.h"  // VoxelInjectionQueue moved here
+#include "VoxelInjectionQueue.h"  // From GaiaVoxelWorld library
 #include "LaineKarrasOctree.h"
 #include "DynamicVoxelStruct.h"
 #include "StandardVoxelConfigs.h"

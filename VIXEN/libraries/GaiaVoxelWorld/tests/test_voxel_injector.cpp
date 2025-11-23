@@ -3,6 +3,7 @@
 #include "GaiaVoxelWorld.h"
 #include <glm/glm.hpp>
 #include <unordered_set>
+#include <algorithm>  // For std::sort
 
 using namespace GaiaVoxel;
 

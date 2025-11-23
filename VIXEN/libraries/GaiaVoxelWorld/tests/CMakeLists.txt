@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.15)
 project(GaiaVoxelWorldTests)
 
-# Include Google Test helpers (provided by FetchContent in the top-level CMake)
+# Ensure GoogleTest is available (should be fetched by dependencies/CMakeLists.txt)
+if(NOT TARGET GTest::gtest_main)
+    message(FATAL_ERROR "GoogleTest not found. Ensure BUILD_TESTS=ON and dependencies/CMakeLists.txt is included.")
+endif()
+
+# Include Google Test helpers
 include(GoogleTest)
 
 # ===========================================================================

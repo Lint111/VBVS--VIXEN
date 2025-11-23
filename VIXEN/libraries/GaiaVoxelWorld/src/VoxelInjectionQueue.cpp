@@ -134,11 +134,7 @@ void VoxelInjectionQueue::flush() {
 
 void VoxelInjectionQueue::processWorker() {
     constexpr size_t BATCH_SIZE = 256;
-    struct BatchEntry {
-        glm::vec3 position;
-        std::span<const ComponentQueryRequest> components;
-    };
-    std::vector<BatchEntry> batch;
+    std::vector<VoxelCreationRequest> batch;
     batch.reserve(BATCH_SIZE);
 
     while (m_running.load(std::memory_order_relaxed)) {
@@ -162,10 +158,7 @@ void VoxelInjectionQueue::processWorker() {
         size_t currentWrite = m_writeIndex.load(std::memory_order_acquire);
 
         while (currentRead != currentWrite && batch.size() < BATCH_SIZE) {
-            const auto& entry = m_ringBuffer[currentRead];
-            BatchEntry batchEntry {entry.position, entry.components};
-
-            batch.push_back(batchEntry);
+            batch.push_back(m_ringBuffer[currentRead]);
             currentRead = (currentRead + 1) % m_capacity;
         }
 
@@ -177,12 +170,9 @@ void VoxelInjectionQueue::processWorker() {
                 std::vector<gaia::ecs::Entity> entities;
                 entities.reserve(batch.size());
 
-                // Create entities using simple API
+                // Create entities using VoxelCreationRequest API
                 for (const auto& entry : batch) {
-                    auto entity = m_world.createVoxel(
-                        entry.position,
-                        entry.components
-                    );
+                    auto entity = m_world.createVoxel(entry);
                     entities.push_back(entity);
                 }
 

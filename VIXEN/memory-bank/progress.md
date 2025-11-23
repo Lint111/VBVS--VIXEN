@@ -1,6 +1,85 @@
 # Progress
 
-## Current State: ESVO CPU Traversal + Brick DDA (Week 1.5 - Complete!)
+## Current State: GaiaVoxelWorld Integration (Phase H - Nov 2025)
+
+**Last Updated**: November 23, 2025 (Session 6)
+
+### Latest Achievements (Nov 19-23, 2025)
+- ✅ **Week 1.5**: ESVO CPU Traversal + Brick DDA (Complete - Nov 19)
+- ✅ **Session 1-2**: GaiaVoxelWorld library creation + ECS-backed registry (Nov 22)
+- ✅ **Session 3**: Async layer architecture design (Nov 22)
+- ✅ **Session 5**: Component registry unification (Nov 22)
+- ✅ **Session 6**: Macro-based component registration (Nov 23)
+
+---
+
+## Phase H: Voxel Infrastructure (Nov 19-23, 2025)
+
+### Nov 23 - Session 6: Macro-Based Component Registry ✅
+**Achievement**: Implemented X-macro pattern for single source of truth component registration.
+
+**What Was Built**:
+- `FOR_EACH_COMPONENT` macro auto-generates ComponentVariant, AllComponents tuple, ComponentTraits
+- Renamed ComponentData → ComponentQueryRequest for clarity
+- Consolidated API to use VoxelCreationRequest (removed duplicate structs)
+- Removed deprecated entity-based brick storage methods
+- Build Status: VoxelComponents.lib compiles successfully
+
+**Benefits**:
+- Single edit point for adding components (eliminates 3+ location updates)
+- Compile-time safety (impossible to have mismatched types)
+- Zero duplication across variant/tuple/traits
+
+### Nov 22 - Session 5: Component Registry Unification ✅
+**Achievement**: Eliminated duplicate component registries by extracting VoxelComponents library.
+
+**What Was Built**:
+- Created standalone VoxelComponents library (Gaia + GLM dependencies only)
+- Unified component definitions shared by VoxelData and GaiaVoxelWorld
+- Component visitor pattern (zero manual conversion code)
+- Compile-time type safety via `if constexpr` and concepts
+- Automatic type extraction (ComponentValueType<T>)
+
+**Memory Improvements**:
+- Queue entries: 40 bytes vs 64+ bytes (37% reduction)
+- Brick storage: 4 KB vs 70 KB (94% reduction - when Phase 3 complete)
+- Ray hits: 24 bytes vs 64+ bytes (62% reduction - when Phase 3 complete)
+
+### Nov 22 - Session 3: Async Layer Architecture ✅
+**Achievement**: Designed complete async architecture with VoxelInjectionQueue in GaiaVoxelWorld.
+
+**Design Documents Created**:
+1. **SVO_AS_VIEW_ARCHITECTURE.md** (650 lines) - SVO as pure spatial index, GaiaVoxelWorld as data owner
+2. **ASYNC_LAYER_DESIGN.md** (550 lines) - VoxelInjectionQueue migration design
+
+**Key Architectural Decision**:
+- VoxelInjectionQueue → GaiaVoxelWorld (async entity creation)
+- VoxelInjector → SVO (entity → spatial index insertion)
+- Clean separation: Data layer creates, spatial layer indexes
+
+### Nov 22 - Session 1-2: GaiaVoxelWorld Library Creation ✅
+**Achievement**: Created sparse voxel data backend using Gaia ECS with Morton code spatial indexing.
+
+**Components Implemented**:
+1. **Library Structure** - CMake integration, Gaia ECS dependency, build order
+2. **Morton Code Spatial Indexing** - 8-byte Morton key encodes x/y/z position (21 bits per axis)
+3. **Sparse Component Schema** - Split vec3 for SoA optimization
+4. **ECS-Backed AttributeRegistry** - DynamicVoxelScalar ↔ Entity conversion
+
+**Key Design Decisions**:
+- Morton-only storage (no separate Position component)
+- Sparse-only entities (create only for solid voxels)
+- SoA-optimized attributes (split vec3 into 3 float components)
+- Fixed component pool (pre-defined for common attributes)
+
+**Memory Savings**:
+- Dense (old): 512 voxels × 40 bytes = 20 KB/chunk
+- Sparse (new, 10% occupancy): 51 voxels × 36 bytes = 1.8 KB/chunk
+- **11× reduction** in memory usage
+
+---
+
+## ESVO Adoption (Week 1 - Nov 18-19, 2025)
 
 **Last Updated**: November 19, 2025 (Evening)
 

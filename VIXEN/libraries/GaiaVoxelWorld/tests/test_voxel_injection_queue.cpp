@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "VoxelInjectionQueue.h"
 #include "GaiaVoxelWorld.h"
-#include "VoxelCreationRequest.h"
+#include "ComponentData.h"  // VoxelCreationRequest moved here
 #include <glm/glm.hpp>
 #include <thread>
 #include <chrono>
@@ -61,12 +61,14 @@ TEST(VoxelInjectionQueueTest, EnqueueSingleVoxel) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
-    request.color = glm::vec3(1.0f, 0.0f, 0.0f);
-    request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+    };
 
-    bool success = queue.enqueue(glm::vec3(10.0f, 5.0f, 3.0f), request);
+    VoxelCreationRequest request{glm::vec3(10.0f, 5.0f, 3.0f), components};
+    bool success = queue.enqueue(request);
     EXPECT_TRUE(success);
 
     auto stats = queue.getStats();
@@ -77,14 +79,16 @@ TEST(VoxelInjectionQueueTest, EnqueueMultipleVoxels) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
-    request.color = glm::vec3(1.0f, 0.0f, 0.0f);
-    request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+    };
 
     for (int i = 0; i < 100; ++i) {
         glm::vec3 pos(static_cast<float>(i), 0.0f, 0.0f);
-        bool success = queue.enqueue(pos, request);
+        VoxelCreationRequest request{pos, components};
+        bool success = queue.enqueue(request);
         EXPECT_TRUE(success);
     }
 
@@ -96,17 +100,20 @@ TEST(VoxelInjectionQueueTest, EnqueueBatch) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world);
 
-    std::vector<std::pair<glm::vec3, VoxelCreationRequest>> batch;
-    for (int i = 0; i < 50; ++i) {
-        VoxelCreationRequest request;
-        request.density = 1.0f;
-        request.color = glm::vec3(1.0f, 0.0f, 0.0f);
-        request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+    };
 
-        batch.emplace_back(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+    size_t enqueued = 0;
+    for (int i = 0; i < 50; ++i) {
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        if (queue.enqueue(request)) {
+            enqueued++;
+        }
     }
 
-    size_t enqueued = queue.enqueueBatch(batch);
     EXPECT_EQ(enqueued, 50);
 
     auto stats = queue.getStats();
@@ -117,12 +124,14 @@ TEST(VoxelInjectionQueueTest, EnqueueUntilFull) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world, 100); // Small capacity
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     size_t successCount = 0;
     for (int i = 0; i < 150; ++i) { // Try to enqueue more than capacity
-        if (queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request)) {
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        if (queue.enqueue(request)) {
             successCount++;
         }
     }
@@ -140,19 +149,21 @@ TEST(VoxelInjectionQueueTest, ProcessSingleVoxel) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
-    request.color = glm::vec3(1.0f, 0.0f, 0.0f);
-    request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+    };
 
-    queue.enqueue(glm::vec3(10.0f, 5.0f, 3.0f), request);
+    VoxelCreationRequest request{glm::vec3(10.0f, 5.0f, 3.0f), components};
+    queue.enqueue(request);
 
     // Wait for processing
     queue.flush();
 
     auto entities = queue.getCreatedEntities();
     EXPECT_EQ(entities.size(), 1);
-    EXPECT_TRUE(entities[0].valid());
+    EXPECT_TRUE(world.exists(entities[0]));
 
     queue.stop();
 }
@@ -163,13 +174,15 @@ TEST(VoxelInjectionQueueTest, ProcessMultipleVoxels) {
 
     queue.start(2); // 2 workers
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
-    request.color = glm::vec3(1.0f, 0.0f, 0.0f);
-    request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1.0f, 0.0f, 0.0f)},
+        Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+    };
 
     for (int i = 0; i < 100; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -178,7 +191,7 @@ TEST(VoxelInjectionQueueTest, ProcessMultipleVoxels) {
     EXPECT_EQ(entities.size(), 100);
 
     for (auto entity : entities) {
-        EXPECT_TRUE( world.exists(entity));
+        EXPECT_TRUE(world.exists(entity));
     }
 
     queue.stop();
@@ -190,17 +203,17 @@ TEST(VoxelInjectionQueueTest, ProcessBatchCreation) {
 
     queue.start(4); // 4 workers for parallel processing
 
-    std::vector<std::pair<glm::vec3, VoxelCreationRequest>> batch;
     for (int i = 0; i < 1000; ++i) {
-        VoxelCreationRequest request;
-        request.density = 1.0f;
-        request.color = glm::vec3(static_cast<float>(i % 256) / 255.0f, 0.5f, 0.5f);
-        request.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+        ComponentQueryRequest components[] = {
+            Density{1.0f},
+            Color{glm::vec3(static_cast<float>(i % 256) / 255.0f, 0.5f, 0.5f)},
+            Normal{glm::vec3(0.0f, 1.0f, 0.0f)}
+        };
 
-        batch.emplace_back(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
-    queue.enqueueBatch(batch);
     queue.flush();
 
     auto entities = queue.getCreatedEntities();
@@ -215,13 +228,15 @@ TEST(VoxelInjectionQueueTest, VerifyCreatedEntitiesHaveCorrectAttributes) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 0.8f;
-    request.color = glm::vec3(0.2f, 0.4f, 0.6f);
-    request.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+    ComponentQueryRequest components[] = {
+        Density{0.8f},
+        Color{glm::vec3(0.2f, 0.4f, 0.6f)},
+        Normal{glm::vec3(0.0f, 0.0f, 1.0f)}
+    };
 
     glm::vec3 expectedPos(100.0f, 50.0f, 25.0f);
-    queue.enqueue(expectedPos, request);
+    VoxelCreationRequest request{expectedPos, components};
+    queue.enqueue(request);
 
     queue.flush();
 
@@ -229,7 +244,7 @@ TEST(VoxelInjectionQueueTest, VerifyCreatedEntitiesHaveCorrectAttributes) {
     ASSERT_EQ(entities.size(), 1);
 
     auto entity = entities[0];
-    ASSERT_TRUE( world.exists(entity));
+    ASSERT_TRUE(world.exists(entity));
 
     // Verify attributes in GaiaVoxelWorld
     auto pos = world.getPosition(entity);
@@ -261,11 +276,13 @@ TEST(VoxelInjectionQueueTest, GetCreatedEntitiesClearsBuffer) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     for (int i = 0; i < 10; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -287,11 +304,13 @@ TEST(VoxelInjectionQueueTest, PeekCreatedEntitiesDoesNotClear) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     for (int i = 0; i < 10; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -319,11 +338,13 @@ TEST(VoxelInjectionQueueTest, GetCreatedEntityCount) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     for (int i = 0; i < 25; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -354,11 +375,13 @@ TEST(VoxelInjectionQueueTest, GetStats_AfterEnqueue) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     for (int i = 0; i < 50; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     auto stats = queue.getStats();
@@ -372,11 +395,13 @@ TEST(VoxelInjectionQueueTest, GetStats_AfterProcessing) {
 
     queue.start(1);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     for (int i = 0; i < 100; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -399,18 +424,20 @@ TEST(VoxelInjectionQueueTest, ConcurrentEnqueue) {
 
     queue.start(4);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     // Multiple threads enqueueing concurrently
     std::vector<std::thread> threads;
     std::atomic<int> totalEnqueued{0};
 
     for (int t = 0; t < 4; ++t) {
-        threads.emplace_back([&queue, &request, &totalEnqueued, t]() {
+        threads.emplace_back([&queue, &components, &totalEnqueued, t]() {
             for (int i = 0; i < 250; ++i) {
                 glm::vec3 pos(static_cast<float>(t * 250 + i), 0.0f, 0.0f);
-                if (queue.enqueue(pos, request)) {
+                VoxelCreationRequest request{pos, components};
+                if (queue.enqueue(request)) {
                     totalEnqueued++;
                 }
             }
@@ -437,13 +464,15 @@ TEST(VoxelInjectionQueueTest, HighThroughputEnqueue) {
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world, 100000);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < 10000; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -462,13 +491,15 @@ TEST(VoxelInjectionQueueTest, ParallelProcessingThroughput) {
 
     queue.start(4); // 4 parallel workers
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < 10000; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     queue.flush();
@@ -511,12 +542,14 @@ TEST(VoxelInjectionQueueTest, StopDuringProcessing) {
 
     queue.start(2);
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
     // Enqueue a large batch
     for (int i = 0; i < 1000; ++i) {
-        queue.enqueue(glm::vec3(static_cast<float>(i), 0.0f, 0.0f), request);
+        VoxelCreationRequest request{glm::vec3(static_cast<float>(i), 0.0f, 0.0f), components};
+        queue.enqueue(request);
     }
 
     // Stop immediately (should flush remaining items)
@@ -552,10 +585,12 @@ TEST(VoxelInjectionQueueTest, RestartAfterStop) {
     queue.start(1);
     EXPECT_TRUE(queue.isRunning());
 
-    VoxelCreationRequest request;
-    request.density = 1.0f;
+    ComponentQueryRequest components[] = {
+        Density{1.0f}
+    };
 
-    queue.enqueue(glm::vec3(0.0f), request);
+    VoxelCreationRequest request{glm::vec3(0.0f), components};
+    queue.enqueue(request);
     queue.flush();
 
     auto entities = queue.getCreatedEntities();
