@@ -328,7 +328,7 @@ concept ScalarComponent = VoxelComponent<T> && HasValueMember<T>;
 // Primary template - default to .value member type
 template<typename T, typename = void>
 struct ComponentValueType {
-    using type = decltype(std::declval<T>().value);
+    using type = decltype(std::declval<T>());
 };
 
 // Specialization for Vec3 components (have toVec3() method)

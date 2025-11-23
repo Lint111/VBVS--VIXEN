@@ -12,7 +12,6 @@ project(GaiaVoxelWorld VERSION 1.0.0 LANGUAGES CXX)
 add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
     src/VoxelInjectionQueue.cpp
-    src/VoxelInjector.cpp
     src/EntityBrickView.cpp
 )
 

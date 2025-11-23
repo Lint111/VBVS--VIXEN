@@ -39,15 +39,15 @@ TEST(GaiaVoxelWorldTest, CreateVoxelDefaultParameters) {
     ASSERT_TRUE( world.exists(entity));
 
     // Check default values
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value(), 1.0f);
+    EXPECT_FLOAT_EQ(density.value().value, 1.0f);
 
-    auto color = world.getColor(entity);
+    auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
     EXPECT_EQ(color.value(), glm::vec3(1.0f)); // White
 
-    auto normal = world.getNormal(entity);
+    auto normal = world.getComponentValue<Normal>(entity);
     ASSERT_TRUE(normal.has_value());
     EXPECT_EQ(normal.value(), glm::vec3(0.0f, 1.0f, 0.0f)); // +Y
 }
@@ -118,9 +118,9 @@ TEST(GaiaVoxelWorldTest, GetDensity) {
     float expectedDensity = 0.75f;
     auto entity = world.createVoxel(glm::vec3(0.0f), expectedDensity);
 
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value(), expectedDensity);
+    EXPECT_FLOAT_EQ(density.value().value, expectedDensity);
 }
 
 TEST(GaiaVoxelWorldTest, GetColor) {
@@ -129,7 +129,7 @@ TEST(GaiaVoxelWorldTest, GetColor) {
     glm::vec3 expectedColor(0.2f, 0.8f, 0.4f);
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, expectedColor);
 
-    auto color = world.getColor(entity);
+    auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
     EXPECT_EQ(color.value(), expectedColor);
 }
@@ -140,7 +140,7 @@ TEST(GaiaVoxelWorldTest, GetNormal) {
     glm::vec3 expectedNormal(0.577f, 0.577f, 0.577f); // Normalized diagonal
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f, glm::vec3(1.0f), expectedNormal);
 
-    auto normal = world.getNormal(entity);
+    auto normal = world.getComponentValue<Normal>(entity);
     ASSERT_TRUE(normal.has_value());
     EXPECT_EQ(normal.value(), expectedNormal);
 }
@@ -164,11 +164,11 @@ TEST(GaiaVoxelWorldTest, SetDensity) {
     auto entity = world.createVoxel(glm::vec3(0.0f), 1.0f);
 
     float newDensity = 0.25f;
-    world.setDensity(entity, newDensity);
+    world.setComponent<Density>(entity, Density{newDensity});
 
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value(), newDensity);
+    EXPECT_FLOAT_EQ(density.value().value, newDensity);
 }
 
 TEST(GaiaVoxelWorldTest, SetColor) {
@@ -177,9 +177,9 @@ TEST(GaiaVoxelWorldTest, SetColor) {
     auto entity = world.createVoxel(glm::vec3(0.0f));
 
     glm::vec3 newColor(0.1f, 0.2f, 0.3f);
-    world.setColor(entity, newColor);
+    world.setComponent<Color>(entity, Color{newColor});
 
-    auto color = world.getColor(entity);
+    auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
     EXPECT_EQ(color.value(), newColor);
 }
@@ -190,9 +190,9 @@ TEST(GaiaVoxelWorldTest, SetNormal) {
     auto entity = world.createVoxel(glm::vec3(0.0f));
 
     glm::vec3 newNormal(1.0f, 0.0f, 0.0f); // +X
-    world.setNormal(entity, newNormal);
+    world.setComponent<Normal>(entity, Normal{newNormal});
 
-    auto normal = world.getNormal(entity);
+    auto normal = world.getComponentValue<Normal>(entity);
     ASSERT_TRUE(normal.has_value());
     EXPECT_EQ(normal.value(), newNormal);
 }
@@ -200,14 +200,20 @@ TEST(GaiaVoxelWorldTest, SetNormal) {
 TEST(GaiaVoxelWorldTest, GetNonExistentEntity) {
     GaiaVoxelWorld world;
 
+	struct position_t {};
+
+
     auto entity = world.createVoxel(glm::vec3(0.0f));
+
+
+
     world.destroyVoxel(entity);
 
     // All getters should return std::nullopt for destroyed entity
-    EXPECT_FALSE(world.getPosition(entity).has_value());
-    EXPECT_FALSE(world.getDensity(entity).has_value());
-    EXPECT_FALSE(world.getColor(entity).has_value());
-    EXPECT_FALSE(world.getNormal(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<position_t>(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Density>(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Color>(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Normal>(entity).has_value());
 }
 
 // ===========================================================================
@@ -325,11 +331,11 @@ TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_CreationEntry) {
     EXPECT_EQ(entities.size(), 100);
 
     // Verify attributes from first entity
-    auto density = world.getDensity(entities[0]);
+    auto density = world.getComponentValue<Density>(entities[0]);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value(), 0.8f);
+    EXPECT_FLOAT_EQ(density.value().value, 0.8f);
 
-    auto color = world.getColor(entities[0]);
+    auto color = world.getComponentValue<Color>(entities[0]);
     ASSERT_TRUE(color.has_value());
     EXPECT_EQ(color.value(), glm::vec3(0.0f, 1.0f, 0.0f));
 }
@@ -439,9 +445,9 @@ TEST(GaiaVoxelWorldTest, ZeroDensity) {
 
     auto entity = world.createVoxel(glm::vec3(0.0f), 0.0f); // Air voxel
 
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
-    EXPECT_FLOAT_EQ(density.value(), 0.0f);
+    EXPECT_FLOAT_EQ(density.value().value, 0.0f);
 
     // Should NOT appear in solid voxels query
     auto solidVoxels = world.querySolidVoxels();

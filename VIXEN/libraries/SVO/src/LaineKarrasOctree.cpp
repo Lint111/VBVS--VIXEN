@@ -1797,7 +1797,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             // Use GaiaVoxelWorld's clean API for component access
             using namespace GaiaVoxel;
             auto density = m_voxelWorld->getComponentValue<Density>(entity);
-            if (density.has_value() && density.value() > 0.0f) {
+            if (density.has_value() && density.value().value > 0.0f) {
                 voxelOccupied = true;
             }
         }
