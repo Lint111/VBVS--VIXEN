@@ -52,7 +52,7 @@ class GaiaVoxelWorld;
 class EntityBrickView {
 public:
     /**
-     * Create brick view over entity array.
+     * Create brick view over entity array (legacy - for explicit storage).
      * @param world GaiaVoxelWorld for component access
      * @param entities Reference to brick's entity array
      * @param depth Brick depth in octree (depth → 2^depth = brickSize)
@@ -61,6 +61,18 @@ public:
      *                       depth=5 → brickSize=32 → 32³=32768 voxels
      */
     EntityBrickView(GaiaVoxelWorld& world, std::span<gaia::ecs::Entity> entities, uint8_t depth);
+
+    /**
+     * Create brick view from Morton key base (SVO pattern - zero storage).
+     * Queries entities on-demand via MortonKey component.
+     *
+     * @param world GaiaVoxelWorld for ECS queries
+     * @param baseMortonKey Morton key of brick origin (min corner)
+     * @param depth Brick depth (depth → 2^depth = brickSize)
+     *
+     * Example: baseMortonKey=0x123, depth=3 → queries entities with MortonKeys in range [0x123, 0x123+512)
+     */
+    EntityBrickView(GaiaVoxelWorld& world, uint64_t baseMortonKey, uint8_t depth);
 
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
@@ -181,13 +193,18 @@ private:
      * Convert linear index to 3D coordinate.
      */
     void linearIndexToCoord(size_t idx, int& x, int& y, int& z) const;
+
     GaiaVoxelWorld& m_world;
-    std::span<gaia::ecs::Entity> m_entities;
+    std::span<gaia::ecs::Entity> m_entities;  // Used by span-based constructor
+    uint64_t m_baseMortonKey{ 0 };            // Used by MortonKey-based constructor
 
     // Depth-derived sizing
     uint8_t m_depth;                // Brick depth (3-8 typical for SVO)
     size_t m_brickSize;             // 2^depth (8, 16, 32, ... 256)
     size_t m_voxelsPerBrick;        // brickSize³ (512, 4096, 32768, ...)
+
+    // Query mode: true = use m_entities span, false = query ECS via MortonKey
+    bool m_usesEntitySpan{ true };
 };
 
 // ============================================================================

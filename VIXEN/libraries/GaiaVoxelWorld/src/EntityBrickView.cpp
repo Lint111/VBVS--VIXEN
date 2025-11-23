@@ -10,9 +10,24 @@ EntityBrickView::EntityBrickView(
     uint8_t depth)
     : m_world(world)
     , m_entities(entities)
+    , m_baseMortonKey(0)
     , m_depth(depth)
     , m_brickSize(1u << depth)  // 2^depth
-    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize) {  // brickSize³
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
+    , m_usesEntitySpan(true) {
+}
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    uint64_t baseMortonKey,
+    uint8_t depth)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_baseMortonKey(baseMortonKey)
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_usesEntitySpan(false) {
 }
 
 // ============================================================================
@@ -23,7 +38,22 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
     if (voxelIdx >= m_voxelsPerBrick) {
         return gaia::ecs::Entity(); // Invalid entity
     }
-    return m_entities[voxelIdx];
+
+    if (m_usesEntitySpan) {
+        // Span-based mode: direct array access
+        return m_entities[voxelIdx];
+    } else {
+        // MortonKey-based mode: query ECS
+        int x, y, z;
+        linearIndexToCoord(voxelIdx, x, y, z);
+
+        // Compute full Morton key: baseMortonKey + local offset
+        uint64_t localMorton = MortonKeyUtils::encode(glm::ivec3(x, y, z));
+        uint64_t fullMorton = m_baseMortonKey + localMorton;
+
+        // Query world for entity with this MortonKey
+        return m_world.getEntityByMortonKey(fullMorton);
+    }
 }
 
 gaia::ecs::Entity EntityBrickView::getEntity(int x, int y, int z) const {

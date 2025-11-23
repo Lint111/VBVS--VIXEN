@@ -193,12 +193,12 @@ void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
     }
 
     // 1. Extract position from entity's MortonKey component
-    if (!m_world->has<MortonKey>(entity)) {
+    if (!m_world->has<GaiaVoxel::MortonKey>(entity)) {
         return; // Entity must have MortonKey for spatial indexing
     }
 
-    MortonKey key = m_world->get<MortonKey>(entity);
-    glm::vec3 position = MortonKeyUtils::toWorldPos(key);
+    GaiaVoxel::MortonKey key = m_world->get<GaiaVoxel::MortonKey>(entity);
+    glm::vec3 position = GaiaVoxel::MortonKeyUtils::toWorldPos(key);
 
     // 2. For Phase 2, we're not doing actual octree insertion
     //    Just store the entity mapping for ray casting retrieval
@@ -1124,8 +1124,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                         } else {
                             // Strategy 2: Morton code lookup (for entity-based insertion)
                             // Compute Morton key from hit position
-                            uint64_t mortonCode = MortonKeyUtils::encode(hit.hitPoint);
-                            auto it2 = m_leafEntityMap.find(mortonCode);
+                            GaiaVoxel::MortonKey mortonCode = GaiaVoxel::MortonKeyUtils::fromPosition(hit.hitPoint);
+                            auto it2 = m_leafEntityMap.find(mortonCode.code);
                             if (it2 != m_leafEntityMap.end()) {
                                 hit.entity = it2->second;
                             } else {

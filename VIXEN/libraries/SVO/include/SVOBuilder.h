@@ -2,6 +2,7 @@
 
 #include "SVOTypes.h"
 #include "BrickReference.h"
+#include "EntityBrickView.h"  // Full include for std::vector<EntityBrickView>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -44,7 +45,14 @@ struct OctreeBlock {
     std::vector<Contour> contours;
     std::vector<UncompressedAttributes> attributes;
     std::vector<AttributeLookup> attributeLookups;
-    std::vector<BrickReference> brickReferences;  // One per leaf node (aligned with childDescriptors)
+
+    // Entity-based brick views (Phase 3 - zero-copy ECS access)
+    // One per leaf node (aligned with childDescriptors)
+    // Each view queries entities via MortonKey on-demand
+    std::vector<::GaiaVoxel::EntityBrickView> brickViews;
+
+    // DEPRECATED: Legacy descriptor-based storage (Phase 2 compatibility)
+    std::vector<BrickReference> brickReferences;
 
     BlockInfo info;
 

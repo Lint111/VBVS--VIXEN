@@ -249,6 +249,22 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
     return count;
 }
 
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMortonKey(uint64_t mortonKey) const {
+    // Query all entities with MortonKey component
+    auto query = m_impl->world.query().all<MortonKey>();
+
+    EntityID result;
+    query.each([&](gaia::ecs::Entity entity) {
+        const auto& key = m_impl->world.get<MortonKey>(entity);
+        if (key.code == mortonKey) {
+            result = entity;
+            // Note: Could optimize with spatial index/hash map in future
+        }
+    });
+
+    return result;  // Returns invalid entity if not found
+}
+
 // ============================================================================
 // Batch Operations
 // ============================================================================

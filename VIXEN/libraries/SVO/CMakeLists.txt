@@ -92,6 +92,13 @@ else()
     message(FATAL_ERROR "VoxelData target not found - ensure libraries/VoxelData is built before SVO")
 endif()
 
+# GaiaVoxelWorld for EntityBrickView (Phase 3 - entity-based storage)
+if(TARGET GaiaVoxelWorld)
+    target_link_libraries(SVO PUBLIC GaiaVoxelWorld)
+else()
+    message(FATAL_ERROR "GaiaVoxelWorld target not found - ensure libraries/GaiaVoxelWorld is built before SVO")
+endif()
+
 # TBB for parallel processing (optional - fetch if not available)
 find_package(TBB QUIET)
 if(TBB_FOUND)
