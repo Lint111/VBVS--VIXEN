@@ -1,3 +1,4 @@
+#define NOMINMAX  // Prevent Windows min/max macros from polluting namespace
 #include "VoxelInjection.h"
 #include <cmath>
 #include <algorithm>

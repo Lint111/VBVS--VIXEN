@@ -1,5 +1,7 @@
+#define NOMINMAX  // Prevent Windows min/max macros
 #include "VoxelInjectionQueue.h"
 #include "GaiaVoxelWorld.h"
+#include "VoxelComponents.h"
 #include <algorithm>
 #include <iostream>
 
@@ -144,7 +146,7 @@ void VoxelInjectionQueue::flush() {
 
 void VoxelInjectionQueue::processWorker() {
     constexpr size_t BATCH_SIZE = 256;
-    std::vector<GaiaVoxelWorld::VoxelCreationEntry> batch;
+    std::span<VoxelCreationRequest> batch;
     batch.reserve(BATCH_SIZE);
 
     while (m_running.load(std::memory_order_relaxed)) {

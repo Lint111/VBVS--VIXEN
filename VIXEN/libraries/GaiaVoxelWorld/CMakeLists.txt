@@ -11,7 +11,6 @@ project(GaiaVoxelWorld VERSION 1.0.0 LANGUAGES CXX)
 # Library sources
 add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
-    src/ECSBackedRegistry.cpp
     src/VoxelInjectionQueue.cpp
     src/VoxelInjector.cpp
     src/EntityBrickView.cpp
@@ -35,8 +34,8 @@ target_include_directories(GaiaVoxelWorld
 # Link dependencies
 target_link_libraries(GaiaVoxelWorld
     PUBLIC
-        VoxelComponents  # Component definitions (includes Gaia + GLM)
-        VoxelData        # Attribute storage and brick management
+        VoxelComponents  # Component definitions only (includes Gaia + GLM)
+    # VoxelData removed - no longer needed! Clean separation achieved.
 )
 
 # C++23 standard

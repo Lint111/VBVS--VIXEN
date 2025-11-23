@@ -54,39 +54,27 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     return entity;
 }
 
-// DynamicVoxelScalar overload - type-safe component iteration
+// ComponentData array overload - type-safe, zero string lookups
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     const glm::vec3& position,
-    const ::VoxelData::DynamicVoxelScalar& data) {
+    std::span<const ComponentData> components) {
 
     auto& world = m_impl->world;
     gaia::ecs::Entity entity = world.add();
 
-    // Always add MortonKey
+    // Always add MortonKey first
     world.add<MortonKey>(entity, MortonKey::fromPosition(position));
 
-    // Convert DynamicVoxelScalar attributes to ECS components
-    // Uses compile-time component registry - NO manual switch statements!
-    for (const auto& attr : data) {
-        GaiaVoxel::ComponentRegistry::visitByName(attr.name, [&](auto component_type) {
-            using Component = std::decay_t<decltype(component_type)>;
+    // Add components using std::visit (compile-time dispatch)
+    for (const auto& data : components) {
+        std::visit([&](auto&& component) {
+            using T = std::decay_t<decltype(component)>;
 
-            // Extract value from std::any based on component type
-            if constexpr (std::is_same_v<Component, MortonKey>) {
-                // Skip - already added above
+            // Skip MortonKey (already added)
+            if constexpr (!std::is_same_v<T, MortonKey>) {
+                world.add<T>(entity, component);
             }
-            else if constexpr (requires { component_type.value; }) {
-                // Scalar component (has .value member)
-                using ValueType = decltype(component_type.value);
-                auto value = attr.get<ValueType>();
-                world.add<Component>(entity, Component{value});
-            }
-            else if constexpr (requires { component_type.toVec3(); }) {
-                // Vec3 component (has toVec3() method)
-                auto vec = attr.get<glm::vec3>();
-                world.add<Component>(entity, Component(vec));
-            }
-        });
+        }, data.component);
     }
 
     return entity;
@@ -176,6 +164,19 @@ void GaiaVoxelWorld::setNormal(EntityID id, const glm::vec3& normal) {
     }
 }
 
+bool GaiaVoxelWorld::hasComponent(EntityID id, const char* componentName) const {
+    if (!m_impl->world.valid(id)) return false;
+
+    // Use ComponentRegistry to check component by name
+    bool found = false;
+    GaiaVoxel::ComponentRegistry::visitByName(componentName, [&](auto component_type) {
+        using T = std::decay_t<decltype(component_type)>;
+        found = m_impl->world.has<T>(id);
+    });
+
+    return found;
+}
+
 bool GaiaVoxelWorld::exists(EntityID id) const {
     return  m_impl->world.valid(id);
 }
@@ -247,31 +248,14 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 // ============================================================================
 
 std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
-    const std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>>& voxels) {
+    std::span<const VoxelCreationRequest> requests) {
 
     std::vector<EntityID> ids;
-    ids.reserve(voxels.size());
+    ids.reserve(requests.size());
 
-    // Use the DynamicVoxelScalar overload (with component-based dispatch)
-    for (const auto& [position, data] : voxels) {
-        ids.push_back(createVoxel(position, data));
-    }
-
-    return ids;
-}
-
-std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
-    const std::vector<VoxelCreationEntry>& entries) {
-
-    std::vector<EntityID> ids;
-    ids.reserve(entries.size());
-
-    for (const auto& entry : entries) {
-        ids.push_back(createVoxel(
-            entry.position,
-            entry.request.density,
-            entry.request.color,
-            entry.request.normal));
+    // Type-safe batch creation - zero string lookups
+    for (const auto& req : requests) {
+        ids.push_back(createVoxel(req.position, req.components));
     }
 
     return ids;

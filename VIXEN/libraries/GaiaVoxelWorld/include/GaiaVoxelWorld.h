@@ -2,12 +2,12 @@
 
 #include <gaia.h>
 #include "VoxelComponents.h"
-#include "VoxelCreationRequest.h"
+#include "ComponentData.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
 #include <optional>
-#include <DynamicVoxelStruct.h>  // VoxelData library (via target_link_libraries)
+#include <span>
 
 namespace GaiaVoxel {
 
@@ -58,12 +58,20 @@ public:
         const glm::vec3& normal = glm::vec3(0.0f, 1.0f, 0.0f));
 
     /**
-     * Create voxel from DynamicVoxelScalar (supports dynamic attribute sets).
-     * Converts attribute names (density, color, normal, etc.) to ECS components.
+     * Create voxel from component array (type-safe, zero string lookups).
+     * Components are actual types (Density, Color, etc.) not string names.
+     *
+     * Example:
+     *   ComponentData attrs[] = {
+     *       Density{0.8f},
+     *       Color{glm::vec3(1, 0, 0)},
+     *       Normal{glm::vec3(0, 1, 0)}
+     *   };
+     *   auto id = world.createVoxel(position, attrs);
      */
     EntityID createVoxel(
         const glm::vec3& position,
-        const ::VoxelData::DynamicVoxelScalar& data);
+        std::span<const ComponentData> components);
 
     /**
      * Create voxel with brick reference (for dense brick storage).
@@ -79,10 +87,19 @@ public:
         uint8_t localZ);
 
     /**
-     * Create an array of voxels from DynamicVoxelScalar (flexible attributes).
-     * Each voxel can have different attribute sets.
+     * Create an array of voxels from VoxelCreationRequest.
+     * Each voxel can have different component sets.
+     *
+     * Example:
+     *   ComponentData attrs1[] = {Density{0.8f}, Color{red}};
+     *   ComponentData attrs2[] = {Density{0.5f}, Color{blue}};
+     *   VoxelCreationRequest reqs[] = {
+     *       {pos1, attrs1},
+     *       {pos2, attrs2}
+     *   };
+     *   auto ids = world.createVoxelsBatch(reqs);
      */
-    std::vector<EntityID> createVoxelsBatch(const std::vector<::VoxelData::DynamicVoxelScalar>& voxels);
+    std::vector<EntityID> createVoxelsBatch(std::span<const VoxelCreationRequest> requests);
 
     /**
      * Destroy voxel entity.
@@ -111,8 +128,13 @@ public:
     void setColor(EntityID id, const glm::vec3& color);
     void setNormal(EntityID id, const glm::vec3& normal);
 
-    // Check component existence
+    // Check component existence (type-safe template version preferred)
+    template<typename Component>
+    bool hasComponent(EntityID id) const;
+
+    // String-based overload (uses ComponentRegistry for dynamic lookup)
     bool hasComponent(EntityID id, const char* componentName) const;
+
     bool exists(EntityID id) const;
 
     // ========================================================================
@@ -144,24 +166,7 @@ public:
     // ========================================================================
     // Batch Operations (for VoxelInjectionQueue)
     // ========================================================================
-
-    /**
-     * Create multiple voxels from DynamicVoxelScalar (flexible attributes).
-     * Each voxel can have different attribute sets.
-     * Returns vector of entity IDs.
-     */
-    std::vector<EntityID> createVoxelsBatch(
-        const std::vector<std::pair<glm::vec3, ::VoxelData::DynamicVoxelScalar>>& voxels);
-
-    /**
-     * Create multiple voxels from creation requests (for VoxelInjectionQueue).
-     * Optimized batch creation with position + attributes.
-     */
-    struct VoxelCreationEntry {
-        glm::vec3 position;
-        VoxelCreationRequest request;
-    };
-    std::vector<EntityID> createVoxelsBatch(const std::vector<VoxelCreationEntry>& entries);
+    // Note: createVoxelsBatch is defined above in Entity Creation section
 
     /**
      * Destroy multiple voxels in parallel.
@@ -198,5 +203,14 @@ private:
     // Helper: Compute spatial hash for position
     uint64_t computeSpatialHash(const glm::vec3& position) const;
 };
+
+// ============================================================================
+// Template Implementations
+// ============================================================================
+
+template<typename Component>
+bool GaiaVoxelWorld::hasComponent(EntityID id) const {
+    return getWorld().valid(id) && getWorld().has<Component>(id);
+}
 
 } // namespace GaiaVoxel
