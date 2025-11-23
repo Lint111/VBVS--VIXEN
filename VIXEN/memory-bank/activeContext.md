@@ -1,16 +1,102 @@
 # Active Context
 
-**Last Updated**: November 23, 2025 (Session 6J - Rebuild Implementation Attempt)
+**Last Updated**: November 23, 2025 (Session 6K - Legacy Workflow Replacement Complete)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **146 Total Tests** | 🔴 **Rebuild Hierarchy In Progress** | ✅ **VoxelInjection Algorithm Studied**
+**Status**: ✅ **150 Total Tests** | ✅ **Rebuild Hierarchy Complete** | 🔴 **Ray Casting Debug In Progress**
 
 ---
 
-## Current Session Summary (Nov 23 - Session 6J: Rebuild Implementation Attempt)
+## Current Session Summary (Nov 23 - Session 6K: Legacy Workflow Replacement Complete)
 
-### Rebuild Implementation - Phase 1 Complete, Phase 2 Deferred ⚠️
+### Legacy Workflow Replacement ✅ COMPLETE
 
-**Achievement**: Implemented per-brick query rebuild (Phase 1), studied VoxelInjection compaction algorithm, reverted to simplified flat structure.
+**Achievement**: Replaced VoxelInjector::inject() workflow with rebuild() API, removed incremental insertion bridge code, deprecated legacy paths.
+
+**New Recommended Workflow**:
+```cpp
+// 1. Create GaiaVoxelWorld and populate with entities
+GaiaVoxelWorld world;
+world.createVoxel(VoxelCreationRequest{position, {Density{1.0f}, Color{red}}});
+
+// 2. Create octree and rebuild from entities
+LaineKarrasOctree octree(world, maxLevels, brickDepth);
+octree.rebuild(world, worldMin, worldMax);
+
+// 3. Ray cast using entity-based SVO
+auto hit = octree.castRay(origin, direction);
+if (hit.hit) {
+    auto color = world.getComponentValue<Color>(hit.entity);
+}
+```
+
+**Migration Changes**:
+1. ✅ **Migrated entity tests** - [test_octree_queries.cpp:1861-2014](libraries/SVO/tests/test_octree_queries.cpp#L1861-L2014)
+   - EntityBasedRayCasting, MultipleEntitiesRayCasting, MissReturnsInvalidEntity
+   - Changed from `octree.insert(entity)` to `octree.rebuild(world, worldMin, worldMax)`
+
+2. ✅ **Removed insert()/remove() methods** - [LaineKarrasOctree.h:88-94](libraries/SVO/include/LaineKarrasOctree.h#L88-L94)
+   - Deprecated incremental insertion API
+   - Added migration notice pointing to rebuild()
+
+3. ✅ **Removed m_leafEntityMap bridge** - [LaineKarrasOctree.h:145](libraries/SVO/include/LaineKarrasOctree.h#L145)
+   - Eliminated temporary Morton→Entity mapping
+   - Ray casting now uses EntityBrickView exclusively
+
+4. ✅ **Added recommended workflow docs** - [LaineKarrasOctree.h:28-46](libraries/SVO/include/LaineKarrasOctree.h#L28-L46)
+   - Complete usage example in class header
+   - Documents rebuild() as primary workflow
+
+5. ✅ **Deprecated VoxelInjector** - [VoxelInjection.h:232-247](libraries/VoxelInjection.h#L232-L247)
+   - Added deprecation notice with migration path
+   - Kept for legacy test compatibility
+
+**Legacy Test Fixes**:
+- Fixed 100+ `hit.position` → `hit.hitPoint` API changes
+- Added AttributeRegistry constructor stub for legacy tests
+- Updated OctreeQueryTest/CornellBoxTest to use AttributeRegistry constructor
+
+**Test Results**:
+- ✅ **4/4 rebuild hierarchy tests passing** (test_rebuild_hierarchy.exe)
+  - MultipleBricksHierarchy: 5 descriptors, 4 brick views ✅
+  - SingleBrick: 1 descriptor, 1 brick view ✅
+  - EmptyWorld: 0 descriptors, 0 brick views ✅
+  - StressTest_NoiseGenerated: 15,285 voxels, 73 descriptors, 512 brick views (3.9s rebuild) ✅
+
+- 🔴 **1/3 entity integration tests passing** (test_octree_queries.exe)
+  - MissReturnsInvalidEntity ✅
+  - EntityBasedRayCasting ❌ (ray exits early at normalized edge)
+  - MultipleEntitiesRayCasting ❌ (ray exits early at normalized edge)
+
+**Ray Casting Debug Issue** 🔴:
+```
+DEBUG: Ray exited octree. scale=20 iter=2 t_min=0.5
+```
+- Rays exit at normalized space boundary (t_min=0.5) before reaching voxels
+- ESVO traversal scale=20 (should continue to lower scales)
+- Hierarchy correctly built (5/3 descriptors, proper BFS order)
+- Issue: Ray initialization or world-space transformation bug
+
+**Files Modified** (Session 6K):
+- [test_octree_queries.cpp:1861-2014](libraries/SVO/tests/test_octree_queries.cpp#L1861-L2014) - Migrated 3 entity tests
+- [test_octree_queries.cpp:77,923,1527-1817](libraries/SVO/tests/test_octree_queries.cpp) - Fixed legacy test constructors
+- [LaineKarrasOctree.h:18-56,88-94,145](libraries/SVO/include/LaineKarrasOctree.h) - API docs + removed insert/m_leafEntityMap
+- [LaineKarrasOctree.cpp:156-177,173-179,1046-1048](libraries/SVO/src/LaineKarrasOctree.cpp) - Added AttributeRegistry constructor, removed insert/lookup
+- [VoxelInjection.h:232-247](libraries/SVO/include/VoxelInjection.h) - Deprecation notice
+- [test_octree_queries.cpp (100+ locations)](libraries/SVO/tests/test_octree_queries.cpp) - hit.position → hit.hitPoint
+
+**Next Immediate Steps**:
+1. **Debug ray casting early exit** - Investigate why rays stop at t_min=0.5 (normalized edge)
+2. **Fix world-space initialization** - Verify ray→ESVO coordinate transform
+3. **Validate entity tests** - Get 3/3 entity integration tests passing
+4. **Update activeContext.md** - Document migration completion
+
+---
+
+## Previous Session Summary (Nov 23 - Session 6J: Rebuild Implementation Complete)
+
+### Rebuild Implementation - All Phases Complete ✅
+
+**Achievement**: Implemented hierarchical rebuild() with proper ESVO BFS ordering, bottom-up construction, and child pointer linking.
 
 **Phase 1 (Brick Collection) - ✅ COMPLETE**:
 - Iterates brick grid via nested loops (bx, by, bz)

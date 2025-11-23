@@ -153,6 +153,16 @@ namespace {
     }
 } // anonymous namespace
 
+// DEPRECATED: AttributeRegistry constructor (legacy compatibility)
+LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
+    : m_voxelWorld(nullptr)  // No entity world in legacy mode
+    , m_registry(registry)
+    , m_maxLevels(maxLevels)
+    , m_brickDepthLevels(brickDepthLevels)
+{
+    // Legacy VoxelInjector workflow - stores attribute data directly
+}
+
 // NEW: Entity-based constructor
 LaineKarrasOctree::LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld, int maxLevels, int brickDepthLevels)
     : m_voxelWorld(&voxelWorld)
@@ -1853,6 +1863,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     m_octree->root = std::make_unique<OctreeBlock>();
     m_octree->worldMin = worldMin;
     m_octree->worldMax = worldMax;
+    m_octree->maxLevels = m_maxLevels;
     m_worldMin = worldMin;
     m_worldMax = worldMax;
 
