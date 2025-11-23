@@ -13,9 +13,10 @@ using namespace GaiaVoxel;
 
 TEST(EntityBrickViewTest, CreateBrickView) {
     GaiaVoxelWorld world;
-    std::array<gaia::ecs::Entity, 512> brickEntities{};
 
-    EntityBrickView brick(world, brickEntities);
+    {
+        EntityBrickView brick(world, {0,0,0},3);
+    }
 
     // Should construct without errors
     SUCCEED();

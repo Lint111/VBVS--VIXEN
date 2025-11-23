@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 #include "LaineKarrasOctree.h"
-#include "VoxelInjection.h"
 #include "AttributeRegistry.h"
 #include "DynamicVoxelStruct.h"
-#include "BrickStorage.h"
 #include <glm/glm.hpp>
+#include "GaiaVoxelWorld.h"
 
 using namespace SVO;
+using namespace GaiaVoxel;
 
 /**
  * Test suite for brick DDA traversal within LaineKarrasOctree.
@@ -15,14 +15,21 @@ using namespace SVO;
 class BrickTraversalTest : public ::testing::Test {
 protected:
     void SetUp() override {
+
+        voxelWorld = std::make_shared<GaiaVoxelWorld>();
+
+
         // Create registry and register attributes
         registry = std::make_shared<::VoxelData::AttributeRegistry>();
         registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
         registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
         registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
 
-        // Create brick storage (depth 3 = 8x8x8 bricks)
-        brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3);
+        // Create a 10x10x10 world
+        worldMin = glm::vec3(0, 0, 0);
+        worldMax = glm::vec3(10, 10, 10);
+        worldCenter = (worldMin + worldMax) * 0.5f;
+
     }
 
     // Helper to create octree with voxels and bricks
@@ -33,27 +40,34 @@ protected:
     {
         auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
 
-        VoxelInjector injector(brickStorage.get());
-        InjectionConfig config;
-        config.maxLevels = maxDepth;
-        config.brickDepthLevels = brickDepthLevels;
-        config.minVoxelSize = 0.01f;
-
+// Create voxel entities in the world
         for (const auto& pos : voxelPositions) {
-            ::VoxelData::DynamicVoxelScalar voxel;
-            voxel.set("density", 1.0f);
-            voxel.set("color", glm::vec3(1, 1, 1));
-            voxel.set("normal", glm::normalize(pos - glm::vec3(5.0f)));
+            ComponentQueryRequest components[] = {
+                Density{1.0f},
+                Color{glm::vec3(1.0f, 1.0f, 1.0f)}
+            };
+            VoxelCreationRequest request{pos, components};
 
-            injector.insertVoxel(*octree, pos, voxel, config);
+            voxelWorld->createVoxel(request);
         }
 
-        injector.compactToESVOFormat(*octree);
+        // Create octree with GaiaVoxelWorld and rebuild hierarchy
+        auto octree = std::make_unique<LaineKarrasOctree>(
+            *voxelWorld,
+            registry.get(),
+            maxDepth,  // maxLevels
+            3          // brickDepth (3 levels = 8x8x8 brick)
+        );
+
+        // Build ESVO hierarchy from entities
+        octree->rebuild(*voxelWorld, worldMin, worldMax);
         return octree;
     }
 
+
+    glm::vec3 worldMin, worldMax, worldCenter;    
     std::shared_ptr<::VoxelData::AttributeRegistry> registry;
-    std::shared_ptr<BrickStorage<DefaultLeafData>> brickStorage;
+    std::shared_ptr<GaiaVoxelWorld> voxelWorld;
 };
 
 // ============================================================================

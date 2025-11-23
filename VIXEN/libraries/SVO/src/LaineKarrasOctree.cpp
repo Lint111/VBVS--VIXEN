@@ -153,20 +153,11 @@ namespace {
     }
 } // anonymous namespace
 
-// DEPRECATED: AttributeRegistry constructor (legacy compatibility)
-LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
-    : m_voxelWorld(nullptr)  // No entity world in legacy mode
-    , m_registry(registry)
-    , m_maxLevels(maxLevels)
-    , m_brickDepthLevels(brickDepthLevels)
-{
-    // Legacy VoxelInjector workflow - stores attribute data directly
-}
 
 // NEW: Entity-based constructor
-LaineKarrasOctree::LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld, int maxLevels, int brickDepthLevels)
+LaineKarrasOctree::LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld,::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
     : m_voxelWorld(&voxelWorld)
-    , m_registry(nullptr)  // No AttributeRegistry in entity-based mode
+    , m_registry(registry)  // AttributeRegistry pointer in entity-based mode
     , m_maxLevels(maxLevels)
     , m_brickDepthLevels(brickDepthLevels)
 {
@@ -699,7 +690,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // ========================================================================
 
     // Advance ray to entry point (if ray starts outside octree)
-    glm::vec3 rayEntryPoint = origin + rayDir * tEntry;
+    // CRITICAL: If ray starts INSIDE octree (tEntry <= 0), use original origin
+    // If ray starts OUTSIDE (tEntry > 0), advance to entry point
+    float tRayStart = std::max(0.0f, tEntry);
+    glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
 
     // Map world space to [1,2] normalized space for algorithm
     // World [worldMin, worldMax] → Normalized [1, 2]
@@ -801,7 +795,9 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // For depth 6: 22 - 6 + 1 = 17 (leaves us with 6 levels: 17-22)
     int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
 
-    while (scale >= minESVOScale && iter < maxIter) {
+    // CRITICAL: Loop continues while scale is in valid range [minESVOScale, ESVO_MAX_SCALE]
+    // Exit if scale < minESVOScale (descended too deep) OR scale > ESVO_MAX_SCALE (popped above root)
+    while (scale >= minESVOScale && scale <= ESVO_MAX_SCALE && iter < maxIter) {
         ++iter;
         // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
 

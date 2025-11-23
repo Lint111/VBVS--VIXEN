@@ -10,7 +10,7 @@ EntityBrickView::EntityBrickView(
     uint8_t depth)
     : m_world(world)
     , m_entities(entities)
-    , m_baseMortonKey(0)
+    , m_rootPosInWorldSpace(0)
     , m_depth(depth)
     , m_brickSize(1u << depth)  // 2^depth
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
@@ -19,11 +19,11 @@ EntityBrickView::EntityBrickView(
 
 EntityBrickView::EntityBrickView(
     GaiaVoxelWorld& world,
-    uint64_t baseMortonKey,
+    glm::vec3 rootPositionInWorldSpace,
     uint8_t depth)
     : m_world(world)
     , m_entities()  // Empty span
-    , m_baseMortonKey(baseMortonKey)
+    , m_rootPositionInWorldSpace(rootPositionInWorldSpace)
     , m_depth(depth)
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
@@ -49,10 +49,10 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
 
         // Compute full Morton key: baseMortonKey + local offset
         uint64_t localMorton = MortonKeyUtils::encode(glm::ivec3(x, y, z));
-        uint64_t fullMorton = m_baseMortonKey + localMorton;
+        uint64_t fullMorton = MortonKeyUtils::encode(m_rootPositionInWorldSpace) + localMorton;
 
         // Query world for entity with this MortonKey
-        return m_world.getEntityByMortonKey(fullMorton);
+        return m_world.getEntityByWorldSpace(fullMorton);
     }
 }
 

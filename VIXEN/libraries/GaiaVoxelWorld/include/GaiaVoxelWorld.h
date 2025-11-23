@@ -192,13 +192,13 @@ public:
     void setPosition(EntityID id, const glm::vec3& position);
 
     /**
-     * Find entity by MortonKey component value.
+     * Find entity by world space component value.
      * Used by EntityBrickView for MortonKey-based lookups.
      *
-     * @param mortonKey Morton key to search for
-     * @return Entity with matching MortonKey, or invalid entity if not found
+     * @param worldPos World position to search for
+     * @return Entity with matching world position, or invalid entity if not found
      */
-    EntityID getEntityByMortonKey(uint64_t mortonKey) const;
+    EntityID getEntityByWorldSpace(glm::vec3 worldPos) const;
 
     // ========================================================================
     // Spatial Queries

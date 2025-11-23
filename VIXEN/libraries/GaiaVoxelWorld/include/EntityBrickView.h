@@ -76,7 +76,7 @@ public:
      *
      * Example: baseMortonKey=0x123, depth=3 → queries entities with MortonKeys in range [0x123, 0x123+512)
      */
-    EntityBrickView(GaiaVoxelWorld& world, uint64_t baseMortonKey, uint8_t depth);
+    EntityBrickView(GaiaVoxelWorld& world, glm::vec3 rootPositionInWorldSpace, uint8_t depth);
 
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
@@ -200,7 +200,7 @@ private:
 
     GaiaVoxelWorld& m_world;
     std::span<gaia::ecs::Entity> m_entities;  // Used by span-based constructor
-    uint64_t m_baseMortonKey{ 0 };            // Used by MortonKey-based constructor
+    glm::vec3 m_rootPositionInWorldSpace{ 0,0,0 };            // Used by MortonKey-based constructor
 
     // Depth-derived sizing
     uint8_t m_depth;                // Brick depth (3-8 typical for SVO)

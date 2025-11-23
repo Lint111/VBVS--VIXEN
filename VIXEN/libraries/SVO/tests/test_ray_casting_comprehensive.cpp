@@ -4,58 +4,60 @@
 #include <vector>
 #include <random>
 #include "LaineKarrasOctree.h"
-#include "VoxelInjection.h"
-#include "BrickStorage.h"
+#include "GaiaVoxelWorld.h"
+#include "VoxelComponents.h"  // For Density, Color components
 #include "ISVOStructure.h"
 #include "SVOTypes.h"
 
 using namespace SVO;
+using namespace GaiaVoxel;
 
 class ComprehensiveRayCastingTest : public ::testing::Test {
 protected:
     void SetUp() override {
+
+        registry = std::make_shared<::VoxelData::AttributeRegistry>();
+        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
+        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+
+        // Create GaiaVoxelWorld (modern ECS-based system)
+         voxelWorld = std::make_shared<GaiaVoxelWorld>(registry);
+
+
         // Create a 10x10x10 world
         worldMin = glm::vec3(0, 0, 0);
         worldMax = glm::vec3(10, 10, 10);
         worldCenter = (worldMin + worldMax) * 0.5f;
     }
 
-    // Helper function to create an octree with specific voxels
+    // Helper function to create an octree with specific voxels using NEW WORKFLOW
     std::unique_ptr<LaineKarrasOctree> createOctreeWithVoxels(
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        // Create attribute registry and brick storage
-        auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
-        registry->addAttribute("material", ::VoxelData::AttributeType::Uint32, 0u);
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-        registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
-        auto brickStorage = std::make_shared<BrickStorage<DefaultLeafData>>(registry.get(), 3); // depth 3 = 8x8x8
+        
 
-        auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
-
-        // We CAN use bricks with additive insertion - we implemented this!
-        VoxelInjector injector(brickStorage.get()); // Pass brick storage to injector
-        InjectionConfig config;
-        config.maxLevels = maxDepth;
-        config.minVoxelSize = 0.01f;
-        // Enable bricks for the bottom 3 levels
-        config.brickDepthLevels = 3;
-
-        // Insert all voxels
+        // Create voxel entities in the world
         for (const auto& pos : voxelPositions) {
-            ::VoxelData::DynamicVoxelScalar voxel;
-            voxel.set("density", 1.0f);
-            voxel.set("color", glm::vec3(1, 1, 1));
-            voxel.set("normal", glm::vec3(0, 1, 0)); // Default normal
+            ComponentQueryRequest components[] = {
+                Density{1.0f},
+                Color{glm::vec3(1.0f, 1.0f, 1.0f)}
+            };
+            VoxelCreationRequest request{pos, components};
 
-            // Use the insertVoxel signature from test_voxel_injection.cpp
-            injector.insertVoxel(*octree, pos, voxel, config);
+            voxelWorld->createVoxel(request);
         }
 
-        // Compact to ESVO format
-        injector.compactToESVOFormat(*octree);
+        // Create octree with GaiaVoxelWorld and rebuild hierarchy
+        auto octree = std::make_unique<LaineKarrasOctree>(
+            *voxelWorld,
+            registry.get(),
+            maxDepth,  // maxLevels
+            3          // brickDepth (3 levels = 8x8x8 brick)
+        );
+
+        // Build ESVO hierarchy from entities
+        octree->rebuild(*voxelWorld, worldMin, worldMax);
 
         return octree;
     }
@@ -76,6 +78,8 @@ protected:
     }
 
     glm::vec3 worldMin, worldMax, worldCenter;
+    std::shared_ptr<GaiaVoxelWorld> voxelWorld;
+    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
 };
 
 // ============================================================================
@@ -238,12 +242,15 @@ TEST_F(ComprehensiveRayCastingTest, RaysFromInsideGrid) {
     }
 
     auto octree = createOctreeWithVoxels(voxels);
+    std::cout << "[TEST] Octree created, casting first ray...\n" << std::flush;
 
     // Ray from center outward in +X
     {
         glm::vec3 origin(5, 5, 5);
         glm::vec3 direction(1, 0, 0);
+        std::cout << "[TEST] Calling castRay from (" << origin.x << "," << origin.y << "," << origin.z << ") dir=(" << direction.x << "," << direction.y << "," << direction.z << ")\n" << std::flush;
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
+        std::cout << "[TEST] castRay returned, hit=" << hit.hit << "\n" << std::flush;
         EXPECT_TRUE(hit.hit) << "Ray from center should hit right wall";
         EXPECT_NEAR(hit.hitPoint.x, 9.0f, 2.0f) << "Should hit right wall at x=9";
     }

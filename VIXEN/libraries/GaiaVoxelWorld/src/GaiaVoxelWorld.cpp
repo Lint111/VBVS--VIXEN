@@ -332,14 +332,16 @@ void GaiaVoxelWorld::invalidateBlockCacheAt(const glm::vec3& position) {
     }
 }
 
-GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMortonKey(uint64_t mortonKey) const {
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByWorldSpace(glm::vec3 worldPos) const {
     // Query all entities with MortonKey component
     auto query = m_impl->world.query().all<MortonKey>();
+
+	MortonKey mortonKey = fromPosition(worldPos);
 
     EntityID result;
     query.each([&](gaia::ecs::Entity entity) {
         const auto& key = m_impl->world.get<MortonKey>(entity);
-        if (key.code == mortonKey) {
+        if (key.code == mortonKey.code) {
             result = entity;
             // Note: Could optimize with spatial index/hash map in future
         }
