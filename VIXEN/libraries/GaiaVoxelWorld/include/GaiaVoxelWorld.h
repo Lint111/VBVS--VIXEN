@@ -226,6 +226,43 @@ public:
      */
     size_t countVoxelsInRegion(const glm::vec3& min, const glm::vec3& max) const;
 
+    /**
+     * Get zero-copy view of entities in world-space brick region.
+     * Results are cached - subsequent calls with same parameters return cached span.
+     *
+     * @param brickWorldMin Lower-left corner of brick in world space
+     * @param brickSize Side length of cubic brick in world units
+     * @return Span over entities in this region (cached until invalidated)
+     *
+     * CACHE LIFETIME:
+     * - Cache persists across queries (no reallocation if same region queried)
+     * - Invalidated on entity create/destroy (automatically via ECS hooks)
+     * - Call invalidateBlockCache() to force refresh
+     *
+     * COORDINATE SYSTEM AGNOSTIC:
+     * - SVO passes world coordinates in its own coordinate system
+     * - GaiaVoxelWorld handles internal MortonKey encoding/scale conversion
+     * - Works even if GaiaVoxelWorld uses different depth than SVO
+     */
+    std::span<const gaia::ecs::Entity> getEntityBlockRef(
+        const glm::vec3& brickWorldMin,
+        float brickSize);
+
+    /**
+     * Invalidate all cached block queries.
+     * Called automatically on mass operations (clear, batch destroy).
+     * Can be called manually to force full cache refresh.
+     */
+    void invalidateBlockCache();
+
+    /**
+     * Invalidate only cached blocks that contain given world position.
+     * More efficient than full invalidation when modifying single voxels.
+     *
+     * @param position World position of modified voxel
+     */
+    void invalidateBlockCacheAt(const glm::vec3& position);
+
     // ========================================================================
     // Chunk Operations (Bulk Insert for Spatial Locality)
     // ========================================================================
@@ -330,6 +367,43 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+
+    // ========================================================================
+    // Block Query Cache
+    // ========================================================================
+
+    struct BlockQueryKey {
+        glm::vec3 worldMin;
+        float size;
+
+        bool operator==(const BlockQueryKey& other) const {
+            // Use epsilon comparison for float equality
+            constexpr float epsilon = 0.0001f;
+            return glm::all(glm::lessThan(glm::abs(worldMin - other.worldMin), glm::vec3(epsilon)))
+                && std::abs(size - other.size) < epsilon;
+        }
+    };
+
+    struct BlockQueryKeyHash {
+        size_t operator()(const BlockQueryKey& key) const {
+            // Combine hashes using FNV-1a-like mixing
+            size_t hash = 0xcbf29ce484222325ULL;
+            auto hashFloat = [&hash](float f) {
+                // Quantize to epsilon grid to ensure consistent hashing
+                int32_t quantized = static_cast<int32_t>(f * 10000.0f);
+                hash ^= static_cast<size_t>(quantized);
+                hash *= 0x100000001b3ULL;
+            };
+            hashFloat(key.worldMin.x);
+            hashFloat(key.worldMin.y);
+            hashFloat(key.worldMin.z);
+            hashFloat(key.size);
+            return hash;
+        }
+    };
+
+    // Cache: block key -> entity list
+    mutable std::unordered_map<BlockQueryKey, std::vector<gaia::ecs::Entity>, BlockQueryKeyHash> m_blockCache;
 
     // Helper: Compute spatial hash for position
     uint64_t computeSpatialHash(const glm::vec3& position) const;

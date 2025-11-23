@@ -82,6 +82,9 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest&
     // Auto-parent to existing chunk if position falls within chunk bounds
     tryAutoParentToChunk(entity, request.position);
 
+    // Invalidate only cached blocks containing this position (efficient partial invalidation)
+    invalidateBlockCacheAt(request.position);
+
     return entity;
 }
 
@@ -137,7 +140,15 @@ void GaiaVoxelWorld::tryAutoParentToChunk(EntityID voxelEntity, const glm::vec3&
 
 void GaiaVoxelWorld::destroyVoxel(EntityID id) {
     if (m_impl->world.valid(id)) {
+        // Get position before deletion for cache invalidation
+        std::optional<glm::vec3> pos = getPosition(id);
+
         m_impl->world.del(id);
+
+        // Invalidate only cached blocks containing this position (efficient partial invalidation)
+        if (pos.has_value()) {
+            invalidateBlockCacheAt(pos.value());
+        }
     }
 }
 
@@ -147,6 +158,8 @@ void GaiaVoxelWorld::clear() {
     query.each([this](gaia::ecs::Entity entity) {
         m_impl->world.del(entity);
     });
+    // Invalidate block cache (structural change)
+    invalidateBlockCache();
 }
 
 // ============================================================================
@@ -249,6 +262,62 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
     return count;
 }
 
+std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
+    const glm::vec3& brickWorldMin,
+    float brickSize) {
+
+    BlockQueryKey key{brickWorldMin, brickSize};
+
+    // Check cache first
+    auto it = m_blockCache.find(key);
+    if (it != m_blockCache.end()) {
+        // Cache hit - return span to cached vector
+        return std::span<const gaia::ecs::Entity>(it->second);
+    }
+
+    // Cache miss - perform query and populate cache
+    std::vector<gaia::ecs::Entity> entities;
+    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickSize);
+
+    auto query = m_impl->world.query().all<MortonKey>();
+    query.each([&](gaia::ecs::Entity entity) {
+        glm::vec3 pos = toWorldPos(m_impl->world.get<MortonKey>(entity));
+        if (pos.x >= brickWorldMin.x && pos.x < brickWorldMax.x &&
+            pos.y >= brickWorldMin.y && pos.y < brickWorldMax.y &&
+            pos.z >= brickWorldMin.z && pos.z < brickWorldMax.z) {
+            entities.push_back(entity);
+        }
+    });
+
+    // Insert into cache and return span
+    auto [insertIt, inserted] = m_blockCache.emplace(key, std::move(entities));
+    return std::span<const gaia::ecs::Entity>(insertIt->second);
+}
+
+void GaiaVoxelWorld::invalidateBlockCache() {
+    m_blockCache.clear();
+}
+
+void GaiaVoxelWorld::invalidateBlockCacheAt(const glm::vec3& position) {
+    // Remove all cached blocks that contain this position
+    // Iterate through cache and remove blocks where position falls within bounds
+    for (auto it = m_blockCache.begin(); it != m_blockCache.end(); ) {
+        const auto& key = it->first;
+        glm::vec3 blockMax = key.worldMin + glm::vec3(key.size);
+
+        bool containsPosition =
+            position.x >= key.worldMin.x && position.x < blockMax.x &&
+            position.y >= key.worldMin.y && position.y < blockMax.y &&
+            position.z >= key.worldMin.z && position.z < blockMax.z;
+
+        if (containsPosition) {
+            it = m_blockCache.erase(it);  // Invalidate this block
+        } else {
+            ++it;
+        }
+    }
+}
+
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMortonKey(uint64_t mortonKey) const {
     // Query all entities with MortonKey component
     auto query = m_impl->world.query().all<MortonKey>();
@@ -285,8 +354,12 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
 
 void GaiaVoxelWorld::destroyVoxelsBatch(const std::vector<EntityID>& ids) {
     for (auto id : ids) {
-        destroyVoxel(id);
+        if (m_impl->world.valid(id)) {
+            m_impl->world.del(id);
+        }
     }
+    // Invalidate block cache once after batch (not per-entity)
+    invalidateBlockCache();
 }
 
 // ============================================================================
