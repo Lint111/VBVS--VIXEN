@@ -417,17 +417,11 @@ std::unique_ptr<ISVOStructure> VoxelInjector::buildFromSampler(
     std::function<void(VoxelNode*)> traverse = [&](VoxelNode* node) {
         if (!node) return;
 
-        // Add attributes and brick references for leaf nodes
+        // Add attributes for leaf nodes
         if (node->isLeaf) {
-            // If this leaf has a brick, add brick reference
-            if (node->hasBrick) {
-                BrickReference brickRef(node->brickID, node->brickDepth);
-                rootBlock->brickReferences.push_back(brickRef);
-            } else {
-                // No brick - add empty/invalid reference to maintain alignment
-                BrickReference emptyRef;
-                rootBlock->brickReferences.push_back(emptyRef);
-            }
+            // TODO Phase 3: Create EntityBrickView here instead of BrickReference
+            // EntityBrickView brick(world, baseMortonKey, node->brickDepth);
+            // rootBlock->brickViews.push_back(brick);
 
             UncompressedAttributes attr{};
 
@@ -1145,31 +1139,22 @@ bool VoxelInjector::compactToESVOFormat(ISVOStructure& svo) {
     octreeData->root->childDescriptors = std::move(newDescriptors);
     octreeData->root->attributeLookups = std::move(newAttributeLookups);
 
-    // Transfer brick references from m_descriptorToBrickID to octreeData->root->brickReferences
-    // Ensure brickReferences array has capacity for all descriptors
-    octreeData->root->brickReferences.resize(octreeData->root->childDescriptors.size());
+    // TODO Phase 3: Create EntityBrickView instances for all bricks
+    // octreeData->root->brickViews.resize(octreeData->root->childDescriptors.size());
+    //
+    // size_t bricksAttached = 0;
+    // for (const auto& [oldDescIdx, brickID] : m_descriptorToBrickID) {
+    //     auto it = oldToNewIndex.find(oldDescIdx);
+    //     if (it != oldToNewIndex.end()) {
+    //         uint32_t newDescIdx = it->second;
+    //         uint64_t baseMortonKey = computeBrickBaseMorton(brickID);
+    //         EntityBrickView brick(world, baseMortonKey, 3 /*brickDepth*/);
+    //         octreeData->root->brickViews[newDescIdx] = brick;
+    //         bricksAttached++;
+    //     }
+    // }
 
-    // Map old descriptor indices to new descriptor indices using oldToNewIndex
-    // Brick depth is typically 3 for 8³ bricks - can be inferred from BrickStorage if needed
-    size_t bricksAttached = 0;
-    for (const auto& [oldDescIdx, brickID] : m_descriptorToBrickID) {
-        auto it = oldToNewIndex.find(oldDescIdx);
-        if (it != oldToNewIndex.end()) {
-            uint32_t newDescIdx = it->second;
-            if (newDescIdx < octreeData->root->brickReferences.size()) {
-                // Query brick depth from BrickStorage if available, otherwise assume depth=3 (8³ voxels)
-                uint8_t brickDepth = 3;  // Default 8³ brick
-                if (m_brickStorage) {
-                    // Brick depth is log2(sideLength) - BrickStorage stores sideLength
-                    // For now, use default depth=3 until we can query BrickStorage for actual depth
-                }
-
-                octreeData->root->brickReferences[newDescIdx].brickID = brickID;
-                octreeData->root->brickReferences[newDescIdx].brickDepth = brickDepth;
-                bricksAttached++;
-            }
-        }
-    }
+    size_t bricksAttached = m_descriptorToBrickID.size();  // For diagnostic
 
     std::cout << "[COMPACT] Attached " << bricksAttached << " brick references to octree nodes\n";
 
@@ -1458,8 +1443,10 @@ VoxelInjector::BrickAllocation VoxelInjector::allocateAndPopulateBrick(
 void VoxelInjector::addBrickReferenceToOctree(Octree* octree, uint32_t brickID, uint32_t brickDepth) {
     if (!octree || !octree->root) return;
 
-    BrickReference ref(brickID, brickDepth);
-    octree->root->brickReferences.push_back(ref);
+    // TODO Phase 3: Create EntityBrickView instead of BrickReference
+    // uint64_t baseMortonKey = computeBrickBaseMorton(brickID);
+    // EntityBrickView brick(world, baseMortonKey, brickDepth);
+    // octree->root->brickViews.push_back(brick);
 }
 
 // Find or allocate a brick for the given spatial region

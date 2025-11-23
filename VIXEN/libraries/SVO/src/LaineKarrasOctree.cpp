@@ -954,28 +954,23 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                     // Debug: print leaf position and scale
                     std::cout << "[LEAF HIT] scale=" << scale << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") "
-                              << "t_min=" << t_min << " tv_max=" << tv_max << " brickRefs.size=" << m_octree->root->brickReferences.size() << "\n";
+                              << "t_min=" << t_min << " tv_max=" << tv_max << "\n";  // TODO Phase 3: Add brickViews.size()
 
                     // ============================================================
                     // BRICK TRAVERSAL: Check if leaf has brick reference
                     // ============================================================
 
-                    // Compute parent descriptor index in childDescriptors array
-                    // This requires tracking the descriptor index during traversal
-                    // For now, check if brick references array exists and is non-empty
-                    const auto& brickRefs = m_octree->root->brickReferences;
+                    // TODO Phase 3: Replace with EntityBrickView-based brick traversal
+                    // const auto& brickViews = m_octree->root->brickViews;
+                    // size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
+                    // const bool hasBricks = !brickViews.empty() && descriptorIndex < brickViews.size();
 
-                    // Calculate current descriptor index for brick lookup
-                    // The parent pointer tells us which descriptor we're at
-                    size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
+                    const bool hasBricks = false;  // Temporarily disable brick traversal
 
-                    // Check if this leaf has a brick reference
-                    // Brick references array parallels the descriptor array for leaves
-                    const bool hasBricks = !brickRefs.empty() && descriptorIndex < brickRefs.size();
-
-                    if (hasBricks) {
-                        // Look up the brick reference for this specific leaf
-                        const BrickReference& brickRef = brickRefs[descriptorIndex];
+                    if (false) {  // TODO Phase 3: Re-enable with EntityBrickView
+                        // Legacy brick traversal code - commented out until EntityBrickView integration
+                        /*
+                        // const BrickReference& brickRef = brickRefs[descriptorIndex];
 
                         std::cout << "[BRICK CHECK] descriptorIndex=" << descriptorIndex
                                   << " brickID=" << brickRef.brickID
@@ -1062,6 +1057,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                             // Brick traversal returned no hit - continue octree traversal
                             // Fall through to ADVANCE/POP logic
                         }
+                        */
                     }
 
                     // ============================================================

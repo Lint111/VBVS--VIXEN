@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX  // Prevent Windows.h min/max macros from breaking std::numeric_limits
+#endif
+
 #include "VoxelComponents.h"
 #include <gaia.h>
 #include <glm/glm.hpp>
@@ -207,12 +211,17 @@ private:
     bool m_usesEntitySpan{ true };
 };
 
+} // namespace GaiaVoxel
+
 // ============================================================================
-// Template Implementation (Header-only for implicit instantiation)
+// Template Implementation (Requires GaiaVoxelWorld.h full definition)
 // ============================================================================
 
-// Forward declare GaiaVoxelWorld methods we need
-// (actual implementation requires GaiaVoxelWorld.h included in .cpp files that use this)
+// Include GaiaVoxelWorld.h AFTER EntityBrickView class definition
+// This works because GaiaVoxelWorld.h doesn't include EntityBrickView.h
+#include "GaiaVoxelWorld.h"
+
+namespace GaiaVoxel {
 
 template<typename TComponent>
 auto EntityBrickView::getComponentValue(size_t voxelIdx) const -> std::optional<ComponentValueType_t<TComponent>> {
@@ -222,7 +231,7 @@ auto EntityBrickView::getComponentValue(size_t voxelIdx) const -> std::optional<
     }
 
     // Delegate to GaiaVoxelWorld's generic template API
-    return m_world.getComponentValue<TComponent>(entity);
+    return m_world.template getComponentValue<TComponent>(entity);
 }
 
 template<typename TComponent>
@@ -233,7 +242,7 @@ void EntityBrickView::setComponent(size_t voxelIdx, ComponentValueType_t<TCompon
     }
 
     // Delegate to GaiaVoxelWorld's generic template API
-    m_world.setComponent<TComponent>(entity, value);
+    m_world.template setComponent<TComponent>(entity, value);
 }
 
 template<typename TComponent>
@@ -242,7 +251,7 @@ bool EntityBrickView::hasComponent(size_t voxelIdx) const {
     if (entity == gaia::ecs::Entity()) {
         return false;
     }
-    return m_world.hasComponent<TComponent>(entity);
+    return m_world.template hasComponent<TComponent>(entity);
 }
 
 } // namespace GaiaVoxel

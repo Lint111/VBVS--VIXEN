@@ -1,8 +1,7 @@
 #pragma once
 
 #include "SVOTypes.h"
-#include "BrickReference.h"
-#include "EntityBrickView.h"  // Full include for std::vector<EntityBrickView>
+#include "EntityBrickView.h"  // Entity-based brick views (Phase 3)
 #include <vector>
 #include <memory>
 #include <functional>
@@ -41,7 +40,7 @@ struct InputMesh {
  * Corresponds to localized portion of octree hierarchy.
  */
 struct OctreeBlock {
-    std::vector<ChildDescriptor> childDescriptors;
+    std::vector<ChildDescriptor> childDescriptors;  // Traversal structure (unchanged)
     std::vector<Contour> contours;
     std::vector<UncompressedAttributes> attributes;
     std::vector<AttributeLookup> attributeLookups;
@@ -50,9 +49,6 @@ struct OctreeBlock {
     // One per leaf node (aligned with childDescriptors)
     // Each view queries entities via MortonKey on-demand
     std::vector<::GaiaVoxel::EntityBrickView> brickViews;
-
-    // DEPRECATED: Legacy descriptor-based storage (Phase 2 compatibility)
-    std::vector<BrickReference> brickReferences;
 
     BlockInfo info;
 
