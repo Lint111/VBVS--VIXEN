@@ -153,11 +153,18 @@ void GaiaVoxelWorld::destroyVoxel(EntityID id) {
 }
 
 void GaiaVoxelWorld::clear() {
-    // Query all entities with MortonKey and delete them
+    // Collect entities first to avoid iterator invalidation during deletion
+    std::vector<gaia::ecs::Entity> toDelete;
     auto query = m_impl->world.query().all<MortonKey>();
-    query.each([this](gaia::ecs::Entity entity) {
-        m_impl->world.del(entity);
+    query.each([&toDelete](gaia::ecs::Entity entity) {
+        toDelete.push_back(entity);
     });
+
+    // Now delete all collected entities
+    for (auto entity : toDelete) {
+        m_impl->world.del(entity);
+    }
+
     // Invalidate block cache (structural change)
     invalidateBlockCache();
 }

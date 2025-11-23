@@ -24,7 +24,7 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxelWithRequest_MinimalComponents) {
     ASSERT_TRUE(world.exists(entity));
 
     // Check density was set
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
     EXPECT_FLOAT_EQ(density.value(), 0.5f);
 
@@ -52,9 +52,9 @@ TEST(GaiaVoxelWorldCoverageTest, CreateVoxelWithRequest_AllComponents) {
     ASSERT_TRUE(world.exists(entity));
 
     // Verify all components
-    EXPECT_FLOAT_EQ(world.getDensity(entity).value(), 1.0f);
-    EXPECT_EQ(world.getColor(entity).value(), glm::vec3(1.0f, 0.0f, 0.0f));
-    EXPECT_EQ(world.getNormal(entity).value(), glm::vec3(0.0f, 1.0f, 0.0f));
+    EXPECT_FLOAT_EQ(world.getComponentValue<Density>(entity).value(), 1.0f);
+    EXPECT_EQ(world.getComponentValue<Color>(entity).value(), glm::vec3(1.0f, 0.0f, 0.0f));
+    EXPECT_EQ(world.getComponentValue<Normal>(entity).value(), glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
 TEST(GaiaVoxelWorldCoverageTest, CreateVoxelsBatch_EmptyBatch) {
@@ -156,7 +156,7 @@ TEST(GaiaVoxelWorldCoverageTest, InsertChunk_FullBrick8x8x8) {
     // Verify all voxels exist
     for (auto voxel : voxelsInChunk) {
         EXPECT_TRUE(world.exists(voxel));
-        EXPECT_TRUE(world.getDensity(voxel).has_value());
+        EXPECT_TRUE(world.getComponentValue<Density>(voxel).has_value());
     }
 }
 
@@ -315,9 +315,9 @@ TEST(GaiaVoxelWorldCoverageTest, GetComponentFromDestroyedVoxel) {
     EXPECT_FALSE(world.exists(entity));
 
     // Getters should return nullopt for destroyed entity
-    EXPECT_FALSE(world.getDensity(entity).has_value());
-    EXPECT_FALSE(world.getColor(entity).has_value());
-    EXPECT_FALSE(world.getNormal(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Density>(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Color>(entity).has_value());
+    EXPECT_FALSE(world.getComponentValue<Normal>(entity).has_value());
 }
 
 TEST(GaiaVoxelWorldCoverageTest, SetComponentOnNonExistentVoxel_NoThrow) {
@@ -326,9 +326,9 @@ TEST(GaiaVoxelWorldCoverageTest, SetComponentOnNonExistentVoxel_NoThrow) {
     gaia::ecs::Entity fakeEntity;  // Invalid entity
 
     // Should not throw (implementation may silently fail or handle gracefully)
-    EXPECT_NO_THROW(world.setDensity(fakeEntity, 1.0f));
-    EXPECT_NO_THROW(world.setColor(fakeEntity, glm::vec3(1, 0, 0)));
-    EXPECT_NO_THROW(world.setNormal(fakeEntity, glm::vec3(0, 1, 0)));
+    EXPECT_NO_THROW(world.setComponent<Density>(fakeEntity, 1.0f));
+    EXPECT_NO_THROW(world.setComponent<Color>(fakeEntity, glm::vec3(1, 0, 0)));
+    EXPECT_NO_THROW(world.setComponent<Normal>(fakeEntity, glm::vec3(0, 1, 0)));
 }
 
 // ===========================================================================
@@ -554,9 +554,9 @@ TEST(GaiaVoxelWorldIntegrationTest, ComponentCreation_AllMacroComponents) {
     EXPECT_TRUE(world.hasComponent<MortonKey>(entity)); // Always present
 
     // Verify values via GaiaVoxelWorld getters
-    EXPECT_FLOAT_EQ(world.getDensity(entity).value(), 0.8f);
-    EXPECT_EQ(world.getColor(entity).value(), glm::vec3(1, 0, 0));
-    EXPECT_EQ(world.getNormal(entity).value(), glm::vec3(0, 1, 0));
+    EXPECT_FLOAT_EQ(world.getComponentValue<Density>(entity).value(), 0.8f);
+    EXPECT_EQ(world.getComponentValue<Color>(entity).value(), glm::vec3(1, 0, 0));
+    EXPECT_EQ(world.getComponentValue<Normal>(entity).value(), glm::vec3(0, 1, 0));
 }
 
 TEST(GaiaVoxelWorldIntegrationTest, BatchCreation_MixedComponents) {
@@ -580,4 +580,136 @@ TEST(GaiaVoxelWorldIntegrationTest, BatchCreation_MixedComponents) {
 
     EXPECT_TRUE(world.hasComponent<Normal>(entities[1]));
     EXPECT_FALSE(world.hasComponent<Color>(entities[1]));
+}
+
+// ===========================================================================
+// Block Query Cache Tests (Session 6G - getEntityBlockRef API)
+// ===========================================================================
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_EmptyRegion) {
+    GaiaVoxelWorld world;
+
+    // Query empty region - should return empty span
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    EXPECT_TRUE(span.empty());
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_SingleVoxel) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+    VoxelCreationRequest request{glm::vec3(5, 5, 5), comps};
+    auto entity = world.createVoxel(request);
+
+    // Query block containing voxel [0, 8)³
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    ASSERT_EQ(span.size(), 1);
+    EXPECT_EQ(span[0], entity);
+
+    // Query block NOT containing voxel [8, 16)³
+    auto emptySpan = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    EXPECT_TRUE(emptySpan.empty());
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_MultipleVoxels) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+
+    // Create 8 voxels in brick [0, 8)³
+    std::vector<gaia::ecs::Entity> expectedEntities;
+    for (int i = 0; i < 8; ++i) {
+        VoxelCreationRequest req{glm::vec3(i, i, i), comps};
+        expectedEntities.push_back(world.createVoxel(req));
+    }
+
+    // Query block containing all voxels
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    ASSERT_EQ(span.size(), 8);
+
+    // Verify all entities present (order doesn't matter)
+    for (auto entity : expectedEntities) {
+        bool found = std::find(span.begin(), span.end(), entity) != span.end();
+        EXPECT_TRUE(found) << "Entity should be in block query result";
+    }
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_CacheHit) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+    VoxelCreationRequest request{glm::vec3(5, 5, 5), comps};
+    world.createVoxel(request);
+
+    // First query - cache miss, performs ECS query
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    ASSERT_EQ(span1.size(), 1);
+
+    // Second query - cache hit, returns cached span (same pointer)
+    auto span2 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    ASSERT_EQ(span2.size(), 1);
+
+    // Verify spans point to same underlying data (cache hit)
+    EXPECT_EQ(span1.data(), span2.data()) << "Cache hit should return same span";
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_PartialInvalidation) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+
+    // Create voxels in two separate blocks
+    VoxelCreationRequest req1{glm::vec3(5, 5, 5), comps};  // Block [0, 8)³
+    VoxelCreationRequest req2{glm::vec3(10, 10, 10), comps};  // Block [8, 16)³
+
+    auto entity1 = world.createVoxel(req1);
+    auto entity2 = world.createVoxel(req2);
+
+    // Cache both blocks
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    ASSERT_EQ(span1.size(), 1);
+    ASSERT_EQ(span2.size(), 1);
+
+    const void* originalSpan1Data = span1.data();
+    const void* originalSpan2Data = span2.data();
+
+    // Destroy entity1 - should invalidate only block [0, 8)³
+    world.destroyVoxel(entity1);
+
+    // Re-query block 1 - should show new data pointer (cache was invalidated)
+    auto span1After = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    EXPECT_TRUE(span1After.empty());
+    EXPECT_NE(span1After.data(), originalSpan1Data) << "Cache should be invalidated";
+
+    // Re-query block 2 - should still be cached (not affected by entity1 deletion)
+    auto span2After = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    EXPECT_EQ(span2After.size(), 1);
+    EXPECT_EQ(span2After.data(), originalSpan2Data) << "Unaffected block should remain cached";
+}
+
+TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_FullInvalidation) {
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest comps[] = {Density{1.0f}};
+
+    // Create voxels and cache blocks
+    VoxelCreationRequest req1{glm::vec3(5, 5, 5), comps};
+    VoxelCreationRequest req2{glm::vec3(10, 10, 10), comps};
+    world.createVoxel(req1);
+    world.createVoxel(req2);
+
+    world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+
+    // Full cache invalidation
+    world.invalidateBlockCache();
+
+    // Both blocks should be empty after clear
+    world.clear();
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+
+    EXPECT_TRUE(span1.empty());
+    EXPECT_TRUE(span2.empty());
 }
