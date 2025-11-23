@@ -102,3 +102,28 @@ target_link_libraries(test_entity_brick_view PRIVATE
 set_target_properties(test_entity_brick_view PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
 
 gtest_discover_tests(test_entity_brick_view)
+
+# ===========================================================================
+# GaiaVoxelWorld Coverage Tests (Additional API Coverage)
+# ===========================================================================
+# Comprehensive tests for:
+# - VoxelCreationRequest API (Session 6 component-based creation)
+# - Chunk operations (insertChunk, getVoxelsInChunk, findChunkByOrigin)
+# - Template-based component queries (hasComponent<T>)
+# - Batch vs individual creation comparison
+# - Edge cases and error handling
+# - 10k voxel stress tests
+
+add_executable(test_gaia_voxel_world_coverage
+    test_gaia_voxel_world_coverage.cpp
+)
+
+target_link_libraries(test_gaia_voxel_world_coverage PRIVATE
+    GTest::gtest_main
+    GaiaVoxelWorld
+    VoxelData
+)
+
+set_target_properties(test_gaia_voxel_world_coverage PROPERTIES FOLDER "Tests/GaiaVoxelWorld Tests")
+
+gtest_discover_tests(test_gaia_voxel_world_coverage)
