@@ -32,16 +32,13 @@ namespace SVO {
  */
 class LaineKarrasOctree : public ISVOStructure {
 public:
-    // DEPRECATED: Old constructor without entity support
-    LaineKarrasOctree(int maxLevels = 23, int brickDepthLevels = 3);
-
-    // DEPRECATED: Old constructor with AttributeRegistry (will be removed)
+    // DEPRECATED: Old constructor with AttributeRegistry (will be removed in Phase 4)
     explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels = 23, int brickDepthLevels = 3);
 
     // NEW: Entity-based constructor (pure spatial index)
     // SVO stores only entity IDs (8 bytes each), not voxel data
-    // Caller reads entity components via gaia::ecs::World
-    explicit LaineKarrasOctree(gaia::ecs::World& world, int maxLevels = 23, int brickDepthLevels = 3);
+    // Caller reads entity components via GaiaVoxelWorld
+    explicit LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld, int maxLevels = 23, int brickDepthLevels = 3);
 
     ~LaineKarrasOctree() override;
 
@@ -108,7 +105,7 @@ private:
     std::unique_ptr<Octree> m_octree;
 
     // Entity-based storage (NEW architecture)
-    gaia::ecs::World* m_world = nullptr;  // Non-owning pointer to Gaia ECS world
+    ::GaiaVoxel::GaiaVoxelWorld* m_voxelWorld = nullptr;  // Non-owning pointer to voxel world
 
     // Temporary entity mapping (descriptor index → entity)
     // TODO: Replace with proper entity storage in OctreeBlock
@@ -233,6 +230,28 @@ private:
      */
     std::optional<ISVOStructure::RayHit> traverseBrick(
         const BrickReference& brickRef,
+        const glm::vec3& brickWorldMin,
+        float brickVoxelSize,
+        const glm::vec3& rayOrigin,
+        const glm::vec3& rayDir,
+        float tMin,
+        float tMax) const;
+
+    /**
+     * EntityBrickView-based DDA traversal (Phase 3).
+     * Queries entities on-demand via MortonKey instead of copying voxel data.
+     *
+     * @param brickView Zero-copy view over brick entities
+     * @param brickWorldMin Brick minimum corner in world space
+     * @param brickVoxelSize Size of one voxel in world units
+     * @param rayOrigin Ray origin in world space
+     * @param rayDir Ray direction (normalized)
+     * @param tMin Ray parameter for brick entry
+     * @param tMax Ray parameter for brick exit
+     * @return RayHit with entity reference, or nullopt if miss
+     */
+    std::optional<ISVOStructure::RayHit> traverseBrickView(
+        const ::GaiaVoxel::EntityBrickView& brickView,
         const glm::vec3& brickWorldMin,
         float brickVoxelSize,
         const glm::vec3& rayOrigin,

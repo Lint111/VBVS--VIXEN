@@ -151,32 +151,15 @@ namespace {
     }
 } // anonymous namespace
 
-LaineKarrasOctree::LaineKarrasOctree(int maxLevels, int brickDepthLevels)
-    : m_world(nullptr)
-    , m_registry(nullptr)
-    , m_maxLevels(maxLevels)
-    , m_brickDepthLevels(brickDepthLevels)
-{}
-
-LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
-    : m_world(nullptr)
-    , m_registry(registry)
-    , m_maxLevels(maxLevels)
-    , m_brickDepthLevels(brickDepthLevels)
-{
-    // NOTE: Key attribute is ALWAYS index 0 (AttributeRegistry enforces this)
-    // No need to cache or validate - just use index 0 directly during traversal
-}
-
 // NEW: Entity-based constructor
-LaineKarrasOctree::LaineKarrasOctree(gaia::ecs::World& world, int maxLevels, int brickDepthLevels)
-    : m_world(&world)
+LaineKarrasOctree::LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld, int maxLevels, int brickDepthLevels)
+    : m_voxelWorld(&voxelWorld)
     , m_registry(nullptr)  // No AttributeRegistry in entity-based mode
     , m_maxLevels(maxLevels)
     , m_brickDepthLevels(brickDepthLevels)
 {
     // SVO stores only entity IDs (8 bytes each), not voxel data
-    // Caller reads entity components via m_world
+    // Caller reads entity components via m_voxelWorld
 }
 
 LaineKarrasOctree::~LaineKarrasOctree() = default;
@@ -188,19 +171,22 @@ LaineKarrasOctree::~LaineKarrasOctree() = default;
 void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
     using namespace GaiaVoxel;
 
-    if (!m_world) {
+    if (!m_voxelWorld) {
         return;  // Entity mode not enabled
     }
 
     // 1. Extract position from entity's MortonKey component
-    if (!m_world->has<GaiaVoxel::MortonKey>(entity)) {
+    auto posOpt = m_voxelWorld->getPosition(entity);
+    if (!posOpt) {
         return; // Entity must have MortonKey for spatial indexing
     }
 
-    GaiaVoxel::MortonKey key = m_world->get<GaiaVoxel::MortonKey>(entity);
-    glm::vec3 position = GaiaVoxel::MortonKeyUtils::toWorldPos(key);
+    glm::vec3 position = *posOpt;
 
-    // 2. For Phase 2, we're not doing actual octree insertion
+    // 2. Compute Morton key for spatial indexing
+    GaiaVoxel::MortonKey key = GaiaVoxel::MortonKeyUtils::fromPosition(position);
+
+    // 3. For Phase 3, we're not doing actual octree insertion yet
     //    Just store the entity mapping for ray casting retrieval
     //    Phase 3 will implement proper additive insertion into octree structure
 
@@ -216,7 +202,7 @@ void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
 void LaineKarrasOctree::remove(gaia::ecs::Entity entity) {
     // TODO: Implement entity removal
     // This will find and remove entity from leaf entity map
-    if (!m_world) {
+    if (!m_voxelWorld) {
         return;
     }
 
@@ -957,107 +943,92 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                               << "t_min=" << t_min << " tv_max=" << tv_max << "\n";  // TODO Phase 3: Add brickViews.size()
 
                     // ============================================================
-                    // BRICK TRAVERSAL: Check if leaf has brick reference
+                    // BRICK TRAVERSAL: EntityBrickView-based DDA (Phase 3)
                     // ============================================================
 
-                    // TODO Phase 3: Replace with EntityBrickView-based brick traversal
-                    // const auto& brickViews = m_octree->root->brickViews;
-                    // size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
-                    // const bool hasBricks = !brickViews.empty() && descriptorIndex < brickViews.size();
+                    const auto& brickViews = m_octree->root->brickViews;
+                    size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
+                    const bool hasBricks = !brickViews.empty() && descriptorIndex < brickViews.size();
 
-                    const bool hasBricks = false;  // Temporarily disable brick traversal
+                    if (hasBricks) {
+                        // EntityBrickView-based brick traversal
+                        const auto& brickView = brickViews[descriptorIndex];
 
-                    if (false) {  // TODO Phase 3: Re-enable with EntityBrickView
-                        // Legacy brick traversal code - commented out until EntityBrickView integration
-                        /*
-                        // const BrickReference& brickRef = brickRefs[descriptorIndex];
+                        // Get brick metadata
+                        uint8_t brickDepth = brickView.getDepth();
+                        size_t brickSideLength = 1u << brickDepth;  // 2^depth voxels per side
 
                         std::cout << "[BRICK CHECK] descriptorIndex=" << descriptorIndex
-                                  << " brickID=" << brickRef.brickID
-                                  << " brickDepth=" << brickRef.brickDepth
-                                  << " isValid=" << brickRef.isValid() << "\n";
+                                  << " brickDepth=" << (int)brickDepth
+                                  << " brickSize=" << brickSideLength << "^3\n";
 
-                        if (brickRef.isValid()) {
-                            // Compute brick world bounds from leaf voxel position
-                            // The leaf voxel spans [pos.x, pos.x+scale_exp2]³ in normalized [1,2] space
-                            // Transform to world space
-                            glm::vec3 normMin(pos.x, pos.y, pos.z);
-                            glm::vec3 normMax = normMin + glm::vec3(scale_exp2);
+                        // Compute brick world bounds from leaf voxel position
+                        // The leaf voxel spans [pos.x, pos.x+scale_exp2]³ in normalized [1,2] space
+                        glm::vec3 normMin(pos.x, pos.y, pos.z);
+                        glm::vec3 normMax = normMin + glm::vec3(scale_exp2);
 
-                            std::cout << "[COORD TRANSFORM] normMin=(" << normMin.x << "," << normMin.y << "," << normMin.z
-                                      << ") normMax=(" << normMax.x << "," << normMax.y << "," << normMax.z
-                                      << ") scale_exp2=" << scale_exp2 << "\n";
+                        // Transform to world space
+                        glm::vec3 worldMin = (normMin - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
+                        glm::vec3 worldMax = (normMax - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
 
-                            // Un-mirror coordinates back to original space
-                            glm::vec3 worldMin = (normMin - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
-                            glm::vec3 worldMax = (normMax - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
-
-                            std::cout << "[BEFORE UNMIRROR] worldMin=(" << worldMin.x << "," << worldMin.y << "," << worldMin.z
-                                      << ") worldMax=(" << worldMax.x << "," << worldMax.y << "," << worldMax.z << ")\n";
-
-                            // Apply octant mirroring transformation (reverse)
-                            if (octant_mask & 1) {
-                                std::swap(worldMin.x, worldMax.x);
-                                worldMin.x = m_worldMin.x + (m_worldMax.x - worldMin.x);
-                                worldMax.x = m_worldMin.x + (m_worldMax.x - worldMax.x);
-                            }
-                            if (octant_mask & 2) {
-                                std::swap(worldMin.y, worldMax.y);
-                                worldMin.y = m_worldMin.y + (m_worldMax.y - worldMin.y);
-                                worldMax.y = m_worldMin.y + (m_worldMax.y - worldMax.y);
-                            }
-                            if (octant_mask & 4) {
-                                std::swap(worldMin.z, worldMax.z);
-                                worldMin.z = m_worldMin.z + (m_worldMax.z - worldMin.z);
-                                worldMax.z = m_worldMin.z + (m_worldMax.z - worldMax.z);
-                            }
-
-                            // Brick voxel size = leaf voxel size / brick side length
-                            const float leafVoxelSize = scale_exp2 * glm::length(m_worldMax - m_worldMin);
-                            const float brickVoxelSize = leafVoxelSize / static_cast<float>(brickRef.getSideLength());
-
-                            // Compute actual ray-brick AABB intersection to get proper t-values
-                            // Handle division by zero for axis-aligned rays
-                            glm::vec3 invDir;
-                            for (int i = 0; i < 3; i++) {
-                                if (std::abs(rayDir[i]) < 1e-8f) {
-                                    invDir[i] = (rayDir[i] >= 0) ? 1e8f : -1e8f;
-                                } else {
-                                    invDir[i] = 1.0f / rayDir[i];
-                                }
-                            }
-                            glm::vec3 t0 = (worldMin - origin) * invDir;
-                            glm::vec3 t1 = (worldMax - origin) * invDir;
-
-                            glm::vec3 tNear = glm::min(t0, t1);
-                            glm::vec3 tFar = glm::max(t0, t1);
-
-                            float brickTMin = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
-                            float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
-
-                            // Ensure we don't enter before the ray starts
-                            brickTMin = glm::max(brickTMin, tEntry);
-
-                            std::cout << "[BRICK BOUNDS] worldMin=(" << worldMin.x << "," << worldMin.y << "," << worldMin.z
-                                      << ") worldMax=(" << worldMax.x << "," << worldMax.y << "," << worldMax.z
-                                      << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
-
-                            // Traverse brick
-                            auto brickHit = traverseBrick(brickRef, worldMin, brickVoxelSize,
-                                                         origin, rayDir, brickTMin, brickTMax);
-
-                            if (brickHit.has_value()) {
-                                // Brick hit! Return it
-                                std::cout << "[BRICK HIT] Returning brick hit at t=" << brickHit.value().tMin << "\n";
-                                return brickHit.value();
-                            } else {
-                                std::cout << "[BRICK MISS] No hit in brick, falling back to leaf hit\n";
-                            }
-
-                            // Brick traversal returned no hit - continue octree traversal
-                            // Fall through to ADVANCE/POP logic
+                        // Apply octant mirroring transformation (reverse)
+                        if (octant_mask & 1) {
+                            std::swap(worldMin.x, worldMax.x);
+                            worldMin.x = m_worldMin.x + (m_worldMax.x - worldMin.x);
+                            worldMax.x = m_worldMin.x + (m_worldMax.x - worldMax.x);
                         }
-                        */
+                        if (octant_mask & 2) {
+                            std::swap(worldMin.y, worldMax.y);
+                            worldMin.y = m_worldMin.y + (m_worldMax.y - worldMin.y);
+                            worldMax.y = m_worldMin.y + (m_worldMax.y - worldMax.y);
+                        }
+                        if (octant_mask & 4) {
+                            std::swap(worldMin.z, worldMax.z);
+                            worldMin.z = m_worldMin.z + (m_worldMax.z - worldMin.z);
+                            worldMax.z = m_worldMin.z + (m_worldMax.z - worldMax.z);
+                        }
+
+                        // Brick voxel size calculation:
+                        // - Leaf voxel spans scale_exp2 in normalized [1,2] space
+                        // - Normalized [1,2] space maps to world extent (assumes uniform cube)
+                        // - Brick subdivides leaf into brickSideLength³ voxels
+                        const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
+                        const float leafVoxelSize = scale_exp2 * worldExtent;
+                        const float brickVoxelSize = leafVoxelSize / static_cast<float>(brickSideLength);
+
+                        // Compute ray-brick AABB intersection
+                        glm::vec3 invDir;
+                        for (int i = 0; i < 3; i++) {
+                            if (std::abs(rayDir[i]) < 1e-8f) {
+                                invDir[i] = (rayDir[i] >= 0) ? 1e8f : -1e8f;
+                            } else {
+                                invDir[i] = 1.0f / rayDir[i];
+                            }
+                        }
+                        glm::vec3 t0 = (worldMin - origin) * invDir;
+                        glm::vec3 t1 = (worldMax - origin) * invDir;
+
+                        glm::vec3 tNear = glm::min(t0, t1);
+                        glm::vec3 tFar = glm::max(t0, t1);
+
+                        float brickTMin = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
+                        float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
+                        brickTMin = glm::max(brickTMin, tEntry);
+
+                        std::cout << "[BRICK BOUNDS] worldMin=(" << worldMin.x << "," << worldMin.y << "," << worldMin.z
+                                  << ") worldMax=(" << worldMax.x << "," << worldMax.y << "," << worldMax.z
+                                  << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
+
+                        // Traverse brick using EntityBrickView
+                        auto brickHit = traverseBrickView(brickView, worldMin, brickVoxelSize,
+                                                          origin, rayDir, brickTMin, brickTMax);
+
+                        if (brickHit.has_value()) {
+                            std::cout << "[BRICK HIT] Returning brick hit at t=" << brickHit.value().tMin << "\n";
+                            return brickHit.value();
+                        } else {
+                            std::cout << "[BRICK MISS] No hit in brick, falling back to leaf hit\n";
+                        }
                     }
 
                     // ============================================================
@@ -1109,7 +1080,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     // 1. By descriptor index (for voxels inserted via old API)
                     // 2. By Morton code computed from hit position (for voxels inserted via new entity API)
 
-                    if (m_world != nullptr) {
+                    if (m_voxelWorld != nullptr) {
                         using namespace GaiaVoxel;
 
                         // Strategy 1: Descriptor index lookup
@@ -1130,7 +1101,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                             }
                         }
                     } else {
-                        // No ECS world - create invalid entity
+                        // No voxel world - create invalid entity
                         hit.entity = gaia::ecs::Entity();
                     }
 
@@ -1723,18 +1694,9 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             // Use entry normal computed from DDA step direction
             hit.normal = entryNormal;
 
-            // NEW: Retrieve entity from brick storage
-            // In entity-based mode, bricks store entity references, not attribute data
-            // TODO: Access entity from brick storage once it's refactored to store entities
-            if (m_world != nullptr && m_registry) {
-                // Temporary: use registry's brick to get entity
-                ::VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
-                // TODO: Get entity from brick at localIdx
-                // For now, create invalid entity
-                hit.entity = gaia::ecs::Entity();
-            } else {
-                hit.entity = gaia::ecs::Entity();  // Invalid entity
-            }
+            // DEPRECATED: Legacy traverseBrick doesn't support entity retrieval
+            // Use traverseBrickView() instead for entity-based ray casting
+            hit.entity = gaia::ecs::Entity();  // Invalid entity
 
             return hit;
         }
@@ -1759,6 +1721,176 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
     }
 
     // Exceeded step limit (shouldn't happen for reasonable brick sizes)
+    return std::nullopt;
+}
+
+std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
+    const ::GaiaVoxel::EntityBrickView& brickView,
+    const glm::vec3& brickWorldMin,
+    float brickVoxelSize,
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    float tMin,
+    float tMax) const
+{
+    std::cout << "[TRAVERSE BRICK VIEW] depth=" << (int)brickView.getDepth()
+              << " worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z << ")"
+              << " voxelSize=" << brickVoxelSize
+              << " tMin=" << tMin << " tMax=" << tMax << "\n";
+
+    // Brick dimensions
+    const int brickN = 1 << brickView.getDepth();  // 2^depth
+
+    // 1. Compute ray entry point
+    const glm::vec3 entryPoint = rayOrigin + rayDir * tMin;
+
+    // 2. Transform to brick-local [0, N]³ space
+    const glm::vec3 localEntry = (entryPoint - brickWorldMin) / brickVoxelSize;
+
+    // 3. Initialize current voxel (integer coordinates)
+    glm::ivec3 currentVoxel{
+        static_cast<int>(std::floor(localEntry.x)),
+        static_cast<int>(std::floor(localEntry.y)),
+        static_cast<int>(std::floor(localEntry.z))
+    };
+
+    // Clamp to brick bounds [0, N-1]
+    currentVoxel = glm::clamp(currentVoxel, glm::ivec3(0), glm::ivec3(brickN - 1));
+
+    // 4. Compute DDA step directions and tDelta
+    glm::ivec3 step;
+    glm::vec3 tDelta;  // Ray parameter to cross one voxel
+    glm::vec3 tNext;   // Ray parameter to next voxel boundary
+
+    constexpr float epsilon = 1e-8f;
+
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(rayDir[axis]) < epsilon) {
+            // Ray parallel to axis
+            step[axis] = 0;
+            tDelta[axis] = std::numeric_limits<float>::max();
+            tNext[axis] = std::numeric_limits<float>::max();
+        } else {
+            // Determine step direction
+            step[axis] = (rayDir[axis] > 0.0f) ? 1 : -1;
+
+            // tDelta = voxel size / |ray direction component|
+            tDelta[axis] = brickVoxelSize / std::abs(rayDir[axis]);
+
+            // tNext = ray parameter to next voxel boundary
+            if (rayDir[axis] > 0.0f) {
+                const float nextBoundaryWorld = brickWorldMin[axis] + (currentVoxel[axis] + 1) * brickVoxelSize;
+                const float distToNextBoundary = nextBoundaryWorld - entryPoint[axis];
+                tNext[axis] = tMin + distToNextBoundary / rayDir[axis];
+            } else {
+                const float nextBoundaryWorld = brickWorldMin[axis] + currentVoxel[axis] * brickVoxelSize;
+                const float distToNextBoundary = entryPoint[axis] - nextBoundaryWorld;
+                tNext[axis] = tMin + distToNextBoundary / std::abs(rayDir[axis]);
+            }
+        }
+    }
+
+    // 5. DDA march through brick voxels
+    int maxSteps = brickN * 3;  // Safety limit (diagonal traversal)
+    int stepCount = 0;
+
+    while (stepCount < maxSteps) {
+        ++stepCount;
+
+        // Check if current voxel is in bounds
+        if (currentVoxel.x < 0 || currentVoxel.x >= brickN ||
+            currentVoxel.y < 0 || currentVoxel.y >= brickN ||
+            currentVoxel.z < 0 || currentVoxel.z >= brickN) {
+            // Exited brick bounds
+            return std::nullopt;
+        }
+
+        // 6. Query entity at voxel position via EntityBrickView
+        gaia::ecs::Entity entity = brickView.getEntity(currentVoxel.x, currentVoxel.y, currentVoxel.z);
+
+        // Check if entity is valid and has Density component (solidity test)
+        bool voxelOccupied = false;
+        if (m_voxelWorld != nullptr) {
+            // Use GaiaVoxelWorld's clean API for component access
+            using namespace GaiaVoxel;
+            auto density = m_voxelWorld->getComponentValue<Density>(entity);
+            if (density.has_value() && density.value() > 0.0f) {
+                voxelOccupied = true;
+            }
+        }
+
+        if (voxelOccupied) {
+            // Hit! Compute entry point and normal
+            glm::vec3 voxelWorldMin = brickWorldMin + glm::vec3(currentVoxel) * brickVoxelSize;
+            glm::vec3 voxelWorldMax = voxelWorldMin + glm::vec3(brickVoxelSize);
+
+            // Find parametric intersection with voxel AABB
+            glm::vec3 t0, t1;
+            for (int i = 0; i < 3; i++) {
+                if (std::abs(rayDir[i]) < 1e-8f) {
+                    // Ray parallel to axis
+                    if (rayOrigin[i] < voxelWorldMin[i] || rayOrigin[i] > voxelWorldMax[i]) {
+                        t0[i] = -std::numeric_limits<float>::infinity();
+                        t1[i] = std::numeric_limits<float>::infinity();
+                    } else {
+                        t0[i] = -std::numeric_limits<float>::infinity();
+                        t1[i] = std::numeric_limits<float>::infinity();
+                    }
+                } else {
+                    t0[i] = (voxelWorldMin[i] - rayOrigin[i]) / rayDir[i];
+                    t1[i] = (voxelWorldMax[i] - rayOrigin[i]) / rayDir[i];
+                }
+            }
+            glm::vec3 tNear = glm::min(t0, t1);
+            glm::vec3 tFar = glm::max(t0, t1);
+
+            float hitT = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
+
+            // Compute entry normal
+            glm::vec3 entryNormal;
+            if (tNear.x >= tNear.y && tNear.x >= tNear.z) {
+                entryNormal = glm::vec3(rayDir.x > 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f);
+            } else if (tNear.y >= tNear.z) {
+                entryNormal = glm::vec3(0.0f, rayDir.y > 0.0f ? -1.0f : 1.0f, 0.0f);
+            } else {
+                entryNormal = glm::vec3(0.0f, 0.0f, rayDir.z > 0.0f ? -1.0f : 1.0f);
+            }
+
+            ISVOStructure::RayHit hit;
+            hit.hit = true;
+            hit.tMin = hitT;
+            hit.tMax = hitT + brickVoxelSize;
+            hit.hitPoint = rayOrigin + rayDir * hitT;
+            hit.scale = m_maxLevels - 1;  // Finest detail level
+            hit.normal = entryNormal;
+            hit.entity = entity;  // Return entity reference (zero-copy!)
+
+            std::cout << "[BRICK VIEW HIT] voxel=(" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
+                      << ") t=" << hitT << " entity.id=" << entity.id() << "\n";
+
+            return hit;
+        }
+
+        // 7. Advance to next voxel
+        if (tNext.x < tNext.y && tNext.x < tNext.z) {
+            // Cross X boundary
+            if (tNext.x > tMax) return std::nullopt;
+            currentVoxel.x += step.x;
+            tNext.x += tDelta.x;
+        } else if (tNext.y < tNext.z) {
+            // Cross Y boundary
+            if (tNext.y > tMax) return std::nullopt;
+            currentVoxel.y += step.y;
+            tNext.y += tDelta.y;
+        } else {
+            // Cross Z boundary
+            if (tNext.z > tMax) return std::nullopt;
+            currentVoxel.z += step.z;
+            tNext.z += tDelta.z;
+        }
+    }
+
+    // Exceeded step limit
     return std::nullopt;
 }
 

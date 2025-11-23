@@ -159,22 +159,151 @@ struct OctreeBlock {
 - Fixed Windows.h min/max macro pollution (#define NOMINMAX)
 - Resolved circular dependency (include after class definition)
 
+### EntityBrickView-Based DDA Traversal ✅ COMPLETE
+
+**Achievement**: Implemented complete brick traversal using EntityBrickView with on-demand entity queries.
+
+**New Function** - [LaineKarrasOctree.cpp:1746-1914](libraries/SVO/src/LaineKarrasOctree.cpp#L1746-L1914):
+```cpp
+std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
+    const ::GaiaVoxel::EntityBrickView& brickView,
+    const glm::vec3& brickWorldMin,
+    float brickVoxelSize,
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDir,
+    float tMin,
+    float tMax) const
+```
+
+**Key Features**:
+- ✅ **Zero-copy entity access** - `brickView.getEntity(x, y, z)` queries ECS on-demand
+- ✅ **Component-based solidity test** - Uses `getComponentValue<Density>()` for occupancy
+- ✅ **Same DDA algorithm** - Amanatides & Woo 3D grid traversal (validated)
+- ✅ **Returns entity reference** - `RayHit.entity` points to actual ECS entity (8 bytes)
+
+**Ray Casting Integration** - [LaineKarrasOctree.cpp:960-1042](libraries/SVO/src/LaineKarrasOctree.cpp#L960-L1042):
+```cpp
+const auto& brickViews = m_octree->root->brickViews;
+const bool hasBricks = !brickViews.empty() && descriptorIndex < brickViews.size();
+
+if (hasBricks) {
+    const auto& brickView = brickViews[descriptorIndex];
+    auto brickHit = traverseBrickView(brickView, worldMin, brickVoxelSize,
+                                      origin, rayDir, brickTMin, brickTMax);
+    if (brickHit.has_value()) {
+        return brickHit.value();  // Entity-based hit!
+    }
+}
+```
+
+**Files Modified**:
+- [LaineKarrasOctree.h:243-263](libraries/SVO/include/LaineKarrasOctree.h#L243-L263) - Added `traverseBrickView()` declaration
+- [LaineKarrasOctree.cpp:960-1042](libraries/SVO/src/LaineKarrasOctree.cpp#L960-L1042) - Integrated into ray casting
+- [LaineKarrasOctree.cpp:1746-1914](libraries/SVO/src/LaineKarrasOctree.cpp#L1746-L1914) - Full DDA implementation
+
+### GaiaVoxelWorld API Integration ✅ COMPLETE
+
+**Achievement**: Replaced raw `gaia::ecs::World*` with `GaiaVoxelWorld*` for clean, type-safe component access.
+
+**Before** (Raw Gaia ECS):
+```cpp
+if (m_world != nullptr && m_world->valid(entity) && m_world->has<Density>(entity)) {
+    Density density = m_world->get<Density>(entity);  // Returns by value
+    if (density.value > 0.0f) { ... }
+}
+```
+
+**After** (GaiaVoxelWorld):
+```cpp
+if (m_voxelWorld != nullptr) {
+    auto density = m_voxelWorld->getComponentValue<Density>(entity);  // std::optional<float>
+    if (density.has_value() && density.value() > 0.0f) { ... }
+}
+```
+
+**Benefits**:
+- ✅ **Self-documenting** - `getComponentValue<T>()` clearly returns the value, not component struct
+- ✅ **Type safety** - `std::optional<float>` vs raw `Density` - caller knows exactly what they get
+- ✅ **Less boilerplate** - No manual `has()` + `get()` + extraction dance
+- ✅ **Encapsulation** - Position extraction hidden behind `getPosition()`
+- ✅ **Future-proof** - Easy to add caching in `GaiaVoxelWorld` without touching SVO code
+
+**API Changes**:
+- **Constructor**: `LaineKarrasOctree(GaiaVoxelWorld& voxelWorld)` - [LaineKarrasOctree.h:38-41](libraries/SVO/include/LaineKarrasOctree.h#L38-L41)
+- **Member variable**: `GaiaVoxelWorld* m_voxelWorld` - [LaineKarrasOctree.h:111](libraries/SVO/include/LaineKarrasOctree.h#L111)
+- **Entity insertion**: Uses `getPosition()` - [LaineKarrasOctree.cpp:196-201](libraries/SVO/src/LaineKarrasOctree.cpp#L196-L201)
+- **Brick traversal**: Uses `getComponentValue<Density>()` - [LaineKarrasOctree.cpp:1839-1843](libraries/SVO/src/LaineKarrasOctree.cpp#L1839-L1843)
+
+**Files Modified**:
+- [LaineKarrasOctree.h:35-43,111](libraries/SVO/include/LaineKarrasOctree.h) - Constructor + member variable
+- [LaineKarrasOctree.cpp:172-179](libraries/SVO/src/LaineKarrasOctree.cpp#L172-L179) - Constructor implementation
+- [LaineKarrasOctree.cpp:188-200](libraries/SVO/src/LaineKarrasOctree.cpp#L188-L200) - insert() using getPosition()
+- [LaineKarrasOctree.cpp:1836-1843](libraries/SVO/src/LaineKarrasOctree.cpp#L1836-L1843) - traverseBrickView() component access
+- [LaineKarrasOctree.cpp:1097-1120](libraries/SVO/src/LaineKarrasOctree.cpp#L1097-L1120) - Entity lookup updated
+
+### Voxel Size Calculation Fix ✅ COMPLETE
+
+**Issue**: Used `glm::length(worldMax - worldMin)` which computes **diagonal magnitude**, not axis extent.
+
+**Before** (Incorrect):
+```cpp
+const float leafVoxelSize = scale_exp2 * glm::length(m_worldMax - m_worldMin);  // Diagonal!
+```
+
+**After** (Correct):
+```cpp
+const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
+const float leafVoxelSize = scale_exp2 * worldExtent;
+```
+
+**Rationale**: For uniform cube worlds, normalized [1,2] space maps to single axis extent, not diagonal.
+
+**Files Modified**:
+- [LaineKarrasOctree.cpp:1005-1011](libraries/SVO/src/LaineKarrasOctree.cpp#L1005-L1011) - Fixed calculation with comment
+
 ### Phase 3 Status Summary
 
-**✅ Completed**:
+**✅ Completed** (Session 6G):
 1. EntityBrickView MortonKey-based constructor
 2. Dual-mode entity access (span OR MortonKey query)
 3. GaiaVoxelWorld::getEntityByMortonKey() implementation
 4. OctreeBlock storage updated (BrickReference → EntityBrickView)
 5. Template circular dependency resolved
 6. Legacy BrickReference code removed
-7. All libraries build successfully
+7. **EntityBrickView-based DDA traversal implemented** ✅ NEW
+8. **GaiaVoxelWorld API integration** ✅ NEW
+9. **Voxel size calculation fixed** ✅ NEW
+10. All libraries build successfully
 
-**⏭️ Next Steps**:
-1. Implement EntityBrickView-based DDA traversal in ray casting
-2. Remove m_leafEntityMap temporary bridge
-3. Build and run integration tests
-4. Validate end-to-end entity-based workflow
+**🔴 Remaining for Phase 3 Feature Parity**:
+1. **VoxelInjection.cpp EntityBrickView Creation** - Currently brickViews vector empty
+   - Location: [VoxelInjection.cpp:420-430,1142-1157,1448-1451](libraries/SVO/src/VoxelInjection.cpp)
+   - Task: Create EntityBrickView instances during octree building
+   - Required: Populate `OctreeBlock::brickViews` with MortonKey-based views
+   - Impact: Enables actual brick traversal in ray casting (currently falls back to leaf hits)
+
+2. **Remove m_leafEntityMap Temporary Bridge**
+   - Location: [LaineKarrasOctree.h:115](libraries/SVO/include/LaineKarrasOctree.h#L115)
+   - Task: Store entities in OctreeBlock directly instead of temporary map
+   - Required: Proper additive octree insertion (not just mapping storage)
+   - Impact: Cleaner architecture, no temporary lookup structures
+
+3. **Integration Testing**
+   - Task: Build and run test_octree_queries.cpp entity-based tests
+   - Required: Verify end-to-end workflow (create entity → insert → raycast → component read)
+   - Impact: Validates entire entity-based ray casting pipeline
+
+4. **Test File Updates**
+   - Location: [test_entity_brick_view.cpp](libraries/SVO/tests/test_entity_brick_view.cpp)
+   - Issue: Tests use old span-based constructor (2 arguments)
+   - Task: Update to new MortonKey-based constructor (or use span mode explicitly)
+   - Impact: Test compilation (currently fails due to API change)
+
+**🎯 Next Immediate Steps** (Priority Order):
+1. **VoxelInjection EntityBrickView creation** - Unblock brick traversal
+2. **Run existing entity tests** - Validate what already works
+3. **Remove m_leafEntityMap** - Clean up temporary bridge
+4. **Update test files** - Fix compilation errors
 
 **Architecture Validation**:
 - ✅ EntityBrickView is true zero-storage view (16 bytes)
