@@ -64,7 +64,7 @@ protected:
         if (!hit.hit) return false;
 
         for (const auto& voxel : expectedVoxels) {
-            if (glm::length(hit.position - voxel) < tolerance) {
+            if (glm::length(hit.hitPoint - voxel) < tolerance) {
                 return true;
             }
         }
@@ -241,7 +241,7 @@ TEST_F(ComprehensiveRayCastingTest, RaysFromInsideGrid) {
         glm::vec3 direction(1, 0, 0);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray from center should hit right wall";
-        EXPECT_NEAR(hit.position.x, 9.0f, 2.0f) << "Should hit right wall at x=9";
+        EXPECT_NEAR(hit.hitPoint.x, 9.0f, 2.0f) << "Should hit right wall at x=9";
     }
 
     // Ray from center outward in -Y
@@ -250,7 +250,7 @@ TEST_F(ComprehensiveRayCastingTest, RaysFromInsideGrid) {
         glm::vec3 direction(0, -1, 0);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray from center should hit bottom wall";
-        EXPECT_NEAR(hit.position.y, 1.0f, 2.0f) << "Should hit bottom wall at y=1";
+        EXPECT_NEAR(hit.hitPoint.y, 1.0f, 2.0f) << "Should hit bottom wall at y=1";
     }
 
     // Diagonal ray from inside
@@ -260,9 +260,9 @@ TEST_F(ComprehensiveRayCastingTest, RaysFromInsideGrid) {
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Diagonal ray from center should hit corner";
         // Should hit near (9,9,9) corner area
-        EXPECT_GT(hit.position.x, 7.0f) << "Should hit near corner";
-        EXPECT_GT(hit.position.y, 7.0f) << "Should hit near corner";
-        EXPECT_GT(hit.position.z, 7.0f) << "Should hit near corner";
+        EXPECT_GT(hit.hitPoint.x, 7.0f) << "Should hit near corner";
+        EXPECT_GT(hit.hitPoint.y, 7.0f) << "Should hit near corner";
+        EXPECT_GT(hit.hitPoint.z, 7.0f) << "Should hit near corner";
     }
 
     // Ray between walls (should hit far wall)
@@ -271,7 +271,7 @@ TEST_F(ComprehensiveRayCastingTest, RaysFromInsideGrid) {
         glm::vec3 direction(1, 0, 0);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray should traverse empty space and hit far wall";
-        EXPECT_NEAR(hit.position.x, 9.0f, 2.0f) << "Should hit right wall";
+        EXPECT_NEAR(hit.hitPoint.x, 9.0f, 2.0f) << "Should hit right wall";
     }
 }
 
@@ -352,7 +352,7 @@ TEST_F(ComprehensiveRayCastingTest, MultipleVoxelTraversal) {
         glm::vec3 direction(1, 0, 0);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray should hit first voxel in line";
-        EXPECT_LT(hit.position.x, 3.0f) << "Should hit first voxel around x=1";
+        EXPECT_LT(hit.hitPoint.x, 3.0f) << "Should hit first voxel around x=1";
     }
 
     // Create grid of voxels in XY plane
@@ -397,7 +397,7 @@ TEST_F(ComprehensiveRayCastingTest, DenseVolumeTraversal) {
         glm::vec3 direction(0, 0, 1);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray should hit dense volume";
-        EXPECT_NEAR(hit.position.z, 3.0f, 2.0f) << "Should hit front face around z=3";
+        EXPECT_NEAR(hit.hitPoint.z, 3.0f, 2.0f) << "Should hit front face around z=3";
     }
 
     // Ray hitting corner
@@ -407,9 +407,9 @@ TEST_F(ComprehensiveRayCastingTest, DenseVolumeTraversal) {
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Diagonal ray should hit dense volume";
         // Should hit near (3,3,3) corner
-        EXPECT_NEAR(hit.position.x, 3.0f, 2.0f);
-        EXPECT_NEAR(hit.position.y, 3.0f, 2.0f);
-        EXPECT_NEAR(hit.position.z, 3.0f, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.x, 3.0f, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.y, 3.0f, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.z, 3.0f, 2.0f);
     }
 
     // Ray grazing the edge
@@ -633,7 +633,7 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray should hit scene";
         // Should hit either an object or back wall
-        EXPECT_GT(hit.position.z, 0.0f) << "Should hit something in scene";
+        EXPECT_GT(hit.hitPoint.z, 0.0f) << "Should hit something in scene";
     }
 
     // Ray between objects
@@ -642,7 +642,7 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
         glm::vec3 direction(0, 0, 1);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Ray between objects should hit back wall";
-        EXPECT_NEAR(hit.position.z, 9.5f, 2.0f) << "Should hit back wall";
+        EXPECT_NEAR(hit.hitPoint.z, 9.5f, 2.0f) << "Should hit back wall";
     }
 
     // Shadow ray from object to light (ceiling)
@@ -651,7 +651,7 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
         glm::vec3 direction(0, 1, 0); // Up toward ceiling
         auto hit = octree->castRay(origin, direction, 0.1f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Shadow ray should hit ceiling";
-        EXPECT_NEAR(hit.position.y, 9.5f, 2.0f) << "Should hit ceiling";
+        EXPECT_NEAR(hit.hitPoint.y, 9.5f, 2.0f) << "Should hit ceiling";
     }
 
     // Indirect lighting ray (bounce off wall)

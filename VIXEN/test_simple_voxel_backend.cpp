@@ -67,7 +67,7 @@ int main() {
 
     if (hitResult) {
         std::cout << "  ✓ Ray hit voxel at t=" << hit.t << ", scale=" << hit.scale << "\n";
-        std::cout << "    Hit position: (" << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "    Hit position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
     } else {
         std::cout << "  ✗ Ray missed (expected hit)\n";
     }

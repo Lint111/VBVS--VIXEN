@@ -445,13 +445,13 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
     if (hit.hit) {
         std::cout << "\nRay cast test:\n";
         std::cout << "  Hit: YES\n";
-        std::cout << "  Position: (" << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "  Position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
         std::cout << "  t: " << hit.tMin << "\n";
         std::cout << "  Scale: " << hit.scale << "\n";
 
         // Verify hit is near expected position
         // Note: Due to octree discretization and traversal precision, the hit may not be exact
-        float distanceToCenter = glm::length(hit.position - voxelPos);
+        float distanceToCenter = glm::length(hit.hitPoint - voxelPos);
         EXPECT_LT(distanceToCenter, 10.0f) << "Hit should be within 10 units of voxel center";
     } else {
         std::cout << "\nRay cast test: MISS (BUG - ray should hit!)\n";

@@ -157,7 +157,7 @@ ISVOStructure::RayHit castRay(
 **RayHit Structure**:
 ```cpp
 struct RayHit {
-    float tMin;                  // Entry t-value (hit.position = origin + direction * tMin)
+    float tMin;                  // Entry t-value (hit.hitPoint = origin + direction * tMin)
     float tMax;                  // Exit t-value
     glm::vec3 position;          // Hit position in world space
     glm::vec3 normal;            // Surface normal at hit (AABB face normal)
@@ -175,7 +175,7 @@ auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
 if (hit.hit) {
     std::cout << "Hit at distance: " << hit.tMin << std::endl;
-    std::cout << "Position: " << glm::to_string(hit.position) << std::endl;
+    std::cout << "Position: " << glm::to_string(hit.hitPoint) << std::endl;
     std::cout << "Normal: " << glm::to_string(hit.normal) << std::endl;
     std::cout << "Voxel scale: " << hit.scale << std::endl;
 }
@@ -361,7 +361,7 @@ std::optional<float> getGroundHeight(
 
     auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 2000.0f);
     if (hit.hit) {
-        return hit.position.y;
+        return hit.hitPoint.y;
     }
     return std::nullopt;  // No ground found
 }

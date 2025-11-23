@@ -73,8 +73,9 @@ protected:
         octree->leafVoxels = 8;
         octree->memoryUsage = octree->root->getTotalSize();
 
-        // Create LaineKarrasOctree wrapper
-        lkOctree = std::make_unique<LaineKarrasOctree>();
+        // Create LaineKarrasOctree wrapper (use AttributeRegistry constructor with nullptr for legacy tests)
+        ::VoxelData::AttributeRegistry* nullRegistry = nullptr;
+        lkOctree = std::make_unique<LaineKarrasOctree>(nullRegistry, 4, 3);
         lkOctree->setOctree(std::move(octree));
     }
 
@@ -432,14 +433,14 @@ TEST_F(OctreeQueryTest, CastRayHitPosition) {
 
     // Hit position should be origin + direction * tMin
     glm::vec3 expectedPos = origin + direction * hit.tMin;
-    EXPECT_NEAR(hit.position.x, expectedPos.x, 0.01f);
-    EXPECT_NEAR(hit.position.y, expectedPos.y, 0.01f);
-    EXPECT_NEAR(hit.position.z, expectedPos.z, 0.01f);
+    EXPECT_NEAR(hit.hitPoint.x, expectedPos.x, 0.01f);
+    EXPECT_NEAR(hit.hitPoint.y, expectedPos.y, 0.01f);
+    EXPECT_NEAR(hit.hitPoint.z, expectedPos.z, 0.01f);
 
     // Hit should be within world bounds
-    EXPECT_GE(hit.position.x, lkOctree->getWorldMin().x);
-    EXPECT_GE(hit.position.y, lkOctree->getWorldMin().y);
-    EXPECT_GE(hit.position.z, lkOctree->getWorldMin().z);
+    EXPECT_GE(hit.hitPoint.x, lkOctree->getWorldMin().x);
+    EXPECT_GE(hit.hitPoint.y, lkOctree->getWorldMin().y);
+    EXPECT_GE(hit.hitPoint.z, lkOctree->getWorldMin().z);
 }
 
 TEST_F(OctreeQueryTest, CastRayTMinTMax) {
@@ -611,8 +612,8 @@ TEST_F(OctreeQueryTest, TraversalPath_SingleHit_FrontFace) {
     ASSERT_TRUE(hit.hit);
 
     // Should hit first voxel (which is at x=[0, 2.5])
-    EXPECT_GE(hit.position.x, 0.0f); // Within grid
-    EXPECT_LT(hit.position.x, 3.0f); // Within first voxel region
+    EXPECT_GE(hit.hitPoint.x, 0.0f); // Within grid
+    EXPECT_LT(hit.hitPoint.x, 3.0f); // Within first voxel region
     EXPECT_GT(hit.tMin, 0.0f); // Ray traveled some distance
 }
 
@@ -865,8 +866,8 @@ TEST_F(OctreeQueryTest, TraversalPath_Complex_StairstepPattern) {
     auto hit = lkOctree->castRay(origin, direction, 0.0f, std::numeric_limits<float>::max());
     ASSERT_TRUE(hit.hit);
     // Verify hit occurs in expected region
-    EXPECT_GE(hit.position.x, 0.0f);
-    EXPECT_LT(hit.position.x, 10.0f);
+    EXPECT_GE(hit.hitPoint.x, 0.0f);
+    EXPECT_LT(hit.hitPoint.x, 10.0f);
 }
 
 TEST_F(OctreeQueryTest, TraversalPath_Complex_NearMiss) {
@@ -919,15 +920,15 @@ protected:
         constexpr float thickness = 0.2f;
         constexpr float voxelSize = 0.1f; // Voxel spacing
 
-        // Create empty octree and initialize with world bounds
-        cornellBox = new LaineKarrasOctree();
-        cornellBox->ensureInitialized(glm::vec3(0.0f), glm::vec3(boxSize), 8);
-
         // Create AttributeRegistry for brick storage
         ::VoxelData::AttributeRegistry registry;
         registry.registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
         registry.addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
         registry.addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        // Create octree with AttributeRegistry (legacy constructor)
+        cornellBox = new LaineKarrasOctree(&registry, 8, 3);
+        cornellBox->ensureInitialized(glm::vec3(0.0f), glm::vec3(boxSize), 8);
 
         VoxelInjector injector(&registry);
         InjectionConfig config;
@@ -1193,14 +1194,14 @@ TEST_F(CornellBoxTest, FloorHit_FromAbove) {
 
     std::cout << "Hit: " << (hit.hit ? "TRUE" : "FALSE") << "\n";
     if (hit.hit) {
-        std::cout << "Hit position: (" << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "Hit position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
         std::cout << "Hit distance: " << hit.tMin << "\n";
     }
 
     ASSERT_TRUE(hit.hit) << "Should hit floor";
 
     // Validate floor material (bright grey)
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_NEAR(voxelData->color.r, 0.8f, 0.2f) << "Floor should be bright grey (R)";
         EXPECT_NEAR(voxelData->color.g, 0.8f, 0.2f) << "Floor should be bright grey (G)";
@@ -1220,7 +1221,7 @@ TEST_F(CornellBoxTest, FloorHit_FromOutside) {
     ASSERT_TRUE(hit.hit) << "Should hit floor from below";
 
     // Should hit floor at y~0
-    EXPECT_LT(hit.position.y, 0.5f) << "Should hit near floor level";
+    EXPECT_LT(hit.hitPoint.y, 0.5f) << "Should hit near floor level";
 }
 
 // ---------------------------------------------------------------------------
@@ -1236,14 +1237,14 @@ TEST_F(CornellBoxTest, CeilingHit_GreyRegion) {
     ASSERT_TRUE(hit.hit) << "Should hit ceiling";
 
     // Debug: print hit position
-    std::cout << "CeilingHit_GreyRegion: Hit at (" << hit.position.x << ", "
-              << hit.position.y << ", " << hit.position.z << ") scale=" << hit.scale << "\n";
+    std::cout << "CeilingHit_GreyRegion: Hit at (" << hit.hitPoint.x << ", "
+              << hit.hitPoint.y << ", " << hit.hitPoint.z << ") scale=" << hit.scale << "\n";
 
     // Should hit ceiling at y~10
-    EXPECT_GT(hit.position.y, 9.0f) << "Should hit near ceiling level";
+    EXPECT_GT(hit.hitPoint.y, 9.0f) << "Should hit near ceiling level";
 
     // Validate grey ceiling material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_NEAR(voxelData->color.r, 0.8f, 0.2f) << "Grey ceiling (R)";
         EXPECT_NEAR(voxelData->color.g, 0.8f, 0.2f) << "Grey ceiling (G)";
@@ -1260,7 +1261,7 @@ TEST_F(CornellBoxTest, CeilingHit_LightPatch) {
     ASSERT_TRUE(hit.hit) << "Should hit light patch";
 
     // Validate light material (white)
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         // Light should be brighter than grey walls
         float brightness = voxelData->color.r + voxelData->color.g + voxelData->color.b;
@@ -1281,10 +1282,10 @@ TEST_F(CornellBoxTest, LeftWallHit_FromCenter_Red) {
     ASSERT_TRUE(hit.hit) << "Should hit left wall";
 
     // Should hit left wall at x~0
-    EXPECT_LT(hit.position.x, 0.5f) << "Should hit near left wall";
+    EXPECT_LT(hit.hitPoint.x, 0.5f) << "Should hit near left wall";
 
     // Validate RED material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_GT(voxelData->color.r, 0.5f) << "Left wall should be RED (high R)";
         EXPECT_LT(voxelData->color.g, 0.3f) << "Left wall should be RED (low G)";
@@ -1304,7 +1305,7 @@ TEST_F(CornellBoxTest, LeftWallHit_FromOutside_Red) {
     ASSERT_TRUE(hit.hit) << "Should hit left wall from outside";
 
     // Validate RED material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_GT(voxelData->color.r, 0.5f) << "Should be RED";
     }
@@ -1323,10 +1324,10 @@ TEST_F(CornellBoxTest, RightWallHit_FromCenter_Green) {
     ASSERT_TRUE(hit.hit) << "Should hit right wall";
 
     // Should hit right wall at x~10
-    EXPECT_GT(hit.position.x, 9.0f) << "Should hit near right wall";
+    EXPECT_GT(hit.hitPoint.x, 9.0f) << "Should hit near right wall";
 
     // Validate GREEN material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_LT(voxelData->color.r, 0.3f) << "Right wall should be GREEN (low R)";
         EXPECT_GT(voxelData->color.g, 0.5f) << "Right wall should be GREEN (high G)";
@@ -1346,7 +1347,7 @@ TEST_F(CornellBoxTest, RightWallHit_FromOutside_Green) {
     ASSERT_TRUE(hit.hit) << "Should hit right wall from outside";
 
     // Validate GREEN material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_GT(voxelData->color.g, 0.5f) << "Should be GREEN";
     }
@@ -1365,10 +1366,10 @@ TEST_F(CornellBoxTest, BackWallHit_FromCenter_Grey) {
     ASSERT_TRUE(hit.hit) << "Should hit back wall";
 
     // Should hit back wall at z~10
-    EXPECT_GT(hit.position.z, 9.0f) << "Should hit near back wall";
+    EXPECT_GT(hit.hitPoint.z, 9.0f) << "Should hit near back wall";
 
     // Validate grey material
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_NEAR(voxelData->color.r, 0.8f, 0.2f) << "Back wall grey (R)";
         EXPECT_NEAR(voxelData->color.g, 0.8f, 0.2f) << "Back wall grey (G)";
@@ -1389,7 +1390,7 @@ TEST_F(CornellBoxTest, InsideBox_FloorToLeftWall) {
     ASSERT_TRUE(hit.hit) << "Should hit left wall";
 
     // Should hit red wall
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_GT(voxelData->color.r, 0.5f) << "Should hit red wall";
     }
@@ -1404,7 +1405,7 @@ TEST_F(CornellBoxTest, InsideBox_FloorToRightWall) {
     ASSERT_TRUE(hit.hit) << "Should hit right wall";
 
     // Should hit green wall
-    auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+    auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
     if (voxelData.has_value()) {
         EXPECT_GT(voxelData->color.g, 0.5f) << "Should hit green wall";
     }
@@ -1442,7 +1443,7 @@ TEST_F(CornellBoxTest, MaterialConsistency_RedWallMultipleRays) {
         auto hit = cornellBox->castRay(origin, direction, 0.0f, std::numeric_limits<float>::max());
         ASSERT_TRUE(hit.hit) << "Should hit left wall from " << origin.x << "," << origin.y << "," << origin.z;
 
-        auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+        auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
         if (voxelData.has_value()) {
             EXPECT_GT(voxelData->color.r, 0.5f) << "All hits should be RED";
         }
@@ -1463,7 +1464,7 @@ TEST_F(CornellBoxTest, MaterialConsistency_GreenWallMultipleRays) {
         auto hit = cornellBox->castRay(origin, direction, 0.0f, std::numeric_limits<float>::max());
         ASSERT_TRUE(hit.hit) << "Should hit right wall";
 
-        auto voxelData = cornellBox->getVoxelData(hit.position, 0);
+        auto voxelData = cornellBox->getVoxelData(hit.hitPoint, 0);
         if (voxelData.has_value()) {
             EXPECT_GT(voxelData->color.g, 0.5f) << "All hits should be GREEN";
         }
@@ -1523,7 +1524,7 @@ TEST(LaineKarrasOctree, ParametricPlanes_AxisAligned) {
     // This test verifies the implementation handles axis-aligned rays correctly
     // by checking that the ray caster doesn't crash or produce NaN values
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1559,7 +1560,7 @@ TEST(LaineKarrasOctree, ParametricPlanes_AxisAligned) {
     // Verify no NaN values in hit
     EXPECT_FALSE(std::isnan(hit.tMin));
     EXPECT_FALSE(std::isnan(hit.tMax));
-    EXPECT_FALSE(glm::any(glm::isnan(hit.position)));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.hitPoint)));
     EXPECT_FALSE(glm::any(glm::isnan(hit.normal)));
 }
 
@@ -1573,7 +1574,7 @@ TEST(LaineKarrasOctree, ParametricPlanes_Diagonal) {
     // ty_coef = 1 / -|1/sqrt(2)| ≈ -1.414
     // tz_coef = 1 / -|0| = 1 / -epsilon = very large negative
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1607,7 +1608,7 @@ TEST(LaineKarrasOctree, ParametricPlanes_Diagonal) {
     // Verify no NaN values
     EXPECT_FALSE(std::isnan(hit.tMin));
     EXPECT_FALSE(std::isnan(hit.tMax));
-    EXPECT_FALSE(glm::any(glm::isnan(hit.position)));
+    EXPECT_FALSE(glm::any(glm::isnan(hit.hitPoint)));
     EXPECT_FALSE(glm::any(glm::isnan(hit.normal)));
 }
 
@@ -1625,7 +1626,7 @@ TEST(LaineKarrasOctree, XORMirroring_PositiveDirection) {
     // Expected octant_mask = 7 XOR 1 XOR 2 XOR 4 = 0
     // (all axes mirrored since all positive)
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1670,7 +1671,7 @@ TEST(LaineKarrasOctree, XORMirroring_NegativeDirection) {
 
     // Expected octant_mask = 7 (no mirroring since all negative)
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1716,7 +1717,7 @@ TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
     // Expected octant_mask = 7 XOR 1 XOR 4 = 2
     // (X and Z mirrored, Y not mirrored)
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1762,7 +1763,7 @@ TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
  */
 TEST(LaineKarrasOctree, CastStack_PushPop) {
     // Create a simple octree structure to get ChildDescriptor pointers
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1813,7 +1814,7 @@ TEST(LaineKarrasOctree, RayOriginInsideOctree) {
     glm::vec3 origin(0.5f, 0.5f, 0.5f);
     glm::vec3 direction(1.0f, 0.0f, 0.0f);  // Shoot towards +X
 
-    auto octree = std::make_unique<LaineKarrasOctree>();
+    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);

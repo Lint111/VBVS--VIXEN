@@ -103,12 +103,12 @@ TEST_F(AttributeRegistryIntegrationTest, MultiAttributeRayHit) {
     // Note: Current ISVOStructure::RayHit only exposes position, normal, tMin, scale
     // This test verifies traversal works with multi-attribute voxels
     EXPECT_TRUE(hit.hit);
-    EXPECT_NEAR(hit.position.x, voxelPos.x, 2.0f);
-    EXPECT_NEAR(hit.position.y, voxelPos.y, 2.0f);
-    EXPECT_NEAR(hit.position.z, voxelPos.z, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.x, voxelPos.x, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.y, voxelPos.y, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.z, voxelPos.z, 2.0f);
 
     std::cout << "Multi-attribute voxel hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -219,8 +219,8 @@ TEST_F(AttributeRegistryIntegrationTest, CustomKeyPredicate) {
         // With default key predicate (density >= 0.5), should miss low-density voxel
         // but hit high-density voxel at (5,5,5)
         if (hit.hit) {
-            std::cout << "Hit voxel at (" << hit.position.x << ", "
-                      << hit.position.y << ", " << hit.position.z << ")\n";
+            std::cout << "Hit voxel at (" << hit.hitPoint.x << ", "
+                      << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
         }
     }
 
@@ -230,7 +230,7 @@ TEST_F(AttributeRegistryIntegrationTest, CustomKeyPredicate) {
         auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
         EXPECT_TRUE(hit.hit) << "Ray should hit high-density voxel (0.8)";
-        EXPECT_NEAR(hit.position.x, 5.0f, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.x, 5.0f, 2.0f);
     }
 
     std::cout << "Custom key predicate validated (density threshold)\n";

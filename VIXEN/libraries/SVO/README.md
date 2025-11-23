@@ -108,7 +108,7 @@ auto hit = svo->castRay(
     1000.0f);                      // tMax
 
 if (hit.hit) {
-    std::cout << "Hit at: " << hit.position << "\\n";
+    std::cout << "Hit at: " << hit.hitPoint << "\\n";
     std::cout << "Normal: " << hit.normal << "\\n";
 }
 

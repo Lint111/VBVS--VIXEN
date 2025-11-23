@@ -77,12 +77,12 @@ TEST_F(BrickTraversalTest, BrickHitToLeafTransition) {
     auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     EXPECT_TRUE(hit.hit) << "Ray should traverse brick and hit leaf voxel";
-    EXPECT_NEAR(hit.position.x, 5.0f, 2.0f) << "Hit should be near voxel cluster";
-    EXPECT_NEAR(hit.position.y, 5.0f, 2.0f);
-    EXPECT_NEAR(hit.position.z, 5.0f, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.x, 5.0f, 2.0f) << "Hit should be near voxel cluster";
+    EXPECT_NEAR(hit.hitPoint.y, 5.0f, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.z, 5.0f, 2.0f);
 
     std::cout << "Brick → Leaf transition: Hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -104,12 +104,12 @@ TEST_F(BrickTraversalTest, BrickMissReturnToGrid) {
     auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     EXPECT_TRUE(hit.hit) << "Ray should miss brick, continue grid, and hit second voxel";
-    EXPECT_NEAR(hit.position.x, 8.0f, 2.0f) << "Should hit voxel outside brick region";
-    EXPECT_NEAR(hit.position.y, 8.0f, 2.0f);
-    EXPECT_NEAR(hit.position.z, 8.0f, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.x, 8.0f, 2.0f) << "Should hit voxel outside brick region";
+    EXPECT_NEAR(hit.hitPoint.y, 8.0f, 2.0f);
+    EXPECT_NEAR(hit.hitPoint.z, 8.0f, 2.0f);
 
     std::cout << "Brick miss → Grid continuation: Hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -131,12 +131,12 @@ TEST_F(BrickTraversalTest, RayThroughMultipleBricks) {
     auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     EXPECT_TRUE(hit.hit) << "Ray should hit first voxel in line";
-    EXPECT_LT(hit.position.x, 3.0f) << "Should hit first voxel around x=1";
-    EXPECT_NEAR(hit.position.y, 5.0f, 1.0f);
-    EXPECT_NEAR(hit.position.z, 5.0f, 1.0f);
+    EXPECT_LT(hit.hitPoint.x, 3.0f) << "Should hit first voxel around x=1";
+    EXPECT_NEAR(hit.hitPoint.y, 5.0f, 1.0f);
+    EXPECT_NEAR(hit.hitPoint.z, 5.0f, 1.0f);
 
     std::cout << "Multiple brick traversal: First hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -160,8 +160,8 @@ TEST_F(BrickTraversalTest, BrickBoundaryGrazing) {
     // May or may not hit depending on precision - this tests that it doesn't crash
     if (hit.hit) {
         std::cout << "Grazing ray hit at ("
-                  << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
-        EXPECT_NEAR(hit.position.x, 2.5f, 2.0f);
+                  << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
+        EXPECT_NEAR(hit.hitPoint.x, 2.5f, 2.0f);
     } else {
         std::cout << "Grazing ray missed (acceptable for near-boundary case)\n";
     }
@@ -193,8 +193,8 @@ TEST_F(BrickTraversalTest, BrickEdgeCases_AxisParallelRays) {
         auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
         EXPECT_TRUE(hit.hit) << "+X ray should hit brick voxels";
-        EXPECT_NEAR(hit.position.y, 3.0f, 1.0f);
-        EXPECT_NEAR(hit.position.z, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.y, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.z, 3.0f, 1.0f);
     }
 
     // +Y ray
@@ -204,8 +204,8 @@ TEST_F(BrickTraversalTest, BrickEdgeCases_AxisParallelRays) {
         auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
         EXPECT_TRUE(hit.hit) << "+Y ray should hit brick voxels";
-        EXPECT_NEAR(hit.position.x, 3.0f, 1.0f);
-        EXPECT_NEAR(hit.position.z, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.x, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.z, 3.0f, 1.0f);
     }
 
     // +Z ray
@@ -215,8 +215,8 @@ TEST_F(BrickTraversalTest, BrickEdgeCases_AxisParallelRays) {
         auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
         EXPECT_TRUE(hit.hit) << "+Z ray should hit brick voxels";
-        EXPECT_NEAR(hit.position.x, 3.0f, 1.0f);
-        EXPECT_NEAR(hit.position.y, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.x, 3.0f, 1.0f);
+        EXPECT_NEAR(hit.hitPoint.y, 3.0f, 1.0f);
     }
 
     std::cout << "Axis-parallel brick traversal validated (X, Y, Z)\n";
@@ -252,12 +252,12 @@ TEST_F(BrickTraversalTest, DenseBrickVolume) {
     auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     EXPECT_TRUE(hit.hit) << "Ray should hit dense brick volume";
-    EXPECT_NEAR(hit.position.x, brickOrigin, 0.5f) << "Should hit near brick front face";
-    EXPECT_NEAR(hit.position.y, 2.5f, 0.5f);
-    EXPECT_NEAR(hit.position.z, 2.5f, 0.5f);
+    EXPECT_NEAR(hit.hitPoint.x, brickOrigin, 0.5f) << "Should hit near brick front face";
+    EXPECT_NEAR(hit.hitPoint.y, 2.5f, 0.5f);
+    EXPECT_NEAR(hit.hitPoint.z, 2.5f, 0.5f);
 
     std::cout << "Dense brick volume: Hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -293,11 +293,11 @@ TEST_F(BrickTraversalTest, BrickDDAStepConsistency) {
 
     EXPECT_TRUE(hit.hit) << "Ray should hit checkerboard pattern";
     // Should hit first solid voxel in checkerboard
-    EXPECT_GT(hit.position.x, brickOrigin) << "Should hit inside brick region";
-    EXPECT_LT(hit.position.x, brickOrigin + 1.0f) << "Should hit within brick bounds";
+    EXPECT_GT(hit.hitPoint.x, brickOrigin) << "Should hit inside brick region";
+    EXPECT_LT(hit.hitPoint.x, brickOrigin + 1.0f) << "Should hit within brick bounds";
 
     std::cout << "Brick DDA step consistency: Hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 }
 
 // ============================================================================
@@ -319,10 +319,10 @@ TEST_F(BrickTraversalTest, BrickToBrickTransition) {
     auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     EXPECT_TRUE(hit.hit) << "Ray should hit first brick voxel";
-    EXPECT_NEAR(hit.position.x, 2.0f, 2.0f) << "Should hit first voxel";
+    EXPECT_NEAR(hit.hitPoint.x, 2.0f, 2.0f) << "Should hit first voxel";
 
     std::cout << "Brick-to-brick transition: First hit at ("
-              << hit.position.x << ", " << hit.position.y << ", " << hit.position.z << ")\n";
+              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
 
     // Note: Testing second hit requires multi-hit API (not yet implemented)
     // For now, verify first hit works correctly
