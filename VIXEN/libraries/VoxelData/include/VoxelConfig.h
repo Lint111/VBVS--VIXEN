@@ -232,7 +232,7 @@ public:
 #define VOXEL_KEY_COMPONENT(Component, Index) \
     using ValueType_##Index = typename ::VoxelData::ComponentValueType<Component>::type; \
     using Member_##Index = ::VoxelData::VoxelMember<ValueType_##Index, Index, true>; \
-    static constexpr Member_##Index component_member_##Index{}; \
+    static inline constexpr Member_##Index component_member_##Index{}; \
     static inline const ::VoxelData::AttributeDescriptor component_desc_##Index{ \
         Component::Name, \
         ::VoxelData::AttributeTypeTraits<ValueType_##Index>::type, \
@@ -259,7 +259,7 @@ public:
 #define VOXEL_ATTRIBUTE_COMPONENT(Component, Index) \
     using ValueType_##Index = typename ::VoxelData::ComponentValueType<Component>::type; \
     using Member_##Index = ::VoxelData::VoxelMember<ValueType_##Index, Index, false>; \
-    static constexpr Member_##Index component_member_##Index{}; \
+    static inline constexpr Member_##Index component_member_##Index{}; \
     static inline const ::VoxelData::AttributeDescriptor component_desc_##Index{ \
         Component::Name, \
         ::VoxelData::AttributeTypeTraits<ValueType_##Index>::type, \

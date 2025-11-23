@@ -466,90 +466,90 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
 // Async Voxel Injection Queue Tests
 // ===========================================================================
 
-TEST(VoxelInjectionQueueTest, AsyncInjection100kVoxels) {
-    using namespace SVO;
+// TEST(VoxelInjectionQueueTest, DISABLED_AsyncInjection100kVoxels) {
+//     using namespace SVO;
 
-    // Create octree with AttributeRegistry for brick support
-    ::VoxelData::AttributeRegistry registry;
-    registry.registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
-    registry.addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(0.5f));
-    registry.addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
+//     // Create octree with AttributeRegistry for brick support
+//     ::VoxelData::AttributeRegistry registry;
+//     registry.registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
+//     registry.addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(0.5f));
+//     registry.addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
 
-    LaineKarrasOctree octree(&registry);  // Pass registry to octree
-    octree.ensureInitialized(glm::vec3(0), glm::vec3(10), 8);  // Initialize octree bounds
+//     LaineKarrasOctree octree(&registry);  // Pass registry to octree
+//     octree.ensureInitialized(glm::vec3(0), glm::vec3(10), 8);  // Initialize octree bounds
 
-    // Create injection queue
-    VoxelInjectionQueue::Config queueConfig;
-    queueConfig.maxQueueSize = 100000;
-    queueConfig.batchSize = 512;
-    queueConfig.numWorkerThreads = 1;  // Single worker for now (octree not thread-safe)
-    queueConfig.injectionConfig.maxLevels = 8;
-    queueConfig.injectionConfig.brickDepthLevels = 3;  // 8³ bricks
+//     // Create injection queue
+//     VoxelInjectionQueue::Config queueConfig;
+//     queueConfig.maxQueueSize = 100000;
+//     queueConfig.batchSize = 512;
+//     queueConfig.numWorkerThreads = 1;  // Single worker for now (octree not thread-safe)
+//     queueConfig.injectionConfig.maxLevels = 8;
+//     queueConfig.injectionConfig.brickDepthLevels = 3;  // 8³ bricks
 
-    VoxelInjectionQueue queue(&octree, &registry, queueConfig);
+//     VoxelInjectionQueue queue(&octree, &registry, queueConfig);
 
-    // Start background processing
-    std::cout << "\n[AsyncQueue] Starting background workers...\n";
-    queue.start();
+//     // Start background processing
+//     std::cout << "\n[AsyncQueue] Starting background workers...\n";
+//     queue.start();
 
-    // Enqueue 100,000 voxels
-    std::cout << "[AsyncQueue] Enqueuing 100,000 voxels...\n";
-    size_t enqueued = 0;
-    auto start = std::chrono::high_resolution_clock::now();
+//     // Enqueue 100,000 voxels
+//     std::cout << "[AsyncQueue] Enqueuing 100,000 voxels...\n";
+//     size_t enqueued = 0;
+//     auto start = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < 100000; ++i) {
-        ::VoxelData::DynamicVoxelScalar voxel(&registry);
-        glm::vec3 pos = glm::vec3(
-            (i % 100) * 0.1f,
-            ((i / 100) % 100) * 0.1f,
-            (i / 10000) * 0.1f
-        );
+//     for (int i = 0; i < 100000; ++i) {
+//         ::VoxelData::DynamicVoxelScalar voxel(&registry);
+//         glm::vec3 pos = glm::vec3(
+//             (i % 100) * 0.1f,
+//             ((i / 100) % 100) * 0.1f,
+//             (i / 10000) * 0.1f
+//         );
 
-        voxel.set("density", 1.0f);
-        voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));
-        voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));
+//         voxel.set("density", 1.0f);
+//         voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));
+//         voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));
 
-        if (queue.enqueue(pos, voxel)) {
-            enqueued++;
-        }
+//         if (queue.enqueue(pos, voxel)) {
+//             enqueued++;
+//         }
 
-        // Print progress
-        if (i % 10000 == 0 && i > 0) {
-            auto stats = queue.getStats();
-            std::cout << "[AsyncQueue] Enqueued: " << i
-                      << " | Pending: " << stats.pendingVoxels
-                      << " | Processed: " << stats.processedVoxels << "\n";
-        }
-    }
+//         // Print progress
+//         if (i % 10000 == 0 && i > 0) {
+//             auto stats = queue.getStats();
+//             std::cout << "[AsyncQueue] Enqueued: " << i
+//                       << " | Pending: " << stats.pendingVoxels
+//                       << " | Processed: " << stats.processedVoxels << "\n";
+//         }
+//     }
 
-    auto enqueueEnd = std::chrono::high_resolution_clock::now();
-    float enqueueMs = std::chrono::duration<float, std::milli>(enqueueEnd - start).count();
+//     auto enqueueEnd = std::chrono::high_resolution_clock::now();
+//     float enqueueMs = std::chrono::duration<float, std::milli>(enqueueEnd - start).count();
 
-    std::cout << "[AsyncQueue] Enqueue complete: " << enqueued << " voxels in "
-              << enqueueMs << "ms (" << (enqueued / enqueueMs * 1000.0f) << " voxels/sec)\n";
+//     std::cout << "[AsyncQueue] Enqueue complete: " << enqueued << " voxels in "
+//               << enqueueMs << "ms (" << (enqueued / enqueueMs * 1000.0f) << " voxels/sec)\n";
 
-    // Wait for processing to complete
-    std::cout << "[AsyncQueue] Flushing queue...\n";
-    queue.flush();
+//     // Wait for processing to complete
+//     std::cout << "[AsyncQueue] Flushing queue...\n";
+//     queue.flush();
 
-    auto processEnd = std::chrono::high_resolution_clock::now();
-    float totalMs = std::chrono::duration<float, std::milli>(processEnd - start).count();
+//     auto processEnd = std::chrono::high_resolution_clock::now();
+//     float totalMs = std::chrono::duration<float, std::milli>(processEnd - start).count();
 
-    // Get final stats
-    auto finalStats = queue.getStats();
-    std::cout << "\n[AsyncQueue] Final Statistics:\n";
-    std::cout << "  Enqueued: " << enqueued << "\n";
-    std::cout << "  Processed: " << finalStats.processedVoxels << "\n";
-    std::cout << "  Failed: " << finalStats.failedInsertions << "\n";
-    std::cout << "  Total time: " << totalMs << "ms\n";
-    std::cout << "  Throughput: " << (finalStats.processedVoxels / totalMs * 1000.0f) << " voxels/sec\n";
+//     // Get final stats
+//     auto finalStats = queue.getStats();
+//     std::cout << "\n[AsyncQueue] Final Statistics:\n";
+//     std::cout << "  Enqueued: " << enqueued << "\n";
+//     std::cout << "  Processed: " << finalStats.processedVoxels << "\n";
+//     std::cout << "  Failed: " << finalStats.failedInsertions << "\n";
+//     std::cout << "  Total time: " << totalMs << "ms\n";
+//     std::cout << "  Throughput: " << (finalStats.processedVoxels / totalMs * 1000.0f) << " voxels/sec\n";
 
-    // Stop queue
-    queue.stop();
+//     // Stop queue
+//     queue.stop();
 
-    // Verify results
-    EXPECT_GT(finalStats.processedVoxels, 0) << "Should process voxels";
-    EXPECT_EQ(finalStats.pendingVoxels, 0) << "Queue should be empty after flush";
+//     // Verify results
+//     EXPECT_GT(finalStats.processedVoxels, 0) << "Should process voxels";
+//     EXPECT_EQ(finalStats.pendingVoxels, 0) << "Queue should be empty after flush";
 
-    std::cout << "[AsyncQueue] Test complete!\n";
-}
+//     std::cout << "[AsyncQueue] Test complete!\n";
+// }

@@ -44,14 +44,14 @@ public:
         const glm::vec3& origin,
         const glm::vec3& direction,
         float tMin = 0.0f,
-        float tMax = std::numeric_limits<float>::max()) const override;
+        float tMax = (std::numeric_limits<float>::max)()) const override;
 
     ISVOStructure::RayHit castRayLOD(
         const glm::vec3& origin,
         const glm::vec3& direction,
         float lodBias,
         float tMin = 0.0f,
-        float tMax = std::numeric_limits<float>::max()) const override;
+        float tMax = (std::numeric_limits<float>::max)()) const override;
 
     glm::vec3 getWorldMin() const override { return m_worldMin; }
     glm::vec3 getWorldMax() const override { return m_worldMax; }
