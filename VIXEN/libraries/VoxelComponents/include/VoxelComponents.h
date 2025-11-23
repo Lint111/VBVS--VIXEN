@@ -2,6 +2,8 @@
 
 #include <gaia.h>
 #include <glm/glm.hpp>
+#include <variant>
+#include <tuple>
 #include <cstdint>
 
 namespace GaiaVoxel {
@@ -92,39 +94,59 @@ VOXEL_COMPONENT_VEC3(Normal, "normal", x, y, z, AoS, 0.0f, 1.0f, 0.0f)
 VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
 
 // ============================================================================
-// Component Registry - For iteration and lookup
+// Component Registry - Macro-Based Automatic Registration
 // ============================================================================
 
 /**
- * Type-safe component visitor pattern.
- * Allows compile-time iteration over all known components.
+ * Central component registry using X-macro pattern.
  *
- * Usage:
- * ```cpp
- * ComponentVisitor::visitAll([](auto component_type) {
- *     using Component = decltype(component_type);
- *     std::cout << Component::Name << "\n";
- * });
- * ```
+ * To register a new component:
+ * 1. Add REGISTER_COMPONENT(ComponentName) to VOXEL_COMPONENT_LIST
+ * 2. ComponentVariant, AllComponents tuple, and traits are auto-updated
+ *
+ * Benefits:
+ * - Single source of truth (no manual variant updates)
+ * - Compile-time iteration via visitAll()
+ * - Type-safe component lookup
  */
+
+// ============================================================================
+// SINGLE SOURCE OF TRUTH - Component Registry
+// ============================================================================
+/**
+ * To register a new component:
+ * 1. Define the component (VOXEL_COMPONENT_SCALAR or VOXEL_COMPONENT_VEC3)
+ * 2. Add APPLY_MACRO(macro, ComponentName) to FOR_EACH_COMPONENT below
+ * 3. ComponentVariant, AllComponents tuple, and ComponentTraits auto-update
+ *
+ * This is the ONLY place you need to add component names!
+ */
+#define APPLY_MACRO(macro, ...) macro(__VA_ARGS__)
+#define FOR_EACH_COMPONENT(macro) \
+    APPLY_MACRO(macro, Density) \
+    APPLY_MACRO(macro, Material) \
+    APPLY_MACRO(macro, EmissionIntensity) \
+    APPLY_MACRO(macro, Color) \
+    APPLY_MACRO(macro, Normal) \
+    APPLY_MACRO(macro, Emission) \
+    APPLY_MACRO(macro, MortonKey)
+
 namespace ComponentRegistry {
-    // All registered components (add new components here)
-    using AllComponents = std::tuple<
-        Density,
-        Material,
-        Color,
-        Normal,
-        Emission,
-        EmissionIntensity,
-        MortonKey
-    >;
+    // Generate AllComponents tuple from macro registry
+    // NOTE: Tuple is only instantiated temporarily in visitAll() - not stored
+    // Size when instantiated: ~56 bytes (7 components × ~8 bytes default-constructed)
+
+    #define AS_TYPE(Component) Component,
+    using AllComponents = std::tuple<FOR_EACH_COMPONENT(AS_TYPE) std::monostate>;
+    #undef AS_TYPE
 
     // Visit all components with a lambda
     template<typename Visitor>
     constexpr void visitAll(Visitor&& visitor) {
-        std::apply([&](auto... components) {
-            (visitor(components), ...);
-        }, AllComponents{});
+        // Directly instantiate each component and call visitor
+        #define VISIT_COMPONENT(Component) visitor(Component{});
+        FOR_EACH_COMPONENT(VISIT_COMPONENT)
+        #undef VISIT_COMPONENT
     }
 
     // Find component by name (compile-time)
@@ -140,22 +162,43 @@ namespace ComponentRegistry {
         });
         return found;
     }
-}
+
+} // namespace ComponentRegistry
+
+// ============================================================================
+// Component Variant Type
+// ============================================================================
+
+/**
+ * Type-safe variant containing any registered component type.
+ *
+ * Automatically generated from FOR_EACH_COMPONENT macro registry.
+ * Benefits:
+ * - Zero string lookups - component type IS the identifier
+ * - Type-safe - impossible to assign wrong value type
+ * - Memory efficient - stores only ONE component at a time
+ *
+ * Memory layout:
+ * - Size = sizeof(largest component) + sizeof(discriminator)
+ * - Typical size: 16 bytes (12 for vec3 + 4 for discriminator)
+ * - NOT a tuple (no allocation of all types simultaneously)
+ *
+ * Example:
+ *   ComponentVariant v1 = Density{0.8f};       // holds Density only
+ *   ComponentVariant v2 = Color{glm::vec3(1, 0, 0)};  // holds Color only
+ */
+#define AS_VARIANT_TYPE(Component) Component,
+using ComponentVariant = std::variant<FOR_EACH_COMPONENT(AS_VARIANT_TYPE) std::monostate>;
+#undef AS_VARIANT_TYPE
 
 // ============================================================================
 // Metadata Components
 // ============================================================================
 
-/**
- * Brick reference - links voxel to dense brick storage.
- */
-struct BrickReference {
-    static constexpr const char* Name = "brick_reference";
-    uint32_t brickID;
-    uint8_t localX;
-    uint8_t localY;
-    uint8_t localZ;
-};
+// NOTE: BrickReference REMOVED - Deprecated
+// Brick storage is now a VIEW pattern (BrickView), not entity-stored.
+// Dense brick data lives in contiguous arrays accessed via Morton offset + stride.
+// See GaiaVoxelWorld.h for BrickView architecture.
 
 /**
  * Chunk ID - spatial grouping.
@@ -169,30 +212,28 @@ VOXEL_COMPONENT_SCALAR(ChunkID, "chunk_id", uint32_t, 0)
 struct Solid {};
 
 // ============================================================================
-// Component Traits (MINIMAL - Just Name!)
+// Component Traits (Auto-Generated from Single Source of Truth!)
 // ============================================================================
 
 template<typename T>
 struct ComponentTraits;
 
-// Single macro for all components - no type differentiation
-#define DEFINE_COMPONENT_TRAITS(Component) \
+// Reuse FOR_EACH_COMPONENT to generate traits
+#define GENERATE_TRAIT(Component) \
     template<> \
     struct ComponentTraits<Component> { \
         static constexpr const char* Name = Component::Name; \
     };
 
-// Register all components (same macro for all!)
-DEFINE_COMPONENT_TRAITS(MortonKey)
-DEFINE_COMPONENT_TRAITS(Density)
-DEFINE_COMPONENT_TRAITS(Material)
-DEFINE_COMPONENT_TRAITS(EmissionIntensity)
-DEFINE_COMPONENT_TRAITS(ChunkID)
-DEFINE_COMPONENT_TRAITS(Color)
-DEFINE_COMPONENT_TRAITS(Normal)
-DEFINE_COMPONENT_TRAITS(Emission)
+FOR_EACH_COMPONENT(GENERATE_TRAIT)
 
-#undef DEFINE_COMPONENT_TRAITS
+#undef GENERATE_TRAIT
+
+// ChunkID is metadata, not in main registry but needs traits
+template<>
+struct ComponentTraits<ChunkID> {
+    static constexpr const char* Name = ChunkID::Name;
+};
 
 // ============================================================================
 // Type Detection (Automatic via C++20 Concepts)

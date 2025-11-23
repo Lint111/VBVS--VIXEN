@@ -9,50 +9,32 @@
 namespace GaiaVoxel {
 
 /**
- * Type-safe component variant containing actual component types.
+ * Single component query/creation request with compile-time type safety.
  *
- * Stores any component from ComponentRegistry as a variant.
- * No string lookups - component type IS the identifier.
- *
- * Example:
- *   ComponentData{Density{0.8f}}
- *   ComponentData{Color{glm::vec3(1, 0, 0)}}
- *   ComponentData{Material{42}}
- */
-using ComponentVariant = std::variant<
-    Density,
-    Material,
-    EmissionIntensity,
-    Color,
-    Normal,
-    Emission,
-    MortonKey
->;
-
-/**
- * Single component instance with compile-time type.
+ * Wraps a ComponentVariant for use in voxel creation and query APIs.
  *
  * Benefits:
  * - Zero string lookups (component type is known at compile time)
  * - Type-safe (impossible to assign wrong value type)
  * - Component name accessible via Component::Name static member
  * - visitByName() uses compile-time dispatch via std::visit
+ * - Automatically includes all components from FOR_EACH_COMPONENT macro
  *
  * Usage:
- *   ComponentData data{Density{0.8f}};
+ *   ComponentQueryRequest req{Density{0.8f}};
  *   std::visit([](auto&& component) {
  *       using T = std::decay_t<decltype(component)>;
  *       std::cout << T::Name << std::endl;  // "density"
- *   }, data.component);
+ *   }, req.component);
  */
-struct ComponentData {
+struct ComponentQueryRequest {
     ComponentVariant component;
 
-    // Implicit conversion from any component type
+    // Implicit conversion from any registered component type
     template<typename T>
-    ComponentData(const T& comp) : component(comp) {}
+    ComponentQueryRequest(const T& comp) : component(comp) {}
 
-    ComponentData() = default;
+    ComponentQueryRequest() = default;
 };
 
 /**
@@ -66,7 +48,7 @@ struct ComponentData {
  * - std::span avoids copies
  *
  * Usage:
- *   ComponentData attrs[] = {
+ *   ComponentQueryRequest attrs[] = {
  *       Density{0.8f},
  *       Color{glm::vec3(1, 0, 0)},
  *       Normal{glm::vec3(0, 1, 0)},
@@ -75,19 +57,19 @@ struct ComponentData {
  *   VoxelCreationRequest req{position, attrs};
  *
  *   // Process components:
- *   for (const auto& data : req.components) {
+ *   for (const auto& compReq : req.components) {
  *       std::visit([&](auto&& component) {
  *           using T = std::decay_t<decltype(component)>;
  *           world.add<T>(entity, component);  // Type-safe add
- *       }, data.component);
+ *       }, compReq.component);
  *   }
  */
 struct VoxelCreationRequest {
     glm::vec3 position;
-    std::span<const ComponentData> components;
+    std::span<const ComponentQueryRequest> components;
 
     VoxelCreationRequest() = default;
-    VoxelCreationRequest(const glm::vec3& pos, std::span<const ComponentData> comps)
+    VoxelCreationRequest(const glm::vec3& pos, std::span<const ComponentQueryRequest> comps)
         : position(pos), components(comps) {}
 };
 
@@ -96,13 +78,13 @@ struct VoxelCreationRequest {
  * Allows multiple voxels to share component definitions.
  */
 struct VoxelCreationBatch {
-    std::span<const glm::vec3> positions;        // N positions
-    std::span<const ComponentData> components;   // Shared components
+    std::span<const glm::vec3> positions;             // N positions
+    std::span<const ComponentQueryRequest> components;   // Shared components
 
     VoxelCreationBatch() = default;
     VoxelCreationBatch(
         std::span<const glm::vec3> pos,
-        std::span<const ComponentData> comps)
+        std::span<const ComponentQueryRequest> comps)
         : positions(pos), components(comps) {}
 };
 

@@ -54,19 +54,17 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     return entity;
 }
 
-// ComponentData array overload - type-safe, zero string lookups
-GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
-    const glm::vec3& position,
-    std::span<const ComponentData> components) {
+// ComponentQueryRequest array overload - type-safe, zero string lookups
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest& request) {
 
     auto& world = m_impl->world;
     gaia::ecs::Entity entity = world.add();
 
     // Always add MortonKey first
-    world.add<MortonKey>(entity, MortonKey::fromPosition(position));
+    world.add<MortonKey>(entity, MortonKey::fromPosition(request.position));
 
     // Add components using std::visit (compile-time dispatch)
-    for (const auto& data : components) {
+    for (const auto& compReq : request.components) {
         std::visit([&](auto&& component) {
             using T = std::decay_t<decltype(component)>;
 
@@ -74,27 +72,14 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
             if constexpr (!std::is_same_v<T, MortonKey>) {
                 world.add<T>(entity, component);
             }
-        }, data.component);
+        }, compReq.component);
     }
 
     return entity;
 }
 
-GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxelInBrick(
-    const glm::vec3& position,
-    float density,
-    const glm::vec3& color,
-    const glm::vec3& normal,
-    uint32_t brickID,
-    uint8_t localX,
-    uint8_t localY,
-    uint8_t localZ) {
-
-    auto entity = createVoxel(position, density, color, normal);
-    m_impl->world.add<BrickReference>(entity, BrickReference{brickID, localX, localY, localZ});
-
-    return entity;
-}
+// createVoxelInBrick() REMOVED - See header comment
+// Brick storage is now a VIEW pattern, not entity-stored data
 
 void GaiaVoxelWorld::destroyVoxel(EntityID id) {
     if (m_impl->world.valid(id)) {
@@ -134,10 +119,8 @@ std::optional<glm::vec3> GaiaVoxelWorld::getNormal(EntityID id) const {
     return glm::vec3(m_impl->world.get<Normal>(id));  // Automatic conversion
 }
 
-std::optional<uint32_t> GaiaVoxelWorld::getBrickID(EntityID id) const {
-    if (!m_impl->world.valid(id) || !m_impl->world.has<BrickReference>(id)) return std::nullopt;
-    return m_impl->world.get<BrickReference>(id).brickID;
-}
+// getBrickID() REMOVED - BrickReference is deprecated
+// Use BrickView pattern instead to query brick storage
 
 // Setters
 void GaiaVoxelWorld::setPosition(EntityID id, const glm::vec3& position) {
@@ -255,7 +238,7 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
 
     // Type-safe batch creation - zero string lookups
     for (const auto& req : requests) {
-        ids.push_back(createVoxel(req.position, req.components));
+        ids.push_back(createVoxel(req));
     }
 
     return ids;

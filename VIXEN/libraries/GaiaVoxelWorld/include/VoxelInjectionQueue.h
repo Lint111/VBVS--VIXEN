@@ -86,11 +86,7 @@ public:
      * Lock-free, non-blocking.
      * @return false if queue is full
      */
-    bool enqueue(
-        const glm::vec3& position,
-        float density = 1.0f,
-        const glm::vec3& color = glm::vec3(1.0f),
-        const glm::vec3& normal = glm::vec3(0.0f, 1.0f, 0.0f));
+    bool enqueue(const VoxelCreationRequest& request);
 
     // ========================================================================
     // Entity Access
@@ -133,13 +129,8 @@ public:
     void flush();
 
 private:
-    struct QueueEntry {
-        MortonKey key;         // 8 bytes - encoded position
-        float density;         // 4 bytes
-        glm::vec3 color;       // 12 bytes
-        glm::vec3 normal;      // 12 bytes
-        // Total: 36 bytes (compact, cache-friendly)
-    };
+    // Use VoxelCreationRequest directly instead of duplicating structure
+    using QueueEntry = VoxelCreationRequest;
 
     GaiaVoxelWorld& m_world;
     size_t m_capacity;

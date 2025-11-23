@@ -58,33 +58,33 @@ public:
         const glm::vec3& normal = glm::vec3(0.0f, 1.0f, 0.0f));
 
     /**
-     * Create voxel from component array (type-safe, zero string lookups).
+     * Create voxel from VoxelCreationRequest (type-safe, zero string lookups).
      * Components are actual types (Density, Color, etc.) not string names.
      *
      * Example:
-     *   ComponentData attrs[] = {
+     *   ComponentQueryRequest attrs[] = {
      *       Density{0.8f},
      *       Color{glm::vec3(1, 0, 0)},
      *       Normal{glm::vec3(0, 1, 0)}
      *   };
-     *   auto id = world.createVoxel(position, attrs);
+     *   auto id = world.createVoxel({position, attrs});
      */
-    EntityID createVoxel(
-        const glm::vec3& position,
-        std::span<const ComponentData> components);
+    EntityID createVoxel(const VoxelCreationRequest& request);
 
-    /**
-     * Create voxel with brick reference (for dense brick storage).
-     */
-    EntityID createVoxelInBrick(
-        const glm::vec3& position,
-        float density,
-        const glm::vec3& color,
-        const glm::vec3& normal,
-        uint32_t brickID,
-        uint8_t localX,
-        uint8_t localY,
-        uint8_t localZ);
+    // NOTE: createVoxelInBrick() REMOVED - Deprecated approach
+    //
+    // REASON: Brick storage should be a VIEW concept, not stored in entities.
+    //
+    // NEW ARCHITECTURE:
+    // Dense brick data accessed via view pattern:
+    //   BrickView brick(mortonKeyOffset, brickDepth);
+    //   auto voxel = brick.getVoxel(localX, localY, localZ);  // const ref view
+    //
+    // Benefits:
+    // - Zero allocation (view = offset + stride math)
+    // - Cache-friendly (contiguous dense storage)
+    // - Clean separation: Sparse voxels (ECS) vs Dense regions (brick arrays)
+    // - Morton offset + (3 * 2^brickDepth) defines brick span automatically
 
     /**
      * Create an array of voxels from VoxelCreationRequest.
@@ -120,7 +120,7 @@ public:
     std::optional<float> getDensity(EntityID id) const;
     std::optional<glm::vec3> getColor(EntityID id) const;
     std::optional<glm::vec3> getNormal(EntityID id) const;
-    std::optional<uint32_t> getBrickID(EntityID id) const;
+    // getBrickID() REMOVED - Use BrickView pattern instead
 
     // Setters
     void setPosition(EntityID id, const glm::vec3& position);

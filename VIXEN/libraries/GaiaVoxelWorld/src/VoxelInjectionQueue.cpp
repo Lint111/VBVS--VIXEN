@@ -60,11 +60,7 @@ bool VoxelInjectionQueue::isRunning() const {
 // Enqueue Operations
 // ============================================================================
 
-bool VoxelInjectionQueue::enqueue(
-    const glm::vec3& position,
-    float density,
-    const glm::vec3& color,
-    const glm::vec3& normal) {
+bool VoxelInjectionQueue::enqueue(const VoxelCreationRequest& request) {
 
     size_t currentWrite = m_writeIndex.load(std::memory_order_relaxed);
     size_t nextWrite = (currentWrite + 1) % m_capacity;
@@ -74,11 +70,8 @@ bool VoxelInjectionQueue::enqueue(
         return false; // Queue full
     }
 
-    // Write to queue
-    m_ringBuffer[currentWrite].key = MortonKey::fromPosition(position);
-    m_ringBuffer[currentWrite].density = density;
-    m_ringBuffer[currentWrite].color = color;
-    m_ringBuffer[currentWrite].normal = normal;
+    // Write request to queue
+    m_ringBuffer[currentWrite] = request;
 
     m_writeIndex.store(nextWrite, std::memory_order_release);
 
@@ -143,9 +136,7 @@ void VoxelInjectionQueue::processWorker() {
     constexpr size_t BATCH_SIZE = 256;
     struct BatchEntry {
         glm::vec3 position;
-        float density;
-        glm::vec3 color;
-        glm::vec3 normal;
+        std::span<const ComponentQueryRequest> components;
     };
     std::vector<BatchEntry> batch;
     batch.reserve(BATCH_SIZE);
@@ -172,12 +163,9 @@ void VoxelInjectionQueue::processWorker() {
 
         while (currentRead != currentWrite && batch.size() < BATCH_SIZE) {
             const auto& entry = m_ringBuffer[currentRead];
+            BatchEntry batchEntry {entry.position, entry.components};
 
-            // Decode position from MortonKey
-            glm::ivec3 gridPos = entry.key.toGridPos();
-            glm::vec3 position(gridPos.x, gridPos.y, gridPos.z);
-
-            batch.push_back({position, entry.density, entry.color, entry.normal});
+            batch.push_back(batchEntry);
             currentRead = (currentRead + 1) % m_capacity;
         }
 
@@ -193,9 +181,7 @@ void VoxelInjectionQueue::processWorker() {
                 for (const auto& entry : batch) {
                     auto entity = m_world.createVoxel(
                         entry.position,
-                        entry.density,
-                        entry.color,
-                        entry.normal
+                        entry.components
                     );
                     entities.push_back(entity);
                 }
