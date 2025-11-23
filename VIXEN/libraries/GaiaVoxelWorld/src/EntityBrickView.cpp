@@ -72,7 +72,7 @@ size_t EntityBrickView::countSolidVoxels() const {
     size_t count = 0;
     for (const auto& entity : m_entities) {
         if (entity != gaia::ecs::Entity()) {
-            auto density = m_world.getComponent<Density>(entity);
+            auto density = m_world.getComponentValue<Density>(entity);
             if (density.has_value() && density.value() > 0.0f) {
                 count++;
             }

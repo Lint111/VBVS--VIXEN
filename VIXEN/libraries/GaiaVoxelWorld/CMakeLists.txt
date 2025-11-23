@@ -13,7 +13,7 @@ add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
     src/VoxelInjectionQueue.cpp
     src/VoxelInjector.cpp
-    src/EntityBrickView.cpp
+    # src/EntityBrickView.cpp  # TEMPORARILY DISABLED - MSVC template compilation issues
 )
 
 # MSVC PDB fix - disable parallel compilation for this target only

@@ -106,15 +106,15 @@ public:
      * Uses VoxelComponents API - works with any registered component.
      *
      * Example:
-     *   auto density = brick.getComponent<Density>(42);      // returns std::optional<float>
-     *   auto color = brick.getComponent<Color>(4, 2, 1);     // returns std::optional<glm::vec3>
+     *   auto density = brick.getComponentValue<Density>(42);      // returns std::optional<float>
+     *   auto color = brick.getComponentValue<Color>(4, 2, 1);     // returns std::optional<glm::vec3>
      */
     template<typename TComponent>
-    auto getComponent(size_t voxelIdx) const -> std::optional<decltype(std::declval<TComponent>().value)>;
+    auto getComponentValue(size_t voxelIdx) const -> std::optional<ComponentValueType_t<TComponent>>;
 
     template<typename TComponent>
-    auto getComponent(int x, int y, int z) const -> std::optional<decltype(std::declval<TComponent>().value)> {
-        return getComponent<TComponent>(coordToLinearIndex(x, y, z));
+    auto getComponentValue(int x, int y, int z) const -> std::optional<ComponentValueType_t<TComponent>> {
+        return getComponentValue<TComponent>(coordToLinearIndex(x, y, z));
     }
 
     /**
@@ -122,10 +122,10 @@ public:
      * Creates component if entity doesn't have it.
      */
     template<typename TComponent>
-    void setComponent(size_t voxelIdx, decltype(std::declval<TComponent>().value) value);
+    void setComponent(size_t voxelIdx, ComponentValueType_t<TComponent> value);
 
     template<typename TComponent>
-    void setComponent(int x, int y, int z, decltype(std::declval<TComponent>().value) value) {
+    void setComponent(int x, int y, int z, ComponentValueType_t<TComponent> value) {
         setComponent<TComponent>(coordToLinearIndex(x, y, z), value);
     }
 
@@ -170,6 +170,7 @@ public:
      */
     bool isFull() const;
 
+private:
     /**
      * Convert 3D coordinate to linear index.
      * Uses Morton code ordering for cache locality.
@@ -180,8 +181,6 @@ public:
      * Convert linear index to 3D coordinate.
      */
     void linearIndexToCoord(size_t idx, int& x, int& y, int& z) const;
-
-private:
     GaiaVoxelWorld& m_world;
     std::span<gaia::ecs::Entity> m_entities;
 
@@ -199,18 +198,18 @@ private:
 // (actual implementation requires GaiaVoxelWorld.h included in .cpp files that use this)
 
 template<typename TComponent>
-auto EntityBrickView::getComponent(size_t voxelIdx) const -> std::optional<decltype(std::declval<TComponent>().value)> {
+auto EntityBrickView::getComponentValue(size_t voxelIdx) const -> std::optional<ComponentValueType_t<TComponent>> {
     auto entity = getEntity(voxelIdx);
     if (entity == gaia::ecs::Entity()) {
         return std::nullopt;
     }
 
     // Delegate to GaiaVoxelWorld's generic template API
-    return m_world.getComponent<TComponent>(entity);
+    return m_world.getComponentValue<TComponent>(entity);
 }
 
 template<typename TComponent>
-void EntityBrickView::setComponent(size_t voxelIdx, decltype(std::declval<TComponent>().value) value) {
+void EntityBrickView::setComponent(size_t voxelIdx, ComponentValueType_t<TComponent> value) {
     auto entity = getEntity(voxelIdx);
     if (entity == gaia::ecs::Entity()) {
         return; // Can't set component on invalid entity

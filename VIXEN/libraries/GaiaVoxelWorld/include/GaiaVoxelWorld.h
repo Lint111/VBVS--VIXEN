@@ -119,40 +119,40 @@ public:
      * Generic component getter - works with any FOR_EACH_COMPONENT type.
      *
      * Example:
-     *   auto density = world.getComponent<Density>(entity);     // returns std::optional<float>
-     *   auto color = world.getComponent<Color>(entity);         // returns std::optional<glm::vec3>
-     *   auto material = world.getComponent<Material>(entity);   // returns std::optional<uint32_t>
+     *   auto density = world.getComponentValue<Density>(entity);     // returns std::optional<float>
+     *   auto color = world.getComponentValue<Color>(entity);         // returns std::optional<glm::vec3>
+     *   auto material = world.getComponentValue<Material>(entity);   // returns std::optional<uint32_t>
      */
     template<typename TComponent>
-    auto getComponent(EntityID id) const -> std::optional<decltype(std::declval<TComponent>().value)>;
+    auto getComponentValue(EntityID id) const -> std::optional<ComponentValueType_t<TComponent>>;
 
     /**
-     * Get component by index (for multiple instances of same type).
+     * Get component value by index (for multiple instances of same type).
      *
      * Gaia ECS supports multiple instances via Pair<ComponentType, IndexTag>.
      *
      * Example:
      *   // Entity with multiple colors
-     *   auto primaryColor = world.getComponentByIndex<Color>(entity, 0);   // Color#0
-     *   auto secondaryColor = world.getComponentByIndex<Color>(entity, 1); // Color#1
-     *   auto tertiaryColor = world.getComponentByIndex<Color>(entity, 2);  // Color#2
+     *   auto primaryColor = world.getComponentValueByIndex<Color>(entity, 0);   // Color#0
+     *   auto secondaryColor = world.getComponentValueByIndex<Color>(entity, 1); // Color#1
+     *   auto tertiaryColor = world.getComponentValueByIndex<Color>(entity, 2);  // Color#2
      */
     template<typename TComponent>
-    auto getComponentByIndex(EntityID id, uint32_t index) const -> std::optional<decltype(std::declval<TComponent>().value)>;
+    auto getComponentValueByIndex(EntityID id, uint32_t index) const -> std::optional<ComponentValueType_t<TComponent>>;
 
     /**
      * Generic component setter - works with any FOR_EACH_COMPONENT type.
      * Creates component if entity doesn't have it.
      */
     template<typename TComponent>
-    void setComponent(EntityID id, decltype(std::declval<TComponent>().value) value);
+    void setComponent(EntityID id, ComponentValueType_t<TComponent> value);
 
     /**
      * Set component by index (for multiple instances of same type).
      * Creates component at index if doesn't exist.
      */
     template<typename TComponent>
-    void setComponentByIndex(EntityID id, uint32_t index, decltype(std::declval<TComponent>().value) value);
+    void setComponentByIndex(EntityID id, uint32_t index, ComponentValueType_t<TComponent> value);
 
     /**
      * Check component existence (type-safe template version).
@@ -339,7 +339,7 @@ bool GaiaVoxelWorld::hasComponent(EntityID id) const {
 }
 
 template<typename TComponent>
-auto GaiaVoxelWorld::getComponent(EntityID id) const -> std::optional<decltype(std::declval<TComponent>().value)> {
+auto GaiaVoxelWorld::getComponentValue(EntityID id) const -> std::optional<ComponentValueType_t<TComponent>> {
     if (!getWorld().valid(id) || !getWorld().has<TComponent>(id)) {
         return std::nullopt;
     }
@@ -347,12 +347,12 @@ auto GaiaVoxelWorld::getComponent(EntityID id) const -> std::optional<decltype(s
     // Get component from Gaia ECS
     auto& component = getWorld().get<TComponent>(id);
 
-    // Return the value (scalar or vec3)
-    return component.value;
+    // Return the value - use getValue() helper to handle both scalar and vec3
+    return getValue(component);
 }
 
 template<typename TComponent>
-void GaiaVoxelWorld::setComponent(EntityID id, decltype(std::declval<TComponent>().value) value) {
+void GaiaVoxelWorld::setComponent(EntityID id, ComponentValueType_t<TComponent> value) {
     if (!getWorld().valid(id)) {
         return; // Can't set component on invalid entity
     }
@@ -385,8 +385,8 @@ bool GaiaVoxelWorld::hasComponentByIndex(EntityID id, uint32_t index) const {
 }
 
 template<typename TComponent>
-auto GaiaVoxelWorld::getComponentByIndex(EntityID id, uint32_t index) const
-    -> std::optional<decltype(std::declval<TComponent>().value)> {
+auto GaiaVoxelWorld::getComponentValueByIndex(EntityID id, uint32_t index) const
+    -> std::optional<ComponentValueType_t<TComponent>> {
 
     if (!getWorld().valid(id)) {
         return std::nullopt;
@@ -394,7 +394,7 @@ auto GaiaVoxelWorld::getComponentByIndex(EntityID id, uint32_t index) const
 
     // Index 0 is the default component
     if (index == 0) {
-        return getComponent<TComponent>(id);
+        return getComponentValue<TComponent>(id);
     }
 
     // For index > 0, access via Pair<TComponent, IndexTag>
@@ -405,7 +405,7 @@ auto GaiaVoxelWorld::getComponentByIndex(EntityID id, uint32_t index) const
 
 template<typename TComponent>
 void GaiaVoxelWorld::setComponentByIndex(EntityID id, uint32_t index,
-                                          decltype(std::declval<TComponent>().value) value) {
+                                          ComponentValueType_t<TComponent> value) {
     if (!getWorld().valid(id)) {
         return;
     }

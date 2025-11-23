@@ -114,22 +114,6 @@ VOXEL_COMPONENT_VEC3(Color, "color", r, g, b, AoS, 1.0f, 1.0f, 1.0f)
 VOXEL_COMPONENT_VEC3(Normal, "normal", x, y, z, AoS, 0.0f, 1.0f, 0.0f)
 VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
 
-// ============================================================================
-// Component Registry - Macro-Based Automatic Registration
-// ============================================================================
-
-/**
- * Central component registry using X-macro pattern.
- *
- * To register a new component:
- * 1. Add REGISTER_COMPONENT(ComponentName) to VOXEL_COMPONENT_LIST
- * 2. ComponentVariant, AllComponents tuple, and traits are auto-updated
- *
- * Benefits:
- * - Single source of truth (no manual variant updates)
- * - Compile-time iteration via visitAll()
- * - Type-safe component lookup
- */
 
 // ============================================================================
 // SINGLE SOURCE OF TRUTH - Component Registry
@@ -340,10 +324,34 @@ concept Vec3Component = VoxelComponent<T> && HasToVec3Method<T>;
 template<typename T>
 concept ScalarComponent = VoxelComponent<T> && HasValueMember<T>;
 
-// Get component value (works for both scalar and vec3)
+// Component value type extraction (for template signatures)
+// Primary template - default to .value member type
+template<typename T, typename = void>
+struct ComponentValueType {
+    using type = decltype(std::declval<T>().value);
+};
+
+// Specialization for Vec3 components (have toVec3() method)
+template<typename T>
+struct ComponentValueType<T, std::void_t<decltype(std::declval<T>().toVec3())>> {
+    using type = glm::vec3;
+};
+
+// Specialization for MortonKey (spatial indexing, not a regular component)
+template<>
+struct ComponentValueType<MortonKey> {
+    using type = uint64_t;  // MortonKey stores a code
+};
+
+template<typename T>
+using ComponentValueType_t = typename ComponentValueType<T>::type;
+
+// Get component value (works for scalar, vec3, and MortonKey)
 template<VoxelComponent T>
 auto getValue(const T& component) {
-    if constexpr (Vec3Component<T>) {
+    if constexpr (std::is_same_v<T, MortonKey>) {
+        return component.code;  // MortonKey stores code
+    } else if constexpr (Vec3Component<T>) {
         return component.toVec3();
     } else {
         return component.value;
