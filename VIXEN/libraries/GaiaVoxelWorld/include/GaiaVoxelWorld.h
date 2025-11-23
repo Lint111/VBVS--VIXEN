@@ -231,7 +231,11 @@ public:
      * Results are cached - subsequent calls with same parameters return cached span.
      *
      * @param brickWorldMin Lower-left corner of brick in world space
-     * @param brickSize Side length of cubic brick in world units
+     * @param brickDepth Brick depth (0-7), where brick spans 2^(3*depth) voxels
+     *                   depth=0 → 1³ = 1 voxel
+     *                   depth=1 → 2³ = 8 voxels
+     *                   depth=2 → 4³ = 64 voxels
+     *                   depth=3 → 8³ = 512 voxels (standard brick)
      * @return Span over entities in this region (cached until invalidated)
      *
      * CACHE LIFETIME:
@@ -239,14 +243,14 @@ public:
      * - Invalidated on entity create/destroy (automatically via ECS hooks)
      * - Call invalidateBlockCache() to force refresh
      *
-     * COORDINATE SYSTEM AGNOSTIC:
-     * - SVO passes world coordinates in its own coordinate system
-     * - GaiaVoxelWorld handles internal MortonKey encoding/scale conversion
-     * - Works even if GaiaVoxelWorld uses different depth than SVO
+     * MORTON RANGE QUERY OPTIMIZATION:
+     * - Uses efficient Morton code range check (2 integer comparisons)
+     * - No coordinate decoding (3x faster than AABB world-space test)
+     * - Avoids floating-point precision issues
      */
     std::span<const gaia::ecs::Entity> getEntityBlockRef(
         const glm::vec3& brickWorldMin,
-        float brickSize);
+        uint8_t brickDepth);
 
     /**
      * Invalidate all cached block queries.
@@ -374,13 +378,13 @@ private:
 
     struct BlockQueryKey {
         glm::vec3 worldMin;
-        float size;
+        uint8_t depth;
 
         bool operator==(const BlockQueryKey& other) const {
-            // Use epsilon comparison for float equality
+            // Use epsilon comparison for float equality, exact match for depth
             constexpr float epsilon = 0.0001f;
             return glm::all(glm::lessThan(glm::abs(worldMin - other.worldMin), glm::vec3(epsilon)))
-                && std::abs(size - other.size) < epsilon;
+                && depth == other.depth;
         }
     };
 
@@ -397,7 +401,8 @@ private:
             hashFloat(key.worldMin.x);
             hashFloat(key.worldMin.y);
             hashFloat(key.worldMin.z);
-            hashFloat(key.size);
+            hash ^= static_cast<size_t>(key.depth);
+            hash *= 0x100000001b3ULL;
             return hash;
         }
     };

@@ -589,8 +589,8 @@ TEST(GaiaVoxelWorldIntegrationTest, BatchCreation_MixedComponents) {
 TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_EmptyRegion) {
     GaiaVoxelWorld world;
 
-    // Query empty region - should return empty span
-    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    // Query empty region - should return empty span (depth=3 → 8³ = 512 voxels)
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     EXPECT_TRUE(span.empty());
 }
 
@@ -601,13 +601,13 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_SingleVoxel) {
     VoxelCreationRequest request{glm::vec3(5, 5, 5), comps};
     auto entity = world.createVoxel(request);
 
-    // Query block containing voxel [0, 8)³
-    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    // Query block containing voxel [0, 8)³ (depth=3 → 8³ brick)
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     ASSERT_EQ(span.size(), 1);
     EXPECT_EQ(span[0], entity);
 
     // Query block NOT containing voxel [8, 16)³
-    auto emptySpan = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    auto emptySpan = world.getEntityBlockRef(glm::vec3(8, 8, 8), 3);
     EXPECT_TRUE(emptySpan.empty());
 }
 
@@ -623,8 +623,8 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_MultipleVoxels) {
         expectedEntities.push_back(world.createVoxel(req));
     }
 
-    // Query block containing all voxels
-    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    // Query block containing all voxels (depth=3 → 8³ brick)
+    auto span = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     ASSERT_EQ(span.size(), 8);
 
     // Verify all entities present (order doesn't matter)
@@ -641,12 +641,12 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_CacheHit) {
     VoxelCreationRequest request{glm::vec3(5, 5, 5), comps};
     world.createVoxel(request);
 
-    // First query - cache miss, performs ECS query
-    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    // First query - cache miss, performs ECS query (depth=3 → 8³ brick)
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     ASSERT_EQ(span1.size(), 1);
 
     // Second query - cache hit, returns cached span (same pointer)
-    auto span2 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    auto span2 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     ASSERT_EQ(span2.size(), 1);
 
     // Verify spans point to same underlying data (cache hit)
@@ -665,9 +665,9 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_PartialInvalidation) {
     auto entity1 = world.createVoxel(req1);
     auto entity2 = world.createVoxel(req2);
 
-    // Cache both blocks
-    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
-    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    // Cache both blocks (depth=3 → 8³ bricks)
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
+    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 3);
     ASSERT_EQ(span1.size(), 1);
     ASSERT_EQ(span2.size(), 1);
 
@@ -678,12 +678,12 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_PartialInvalidation) {
     world.destroyVoxel(entity1);
 
     // Re-query block 1 - should show new data pointer (cache was invalidated)
-    auto span1After = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
+    auto span1After = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
     EXPECT_TRUE(span1After.empty());
     EXPECT_NE(span1After.data(), originalSpan1Data) << "Cache should be invalidated";
 
     // Re-query block 2 - should still be cached (not affected by entity1 deletion)
-    auto span2After = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    auto span2After = world.getEntityBlockRef(glm::vec3(8, 8, 8), 3);
     EXPECT_EQ(span2After.size(), 1);
     EXPECT_EQ(span2After.data(), originalSpan2Data) << "Unaffected block should remain cached";
 }
@@ -699,16 +699,16 @@ TEST(GaiaVoxelWorldCoverageTest, GetEntityBlockRef_FullInvalidation) {
     world.createVoxel(req1);
     world.createVoxel(req2);
 
-    world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
-    world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
+    world.getEntityBlockRef(glm::vec3(8, 8, 8), 3);
 
     // Full cache invalidation
     world.invalidateBlockCache();
 
     // Both blocks should be empty after clear
     world.clear();
-    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 8.0f);
-    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 8.0f);
+    auto span1 = world.getEntityBlockRef(glm::vec3(0, 0, 0), 3);
+    auto span2 = world.getEntityBlockRef(glm::vec3(8, 8, 8), 3);
 
     EXPECT_TRUE(span1.empty());
     EXPECT_TRUE(span2.empty());

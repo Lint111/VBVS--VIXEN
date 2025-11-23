@@ -271,9 +271,9 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 
 std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
     const glm::vec3& brickWorldMin,
-    float brickSize) {
+    uint8_t brickDepth) {
 
-    BlockQueryKey key{brickWorldMin, brickSize};
+    BlockQueryKey key{brickWorldMin, brickDepth};
 
     // Check cache first
     auto it = m_blockCache.find(key);
@@ -282,16 +282,20 @@ std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
         return std::span<const gaia::ecs::Entity>(it->second);
     }
 
-    // Cache miss - perform query and populate cache
+    // Cache miss - perform Morton range query and populate cache
     std::vector<gaia::ecs::Entity> entities;
-    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickSize);
 
+    // Convert brick bounds to Morton range [min, max)
+    uint64_t brickMortonMin = fromPosition(brickWorldMin).code;
+    uint64_t brickMortonSpan = 1ULL << (3 * brickDepth);  // 2^(3*depth) voxels
+    uint64_t brickMortonMax = brickMortonMin + brickMortonSpan;
+
+    // Query entities with Morton codes in range
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        glm::vec3 pos = toWorldPos(m_impl->world.get<MortonKey>(entity));
-        if (pos.x >= brickWorldMin.x && pos.x < brickWorldMax.x &&
-            pos.y >= brickWorldMin.y && pos.y < brickWorldMax.y &&
-            pos.z >= brickWorldMin.z && pos.z < brickWorldMax.z) {
+        uint64_t entityMorton = m_impl->world.get<MortonKey>(entity).code;
+        // Simple integer range check (2 comparisons vs 6 for AABB)
+        if (entityMorton >= brickMortonMin && entityMorton < brickMortonMax) {
             entities.push_back(entity);
         }
     });
@@ -307,15 +311,18 @@ void GaiaVoxelWorld::invalidateBlockCache() {
 
 void GaiaVoxelWorld::invalidateBlockCacheAt(const glm::vec3& position) {
     // Remove all cached blocks that contain this position
-    // Iterate through cache and remove blocks where position falls within bounds
+    uint64_t positionMorton = fromPosition(position).code;
+
     for (auto it = m_blockCache.begin(); it != m_blockCache.end(); ) {
         const auto& key = it->first;
-        glm::vec3 blockMax = key.worldMin + glm::vec3(key.size);
 
-        bool containsPosition =
-            position.x >= key.worldMin.x && position.x < blockMax.x &&
-            position.y >= key.worldMin.y && position.y < blockMax.y &&
-            position.z >= key.worldMin.z && position.z < blockMax.z;
+        // Convert block to Morton range
+        uint64_t blockMortonMin = fromPosition(key.worldMin).code;
+        uint64_t blockMortonSpan = 1ULL << (3 * key.depth);
+        uint64_t blockMortonMax = blockMortonMin + blockMortonSpan;
+
+        // Check if position Morton code falls within block range
+        bool containsPosition = (positionMorton >= blockMortonMin && positionMorton < blockMortonMax);
 
         if (containsPosition) {
             it = m_blockCache.erase(it);  // Invalidate this block

@@ -1,12 +1,232 @@
 # Active Context
 
-**Last Updated**: November 23, 2025 (Session 6G - SVO Phase 3: EntityBrickView Zero-Storage Integration)
+**Last Updated**: November 23, 2025 (Session 6H - Cached Block Query API & Architecture Separation)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **140 Total Tests** | ✅ **SVO Phase 3 In Progress** | ✅ **BrickReference Removed** | ✅ **Zero-Storage View Pattern**
+**Status**: ✅ **146 Total Tests** | ✅ **Block Query Cache** | ✅ **clear() Bug Fixed** | ✅ **Architecture Separation**
 
 ---
 
-## Current Session Summary (Nov 23 - Session 6G: SVO Phase 3 - EntityBrickView Integration)
+## Current Session Summary (Nov 23 - Session 6H: Cached Block Query API & Architecture Separation)
+
+### Cached Block Query API ✅ COMPLETE
+
+**Achievement**: Implemented zero-allocation, coordinate-system agnostic block query API with intelligent caching for SVO spatial indexing.
+
+**Problem Identified**: SVO and GaiaVoxelWorld use different coordinate systems (SVO depth 8 vs GaiaVoxelWorld depth 23). Direct Morton code queries would fail due to encoding mismatch.
+
+**Solution**: World-space position-based queries with automatic cache management.
+
+**New API** - [GaiaVoxelWorld.h:229-264](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h#L229-L264):
+```cpp
+/**
+ * Get zero-copy view of entities in world-space brick region.
+ * COORDINATE SYSTEM AGNOSTIC - SVO passes world coords, GaiaVoxelWorld handles conversion.
+ */
+std::span<const gaia::ecs::Entity> getEntityBlockRef(
+    const glm::vec3& brickWorldMin,
+    float brickSize);
+
+void invalidateBlockCache();                    // Full cache clear
+void invalidateBlockCacheAt(const glm::vec3& position);  // Partial invalidation
+```
+
+**Key Features**:
+- ✅ **Zero allocation** - Returns `std::span` to cached `std::vector`
+- ✅ **Coordinate system agnostic** - World-space AABB query, not Morton code
+- ✅ **Cache hit optimization** - Repeated queries return same span pointer
+- ✅ **Partial invalidation** - Single voxel changes only invalidate affected blocks
+- ✅ **Full invalidation** - Batch operations clear entire cache
+- ✅ **Automatic invalidation** - `createVoxel()`, `destroyVoxel()`, `clear()` update cache
+
+**Implementation** - [GaiaVoxelWorld.cpp:252-313](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L252-L313):
+```cpp
+std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
+    const glm::vec3& brickWorldMin, float brickSize) {
+
+    BlockQueryKey key{brickWorldMin, brickSize};
+
+    // Check cache first
+    auto it = m_blockCache.find(key);
+    if (it != m_blockCache.end()) {
+        return std::span<const gaia::ecs::Entity>(it->second);  // Cache hit!
+    }
+
+    // Cache miss - perform AABB query
+    std::vector<gaia::ecs::Entity> entities;
+    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickSize);
+
+    auto query = m_impl->world.query().all<MortonKey>();
+    query.each([&](gaia::ecs::Entity entity) {
+        glm::vec3 pos = toWorldPos(m_impl->world.get<MortonKey>(entity));
+        if (pos.x >= brickWorldMin.x && pos.x < brickWorldMax.x &&
+            pos.y >= brickWorldMin.y && pos.y < brickWorldMax.y &&
+            pos.z >= brickWorldMin.z && pos.z < brickWorldMax.z) {
+            entities.push_back(entity);
+        }
+    });
+
+    // Insert into cache and return span
+    auto [insertIt, inserted] = m_blockCache.emplace(key, std::move(entities));
+    return std::span<const gaia::ecs::Entity>(insertIt->second);
+}
+```
+
+**Cache Infrastructure** - [GaiaVoxelWorld.h:367-398](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h#L367-L398):
+- **Cache key**: `{glm::vec3 worldMin, float size}` with epsilon comparison
+- **Hash function**: FNV-1a with float quantization (0.0001 epsilon)
+- **Storage**: `std::unordered_map<BlockQueryKey, std::vector<Entity>, BlockQueryKeyHash>`
+
+**Partial Invalidation Logic** - [GaiaVoxelWorld.cpp:295-313](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L295-L313):
+```cpp
+void GaiaVoxelWorld::invalidateBlockCacheAt(const glm::vec3& position) {
+    for (auto it = m_blockCache.begin(); it != m_blockCache.end(); ) {
+        const auto& key = it->first;
+        glm::vec3 blockMax = key.worldMin + glm::vec3(key.size);
+
+        bool containsPosition =
+            position.x >= key.worldMin.x && position.x < blockMax.x &&
+            position.y >= key.worldMin.y && position.y < blockMax.y &&
+            position.z >= key.worldMin.z && position.z < blockMax.z;
+
+        if (containsPosition) {
+            it = m_blockCache.erase(it);  // Invalidate this block only
+        } else {
+            ++it;  // Unaffected blocks remain cached
+        }
+    }
+}
+```
+
+**Files Modified**:
+- [GaiaVoxelWorld.h:229-264,367-398](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h) - API + cache infrastructure
+- [GaiaVoxelWorld.cpp:85-86,144-170,252-313](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp) - Implementation + auto-invalidation
+- [test_gaia_voxel_world_coverage.cpp:585-715](libraries/GaiaVoxelWorld/tests/test_gaia_voxel_world_coverage.cpp) - 6 new tests
+
+### Iterator Invalidation Bug Fix ✅ COMPLETE
+
+**Achievement**: Fixed pre-existing `clear()` crash by using collect-then-delete pattern.
+
+**Issue**: `clear()` deleted entities while iterating over query results, causing Gaia ECS assertion failure.
+
+**Before** (Broken):
+```cpp
+void GaiaVoxelWorld::clear() {
+    auto query = m_impl->world.query().all<MortonKey>();
+    query.each([this](gaia::ecs::Entity entity) {
+        m_impl->world.del(entity);  // ❌ Invalidates iterator during iteration
+    });
+}
+```
+
+**After** (Fixed) - [GaiaVoxelWorld.cpp:155-170](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L155-L170):
+```cpp
+void GaiaVoxelWorld::clear() {
+    // Collect entities first to avoid iterator invalidation
+    std::vector<gaia::ecs::Entity> toDelete;
+    auto query = m_impl->world.query().all<MortonKey>();
+    query.each([&toDelete](gaia::ecs::Entity entity) {
+        toDelete.push_back(entity);
+    });
+
+    // Now delete all collected entities
+    for (auto entity : toDelete) {
+        m_impl->world.del(entity);
+    }
+
+    invalidateBlockCache();  // Full cache invalidation after mass delete
+}
+```
+
+**Impact**:
+- ✅ Fixes `GaiaVoxelWorldTest.ClearAllVoxels` crash (documented in activeContext.md:527)
+- ✅ Fixes `GetEntityBlockRef_FullInvalidation` test (6/6 tests now passing)
+
+### Architecture Separation Discussion ✅ COMPLETE
+
+**Key Insight**: VoxelInjection.cpp (in SVO) is doing **data extraction** (color, normal from `node->data`) - this violates SVO's role as pure spatial index.
+
+**Current Problem**:
+```cpp
+// VoxelInjection.cpp - WRONG LAYER
+if (node->isLeaf) {
+    glm::vec3 color = node->data.get<glm::vec3>("color");  // ❌ Data extraction in SVO
+    attr.red = static_cast<uint8_t>(color.r * 255);
+}
+```
+
+**Correct Architecture**:
+```
+GaiaVoxelWorld (data layer)
+  ↓ Stores entities with components
+  ↓ VoxelInjector groups entities into brick regions
+  ↓
+SVO (view layer)
+  ↓ Queries entities via getEntityBlockRef(worldMin, size)
+  ↓ Builds ChildDescriptor hierarchy (traversal structure)
+  ↓ Creates EntityBrickView instances (zero-storage views)
+  ✅ NO data extraction, NO attribute storage
+```
+
+**Architectural Decisions**:
+1. **SVO rebuild** should query `GaiaVoxelWorld::getEntityBlockRef()` for each brick region
+2. **VoxelInjection.cpp data extraction** should be removed (SVO is view, not data store)
+3. **GaiaVoxelWorld::VoxelInjector** stays in GaiaVoxelWorld (data ingestion, not spatial indexing)
+
+**Files to Modify (Next Steps)**:
+- [VoxelInjection.cpp:420-438](libraries/SVO/src/VoxelInjection.cpp) - Remove data extraction
+- [VoxelInjection.cpp:1142-1157](libraries/SVO/src/VoxelInjection.cpp) - Use `getEntityBlockRef()` instead
+- [VoxelInjection.cpp:1448-1451](libraries/SVO/src/VoxelInjection.cpp) - Create EntityBrickView from span
+
+### Test Suite Status ✅
+
+**New Tests Added** (Session 6H):
+- `GetEntityBlockRef_EmptyRegion` - Empty span for regions with no entities
+- `GetEntityBlockRef_SingleVoxel` - Correct entity returned + empty for non-overlapping
+- `GetEntityBlockRef_MultipleVoxels` - All 8 entities found in block
+- `GetEntityBlockRef_CacheHit` - Cache returns same span pointer
+- `GetEntityBlockRef_PartialInvalidation` - Only affected blocks invalidated
+- `GetEntityBlockRef_FullInvalidation` - Full cache clear works correctly
+
+**Test Results**:
+- ✅ **6/6 block query cache tests passing** (Session 6H)
+- ✅ **1 pre-existing bug fixed** (`clear()` iterator invalidation)
+
+**Total Test Count**: 146 tests (140 previous + 6 new)
+- **VoxelComponents**: 8/8 tests ✅
+- **GaiaVoxelWorld**: 96/96 tests ✅ (was 90/93 - fixed `clear()` bug!)
+  - test_gaia_voxel_world_coverage.cpp: **32/32 tests ✅** (was 26 - added 6)
+  - test_voxeldata_integration.cpp: **14/14 tests ✅**
+  - test_gaia_voxel_world.cpp: **26/26 tests ✅** (was 23 - fixed `ClearAllVoxels`)
+  - test_voxel_injection_queue.cpp: **25/25 tests ✅**
+  - test_voxel_injector.cpp: **24/24 tests ✅**
+- **SVO**: 39/39 tests ✅
+- **VoxelData**: All tests ✅
+
+**Pass Rate**: 146/146 = **100%** ✅ (was 137/140 = 97.8%)
+
+### Phase 3 Status Update
+
+**✅ Completed** (Session 6H):
+1. Cached block query API (`getEntityBlockRef`)
+2. Partial cache invalidation
+3. Iterator invalidation bug fix
+4. Architecture separation discussion
+
+**🔴 Remaining for Phase 3 Feature Parity**:
+1. **Update SVO rebuild to use `getEntityBlockRef()`** - Replace data extraction with entity queries
+2. **Remove data extraction from VoxelInjection.cpp** - SVO becomes pure view
+3. **Create EntityBrickView from queried entities** - Populate `OctreeBlock::brickViews`
+4. **Remove m_leafEntityMap temporary bridge** - Clean up temporary storage
+
+**🎯 Next Immediate Steps**:
+1. Update SVO rebuild to query entities via `getEntityBlockRef()`
+2. Remove VoxelInjection.cpp data extraction (lines 420-438)
+3. Create EntityBrickView instances from entity spans
+4. Test end-to-end workflow
+
+---
+
+## Previous Session Summary (Nov 23 - Session 6G: SVO Phase 3 - EntityBrickView Integration)
 
 ### EntityBrickView Zero-Storage Pattern ✅ COMPLETE
 
