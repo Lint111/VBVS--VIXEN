@@ -5,9 +5,11 @@
 #include "SVOBuilder.h"
 #include "BrickReference.h"
 #include "AttributeRegistry.h"
+#include <gaia.h>  // For gaia::ecs::World and gaia::ecs::Entity
 #include <memory>
 #include <optional>
 #include <limits>
+#include <unordered_map>
 
 namespace SVO {
 
@@ -30,8 +32,17 @@ namespace SVO {
  */
 class LaineKarrasOctree : public ISVOStructure {
 public:
+    // DEPRECATED: Old constructor without entity support
     LaineKarrasOctree(int maxLevels = 23, int brickDepthLevels = 3);
+
+    // DEPRECATED: Old constructor with AttributeRegistry (will be removed)
     explicit LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels = 23, int brickDepthLevels = 3);
+
+    // NEW: Entity-based constructor (pure spatial index)
+    // SVO stores only entity IDs (8 bytes each), not voxel data
+    // Caller reads entity components via gaia::ecs::World
+    explicit LaineKarrasOctree(gaia::ecs::World& world, int maxLevels = 23, int brickDepthLevels = 3);
+
     ~LaineKarrasOctree() override;
 
     // ISVOStructure interface
@@ -75,8 +86,35 @@ public:
     // Additive insertion support - ensure octree is initialized
     void ensureInitialized(const glm::vec3& worldMin, const glm::vec3& worldMax, int maxLevels);
 
+    // ========================================================================
+    // Entity-Based Insertion (NEW API)
+    // ========================================================================
+
+    /**
+     * Insert entity into spatial index.
+     * Extracts position from entity's MortonKey component.
+     * Stores entity reference (8 bytes) instead of copying voxel data.
+     *
+     * @param entity Gaia ECS entity with MortonKey component
+     */
+    void insert(gaia::ecs::Entity entity);
+
+    /**
+     * Remove entity from spatial index.
+     */
+    void remove(gaia::ecs::Entity entity);
+
 private:
     std::unique_ptr<Octree> m_octree;
+
+    // Entity-based storage (NEW architecture)
+    gaia::ecs::World* m_world = nullptr;  // Non-owning pointer to Gaia ECS world
+
+    // Temporary entity mapping (descriptor index → entity)
+    // TODO: Replace with proper entity storage in OctreeBlock
+    std::unordered_map<size_t, gaia::ecs::Entity> m_leafEntityMap;
+
+    // DEPRECATED: Will be removed once migration to entity-based storage is complete
     ::VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer
 
     // NOTE: Key attribute is ALWAYS index 0 in AttributeRegistry (guaranteed by design)

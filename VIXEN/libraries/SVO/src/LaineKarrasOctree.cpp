@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "LaineKarrasOctree.h"
 #include <sstream>
 #include <algorithm>
@@ -149,13 +150,15 @@ namespace {
 } // anonymous namespace
 
 LaineKarrasOctree::LaineKarrasOctree(int maxLevels, int brickDepthLevels)
-    : m_registry(nullptr)
+    : m_world(nullptr)
+    , m_registry(nullptr)
     , m_maxLevels(maxLevels)
     , m_brickDepthLevels(brickDepthLevels)
 {}
 
 LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
-    : m_registry(registry)
+    : m_world(nullptr)
+    , m_registry(registry)
     , m_maxLevels(maxLevels)
     , m_brickDepthLevels(brickDepthLevels)
 {
@@ -163,7 +166,46 @@ LaineKarrasOctree::LaineKarrasOctree(::VoxelData::AttributeRegistry* registry, i
     // No need to cache or validate - just use index 0 directly during traversal
 }
 
+// NEW: Entity-based constructor
+LaineKarrasOctree::LaineKarrasOctree(gaia::ecs::World& world, int maxLevels, int brickDepthLevels)
+    : m_world(&world)
+    , m_registry(nullptr)  // No AttributeRegistry in entity-based mode
+    , m_maxLevels(maxLevels)
+    , m_brickDepthLevels(brickDepthLevels)
+{
+    // SVO stores only entity IDs (8 bytes each), not voxel data
+    // Caller reads entity components via m_world
+}
+
 LaineKarrasOctree::~LaineKarrasOctree() = default;
+
+// ============================================================================
+// Entity-Based Insertion API
+// ============================================================================
+
+void LaineKarrasOctree::insert(gaia::ecs::Entity entity) {
+    // TODO: Implement entity insertion
+    // This will extract position from MortonKey component and insert into octree
+    // For now, this is a placeholder stub
+    if (!m_world) {
+        return;  // Entity mode not enabled
+    }
+
+    // Extract position from entity (requires MortonKey component)
+    // Store entity in leaf entity map
+    // Update octree structure if needed
+}
+
+void LaineKarrasOctree::remove(gaia::ecs::Entity entity) {
+    // TODO: Implement entity removal
+    // This will find and remove entity from leaf entity map
+    if (!m_world) {
+        return;
+    }
+
+    // Find entity in leaf map and remove
+    // Update octree structure if needed
+}
 
 void LaineKarrasOctree::setOctree(std::unique_ptr<Octree> octree) {
     m_octree = std::move(octree);
@@ -1042,15 +1084,20 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     hit.hit = true;
                     hit.tMin = t_min_world;
                     hit.tMax = tv_max_world;
-                    hit.position = origin + rayDir * t_min_world;
-                    // Convert ESVO scale to user scale
-                    // The scale represents the depth of the leaf voxel
-                    // Example: m_maxLevels=4, ESVO scale 21 → user scale 2 (correct leaf depth)
+                    hit.hitPoint = origin + rayDir * t_min_world;  // Renamed from position
                     hit.scale = esvoToUserScale(scale);
 
-                    // Compute surface normal from 3×3×3 neighborhood
-                    float voxelSize = scale_exp2 * (m_worldMax.x - m_worldMin.x);
-                    hit.normal = computeSurfaceNormal(this, hit.position, voxelSize);
+                    // NEW: Look up entity from leaf entity map
+                    // Parent descriptor index identifies the leaf node
+                    size_t leafDescIndex = parent - &m_octree->root->childDescriptors[0];
+
+                    // Entity-based mode: retrieve entity reference
+                    if (m_world != nullptr && m_leafEntityMap.find(leafDescIndex) != m_leafEntityMap.end()) {
+                        hit.entity = m_leafEntityMap.at(leafDescIndex);
+                    } else {
+                        // Fallback: create invalid entity (no entity stored for this leaf)
+                        hit.entity = gaia::ecs::Entity();  // Invalid entity
+                    }
 
                     return hit;
                 }
@@ -1635,9 +1682,21 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             hit.hit = true;
             hit.tMin = hitT;
             hit.tMax = hitT + brickVoxelSize;  // Exit point of voxel
-            hit.position = rayOrigin + rayDir * hitT;
-            hit.normal = entryNormal;
-            hit.scale = m_maxLevels - 1;  // Finest detail level (use m_maxLevels, not hardcoded m_maxDepth)
+            hit.hitPoint = rayOrigin + rayDir * hitT;  // Renamed from position
+            hit.scale = m_maxLevels - 1;  // Finest detail level
+
+            // NEW: Retrieve entity from brick storage
+            // In entity-based mode, bricks store entity references, not attribute data
+            // TODO: Access entity from brick storage once it's refactored to store entities
+            if (m_world != nullptr && m_registry) {
+                // Temporary: use registry's brick to get entity
+                ::VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
+                // TODO: Get entity from brick at localIdx
+                // For now, create invalid entity
+                hit.entity = gaia::ecs::Entity();
+            } else {
+                hit.entity = gaia::ecs::Entity();  // Invalid entity
+            }
 
             return hit;
         }
