@@ -251,15 +251,15 @@ TEST(VoxelInjectionQueueTest, VerifyCreatedEntitiesHaveCorrectAttributes) {
     ASSERT_TRUE(pos.has_value());
     EXPECT_EQ(pos.value(), expectedPos);
 
-    auto density = world.getDensity(entity);
+    auto density = world.getComponentValue<Density>(entity);
     ASSERT_TRUE(density.has_value());
     EXPECT_FLOAT_EQ(density.value(), 0.8f);
 
-    auto color = world.getColor(entity);
+    auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
     EXPECT_EQ(color.value(), glm::vec3(0.2f, 0.4f, 0.6f));
 
-    auto normal = world.getNormal(entity);
+    auto normal = world.getComponentValue<Normal>(entity);
     ASSERT_TRUE(normal.has_value());
     EXPECT_EQ(normal.value(), glm::vec3(0.0f, 0.0f, 1.0f));
 

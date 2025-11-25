@@ -3,7 +3,6 @@
 #include "LaineKarrasOctree.h"
 #include "SVOBuilder.h"
 #include "SVOTypes.h"
-#include "VoxelInjection.h"
 #include "GaiaVoxelWorld.h"  // For entity-based testing
 #include "VoxelComponents.h"
 #include "ComponentData.h"

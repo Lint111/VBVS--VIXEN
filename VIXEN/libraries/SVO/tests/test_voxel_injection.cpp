@@ -1,323 +1,129 @@
+/**
+ * Voxel Injection Tests - Updated for GaiaVoxelWorld + rebuild() workflow
+ *
+ * NOTE: The old VoxelInjector, DynamicVoxelScalar, SparseVoxelInput, DenseVoxelInput,
+ * LambdaVoxelSampler, NoiseSampler, SDFSampler APIs have been deprecated.
+ *
+ * The new workflow is:
+ * 1. Create GaiaVoxelWorld
+ * 2. Create voxel entities with createVoxel(VoxelCreationRequest)
+ * 3. Create LaineKarrasOctree(world, registry, maxLevels, brickDepth)
+ * 4. Call octree.rebuild(world, worldMin, worldMax)
+ *
+ * See test_ray_casting_comprehensive.cpp for the new API pattern.
+ */
+
 #include <gtest/gtest.h>
-#include "VoxelInjection.h"
-#include "GaiaVoxelWorld.h"  // VoxelInjectionQueue moved here
-#include "VoxelInjectionQueue.h"  // From GaiaVoxelWorld library
+#include "GaiaVoxelWorld.h"
+#include "VoxelInjectionQueue.h"
 #include "LaineKarrasOctree.h"
-#include "DynamicVoxelStruct.h"
-#include "StandardVoxelConfigs.h"
+#include "VoxelComponents.h"
 #include "AttributeRegistry.h"
 #include <chrono>
 
-using namespace SVO;
+using namespace GaiaVoxel;
 
 // ===========================================================================
-// Sparse Voxel Injection Tests
+// Helper: Create octree with voxels using NEW workflow
 // ===========================================================================
 
-TEST(VoxelInjectionTest, SparseVoxels) {
-    SparseVoxelInput input;
-    input.worldMin = glm::vec3(0, 0, 0);
-    input.worldMax = glm::vec3(10, 10, 10);
-    input.resolution = 16;
+class VoxelInjectionNewAPITest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        registry = std::make_shared<::VoxelData::AttributeRegistry>();
+        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
+        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
-    // Add a few voxels
+        voxelWorld = std::make_shared<GaiaVoxelWorld>();
+    }
+
+    std::unique_ptr<SVO::LaineKarrasOctree> createOctreeWithVoxels(
+        const std::vector<glm::vec3>& positions,
+        int maxDepth = 6)
+    {
+        // Compute bounds
+        glm::vec3 testMin(1e30f), testMax(-1e30f);
+        for (const auto& pos : positions) {
+            testMin = glm::min(testMin, pos);
+            testMax = glm::max(testMax, pos);
+        }
+        testMin -= glm::vec3(1.0f);
+        testMax += glm::vec3(1.0f);
+
+        // Create voxel entities
+        for (const auto& pos : positions) {
+            ComponentQueryRequest components[] = {
+                Density{1.0f},
+                Color{glm::vec3(1.0f, 0.0f, 0.0f)}
+            };
+            VoxelCreationRequest request{pos, components};
+            voxelWorld->createVoxel(request);
+        }
+
+        // Create octree and rebuild
+        auto octree = std::make_unique<SVO::LaineKarrasOctree>(
+            *voxelWorld, registry.get(), maxDepth, 3);
+        octree->rebuild(*voxelWorld, testMin, testMax);
+
+        return octree;
+    }
+
+    std::shared_ptr<GaiaVoxelWorld> voxelWorld;
+    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+};
+
+// ===========================================================================
+// Sparse Voxel Tests (New API)
+// ===========================================================================
+
+TEST_F(VoxelInjectionNewAPITest, SparseVoxels) {
+    std::vector<glm::vec3> positions;
     for (int i = 0; i < 10; ++i) {
-        ::VoxelData::DynamicVoxelScalar voxel;
-        voxel.set("density", 1.0f);
-        voxel.set("color", glm::vec3(1, 0, 0));
-        voxel.set("normal", glm::vec3(0, 1, 0));
-        voxel.set("occlusion", 0.0f);
-        input.voxels.push_back(voxel);
+        positions.push_back(glm::vec3(static_cast<float>(i), 5.0f, 5.0f));
     }
 
-    VoxelInjector injector;
-    auto svo = injector.inject(input);
+    auto octree = createOctreeWithVoxels(positions);
+    ASSERT_NE(octree, nullptr);
 
-    ASSERT_NE(svo, nullptr);
-
-    // Check statistics
-    const auto& stats = injector.getLastStats();
-    EXPECT_GT(stats.voxelsProcessed, 0);
-    EXPECT_GT(stats.leavesCreated, 0);
+    // Cast ray to verify voxels exist
+    auto hit = octree->castRay(glm::vec3(-5, 5, 5), glm::vec3(1, 0, 0), 0.0f, 100.0f);
+    EXPECT_TRUE(hit.hit) << "Should hit first voxel in line";
 }
 
 // ===========================================================================
-// Dense Grid Injection Tests
+// Dense Grid Tests (New API)
 // ===========================================================================
 
-TEST(VoxelInjectionTest, DenseGrid) {
-    DenseVoxelInput input;
-    input.worldMin = glm::vec3(0, 0, 0);
-    input.worldMax = glm::vec3(10, 10, 10);
-    input.resolution = glm::ivec3(4, 4, 4);
-    input.voxels.resize(64);
+TEST_F(VoxelInjectionNewAPITest, DenseGrid) {
+    std::vector<glm::vec3> positions;
 
-    // Fill grid with alternating solid/empty pattern
+    // 4x4x4 grid with checkerboard pattern
     for (int z = 0; z < 4; ++z) {
         for (int y = 0; y < 4; ++y) {
             for (int x = 0; x < 4; ++x) {
-                size_t idx = input.getIndex(x, y, z);
-                input.voxels[idx].set("position", glm::vec3(x, y, z));
-                input.voxels[idx].set("density", ((x + y + z) % 2 == 0) ? 1.0f : 0.0f);
-                input.voxels[idx].set("color", glm::vec3(1, 1, 1));
-                input.voxels[idx].set("normal", glm::vec3(0, 1, 0));
+                if ((x + y + z) % 2 == 0) {
+                    positions.push_back(glm::vec3(
+                        static_cast<float>(x),
+                        static_cast<float>(y),
+                        static_cast<float>(z)));
+                }
             }
         }
     }
 
-    InjectionConfig config;
-    config.maxLevels = 6;  // Smaller for test - 4x4x4 grid doesn't need 16 levels
+    auto octree = createOctreeWithVoxels(positions);
+    ASSERT_NE(octree, nullptr);
 
-    VoxelInjector injector;
-    auto svo = injector.inject(input, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    const auto& stats = injector.getLastStats();
-    EXPECT_GT(stats.leavesCreated, 0);
-    EXPECT_GT(stats.emptyVoxelsCulled, 0);  // Should cull some empty regions
+    // Cast ray through grid
+    auto hit = octree->castRay(glm::vec3(-5, 0, 0), glm::vec3(1, 0, 0), 0.0f, 100.0f);
+    EXPECT_TRUE(hit.hit) << "Should hit voxel in grid";
 }
 
 // ===========================================================================
-// Procedural Sampler Injection Tests
+// Multiple Voxels Spread Test
 // ===========================================================================
 
-TEST(VoxelInjectionTest, ProceduralSampler) {
-    // Simple sphere sampler
-    auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
-            float dist = glm::length(pos);
-            if (dist < 5.0f) {
-                data.set("position", pos);
-                data.set("color", glm::vec3(1, 0, 0));
-                data.set("normal", glm::normalize(pos));
-                data.set("density", 1.0f);
-                return true;
-            }
-            return false;
-        },
-        [](glm::vec3& min, glm::vec3& max) {
-            min = glm::vec3(-6, -6, -6);
-            max = glm::vec3(6, 6, 6);
-        },
-        [](const glm::vec3& center, float size) -> float {
-            float dist = glm::length(center);
-            if (dist > 5.0f + size) return 0.0f;  // Outside
-            if (dist < 5.0f - size) return 1.0f;  // Inside
-            return 0.5f;  // Boundary
-        }
-    );
-
-    InjectionConfig config;
-    config.maxLevels = 8;  // Smaller for test
-
-    VoxelInjector injector;
-    auto svo = injector.inject(*sampler, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    const auto& stats = injector.getLastStats();
-    EXPECT_GT(stats.leavesCreated, 0);
-    EXPECT_GT(stats.emptyVoxelsCulled, 0);  // Should cull regions outside sphere
-}
-
-// ===========================================================================
-// NoiseSampler Integration Test
-// ===========================================================================
-
-TEST(VoxelInjectionTest, NoiseSampler) {
-    Samplers::NoiseSampler::Params params;
-    params.frequency = 0.1f;
-    params.amplitude = 5.0f;
-    params.octaves = 2;
-    params.threshold = 0.0f;
-
-    auto sampler = std::make_unique<Samplers::NoiseSampler>(params);
-
-    InjectionConfig config;
-    config.maxLevels = 6;  // Small for quick test
-
-    VoxelInjector injector;
-    auto svo = injector.inject(*sampler, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    const auto& stats = injector.getLastStats();
-    EXPECT_GT(stats.voxelsProcessed, 0);
-    EXPECT_GT(stats.leavesCreated, 0);
-}
-
-// ===========================================================================
-// SDFSampler Integration Test
-// ===========================================================================
-
-TEST(VoxelInjectionTest, SDFSampler) {
-    auto sdfFunc = [](const glm::vec3& p) -> float {
-        return SDF::sphere(p, 3.0f);
-    };
-
-    auto sampler = std::make_unique<Samplers::SDFSampler>(
-        sdfFunc,
-        glm::vec3(-5, -5, -5),
-        glm::vec3(5, 5, 5)
-    );
-
-    InjectionConfig config;
-    config.maxLevels = 6;
-
-    VoxelInjector injector;
-    auto svo = injector.inject(*sampler, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    const auto& stats = injector.getLastStats();
-    EXPECT_GT(stats.leavesCreated, 0);
-}
-
-// ===========================================================================
-// Progress Callback Test
-// ===========================================================================
-
-TEST(VoxelInjectionTest, ProgressCallback) {
-    auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
-            if (glm::length(pos) < 3.0f) {
-                data.set("position", pos);
-                data.set("density", 1.0f);
-                return true;
-            }
-            return false;
-        },
-        [](glm::vec3& min, glm::vec3& max) {
-            min = glm::vec3(-5, -5, -5);
-            max = glm::vec3(5, 5, 5);
-        }
-    );
-
-    InjectionConfig config;
-    config.maxLevels = 6;
-
-    bool callbackCalled = false;
-    float lastProgress = 0.0f;
-
-    VoxelInjector injector;
-    injector.setProgressCallback([&](float progress, const std::string& status) {
-        callbackCalled = true;
-        lastProgress = progress;
-        EXPECT_GE(progress, 0.0f);
-        EXPECT_LE(progress, 1.0f);
-    });
-
-    auto svo = injector.inject(*sampler, config);
-
-    ASSERT_NE(svo, nullptr);
-    EXPECT_TRUE(callbackCalled);
-    EXPECT_EQ(lastProgress, 1.0f);  // Should end at 100%
-}
-
-// ===========================================================================
-// Minimum Voxel Size Test - Prevent Over-Subdivision
-// ===========================================================================
-
-TEST(VoxelInjectionTest, MinimumVoxelSizePreventsOverSubdivision) {
-    // 4x4x4 grid in 10x10x10 world = 2.5 units per voxel
-    DenseVoxelInput input;
-    input.worldMin = glm::vec3(0, 0, 0);
-    input.worldMax = glm::vec3(10, 10, 10);
-    input.resolution = glm::ivec3(4, 4, 4);
-    input.voxels.resize(64);
-
-    // Fill with checkerboard pattern
-    for (int z = 0; z < 4; ++z) {
-        for (int y = 0; y < 4; ++y) {
-            for (int x = 0; x < 4; ++x) {
-                size_t idx = input.getIndex(x, y, z);
-                input.voxels[idx].set("position", glm::vec3(x * 2.5f, y * 2.5f, z * 2.5f));
-                input.voxels[idx].set("density", ((x + y + z) % 2 == 0) ? 1.0f : 0.0f);
-                input.voxels[idx].set("color", glm::vec3(1, 1, 1));
-                input.voxels[idx].set("normal", glm::vec3(0, 1, 0));
-            }
-        }
-    }
-
-    // Test with high maxLevels but constrained by minVoxelSize
-    InjectionConfig config;
-    config.maxLevels = 20;  // Deep subdivision
-    config.minVoxelSize = 2.5f;  // Grid cell size - prevents subdivision beyond data resolution
-
-    VoxelInjector injector;
-    auto svo = injector.inject(input, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    const auto& stats = injector.getLastStats();
-
-    // With minVoxelSize=2.5 and worldSize=10, max effective depth is log2(10/2.5) = 2
-    // So we should have FAR fewer voxels than if we subdivided to level 20 (2^60 nodes!)
-    // Expect reasonable number of nodes (< 1000 for 4x4x4 grid)
-    EXPECT_LT(stats.voxelsProcessed, 1000);
-    EXPECT_GT(stats.leavesCreated, 0);
-    EXPECT_GT(stats.emptyVoxelsCulled, 0);
-
-    // Verify build completed in reasonable time (< 1 second)
-    EXPECT_LT(stats.buildTimeSeconds, 1.0f);
-}
-
-// ============================================================================
-// Bottom-Up Additive Insertion Tests
-// ============================================================================
-
-TEST(VoxelInjectorTest, AdditiveInsertionSingleVoxel) {
-    using namespace SVO;
-
-    // Create empty octree
-    LaineKarrasOctree octree;
-
-    // Create voxel data
-    ::VoxelData::DynamicVoxelScalar voxel;
-    voxel.set("position", glm::vec3(5.0f, 5.0f, 5.0f)); // Center of world
-    voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));     // Red
-    voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));   // Up
-    voxel.set("density", 1.0f);
-
-    // Insert voxel
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 8; // Moderate depth
-
-    bool success = injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config);
-    EXPECT_TRUE(success) << "Should successfully insert voxel";
-
-    // Verify octree is not empty
-    const Octree* octreeData = octree.getOctree();
-    ASSERT_NE(octreeData, nullptr);
-    ASSERT_NE(octreeData->root, nullptr);
-
-    // Should have at least one descriptor
-    EXPECT_GT(octreeData->root->childDescriptors.size(), 0u);
-
-    // Should have one voxel
-    EXPECT_EQ(octreeData->totalVoxels, 1u);
-
-    // Should have one attribute
-    EXPECT_EQ(octreeData->root->attributes.size(), 1u);
-
-    std::cout << "\nAdditive insertion test: 1 voxel inserted\n";
-    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
-    std::cout << "  Attributes: " << octreeData->root->attributes.size() << "\n";
-}
-
-TEST(VoxelInjectorTest, AdditiveInsertionMultipleVoxels) {
-    using namespace SVO;
-
-    // Create empty octree
-    LaineKarrasOctree octree;
-
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 6;
-
-    // Insert 8 voxels at corners of a cube
+TEST_F(VoxelInjectionNewAPITest, MultipleVoxelsSpread) {
     std::vector<glm::vec3> positions = {
         {1.0f, 1.0f, 1.0f},
         {9.0f, 1.0f, 1.0f},
@@ -329,137 +135,17 @@ TEST(VoxelInjectorTest, AdditiveInsertionMultipleVoxels) {
         {9.0f, 9.0f, 9.0f},
     };
 
+    auto octree = createOctreeWithVoxels(positions);
+    ASSERT_NE(octree, nullptr);
+
+    // Verify all 8 corners can be hit
+    int hits = 0;
     for (const auto& pos : positions) {
-        ::VoxelData::DynamicVoxelScalar voxel;
-        voxel.set("position", pos);
-        voxel.set("color", glm::normalize(pos / 10.0f)); // Color based on position
-        voxel.set("normal", glm::normalize(pos - glm::vec3(5.0f)));
-        voxel.set("density", 1.0f);
-
-        bool success = injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config);
-        EXPECT_TRUE(success) << "Should insert voxel at " << pos.x << "," << pos.y << "," << pos.z;
+        glm::vec3 rayOrigin = pos - glm::vec3(5.0f, 0.0f, 0.0f);
+        auto hit = octree->castRay(rayOrigin, glm::vec3(1, 0, 0), 0.0f, 20.0f);
+        if (hit.hit) hits++;
     }
-
-    // Verify octree has all voxels
-    const Octree* octreeData = octree.getOctree();
-    ASSERT_NE(octreeData, nullptr);
-    EXPECT_EQ(octreeData->totalVoxels, 8u) << "Should have 8 voxels";
-    EXPECT_EQ(octreeData->root->attributes.size(), 8u) << "Should have 8 attributes";
-
-    std::cout << "\nAdditive insertion test: 8 voxels inserted (cube corners)\n";
-    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
-    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
-}
-
-TEST(VoxelInjectorTest, AdditiveInsertionIdempotent) {
-    using namespace SVO;
-
-    LaineKarrasOctree octree;
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 6;
-
-    ::VoxelData::DynamicVoxelScalar voxel;
-    voxel.set("position", glm::vec3(5.0f, 5.0f, 5.0f));
-    voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));
-    voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));
-    voxel.set("density", 1.0f);
-
-    // Insert same voxel 3 times
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
-    EXPECT_TRUE(injector.insertVoxel(octree, voxel.get<glm::vec3>("position"), voxel, config));
-
-    // Should recognize existing node via early exit
-    const Octree* octreeData = octree.getOctree();
-    ASSERT_NE(octreeData, nullptr);
-
-    // Early exit should prevent re-insertion
-    std::cout << "\nIdempotent test: inserted same voxel 3x\n";
-    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
-    std::cout << "  Attributes: " << octreeData->root->attributes.size() << " (early exit working if <=3)\n";
-}
-
-TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
-    using namespace SVO;
-
-    // Create empty octree
-    LaineKarrasOctree octree;
-
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 8;
-
-    // ensureInitialized will be called by insertVoxel with world bounds [0,10]³
-
-    // Insert single voxel in clear location (well away from all boundaries)
-    ::VoxelData::DynamicVoxelScalar voxel;
-    glm::vec3 voxelPos = glm::vec3(2.0f, 3.0f, 3.0f);
-    voxel.set("color", glm::vec3(1.0f, 0.0f, 0.0f));
-    voxel.set("normal", glm::vec3(0.0f, 1.0f, 0.0f));
-    voxel.set("density", 1.0f);
-
-    std::cout << "\nInserting voxel at (" << voxelPos.x << ", " << voxelPos.y << ", " << voxelPos.z << ")\n";
-    bool success = injector.insertVoxel(octree, voxelPos, voxel, config);
-    ASSERT_TRUE(success) << "Should insert voxel";
-    std::cout << "Insert returned: " << (success ? "true" : "false") << "\n";
-
-    // Compact to ESVO format for traversal
-    std::cout << "Compacting to ESVO format...\n";
-    bool compacted = injector.compactToESVOFormat(octree);
-    ASSERT_TRUE(compacted) << "Should compact successfully";
-
-    // Debug: Print octree structure
-    const Octree* octreeData = octree.getOctree();
-    ASSERT_NE(octreeData, nullptr);
-    std::cout << "\nOctree structure:\n";
-    std::cout << "  Descriptors: " << octreeData->root->childDescriptors.size() << "\n";
-    std::cout << "  Attributes: " << octreeData->root->attributes.size() << "\n";
-    std::cout << "  Total voxels: " << octreeData->totalVoxels << "\n";
-    std::cout << "  World bounds: [" << octree.getWorldMin().x << "," << octree.getWorldMax().x << "]\n";
-
-    // Print attributes
-    if (!octreeData->root->attributes.empty()) {
-        std::cout << "  Attributes array:\n";
-        for (size_t i = 0; i < octreeData->root->attributes.size() && i < 5; ++i) {
-            const auto& attr = octreeData->root->attributes[i];
-            std::cout << "    [" << i << "] normal=" << (int)attr.sign_and_axis << "\n";
-        }
-    }
-
-    // Print all descriptors with attribute info
-    std::cout << "  All descriptors:\n";
-    for (size_t i = 0; i < octreeData->root->childDescriptors.size(); ++i) {
-        const auto& desc = octreeData->root->childDescriptors[i];
-        const auto& attr = octreeData->root->attributeLookups[i];
-        std::cout << "    [" << i << "] valid=0x" << std::hex << (int)desc.validMask
-                  << " leaf=0x" << (int)desc.leafMask << std::dec
-                  << " childPtr=" << desc.childPointer
-                  << " attrMask=0x" << std::hex << (int)attr.mask << std::dec
-                  << " attrPtr=" << attr.valuePointer << "\n";
-    }
-
-    // Cast ray from outside toward voxel
-    glm::vec3 rayOrigin(-5.0f, 3.0f, 3.0f);  // Start left of world, aligned with voxel
-    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);      // Point right (axis-parallel)
-
-    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
-
-    EXPECT_TRUE(hit.hit) << "Ray should hit voxel at center";
-    if (hit.hit) {
-        std::cout << "\nRay cast test:\n";
-        std::cout << "  Hit: YES\n";
-        std::cout << "  Position: (" << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
-        std::cout << "  t: " << hit.tMin << "\n";
-        std::cout << "  Scale: " << hit.scale << "\n";
-
-        // Verify hit is near expected position
-        // Note: Due to octree discretization and traversal precision, the hit may not be exact
-        float distanceToCenter = glm::length(hit.hitPoint - voxelPos);
-        EXPECT_LT(distanceToCenter, 10.0f) << "Hit should be within 10 units of voxel center";
-    } else {
-        std::cout << "\nRay cast test: MISS (BUG - ray should hit!)\n";
-    }
+    EXPECT_EQ(hits, 8) << "Should hit all 8 corner voxels";
 }
 
 // ===========================================================================
@@ -467,8 +153,6 @@ TEST(VoxelInjectorTest, AdditiveInsertionRayCast) {
 // ===========================================================================
 
 TEST(VoxelInjectionQueueTest, AsyncInjection100kVoxels) {
-    using namespace GaiaVoxel;
-
     // Create GaiaVoxelWorld and injection queue
     GaiaVoxelWorld world;
     VoxelInjectionQueue queue(world, 100000);  // 100k capacity ring buffer
