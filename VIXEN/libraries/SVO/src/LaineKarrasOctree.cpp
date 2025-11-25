@@ -2109,7 +2109,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         // - E.g., brick (0,0,0) → localGridOrigin (0,0,0)
         //         brick (1,0,0) → localGridOrigin (8,0,0) for brickSideLength=8
         glm::ivec3 localGridOrigin = brick.gridCoord * brickSideLength;
-        EntityBrickView brickView(world, localGridOrigin, static_cast<uint8_t>(brickDepth), worldMin);
+        EntityBrickView brickView(world, localGridOrigin, static_cast<uint8_t>(brickDepth), worldMin, EntityBrickView::LocalSpace);
         tempBrickViews.push_back(brickView);
     }
 

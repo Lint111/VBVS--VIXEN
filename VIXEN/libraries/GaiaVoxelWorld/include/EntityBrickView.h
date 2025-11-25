@@ -93,6 +93,12 @@ public:
     EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 gridOrigin, uint8_t depth);
 
     /**
+     * Tag struct for local-space brick view constructor disambiguation.
+     */
+    struct LocalSpaceTag {};
+    static constexpr LocalSpaceTag LocalSpace{};
+
+    /**
      * Create brick view with LOCAL grid origin (for local-space octrees).
      *
      * In local-space architecture:
@@ -104,10 +110,14 @@ public:
      * @param localGridOrigin LOCAL integer grid coordinate of brick's minimum corner
      * @param depth Brick depth (depth → 2^depth = brickSize)
      * @param volumeWorldMin World position of volume origin (for getWorldMin() compatibility)
+     * @param tag LocalSpaceTag for constructor disambiguation
      *
      * Entity lookup: localGridPos = localGridOrigin + localCoord, query by Morton key of localGridPos.
+     *
+     * Usage:
+     *   EntityBrickView view(world, localOrigin, depth, volumeMin, EntityBrickView::LocalSpace);
      */
-    EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 localGridOrigin, uint8_t depth, const glm::vec3& volumeWorldMin);
+    EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 localGridOrigin, uint8_t depth, const glm::vec3& volumeWorldMin, LocalSpaceTag tag);
 
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }

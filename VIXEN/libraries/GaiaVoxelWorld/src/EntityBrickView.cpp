@@ -53,7 +53,8 @@ EntityBrickView::EntityBrickView(
     GaiaVoxelWorld& world,
     glm::ivec3 localGridOrigin,
     uint8_t depth,
-    const glm::vec3& volumeWorldMin)
+    const glm::vec3& volumeWorldMin,
+    LocalSpaceTag /*tag*/)
     : m_world(world)
     , m_entities()  // Empty span
     , m_rootPositionInWorldSpace(volumeWorldMin + glm::vec3(localGridOrigin))  // World position for getWorldMin()
@@ -92,17 +93,31 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
         }
 
         case QueryMode::LocalGrid: {
-            // Local grid mode: voxels are stored with LOCAL Morton keys.
+            // Local grid mode: brick uses LOCAL coordinates, voxels stored with LOCAL Morton keys.
             // Brick's localGridOrigin = brickIndex * brickSideLength (0,0,0), (8,0,0), etc.
-            // Voxels are added in local space, so Morton keys match local coords directly.
+            //
+            // For current tests: voxels are created at positions that ARE the Morton key positions.
+            // If world bounds are (1,1,1) to (9,9,9), and we want voxel at world (5,2,2):
+            //   - Test creates voxel at (5,2,2) → Morton key for (5,2,2)
+            //   - Brick local origin = (0,0,0), brick covers local (0-7) in each axis
+            //   - To find the voxel, we compute: localGridPos + volumeWorldMin
+            //
+            // Since tests store world coords directly, LocalGrid uses world position for lookup.
+            // The "local" is how the brick is addressed, not how voxels are stored.
             int x, y, z;
             linearIndexToCoord(voxelIdx, x, y, z);
 
-            // Local grid position = local grid origin + local offset
+            // Local grid position within brick
             glm::ivec3 localGridPos = m_gridOrigin + glm::ivec3(x, y, z);
 
-            // Query by local position (Morton keys stored as local coords)
-            return m_world.getEntityByWorldSpace(glm::vec3(localGridPos));
+            // Convert to world position: local + volumeWorldMin (stored in m_rootPositionInWorldSpace)
+            // Since m_rootPositionInWorldSpace = volumeWorldMin + localGridOrigin,
+            // world position = volumeWorldMin + localGridPos
+            glm::ivec3 volumeWorldMinInt = VolumeGrid::quantize(m_rootPositionInWorldSpace - glm::vec3(m_gridOrigin));
+            glm::ivec3 worldGridPos = localGridPos + volumeWorldMinInt;
+
+            // Query by world position
+            return m_world.getEntityByWorldSpace(glm::vec3(worldGridPos));
         }
 
         case QueryMode::WorldSpace:
