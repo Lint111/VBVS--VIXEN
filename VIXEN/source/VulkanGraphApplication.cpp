@@ -657,8 +657,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 80.0f);  // Closer to see sphere (radius ~38 units)
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, 200.0f);  // Far enough to see full 128^3 grid (spans -64 to +64)
+    // Camera looks in -Z direction to face the voxel grid centered at origin
+    // With formula: forward.z = cos(pitch) * sin(yaw), need sin(yaw) = -1 → yaw = -π/2
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, -1.5708f);  // -π/2 radians = -90 degrees (look in -Z)
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_GRID_RESOLUTION, 128u);
 
