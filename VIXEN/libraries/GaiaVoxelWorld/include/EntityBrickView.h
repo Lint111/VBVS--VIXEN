@@ -156,6 +156,11 @@ public:
         return hasComponent<TComponent>(coordToLinearIndex(x, y, z));
     }
 
+    /**
+     * Get world position of brick's minimum corner.
+     */
+    const glm::vec3& getWorldPosition() const { return m_rootPositionInWorldSpace; }
+
     // ========================================================================
     // Span Access (Zero-Copy Iteration)
     // ========================================================================

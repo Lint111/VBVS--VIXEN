@@ -5,6 +5,7 @@
 #include "SVOBuilder.h"
 #include "BrickReference.h"
 #include "AttributeRegistry.h"
+#include "VoxelComponents.h"  // For Transform component
 #include <gaia.h>  // For gaia::ecs::World and gaia::ecs::Entity
 #include <memory>
 #include <optional>
@@ -174,6 +175,9 @@ private:
                                   // Traversal switches to brick DDA when depth >= (maxLevels - brickDepthLevels)
     size_t m_voxelCount{ 0 };
     size_t m_memoryUsage{ 0 };
+
+    // Transform: maps normalized [0,1]³ octree space ↔ world space
+    ::GaiaVoxel::VolumeTransform m_transform;
 
     // ========================================================================
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)

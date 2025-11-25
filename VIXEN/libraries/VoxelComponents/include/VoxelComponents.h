@@ -2,9 +2,11 @@
 
 #include <gaia.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <variant>
 #include <tuple>
 #include <cstdint>
+#include <iostream>
 
 namespace GaiaVoxel {
 
@@ -101,6 +103,208 @@ namespace MortonKeyUtils {
 }
 
 // ============================================================================
+// Spatial Transform
+// ============================================================================
+
+/**
+ * Transform component - generic local-to-world transformation.
+ *
+ * Generic transform for any entity in the scene (meshes, cameras, volumes, etc.).
+ * Makes NO assumptions about local space bounds - local space can be [-∞,∞].
+ *
+ * Examples:
+ * - Mesh: local space may be arbitrary (e.g., [-100, 100])
+ * - Camera: local space is view frustum
+ * - Volume: use VolumeTransform specialization for [0,1]³ normalized space
+ *
+ * Usage:
+ *   Transform xform;
+ *   xform.localToWorld = glm::translate(...) * glm::rotate(...) * glm::scale(...);
+ *   glm::vec3 worldPos = xform.toWorld(localPos);
+ *   glm::vec3 localPos = xform.toLocal(worldPos);
+ */
+struct Transform {
+    static constexpr const char* Name = "transform";
+
+    glm::mat4 localToWorld = glm::mat4(1.0f);  // Local space → world space
+
+    // Accessor: compute inverse on-demand
+    virtual glm::mat4 getWorldToLocal() const {
+        return glm::inverse(localToWorld);
+    }
+
+    // Transform point from world to local space
+    virtual glm::vec3 toLocal(const glm::vec3& worldPos) const {
+        return glm::vec3(getWorldToLocal() * glm::vec4(worldPos, 1.0f));
+    }
+
+    // Transform point from local to world space
+    virtual glm::vec3 toWorld(const glm::vec3& localPos) const {
+        return glm::vec3(localToWorld * glm::vec4(localPos, 1.0f));
+    }
+
+    // Transform direction vector (no translation)
+    virtual glm::vec3 dirToLocal(const glm::vec3& worldDir) const {
+        return glm::mat3(getWorldToLocal()) * worldDir;
+    }
+
+    virtual glm::vec3 dirToWorld(const glm::vec3& localDir) const {
+        return glm::mat3(localToWorld) * localDir;
+    }
+};
+
+/**
+ * VolumeTransform - specialized transform for volumetric data structures.
+ *
+ * Enforces normalized [0,1]³ local space for:
+ * - Sparse Voxel Octrees (SVO)
+ * - 3D textures and volume grids
+ * - Signed Distance Fields (SDF)
+ *
+ * Benefits of [0,1]³ normalized space:
+ * - Simplified DDA: cell size = 1.0 / 2^level
+ * - Perfect grid alignment: no floating-point drift
+ * - Hardware-friendly: GPU textures use [0,1] coordinates
+ * - Resolution-independent: change world bounds without rebuilding structure
+ *
+ * Usage:
+ *   auto xform = VolumeTransform::fromWVolumeBounds(glm::vec3(-10), glm::vec3(10));
+ *   glm::vec3 normPos = xform.worldToVolume(glm::vec3(5, 2, 2));  // → (0.75, 0.6, 0.6)
+ *   glm::vec3 worldPos = xform.volumeToWorld(glm::vec3(0.5, 0.5, 0.5));  // → (0, 0, 0)
+ */
+struct VolumeTransform : public Transform {
+    // Factory: create volume transform from world AABB
+    // Local space is always [0,1]³, world space is [worldMin, worldMax]
+    static VolumeTransform fromWorldBounds(const glm::vec3& worldMin, const glm::vec3& worldMax) {
+        VolumeTransform xform;
+
+        // localToWorld: scale [0,1]³ to world size, then translate to worldMin
+        glm::vec3 scale = worldMax - worldMin;
+        xform.localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
+
+        return xform;
+    }
+
+    // Override: world → volume space with [0,1]³ clamping
+    // Positions outside world bounds are clamped to volume edges
+    glm::vec3 toLocal(const glm::vec3& worldPos) const override {
+        glm::vec3 volumePos = Transform::toLocal(worldPos);
+        return glm::clamp(volumePos, glm::vec3(0.0f), glm::vec3(1.0f));
+    }
+
+    // Override: volume → world space with [0,1]³ validation
+    // Expects input in [0,1]³ range (asserts in debug, clamps in release)
+    glm::vec3 toWorld(const glm::vec3& volumePos) const override {
+        #ifndef NDEBUG
+        // Debug: assert invariant (catch programmer errors)
+        if (glm::any(glm::lessThan(volumePos, glm::vec3(0.0f))) ||
+            glm::any(glm::greaterThan(volumePos, glm::vec3(1.0f)))) {
+            std::cerr << "[VolumeTransform] ERROR: volumePos out of [0,1]³ bounds: ("
+                      << volumePos.x << ", " << volumePos.y << ", " << volumePos.z << ")\n";
+            // In debug builds, clamp but warn
+        }
+        #endif
+
+        // Clamp to [0,1]³ for robustness (handles floating-point drift)
+        glm::vec3 clampedPos = glm::clamp(volumePos, glm::vec3(0.0f), glm::vec3(1.0f));
+        return Transform::toWorld(clampedPos);
+    }
+};
+
+struct AABB {
+    static constexpr const char* Name = "aabb";
+
+    glm::vec3 min = glm::vec3(FLT_MAX);
+    glm::vec3 max = glm::vec3(-FLT_MAX);
+
+    bool isInitialized() const {
+        return min.x != FLT_MAX && glm::all(glm::lessThanEqual(min, max));
+    }
+
+    glm::vec3 getSize() const {
+        return isInitialized() ? max - min : glm::vec3(0.0f);
+    }
+
+    glm::vec3 getCenter() const {
+        return isInitialized() ? (min + max) * 0.5f : glm::vec3(0.0f);
+    }
+
+    bool contains(const glm::vec3& point) const {
+        if(!isInitialized()) {
+            return false;
+        }
+
+        return glm::all(glm::lessThanEqual(min, point)) && glm::all(glm::lessThanEqual(point, max));
+    }
+
+    void expandToContain(const glm::vec3& point) {
+        if(!isInitialized()) {
+            min = point;
+            max = point;
+            return;
+        }
+
+        min = glm::min(min, point);
+        max = glm::max(max, point);
+    
+    }
+
+    void expandToContain(const AABB& other) {
+        if(!other.isInitialized()) {
+            return;
+        }
+        expandToContain(other.min);
+        expandToContain(other.max);
+    }
+
+    bool contains(const glm::vec3& point) const {
+        if(!isInitialized()) {
+            return false;
+        }
+
+        return glm::all(glm::lessThanEqual(min, point)) && glm::all(glm::lessThanEqual(point, max));
+    }
+
+    bool contains(const AABB& other) {
+        if(!isInitialized() || !other.isInitialized()) {
+            return false;
+        }
+
+        return glm::all(glm::lessThanEqual(min, other.min)) && glm::all(glm::lessThanEqual(other.max, max));
+
+    }
+};
+
+
+/**
+ * Volume component - defines voxel volume parameters.
+ *
+ * Contains voxel size and helper for required depth calculation.
+ *
+ * Plain struct (no member functions) for Gaia-ECS compatibility.
+ * Use free functions for getRequiredDepth() calculation if needed.
+ */
+struct Volume {
+    float voxelSize = 1.0f;  // Size of a single voxel in world units
+
+    const int MAX_DEPTH = 23; // Max depth to fit in 64-bit Morton code
+    const int MIN_DEPTH = 1;  // Minimum depth
+    static constexpr const char* Name = "volume";
+
+
+    int getRequiredDepth(const AABB aabb) const {
+        if(!aabb.isInitialized()) {
+            return MIN_DEPTH;
+        }
+        glm::vec3 size = aabb.getSize();
+        float maxExtent = glm::max(size.x, glm::max(size.y, size.z));
+        int depth = static_cast<int>(std::ceil(std::log2(maxExtent / voxelSize)));
+        return glm::clamp(depth, MIN_DEPTH, MAX_DEPTH);  // Clamp depth to reasonable range
+    }
+};
+
+
+// ============================================================================
 // Core Voxel Attributes
 // ============================================================================
 
@@ -134,7 +338,11 @@ VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
     APPLY_MACRO(macro, Color) \
     APPLY_MACRO(macro, Normal) \
     APPLY_MACRO(macro, Emission) \
-    APPLY_MACRO(macro, MortonKey)
+    APPLY_MACRO(macro, MortonKey) \
+    APPLY_MACRO(macro, Transform) \
+    APPLY_MACRO(macro, VolumeTransform) \
+    APPLY_MACRO(macro, AABB) \
+    APPLY_MACRO(macro, Volume) 
 
 namespace ComponentRegistry {
     // Visit all components with a lambda

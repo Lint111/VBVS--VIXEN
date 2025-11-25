@@ -1,8 +1,11 @@
 #include "GaiaVoxelWorld.h"
 #include <algorithm>
 #include <iostream>
+#include <unordered_map>
 
 using namespace GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
+
+using namespace gaia::ecs;
 
 namespace GaiaVoxel {
 
@@ -10,14 +13,14 @@ namespace GaiaVoxel {
 // GaiaVoxelWorld::Impl - Pimpl for ECS world encapsulation
 // ============================================================================
 
-struct GaiaVoxelWorld::Impl {
-    gaia::ecs::World world;
 
-    // Component registration (done once at startup)
-    void registerComponents() {
-        // Components are auto-registered by Gaia on first use
-        // No explicit registration needed
+struct GaiaVoxelWorld::Impl {
+    World world;   
+
+    void Init() {
     }
+
+    
 };
 
 // ============================================================================
@@ -26,8 +29,10 @@ struct GaiaVoxelWorld::Impl {
 
 GaiaVoxelWorld::GaiaVoxelWorld()
     : m_impl(std::make_unique<Impl>()) {
-    m_impl->registerComponents();
+    m_impl->Init();
     std::cout << "[GaiaVoxelWorld] ECS world initialized\n";
+    
+
 }
 
 GaiaVoxelWorld::~GaiaVoxelWorld() {

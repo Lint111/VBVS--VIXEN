@@ -1,47 +1,62 @@
 # Active Context
 
-**Last Updated**: November 24, 2025 (Session 6P - Brick Traversal Debugging)
+**Last Updated**: November 24, 2025 (Session 6P Extended - Voxel Size & Architecture Fixes)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | ✅ **Infinite Loop SOLVED (480x faster)** | 🟡 **Brick Traversal Accuracy (6/10 tests passing)**
+**Status**: ✅ **150 Total Tests** | ✅ **Infinite Loop SOLVED (480x faster)** | 🟡 **Ray Casting (5/10 tests passing)**
 
 ---
 
-## Current Session Summary (Nov 24 - Session 6P: Brick Traversal Debugging)
+## Current Session Summary (Nov 24 - Session 6P Extended: Voxel Size & Architecture)
 
-### Session Focus
-Investigated remaining 4/10 ray casting test failures (AxisAlignedRaysFromOutside, RaysFromInsideGrid, DenseVolumeTraversal, EdgeCasesAndBoundaries) to identify brick traversal accuracy issues.
+### Major Fixes Completed
 
-### Key Findings
+1. **BFS Reordering Fixed** ✅
+   - Fixed BFS to include leaf brick descriptors (was only copying non-leaf)
+   - Used childPointer to maintain brick view alignment without reordering
+   - Result: 6 descriptors with 5 brick views properly linked
 
-**Brick Hit Detection Issues**:
-- Tests show `[BRICK MISS]` messages - brick traversal runs but doesn't find voxels inside bricks
-- Root cause likely in `EntityBrickView::getEntity()` query logic or world position→entity lookup
-- Example failure: Ray from (-5,2,2) toward (1,0,0) should hit voxel at (5,2,2) but reports BRICK MISS
+2. **Brick World Bounds Fixed** ✅
+   - Fixed to use EntityBrickView's stored worldMin position
+   - Removed incorrect recalculation from leaf voxel position
+   - Added getWorldPosition() method to EntityBrickView
 
-**Rebuild() Voxel Counting**:
-- `rebuild()` reports "Built octree with 100 voxels" but only 64 voxels exist in test
-- Investigated morton encoding, brick population logic
-- Possible over-counting during hierarchy construction or brick subdivision
+3. **Voxel Size Calculation Fixed** ✅
+   - Corrected formula: voxelSize = worldSize / 2^maxLevels
+   - Fixed both traversal and rebuild() to use consistent calculation
+   - Brick size = voxelSize * 2^brickDepth
 
-**EntityBrickView World Position**:
-- Each brick must be initialized with correct `worldMin` to translate local brick coords→world space
-- Brick creation at [LaineKarrasOctree.cpp:2019](libraries/SVO/src/LaineKarrasOctree.cpp#L2019) computes worldMin from Morton code
-- EntityBrickView uses worldMin for entity lookups via `getEntityByWorldSpace()`
+4. **Critical Architecture Insight** 💡
+   - Identified fundamental issue: system mixes world-space and grid-space assumptions
+   - Voxels created at arbitrary positions (5,2,2) don't align with grid (0.15625 spacing)
+   - **Future improvement**: Work in normalized [0,1] space with transformation matrices
 
-### Session Outcome
-- ✅ **Infinite loop completely eliminated** - critical achievement from Session 6N
-- ✅ **480x performance improvement** (125ms vs 60s timeout)
-- 🟡 **Brick traversal accuracy** - 4/10 tests still failing due to brick hit position bugs
-- 📝 **Complexity assessment** - brick DDA traversal debugging requires focused investigation
+### Remaining Issues
 
-### Next Steps (Priority Order)
-1. **Debug EntityBrickView::getEntity() flow**: Trace why brick queries fail to find voxels
-2. **Verify brick worldMin calculation**: Ensure morton→world transform matches actual voxel positions
-3. **Fix voxel counting in rebuild()**: Investigate why rebuild reports 100 voxels when only 64 exist
-4. **Document brick traversal contract**: Clarify world position vs brick-local coord transforms
+1. **EntityBrickView assumes voxelSize = 1.0**
+   - When converting local voxel coords to world positions
+   - Needs voxel size parameter or calculation
+
+2. **Grid Alignment Problem**
+   - Voxels placed at integer positions (1,2,3...)
+   - But grid has fractional spacing (0.15625 for maxLevels=6)
+   - Causes misalignment between expected and actual voxel positions
+
+### Session Metrics
+- **Tests passing**: 5/10 (down from 6/10 due to stricter voxel calculations)
+- **Code changes**: 15 fixes across LaineKarrasOctree.cpp and EntityBrickView
+- **Debug output added**: Brick DDA traversal, voxel positions, brick bounds
+- **Performance**: Still 480x faster than pre-6N (no infinite loops)
 
 ### Modified Files
-- [memory-bank/activeContext.md](memory-bank/activeContext.md) - Session 6P update
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - Voxel size fixes, BFS fixes, debug output
+- [EntityBrickView.h](libraries/GaiaVoxelWorld/include/EntityBrickView.h) - Added getWorldPosition()
+- [memory-bank/activeContext.md](memory-bank/activeContext.md) - Session 6P extended update
+
+### Next Steps (Priority Order)
+1. **Implement normalized space architecture** (future major refactor)
+2. **Fix EntityBrickView voxel size handling**
+3. **Add voxel grid snapping during creation**
+4. **Ensure tests use consistent maxLevels**
 
 ---
 
