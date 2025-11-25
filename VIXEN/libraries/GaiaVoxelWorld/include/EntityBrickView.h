@@ -71,17 +71,20 @@ public:
      * Queries entities on-demand via MortonKey component.
      *
      * @param world GaiaVoxelWorld for ECS queries
-     * @param baseMortonKey Morton key of brick origin (min corner)
+     * @param rootPositionInWorldSpace World position of brick origin (min corner)
      * @param depth Brick depth (depth → 2^depth = brickSize)
+     * @param voxelSize World-space size of each voxel (default 1.0 for unit voxels)
      *
-     * Example: baseMortonKey=0x123, depth=3 → queries entities with MortonKeys in range [0x123, 0x123+512)
+     * Example: rootPosition=(5,0,0), depth=3, voxelSize=0.625 → queries voxels in 8x8x8 grid
      */
-    EntityBrickView(GaiaVoxelWorld& world, glm::vec3 rootPositionInWorldSpace, uint8_t depth);
+    EntityBrickView(GaiaVoxelWorld& world, glm::vec3 rootPositionInWorldSpace, uint8_t depth, float voxelSize = 1.0f);
 
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
     [[nodiscard]] size_t getVoxelsPerBrick() const { return m_voxelsPerBrick; }
     [[nodiscard]] uint8_t getDepth() const { return m_depth; }
+    [[nodiscard]] glm::vec3 getWorldMin() const { return m_rootPositionInWorldSpace; }
+    [[nodiscard]] float getVoxelSize() const { return m_voxelSize; }
 
     // ========================================================================
     // Entity Access (Direct)
@@ -206,6 +209,7 @@ private:
     uint8_t m_depth;                // Brick depth (3-8 typical for SVO)
     size_t m_brickSize;             // 2^depth (8, 16, 32, ... 256)
     size_t m_voxelsPerBrick;        // brickSize³ (512, 4096, 32768, ...)
+    float m_voxelSize{ 1.0f };      // World-space size of each voxel
 
     // Query mode: true = use m_entities span, false = query ECS via MortonKey
     bool m_usesEntitySpan{ true };

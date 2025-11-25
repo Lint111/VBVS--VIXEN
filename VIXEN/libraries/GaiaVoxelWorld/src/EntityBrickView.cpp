@@ -20,13 +20,15 @@ EntityBrickView::EntityBrickView(
 EntityBrickView::EntityBrickView(
     GaiaVoxelWorld& world,
     glm::vec3 rootPositionInWorldSpace,
-    uint8_t depth)
+    uint8_t depth,
+    float voxelSize)
     : m_world(world)
     , m_entities()  // Empty span
     , m_rootPositionInWorldSpace(rootPositionInWorldSpace)
     , m_depth(depth)
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(voxelSize)
     , m_usesEntitySpan(false) {
 }
 
@@ -47,8 +49,13 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
         int x, y, z;
         linearIndexToCoord(voxelIdx, x, y, z);
 
-        // Compute world space position: root + local offset
-        glm::vec3 localOffset(x, y, z);
+        // Compute world space position: root + local offset * voxelSize
+        // Voxel coords (x,y,z) are in [0, brickSize), multiply by voxelSize to get world offset
+        glm::vec3 localOffset(
+            static_cast<float>(x) * m_voxelSize,
+            static_cast<float>(y) * m_voxelSize,
+            static_cast<float>(z) * m_voxelSize
+        );
         glm::vec3 worldPos = m_rootPositionInWorldSpace + localOffset;
 
         // Query world for entity at this world position

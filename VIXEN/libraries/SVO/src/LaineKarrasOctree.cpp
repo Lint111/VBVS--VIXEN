@@ -928,55 +928,69 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     // BRICK TRAVERSAL: EntityBrickView-based DDA (Phase 3)
                     // ============================================================
 
-                    const auto& brickViews = m_octree->root->brickViews;
-                    size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
-                    const bool hasBricks = !brickViews.empty() && descriptorIndex < brickViews.size();
+                    // Find brick view by computing the actual world-space hit position
+                    // and determining which brick contains that position
 
-                    if (hasBricks) {
-                        // EntityBrickView-based brick traversal
-                        const auto& brickView = brickViews[descriptorIndex];
+                    size_t parentDescriptorIndex = parent - &m_octree->root->childDescriptors[0];
 
+                    // Convert ESVO t_min to world ray parameter and compute world hit position
+                    // ESVO t_min=0 corresponds to ray entry point, t_min=h corresponds to ray exit
+                    // Use tRayStart (computed at beginning of castRay) and tExit for the mapping
+                    glm::vec3 worldSize = m_worldMax - m_worldMin;
+
+                    // The ESVO t_min is in [0, h] where h = tMax at initialization
+                    // Map to world ray parameter: worldT = tRayStart + (t_min / h) * (tExit - tRayStart)
+                    // For simplicity, use the ray entry point (worldT = tRayStart) when t_min is near 0
+                    float worldT = tRayStart + t_min * (tExit - tRayStart);
+                    glm::vec3 worldHitPos = origin + rayDir * worldT;
+
+                    // Clamp to world bounds (with small epsilon to avoid boundary issues)
+                    float eps = 0.001f;
+                    worldHitPos = glm::clamp(worldHitPos, m_worldMin + eps, m_worldMax - eps);
+
+                    glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;  // For debug output
+
+                    // Calculate brick grid coordinate from world position
+                    int bricksPerAxisInt = m_octree->bricksPerAxis;
+                    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxisInt);
+                    glm::ivec3 brickCoord = glm::clamp(
+                        glm::ivec3((worldHitPos - m_worldMin) / brickWorldSize),
+                        glm::ivec3(0),
+                        glm::ivec3(bricksPerAxisInt - 1)
+                    );
+
+                    // Compute octant from brick grid coordinate (matches rebuild logic)
+                    int originalOctant = brickCoord.x + (brickCoord.y << 1) + (brickCoord.z << 2);
+
+                    std::cout << "[BRICK LOOKUP] pos=(" << pos.x << "," << pos.y << "," << pos.z << ")"
+                              << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
+                              << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
+                              << " brickCoord=(" << brickCoord.x << "," << brickCoord.y << "," << brickCoord.z << ")"
+                              << " octant=" << originalOctant << "\n";
+
+                    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, originalOctant);
+
+                    if (brickView != nullptr) {
                         // Get brick metadata
-                        uint8_t brickDepth = brickView.getDepth();
+                        uint8_t brickDepth = brickView->getDepth();
                         size_t brickSideLength = 1u << brickDepth;  // 2^depth voxels per side
 
-                        std::cout << "[BRICK CHECK] descriptorIndex=" << descriptorIndex
+                        // Use the brick's stored world position (set during rebuild)
+                        // This is more reliable than computing from normalized traversal position
+                        glm::vec3 brickWorldMin = brickView->getWorldMin();
+
+                        // Compute brick world size from stored bricksPerAxis value
+                        const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
+                        const float brickWorldSizeVal = worldExtent / static_cast<float>(m_octree->bricksPerAxis);
+                        glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickWorldSizeVal);
+
+                        // Voxel size within brick
+                        const float brickVoxelSize = brickWorldSizeVal / static_cast<float>(brickSideLength);
+
+                        std::cout << "[BRICK CHECK] parentIndex=" << parentDescriptorIndex
+                                  << " octant=" << originalOctant << " brickCoord=(" << brickCoord.x << "," << brickCoord.y << "," << brickCoord.z << ")"
                                   << " brickDepth=" << (int)brickDepth
                                   << " brickSize=" << brickSideLength << "^3\n";
-
-                        // Compute brick world bounds from leaf voxel position
-                        // The leaf voxel spans [pos.x, pos.x+scale_exp2]³ in normalized [1,2] space
-                        glm::vec3 normMin(pos.x, pos.y, pos.z);
-                        glm::vec3 normMax = normMin + glm::vec3(scale_exp2);
-
-                        // Transform to world space
-                        glm::vec3 worldMin = (normMin - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
-                        glm::vec3 worldMax = (normMax - glm::vec3(1.0f)) * (m_worldMax - m_worldMin) + m_worldMin;
-
-                        // Apply octant mirroring transformation (reverse)
-                        if (octant_mask & 1) {
-                            std::swap(worldMin.x, worldMax.x);
-                            worldMin.x = m_worldMin.x + (m_worldMax.x - worldMin.x);
-                            worldMax.x = m_worldMin.x + (m_worldMax.x - worldMax.x);
-                        }
-                        if (octant_mask & 2) {
-                            std::swap(worldMin.y, worldMax.y);
-                            worldMin.y = m_worldMin.y + (m_worldMax.y - worldMin.y);
-                            worldMax.y = m_worldMin.y + (m_worldMax.y - worldMax.y);
-                        }
-                        if (octant_mask & 4) {
-                            std::swap(worldMin.z, worldMax.z);
-                            worldMin.z = m_worldMin.z + (m_worldMax.z - worldMin.z);
-                            worldMax.z = m_worldMin.z + (m_worldMax.z - worldMax.z);
-                        }
-
-                        // Brick voxel size calculation:
-                        // - Leaf voxel spans scale_exp2 in normalized [1,2] space
-                        // - Normalized [1,2] space maps to world extent (assumes uniform cube)
-                        // - Brick subdivides leaf into brickSideLength³ voxels
-                        const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
-                        const float leafVoxelSize = scale_exp2 * worldExtent;
-                        const float brickVoxelSize = leafVoxelSize / static_cast<float>(brickSideLength);
 
                         // Compute ray-brick AABB intersection
                         glm::vec3 invDir;
@@ -987,8 +1001,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                                 invDir[i] = 1.0f / rayDir[i];
                             }
                         }
-                        glm::vec3 t0 = (worldMin - origin) * invDir;
-                        glm::vec3 t1 = (worldMax - origin) * invDir;
+                        glm::vec3 t0 = (brickWorldMin - origin) * invDir;
+                        glm::vec3 t1 = (brickWorldMax - origin) * invDir;
 
                         glm::vec3 tNear = glm::min(t0, t1);
                         glm::vec3 tFar = glm::max(t0, t1);
@@ -997,12 +1011,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                         float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
                         brickTMin = glm::max(brickTMin, tEntry);
 
-                        std::cout << "[BRICK BOUNDS] worldMin=(" << worldMin.x << "," << worldMin.y << "," << worldMin.z
-                                  << ") worldMax=(" << worldMax.x << "," << worldMax.y << "," << worldMax.z
+                        std::cout << "[BRICK BOUNDS] worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z
+                                  << ") worldMax=(" << brickWorldMax.x << "," << brickWorldMax.y << "," << brickWorldMax.z
                                   << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
 
                         // Traverse brick using EntityBrickView
-                        auto brickHit = traverseBrickView(brickView, worldMin, brickVoxelSize,
+                        auto brickHit = traverseBrickView(*brickView, brickWorldMin, brickVoxelSize,
                                                           origin, rayDir, brickTMin, brickTMax);
 
                         if (brickHit.has_value()) {
@@ -1021,7 +1035,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     // Convert normalized [1,2] t-values back to world t-values
                     // CRITICAL: For axis-aligned rays, use the DOMINANT axis for conversion!
                     // The normalized t-values are along the ray direction, not isotropic.
-                    glm::vec3 worldSize = m_worldMax - m_worldMin;
+                    // (worldSize already computed above)
 
                     // Determine dominant axis based on ray direction
                     float worldSizeLength;
@@ -1908,9 +1922,16 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;  // Round up
     float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
 
+    // Store bricksPerAxis for use during ray casting
+    m_octree->bricksPerAxis = bricksPerAxis;
+
+    // Voxel size = brick world size / brick side length
+    float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
+
     std::cout << "[rebuild] Brick configuration: depth=" << brickDepth
               << " sideLength=" << brickSideLength
-              << " worldSize=" << brickWorldSize
+              << " brickWorldSize=" << brickWorldSize
+              << " voxelSize=" << voxelSize
               << " bricksPerAxis=" << bricksPerAxis << "\n";
 
     // 4. PHASE 1: Collect populated bricks
@@ -2016,7 +2037,8 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
         // Create EntityBrickView for this brick
         // Use the actual world position stored in BrickInfo (don't recalculate from Morton!)
-        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth));
+        // Pass voxelSize to enable correct world position calculation in getEntity()
+        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth), voxelSize);
         tempBrickViews.push_back(brickView);
     }
 
@@ -2106,6 +2128,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
     std::vector<ChildDescriptor> finalDescriptors;
     std::vector<EntityBrickView> finalBrickViews;
+    std::unordered_map<uint64_t, uint32_t> leafToBrickView;  // (newParentIndex << 3 | octant) → brickViewIndex
     std::unordered_map<uint32_t, uint32_t> oldToNewIndex;
 
     // Find root descriptor (highest depth in nodeToDescriptorIndex)
@@ -2141,16 +2164,25 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
         const ChildDescriptor& desc = tempDescriptors[current.oldIndex];
 
-        // Find non-leaf children using child mapping and leafMask
+        // Find children using child mapping
         auto it = childMapping.find(current.oldIndex);
         if (it != childMapping.end()) {
             std::vector<uint32_t> nonLeafChildren;
             for (int octant = 0; octant < 8; ++octant) {
-                // Check: valid child AND not a leaf AND has descriptor index
-                if ((desc.validMask & (1 << octant)) &&
-                    !(desc.leafMask & (1 << octant)) &&
-                    it->second[octant] != UINT32_MAX) {
-                    nonLeafChildren.push_back(it->second[octant]);
+                if (!(desc.validMask & (1 << octant))) continue;  // No child in this octant
+
+                uint32_t childOldIndex = it->second[octant];
+                if (childOldIndex == UINT32_MAX) continue;
+
+                // Check if this child is a leaf (brick)
+                if (desc.leafMask & (1 << octant)) {
+                    // Leaf child: map (newParentIndex, octant) → brickViewIndex
+                    // Brick descriptor index == brick view index (1:1 from Phase 2)
+                    uint64_t key = (static_cast<uint64_t>(current.newIndex) << 3) | static_cast<uint64_t>(octant);
+                    leafToBrickView[key] = childOldIndex;  // childOldIndex is the brick view index
+                } else {
+                    // Non-leaf child: will be added to finalDescriptors
+                    nonLeafChildren.push_back(childOldIndex);
                 }
             }
 
@@ -2177,10 +2209,12 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // 7. Store final hierarchy in octree
     m_octree->root->childDescriptors = std::move(finalDescriptors);
     m_octree->root->brickViews = std::move(finalBrickViews);
+    m_octree->root->leafToBrickView = std::move(leafToBrickView);
     m_octree->totalVoxels = totalVoxels;
 
     std::cout << "[rebuild] Final octree: " << m_octree->root->childDescriptors.size() << " descriptors, "
-              << m_octree->root->brickViews.size() << " brick views\n";
+              << m_octree->root->brickViews.size() << " brick views, "
+              << m_octree->root->leafToBrickView.size() << " leaf mappings\n";
 
     // Lock automatically released when lock goes out of scope
 }
