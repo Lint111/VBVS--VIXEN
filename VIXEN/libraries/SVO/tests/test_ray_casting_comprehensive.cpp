@@ -20,11 +20,10 @@ protected:
         registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
         registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
 
-        // Create GaiaVoxelWorld (modern ECS-based system)
+        // Create fresh GaiaVoxelWorld for each test (ensures test isolation)
         voxelWorld = std::make_shared<GaiaVoxelWorld>();
 
-
-        // Create a 10x10x10 world
+        // Default world bounds (overridden by createOctreeWithVoxels based on actual voxel positions)
         worldMin = glm::vec3(0, 0, 0);
         worldMax = glm::vec3(10, 10, 10);
         worldCenter = (worldMin + worldMax) * 0.5f;
@@ -35,8 +34,7 @@ protected:
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        // Clear previous test state to ensure test isolation
-        voxelWorld->clear();
+        // Note: SetUp() creates fresh voxelWorld for each test, so no clear needed here
 
         // Compute bounds from actual voxel positions for this test
         constexpr float floatMax = 1e30f;

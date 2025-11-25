@@ -1053,9 +1053,16 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
               << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
               << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
               << " idx=" << state.idx << " octant_mask=" << coef.octant_mask
-              << " leafOctant=" << leafOctant << " (idx ^ ~octant_mask)\n";
+              << " leafOctant=" << leafOctant << "\n";
 
     const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
+
+    // Fallback: when there's only 1 brick (bricksPerAxis=1), it's registered at octant 0
+    // but ray may hit any octant. Try octant 0 as fallback.
+    if (brickView == nullptr && m_octree->bricksPerAxis == 1) {
+        std::cout << "[BRICK FALLBACK] Single-brick octree, trying octant 0\n";
+        brickView = m_octree->root->getBrickView(parentDescriptorIndex, 0);
+    }
 
     if (brickView != nullptr) {
         return traverseBrickAndReturnHit(*brickView, origin, coef.rayDir, tEntry);
@@ -2144,6 +2151,17 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
             // Store child mapping for BFS reordering phase
             childMapping[parentDescriptorIndex] = childIndices;
+
+            // Special case: when there's only 1 brick covering the whole world,
+            // mark ALL octants as valid/leaf so rays from any direction can hit it
+            if (bricksPerAxis == 1 && children.size() == 1) {
+                validMask = 0xFF;  // All octants valid
+                leafMask = 0xFF;   // All are leaves (same single brick)
+                // Fill childIndices with the single brick index for all octants
+                uint32_t singleBrickIndex = children[0].second;
+                childIndices.fill(singleBrickIndex);
+                childMapping[parentDescriptorIndex] = childIndices;
+            }
 
             ChildDescriptor parentDesc{};
             parentDesc.validMask = validMask;
