@@ -1,35 +1,59 @@
 # Active Context
 
-**Last Updated**: November 25, 2025 (Session 6R - ESVO Bug Investigation)
+**Last Updated**: November 25, 2025 (Session 6S - VolumeGrid Architecture)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | ✅ **Ray Casting (7/10 tests passing)** | ✅ **Critical Bugs Fixed**
+**Status**: ✅ **150 Total Tests** | 🔄 **Ray Casting (testing after VolumeGrid integration)** | 🔄 **Architecture Refactoring**
 
 ---
 
-## Current Session Summary (Nov 25 - Session 6R)
+## Current Session Summary (Nov 25 - Session 6S)
 
 ### Major Accomplishments
 
+1. **Designed VolumeGrid Coordinate Space Architecture** ✅
+   - Clean separation: continuous geometry → quantized voxels
+   - **Coordinate Space Hierarchy**:
+     - Global Space (world) - continuous floats
+     - Local Space (entity-relative) - continuous floats (mesh vertices)
+     - **Volume Local Space** - INTEGER GRID (quantized voxels) ← NEW
+     - Normalized Volume Space - [0,1]³
+     - ESVO Space - [1,2]³
+     - Brick Local Space - 0..7 integer grid per brick
+   - **File**: `VoxelComponents.h:298-443`
+
+2. **Added VolumeGrid Component** ✅
+   - Integer grid bounds (`gridMin`, `gridMax`)
+   - Power-of-2 padding for octree alignment
+   - Quantization: world → integer grid
+   - Normalization: integer grid → [0,1]³ → ESVO [1,2]³
+   - **File**: `VoxelComponents.h:326-443`
+
+3. **Integrated VolumeGrid in rebuild()** ✅
+   - Initialize `m_volumeGrid` from world AABB
+   - Keep world bounds for ray-AABB intersection
+   - Use VolumeGrid for brick lookup after intersection
+   - **File**: `LaineKarrasOctree.cpp:rebuild()`
+
+4. **Fixed Brick Index Calculation in handleLeafHit()** 🔄
+   - Compute brick index directly from world position using `brickWorldSize`
+   - Avoids normalization mismatch (paddedExtent vs actual brick grid)
+   - **File**: `LaineKarrasOctree.cpp:handleLeafHit()`
+
+### Session 6R Accomplishments (Previous Session)
+
 1. **Fixed Morton Range Query Bug** ✅
-   - **Root cause**: `getEntityBlockRef()` used Morton code range check `[min, min+span)`, but Morton codes are Z-ordered (interleaved), not spatially contiguous
-   - **Fix**: Changed to AABB-based grid queries - decode Morton keys and compare integer grid positions
+   - Changed to AABB-based grid queries - decode Morton keys and compare integer positions
    - **File**: `GaiaVoxelWorld.cpp:277-335`
 
 2. **Fixed Floating-Point Precision in Morton Encoding** ✅
-   - **Root cause**: `floor(5.0)` returned 4 due to FP representation (5.0 as 4.9999...)
-   - **Fix**: Added epsilon: `floor(pos.x + 1e-5)`
+   - Added epsilon: `floor(pos.x + 1e-5)`
    - **File**: `VoxelComponents.cpp:99-108`
 
 3. **Fixed leafOctant Calculation** (partial) ✅
-   - **Root cause**: Mirrored idx unmirroring formula was incorrect for many ray directions
-   - **Fix**: Changed to position-based octant calculation from normalized hit position
+   - Changed to position-based octant calculation from normalized hit position
    - **File**: `LaineKarrasOctree.cpp:1040-1050`
 
-4. **Updated getEntityBlockRef API** ✅
-   - Added `brickWorldSize` parameter for accurate world-space brick bounds
-   - **File**: `GaiaVoxelWorld.h:251-257`
-
-### Test Results: 7/10 Passing (+1 from Session 6Q)
+### Test Results: 7/10 Passing (Session 6R baseline, retesting after Session 6S changes)
 
 **PASSING (70%)**:
 - ✅ AxisAlignedRaysFromOutside
@@ -38,26 +62,27 @@
 - ✅ MultipleVoxelTraversal
 - ✅ DenseVolumeTraversal
 - ✅ PerformanceCharacteristics
-- ✅ **EdgeCasesAndBoundaries** (NEW - fixed this session)
+- ✅ EdgeCasesAndBoundaries
 
 **FAILING (30%)**:
 - ❌ RaysFromInsideGrid - ray starting position octant selection issue
 - ❌ RandomStressTesting - statistical outliers (related to above)
 - ❌ CornellBoxScene - multi-brick traversal octant mapping
 
-### Root Cause of Remaining Failures
+### Architecture Insight: Why Coordinate Spaces Matter
 
-The **leafOctant calculation** based on normalized position works for rays entering from outside, but fails for rays starting inside the volume. The normalized position at ray start may not correspond to the correct brick octant when the ray needs to traverse multiple bricks. A proper fix requires:
-1. Tracking ray t-parameter during brick lookup
-2. Using world-space hit position at brick entry point, not ray origin
-3. Potentially implementing ESVO paper's exact mirrored coordinate unmirroring
+User guidance: "instead you can make rays use the inverse transform of the volume to transform into grid local space, then work in local space of the grid. this transformation should happen after ray to aabb intersection."
 
-### Modified Files (Session 6R)
+This means:
+1. Ray-AABB intersection uses **world bounds** (unchanged)
+2. After intersection, transform ray into **grid local space** for traversal
+3. Brick lookup uses integer grid coordinates (no FP precision issues)
 
-- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp:1040-1050,2003) - leafOctant fix, getEntityBlockRef call
-- [VoxelComponents.cpp](libraries/VoxelComponents/src/VoxelComponents.cpp:99-108) - epsilon in Morton encoding
-- [GaiaVoxelWorld.cpp](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp:277-335) - AABB-based brick queries
-- [GaiaVoxelWorld.h](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h:251-257) - getEntityBlockRef signature change
+### Modified Files (Session 6S)
+
+- [VoxelComponents.h](libraries/VoxelComponents/include/VoxelComponents.h:298-443) - Added VolumeGrid struct + FOR_EACH_COMPONENT update
+- [LaineKarrasOctree.h](libraries/SVO/include/LaineKarrasOctree.h) - Added m_volumeGrid member
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - VolumeGrid init in rebuild(), brick index calc in handleLeafHit()
 
 ---
 

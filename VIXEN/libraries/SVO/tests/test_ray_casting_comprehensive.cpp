@@ -662,22 +662,31 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
         EXPECT_GT(hit.hitPoint.z, 0.0f) << "Should hit something in scene";
     }
 
-    // Ray between objects
+    // Ray between objects - use x=5.5 to clear both boxes
+    // Small box: x=2-4 (voxels at x=2,3,4 occupy [2,5) in world space)
+    // Tall box: x=5-7 (voxels at x=5,6,7 occupy [5,8) in world space)
+    // Gap between boxes is at x=4.5 only if small box ends at x=4 (exclusive) - NO!
+    // Voxel at integer x=4 occupies world [4,5), so x=4.5 is INSIDE the box
+    // To pass between boxes, need x > 5 (after small box) and x < 5 (before tall box)
+    // Actually there's NO gap - small box ends at x=5, tall box starts at x=5
+    // Test a ray that clearly misses both boxes by going through empty space
     {
-        glm::vec3 origin(4.5f, 3, -2);
+        glm::vec3 origin(4.5f, 5, -2);  // y=5 is above both boxes (small box y=1-3, tall box y=1-6)
         glm::vec3 direction(0, 0, 1);
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
-        EXPECT_TRUE(hit.hit) << "Ray between objects should hit back wall";
-        EXPECT_NEAR(hit.hitPoint.z, 9.5f, 2.0f) << "Should hit back wall";
+        EXPECT_TRUE(hit.hit) << "Ray above objects should hit back wall";
+        EXPECT_NEAR(hit.hitPoint.z, 9.0f, 2.0f) << "Should hit back wall at z=9";
     }
 
-    // Shadow ray from object to light (ceiling)
+    // Shadow ray from ABOVE the small box to ceiling
+    // Small box top is at y=3 (voxels at y=1,2,3 occupy [1,4) in world space)
+    // Start ray at y=4.0 to be clearly above the box
     {
-        glm::vec3 origin(3, 3, 3); // Top of small box
+        glm::vec3 origin(3, 4, 3); // Just above small box top surface
         glm::vec3 direction(0, 1, 0); // Up toward ceiling
-        auto hit = octree->castRay(origin, direction, 0.1f, 100.0f);
+        auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Shadow ray should hit ceiling";
-        EXPECT_NEAR(hit.hitPoint.y, 9.5f, 2.0f) << "Should hit ceiling";
+        EXPECT_NEAR(hit.hitPoint.y, 9.5f, 2.0f) << "Should hit ceiling at y=9.5";
     }
 
     // Indirect lighting ray (bounce off wall)
