@@ -771,9 +771,48 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // ESVO Reference lines 136-138: Use parametric formula to select initial child
     // The bias terms are already mirrored, so this test works in mirrored space
-    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
-    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
-    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    //
+    // FIX: When t_min is small (ray starts at/near boundary), use position-based selection
+    // because parametric tests give marginal results that incorrectly flip the octant.
+    // For zero-direction axes, always use position (parametric gives 0, wrong for > t_min test).
+    //
+    // CRITICAL: Compute PHYSICAL octant from normOrigin directly, then XOR with mask to get idx.
+    // This ensures boundary points (coord == 1.5) are handled correctly with mirrored axes.
+    constexpr float axis_epsilon = 1e-5f;
+    constexpr float boundary_epsilon = 0.01f;  // t_min threshold for boundary-start rays
+    bool usePositionBasedSelection = (t_min < boundary_epsilon);
+
+    // X axis selection
+    // NOTE: pos tracks the PHYSICAL octant corner in [1,2] space
+    //       idx tracks the MIRRORED octant index for ESVO algorithm
+    if (std::abs(rayDir.x) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.x >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 1) ? 1 : 0);
+        if (mirroredBit) { idx |= 1; }
+        if (physicalBit) { pos.x = 1.5f; }  // pos follows physical position
+    } else {
+        if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+    }
+
+    // Y axis selection
+    if (std::abs(rayDir.y) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.y >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 2) ? 1 : 0);
+        if (mirroredBit) { idx |= 2; }
+        if (physicalBit) { pos.y = 1.5f; }
+    } else {
+        if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+    }
+
+    // Z axis selection
+    if (std::abs(rayDir.z) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.z >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 4) ? 1 : 0);
+        if (mirroredBit) { idx |= 4; }
+        if (physicalBit) { pos.z = 1.5f; }
+    } else {
+        if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    }
 
     std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
     std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") AFTER MIRROR\n";
@@ -844,6 +883,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         bool child_valid = (parent->validMask & (1u << idx)) != 0;
         bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
 
+        std::cout << "[CHILD CHECK] idx=" << idx << " validMask=0x" << std::hex << (int)parent->validMask
+                  << std::dec << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf
+                  << " t_min=" << t_min << " t_max=" << t_max << "\n";
+
         // Debug specific problem parent
         if ((parent - &m_octree->root->childDescriptors[0]) == 80) {
             // DEBUG: std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
@@ -881,12 +924,21 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // Reference lines 188-194
             // ================================================================
 
-            // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative values.
-            // Use only valid corner values (those within threshold) for tv_max calculation.
+            // BUGFIX: For axis-parallel rays, perpendicular axes give misleading corner values.
+            // - Extreme values (large |t|) from near-zero direction components
+            // - Near-zero values when ray is ON the boundary (e.g., at y=1.5 for Y-perpendicular)
+            // Use t_max for perpendicular axes to let the moving axis determine exit time.
             constexpr float corner_threshold = 1000.0f;
-            float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
-            float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
-            float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
+            constexpr float dir_epsilon = 1e-5f;
+
+            // For each axis: if ray direction is near-zero, don't use that axis's corner for exit
+            bool useXCorner = (std::abs(rayDir.x) >= dir_epsilon);
+            bool useYCorner = (std::abs(rayDir.y) >= dir_epsilon);
+            bool useZCorner = (std::abs(rayDir.z) >= dir_epsilon);
+
+            float tx_valid = (useXCorner && std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
+            float ty_valid = (useYCorner && std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
+            float tz_valid = (useZCorner && std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
             float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
             float tv_max = std::min(t_max, tc_max_corrected);
             float half = scale_exp2 * 0.5f;
@@ -950,25 +1002,19 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
                     glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;  // For debug output
 
-                    // Calculate brick grid coordinate from world position
-                    int bricksPerAxisInt = m_octree->bricksPerAxis;
-                    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxisInt);
-                    glm::ivec3 brickCoord = glm::clamp(
-                        glm::ivec3((worldHitPos - m_worldMin) / brickWorldSize),
-                        glm::ivec3(0),
-                        glm::ivec3(bricksPerAxisInt - 1)
-                    );
-
-                    // Compute octant from brick grid coordinate (matches rebuild logic)
-                    int originalOctant = brickCoord.x + (brickCoord.y << 1) + (brickCoord.z << 2);
+                    // Unmirror ESVO idx to get physical octant for brick lookup
+                    // ESVO uses mirrored space (octant_mask) to make ray direction negative
+                    // Rebuild stores bricks in physical (non-mirrored) space
+                    // Formula: physicalOctant = mirroredOctant ^ octant_mask
+                    int leafOctant = idx ^ octant_mask;
 
                     std::cout << "[BRICK LOOKUP] pos=(" << pos.x << "," << pos.y << "," << pos.z << ")"
                               << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
                               << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
-                              << " brickCoord=(" << brickCoord.x << "," << brickCoord.y << "," << brickCoord.z << ")"
-                              << " octant=" << originalOctant << "\n";
+                              << " idx=" << idx << " octant_mask=" << octant_mask
+                              << " leafOctant=" << leafOctant << " (idx ^ octant_mask)\n";
 
-                    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, originalOctant);
+                    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
 
                     if (brickView != nullptr) {
                         // Get brick metadata
@@ -988,7 +1034,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                         const float brickVoxelSize = brickWorldSizeVal / static_cast<float>(brickSideLength);
 
                         std::cout << "[BRICK CHECK] parentIndex=" << parentDescriptorIndex
-                                  << " octant=" << originalOctant << " brickCoord=(" << brickCoord.x << "," << brickCoord.y << "," << brickCoord.z << ")"
+                                  << " leafOctant=" << leafOctant
                                   << " brickDepth=" << (int)brickDepth
                                   << " brickSize=" << brickSideLength << "^3\n";
 
@@ -1023,12 +1069,27 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                             std::cout << "[BRICK HIT] Returning brick hit at t=" << brickHit.value().tMin << "\n";
                             return brickHit.value();
                         } else {
-                            std::cout << "[BRICK MISS] No hit in brick, falling back to leaf hit\n";
+                            // Brick exists but no voxel hit - continue ESVO traversal to find next leaf
+                            std::cout << "[BRICK MISS] No hit in brick, continuing to next leaf\n";
+
+                            // Update t_min to exit this leaf and advance to next
+                            // This ensures we don't re-check the same empty leaf
+                            t_min = tv_max;
+
+                            // Skip the fallback leaf hit - go directly to ADVANCE phase
+                            goto advance_phase;
                         }
+                    } else {
+                        // No brick view found for this leaf - this shouldn't happen after rebuild
+                        // Skip to next leaf
+                        std::cout << "[NO BRICK] No brick view for leafOctant " << leafOctant << ", continuing\n";
+                        t_min = tv_max;
+                        goto advance_phase;
                     }
 
                     // ============================================================
-                    // FALLBACK: No brick or brick missed - return leaf hit
+                    // FALLBACK: Legacy leaf hit (no brick system)
+                    // Only reached if brick lookup code above is disabled
                     // ============================================================
 
                     // Leaf voxel hit! Return intersection
@@ -1188,26 +1249,38 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // ADVANCE: Move to next voxel
         // Reference lines 277-290
         // ================================================================
+    advance_phase:
 
         // Determine which dimensions we need to step in
-        int step_mask = 0;
-        if (tx_corner <= tc_max) step_mask ^= 1, pos.x -= scale_exp2;
-        if (ty_corner <= tc_max) step_mask ^= 2, pos.y -= scale_exp2;
-        if (tz_corner <= tc_max) step_mask ^= 4, pos.z -= scale_exp2;
-
-        // Update active t-span and flip child slot index bits
-        // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative ty/tz_corner values.
-        // Use only the valid corner values (those < threshold) to update t_min.
+        // BUGFIX: For axis-parallel rays, only step along axes with non-trivial direction.
+        // Perpendicular axes have misleading corner values (0 on boundary, or extreme)
+        constexpr float dir_epsilon = 1e-5f;
         constexpr float corner_threshold = 1000.0f;
-        float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
-        float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
-        float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
+
+        bool canStepX = (std::abs(rayDir.x) >= dir_epsilon);
+        bool canStepY = (std::abs(rayDir.y) >= dir_epsilon);
+        bool canStepZ = (std::abs(rayDir.z) >= dir_epsilon);
+
+        // Compute corrected tc_max using only moving axes
+        float tx_valid = (canStepX && std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
+        float ty_valid = (canStepY && std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
+        float tz_valid = (canStepZ && std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
         float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
 
-        // If all values are extreme (fully axis-parallel), use the least extreme one
+        // If all values are extreme (fully axis-parallel), use the least extreme moving axis
         if (tc_max_corrected == std::numeric_limits<float>::max()) {
-            tc_max_corrected = std::max({tx_corner, ty_corner, tz_corner}); // Pick least negative
+            tc_max_corrected = std::max({
+                canStepX ? tx_corner : -std::numeric_limits<float>::max(),
+                canStepY ? ty_corner : -std::numeric_limits<float>::max(),
+                canStepZ ? tz_corner : -std::numeric_limits<float>::max()
+            });
         }
+
+        // Step only along axes that are both moving AND at their exit boundary
+        int step_mask = 0;
+        if (canStepX && tx_corner <= tc_max_corrected) step_mask ^= 1, pos.x -= scale_exp2;
+        if (canStepY && ty_corner <= tc_max_corrected) step_mask ^= 2, pos.y -= scale_exp2;
+        if (canStepZ && tz_corner <= tc_max_corrected) step_mask ^= 4, pos.z -= scale_exp2;
 
         float old_t_min = t_min;
         t_min = std::max(tc_max_corrected, 0.0f);
