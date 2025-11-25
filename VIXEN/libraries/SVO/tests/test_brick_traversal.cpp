@@ -38,9 +38,7 @@ protected:
         int maxDepth = 8,
         int brickDepthLevels = 3)
     {
-        auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
-
-// Create voxel entities in the world
+        // Create voxel entities in the world
         for (const auto& pos : voxelPositions) {
             ComponentQueryRequest components[] = {
                 Density{1.0f},
@@ -56,7 +54,7 @@ protected:
             *voxelWorld,
             registry.get(),
             maxDepth,  // maxLevels
-            3          // brickDepth (3 levels = 8x8x8 brick)
+            brickDepthLevels  // brickDepth (3 levels = 8x8x8 brick)
         );
 
         // Build ESVO hierarchy from entities

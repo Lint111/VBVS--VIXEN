@@ -771,9 +771,48 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
 
     // ESVO Reference lines 136-138: Use parametric formula to select initial child
     // The bias terms are already mirrored, so this test works in mirrored space
-    if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
-    if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
-    if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    //
+    // FIX: When t_min is small (ray starts at/near boundary), use position-based selection
+    // because parametric tests give marginal results that incorrectly flip the octant.
+    // For zero-direction axes, always use position (parametric gives 0, wrong for > t_min test).
+    //
+    // CRITICAL: Compute PHYSICAL octant from normOrigin directly, then XOR with mask to get idx.
+    // This ensures boundary points (coord == 1.5) are handled correctly with mirrored axes.
+    constexpr float axis_epsilon = 1e-5f;
+    constexpr float boundary_epsilon = 0.01f;  // t_min threshold for boundary-start rays
+    bool usePositionBasedSelection = (t_min < boundary_epsilon);
+
+    // X axis selection
+    // NOTE: pos tracks the PHYSICAL octant corner in [1,2] space
+    //       idx tracks the MIRRORED octant index for ESVO algorithm
+    if (std::abs(rayDir.x) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.x >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 1) ? 1 : 0);
+        if (mirroredBit) { idx |= 1; }
+        if (physicalBit) { pos.x = 1.5f; }  // pos follows physical position
+    } else {
+        if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+    }
+
+    // Y axis selection
+    if (std::abs(rayDir.y) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.y >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 2) ? 1 : 0);
+        if (mirroredBit) { idx |= 2; }
+        if (physicalBit) { pos.y = 1.5f; }
+    } else {
+        if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+    }
+
+    // Z axis selection
+    if (std::abs(rayDir.z) < axis_epsilon || usePositionBasedSelection) {
+        int physicalBit = (normOrigin.z >= 1.5f) ? 1 : 0;
+        int mirroredBit = physicalBit ^ ((octant_mask & 4) ? 1 : 0);
+        if (mirroredBit) { idx |= 4; }
+        if (physicalBit) { pos.z = 1.5f; }
+    } else {
+        if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+    }
 
     std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
     std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") AFTER MIRROR\n";
@@ -844,6 +883,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         bool child_valid = (parent->validMask & (1u << idx)) != 0;
         bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
 
+        std::cout << "[CHILD CHECK] idx=" << idx << " validMask=0x" << std::hex << (int)parent->validMask
+                  << std::dec << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf
+                  << " t_min=" << t_min << " t_max=" << t_max << "\n";
+
         // Debug specific problem parent
         if ((parent - &m_octree->root->childDescriptors[0]) == 80) {
             // DEBUG: std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
@@ -881,12 +924,21 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
             // Reference lines 188-194
             // ================================================================
 
-            // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative values.
-            // Use only valid corner values (those within threshold) for tv_max calculation.
+            // BUGFIX: For axis-parallel rays, perpendicular axes give misleading corner values.
+            // - Extreme values (large |t|) from near-zero direction components
+            // - Near-zero values when ray is ON the boundary (e.g., at y=1.5 for Y-perpendicular)
+            // Use t_max for perpendicular axes to let the moving axis determine exit time.
             constexpr float corner_threshold = 1000.0f;
-            float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
-            float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
-            float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
+            constexpr float dir_epsilon = 1e-5f;
+
+            // For each axis: if ray direction is near-zero, don't use that axis's corner for exit
+            bool useXCorner = (std::abs(rayDir.x) >= dir_epsilon);
+            bool useYCorner = (std::abs(rayDir.y) >= dir_epsilon);
+            bool useZCorner = (std::abs(rayDir.z) >= dir_epsilon);
+
+            float tx_valid = (useXCorner && std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
+            float ty_valid = (useYCorner && std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
+            float tz_valid = (useZCorner && std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
             float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
             float tv_max = std::min(t_max, tc_max_corrected);
             float half = scale_exp2 * 0.5f;
@@ -928,43 +980,63 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                     // BRICK TRAVERSAL: EntityBrickView-based DDA (Phase 3)
                     // ============================================================
 
-                    const auto& brickViews = m_octree->root->brickViews;
-                    size_t descriptorIndex = parent - &m_octree->root->childDescriptors[0];
-                    uint32_t brickViewIndex = parent->childPointer;  // Use childPointer to get brick view index
-                    const bool hasBricks = !brickViews.empty() && brickViewIndex < brickViews.size();
+                    // Find brick view by computing the actual world-space hit position
+                    // and determining which brick contains that position
 
-                    if (hasBricks) {
-                        // EntityBrickView-based brick traversal
-                        const auto& brickView = brickViews[brickViewIndex];
+                    size_t parentDescriptorIndex = parent - &m_octree->root->childDescriptors[0];
 
+                    // Convert ESVO t_min to world ray parameter and compute world hit position
+                    // ESVO t_min=0 corresponds to ray entry point, t_min=h corresponds to ray exit
+                    // Use tRayStart (computed at beginning of castRay) and tExit for the mapping
+                    glm::vec3 worldSize = m_worldMax - m_worldMin;
+
+                    // The ESVO t_min is in [0, h] where h = tMax at initialization
+                    // Map to world ray parameter: worldT = tRayStart + (t_min / h) * (tExit - tRayStart)
+                    // For simplicity, use the ray entry point (worldT = tRayStart) when t_min is near 0
+                    float worldT = tRayStart + t_min * (tExit - tRayStart);
+                    glm::vec3 worldHitPos = origin + rayDir * worldT;
+
+                    // Clamp to world bounds (with small epsilon to avoid boundary issues)
+                    float eps = 0.001f;
+                    worldHitPos = glm::clamp(worldHitPos, m_worldMin + eps, m_worldMax - eps);
+
+                    glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;  // For debug output
+
+                    // Unmirror ESVO idx to get physical octant for brick lookup
+                    // ESVO uses mirrored space (octant_mask) to make ray direction negative
+                    // Rebuild stores bricks in physical (non-mirrored) space
+                    // Formula: physicalOctant = mirroredOctant ^ octant_mask
+                    int leafOctant = idx ^ octant_mask;
+
+                    std::cout << "[BRICK LOOKUP] pos=(" << pos.x << "," << pos.y << "," << pos.z << ")"
+                              << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
+                              << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
+                              << " idx=" << idx << " octant_mask=" << octant_mask
+                              << " leafOctant=" << leafOctant << " (idx ^ octant_mask)\n";
+
+                    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
+
+                    if (brickView != nullptr) {
                         // Get brick metadata
-                        uint8_t brickDepth = brickView.getDepth();
+                        uint8_t brickDepth = brickView->getDepth();
                         size_t brickSideLength = 1u << brickDepth;  // 2^depth voxels per side
 
-                        std::cout << "[BRICK CHECK] descriptorIndex=" << descriptorIndex
-                                  << " childPointer=" << brickViewIndex
+                        // Use the brick's stored world position (set during rebuild)
+                        // This is more reliable than computing from normalized traversal position
+                        glm::vec3 brickWorldMin = brickView->getWorldMin();
+
+                        // Compute brick world size from stored bricksPerAxis value
+                        const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
+                        const float brickWorldSizeVal = worldExtent / static_cast<float>(m_octree->bricksPerAxis);
+                        glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickWorldSizeVal);
+
+                        // Voxel size within brick
+                        const float brickVoxelSize = brickWorldSizeVal / static_cast<float>(brickSideLength);
+
+                        std::cout << "[BRICK CHECK] parentIndex=" << parentDescriptorIndex
+                                  << " leafOctant=" << leafOctant
                                   << " brickDepth=" << (int)brickDepth
-                                  << " brickSize=" << brickSideLength << "^3"
-                                  << " maxLevels=" << m_maxLevels << "\n";
-
-                        // Get brick world bounds from EntityBrickView
-                        glm::vec3 worldMin = brickView.getWorldPosition();
-
-                        // Calculate voxel size based on tree depth
-                        // The octree has 2^maxLevels voxels per axis
-                        // TODO: Future improvement - work in normalized [0,1] space and use
-                        // transformation matrices for world space mapping during rendering
-                        float worldSize = m_worldMax.x - m_worldMin.x;  // Assuming cubic world
-                        int totalVoxelsPerAxis = 1 << m_maxLevels;  // 2^maxLevels
-                        float voxelSize = worldSize / totalVoxelsPerAxis;
-
-                        // Brick size in world units
-                        // Each brick contains 2^brickDepth voxels
-                        float brickWorldSize = voxelSize * brickSideLength;
-                        glm::vec3 worldMax = worldMin + glm::vec3(brickWorldSize);
-
-                        // Voxel size is determined by the tree depth
-                        const float brickVoxelSize = voxelSize;
+                                  << " brickSize=" << brickSideLength << "^3\n";
 
                         // Compute ray-brick AABB intersection
                         glm::vec3 invDir;
@@ -975,8 +1047,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                                 invDir[i] = 1.0f / rayDir[i];
                             }
                         }
-                        glm::vec3 t0 = (worldMin - origin) * invDir;
-                        glm::vec3 t1 = (worldMax - origin) * invDir;
+                        glm::vec3 t0 = (brickWorldMin - origin) * invDir;
+                        glm::vec3 t1 = (brickWorldMax - origin) * invDir;
 
                         glm::vec3 tNear = glm::min(t0, t1);
                         glm::vec3 tFar = glm::max(t0, t1);
@@ -985,31 +1057,46 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                         float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
                         brickTMin = glm::max(brickTMin, tEntry);
 
-                        std::cout << "[BRICK BOUNDS] worldMin=(" << worldMin.x << "," << worldMin.y << "," << worldMin.z
-                                  << ") worldMax=(" << worldMax.x << "," << worldMax.y << "," << worldMax.z
+                        std::cout << "[BRICK BOUNDS] worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z
+                                  << ") worldMax=(" << brickWorldMax.x << "," << brickWorldMax.y << "," << brickWorldMax.z
                                   << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
 
                         // Traverse brick using EntityBrickView
-                        auto brickHit = traverseBrickView(brickView, worldMin, brickVoxelSize,
+                        auto brickHit = traverseBrickView(*brickView, brickWorldMin, brickVoxelSize,
                                                           origin, rayDir, brickTMin, brickTMax);
 
                         if (brickHit.has_value()) {
                             std::cout << "[BRICK HIT] Returning brick hit at t=" << brickHit.value().tMin << "\n";
                             return brickHit.value();
                         } else {
-                            std::cout << "[BRICK MISS] No hit in brick, falling back to leaf hit\n";
+                            // Brick exists but no voxel hit - continue ESVO traversal to find next leaf
+                            std::cout << "[BRICK MISS] No hit in brick, continuing to next leaf\n";
+
+                            // Update t_min to exit this leaf and advance to next
+                            // This ensures we don't re-check the same empty leaf
+                            t_min = tv_max;
+
+                            // Skip the fallback leaf hit - go directly to ADVANCE phase
+                            goto advance_phase;
                         }
+                    } else {
+                        // No brick view found for this leaf - this shouldn't happen after rebuild
+                        // Skip to next leaf
+                        std::cout << "[NO BRICK] No brick view for leafOctant " << leafOctant << ", continuing\n";
+                        t_min = tv_max;
+                        goto advance_phase;
                     }
 
                     // ============================================================
-                    // FALLBACK: No brick or brick missed - return leaf hit
+                    // FALLBACK: Legacy leaf hit (no brick system)
+                    // Only reached if brick lookup code above is disabled
                     // ============================================================
 
                     // Leaf voxel hit! Return intersection
                     // Convert normalized [1,2] t-values back to world t-values
                     // CRITICAL: For axis-aligned rays, use the DOMINANT axis for conversion!
                     // The normalized t-values are along the ray direction, not isotropic.
-                    glm::vec3 worldSize = m_worldMax - m_worldMin;
+                    // (worldSize already computed above)
 
                     // Determine dominant axis based on ray direction
                     float worldSizeLength;
@@ -1162,26 +1249,38 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         // ADVANCE: Move to next voxel
         // Reference lines 277-290
         // ================================================================
+    advance_phase:
 
         // Determine which dimensions we need to step in
-        int step_mask = 0;
-        if (tx_corner <= tc_max) step_mask ^= 1, pos.x -= scale_exp2;
-        if (ty_corner <= tc_max) step_mask ^= 2, pos.y -= scale_exp2;
-        if (tz_corner <= tc_max) step_mask ^= 4, pos.z -= scale_exp2;
-
-        // Update active t-span and flip child slot index bits
-        // BUGFIX: For axis-parallel rays, tc_max is dominated by extreme negative ty/tz_corner values.
-        // Use only the valid corner values (those < threshold) to update t_min.
+        // BUGFIX: For axis-parallel rays, only step along axes with non-trivial direction.
+        // Perpendicular axes have misleading corner values (0 on boundary, or extreme)
+        constexpr float dir_epsilon = 1e-5f;
         constexpr float corner_threshold = 1000.0f;
-        float tx_valid = (std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
-        float ty_valid = (std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
-        float tz_valid = (std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
+
+        bool canStepX = (std::abs(rayDir.x) >= dir_epsilon);
+        bool canStepY = (std::abs(rayDir.y) >= dir_epsilon);
+        bool canStepZ = (std::abs(rayDir.z) >= dir_epsilon);
+
+        // Compute corrected tc_max using only moving axes
+        float tx_valid = (canStepX && std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
+        float ty_valid = (canStepY && std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
+        float tz_valid = (canStepZ && std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
         float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
 
-        // If all values are extreme (fully axis-parallel), use the least extreme one
+        // If all values are extreme (fully axis-parallel), use the least extreme moving axis
         if (tc_max_corrected == std::numeric_limits<float>::max()) {
-            tc_max_corrected = std::max({tx_corner, ty_corner, tz_corner}); // Pick least negative
+            tc_max_corrected = std::max({
+                canStepX ? tx_corner : -std::numeric_limits<float>::max(),
+                canStepY ? ty_corner : -std::numeric_limits<float>::max(),
+                canStepZ ? tz_corner : -std::numeric_limits<float>::max()
+            });
         }
+
+        // Step only along axes that are both moving AND at their exit boundary
+        int step_mask = 0;
+        if (canStepX && tx_corner <= tc_max_corrected) step_mask ^= 1, pos.x -= scale_exp2;
+        if (canStepY && ty_corner <= tc_max_corrected) step_mask ^= 2, pos.y -= scale_exp2;
+        if (canStepZ && tz_corner <= tc_max_corrected) step_mask ^= 4, pos.z -= scale_exp2;
 
         float old_t_min = t_min;
         t_min = std::max(tc_max_corrected, 0.0f);
@@ -1905,18 +2004,22 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     int brickDepth = m_brickDepthLevels;
     int brickSideLength = 1 << brickDepth;  // 2^3 = 8 for depth 3
 
-    // In normalized space: cell size = 1.0 / 2^maxLevels (no world size arithmetic!)
-    int totalVoxelsPerAxis = 1 << m_maxLevels;  // 2^maxLevels
-    float normalizedVoxelSize = 1.0f / totalVoxelsPerAxis;
+    glm::vec3 worldSize = worldMax - worldMin;
+    // Assume voxelSize = 1.0, so worldSize in voxels = worldSize
+    int voxelsPerAxis = static_cast<int>(worldSize.x);  // Assume uniform cube world
+    int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;  // Round up
+    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
 
-    // Calculate number of bricks needed
-    int bricksPerAxis = totalVoxelsPerAxis / brickSideLength;  // Should divide evenly
-    float normalizedBrickSize = normalizedVoxelSize * brickSideLength;
+    // Store bricksPerAxis for use during ray casting
+    m_octree->bricksPerAxis = bricksPerAxis;
+
+    // Voxel size = brick world size / brick side length
+    float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
 
     std::cout << "[rebuild] Brick configuration: depth=" << brickDepth
               << " sideLength=" << brickSideLength
-              << " normalizedBrickSize=" << normalizedBrickSize
-              << " normalizedVoxelSize=" << normalizedVoxelSize
+              << " brickWorldSize=" << brickWorldSize
+              << " voxelSize=" << voxelSize
               << " bricksPerAxis=" << bricksPerAxis << "\n";
 
     // 5. PHASE 1: Collect populated bricks
@@ -2030,7 +2133,8 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
         // Create EntityBrickView for this brick
         // Use the actual world position stored in BrickInfo (don't recalculate from Morton!)
-        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth));
+        // Pass voxelSize to enable correct world position calculation in getEntity()
+        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth), voxelSize);
         tempBrickViews.push_back(brickView);
 
         std::cout << "[rebuild] Brick " << brickViewIndex << " at worldMin=("
@@ -2124,6 +2228,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
     std::vector<ChildDescriptor> finalDescriptors;
     std::vector<EntityBrickView> finalBrickViews;
+    std::unordered_map<uint64_t, uint32_t> leafToBrickView;  // (newParentIndex << 3 | octant) → brickViewIndex
     std::unordered_map<uint32_t, uint32_t> oldToNewIndex;
 
     // Find root descriptor (highest depth in nodeToDescriptorIndex)
@@ -2166,14 +2271,20 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
             std::vector<uint32_t> leafChildren;
 
             for (int octant = 0; octant < 8; ++octant) {
-                if ((desc.validMask & (1 << octant)) && it->second[octant] != UINT32_MAX) {
-                    if (desc.leafMask & (1 << octant)) {
-                        // Leaf child (brick descriptor)
-                        leafChildren.push_back(it->second[octant]);
-                    } else {
-                        // Non-leaf child (parent descriptor)
-                        nonLeafChildren.push_back(it->second[octant]);
-                    }
+                if (!(desc.validMask & (1 << octant))) continue;  // No child in this octant
+
+                uint32_t childOldIndex = it->second[octant];
+                if (childOldIndex == UINT32_MAX) continue;
+
+                // Check if this child is a leaf (brick)
+                if (desc.leafMask & (1 << octant)) {
+                    // Leaf child: map (newParentIndex, octant) → brickViewIndex
+                    // Brick descriptor index == brick view index (1:1 from Phase 2)
+                    uint64_t key = (static_cast<uint64_t>(current.newIndex) << 3) | static_cast<uint64_t>(octant);
+                    leafToBrickView[key] = childOldIndex;  // childOldIndex is the brick view index
+                } else {
+                    // Non-leaf child: will be added to finalDescriptors
+                    nonLeafChildren.push_back(childOldIndex);
                 }
             }
 
@@ -2209,10 +2320,12 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // 7. Store final hierarchy in octree
     m_octree->root->childDescriptors = std::move(finalDescriptors);
     m_octree->root->brickViews = std::move(finalBrickViews);
+    m_octree->root->leafToBrickView = std::move(leafToBrickView);
     m_octree->totalVoxels = totalVoxels;
 
     std::cout << "[rebuild] Final octree: " << m_octree->root->childDescriptors.size() << " descriptors, "
-              << m_octree->root->brickViews.size() << " brick views\n";
+              << m_octree->root->brickViews.size() << " brick views, "
+              << m_octree->root->leafToBrickView.size() << " leaf mappings\n";
 
     // Lock automatically released when lock goes out of scope
 }

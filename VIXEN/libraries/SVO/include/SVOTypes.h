@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <bit>  // C++20 std::popcount
 #include <glm/glm.hpp>
 
 namespace SVO {
@@ -48,7 +49,7 @@ struct ChildDescriptor {
     }
 
     int getChildCount() const {
-        return __popcnt(validMask & ~leafMask);
+        return std::popcount(static_cast<uint8_t>(validMask & ~leafMask));
     }
 };
 
