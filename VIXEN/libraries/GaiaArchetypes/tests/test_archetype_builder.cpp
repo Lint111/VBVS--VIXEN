@@ -251,16 +251,17 @@ TEST_F(ArchetypeBuilderTest, FluentChaining) {
     EXPECT_EQ(archetype.sourceRelationships.size(), 1);
 }
 
-TEST_F(ArchetypeBuilderTest, ImplicitDoneConversion) {
+TEST_F(ArchetypeBuilderTest, ExplicitDoneRequired) {
     auto tag = world.add();
     RelationshipType rel{tag, "test", false};
 
-    // Test implicit conversion from RelationshipConfigBuilder to ArchetypeBuilder
-    auto archetype = ArchetypeBuilder("ImplicitConversion")
+    // Test that done() is required before build()
+    auto archetype = ArchetypeBuilder("ExplicitDoneRequired")
         .withComponent<TestPosition>()
         .acceptsRelationship(rel)
             .onAdded([](auto&, auto, auto, auto&) {})
-        .build();  // No explicit done() call
+            .done()  // Explicit done() call required
+        .build();
 
     EXPECT_TRUE(archetype.acceptsRelationship(rel));
 }
