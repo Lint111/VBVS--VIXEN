@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace SVO {
 
@@ -46,9 +47,23 @@ struct OctreeBlock {
     std::vector<AttributeLookup> attributeLookups;
 
     // Entity-based brick views (Phase 3 - zero-copy ECS access)
-    // One per leaf node (aligned with childDescriptors)
     // Each view queries entities via MortonKey on-demand
     std::vector<::GaiaVoxel::EntityBrickView> brickViews;
+
+    // Mapping from (parentDescriptorIndex << 3 | octant) to brickView index
+    // This maps leaf children to their brick views during ESVO traversal
+    std::unordered_map<uint64_t, uint32_t> leafToBrickView;
+
+    // Helper to look up brick view for a leaf hit
+    // Returns nullptr if no brick at this (parent, octant) pair
+    const ::GaiaVoxel::EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {
+        uint64_t key = (static_cast<uint64_t>(parentDescriptorIndex) << 3) | static_cast<uint64_t>(octant);
+        auto it = leafToBrickView.find(key);
+        if (it != leafToBrickView.end() && it->second < brickViews.size()) {
+            return &brickViews[it->second];
+        }
+        return nullptr;
+    }
 
     BlockInfo info;
 
@@ -71,6 +86,7 @@ struct Octree {
     int maxLevels;
     glm::vec3 worldMin;
     glm::vec3 worldMax;
+    int bricksPerAxis = 1;  // Number of bricks along each axis
 
     // Statistics
     size_t totalVoxels = 0;

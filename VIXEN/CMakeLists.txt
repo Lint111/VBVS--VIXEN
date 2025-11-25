@@ -320,7 +320,7 @@ endif()
 # SHADER ASSETS
 # ============================================================================
 # Global shader source directory - GLSL files compiled by applications
-add_subdirectory(shaders)
+add_subdirectory(Shaders)
 
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION

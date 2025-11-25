@@ -44,4 +44,7 @@ add_subdirectory(GaiaVoxelWorld)
 # SVO library (Sparse Voxel Octree - Laine & Karras 2010 implementation)
 add_subdirectory(SVO)
 
+# GaiaArchetypes library (Archetype builder with relationship hooks - depends on Gaia ECS)
+add_subdirectory(GaiaArchetypes)
+
 message(STATUS "Libraries configured - all static libraries defined")
