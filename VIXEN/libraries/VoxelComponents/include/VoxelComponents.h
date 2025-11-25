@@ -461,23 +461,53 @@ VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
 // ============================================================================
 // SINGLE SOURCE OF TRUTH - Component Registry
 // ============================================================================
+
+/**
+ * Component access types:
+ * - Value: Simple types (scalar, vec3) accessed via getComponentValue() returning extracted value
+ * - Ref:   Complex types (struct with methods) accessed via getComponentRef() returning pointer
+ */
+enum class ComponentAccessType { Value, Ref };
+
 /**
  * To register a new component:
  * 1. Define the component (VOXEL_COMPONENT_SCALAR or VOXEL_COMPONENT_VEC3)
- * 2. Add APPLY_MACRO(macro, ComponentName) to FOR_EACH_COMPONENT below
+ * 2. Add APPLY_MACRO(macro, ComponentName, AccessType) to FOR_EACH_COMPONENT below
  * 3. ComponentVariant, AllComponents tuple, and ComponentTraits auto-update
  *
  * This is the ONLY place you need to add component names!
+ *
+ * Access types:
+ * - Value: Scalar/Vec3 components with simple value extraction (density, color, etc.)
+ * - Ref:   Complex components returned by reference (Transform, AABB, etc.)
  */
 #define APPLY_MACRO(macro, ...) macro(__VA_ARGS__)
 #define FOR_EACH_COMPONENT(macro) \
+    APPLY_MACRO(macro, Density, Value) \
+    APPLY_MACRO(macro, Material, Value) \
+    APPLY_MACRO(macro, EmissionIntensity, Value) \
+    APPLY_MACRO(macro, Color, Value) \
+    APPLY_MACRO(macro, Normal, Value) \
+    APPLY_MACRO(macro, Emission, Value) \
+    APPLY_MACRO(macro, MortonKey, Value) \
+    APPLY_MACRO(macro, Transform, Ref) \
+    APPLY_MACRO(macro, VolumeTransform, Ref) \
+    APPLY_MACRO(macro, AABB, Ref) \
+    APPLY_MACRO(macro, Volume, Ref) \
+    APPLY_MACRO(macro, VolumeGrid, Ref)
+
+// Helper macro to expand only Value components
+#define FOR_EACH_VALUE_COMPONENT(macro) \
     APPLY_MACRO(macro, Density) \
     APPLY_MACRO(macro, Material) \
     APPLY_MACRO(macro, EmissionIntensity) \
     APPLY_MACRO(macro, Color) \
     APPLY_MACRO(macro, Normal) \
     APPLY_MACRO(macro, Emission) \
-    APPLY_MACRO(macro, MortonKey) \
+    APPLY_MACRO(macro, MortonKey)
+
+// Helper macro to expand only Ref components
+#define FOR_EACH_REF_COMPONENT(macro) \
     APPLY_MACRO(macro, Transform) \
     APPLY_MACRO(macro, VolumeTransform) \
     APPLY_MACRO(macro, AABB) \
@@ -489,9 +519,26 @@ namespace ComponentRegistry {
     template<typename Visitor>
     constexpr void visitAll(Visitor&& visitor) {
         // Directly instantiate each component and call visitor
-        #define VISIT_COMPONENT(Component) visitor(Component{});
+        // Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
+        #define VISIT_COMPONENT(Component, AccessType) visitor(Component{});
         FOR_EACH_COMPONENT(VISIT_COMPONENT)
         #undef VISIT_COMPONENT
+    }
+
+    // Visit only Value-type components (for DynamicVoxelScalar conversion, etc.)
+    template<typename Visitor>
+    constexpr void visitValueComponents(Visitor&& visitor) {
+        #define VISIT_VALUE_COMPONENT(Component) visitor(Component{});
+        FOR_EACH_VALUE_COMPONENT(VISIT_VALUE_COMPONENT)
+        #undef VISIT_VALUE_COMPONENT
+    }
+
+    // Visit only Ref-type components (for complex type handling)
+    template<typename Visitor>
+    constexpr void visitRefComponents(Visitor&& visitor) {
+        #define VISIT_REF_COMPONENT(Component) visitor(Component{});
+        FOR_EACH_REF_COMPONENT(VISIT_REF_COMPONENT)
+        #undef VISIT_REF_COMPONENT
     }
 
     // Find component by name (compile-time)
@@ -499,6 +546,20 @@ namespace ComponentRegistry {
     constexpr bool visitByName(std::string_view name, Visitor&& visitor) {
         bool found = false;
         visitAll([&](auto component) {
+            using Component = std::decay_t<decltype(component)>;
+            if (Component::Name == name) {
+                visitor(component);
+                found = true;
+            }
+        });
+        return found;
+    }
+
+    // Find Value-type component by name
+    template<typename Visitor>
+    constexpr bool visitValueByName(std::string_view name, Visitor&& visitor) {
+        bool found = false;
+        visitValueComponents([&](auto component) {
             using Component = std::decay_t<decltype(component)>;
             if (Component::Name == name) {
                 visitor(component);
@@ -532,7 +593,8 @@ namespace ComponentRegistry {
  *   ComponentVariant v1 = Density{0.8f};       // holds Density only
  *   ComponentVariant v2 = Color{glm::vec3(1, 0, 0)};  // holds Color only
  */
-#define AS_VARIANT_TYPE(Component) Component,
+// Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
+#define AS_VARIANT_TYPE(Component, AccessType) Component,
 using ComponentVariant = std::variant<FOR_EACH_COMPONENT(AS_VARIANT_TYPE) std::monostate>;
 #undef AS_VARIANT_TYPE
 
@@ -613,7 +675,8 @@ template<typename T>
 struct ComponentTraits;
 
 // Reuse FOR_EACH_COMPONENT to generate traits
-#define GENERATE_TRAIT(Component) \
+// Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
+#define GENERATE_TRAIT(Component, AccessType) \
     template<> \
     struct ComponentTraits<Component> { \
         static constexpr const char* Name = Component::Name; \
@@ -691,14 +754,51 @@ struct ComponentValueType<MortonKey> {
     using type = uint64_t;  // MortonKey stores a code
 };
 
+// Specializations for complex types (return themselves as values)
+// These types are accessed via getComponentRef() for full functionality
+template<>
+struct ComponentValueType<Transform> {
+    using type = Transform;  // Complex type - no simple value extraction
+};
+
+template<>
+struct ComponentValueType<VolumeTransform> {
+    using type = VolumeTransform;  // Complex type - no simple value extraction
+};
+
+template<>
+struct ComponentValueType<AABB> {
+    using type = AABB;  // Complex type - no simple value extraction
+};
+
+template<>
+struct ComponentValueType<Volume> {
+    using type = Volume;  // Complex type - has voxelSize but also methods
+};
+
+template<>
+struct ComponentValueType<VolumeGrid> {
+    using type = VolumeGrid;  // Complex type - has gridMin/Max but also methods
+};
+
 template<typename T>
 using ComponentValueType_t = typename ComponentValueType<T>::type;
 
-// Get component value (works for scalar, vec3, and MortonKey)
+// Concept for complex component types (Transform, AABB, etc.)
+template<typename T>
+concept ComplexComponent = std::is_same_v<T, Transform> ||
+                           std::is_same_v<T, VolumeTransform> ||
+                           std::is_same_v<T, AABB> ||
+                           std::is_same_v<T, Volume> ||
+                           std::is_same_v<T, VolumeGrid>;
+
+// Get component value (works for scalar, vec3, MortonKey, and complex types)
 template<VoxelComponent T>
 auto getValue(const T& component) {
     if constexpr (std::is_same_v<T, MortonKey>) {
         return component.code;  // MortonKey stores code
+    } else if constexpr (ComplexComponent<T>) {
+        return component;  // Complex types return themselves
     } else if constexpr (Vec3Component<T>) {
         return component.toVec3();
     } else {

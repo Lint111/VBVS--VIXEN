@@ -14,13 +14,14 @@ using namespace VoxelData;
 
 /**
  * Convert Gaia entity to DynamicVoxelScalar.
- * Extracts all registered components from entity and populates voxel attributes.
+ * Extracts all Value-type components from entity and populates voxel attributes.
+ * Note: Ref-type components (Transform, AABB, etc.) are skipped - use getComponentRef() for those.
  */
 DynamicVoxelScalar toDynamicVoxel(const GaiaVoxelWorld& world, GaiaVoxelWorld::EntityID entity) {
     DynamicVoxelScalar voxel;
 
-    // Use ComponentRegistry to iterate all registered components
-    ComponentRegistry::visitAll([&](auto component) {
+    // Use ComponentRegistry to iterate only Value-type components
+    ComponentRegistry::visitValueComponents([&](auto component) {
         using Component = std::decay_t<decltype(component)>;
 
         // Skip MortonKey - it's spatial indexing, not a voxel attribute
@@ -44,6 +45,7 @@ DynamicVoxelScalar toDynamicVoxel(const GaiaVoxelWorld& world, GaiaVoxelWorld::E
 /**
  * Convert DynamicVoxelScalar to VoxelCreationRequest.
  * Maps string-based attributes to type-safe component variants.
+ * Note: Ref-type components (Transform, AABB, etc.) are skipped - they can't be round-tripped via DynamicVoxelScalar.
  */
 VoxelCreationRequest fromDynamicVoxel(const glm::vec3& position, const DynamicVoxelScalar& voxel) {
     // Build ComponentQueryRequest array from voxel attributes
@@ -53,8 +55,8 @@ VoxelCreationRequest fromDynamicVoxel(const glm::vec3& position, const DynamicVo
     for (const auto& attr : voxel) {
         const std::string& attrName = attr.name;
 
-        // Match attribute name to component type and extract value
-        bool found = ComponentRegistry::visitByName(attrName, [&](auto component) {
+        // Match attribute name to Value-type component and extract value
+        [[maybe_unused]] bool found = ComponentRegistry::visitValueByName(attrName, [&](auto component) {
             using Component = std::decay_t<decltype(component)>;
 
             // Skip MortonKey - it's spatial indexing, not a voxel attribute
@@ -425,10 +427,11 @@ TEST(VoxelDataIntegrationTest, ComponentRegistry_VisitAll) {
         componentCount++;
     });
 
-    // Expect 7 components: Density, Material, EmissionIntensity, Color, Normal, Emission, MortonKey
-    EXPECT_EQ(componentCount, 7);
+    // Expect 12 components: Density, Material, EmissionIntensity, Color, Normal, Emission, MortonKey,
+    //                       Transform, VolumeTransform, AABB, Volume, VolumeGrid
+    EXPECT_EQ(componentCount, 12);
 
-    // Verify expected component names
+    // Verify simple component names
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "density"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "material"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "emission_intensity"), componentNames.end());
@@ -436,6 +439,12 @@ TEST(VoxelDataIntegrationTest, ComponentRegistry_VisitAll) {
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "normal"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "emission"), componentNames.end());
     EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "position"), componentNames.end());
+
+    // Verify complex component names
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "transform"), componentNames.end());
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "aabb"), componentNames.end());
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "volume"), componentNames.end());
+    EXPECT_NE(std::find(componentNames.begin(), componentNames.end(), "volume_grid"), componentNames.end());
 }
 
 TEST(VoxelDataIntegrationTest, ComponentRegistry_VisitByName) {

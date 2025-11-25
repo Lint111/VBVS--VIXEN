@@ -10,7 +10,7 @@ using namespace GaiaVoxel;
 // ===========================================================================
 
 TEST(ComponentSystemTest, MacroComponentRegistry_AllComponentsAccessible) {
-    // Verify all 7 components registered via FOR_EACH_COMPONENT macro
+    // Verify all 12 components registered via FOR_EACH_COMPONENT macro
     size_t componentCount = 0;
     std::vector<std::string> names;
 
@@ -20,16 +20,40 @@ TEST(ComponentSystemTest, MacroComponentRegistry_AllComponentsAccessible) {
         componentCount++;
     });
 
-    // FOR_EACH_COMPONENT: Density, Material, EmissionIntensity, Color, Normal, Emission, MortonKey
-    EXPECT_EQ(componentCount, 7);
+    // FOR_EACH_COMPONENT: 7 Value types + 5 Ref types = 12 total
+    EXPECT_EQ(componentCount, 12);
 
-    // Verify expected names
+    // Verify Value-type component names
     EXPECT_TRUE(std::find(names.begin(), names.end(), "density") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "material") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "emission_intensity") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "color") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "normal") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "emission") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "position") != names.end()); // MortonKey
+
+    // Verify Ref-type component names
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "transform") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "aabb") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "volume") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "volume_grid") != names.end());
+}
+
+TEST(ComponentSystemTest, MacroComponentRegistry_ValueComponents) {
+    // Verify Value-type components are accessible via visitValueComponents
+    size_t componentCount = 0;
+    std::vector<std::string> names;
+
+    ComponentRegistry::visitValueComponents([&](auto component) {
+        using Component = std::decay_t<decltype(component)>;
+        names.push_back(Component::Name);
+        componentCount++;
+    });
+
+    // FOR_EACH_VALUE_COMPONENT: 7 Value types
+    EXPECT_EQ(componentCount, 7);
+
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "density") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), "position") != names.end()); // MortonKey
 }
 

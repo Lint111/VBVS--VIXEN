@@ -161,6 +161,25 @@ public:
     bool hasComponent(EntityID id) const;
 
     /**
+     * Get const reference to component for complex types (Transform, AABB, etc.).
+     * Unlike getComponentValue(), this returns the whole component, not extracted value.
+     *
+     * Example:
+     *   auto transform = world.getComponentRef<Transform>(entity);
+     *   if (transform) {
+     *       glm::vec3 worldPos = transform->toWorld(localPos);
+     *   }
+     */
+    template<typename TComponent>
+    const TComponent* getComponentRef(EntityID id) const;
+
+    /**
+     * Get mutable reference to component for complex types.
+     */
+    template<typename TComponent>
+    TComponent* getComponentRef(EntityID id);
+
+    /**
      * Check if entity has component at specific index.
      */
     template<typename TComponent>
@@ -451,6 +470,26 @@ void GaiaVoxelWorld::setComponent(EntityID id, ComponentValueType_t<TComponent> 
 
     // Add or update component (Gaia add() overwrites existing)
     getWorld().add<TComponent>(id, TComponent{value});
+}
+
+// ============================================================================
+// Component Reference Access (For Complex Types: Transform, AABB, etc.)
+// ============================================================================
+
+template<typename TComponent>
+const TComponent* GaiaVoxelWorld::getComponentRef(EntityID id) const {
+    if (!getWorld().valid(id) || !getWorld().has<TComponent>(id)) {
+        return nullptr;
+    }
+    return &getWorld().get<TComponent>(id);
+}
+
+template<typename TComponent>
+TComponent* GaiaVoxelWorld::getComponentRef(EntityID id) {
+    if (!getWorld().valid(id) || !getWorld().has<TComponent>(id)) {
+        return nullptr;
+    }
+    return &const_cast<gaia::ecs::World&>(getWorld()).get<TComponent>(id);
 }
 
 // ============================================================================
