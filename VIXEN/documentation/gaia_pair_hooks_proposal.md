@@ -59,6 +59,39 @@ The wrapper approach works, but:
 2. Can be bypassed if someone calls `world.add()` directly
 3. Doesn't integrate with existing constraint handling (OnDelete, etc.)
 
+## Design Consideration: Hook Granularity
+
+One thing I'm not sure about is how to handle the same relation used in different contexts:
+
+```cpp
+world.add(voxel, Pair(PartOf, volume));   // → update octree
+world.add(person, Pair(PartOf, family));  // → update family tree
+```
+
+A few approaches:
+
+**A. Different relation types** (what I'm currently doing)
+```cpp
+auto PartOfVolume = world.add();
+auto PartOfFamily = world.add();
+world.on_pair_add(PartOfVolume, ...);  // Only voxel→volume
+```
+
+**B. Filter by target's component type**
+```cpp
+// Hook fires only when target has VolumeStats
+world.on_pair_add<VolumeStats>(PartOf, [](auto& w, auto src, auto target) {...});
+```
+
+**C. User filters in callback**
+```cpp
+world.on_pair_add(PartOf, [](auto& w, auto src, auto pair) {
+    if (w.has<VolumeStats>(pair.second())) { /* handle volume */ }
+});
+```
+
+Option A feels most ECS-idiomatic to me, but curious what you think.
+
 ## Questions
 
 Before diving into implementation details, I wanted to check:
@@ -66,6 +99,7 @@ Before diving into implementation details, I wanted to check:
 1. Is this something you'd consider adding to core Gaia?
 2. Any concerns with the approach?
 3. Should pair hooks fire for built-in relations (ChildOf, Is, DependsOn)?
+4. Preference on hook granularity (relation-only vs relation+target-type)?
 
 Happy to share the full implementation sketch or submit a PR if there's interest. Also totally understand if this isn't a direction you want to take the library - the wrapper works fine for my use case.
 
