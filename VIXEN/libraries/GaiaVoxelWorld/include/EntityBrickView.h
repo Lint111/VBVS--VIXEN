@@ -92,11 +92,29 @@ public:
      */
     EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 gridOrigin, uint8_t depth);
 
+    /**
+     * Create brick view with LOCAL grid origin (for local-space octrees).
+     *
+     * In local-space architecture:
+     * - Voxels stored with LOCAL Morton keys (relative to volume origin)
+     * - Brick's localGridOrigin = brickIndex * brickSideLength (e.g., (0,0,0), (8,0,0), etc.)
+     * - Volume has world transform that maps local → world
+     *
+     * @param world GaiaVoxelWorld for ECS queries
+     * @param localGridOrigin LOCAL integer grid coordinate of brick's minimum corner
+     * @param depth Brick depth (depth → 2^depth = brickSize)
+     * @param volumeWorldMin World position of volume origin (for getWorldMin() compatibility)
+     *
+     * Entity lookup: localGridPos = localGridOrigin + localCoord, query by Morton key of localGridPos.
+     */
+    EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 localGridOrigin, uint8_t depth, const glm::vec3& volumeWorldMin);
+
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
     [[nodiscard]] size_t getVoxelsPerBrick() const { return m_voxelsPerBrick; }
     [[nodiscard]] uint8_t getDepth() const { return m_depth; }
     [[nodiscard]] glm::vec3 getWorldMin() const { return m_rootPositionInWorldSpace; }
+    [[nodiscard]] glm::ivec3 getLocalGridOrigin() const { return m_gridOrigin; }
     [[nodiscard]] float getVoxelSize() const { return m_voxelSize; }
 
     // ========================================================================
@@ -222,7 +240,7 @@ private:
     GaiaVoxelWorld& m_world;
     std::span<gaia::ecs::Entity> m_entities;  // Used by span-based constructor
     glm::vec3 m_rootPositionInWorldSpace{ 0,0,0 };            // Used by world-space constructor
-    glm::ivec3 m_gridOrigin{ 0,0,0 };          // Used by integer grid constructor
+    glm::ivec3 m_gridOrigin{ 0,0,0 };          // LOCAL grid origin (for LocalGrid mode)
 
     // Depth-derived sizing
     uint8_t m_depth;                // Brick depth (3-8 typical for SVO)
@@ -231,7 +249,11 @@ private:
     float m_voxelSize{ 1.0f };      // World-space size of each voxel
 
     // Query mode
-    enum class QueryMode { EntitySpan, WorldSpace, IntegerGrid };
+    // - EntitySpan: Direct array access to pre-populated entity array
+    // - WorldSpace: Query by world position (floating-point)
+    // - IntegerGrid: Query by integer grid position (world coords)
+    // - LocalGrid: Query by local grid position (volume-relative, for local-space octrees)
+    enum class QueryMode { EntitySpan, WorldSpace, IntegerGrid, LocalGrid };
     QueryMode m_queryMode{ QueryMode::EntitySpan };
 };
 

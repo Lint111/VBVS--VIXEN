@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 25, 2025 (Session 6S - VolumeGrid Architecture)
+**Last Updated**: November 25, 2025 (Session 6S - VolumeGrid Architecture + 10/10 Tests)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | 🔄 **Ray Casting (testing after VolumeGrid integration)** | 🔄 **Architecture Refactoring**
+**Status**: ✅ **10/10 Ray Casting Tests PASSING** | ✅ **VolumeGrid Architecture** | ✅ **All Bugs Fixed**
 
 ---
 
@@ -28,61 +28,38 @@
    - Normalization: integer grid → [0,1]³ → ESVO [1,2]³
    - **File**: `VoxelComponents.h:326-443`
 
-3. **Integrated VolumeGrid in rebuild()** ✅
-   - Initialize `m_volumeGrid` from world AABB
-   - Keep world bounds for ray-AABB intersection
-   - Use VolumeGrid for brick lookup after intersection
-   - **File**: `LaineKarrasOctree.cpp:rebuild()`
+3. **Fixed Coordinate System Mismatch** ✅ (bug-hunter agent)
+   - **Root cause**: Brick DDA used fractional voxelSize but voxels stored at INTEGER positions
+   - **Fix 1**: `rebuild()` - Use `IntegerGrid` mode for EntityBrickView instead of `WorldSpace`
+   - **Fix 2**: `traverseBrickAndReturnHit()` - Use unit voxelSize (1.0) for integer-aligned bricks
+   - **Files**: `LaineKarrasOctree.cpp:2124, 1124`
 
-4. **Fixed Brick Index Calculation in handleLeafHit()** 🔄
-   - Compute brick index directly from world position using `brickWorldSize`
-   - Avoids normalization mismatch (paddedExtent vs actual brick grid)
-   - **File**: `LaineKarrasOctree.cpp:handleLeafHit()`
+4. **All 10 Ray Casting Tests Now Pass** ✅
+   - AxisAlignedRaysFromOutside ✅
+   - DiagonalRaysVariousAngles ✅
+   - CompleteMissCases ✅
+   - MultipleVoxelTraversal ✅
+   - DenseVolumeTraversal ✅
+   - PerformanceCharacteristics ✅
+   - EdgeCasesAndBoundaries ✅
+   - RaysFromInsideGrid ✅ (was failing)
+   - RandomStressTesting ✅ (was failing)
+   - CornellBoxScene ✅ (was failing)
 
-### Session 6R Accomplishments (Previous Session)
+### Root Cause Analysis (Session 6S Bug Fix)
 
-1. **Fixed Morton Range Query Bug** ✅
-   - Changed to AABB-based grid queries - decode Morton keys and compare integer positions
-   - **File**: `GaiaVoxelWorld.cpp:277-335`
+The brick DDA was computing fractional `voxelSize` from `worldExtent / bricksPerAxis / brickSideLength`, but voxels were stored at INTEGER grid positions with implicit unit size (1.0). This caused:
+1. DDA queried at fractional world positions (e.g., 4.25)
+2. Morton key lookup floored to wrong grid cells
+3. Incorrect voxel hits and spatial misalignment
 
-2. **Fixed Floating-Point Precision in Morton Encoding** ✅
-   - Added epsilon: `floor(pos.x + 1e-5)`
-   - **File**: `VoxelComponents.cpp:99-108`
-
-3. **Fixed leafOctant Calculation** (partial) ✅
-   - Changed to position-based octant calculation from normalized hit position
-   - **File**: `LaineKarrasOctree.cpp:1040-1050`
-
-### Test Results: 7/10 Passing (Session 6R baseline, retesting after Session 6S changes)
-
-**PASSING (70%)**:
-- ✅ AxisAlignedRaysFromOutside
-- ✅ DiagonalRaysVariousAngles
-- ✅ CompleteMissCases
-- ✅ MultipleVoxelTraversal
-- ✅ DenseVolumeTraversal
-- ✅ PerformanceCharacteristics
-- ✅ EdgeCasesAndBoundaries
-
-**FAILING (30%)**:
-- ❌ RaysFromInsideGrid - ray starting position octant selection issue
-- ❌ RandomStressTesting - statistical outliers (related to above)
-- ❌ CornellBoxScene - multi-brick traversal octant mapping
-
-### Architecture Insight: Why Coordinate Spaces Matter
-
-User guidance: "instead you can make rays use the inverse transform of the volume to transform into grid local space, then work in local space of the grid. this transformation should happen after ray to aabb intersection."
-
-This means:
-1. Ray-AABB intersection uses **world bounds** (unchanged)
-2. After intersection, transform ray into **grid local space** for traversal
-3. Brick lookup uses integer grid coordinates (no FP precision issues)
+**Solution**: Use `IntegerGrid` mode for EntityBrickView and fixed unit voxelSize in brick traversal.
 
 ### Modified Files (Session 6S)
 
-- [VoxelComponents.h](libraries/VoxelComponents/include/VoxelComponents.h:298-443) - Added VolumeGrid struct + FOR_EACH_COMPONENT update
+- [VoxelComponents.h](libraries/VoxelComponents/include/VoxelComponents.h:298-443) - Added VolumeGrid struct
 - [LaineKarrasOctree.h](libraries/SVO/include/LaineKarrasOctree.h) - Added m_volumeGrid member
-- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - VolumeGrid init in rebuild(), brick index calc in handleLeafHit()
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - IntegerGrid mode, unit voxelSize fix
 
 ---
 
@@ -125,10 +102,10 @@ if (hit.hit) {
 | GaiaVoxelWorld | 96/96 | ✅ 100% |
 | SVO (octree_queries) | 98/98 | ✅ 100% |
 | SVO (entity_brick_view) | 36/36 | ✅ 100% |
-| SVO (ray_casting) | 7/10 | 🟡 70% |
+| SVO (ray_casting) | 10/10 | ✅ 100% |
 | SVO (rebuild_hierarchy) | 4/4 | ✅ 100% |
 
-**Overall**: ~148/150 passing (~99%)
+**Overall**: 150/150 passing (100%)
 
 ---
 

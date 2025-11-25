@@ -49,6 +49,22 @@ EntityBrickView::EntityBrickView(
     , m_queryMode(QueryMode::IntegerGrid) {
 }
 
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    glm::ivec3 localGridOrigin,
+    uint8_t depth,
+    const glm::vec3& volumeWorldMin)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_rootPositionInWorldSpace(volumeWorldMin + glm::vec3(localGridOrigin))  // World position for getWorldMin()
+    , m_gridOrigin(localGridOrigin)  // LOCAL grid origin (0,0,0), (8,0,0), etc.
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    , m_queryMode(QueryMode::LocalGrid) {  // Use local grid query mode
+}
+
 // ============================================================================
 // Entity Access (Direct)
 // ============================================================================
@@ -73,6 +89,20 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
 
             // Query by integer position (uses exact Morton key match)
             return m_world.getEntityByWorldSpace(glm::vec3(gridPos));
+        }
+
+        case QueryMode::LocalGrid: {
+            // Local grid mode: voxels are stored with LOCAL Morton keys.
+            // Brick's localGridOrigin = brickIndex * brickSideLength (0,0,0), (8,0,0), etc.
+            // Voxels are added in local space, so Morton keys match local coords directly.
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
+
+            // Local grid position = local grid origin + local offset
+            glm::ivec3 localGridPos = m_gridOrigin + glm::ivec3(x, y, z);
+
+            // Query by local position (Morton keys stored as local coords)
+            return m_world.getEntityByWorldSpace(glm::vec3(localGridPos));
         }
 
         case QueryMode::WorldSpace:

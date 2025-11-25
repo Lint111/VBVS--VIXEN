@@ -399,11 +399,12 @@ private:
 
     /**
      * Traverse brick and return hit result.
-     * Extracted from leaf hit handling for clarity.
+     * Ray is in volume local space (origin at volumeGridMin = 0,0,0).
+     * EntityBrickView uses local gridOrigin (brickIndex * brickSideLength).
      */
     std::optional<ISVOStructure::RayHit> traverseBrickAndReturnHit(
         const ::GaiaVoxel::EntityBrickView& brickView,
-        const glm::vec3& origin,
+        const glm::vec3& localRayOrigin,  // Ray origin in volume local space
         const glm::vec3& rayDir,
         float tEntry) const;
 

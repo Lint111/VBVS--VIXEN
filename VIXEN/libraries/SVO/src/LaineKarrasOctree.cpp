@@ -1096,7 +1096,10 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     }
 
     if (brickView != nullptr) {
-        return traverseBrickAndReturnHit(*brickView, origin, coef.rayDir, tEntry);
+        // Transform ray to volume local space (origin at volumeGridMin = 0,0,0)
+        // Brick bounds are now local: (0,0,0)-(8,8,8), (8,0,0)-(16,8,8), etc.
+        glm::vec3 localRayOrigin = origin - m_worldMin;
+        return traverseBrickAndReturnHit(*brickView, localRayOrigin, coef.rayDir, tEntry);
     }
 
     // No brick view found
@@ -1106,28 +1109,31 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
 
 /**
  * Traverse brick and return hit result.
- * Extracted from leaf hit handling for clarity.
+ * Ray is in volume local space (origin at volumeGridMin = 0,0,0).
+ * EntityBrickView now stores LOCAL gridOrigin (brickIndex * brickSideLength).
+ *
+ * LOCAL-SPACE ARCHITECTURE:
+ * - Voxels stored with LOCAL Morton keys (relative to volume origin)
+ * - Brick's localGridOrigin = brickIndex * brickSideLength (e.g., (0,0,0), (8,0,0))
+ * - Ray is transformed to local space before traversal
+ * - All brick bounds are in local space
  */
 std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHit(
     const ::GaiaVoxel::EntityBrickView& brickView,
-    const glm::vec3& origin,
+    const glm::vec3& localRayOrigin,
     const glm::vec3& rayDir,
     float tEntry) const
 {
     uint8_t brickDepth = brickView.getDepth();
     size_t brickSideLength = 1u << brickDepth;
-
-    // Use integer-aligned brick bounds for correct voxel grid alignment
-    // getWorldMin() returns the brick's grid origin (integer position)
-    // Each voxel has unit size (1.0) in the integer grid
-    glm::vec3 brickWorldMin = brickView.getWorldMin();
     constexpr float brickVoxelSize = 1.0f;  // Unit voxels for integer grid
-    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(static_cast<float>(brickSideLength) * brickVoxelSize);
 
-    std::cout << "[BRICK CHECK] brickDepth=" << (int)brickDepth
-              << " brickSize=" << brickSideLength << "^3\n";
+    // Compute brick bounds directly from LOCAL gridOrigin
+    // EntityBrickView now stores local coordinates, not world coordinates
+    glm::vec3 brickLocalMin = glm::vec3(brickView.getLocalGridOrigin());
+    glm::vec3 brickLocalMax = brickLocalMin + glm::vec3(static_cast<float>(brickSideLength) * brickVoxelSize);
 
-    // Compute ray-brick AABB intersection
+    // Compute ray-brick AABB intersection in local space
     glm::vec3 invDir;
     for (int i = 0; i < 3; i++) {
         if (std::abs(rayDir[i]) < 1e-8f) {
@@ -1137,8 +1143,8 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHi
         }
     }
 
-    glm::vec3 t0 = (brickWorldMin - origin) * invDir;
-    glm::vec3 t1 = (brickWorldMax - origin) * invDir;
+    glm::vec3 t0 = (brickLocalMin - localRayOrigin) * invDir;
+    glm::vec3 t1 = (brickLocalMax - localRayOrigin) * invDir;
     glm::vec3 tNear = glm::min(t0, t1);
     glm::vec3 tFar = glm::max(t0, t1);
 
@@ -1146,11 +1152,9 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHi
     float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
     brickTMin = glm::max(brickTMin, tEntry);
 
-    std::cout << "[BRICK BOUNDS] worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z
-              << ") worldMax=(" << brickWorldMax.x << "," << brickWorldMax.y << "," << brickWorldMax.z
-              << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
-
-    return traverseBrickView(brickView, brickWorldMin, brickVoxelSize, origin, rayDir, brickTMin, brickTMax);
+    // Pass local ray and local brick bounds to traverseBrickView
+    // EntityBrickView uses local gridOrigin for entity lookup (LocalGrid query mode)
+    return traverseBrickView(brickView, brickLocalMin, brickVoxelSize, localRayOrigin, rayDir, brickTMin, brickTMax);
 }
 
 // ============================================================================
@@ -2098,11 +2102,14 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
         tempDescriptors.push_back(desc);
 
-        // Create EntityBrickView for this brick using IntegerGrid mode
-        // This ensures local voxel coordinates (0-7) map directly to integer grid positions
-        // which is correct for voxels stored at integer positions with unit size
-        glm::ivec3 gridOrigin = VolumeGrid::quantize(brick.worldMin);
-        EntityBrickView brickView(world, gridOrigin, static_cast<uint8_t>(brickDepth));
+        // Create EntityBrickView for this brick using LOCAL grid coordinates
+        // In local-space architecture:
+        // - Voxels are stored with LOCAL Morton keys (relative to volume origin)
+        // - Brick's localGridOrigin = brickGridCoord * brickSideLength
+        // - E.g., brick (0,0,0) → localGridOrigin (0,0,0)
+        //         brick (1,0,0) → localGridOrigin (8,0,0) for brickSideLength=8
+        glm::ivec3 localGridOrigin = brick.gridCoord * brickSideLength;
+        EntityBrickView brickView(world, localGridOrigin, static_cast<uint8_t>(brickDepth), worldMin);
         tempBrickViews.push_back(brickView);
     }
 
