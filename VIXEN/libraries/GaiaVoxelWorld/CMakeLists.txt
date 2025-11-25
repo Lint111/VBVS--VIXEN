@@ -13,6 +13,7 @@ add_library(GaiaVoxelWorld STATIC
     src/GaiaVoxelWorld.cpp
     src/VoxelInjectionQueue.cpp
     src/EntityBrickView.cpp
+    src/VoxelInjector.cpp
 )
 
 # MSVC PDB fix - disable parallel compilation for this target only

@@ -1891,7 +1891,7 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
     // 3. Create octree and rebuild from entities
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
-    LaineKarrasOctree octree(world, 5, 3);  // depth 5, brick depth 3
+    LaineKarrasOctree octree(world, nullptr, 5, 3);  // depth 5, brick depth 3
     octree.rebuild(world, worldMin, worldMax);
 
     // 4. Ray cast toward the voxel
@@ -1965,7 +1965,7 @@ TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
     // Rebuild octree from entities
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
-    LaineKarrasOctree octree(world, 5, 3);  // depth 5, brick depth 3
+    LaineKarrasOctree octree(world, nullptr, 5, 3);  // depth 5, brick depth 3
     octree.rebuild(world, worldMin, worldMax);
 
     // Cast ray along +X axis - should hit voxels in order
@@ -1998,7 +1998,7 @@ TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
     // Rebuild octree from empty world
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(32.0f, 32.0f, 32.0f);
-    LaineKarrasOctree octree(world, 5, 3);
+    LaineKarrasOctree octree(world, nullptr, 5, 3);
     octree.rebuild(world, worldMin, worldMax);
 
     // Cast ray through empty space
@@ -2042,7 +2042,7 @@ TEST(EntityBasedRebuildTest, RebuildAPIStub) {
     ASSERT_TRUE(world.exists(entity3));
 
     // Create octree with entity-based constructor
-    LaineKarrasOctree octree(world);
+    LaineKarrasOctree octree(world, nullptr, 8, 3);  // Default maxLevels=8, brickDepth=3
 
     // Test rebuild API (stub - prints "NOT YET IMPLEMENTED")
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
@@ -2108,7 +2108,7 @@ TEST(EntityBasedRebuildTest, RebuildHierarchicalStructure) {
     std::cout << "[RebuildHierarchicalStructure] Created 8 entities in 4 bricks\n";
 
     // Create octree and rebuild from world
-    LaineKarrasOctree octree(world, 23, 3);  // depth 23, brick depth 3
+    LaineKarrasOctree octree(world, nullptr, 23, 3);  // depth 23, brick depth 3
 
     glm::vec3 worldMin(0.0f, 0.0f, 0.0f);
     glm::vec3 worldMax(1024.0f, 1024.0f, 1024.0f);  // Large world

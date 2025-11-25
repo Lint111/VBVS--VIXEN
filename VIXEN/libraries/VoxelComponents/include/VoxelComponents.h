@@ -472,7 +472,7 @@ enum class ComponentAccessType { Value, Ref };
 /**
  * To register a new component:
  * 1. Define the component (VOXEL_COMPONENT_SCALAR or VOXEL_COMPONENT_VEC3)
- * 2. Add APPLY_MACRO(macro, ComponentName, AccessType) to FOR_EACH_COMPONENT below
+ * 2. Add to FOR_EACH_VALUE_COMPONENT or FOR_EACH_REF_COMPONENT below
  * 3. ComponentVariant, AllComponents tuple, and ComponentTraits auto-update
  *
  * This is the ONLY place you need to add component names!
@@ -481,22 +481,9 @@ enum class ComponentAccessType { Value, Ref };
  * - Value: Scalar/Vec3 components with simple value extraction (density, color, etc.)
  * - Ref:   Complex components returned by reference (Transform, AABB, etc.)
  */
-#define APPLY_MACRO(macro, ...) macro(__VA_ARGS__)
-#define FOR_EACH_COMPONENT(macro) \
-    APPLY_MACRO(macro, Density, Value) \
-    APPLY_MACRO(macro, Material, Value) \
-    APPLY_MACRO(macro, EmissionIntensity, Value) \
-    APPLY_MACRO(macro, Color, Value) \
-    APPLY_MACRO(macro, Normal, Value) \
-    APPLY_MACRO(macro, Emission, Value) \
-    APPLY_MACRO(macro, MortonKey, Value) \
-    APPLY_MACRO(macro, Transform, Ref) \
-    APPLY_MACRO(macro, VolumeTransform, Ref) \
-    APPLY_MACRO(macro, AABB, Ref) \
-    APPLY_MACRO(macro, Volume, Ref) \
-    APPLY_MACRO(macro, VolumeGrid, Ref)
+#define APPLY_MACRO(macro, component) macro(component)
 
-// Helper macro to expand only Value components
+// Value-type components: simple value extraction via getComponentValue()
 #define FOR_EACH_VALUE_COMPONENT(macro) \
     APPLY_MACRO(macro, Density) \
     APPLY_MACRO(macro, Material) \
@@ -506,7 +493,7 @@ enum class ComponentAccessType { Value, Ref };
     APPLY_MACRO(macro, Emission) \
     APPLY_MACRO(macro, MortonKey)
 
-// Helper macro to expand only Ref components
+// Ref-type components: returned by pointer via getComponentRef()
 #define FOR_EACH_REF_COMPONENT(macro) \
     APPLY_MACRO(macro, Transform) \
     APPLY_MACRO(macro, VolumeTransform) \
@@ -518,10 +505,10 @@ namespace ComponentRegistry {
     // Visit all components with a lambda
     template<typename Visitor>
     constexpr void visitAll(Visitor&& visitor) {
-        // Directly instantiate each component and call visitor
-        // Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
-        #define VISIT_COMPONENT(Component, AccessType) visitor(Component{});
-        FOR_EACH_COMPONENT(VISIT_COMPONENT)
+        // Use FOR_EACH_VALUE_COMPONENT + FOR_EACH_REF_COMPONENT to avoid 2-arg macro issues
+        #define VISIT_COMPONENT(Component) visitor(Component{});
+        FOR_EACH_VALUE_COMPONENT(VISIT_COMPONENT)
+        FOR_EACH_REF_COMPONENT(VISIT_COMPONENT)
         #undef VISIT_COMPONENT
     }
 
@@ -593,9 +580,12 @@ namespace ComponentRegistry {
  *   ComponentVariant v1 = Density{0.8f};       // holds Density only
  *   ComponentVariant v2 = Color{glm::vec3(1, 0, 0)};  // holds Color only
  */
-// Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
-#define AS_VARIANT_TYPE(Component, AccessType) Component,
-using ComponentVariant = std::variant<FOR_EACH_COMPONENT(AS_VARIANT_TYPE) std::monostate>;
+// Use separate macros to avoid 2-arg macro issues
+#define AS_VARIANT_TYPE(Component) Component,
+using ComponentVariant = std::variant<
+    FOR_EACH_VALUE_COMPONENT(AS_VARIANT_TYPE)
+    FOR_EACH_REF_COMPONENT(AS_VARIANT_TYPE)
+    std::monostate>;
 #undef AS_VARIANT_TYPE
 
 // ============================================================================
@@ -674,15 +664,15 @@ struct Solid {};
 template<typename T>
 struct ComponentTraits;
 
-// Reuse FOR_EACH_COMPONENT to generate traits
-// Note: Uses 2-arg macro (Component, AccessType) - ignores AccessType here
-#define GENERATE_TRAIT(Component, AccessType) \
+// Generate traits for all components using separate macros
+#define GENERATE_TRAIT(Component) \
     template<> \
     struct ComponentTraits<Component> { \
         static constexpr const char* Name = Component::Name; \
     };
 
-FOR_EACH_COMPONENT(GENERATE_TRAIT)
+FOR_EACH_VALUE_COMPONENT(GENERATE_TRAIT)
+FOR_EACH_REF_COMPONENT(GENERATE_TRAIT)
 
 #undef GENERATE_TRAIT
 
