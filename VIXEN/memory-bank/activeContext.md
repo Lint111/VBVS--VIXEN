@@ -1,62 +1,71 @@
 # Active Context
 
-**Last Updated**: November 24, 2025 (Session 6P Extended - Voxel Size & Architecture Fixes)
+**Last Updated**: November 25, 2025 (Session 6Q - Refactoring & Test Isolation)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | ✅ **Infinite Loop SOLVED (480x faster)** | 🟡 **Ray Casting (5/10 tests passing)**
+**Status**: ✅ **150 Total Tests** | ✅ **Ray Casting (6/10 tests passing)** | ✅ **Code Refactored**
 
 ---
 
-## Current Session Summary (Nov 24 - Session 6P Extended: Voxel Size & Architecture)
+## Current Session Summary (Nov 25 - Session 6Q: Refactoring & Test Isolation)
 
-### Major Fixes Completed
+### Major Accomplishments
 
-1. **BFS Reordering Fixed** ✅
-   - Fixed BFS to include leaf brick descriptors (was only copying non-leaf)
-   - Used childPointer to maintain brick view alignment without reordering
-   - Result: 6 descriptors with 5 brick views properly linked
+1. **ESVO Traversal Refactored** ✅
+   - Extracted ~886-line monolithic `castRayImpl` into ~10 focused helper methods
+   - New methods: `validateRayInput()`, `initializeTraversalState()`, `executePushPhase()`, `executeAdvancePhase()`, `executePopPhase()`, `handleLeafHit()`, `traverseBrickAndReturnHit()`, etc.
+   - Added new types: `ESVOTraversalState`, `ESVORayCoefficients`, `AdvanceResult`, `PopResult`
+   - Removed `goto` statement - replaced with `skipToAdvance` boolean flag
 
-2. **Brick World Bounds Fixed** ✅
-   - Fixed to use EntityBrickView's stored worldMin position
-   - Removed incorrect recalculation from leaf voxel position
-   - Added getWorldPosition() method to EntityBrickView
+2. **Test Isolation Fixed** ✅
+   - Each test now gets fresh `GaiaVoxelWorld` in `SetUp()`
+   - Tests compute bounds from actual voxel positions (not fixture defaults)
+   - Fixed Windows min/max macro conflicts in bounds calculation
 
-3. **Voxel Size Calculation Fixed** ✅
-   - Corrected formula: voxelSize = worldSize / 2^maxLevels
-   - Fixed both traversal and rebuild() to use consistent calculation
-   - Brick size = voxelSize * 2^brickDepth
+3. **Single-Brick Octree Support** ✅
+   - Added fallback: when `bricksPerAxis=1`, try octant 0 if computed octant fails
+   - Fixed rebuild: single-brick octrees now set `validMask=0xFF` and register all 8 octants
+   - Solved issue where rays from different directions couldn't find the single brick
 
-4. **Critical Architecture Insight** 💡
-   - Identified fundamental issue: system mixes world-space and grid-space assumptions
-   - Voxels created at arbitrary positions (5,2,2) don't align with grid (0.15625 spacing)
-   - **Future improvement**: Work in normalized [0,1] space with transformation matrices
+4. **Agent Configuration Updated** ✅
+   - All agents now default to Opus 4.5 model
+   - Exception: `intern-army-refactor` uses Haiku (fast, repetitive tasks)
+   - Documented Sonnet fallback policy in CLAUDE.md
 
-### Remaining Issues
+### Test Results: 6/10 Passing
 
-1. **EntityBrickView assumes voxelSize = 1.0**
-   - When converting local voxel coords to world positions
-   - Needs voxel size parameter or calculation
+**PASSING (6/10 = 60%)**:
+- ✅ AxisAlignedRaysFromOutside
+- ✅ DiagonalRaysVariousAngles
+- ✅ CompleteMissCases
+- ✅ MultipleVoxelTraversal
+- ✅ DenseVolumeTraversal
+- ✅ PerformanceCharacteristics
 
-2. **Grid Alignment Problem**
-   - Voxels placed at integer positions (1,2,3...)
-   - But grid has fractional spacing (0.15625 for maxLevels=6)
-   - Causes misalignment between expected and actual voxel positions
-
-### Session Metrics
-- **Tests passing**: 5/10 (down from 6/10 due to stricter voxel calculations)
-- **Code changes**: 15 fixes across LaineKarrasOctree.cpp and EntityBrickView
-- **Debug output added**: Brick DDA traversal, voxel positions, brick bounds
-- **Performance**: Still 480x faster than pre-6N (no infinite loops)
+**FAILING (4/10 = 40%)**:
+- ❌ RaysFromInsideGrid - ray starting position issues
+- ❌ EdgeCasesAndBoundaries - boundary handling edge cases
+- ❌ RandomStressTesting - statistical outliers
+- ❌ CornellBoxScene - multi-brick octree issues
 
 ### Modified Files
-- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - Voxel size fixes, BFS fixes, debug output
-- [EntityBrickView.h](libraries/GaiaVoxelWorld/include/EntityBrickView.h) - Added getWorldPosition()
-- [memory-bank/activeContext.md](memory-bank/activeContext.md) - Session 6P extended update
+
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp):
+  - Refactored traversal into helper methods
+  - Removed goto statement
+  - Added single-brick fallback and rebuild fix
+- [LaineKarrasOctree.h](libraries/SVO/include/LaineKarrasOctree.h):
+  - Added `ESVOTraversalState`, `ESVORayCoefficients`, `AdvanceResult`, `PopResult` types
+- [test_ray_casting_comprehensive.cpp](libraries/SVO/tests/test_ray_casting_comprehensive.cpp):
+  - Fixed test isolation with per-test bounds computation
+- [.claude/agents/*.md](.claude/agents/):
+  - Updated model to Opus 4.5 for coding-partner, project-maintainer, test-framework-qa
+- [CLAUDE.md](CLAUDE.md):
+  - Added Model Selection guidance
 
 ### Next Steps (Priority Order)
-1. **Implement normalized space architecture** (future major refactor)
-2. **Fix EntityBrickView voxel size handling**
-3. **Add voxel grid snapping during creation**
-4. **Ensure tests use consistent maxLevels**
+1. **Debug remaining 4 failing tests** - investigate multi-brick and edge case issues
+2. **Remove debug output** - clean up std::cout statements after tests pass
+3. **Consider proper multi-brick octant registration** - current single-brick fix is a workaround
 
 ---
 
