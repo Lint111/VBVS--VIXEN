@@ -67,7 +67,7 @@ public:
     EntityBrickView(GaiaVoxelWorld& world, std::span<gaia::ecs::Entity> entities, uint8_t depth);
 
     /**
-     * Create brick view from Morton key base (SVO pattern - zero storage).
+     * Create brick view from world-space position (SVO pattern - zero storage).
      * Queries entities on-demand via MortonKey component.
      *
      * @param world GaiaVoxelWorld for ECS queries
@@ -78,6 +78,19 @@ public:
      * Example: rootPosition=(5,0,0), depth=3, voxelSize=0.625 → queries voxels in 8x8x8 grid
      */
     EntityBrickView(GaiaVoxelWorld& world, glm::vec3 rootPositionInWorldSpace, uint8_t depth, float voxelSize = 1.0f);
+
+    /**
+     * Create brick view from integer grid origin (PREFERRED for voxel grids).
+     * Uses integer grid coordinates for entity lookup - avoids floating-point precision issues.
+     *
+     * @param world GaiaVoxelWorld for ECS queries
+     * @param gridOrigin Integer grid coordinate of brick's minimum corner
+     * @param depth Brick depth (depth → 2^depth = brickSize)
+     *
+     * Entity lookup: gridPos = gridOrigin + localCoord, then query by Morton key of gridPos.
+     * This is the correct approach when voxels are created at integer positions.
+     */
+    EntityBrickView(GaiaVoxelWorld& world, glm::ivec3 gridOrigin, uint8_t depth);
 
     // Depth-derived properties (set in constructor)
     [[nodiscard]] size_t getBrickSize() const { return m_brickSize; }
@@ -208,7 +221,8 @@ private:
 
     GaiaVoxelWorld& m_world;
     std::span<gaia::ecs::Entity> m_entities;  // Used by span-based constructor
-    glm::vec3 m_rootPositionInWorldSpace{ 0,0,0 };            // Used by MortonKey-based constructor
+    glm::vec3 m_rootPositionInWorldSpace{ 0,0,0 };            // Used by world-space constructor
+    glm::ivec3 m_gridOrigin{ 0,0,0 };          // Used by integer grid constructor
 
     // Depth-derived sizing
     uint8_t m_depth;                // Brick depth (3-8 typical for SVO)
@@ -216,8 +230,9 @@ private:
     size_t m_voxelsPerBrick;        // brickSize³ (512, 4096, 32768, ...)
     float m_voxelSize{ 1.0f };      // World-space size of each voxel
 
-    // Query mode: true = use m_entities span, false = query ECS via MortonKey
-    bool m_usesEntitySpan{ true };
+    // Query mode
+    enum class QueryMode { EntitySpan, WorldSpace, IntegerGrid };
+    QueryMode m_queryMode{ QueryMode::EntitySpan };
 };
 
 } // namespace GaiaVoxel

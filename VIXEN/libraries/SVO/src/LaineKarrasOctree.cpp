@@ -2085,13 +2085,19 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         tempDescriptors.push_back(desc);
 
         // Create EntityBrickView for this brick
-        // Use the actual world position stored in BrickInfo (don't recalculate from Morton!)
-        // Pass voxelSize to enable correct world position calculation in getEntity()
-        EntityBrickView brickView(world, brick.worldMin, static_cast<uint8_t>(brickDepth), voxelSize);
+        // Use INTEGER grid origin for proper voxel lookup (voxels are at integer positions)
+        // Grid origin = round(worldMin) to get the first integer voxel coordinate in this brick
+        glm::ivec3 gridOrigin(
+            static_cast<int>(std::round(brick.worldMin.x)),
+            static_cast<int>(std::round(brick.worldMin.y)),
+            static_cast<int>(std::round(brick.worldMin.z))
+        );
+        EntityBrickView brickView(world, gridOrigin, static_cast<uint8_t>(brickDepth));
         tempBrickViews.push_back(brickView);
 
-        std::cout << "[rebuild] Brick " << brickViewIndex << " at worldMin=("
-                  << brick.worldMin.x << "," << brick.worldMin.y << "," << brick.worldMin.z
+        std::cout << "[rebuild] Brick " << brickViewIndex << " at gridOrigin=("
+                  << gridOrigin.x << "," << gridOrigin.y << "," << gridOrigin.z
+                  << ") worldMin=(" << brick.worldMin.x << "," << brick.worldMin.y << "," << brick.worldMin.z
                   << ") descriptorIndex=" << descriptorIndex << " childPointer=" << brickViewIndex << "\n";
     }
 

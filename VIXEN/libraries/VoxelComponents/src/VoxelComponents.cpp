@@ -97,10 +97,13 @@ glm::vec3 toWorldPos(const MortonKey& key) {
 }
 
 uint64_t encode(const glm::vec3& pos) {
+    // Use a small epsilon to handle floating-point precision issues.
+    // Without this, 5.0 can be represented as 4.9999... and floor to 4.
+    constexpr float epsilon = 1e-5f;
     return encodeMorton(
-        static_cast<int>(std::floor(pos.x)),
-        static_cast<int>(std::floor(pos.y)),
-        static_cast<int>(std::floor(pos.z))
+        static_cast<int>(std::floor(pos.x + epsilon)),
+        static_cast<int>(std::floor(pos.y + epsilon)),
+        static_cast<int>(std::floor(pos.z + epsilon))
     );
 }
 

@@ -373,16 +373,6 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByWorldSpace(glm::vec3 worldPo
         }
     });
 
-    // Debug: log search results for first few calls
-    static int debugCount = 0;
-    bool isValid = result != gaia::ecs::Entity();
-    if (debugCount < 5 && !isValid) {
-        std::cout << "[getEntityByWorldSpace] worldPos=(" << worldPos.x << "," << worldPos.y << "," << worldPos.z
-                  << ") targetMorton=" << mortonKey.code << " totalEntities=" << entityCount
-                  << " result=" << (isValid ? "found" : "NOT FOUND") << "\n";
-        debugCount++;
-    }
-
     return result;  // Returns invalid entity if not found
 }
 

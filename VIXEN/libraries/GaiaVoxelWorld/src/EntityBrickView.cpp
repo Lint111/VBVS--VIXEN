@@ -11,10 +11,11 @@ EntityBrickView::EntityBrickView(
     : m_world(world)
     , m_entities(entities)
     , m_rootPositionInWorldSpace(glm::vec3(0))
+    , m_gridOrigin(glm::ivec3(0))
     , m_depth(depth)
     , m_brickSize(1u << depth)  // 2^depth
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
-    , m_usesEntitySpan(true) {
+    , m_queryMode(QueryMode::EntitySpan) {
 }
 
 EntityBrickView::EntityBrickView(
@@ -25,11 +26,27 @@ EntityBrickView::EntityBrickView(
     : m_world(world)
     , m_entities()  // Empty span
     , m_rootPositionInWorldSpace(rootPositionInWorldSpace)
+    , m_gridOrigin(glm::ivec3(0))
     , m_depth(depth)
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(voxelSize)
-    , m_usesEntitySpan(false) {
+    , m_queryMode(QueryMode::WorldSpace) {
+}
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    glm::ivec3 gridOrigin,
+    uint8_t depth)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_rootPositionInWorldSpace(glm::vec3(gridOrigin))  // For getWorldMin() compatibility
+    , m_gridOrigin(gridOrigin)
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    , m_queryMode(QueryMode::IntegerGrid) {
 }
 
 // ============================================================================
@@ -41,25 +58,40 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
         return gaia::ecs::Entity(); // Invalid entity
     }
 
-    if (m_usesEntitySpan) {
-        // Span-based mode: direct array access
-        return m_entities[voxelIdx];
-    } else {
-        // MortonKey-based mode: query ECS
-        int x, y, z;
-        linearIndexToCoord(voxelIdx, x, y, z);
+    switch (m_queryMode) {
+        case QueryMode::EntitySpan:
+            // Direct array access
+            return m_entities[voxelIdx];
 
-        // Compute world space position: root + local offset * voxelSize
-        // Voxel coords (x,y,z) are in [0, brickSize), multiply by voxelSize to get world offset
-        glm::vec3 localOffset(
-            static_cast<float>(x) * m_voxelSize,
-            static_cast<float>(y) * m_voxelSize,
-            static_cast<float>(z) * m_voxelSize
-        );
-        glm::vec3 worldPos = m_rootPositionInWorldSpace + localOffset;
+        case QueryMode::IntegerGrid: {
+            // Integer grid mode: compute grid position directly (preferred for voxel grids)
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
 
-        // Query world for entity at this world position
-        return m_world.getEntityByWorldSpace(worldPos);
+            // Grid position = grid origin + local offset (all integers)
+            glm::ivec3 gridPos = m_gridOrigin + glm::ivec3(x, y, z);
+
+            // Query by integer position (uses exact Morton key match)
+            return m_world.getEntityByWorldSpace(glm::vec3(gridPos));
+        }
+
+        case QueryMode::WorldSpace:
+        default: {
+            // World-space mode: compute fractional world position
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
+
+            // Compute world space position: root + local offset * voxelSize
+            glm::vec3 localOffset(
+                static_cast<float>(x) * m_voxelSize,
+                static_cast<float>(y) * m_voxelSize,
+                static_cast<float>(z) * m_voxelSize
+            );
+            glm::vec3 worldPos = m_rootPositionInWorldSpace + localOffset;
+
+            // Query world for entity at this world position
+            return m_world.getEntityByWorldSpace(worldPos);
+        }
     }
 }
 

@@ -1,56 +1,63 @@
 # Active Context
 
-**Last Updated**: November 25, 2025 (Session 6Q - Refactoring & Test Isolation)
+**Last Updated**: November 25, 2025 (Session 6R - ESVO Bug Investigation)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **150 Total Tests** | ✅ **Ray Casting (6/10 tests passing)** | ✅ **Code Refactored**
+**Status**: ✅ **150 Total Tests** | ✅ **Ray Casting (7/10 tests passing)** | ✅ **Critical Bugs Fixed**
 
 ---
 
-## Current Session Summary (Nov 25 - Session 6Q)
+## Current Session Summary (Nov 25 - Session 6R)
 
 ### Major Accomplishments
 
-1. **ESVO Traversal Refactored** ✅
-   - Extracted ~886-line monolithic `castRayImpl` into ~10 focused helper methods
-   - New methods: `validateRayInput()`, `initializeTraversalState()`, `executePushPhase()`, `executeAdvancePhase()`, `executePopPhase()`, `handleLeafHit()`, `traverseBrickAndReturnHit()`
-   - Added new types: `ESVOTraversalState`, `ESVORayCoefficients`, `AdvanceResult`, `PopResult`
-   - Removed `goto` statement - replaced with `skipToAdvance` boolean flag
+1. **Fixed Morton Range Query Bug** ✅
+   - **Root cause**: `getEntityBlockRef()` used Morton code range check `[min, min+span)`, but Morton codes are Z-ordered (interleaved), not spatially contiguous
+   - **Fix**: Changed to AABB-based grid queries - decode Morton keys and compare integer grid positions
+   - **File**: `GaiaVoxelWorld.cpp:277-335`
 
-2. **Test Isolation Fixed** ✅
-   - Each test now gets fresh `GaiaVoxelWorld` in `SetUp()`
-   - Tests compute bounds from actual voxel positions (not fixture defaults)
+2. **Fixed Floating-Point Precision in Morton Encoding** ✅
+   - **Root cause**: `floor(5.0)` returned 4 due to FP representation (5.0 as 4.9999...)
+   - **Fix**: Added epsilon: `floor(pos.x + 1e-5)`
+   - **File**: `VoxelComponents.cpp:99-108`
 
-3. **Single-Brick Octree Support** ✅
-   - Added fallback: when `bricksPerAxis=1`, try octant 0 if computed octant fails
-   - Fixed rebuild: single-brick octrees now set `validMask=0xFF` and register all 8 octants
+3. **Fixed leafOctant Calculation** (partial) ✅
+   - **Root cause**: Mirrored idx unmirroring formula was incorrect for many ray directions
+   - **Fix**: Changed to position-based octant calculation from normalized hit position
+   - **File**: `LaineKarrasOctree.cpp:1040-1050`
 
-4. **Agent Configuration** ✅
-   - All agents default to Opus 4.5 model
-   - Exception: `intern-army-refactor` uses Haiku (fast, repetitive tasks)
+4. **Updated getEntityBlockRef API** ✅
+   - Added `brickWorldSize` parameter for accurate world-space brick bounds
+   - **File**: `GaiaVoxelWorld.h:251-257`
 
-### Test Results: 6/10 Passing
+### Test Results: 7/10 Passing (+1 from Session 6Q)
 
-**PASSING (60%)**:
+**PASSING (70%)**:
 - ✅ AxisAlignedRaysFromOutside
 - ✅ DiagonalRaysVariousAngles
 - ✅ CompleteMissCases
 - ✅ MultipleVoxelTraversal
 - ✅ DenseVolumeTraversal
 - ✅ PerformanceCharacteristics
+- ✅ **EdgeCasesAndBoundaries** (NEW - fixed this session)
 
-**FAILING (40%)**:
-- ❌ RaysFromInsideGrid - ray starting position issues
-- ❌ EdgeCasesAndBoundaries - boundary handling edge cases
-- ❌ RandomStressTesting - statistical outliers
-- ❌ CornellBoxScene - multi-brick octree issues
+**FAILING (30%)**:
+- ❌ RaysFromInsideGrid - ray starting position octant selection issue
+- ❌ RandomStressTesting - statistical outliers (related to above)
+- ❌ CornellBoxScene - multi-brick traversal octant mapping
 
-### Modified Files (Session 6Q)
+### Root Cause of Remaining Failures
 
-- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp) - Refactored traversal, removed goto, single-brick fix
-- [LaineKarrasOctree.h](libraries/SVO/include/LaineKarrasOctree.h) - Added traversal types
-- [test_ray_casting_comprehensive.cpp](libraries/SVO/tests/test_ray_casting_comprehensive.cpp) - Fixed test isolation
-- [.claude/agents/*.md](.claude/agents/) - Updated model to Opus 4.5
-- [CLAUDE.md](CLAUDE.md) - Added Model Selection guidance
+The **leafOctant calculation** based on normalized position works for rays entering from outside, but fails for rays starting inside the volume. The normalized position at ray start may not correspond to the correct brick octant when the ray needs to traverse multiple bricks. A proper fix requires:
+1. Tracking ray t-parameter during brick lookup
+2. Using world-space hit position at brick entry point, not ray origin
+3. Potentially implementing ESVO paper's exact mirrored coordinate unmirroring
+
+### Modified Files (Session 6R)
+
+- [LaineKarrasOctree.cpp](libraries/SVO/src/LaineKarrasOctree.cpp:1040-1050,2003) - leafOctant fix, getEntityBlockRef call
+- [VoxelComponents.cpp](libraries/VoxelComponents/src/VoxelComponents.cpp:99-108) - epsilon in Morton encoding
+- [GaiaVoxelWorld.cpp](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp:277-335) - AABB-based brick queries
+- [GaiaVoxelWorld.h](libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h:251-257) - getEntityBlockRef signature change
 
 ---
 
@@ -93,10 +100,10 @@ if (hit.hit) {
 | GaiaVoxelWorld | 96/96 | ✅ 100% |
 | SVO (octree_queries) | 98/98 | ✅ 100% |
 | SVO (entity_brick_view) | 36/36 | ✅ 100% |
-| SVO (ray_casting) | 6/10 | 🟡 60% |
+| SVO (ray_casting) | 7/10 | 🟡 70% |
 | SVO (rebuild_hierarchy) | 4/4 | ✅ 100% |
 
-**Overall**: ~147/150 passing (~98%)
+**Overall**: ~148/150 passing (~99%)
 
 ---
 
@@ -153,8 +160,9 @@ if (hit.hit) {
 - [ ] Performance benchmarks
 
 ### Week 2: GPU Integration
-- [ ] Create OctreeTraversal.comp.glsl
-- [ ] Port ESVO traversal to GLSL
+- [x] Create OctreeTraversal.comp.glsl ✅ (exists: `shaders/VoxelRayMarch.comp`)
+- [x] Port ESVO traversal to GLSL ✅ (exists: `shaders/OctreeTraversal-ESVO.glsl`)
+- [ ] Sync GLSL with C++ fixes (Morton query, leafOctant, FP epsilon)
 - [ ] Render graph integration
 - [ ] Target: >200 Mrays/sec at 1080p
 
@@ -173,24 +181,19 @@ if (hit.hit) {
 ## Technical Discoveries (Key Learnings)
 
 1. **Single Source of Truth Pattern**: X-macro generates ComponentVariant, AllComponents tuple, and ComponentTraits from one list
-
 2. **Morton Code as Primary Key**: Encodes 3D position in uint64 - eliminates separate Position component
-
-3. **Parent tx_center ESVO Bug**: ESVO uses parent's tx_center values for octant selection after DESCEND, NOT recomputed values
-
+3. **Parent tx_center ESVO Bug**: ESVO uses parent's tx_center values for octant selection after DESCEND
 4. **ESVO Scale Direction**: High→Low (coarse→fine). Scale 23 = root, Scale 0 = finest leaves
-
-5. **EntityBrickView Zero-Storage**: View stores only (world ref, baseMortonKey, depth) = 16 bytes, queries ECS on-demand
-
-6. **Legacy API Creates Malformed Octrees**: VoxelInjector::inject() + BrickStorage creates corrupted hierarchy. Use rebuild() API.
+5. **EntityBrickView Zero-Storage**: View stores only (world ref, baseMortonKey, depth) = 16 bytes
+6. **Legacy API Creates Malformed Octrees**: VoxelInjector::inject() corrupts hierarchy. Use rebuild() API.
+7. **Morton Codes Are Z-Ordered**: Not spatially contiguous - use AABB queries, not range checks (Session 6R)
+8. **FP Precision in Morton Encoding**: `floor(5.0)` can return 4 - add epsilon (Session 6R)
 
 ---
 
 ## Reference Sources
 
-**ESVO Implementation**:
-- Location: `C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree`
-- Key files: `cuda/Raycast.inl`, `io/OctreeRuntime.hpp`
+**ESVO Implementation**: `C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\trunk\src\octree`
 
 **Key Papers**:
 - Laine & Karras (2010) - "Efficient Sparse Voxel Octrees"

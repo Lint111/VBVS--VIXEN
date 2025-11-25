@@ -246,6 +246,10 @@ private:
     // Transform: maps normalized [0,1]³ octree space ↔ world space
     ::GaiaVoxel::VolumeTransform m_transform;
 
+    // Integer grid bounds for quantized voxel coordinates
+    // Stores the actual data bounds; normalization uses power-of-2 padded extent
+    ::GaiaVoxel::VolumeGrid m_volumeGrid;
+
     // ========================================================================
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
     // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)

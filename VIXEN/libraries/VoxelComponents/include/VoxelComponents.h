@@ -295,6 +295,153 @@ struct Volume {
     }
 };
 
+/**
+ * VolumeGrid - Integer grid bounds for voxel volumes.
+ *
+ * COORDINATE SPACE HIERARCHY:
+ *   Global Space (world) - continuous floats
+ *       ↓ Entity Transform
+ *   Local Space (entity-relative) - continuous floats (mesh vertices)
+ *       ↓ Volume Quantization (this component)
+ *   Volume Local Space - INTEGER GRID (quantized voxels)
+ *       ↓ Normalization (gridMin/gridMax → [0,1]³)
+ *   Normalized Volume Space - [0,1]³
+ *       ↓ ESVO offset (+1)
+ *   ESVO Space - [1,2]³
+ *       ↓ Brick extraction
+ *   Brick Local Space - 0..7 integer grid per brick
+ *
+ * BENEFITS:
+ * - Clean separation: continuous geometry → quantized voxels
+ * - No FP precision issues in volume space (it's integers)
+ * - AABB defines grid extent, normalization is trivial
+ * - Brick traversal naturally integer-based
+ *
+ * USAGE:
+ *   VolumeGrid grid;
+ *   grid.expandToContain(glm::ivec3(5, 3, 7));  // Add voxel at integer coord
+ *   glm::vec3 normalized = grid.toNormalized(glm::ivec3(5, 3, 7));  // → [0,1]³
+ *   glm::ivec3 gridPos = grid.toGrid(normalized);  // → integer coords
+ */
+struct VolumeGrid {
+    static constexpr const char* Name = "volume_grid";
+
+    // Integer grid bounds (inclusive min, exclusive max for standard range semantics)
+    glm::ivec3 gridMin = glm::ivec3(INT_MAX);
+    glm::ivec3 gridMax = glm::ivec3(INT_MIN);
+
+    // Check if grid has been initialized with at least one point
+    bool isInitialized() const {
+        return gridMin.x != INT_MAX && glm::all(glm::lessThan(gridMin, gridMax));
+    }
+
+    // Get grid dimensions (number of voxels per axis)
+    glm::ivec3 getGridSize() const {
+        if (!isInitialized()) return glm::ivec3(0);
+        return gridMax - gridMin;
+    }
+
+    // Get maximum extent (for power-of-2 padding)
+    int getMaxExtent() const {
+        glm::ivec3 size = getGridSize();
+        return (glm::max)(size.x, (glm::max)(size.y, size.z));
+    }
+
+    // Get power-of-2 padded size (for octree alignment)
+    int getPaddedExtent() const {
+        int maxExt = getMaxExtent();
+        if (maxExt <= 0) return 1;
+        // Round up to next power of 2
+        int pot = 1;
+        while (pot < maxExt) pot <<= 1;
+        return pot;
+    }
+
+    // Expand grid to contain a new integer coordinate
+    void expandToContain(const glm::ivec3& gridPos) {
+        if (!isInitialized()) {
+            gridMin = gridPos;
+            gridMax = gridPos + glm::ivec3(1);  // Exclusive max
+            return;
+        }
+        gridMin = (glm::min)(gridMin, gridPos);
+        gridMax = (glm::max)(gridMax, gridPos + glm::ivec3(1));
+    }
+
+    // Quantize world/local position to integer grid coordinate
+    // Uses floor() for consistent grid cell assignment
+    static glm::ivec3 quantize(const glm::vec3& worldPos) {
+        return glm::ivec3(
+            static_cast<int>(std::floor(worldPos.x)),
+            static_cast<int>(std::floor(worldPos.y)),
+            static_cast<int>(std::floor(worldPos.z))
+        );
+    }
+
+    // Convert integer grid position to normalized [0,1]³ space
+    // Uses power-of-2 padded extent for octree-aligned normalization
+    glm::vec3 toNormalized(const glm::ivec3& gridPos) const {
+        if (!isInitialized()) return glm::vec3(0.0f);
+
+        int paddedExtent = getPaddedExtent();
+        if (paddedExtent <= 0) return glm::vec3(0.0f);
+
+        // Offset from grid minimum, then normalize by padded extent
+        glm::vec3 offset = glm::vec3(gridPos - gridMin);
+        return offset / static_cast<float>(paddedExtent);
+    }
+
+    // Convert normalized [0,1]³ position back to integer grid coordinate
+    glm::ivec3 toGrid(const glm::vec3& normalized) const {
+        if (!isInitialized()) return glm::ivec3(0);
+
+        int paddedExtent = getPaddedExtent();
+        glm::vec3 offset = normalized * static_cast<float>(paddedExtent);
+        return gridMin + glm::ivec3(
+            static_cast<int>(std::floor(offset.x)),
+            static_cast<int>(std::floor(offset.y)),
+            static_cast<int>(std::floor(offset.z))
+        );
+    }
+
+    // Convert normalized [0,1]³ to ESVO [1,2]³ space
+    static glm::vec3 toESVO(const glm::vec3& normalized) {
+        return normalized + glm::vec3(1.0f);
+    }
+
+    // Convert ESVO [1,2]³ back to normalized [0,1]³
+    static glm::vec3 fromESVO(const glm::vec3& esvo) {
+        return esvo - glm::vec3(1.0f);
+    }
+
+    // Check if integer grid position is within bounds
+    bool contains(const glm::ivec3& gridPos) const {
+        if (!isInitialized()) return false;
+        return glm::all(glm::greaterThanEqual(gridPos, gridMin)) &&
+               glm::all(glm::lessThan(gridPos, gridMax));
+    }
+
+    // Get world-space AABB (assuming unit voxels, grid coords = world coords)
+    AABB toWorldAABB() const {
+        AABB aabb;
+        if (isInitialized()) {
+            aabb.min = glm::vec3(gridMin);
+            aabb.max = glm::vec3(gridMax);
+        }
+        return aabb;
+    }
+
+    // Create VolumeGrid from world-space AABB (quantizes bounds)
+    static VolumeGrid fromWorldAABB(const AABB& aabb) {
+        VolumeGrid grid;
+        if (aabb.isInitialized()) {
+            grid.gridMin = quantize(aabb.min);
+            grid.gridMax = quantize(aabb.max) + glm::ivec3(1);  // Exclusive max
+        }
+        return grid;
+    }
+};
+
 
 // ============================================================================
 // Core Voxel Attributes
@@ -334,7 +481,8 @@ VOXEL_COMPONENT_VEC3(Emission, "emission", r, g, b, AoS, 0.0f, 0.0f, 0.0f)
     APPLY_MACRO(macro, Transform) \
     APPLY_MACRO(macro, VolumeTransform) \
     APPLY_MACRO(macro, AABB) \
-    APPLY_MACRO(macro, Volume) 
+    APPLY_MACRO(macro, Volume) \
+    APPLY_MACRO(macro, VolumeGrid) 
 
 namespace ComponentRegistry {
     // Visit all components with a lambda
