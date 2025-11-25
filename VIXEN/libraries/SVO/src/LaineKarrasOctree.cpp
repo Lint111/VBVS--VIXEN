@@ -1934,52 +1934,57 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // 1. Acquire write lock (blocks rendering)
     std::unique_lock<std::shared_mutex> lock(m_renderLock);
 
-    // 2. Initialize transform: world space → normalized [0,1]³ space
-    m_transform = VolumeTransform::fromWorldBounds(worldMin, worldMax);
-    std::cout << "[rebuild] Transform initialized: world ["
-              << worldMin.x << "," << worldMin.y << "," << worldMin.z << "] → ["
-              << worldMax.x << "," << worldMax.y << "," << worldMax.z << "] "
-              << "maps to volume [0,1]³\n";
+    // 2. Initialize VolumeGrid from world bounds (quantized to integer grid)
+    //    This is the NEW coordinate system architecture:
+    //    - World space (floats) → quantize → Integer grid → normalize → [0,1]³ → ESVO [1,2]³
+    m_volumeGrid = VolumeGrid::fromWorldAABB(AABB{worldMin, worldMax});
 
-    // 3. Clear existing octree structure
+    // 3. Initialize transform for world ↔ normalized space conversion
+    //    Uses power-of-2 padded extent for octree-aligned normalization
+    int paddedExtent = m_volumeGrid.getPaddedExtent();
+    glm::vec3 gridMinF = glm::vec3(m_volumeGrid.gridMin);
+    glm::vec3 gridMaxF = gridMinF + glm::vec3(static_cast<float>(paddedExtent));
+    m_transform = VolumeTransform::fromWorldBounds(gridMinF, gridMaxF);
+
+    std::cout << "[rebuild] VolumeGrid initialized: gridMin=("
+              << m_volumeGrid.gridMin.x << "," << m_volumeGrid.gridMin.y << "," << m_volumeGrid.gridMin.z
+              << ") gridMax=(" << m_volumeGrid.gridMax.x << "," << m_volumeGrid.gridMax.y << "," << m_volumeGrid.gridMax.z
+              << ") paddedExtent=" << paddedExtent << "\n";
+
+    // 4. Clear existing octree structure
     m_octree = std::make_unique<Octree>();
     m_octree->root = std::make_unique<OctreeBlock>();
-    m_octree->worldMin = worldMin;
-    m_octree->worldMax = worldMax;
+    m_octree->worldMin = gridMinF;
+    m_octree->worldMax = gridMaxF;
     m_octree->maxLevels = m_maxLevels;
-    m_worldMin = worldMin;
-    m_worldMax = worldMax;
+    m_worldMin = gridMinF;
+    m_worldMax = gridMaxF;
 
-    // 4. Calculate brick grid dimensions in normalized [0,1]³ space
+    // 5. Calculate brick grid dimensions using integer grid coordinates
     int brickDepth = m_brickDepthLevels;
     int brickSideLength = 1 << brickDepth;  // 2^3 = 8 for depth 3
 
-    glm::vec3 worldSize = worldMax - worldMin;
-    // Assume voxelSize = 1.0, so worldSize in voxels = worldSize
-    int voxelsPerAxis = static_cast<int>(worldSize.x);  // Assume uniform cube world
-    int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;  // Round up
-    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
+    // Brick count based on padded extent (power of 2)
+    int bricksPerAxis = paddedExtent / brickSideLength;
+    if (bricksPerAxis < 1) bricksPerAxis = 1;
 
     // Store bricksPerAxis for use during ray casting
     m_octree->bricksPerAxis = bricksPerAxis;
-
-    // Voxel size = brick world size / brick side length
-    float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
 
     // Normalized brick size (in [0,1]³ space)
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
 
     std::cout << "[rebuild] Brick configuration: depth=" << brickDepth
               << " sideLength=" << brickSideLength
-              << " brickWorldSize=" << brickWorldSize
-              << " voxelSize=" << voxelSize
-              << " bricksPerAxis=" << bricksPerAxis << "\n";
+              << " paddedExtent=" << paddedExtent
+              << " bricksPerAxis=" << bricksPerAxis
+              << " normalizedBrickSize=" << normalizedBrickSize << "\n";
 
-    // 5. PHASE 1: Collect populated bricks
+    // 6. PHASE 1: Collect populated bricks using INTEGER GRID coordinates
     struct BrickInfo {
-        glm::ivec3 gridCoord;      // Brick grid coordinate (0 to bricksPerAxis-1)
+        glm::ivec3 brickIndex;     // Brick index in grid (0 to bricksPerAxis-1)
+        glm::ivec3 gridOrigin;     // Integer grid origin of brick (for entity lookup)
         glm::vec3 normalizedMin;   // Normalized [0,1]³ minimum corner
-        glm::vec3 worldMin;        // World-space minimum corner (for entity query)
         size_t entityCount;        // Number of entities in brick
     };
 
@@ -1989,18 +1994,17 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     for (int bz = 0; bz < bricksPerAxis; ++bz) {
         for (int by = 0; by < bricksPerAxis; ++by) {
             for (int bx = 0; bx < bricksPerAxis; ++bx) {
-                // Brick position in normalized [0,1]³ space
-                glm::vec3 brickNormalizedMin = glm::vec3(
-                    bx * normalizedBrickSize,
-                    by * normalizedBrickSize,
-                    bz * normalizedBrickSize
-                );
+                // Brick's integer grid origin = volumeGrid.gridMin + brickIndex * brickSideLength
+                glm::ivec3 brickIndex(bx, by, bz);
+                glm::ivec3 gridOrigin = m_volumeGrid.gridMin + brickIndex * brickSideLength;
 
-                // Transform to world space for entity query
-                glm::vec3 brickWorldMin = m_transform.toWorld(brickNormalizedMin);
+                // Normalized position = (gridOrigin - gridMin) / paddedExtent
+                glm::vec3 normalizedMin = m_volumeGrid.toNormalized(gridOrigin);
 
-                // Query entities in this brick region (cached query, very fast)
-                auto entitySpan = world.getEntityBlockRef(brickWorldMin, brickWorldSize, static_cast<uint8_t>(brickDepth));
+                // Query entities using integer grid origin (voxels created at integer positions)
+                // World position = grid position for unit voxels
+                glm::vec3 worldPos = glm::vec3(gridOrigin);
+                auto entitySpan = world.getEntityBlockRef(worldPos, static_cast<float>(brickSideLength), static_cast<uint8_t>(brickDepth));
 
                 // Skip empty bricks
                 if (entitySpan.empty()) {
@@ -2009,11 +2013,11 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
                 totalVoxels += entitySpan.size();
 
-                // Store populated brick info (both normalized and world positions)
+                // Store populated brick info
                 populatedBricks.push_back(BrickInfo{
-                    glm::ivec3(bx, by, bz),
-                    brickNormalizedMin,
-                    brickWorldMin,
+                    brickIndex,
+                    gridOrigin,
+                    normalizedMin,
                     entitySpan.size()
                 });
             }
@@ -2030,7 +2034,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         return;
     }
 
-    // 5. PHASE 2: Build hierarchy bottom-up with child mapping
+    // 7. PHASE 2: Build hierarchy bottom-up with child mapping
     // Based on VoxelInjection.cpp compaction algorithm
     std::cout << "[rebuild] Phase 2: Building hierarchy bottom-up...\n";
 
@@ -2067,7 +2071,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
     // Initialize brick-level nodes (depth = brickDepth)
     for (const auto& brick : populatedBricks) {
-        NodeKey key{brickDepth, brick.gridCoord};
+        NodeKey key{brickDepth, brick.brickIndex};
         uint32_t descriptorIndex = static_cast<uint32_t>(tempDescriptors.size());
         uint32_t brickViewIndex = static_cast<uint32_t>(tempBrickViews.size());
         nodeToDescriptorIndex[key] = descriptorIndex;
@@ -2084,20 +2088,14 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
         tempDescriptors.push_back(desc);
 
-        // Create EntityBrickView for this brick
-        // Use INTEGER grid origin for proper voxel lookup (voxels are at integer positions)
-        // Grid origin = round(worldMin) to get the first integer voxel coordinate in this brick
-        glm::ivec3 gridOrigin(
-            static_cast<int>(std::round(brick.worldMin.x)),
-            static_cast<int>(std::round(brick.worldMin.y)),
-            static_cast<int>(std::round(brick.worldMin.z))
-        );
-        EntityBrickView brickView(world, gridOrigin, static_cast<uint8_t>(brickDepth));
+        // Create EntityBrickView using INTEGER grid origin (the correct approach)
+        // Voxels are stored at integer positions, so entity lookup uses exact Morton keys
+        EntityBrickView brickView(world, brick.gridOrigin, static_cast<uint8_t>(brickDepth));
         tempBrickViews.push_back(brickView);
 
         std::cout << "[rebuild] Brick " << brickViewIndex << " at gridOrigin=("
-                  << gridOrigin.x << "," << gridOrigin.y << "," << gridOrigin.z
-                  << ") worldMin=(" << brick.worldMin.x << "," << brick.worldMin.y << "," << brick.worldMin.z
+                  << brick.gridOrigin.x << "," << brick.gridOrigin.y << "," << brick.gridOrigin.z
+                  << ") normalizedMin=(" << brick.normalizedMin.x << "," << brick.normalizedMin.y << "," << brick.normalizedMin.z
                   << ") descriptorIndex=" << descriptorIndex << " childPointer=" << brickViewIndex << "\n";
     }
 
