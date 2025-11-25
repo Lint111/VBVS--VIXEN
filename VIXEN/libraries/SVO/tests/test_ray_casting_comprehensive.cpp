@@ -35,7 +35,24 @@ protected:
         const std::vector<glm::vec3>& voxelPositions,
         int maxDepth = 6)
     {
-        
+        // Clear previous test state to ensure test isolation
+        voxelWorld->clear();
+
+        // Compute bounds from actual voxel positions for this test
+        constexpr float floatMax = 1e30f;
+        glm::vec3 testMin(floatMax, floatMax, floatMax);
+        glm::vec3 testMax(-floatMax, -floatMax, -floatMax);
+        for (const auto& pos : voxelPositions) {
+            testMin.x = pos.x < testMin.x ? pos.x : testMin.x;
+            testMin.y = pos.y < testMin.y ? pos.y : testMin.y;
+            testMin.z = pos.z < testMin.z ? pos.z : testMin.z;
+            testMax.x = pos.x > testMax.x ? pos.x : testMax.x;
+            testMax.y = pos.y > testMax.y ? pos.y : testMax.y;
+            testMax.z = pos.z > testMax.z ? pos.z : testMax.z;
+        }
+        // Add padding to ensure voxels fit within bounds
+        testMin -= glm::vec3(1.0f);
+        testMax += glm::vec3(1.0f);
 
         // Create voxel entities in the world
         for (const auto& pos : voxelPositions) {
@@ -56,8 +73,8 @@ protected:
             3          // brickDepth (3 levels = 8x8x8 brick)
         );
 
-        // Build ESVO hierarchy from entities
-        octree->rebuild(*voxelWorld, worldMin, worldMax);
+        // Build ESVO hierarchy from entities with computed bounds
+        octree->rebuild(*voxelWorld, testMin, testMax);
 
         return octree;
     }
