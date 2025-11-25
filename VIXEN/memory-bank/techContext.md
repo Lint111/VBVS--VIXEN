@@ -99,6 +99,37 @@ cmake --build build --config Release
    - Libraries: SPIRV, glslang, OSDependent, etc.
    - Purpose: Runtime GLSL to SPIR-V compilation
 
+3. **Gaia ECS**
+   - Purpose: Entity-component-system for sparse voxel storage
+   - Used by: GaiaVoxelWorld library
+   - Features: Morton-indexed entity storage, SoA optimization
+
+4. **GLM (OpenGL Mathematics)**
+   - Purpose: 3D math library (vec3, mat4, etc.)
+   - Used by: All voxel libraries, ray casting
+
+### Voxel Infrastructure Libraries (Phase H.2)
+
+1. **VoxelComponents** (`libraries/VoxelComponents/`)
+   - Purpose: Shared component type definitions
+   - Key file: `VoxelComponents.h` - FOR_EACH_COMPONENT macro
+   - Components: Density, Color, Normal, Roughness, Metallic, Emissive
+   - Dependencies: Gaia ECS, GLM
+
+2. **GaiaVoxelWorld** (`libraries/GaiaVoxelWorld/`)
+   - Purpose: ECS-backed sparse voxel storage
+   - Key file: `GaiaVoxelWorld.cpp` - Entity creation/query
+   - Features: Morton code indexing, VoxelCreationRequest API
+   - Dependencies: VoxelComponents, Gaia ECS
+
+3. **SVO** (`libraries/SVO/`)
+   - Purpose: Sparse Voxel Octree with ESVO ray casting
+   - Key files:
+     - `LaineKarrasOctree.cpp` - ESVO traversal implementation
+     - `EntityBrickView.cpp` - Zero-storage brick pattern
+   - Features: rebuild() API, castRay(), ChildDescriptor hierarchy
+   - Dependencies: GaiaVoxelWorld, VoxelComponents
+
 ### Library Linking
 ```cmake
 # Debug builds: link *d.lib versions
@@ -155,11 +186,33 @@ cmake --build build --config Debug
 - **Visual Studio Debugger**: Attach to executable in `binaries/`
 
 ### Testing Approach
-- **Automated Testing**: GoogleTest framework with 10 test suites
-- **Coverage Analysis**: 40% coverage target, LCOV visualization
+- **Automated Testing**: GoogleTest framework
+- **Coverage Analysis**: LCOV visualization
 - **VS Code Integration**: Test Explorer, one-click debugging
 - **Validation Layers**: Comprehensive Vulkan API error checking
 - **Visual Confirmation**: Rendering output verification
+
+### Voxel Test Suite (150 Tests - November 2025)
+
+| Library | Test File | Tests | Focus |
+|---------|-----------|-------|-------|
+| VoxelComponents | test_voxel_components.cpp | 8 | Component types, traits |
+| GaiaVoxelWorld | test_gaia_voxel_world.cpp | 96 | Entity creation, queries, Morton indexing |
+| SVO | test_octree_queries.cpp | 98 | Octree structure, child descriptors |
+| SVO | test_entity_brick_view.cpp | 36 | Zero-storage pattern, ECS integration |
+| SVO | test_ray_casting_comprehensive.cpp | 10 | ESVO traversal, DDA brick traversal |
+| SVO | test_rebuild_hierarchy.cpp | 4 | rebuild() API, hierarchical construction |
+
+**Test Location**: `libraries/{Library}/tests/`
+
+**Running Tests**:
+```bash
+# All voxel tests
+ctest --test-dir build -R "VoxelComponents|GaiaVoxelWorld|SVO"
+
+# Specific test suite
+ctest --test-dir build -R "test_ray_casting"
+```
 
 ## Tool Usage Patterns
 
@@ -172,11 +225,12 @@ cmake --build build --config Debug
 - **Testing Support**: GoogleTest framework, CTest integration, ENABLE_COVERAGE option for LCOV
 
 ### Testing Framework (November 2025)
-- **GoogleTest**: Unit testing framework (10 test suites)
-- **Coverage**: 40% achieved (ResourceBudgetManager 90%, DeferredDestruction 95%, StatefulContainer 85%, SlotTask 90%, GraphTopology 90%)
+- **GoogleTest**: Unit testing framework
 - **VS Code Integration**: Test Explorer hierarchical view, coverage gutters (green/orange/red)
-- **Test Suites**: ResourceManagement, GraphTopology, ShaderManagement, CashSystem, EventBus, NodeInstance, TypedConnection, SlotTask, StatefulContainer, DeferredDestruction
-- **Documentation**: `docs/TEST_COVERAGE.md` (~400 pages), `docs/VS_CODE_TESTING_SETUP.md` (~800 pages)
+- **RenderGraph Test Suites**: ResourceManagement, GraphTopology, ShaderManagement, CashSystem, EventBus, NodeInstance, TypedConnection, SlotTask, StatefulContainer, DeferredDestruction
+- **Voxel Test Suites**: VoxelComponents, GaiaVoxelWorld, SVO (octree_queries, entity_brick_view, ray_casting, rebuild_hierarchy)
+- **Total Tests**: ~150 voxel tests + RenderGraph tests
+- **Documentation**: `docs/TEST_COVERAGE.md`, `docs/VS_CODE_TESTING_SETUP.md`
 
 ### GLSL Compiler
 - **Runtime**: Uses glslang library for on-the-fly compilation

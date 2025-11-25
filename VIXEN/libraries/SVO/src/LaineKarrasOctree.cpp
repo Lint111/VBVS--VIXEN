@@ -1046,8 +1046,12 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
 
     glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;
 
-    // Unmirror idx to get physical octant
-    int leafOctant = state.idx ^ ((~coef.octant_mask) & 7);
+    // Compute physical octant directly from normalized position
+    // This is more robust than unmirroring idx, which has complex edge cases
+    int leafOctant = 0;
+    if (normalizedPos.x >= 0.5f) leafOctant |= 1;
+    if (normalizedPos.y >= 0.5f) leafOctant |= 2;
+    if (normalizedPos.z >= 0.5f) leafOctant |= 4;
 
     std::cout << "[BRICK LOOKUP] pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ")"
               << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
@@ -1996,7 +2000,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
                 glm::vec3 brickWorldMin = m_transform.toWorld(brickNormalizedMin);
 
                 // Query entities in this brick region (cached query, very fast)
-                auto entitySpan = world.getEntityBlockRef(brickWorldMin, static_cast<uint8_t>(brickDepth));
+                auto entitySpan = world.getEntityBlockRef(brickWorldMin, brickWorldSize, static_cast<uint8_t>(brickDepth));
 
                 // Skip empty bricks
                 if (entitySpan.empty()) {

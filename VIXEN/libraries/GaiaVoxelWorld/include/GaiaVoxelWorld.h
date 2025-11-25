@@ -243,13 +243,17 @@ public:
      * - Invalidated on entity create/destroy (automatically via ECS hooks)
      * - Call invalidateBlockCache() to force refresh
      *
-     * MORTON RANGE QUERY OPTIMIZATION:
-     * - Uses efficient Morton code range check (2 integer comparisons)
-     * - No coordinate decoding (3x faster than AABB world-space test)
-     * - Avoids floating-point precision issues
+     * AABB WORLD-SPACE QUERY:
+     * Queries voxels whose integer grid position falls within the brick's world bounds.
+     * Grid position is floor(worldPos), so voxel at (5.5, 2.3, 7.8) is at grid (5, 2, 7).
+     *
+     * @param brickWorldMin World-space minimum corner of brick
+     * @param brickWorldSize World-space size of brick (same for all axes)
+     * @param brickDepth Internal brick resolution (unused, kept for compatibility)
      */
     std::span<const gaia::ecs::Entity> getEntityBlockRef(
         const glm::vec3& brickWorldMin,
+        float brickWorldSize,
         uint8_t brickDepth);
 
     /**

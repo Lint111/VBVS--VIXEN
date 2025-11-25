@@ -1,19 +1,54 @@
 # Progress
 
-## Current State: GaiaVoxelWorld Integration (Phase H - Nov 2025)
+## Current State: Phase H.2 Voxel Infrastructure (Nov 2025)
 
-**Last Updated**: November 23, 2025 (Session 6)
+**Last Updated**: November 25, 2025 (Session 6Q)
 
-### Latest Achievements (Nov 19-23, 2025)
+### Latest Achievements (Nov 19-25, 2025)
 - ✅ **Week 1.5**: ESVO CPU Traversal + Brick DDA (Complete - Nov 19)
-- ✅ **Session 1-2**: GaiaVoxelWorld library creation + ECS-backed registry (Nov 22)
-- ✅ **Session 3**: Async layer architecture design (Nov 22)
-- ✅ **Session 5**: Component registry unification (Nov 22)
-- ✅ **Session 6**: Macro-based component registration (Nov 23)
+- ✅ **Sessions 1-6**: GaiaVoxelWorld library, VoxelComponents, macro-based registry (Nov 22-23)
+- ✅ **Sessions 6G-6K**: EntityBrickView zero-storage pattern, rebuild() API (Nov 23)
+- ✅ **Session 6N**: Fixed infinite loop bug - legacy API created malformed octrees (Nov 23)
+- ✅ **Session 6Q**: ESVO traversal refactored - extracted 886-line castRayImpl into 10 focused methods (Nov 25)
 
 ---
 
-## Phase H: Voxel Infrastructure (Nov 19-23, 2025)
+## Test Suite Status (150 Total Tests)
+
+| Library | Tests | Status |
+|---------|-------|--------|
+| VoxelComponents | 8/8 | ✅ 100% |
+| GaiaVoxelWorld | 96/96 | ✅ 100% |
+| SVO (octree_queries) | 98/98 | ✅ 100% |
+| SVO (entity_brick_view) | 36/36 | ✅ 100% |
+| SVO (ray_casting) | 6/10 | 🟡 60% |
+| SVO (rebuild_hierarchy) | 4/4 | ✅ 100% |
+
+**Overall**: ~147/150 passing (~98%)
+
+---
+
+## Phase H.2: Voxel Infrastructure (Nov 19-25, 2025)
+
+### Nov 25 - Session 6Q: ESVO Refactoring ✅
+**Achievement**: Extracted monolithic traversal into focused helper methods.
+
+**What Was Built**:
+- Extracted ~886-line `castRayImpl` into ~10 focused methods
+- New methods: `validateRayInput()`, `initializeTraversalState()`, `executePushPhase()`, `executeAdvancePhase()`, `executePopPhase()`, `handleLeafHit()`, `traverseBrickAndReturnHit()`
+- New types: `ESVOTraversalState`, `ESVORayCoefficients`, `AdvanceResult`, `PopResult`
+- Removed `goto` statement - replaced with `skipToAdvance` boolean flag
+- Fixed single-brick octree support (fallback for bricksPerAxis=1)
+- Test isolation improved (fresh GaiaVoxelWorld per test, bounds computed from voxel positions)
+
+### Nov 23 - Sessions 6G-6N: Entity-Based SVO Complete ✅
+**Achievement**: Complete migration from legacy VoxelInjector to rebuild() API.
+
+**What Was Built**:
+- EntityBrickView: Zero-storage pattern (16 bytes vs 70 KB per brick)
+- rebuild(): Hierarchical octree construction from entity world
+- Root cause fix: Legacy VoxelInjector::inject() created malformed octrees
+- Modern workflow: GaiaVoxelWorld → rebuild() → castRay()
 
 ### Nov 23 - Session 6: Macro-Based Component Registry ✅
 **Achievement**: Implemented X-macro pattern for single source of truth component registration.
@@ -22,13 +57,6 @@
 - `FOR_EACH_COMPONENT` macro auto-generates ComponentVariant, AllComponents tuple, ComponentTraits
 - Renamed ComponentData → ComponentQueryRequest for clarity
 - Consolidated API to use VoxelCreationRequest (removed duplicate structs)
-- Removed deprecated entity-based brick storage methods
-- Build Status: VoxelComponents.lib compiles successfully
-
-**Benefits**:
-- Single edit point for adding components (eliminates 3+ location updates)
-- Compile-time safety (impossible to have mismatched types)
-- Zero duplication across variant/tuple/traits
 
 ### Nov 22 - Session 5: Component Registry Unification ✅
 **Achievement**: Eliminated duplicate component registries by extracting VoxelComponents library.
@@ -546,8 +574,28 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ## In Progress 🔨
 
-### 1. Phase A - Persistent Cache Infrastructure (October 31, 2025)
-**Priority**: HIGH - Critical Performance Feature
+### 1. Phase H.2 - Voxel Infrastructure (November 2025)
+**Priority**: HIGH - Core Voxel System
+**Status**: 🟡 IN PROGRESS - 98% tests passing, 4 ray casting edge cases remaining
+
+**Completed** ✅:
+- VoxelComponents library extraction
+- Macro-based component registry (FOR_EACH_COMPONENT)
+- GaiaVoxelWorld with ECS-backed storage
+- EntityBrickView zero-storage pattern
+- rebuild() API replacing legacy VoxelInjector
+- ESVO traversal refactoring (886-line monolith → 10 methods)
+
+**Remaining** 🔄:
+- Fix 4 failing ray casting tests (RaysFromInsideGrid, EdgeCasesAndBoundaries, RandomStressTesting, CornellBoxScene)
+- Multi-brick octree parent descriptor linking
+- Partial block updates API (updateBlock, removeBlock)
+- Write-lock protection (lockForRendering, BlockLockGuard)
+
+**Next Milestone**: GPU integration (Week 2) - OctreeTraversal.comp.glsl, >200 Mrays/sec target
+
+### 2. Phase A - Persistent Cache Infrastructure (October 31, 2025)
+**Priority**: LOW - Maintenance
 **Status**: ✅ COMPLETE - Async save/load working, stable device IDs, CACHE HIT confirmed
 
 **Completed** ✅:

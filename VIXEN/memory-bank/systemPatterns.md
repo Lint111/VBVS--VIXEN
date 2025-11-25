@@ -549,7 +549,171 @@ Out(OUTPUT_SLOT, CreateResource());         // Move semantics (temporary)
 
 ---
 
-### 21. Const-Correctness Pattern (November 16, 2025 - Phase H)
+### 21. EntityBrickView Zero-Storage Pattern (November 2025 - Phase H.2)
+**Classes**: `EntityBrickView`, `GaiaVoxelWorld`, `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// EntityBrickView stores only reference data (16 bytes)
+class EntityBrickView {
+    GaiaVoxelWorld* world;      // 8 bytes - reference to entity storage
+    uint64_t baseMortonKey;     // 8 bytes - brick origin in Morton space
+    // No voxel data storage - queries ECS on-demand
+
+public:
+    // Query voxel by local brick position (0-7 per axis)
+    bool getVoxelAt(int x, int y, int z) const {
+        uint64_t key = baseMortonKey + encodeMorton(x, y, z);
+        return world->hasEntity(key);
+    }
+
+    // Get component values for specific voxel
+    template<typename T>
+    std::optional<T> getComponent(int x, int y, int z) const {
+        uint64_t key = baseMortonKey + encodeMorton(x, y, z);
+        return world->getComponentValue<T>(key);
+    }
+};
+```
+
+**Memory Comparison**:
+```
+Legacy BrickStorage: 8x8x8 voxels × 8-byte attributes = 4,096 bytes/brick
++ Occupancy mask: 512 bits = 64 bytes
++ Metadata: ~4,000 bytes
+Total: ~70 KB per brick
+
+EntityBrickView: 16 bytes per brick (world ptr + morton key)
+Reduction: 94% memory savings
+```
+
+**Purpose**: Eliminate brick data duplication by viewing entities through Morton-indexed queries
+
+**Key Insight**: Bricks don't need to store voxel data - they're spatial indices into the ECS world. Ray traversal queries components on-demand.
+
+**Location**: `libraries/SVO/include/EntityBrickView.h`, `libraries/SVO/src/EntityBrickView.cpp`
+
+---
+
+### 22. Modern rebuild() Workflow Pattern (November 2025 - Phase H.2)
+**Classes**: `LaineKarrasOctree`, `GaiaVoxelWorld`
+
+**Implementation**:
+```cpp
+// Modern workflow replaces legacy VoxelInjector::inject()
+// Step 1: Populate entity world
+GaiaVoxelWorld world;
+world.createVoxel(VoxelCreationRequest{
+    position,
+    {Density{1.0f}, Color{red}}  // Component pack
+});
+
+// Step 2: Build octree from entities (single call)
+LaineKarrasOctree octree(world, maxLevels, brickDepth);
+octree.rebuild(world, worldMin, worldMax);
+
+// Step 3: Ray cast using entity-based SVO
+RayHit hit = octree.castRay(origin, direction);
+if (hit.hit) {
+    auto color = world.getComponentValue<Color>(hit.entity);
+}
+```
+
+**rebuild() Implementation**:
+```cpp
+void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world,
+                                 const glm::vec3& worldMin,
+                                 const glm::vec3& worldMax) {
+    // 1. Clear existing hierarchy
+    blocks.clear();
+
+    // 2. Calculate brick grid dimensions
+    bricksPerAxis = calculateBricksPerAxis(worldMin, worldMax, brickDepth);
+
+    // 3. Iterate Morton-ordered bricks
+    for (uint64_t mortonKey = 0; mortonKey < totalBricks; ++mortonKey) {
+        EntityBrickView brick(world, mortonKey, brickDepth);
+
+        // 4. Skip empty bricks
+        if (brick.isEmpty()) continue;
+
+        // 5. Register occupied octants in parent descriptor
+        registerBrickInHierarchy(mortonKey, brick);
+    }
+
+    // 6. Build parent descriptors bottom-up
+    buildParentDescriptors();
+}
+```
+
+**Why Legacy API Failed**:
+- VoxelInjector::inject() + BrickStorage created malformed octree hierarchy
+- Root cause: Legacy API populated bricks without proper ChildDescriptor linking
+- Symptom: Infinite loop in castRay() (ADVANCE phase never found valid child)
+
+**Purpose**: Clean separation - GaiaVoxelWorld owns data, LaineKarrasOctree owns spatial index
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp`
+
+---
+
+### 23. Component Macro System Pattern (November 2025 - Phase H.2)
+**Classes**: `VoxelComponents.h`, component types (Density, Color, Normal, etc.)
+
+**Implementation**:
+```cpp
+// Single source of truth for all voxel components
+#define FOR_EACH_COMPONENT(MACRO) \
+    MACRO(Density)                \
+    MACRO(Color)                  \
+    MACRO(Normal)                 \
+    MACRO(Roughness)              \
+    MACRO(Metallic)               \
+    MACRO(Emissive)
+
+// Auto-generate ComponentVariant
+#define VARIANT_MEMBER(T) T,
+using ComponentVariant = std::variant<
+    FOR_EACH_COMPONENT(VARIANT_MEMBER)
+    std::monostate
+>;
+
+// Auto-generate AllComponents tuple for compile-time iteration
+#define TUPLE_MEMBER(T) T,
+using AllComponents = std::tuple<FOR_EACH_COMPONENT(TUPLE_MEMBER) void*>;
+
+// Auto-generate ComponentTraits
+#define TRAITS_CASE(T) \
+    template<> struct ComponentTraits<T> { \
+        static constexpr const char* name = #T; \
+        static constexpr size_t index = __COUNTER__ - ComponentBaseCounter; \
+    };
+FOR_EACH_COMPONENT(TRAITS_CASE)
+```
+
+**Adding New Component**:
+```cpp
+// Before: 3+ edits (variant, tuple, traits, each handler)
+// After: 1 edit
+#define FOR_EACH_COMPONENT(MACRO) \
+    MACRO(Density)                \
+    MACRO(Color)                  \
+    MACRO(NewComponent)  // <-- Add here, everything else auto-generated
+```
+
+**Benefits**:
+- Single edit point (eliminates 3+ location updates)
+- Compile-time safety (impossible to have mismatched types)
+- Zero duplication across variant/tuple/traits
+- Automatic visitor pattern support
+
+**Purpose**: Maintain type safety across voxel component system with minimal boilerplate
+
+**Location**: `libraries/VoxelComponents/include/VoxelComponents.h`
+
+---
+
+### 24. Const-Correctness Pattern (November 16, 2025 - Phase H)
 **Purpose**: Enforce const-correctness across node config slots, enable compiler optimizations
 
 **Implementation**:

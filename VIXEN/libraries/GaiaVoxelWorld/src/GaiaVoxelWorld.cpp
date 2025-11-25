@@ -276,6 +276,7 @@ size_t GaiaVoxelWorld::countVoxelsInRegion(const glm::vec3& min, const glm::vec3
 
 std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
     const glm::vec3& brickWorldMin,
+    float brickWorldSize,
     uint8_t brickDepth) {
 
     BlockQueryKey key{brickWorldMin, brickDepth};
@@ -287,20 +288,38 @@ std::span<const gaia::ecs::Entity> GaiaVoxelWorld::getEntityBlockRef(
         return std::span<const gaia::ecs::Entity>(it->second);
     }
 
-    // Cache miss - perform Morton range query and populate cache
+    // Cache miss - perform AABB query and populate cache
+    // NOTE: Morton range queries are incorrect because Morton codes are interleaved,
+    // not contiguous in 3D space. Use world-space bounds instead.
     std::vector<gaia::ecs::Entity> entities;
 
-    // Convert brick bounds to Morton range [min, max)
-    uint64_t brickMortonMin = fromPosition(brickWorldMin).code;
-    uint64_t brickMortonSpan = 1ULL << (3 * brickDepth);  // 2^(3*depth) voxels
-    uint64_t brickMortonMax = brickMortonMin + brickMortonSpan;
+    // Compute world-space brick max
+    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickWorldSize);
 
-    // Query entities with Morton codes in range
+    // Use integer grid bounds for Morton decoding compatibility:
+    // Morton key stores floor(world_pos), so entities at world_pos are at grid floor(world_pos)
+    //
+    // For a brick with world bounds [min, max), we want voxels whose grid position falls
+    // in [floor(min), floor(max)). Voxel at world (5.5, 2.3, 7.8) has grid (5, 2, 7).
+    glm::ivec3 brickGridMin{
+        static_cast<int>(std::floor(brickWorldMin.x)),
+        static_cast<int>(std::floor(brickWorldMin.y)),
+        static_cast<int>(std::floor(brickWorldMin.z))
+    };
+    glm::ivec3 brickGridMax{
+        static_cast<int>(std::floor(brickWorldMax.x)),
+        static_cast<int>(std::floor(brickWorldMax.y)),
+        static_cast<int>(std::floor(brickWorldMax.z))
+    };
+
+    // Query entities and check if their decoded grid position is in brick bounds
     auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        uint64_t entityMorton = m_impl->world.get<MortonKey>(entity).code;
-        // Simple integer range check (2 comparisons vs 6 for AABB)
-        if (entityMorton >= brickMortonMin && entityMorton < brickMortonMax) {
+        glm::ivec3 entityGrid = decode(m_impl->world.get<MortonKey>(entity));
+        // Inclusive-exclusive: [min, max)
+        if (entityGrid.x >= brickGridMin.x && entityGrid.x < brickGridMax.x &&
+            entityGrid.y >= brickGridMin.y && entityGrid.y < brickGridMax.y &&
+            entityGrid.z >= brickGridMin.z && entityGrid.z < brickGridMax.z) {
             entities.push_back(entity);
         }
     });
@@ -344,13 +363,25 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByWorldSpace(glm::vec3 worldPo
 	MortonKey mortonKey = fromPosition(worldPos);
 
     EntityID result;
+    int entityCount = 0;
     query.each([&](gaia::ecs::Entity entity) {
+        entityCount++;
         const auto& key = m_impl->world.get<MortonKey>(entity);
         if (key.code == mortonKey.code) {
             result = entity;
             // Note: Could optimize with spatial index/hash map in future
         }
     });
+
+    // Debug: log search results for first few calls
+    static int debugCount = 0;
+    bool isValid = result != gaia::ecs::Entity();
+    if (debugCount < 5 && !isValid) {
+        std::cout << "[getEntityByWorldSpace] worldPos=(" << worldPos.x << "," << worldPos.y << "," << worldPos.z
+                  << ") targetMorton=" << mortonKey.code << " totalEntities=" << entityCount
+                  << " result=" << (isValid ? "found" : "NOT FOUND") << "\n";
+        debugCount++;
+    }
 
     return result;  // Returns invalid entity if not found
 }
