@@ -592,6 +592,56 @@ glm::vec3 computeAABBNormal(
 // Stack-Based DDA Octree Traversal (Laine-Karras Algorithm)
 // ============================================================================
 
+// Type aliases for cleaner code
+using ESVOTraversalState = LaineKarrasOctree::ESVOTraversalState;
+using ESVORayCoefficients = LaineKarrasOctree::ESVORayCoefficients;
+using AdvanceResult = LaineKarrasOctree::AdvanceResult;
+using PopResult = LaineKarrasOctree::PopResult;
+
+// ============================================================================
+// Helper Function Declarations (defined after class methods)
+// ============================================================================
+
+namespace {
+
+/**
+ * Compute parametric coefficients for ray traversal in ESVO [1,2] space.
+ * Handles axis-parallel rays with epsilon clamping.
+ */
+ESVORayCoefficients computeRayCoefficients(
+    const glm::vec3& rayDir,
+    const glm::vec3& normOrigin);
+
+/**
+ * Select initial octant based on ray entry position.
+ * Uses parametric or position-based selection depending on ray characteristics.
+ */
+void selectInitialOctant(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef);
+
+/**
+ * Compute corrected tc_max for axis-parallel rays.
+ * Filters out misleading corner values from perpendicular axes.
+ */
+float computeCorrectedTcMax(
+    float tx_corner, float ty_corner, float tz_corner,
+    const glm::vec3& rayDir, float t_max);
+
+/**
+ * Compute voxel exit corners for ADVANCE phase.
+ */
+void computeVoxelCorners(
+    const glm::vec3& pos,
+    const ESVORayCoefficients& coef,
+    float& tx_corner, float& ty_corner, float& tz_corner);
+
+} // anonymous namespace
+
+// ============================================================================
+// Public Ray Casting Interface
+// ============================================================================
+
 ISVOStructure::RayHit LaineKarrasOctree::castRay(
     const glm::vec3& origin,
     const glm::vec3& direction,
@@ -611,6 +661,463 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(
     return castRayImpl(origin, direction, tMin, tMax, lodBias);
 }
 
+// ============================================================================
+// ESVO Traversal Phase Methods
+// ============================================================================
+
+/**
+ * Validate ray input parameters.
+ * Returns false if ray is invalid (null direction, NaN, etc.)
+ */
+bool LaineKarrasOctree::validateRayInput(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    glm::vec3& rayDirOut) const
+{
+    // Check for valid octree
+    if (!m_octree || !m_octree->root || m_octree->root->childDescriptors.empty()) {
+        return false;
+    }
+
+    // Normalize direction
+    rayDirOut = glm::normalize(direction);
+    float rayLength = glm::length(rayDirOut);
+    if (rayLength < 1e-6f) {
+        return false; // Invalid direction
+    }
+
+    // Check for NaN/Inf
+    if (glm::any(glm::isnan(origin)) || glm::any(glm::isnan(rayDirOut)) ||
+        glm::any(glm::isinf(origin)) || glm::any(glm::isinf(rayDirOut))) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Initialize traversal state for ray casting.
+ * Sets up stack, initial position, and octant selection.
+ */
+void LaineKarrasOctree::initializeTraversalState(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef,
+    CastStack& stack) const
+{
+    // Initialize stack with root descriptor at all ESVO scales
+    const ChildDescriptor* rootDesc = &m_octree->root->childDescriptors[0];
+    const int minScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    for (int esvoScale = minScale; esvoScale <= ESVO_MAX_SCALE; esvoScale++) {
+        stack.push(esvoScale, rootDesc, state.t_max);
+    }
+
+    // Set initial scale and parent
+    state.scale = ESVO_MAX_SCALE;
+    state.parent = rootDesc;
+    state.child_descriptor = 0;
+    state.idx = 0;
+    state.pos = glm::vec3(1.0f, 1.0f, 1.0f);
+    state.scale_exp2 = 0.5f;
+
+    // Select initial octant
+    selectInitialOctant(state, coef);
+
+    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << coef.normOrigin.x << "," << coef.normOrigin.y << "," << coef.normOrigin.z << ")\n";
+    std::cout << "  octant_mask=" << coef.octant_mask << " idx=" << state.idx << " pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") AFTER MIRROR\n";
+}
+
+/**
+ * Fetch child descriptor for current node if not cached.
+ */
+void LaineKarrasOctree::fetchChildDescriptor(ESVOTraversalState& state) const
+{
+    if (state.child_descriptor == 0) {
+        // Pack descriptor to match ESVO layout
+        uint32_t nonLeafMask = ~state.parent->leafMask & 0xFF;
+        state.child_descriptor = nonLeafMask |
+                     (static_cast<uint64_t>(state.parent->validMask) << 8) |
+                     (static_cast<uint64_t>(state.parent->childPointer) << 16);
+    }
+}
+
+/**
+ * Check if current child is valid and compute t-span intersection.
+ * Returns true if the voxel should be processed (valid and intersected).
+ */
+bool LaineKarrasOctree::checkChildValidity(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef,
+    bool& isLeaf,
+    float& tv_max) const
+{
+    // Check if child exists in parent's validMask
+    bool child_valid = (state.parent->validMask & (1u << state.idx)) != 0;
+    isLeaf = (state.parent->leafMask & (1u << state.idx)) != 0;
+
+    std::cout << "[CHILD CHECK] idx=" << state.idx << " validMask=0x" << std::hex << (int)state.parent->validMask
+              << std::dec << " child_valid=" << child_valid << " child_is_leaf=" << isLeaf
+              << " t_min=" << state.t_min << " t_max=" << state.t_max << "\n";
+
+    // At brick level, force leaf status
+    int currentUserScale = esvoToUserScale(state.scale);
+    int brickUserScale = m_maxLevels - m_brickDepthLevels;
+    if (currentUserScale == brickUserScale && child_valid) {
+        isLeaf = true;
+    }
+
+    if (!child_valid || state.t_min > state.t_max) {
+        return false;
+    }
+
+    // Compute corner values
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+
+    // Compute corrected tc_max for axis-parallel rays
+    float tc_max_corrected = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+    tv_max = std::min(state.t_max, tc_max_corrected);
+
+    // Compute center values for octant selection after DESCEND
+    float half = state.scale_exp2 * 0.5f;
+    state.tx_center = half * coef.tx_coef + tx_corner;
+    state.ty_center = half * coef.ty_coef + ty_corner;
+    state.tz_center = half * coef.tz_coef + tz_corner;
+
+    return state.t_min <= tv_max;
+}
+
+/**
+ * PUSH phase: Descend into child node.
+ * Updates parent pointer, scale, and position for child traversal.
+ */
+void LaineKarrasOctree::executePushPhase(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef,
+    CastStack& stack,
+    float tv_max) const
+{
+    // Compute tc_max for stack management
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+    float tc_max = std::min({tx_corner, ty_corner, tz_corner});
+
+    // Push current state to stack if needed
+    if (tc_max < state.h) {
+        stack.push(state.scale, state.parent, state.t_max);
+    }
+    state.h = tc_max;
+
+    // Calculate child offset (count non-leaf children before current)
+    uint8_t nonLeafMask = ~state.parent->leafMask & state.parent->validMask;
+    uint32_t mask_before_child = (1u << state.idx) - 1;
+    uint32_t nonleaf_before_child = nonLeafMask & mask_before_child;
+    uint32_t child_offset = std::popcount(nonleaf_before_child);
+
+    // Update parent pointer to child
+    uint32_t child_index = state.parent->childPointer + child_offset;
+
+    // Bounds check
+    if (child_index >= m_octree->root->childDescriptors.size()) {
+        return; // Invalid child pointer
+    }
+
+    state.parent = &m_octree->root->childDescriptors[child_index];
+
+    // Descend to next level
+    state.idx = 0;
+    state.scale--;
+    float half = state.scale_exp2 * 0.5f;
+    state.scale_exp2 = half;
+
+    // Select child octant using parent's center values
+    if (state.tx_center > state.t_min) {
+        state.idx ^= 1;
+        state.pos.x += state.scale_exp2;
+    }
+    if (state.ty_center > state.t_min) {
+        state.idx ^= 2;
+        state.pos.y += state.scale_exp2;
+    }
+    if (state.tz_center > state.t_min) {
+        state.idx ^= 4;
+        state.pos.z += state.scale_exp2;
+    }
+
+    // Update t-span and invalidate cached descriptor
+    state.t_max = tv_max;
+    state.child_descriptor = 0;
+}
+
+/**
+ * ADVANCE phase: Move to next sibling voxel.
+ * Returns result indicating next action to take.
+ */
+AdvanceResult LaineKarrasOctree::executeAdvancePhase(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef) const
+{
+    // Compute corner values
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+
+    // Determine which axes can step (non-parallel)
+    constexpr float dir_epsilon = 1e-5f;
+    bool canStepX = (std::abs(coef.rayDir.x) >= dir_epsilon);
+    bool canStepY = (std::abs(coef.rayDir.y) >= dir_epsilon);
+    bool canStepZ = (std::abs(coef.rayDir.z) >= dir_epsilon);
+
+    // Compute corrected tc_max
+    float tc_max_corrected = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+
+    // Fallback for fully axis-parallel rays
+    if (tc_max_corrected == std::numeric_limits<float>::max()) {
+        tc_max_corrected = std::max({
+            canStepX ? tx_corner : -std::numeric_limits<float>::max(),
+            canStepY ? ty_corner : -std::numeric_limits<float>::max(),
+            canStepZ ? tz_corner : -std::numeric_limits<float>::max()
+        });
+    }
+
+    // Step along axes at their exit boundary (in mirrored space, pos decreases)
+    int step_mask = 0;
+    if (canStepX && tx_corner <= tc_max_corrected) { step_mask ^= 1; state.pos.x -= state.scale_exp2; }
+    if (canStepY && ty_corner <= tc_max_corrected) { step_mask ^= 2; state.pos.y -= state.scale_exp2; }
+    if (canStepZ && tz_corner <= tc_max_corrected) { step_mask ^= 4; state.pos.z -= state.scale_exp2; }
+
+    float old_t_min = state.t_min;
+    state.t_min = std::max(tc_max_corrected, 0.0f);
+
+    std::cout << "DEBUG ADVANCE[" << state.iter << "]: step_mask=" << step_mask
+              << " tx_corner=" << tx_corner << " ty_corner=" << ty_corner << " tz_corner=" << tz_corner
+              << " tc_max_corrected=" << tc_max_corrected
+              << " -> t_min: " << old_t_min << " -> " << state.t_min << " (delta=" << (state.t_min - old_t_min) << ") t_max=" << state.t_max << "\n";
+
+    int old_idx = state.idx;
+    state.idx ^= step_mask;
+    debugAdvance(step_mask, tc_max_corrected, old_idx, state.idx);
+
+    // Check if we need to POP (bit flips disagree with ray direction)
+    if ((state.idx & step_mask) != 0) {
+        return AdvanceResult::POP_NEEDED;
+    }
+
+    return AdvanceResult::CONTINUE;
+}
+
+/**
+ * POP phase: Ascend hierarchy when exiting parent voxel.
+ * Uses integer bit manipulation for correct scale computation.
+ */
+PopResult LaineKarrasOctree::executePopPhase(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef,
+    CastStack& stack,
+    int step_mask) const
+{
+    // For flat octrees at root scale, check for octree exit
+    if (state.scale == ESVO_MAX_SCALE) {
+        if (state.t_min > state.t_max) {
+            std::cout << "[FLAT OCTREE] Ray exited octree: t_min=" << state.t_min << " > t_max=" << state.t_max << "\n";
+            return PopResult::EXIT_OCTREE;
+        }
+        // Stay at root, continue with new idx
+        state.child_descriptor = 0;
+        std::cout << "[FLAT OCTREE] At root scale, continuing with sibling idx=" << state.idx << "\n";
+        return PopResult::CONTINUE;
+    }
+
+    // Convert positions to integers for bit manipulation
+    const int MAX_RES = 1 << ESVO_MAX_SCALE;
+
+    auto floatToInt = [MAX_RES](float f) -> uint32_t {
+        float clamped = std::max(0.0f, std::min(f, 1.0f));
+        return static_cast<uint32_t>(std::max(0.0f, std::min(clamped * MAX_RES, static_cast<float>(MAX_RES - 1))));
+    };
+
+    uint32_t pos_x_int = floatToInt(std::max(0.0f, state.pos.x - 1.0f));
+    uint32_t pos_y_int = floatToInt(std::max(0.0f, state.pos.y - 1.0f));
+    uint32_t pos_z_int = floatToInt(std::max(0.0f, state.pos.z - 1.0f));
+
+    // Compute next position for stepped axes
+    uint32_t next_x_int = (step_mask & 1) ? floatToInt(std::max(0.0f, state.pos.x + state.scale_exp2 - 1.0f)) : pos_x_int;
+    uint32_t next_y_int = (step_mask & 2) ? floatToInt(std::max(0.0f, state.pos.y + state.scale_exp2 - 1.0f)) : pos_y_int;
+    uint32_t next_z_int = (step_mask & 4) ? floatToInt(std::max(0.0f, state.pos.z + state.scale_exp2 - 1.0f)) : pos_z_int;
+
+    std::cout << "[POP DEBUG] pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") scale_exp2=" << state.scale_exp2 << "\n";
+
+    // Find differing bits to determine ascent level
+    uint32_t differing_bits = 0;
+    if ((step_mask & 1) != 0) differing_bits |= (pos_x_int ^ next_x_int);
+    if ((step_mask & 2) != 0) differing_bits |= (pos_y_int ^ next_y_int);
+    if ((step_mask & 4) != 0) differing_bits |= (pos_z_int ^ next_z_int);
+
+    if (differing_bits == 0) {
+        return PopResult::EXIT_OCTREE;
+    }
+
+    // Find highest set bit
+    int highest_bit = 31 - std::countl_zero(differing_bits);
+    state.scale = highest_bit;
+
+    std::cout << "[POP] differing_bits=0x" << std::hex << differing_bits << std::dec
+              << " highest_bit=" << highest_bit << " -> esvoScale=" << state.scale
+              << " (userScale=" << esvoToUserScale(state.scale) << ")\n";
+
+    // Validate scale range
+    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+    if (state.scale < minESVOScale || state.scale > ESVO_MAX_SCALE) {
+        return PopResult::EXIT_OCTREE;
+    }
+
+    // Recompute scale_exp2
+    int exp_val = state.scale - ESVO_MAX_SCALE + 127;
+    state.scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(exp_val << 23));
+
+    // Restore from stack
+    state.parent = stack.getNode(state.scale);
+    state.t_max = stack.getTMax(state.scale);
+
+    if (state.parent == nullptr) {
+        return PopResult::EXIT_OCTREE;
+    }
+
+    // Round position to voxel boundary
+    int shift_amount = ESVO_MAX_SCALE - state.scale;
+    if (shift_amount < 0 || shift_amount >= 32) {
+        return PopResult::EXIT_OCTREE;
+    }
+
+    uint32_t mask = ~((1u << shift_amount) - 1);
+    pos_x_int &= mask;
+    pos_y_int &= mask;
+    pos_z_int &= mask;
+
+    // Convert back to float
+    auto intToFloat = [MAX_RES](uint32_t i) -> float {
+        return 1.0f + static_cast<float>(i) / static_cast<float>(MAX_RES);
+    };
+
+    state.pos.x = intToFloat(pos_x_int);
+    state.pos.y = intToFloat(pos_y_int);
+    state.pos.z = intToFloat(pos_z_int);
+
+    // Extract child index from position
+    int idx_shift = ESVO_MAX_SCALE - state.scale - 1;
+    if (idx_shift < 0 || idx_shift >= 32) {
+        state.idx = 0;
+    } else {
+        state.idx = ((pos_x_int >> idx_shift) & 1) |
+                  (((pos_y_int >> idx_shift) & 1) << 1) |
+                  (((pos_z_int >> idx_shift) & 1) << 2);
+    }
+
+    state.h = 0.0f;
+    state.child_descriptor = 0;
+
+    return PopResult::CONTINUE;
+}
+
+/**
+ * Handle leaf hit: perform brick traversal and return hit result.
+ * Returns nullopt if traversal should continue (brick miss).
+ */
+std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef,
+    const glm::vec3& origin,
+    float tRayStart,
+    float tEntry,
+    float tExit,
+    float tv_max) const
+{
+    std::cout << "[LEAF HIT] scale=" << state.scale << " pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") "
+              << "t_min=" << state.t_min << " tv_max=" << tv_max << "\n";
+
+    size_t parentDescriptorIndex = state.parent - &m_octree->root->childDescriptors[0];
+    glm::vec3 worldSize = m_worldMax - m_worldMin;
+
+    // Map ESVO t_min to world ray parameter
+    float worldT = tRayStart + state.t_min * (tExit - tRayStart);
+    glm::vec3 worldHitPos = origin + coef.rayDir * worldT;
+
+    // Clamp to world bounds
+    float eps = 0.001f;
+    worldHitPos = glm::clamp(worldHitPos, m_worldMin + eps, m_worldMax - eps);
+
+    glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;
+
+    // Unmirror idx to get physical octant
+    int leafOctant = state.idx ^ ((~coef.octant_mask) & 7);
+
+    std::cout << "[BRICK LOOKUP] pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ")"
+              << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
+              << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
+              << " idx=" << state.idx << " octant_mask=" << coef.octant_mask
+              << " leafOctant=" << leafOctant << " (idx ^ ~octant_mask)\n";
+
+    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
+
+    if (brickView != nullptr) {
+        return traverseBrickAndReturnHit(*brickView, origin, coef.rayDir, tEntry);
+    }
+
+    // No brick view found
+    std::cout << "[NO BRICK] No brick view for leafOctant " << leafOctant << ", continuing\n";
+    return std::nullopt;
+}
+
+/**
+ * Traverse brick and return hit result.
+ * Extracted from leaf hit handling for clarity.
+ */
+std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHit(
+    const ::GaiaVoxel::EntityBrickView& brickView,
+    const glm::vec3& origin,
+    const glm::vec3& rayDir,
+    float tEntry) const
+{
+    uint8_t brickDepth = brickView.getDepth();
+    size_t brickSideLength = 1u << brickDepth;
+
+    glm::vec3 brickWorldMin = brickView.getWorldMin();
+    const float worldExtent = m_worldMax.x - m_worldMin.x;
+    const float brickWorldSizeVal = worldExtent / static_cast<float>(m_octree->bricksPerAxis);
+    glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickWorldSizeVal);
+    const float brickVoxelSize = brickWorldSizeVal / static_cast<float>(brickSideLength);
+
+    std::cout << "[BRICK CHECK] brickDepth=" << (int)brickDepth
+              << " brickSize=" << brickSideLength << "^3\n";
+
+    // Compute ray-brick AABB intersection
+    glm::vec3 invDir;
+    for (int i = 0; i < 3; i++) {
+        if (std::abs(rayDir[i]) < 1e-8f) {
+            invDir[i] = (rayDir[i] >= 0) ? 1e8f : -1e8f;
+        } else {
+            invDir[i] = 1.0f / rayDir[i];
+        }
+    }
+
+    glm::vec3 t0 = (brickWorldMin - origin) * invDir;
+    glm::vec3 t1 = (brickWorldMax - origin) * invDir;
+    glm::vec3 tNear = glm::min(t0, t1);
+    glm::vec3 tFar = glm::max(t0, t1);
+
+    float brickTMin = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
+    float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
+    brickTMin = glm::max(brickTMin, tEntry);
+
+    std::cout << "[BRICK BOUNDS] worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z
+              << ") worldMax=(" << brickWorldMax.x << "," << brickWorldMax.y << "," << brickWorldMax.z
+              << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
+
+    return traverseBrickView(brickView, brickWorldMin, brickVoxelSize, origin, rayDir, brickTMin, brickTMax);
+}
+
+// ============================================================================
+// Main Ray Casting Implementation
+// ============================================================================
+
 ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     const glm::vec3& origin,
     const glm::vec3& direction,
@@ -621,858 +1128,290 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     ISVOStructure::RayHit miss{};
     miss.hit = false;
 
-    // Validate input
-    if (!m_octree || !m_octree->root || m_octree->root->childDescriptors.empty()) {
+    // Phase 1: Validate input
+    glm::vec3 rayDir;
+    if (!validateRayInput(origin, direction, rayDir)) {
         return miss;
     }
 
-    // Normalize direction
-    glm::vec3 rayDir = glm::normalize(direction);
-    float rayLength = glm::length(rayDir);
-    if (rayLength < 1e-6f) {
-        return miss; // Invalid direction
-    }
-
-    // Check for NaN/Inf
-    if (glm::any(glm::isnan(origin)) || glm::any(glm::isnan(rayDir)) ||
-        glm::any(glm::isinf(origin)) || glm::any(glm::isinf(rayDir))) {
+    // Phase 2: Intersect ray with world bounds
+    float tEntry, tExit;
+    if (!intersectAABB(origin, rayDir, m_worldMin, m_worldMax, tEntry, tExit)) {
         return miss;
     }
 
-    // ========================================================================
-    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl lines 100-117)
-    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
-    // ========================================================================
-    // Parametric plane traversal setup
-    // Precompute coefficients for tx(x), ty(y), tz(z)
-    // Octree is normalized to [1, 2] in reference, mapped from world bounds here
-    // ========================================================================
+    tEntry = std::max(tEntry, tMin);
+    tExit = std::min(tExit, tMax);
+    if (tEntry >= tExit || tExit < 0.0f) {
+        return miss;
+    }
 
-    // Prevent divide-by-zero with epsilon
-    // NOTE: ESVO uses exp2f(-CAST_STACK_DEPTH) where CAST_STACK_DEPTH=23
-    // This gives epsilon ≈ 1.19e-07, but for axis-parallel rays this creates
-    // extreme coefficient values (±8.4e+06) that corrupt tc_max/tv_max.
-    // Use larger epsilon to reduce numerical issues.
-    constexpr float epsilon = 1e-5f; // Larger than ESVO's 2^-23 to avoid extreme coefficients
+    // Phase 3: Setup ray coefficients and normalized coordinates
+    float tRayStart = std::max(0.0f, tEntry);
+    glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
+    glm::vec3 worldSize = m_worldMax - m_worldMin;
+    glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
+
+    ESVORayCoefficients coef = computeRayCoefficients(rayDir, normOrigin);
+
+    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
+              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
+              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
+    std::cout << "DEBUG INIT: tx_coef=" << coef.tx_coef << " ty_coef=" << coef.ty_coef << " tz_coef=" << coef.tz_coef << "\n";
+    std::cout << "DEBUG INIT: tx_bias=" << coef.tx_bias << " ty_bias=" << coef.ty_bias << " tz_bias=" << coef.tz_bias << "\n";
+    std::cout << "DEBUG INIT: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
+
+    // Phase 4: Initialize traversal state
+    ESVOTraversalState state;
+    state.t_min = std::max({2.0f * coef.tx_coef - coef.tx_bias,
+                            2.0f * coef.ty_coef - coef.ty_bias,
+                            2.0f * coef.tz_coef - coef.tz_bias});
+    state.t_max = std::min({coef.tx_coef - coef.tx_bias,
+                            coef.ty_coef - coef.ty_bias,
+                            coef.tz_coef - coef.tz_bias});
+    state.h = state.t_max;
+    state.t_min = std::max(state.t_min, 0.0f);
+    state.t_max = std::min(state.t_max, 1.0f);
+
+    std::cout << "DEBUG INIT: t_min=" << state.t_min << " t_max=" << state.t_max << " h=" << state.h << "\n";
+    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " esvoScale=" << ESVO_MAX_SCALE << " (userScale=" << esvoToUserScale(ESVO_MAX_SCALE) << ")\n";
+
+    CastStack stack;
+    initializeTraversalState(state, coef, stack);
+
+    // Phase 5: Main traversal loop
+    const int maxIter = 500;
+    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+
+    while (state.scale >= minESVOScale && state.scale <= ESVO_MAX_SCALE && state.iter < maxIter) {
+        ++state.iter;
+
+        // Fetch child descriptor
+        fetchChildDescriptor(state);
+
+        // Check child validity and compute t-span
+        bool isLeaf = false;
+        float tv_max = 0.0f;
+        bool shouldProcess = checkChildValidity(state, coef, isLeaf, tv_max);
+
+        bool skipToAdvance = false;
+
+        if (shouldProcess) {
+            debugValidVoxel(state.t_min, tv_max);
+
+            // Handle leaf hit
+            if (isLeaf) {
+                debugLeafHit(state.scale);
+                auto leafResult = handleLeafHit(state, coef, origin, tRayStart, tEntry, tExit, tv_max);
+
+                if (leafResult.has_value()) {
+                    std::cout << "[BRICK HIT] Returning brick hit at t=" << leafResult.value().tMin << "\n";
+                    return leafResult.value();
+                }
+
+                // Brick miss - continue to next leaf via ADVANCE phase
+                std::cout << "[BRICK MISS] No hit in brick, continuing to next leaf\n";
+                state.t_min = tv_max;
+                skipToAdvance = true;
+            }
+
+            // PUSH: Descend into child (skip if brick miss)
+            if (!skipToAdvance) {
+                executePushPhase(state, coef, stack, tv_max);
+                continue;
+            }
+        }
+
+        // ADVANCE: Move to next sibling
+        AdvanceResult advResult = executeAdvancePhase(state, coef);
+
+        if (advResult == AdvanceResult::POP_NEEDED) {
+            // Compute step_mask for POP phase
+            float tx_corner, ty_corner, tz_corner;
+            computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+            float tc_max_corrected = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+
+            constexpr float dir_epsilon = 1e-5f;
+            int step_mask = 0;
+            if (std::abs(coef.rayDir.x) >= dir_epsilon && tx_corner <= tc_max_corrected) step_mask ^= 1;
+            if (std::abs(coef.rayDir.y) >= dir_epsilon && ty_corner <= tc_max_corrected) step_mask ^= 2;
+            if (std::abs(coef.rayDir.z) >= dir_epsilon && tz_corner <= tc_max_corrected) step_mask ^= 4;
+
+            PopResult popResult = executePopPhase(state, coef, stack, step_mask);
+            if (popResult == PopResult::EXIT_OCTREE) {
+                break;
+            }
+        }
+    }
+
+    // Phase 6: Termination
+    int userScale = esvoToUserScale(state.scale);
+
+    if (state.iter >= maxIter) {
+        std::cout << "DEBUG: Hit iteration limit! scale=" << state.scale << " (userScale=" << userScale << ")"
+                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
+    } else if (userScale >= m_maxLevels) {
+        std::cout << "DEBUG: Ray exited octree. scale=" << state.scale << " (userScale=" << userScale << " >= m_maxLevels=" << m_maxLevels << ")"
+                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
+    } else {
+        std::cout << "DEBUG: Unknown exit condition. scale=" << state.scale << " (userScale=" << userScale << ")"
+                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
+    }
+
+    return miss;
+}
+
+// ============================================================================
+// Helper Function Implementations
+// ============================================================================
+
+namespace {
+
+ESVORayCoefficients computeRayCoefficients(
+    const glm::vec3& rayDir,
+    const glm::vec3& normOrigin)
+{
+    ESVORayCoefficients coef;
+    coef.rayDir = rayDir;
+    coef.normOrigin = normOrigin;
+
+    // Prevent divide-by-zero
+    constexpr float epsilon = 1e-5f;
     glm::vec3 rayDirSafe = rayDir;
     if (std::abs(rayDirSafe.x) < epsilon) rayDirSafe.x = std::copysignf(epsilon, rayDirSafe.x);
     if (std::abs(rayDirSafe.y) < epsilon) rayDirSafe.y = std::copysignf(epsilon, rayDirSafe.y);
     if (std::abs(rayDirSafe.z) < epsilon) rayDirSafe.z = std::copysignf(epsilon, rayDirSafe.z);
 
-    // Parametric plane coefficients (computed in [1,2] space later)
-    float tx_coef = 1.0f / -std::abs(rayDirSafe.x);
-    float ty_coef = 1.0f / -std::abs(rayDirSafe.y);
-    float tz_coef = 1.0f / -std::abs(rayDirSafe.z);
+    // Parametric plane coefficients
+    coef.tx_coef = 1.0f / -std::abs(rayDirSafe.x);
+    coef.ty_coef = 1.0f / -std::abs(rayDirSafe.y);
+    coef.tz_coef = 1.0f / -std::abs(rayDirSafe.z);
 
-    // ========================================================================
-    // Phase 1: Ray-AABB Intersection with World Bounds
-    // ========================================================================
+    // Bias terms
+    coef.tx_bias = coef.tx_coef * normOrigin.x;
+    coef.ty_bias = coef.ty_coef * normOrigin.y;
+    coef.tz_bias = coef.tz_coef * normOrigin.z;
 
-    float tEntry, tExit;
-    if (!intersectAABB(origin, rayDir, m_worldMin, m_worldMax, tEntry, tExit)) {
-        return miss; // Ray misses entire volume
-    }
+    // XOR octant mirroring
+    coef.octant_mask = 7;
+    debugOctantMirroring(rayDir, rayDirSafe, coef.octant_mask);
+    if (rayDir.x > 0.0f) { coef.octant_mask ^= 1; coef.tx_bias = 3.0f * coef.tx_coef - coef.tx_bias; }
+    if (rayDir.y > 0.0f) { coef.octant_mask ^= 2; coef.ty_bias = 3.0f * coef.ty_coef - coef.ty_bias; }
+    if (rayDir.z > 0.0f) { coef.octant_mask ^= 4; coef.tz_bias = 3.0f * coef.tz_coef - coef.tz_bias; }
 
-    // Clamp to user-provided range
-    tEntry = std::max(tEntry, tMin);
-    tExit = std::min(tExit, tMax);
+    return coef;
+}
 
-    if (tEntry >= tExit || tExit < 0.0f) {
-        return miss;
-    }
-
-    // ========================================================================
-    // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl lines 100-138)
-    // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
-    // ========================================================================
-    // Phase 2: ESVO Hierarchical Octree Traversal
-    // Reference uses normalized [1,2] space - we must map world space to this
-    // ========================================================================
-
-    // Advance ray to entry point (if ray starts outside octree)
-    // CRITICAL: If ray starts INSIDE octree (tEntry <= 0), use original origin
-    // If ray starts OUTSIDE (tEntry > 0), advance to entry point
-    float tRayStart = std::max(0.0f, tEntry);
-    glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
-
-    // Map world space to [1,2] normalized space for algorithm
-    // World [worldMin, worldMax] → Normalized [1, 2]
-    glm::vec3 worldSize = m_worldMax - m_worldMin;
-    glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
-    glm::vec3 normDir = rayDir; // Direction doesn't change
-
-    // Compute bias terms for [1,2] normalized space
-    float tx_bias = tx_coef * normOrigin.x;
-    float ty_bias = ty_coef * normOrigin.y;
-    float tz_bias = tz_coef * normOrigin.z;
-
-    // XOR octant mirroring: mirror coordinate system so ray direction is negative along each axis
-    // IMPORTANT: Use ORIGINAL rayDir for sign tests, not rayDirSafe (which has epsilon modifications)
-    int octant_mask = 7;
-    debugOctantMirroring(rayDir, rayDirSafe, octant_mask);
-    if (rayDir.x > 0.0f) octant_mask ^= 1, tx_bias = 3.0f * tx_coef - tx_bias;
-    if (rayDir.y > 0.0f) octant_mask ^= 2, ty_bias = 3.0f * ty_coef - ty_bias;
-    if (rayDir.z > 0.0f) octant_mask ^= 4, tz_bias = 3.0f * tz_coef - tz_bias;
-
-    // Initialize active t-span in normalized [1,2] space
-    // Reference: lines 121-125
-    float t_min = std::max({2.0f * tx_coef - tx_bias,
-                            2.0f * ty_coef - ty_bias,
-                            2.0f * tz_coef - tz_bias});
-    float t_max = std::min({tx_coef - tx_bias,
-                            ty_coef - ty_bias,
-                            tz_coef - tz_bias});
-    float h = t_max;
-    t_min = std::max(t_min, 0.0f);
-    t_max = std::min(t_max, 1.0f);
-
-    // Initialize traversal stack
-    // Reference: lines 127-134
-    CastStack stack;
-
-    // Safety check: ensure octree has root descriptor
-    if (m_octree->root->childDescriptors.empty()) {
-        // DEBUG: std::cout << "DEBUG: Empty octree, returning miss\n";
-        return miss;
-    }
-
-    // Initialize stack with root descriptor at all ESVO scales
-    // Stack indexing uses ESVO scale, not user scale
-    // This ensures POP operations can always find a valid parent
-    const ChildDescriptor* rootDesc = &m_octree->root->childDescriptors[0];
-    const int minScale = ESVO_MAX_SCALE - m_maxLevels + 1;
-    for (int esvoScale = minScale; esvoScale <= ESVO_MAX_SCALE; esvoScale++) {
-        stack.push(esvoScale, rootDesc, t_max);
-    }
-
-    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
-              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
-              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
-    std::cout << "DEBUG INIT: tx_coef=" << tx_coef << " ty_coef=" << ty_coef << " tz_coef=" << tz_coef << "\n";
-    std::cout << "DEBUG INIT: tx_bias=" << tx_bias << " ty_bias=" << ty_bias << " tz_bias=" << tz_bias << "\n";
-    std::cout << "DEBUG INIT: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-    std::cout << "DEBUG INIT: t_min=" << t_min << " t_max=" << t_max << " h=" << h << "\n";
-    // Initialize traversal with ESVO scale (always 22 at root, regardless of user depth)
-    // This allows ESVO's bit manipulation to work correctly for any octree depth
-    int esvoScale = ESVO_MAX_SCALE;
-    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " esvoScale=" << esvoScale << " (userScale=" << esvoToUserScale(esvoScale) << ")\n";
-
-    const ChildDescriptor* parent = &m_octree->root->childDescriptors[0];
-    uint64_t child_descriptor = 0; // Invalid until fetched
-    int idx = 0; // Child octant index
-
-    // ESVO Reference (lines 132, 136-138): Initialize pos to minimum corner (1,1,1)
-    // Then conditionally set to midpoint (1.5) based on parametric test
-    // This determines which octant the ray enters
-    glm::vec3 pos(1.0f, 1.0f, 1.0f);
-
-    int scale = esvoScale; // ESVO internal scale (22 at root)
-    float scale_exp2 = 0.5f; // 2^(scale - ESVO_MAX_SCALE)
-
-    // ESVO Reference lines 136-138: Use parametric formula to select initial child
-    // The bias terms are already mirrored, so this test works in mirrored space
-    //
-    // FIX: When t_min is small (ray starts at/near boundary), use position-based selection
-    // because parametric tests give marginal results that incorrectly flip the octant.
-    // For zero-direction axes, always use position (parametric gives 0, wrong for > t_min test).
-    //
-    // CRITICAL: Compute PHYSICAL octant from normOrigin directly, then XOR with mask to get idx.
-    // This ensures boundary points (coord == 1.5) are handled correctly with mirrored axes.
+void selectInitialOctant(
+    ESVOTraversalState& state,
+    const ESVORayCoefficients& coef)
+{
     constexpr float axis_epsilon = 1e-5f;
-    constexpr float boundary_epsilon = 0.01f;  // t_min threshold for boundary-start rays
-    bool usePositionBasedSelection = (t_min < boundary_epsilon);
+    constexpr float boundary_epsilon = 0.01f;
+    bool usePositionBasedSelection = (state.t_min < boundary_epsilon);
+
+    // Compute mirrored origin for position-based selection
+    float mirroredOriginX = (coef.octant_mask & 1) ? coef.normOrigin.x : (3.0f - coef.normOrigin.x);
+    float mirroredOriginY = (coef.octant_mask & 2) ? coef.normOrigin.y : (3.0f - coef.normOrigin.y);
+    float mirroredOriginZ = (coef.octant_mask & 4) ? coef.normOrigin.z : (3.0f - coef.normOrigin.z);
 
     // X axis selection
-    // NOTE: pos tracks the PHYSICAL octant corner in [1,2] space
-    //       idx tracks the MIRRORED octant index for ESVO algorithm
-    if (std::abs(rayDir.x) < axis_epsilon || usePositionBasedSelection) {
-        int physicalBit = (normOrigin.x >= 1.5f) ? 1 : 0;
-        int mirroredBit = physicalBit ^ ((octant_mask & 1) ? 1 : 0);
-        if (mirroredBit) { idx |= 1; }
-        if (physicalBit) { pos.x = 1.5f; }  // pos follows physical position
+    if (std::abs(coef.rayDir.x) < axis_epsilon || usePositionBasedSelection) {
+        if (mirroredOriginX >= 1.5f) { state.idx |= 1; state.pos.x = 1.5f; }
     } else {
-        if (1.5f * tx_coef - tx_bias > t_min) idx ^= 1, pos.x = 1.5f;
+        if (1.5f * coef.tx_coef - coef.tx_bias > state.t_min) { state.idx ^= 1; state.pos.x = 1.5f; }
     }
 
     // Y axis selection
-    if (std::abs(rayDir.y) < axis_epsilon || usePositionBasedSelection) {
-        int physicalBit = (normOrigin.y >= 1.5f) ? 1 : 0;
-        int mirroredBit = physicalBit ^ ((octant_mask & 2) ? 1 : 0);
-        if (mirroredBit) { idx |= 2; }
-        if (physicalBit) { pos.y = 1.5f; }
+    if (std::abs(coef.rayDir.y) < axis_epsilon || usePositionBasedSelection) {
+        if (mirroredOriginY >= 1.5f) { state.idx |= 2; state.pos.y = 1.5f; }
     } else {
-        if (1.5f * ty_coef - ty_bias > t_min) idx ^= 2, pos.y = 1.5f;
+        if (1.5f * coef.ty_coef - coef.ty_bias > state.t_min) { state.idx ^= 2; state.pos.y = 1.5f; }
     }
 
     // Z axis selection
-    if (std::abs(rayDir.z) < axis_epsilon || usePositionBasedSelection) {
-        int physicalBit = (normOrigin.z >= 1.5f) ? 1 : 0;
-        int mirroredBit = physicalBit ^ ((octant_mask & 4) ? 1 : 0);
-        if (mirroredBit) { idx |= 4; }
-        if (physicalBit) { pos.z = 1.5f; }
+    if (std::abs(coef.rayDir.z) < axis_epsilon || usePositionBasedSelection) {
+        if (mirroredOriginZ >= 1.5f) { state.idx |= 4; state.pos.z = 1.5f; }
     } else {
-        if (1.5f * tz_coef - tz_bias > t_min) idx ^= 4, pos.z = 1.5f;
+        if (1.5f * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5f; }
     }
-
-    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-    std::cout << "  octant_mask=" << octant_mask << " idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") AFTER MIRROR\n";
-
-    // Main traversal loop
-    // Traverse voxels along the ray while staying within octree bounds
-    int iter = 0;
-    const int maxIter = 500; // Safety limit (increased for complex scenes, catches infinite loops at ~5-10ms)
-
-    // Declare center values at function scope for POP restoration
-    float tx_center = 0.0f;
-    float ty_center = 0.0f;
-    float tz_center = 0.0f;
-
-    // Loop while in valid ESVO scale range
-    // Max ESVO scale = ESVO_MAX_SCALE (22) - root
-    // Min ESVO scale = finest level (e.g., 17 for depth 6)
-    // Formula: minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1
-    // For depth 6: 22 - 6 + 1 = 17 (leaves us with 6 levels: 17-22)
-    int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
-
-    // CRITICAL: Loop continues while scale is in valid range [minESVOScale, ESVO_MAX_SCALE]
-    // Exit if scale < minESVOScale (descended too deep) OR scale > ESVO_MAX_SCALE (popped above root)
-    while (scale >= minESVOScale && scale <= ESVO_MAX_SCALE && iter < maxIter) {
-        ++iter;
-        // debugIterationState(iter, scale, idx, octant_mask, t_min, t_max, pos, scale_exp2, parent, child_descriptor);
-
-        // ====================================================================
-        // ADOPTED FROM: cuda/Raycast.inl lines 155-169
-        // Fetch child descriptor and compute t_corner
-        // ====================================================================
-
-        // Fetch child descriptor unless already valid
-        if (child_descriptor == 0) {
-            // In reference: child_descriptor.x is the first 32 bits with layout:
-            // Bits 0-7: nonLeafMask (inverse of leafMask)
-            // Bits 8-15: validMask
-            // Bits 16-31: childPointer (lower bits) + far bit
-            // We pack it to match this layout for correct bit shifting
-            uint32_t nonLeafMask = ~parent->leafMask & 0xFF; // Invert leaf mask
-            child_descriptor = nonLeafMask |
-                             (static_cast<uint64_t>(parent->validMask) << 8) |
-                             (static_cast<uint64_t>(parent->childPointer) << 16);
-        }
-
-        // Compute maximum t-value at voxel corner
-        // Reference: Raycast.inl:166-169
-        float tx_corner = pos.x * tx_coef - tx_bias;
-        float ty_corner = pos.y * ty_coef - ty_bias;
-        float tz_corner = pos.z * tz_coef - tz_bias;
-        float tc_max = std::min({tx_corner, ty_corner, tz_corner});
-
-        // NOTE: Do NOT clamp tc_max here! It's used to update t_min in ADVANCE step.
-        // Extreme negative values from axis-parallel rays are handled in tv_max calculation.
-
-        // ====================================================================
-        // ADOPTED FROM: cuda/Raycast.inl lines 174-232
-        // Check if voxel is valid, test termination, descend or advance
-        // ====================================================================
-
-        // Permute child slots based on octant mirroring
-        int child_shift = idx ^ octant_mask;
-        uint32_t child_masks = static_cast<uint32_t>(child_descriptor) << child_shift;
-
-        // Check if THIS specific child exists in parent's validMask
-        // For dynamically-inserted octrees stored in PHYSICAL space, use idx directly
-        // (ESVO pre-built octrees may use different layout - needs verification)
-        bool child_valid = (parent->validMask & (1u << idx)) != 0;
-        bool child_is_leaf = (parent->leafMask & (1u << idx)) != 0;
-
-        std::cout << "[CHILD CHECK] idx=" << idx << " validMask=0x" << std::hex << (int)parent->validMask
-                  << std::dec << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf
-                  << " t_min=" << t_min << " t_max=" << t_max << "\n";
-
-        // Debug specific problem parent
-        if ((parent - &m_octree->root->childDescriptors[0]) == 80) {
-            // DEBUG: std::cout << "DEBUG PARENT 80: scale=" << scale << " idx=" << idx << " child_shift=" << child_shift
-            //          << " validMask=0x" << std::hex << (int)parent->validMask << std::dec
-            //          << " leafMask=0x" << std::hex << (int)parent->leafMask << std::dec
-            //          << " child_valid=" << child_valid << " child_is_leaf=" << child_is_leaf << "\n";
-        }
-
-        debugChildValidity(child_shift, child_masks,
-                          (child_masks & 0x8000) != 0, child_valid,
-                          (child_masks & 0x0080) == 0, child_is_leaf,
-                          t_min, t_max);
-
-        // IMPORTANT: At brick level, we should check for brick contents, not descend further
-        // Convert ESVO scale to user scale to check if we're at brick level
-        int currentUserScale = esvoToUserScale(scale);
-        int brickUserScale = m_maxLevels - m_brickDepthLevels;  // e.g., 6-3=3
-        bool atBrickLevel = (currentUserScale == brickUserScale);
-
-        // If we're at brick level and the child is valid, it MUST be a leaf (brick)
-        // Force child_is_leaf=true at this level regardless of leafMask
-        if (atBrickLevel && child_valid) {
-            child_is_leaf = true;
-        }
-
-        // Check if voxel is valid (valid mask bit is set) and t-span is non-empty
-        if (child_valid && t_min <= t_max)
-        {
-            // Terminate if voxel is small enough (reference line 181-182)
-            // Note: ray.dir_sz and ray_orig_sz are LOD-related, skipping for now
-            // if (tc_max * ray.dir_sz + ray_orig_sz >= scale_exp2) break;
-
-            // ================================================================
-            // INTERSECT: Compute t-span intersection with current voxel
-            // Reference lines 188-194
-            // ================================================================
-
-            // BUGFIX: For axis-parallel rays, perpendicular axes give misleading corner values.
-            // - Extreme values (large |t|) from near-zero direction components
-            // - Near-zero values when ray is ON the boundary (e.g., at y=1.5 for Y-perpendicular)
-            // Use t_max for perpendicular axes to let the moving axis determine exit time.
-            constexpr float corner_threshold = 1000.0f;
-            constexpr float dir_epsilon = 1e-5f;
-
-            // For each axis: if ray direction is near-zero, don't use that axis's corner for exit
-            bool useXCorner = (std::abs(rayDir.x) >= dir_epsilon);
-            bool useYCorner = (std::abs(rayDir.y) >= dir_epsilon);
-            bool useZCorner = (std::abs(rayDir.z) >= dir_epsilon);
-
-            float tx_valid = (useXCorner && std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
-            float ty_valid = (useYCorner && std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
-            float tz_valid = (useZCorner && std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
-            float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
-            float tv_max = std::min(t_max, tc_max_corrected);
-            float half = scale_exp2 * 0.5f;
-            tx_center = half * tx_coef + tx_corner;
-            ty_center = half * ty_coef + ty_corner;
-            tz_center = half * tz_coef + tz_corner;
-
-            if (scale >= m_maxLevels - 2) {
-                // DEBUG: std::cout << "DEBUG CENTER CALC scale=" << scale << ": pos=(" << pos.x << "," << pos.y << "," << pos.z << ") half=" << half << "\n";
-                // DEBUG: std::cout << "  tx_coef=" << tx_coef << " tx_corner=" << tx_corner << " tx_center=" << tx_center << "\n";
-                // DEBUG: std::cout << "  ty_coef=" << ty_coef << " ty_corner=" << ty_corner << " ty_center=" << ty_center << "\n";
-            }
-
-            // ================================================================
-            // CONTOUR INTERSECTION (Reference lines 196-220)
-            // For now, skip contours (will port in future iteration)
-            // This means t_min stays as-is, tv_max is just min(t_max, tc_max)
-            // ================================================================
-
-            // Descend to first child if resulting t-span is non-empty
-            // DEBUG: Near-leaf debug (only for deepest 3 levels)
-            // if (esvoToUserScale(scale) >= m_maxLevels - 3) {
-            //     std::cout << "DEBUG DESCEND CHECK scale=" << scale << ": t_min=" << t_min << " tv_max=" << tv_max
-            //               << " → " << (t_min <= tv_max ? "DESCENDING" : "SKIPPING (t_min > tv_max)") << "\n";
-            // }
-            if (t_min <= tv_max)
-            {
-                debugValidVoxel(t_min, tv_max);
-
-                // Check if this is a leaf
-                if (child_is_leaf) {
-                    debugLeafHit(scale);
-
-                    // Debug: print leaf position and scale
-                    std::cout << "[LEAF HIT] scale=" << scale << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ") "
-                              << "t_min=" << t_min << " tv_max=" << tv_max << "\n";  // TODO Phase 3: Add brickViews.size()
-
-                    // ============================================================
-                    // BRICK TRAVERSAL: EntityBrickView-based DDA (Phase 3)
-                    // ============================================================
-
-                    // Find brick view by computing the actual world-space hit position
-                    // and determining which brick contains that position
-
-                    size_t parentDescriptorIndex = parent - &m_octree->root->childDescriptors[0];
-
-                    // Convert ESVO t_min to world ray parameter and compute world hit position
-                    // ESVO t_min=0 corresponds to ray entry point, t_min=h corresponds to ray exit
-                    // Use tRayStart (computed at beginning of castRay) and tExit for the mapping
-                    glm::vec3 worldSize = m_worldMax - m_worldMin;
-
-                    // The ESVO t_min is in [0, h] where h = tMax at initialization
-                    // Map to world ray parameter: worldT = tRayStart + (t_min / h) * (tExit - tRayStart)
-                    // For simplicity, use the ray entry point (worldT = tRayStart) when t_min is near 0
-                    float worldT = tRayStart + t_min * (tExit - tRayStart);
-                    glm::vec3 worldHitPos = origin + rayDir * worldT;
-
-                    // Clamp to world bounds (with small epsilon to avoid boundary issues)
-                    float eps = 0.001f;
-                    worldHitPos = glm::clamp(worldHitPos, m_worldMin + eps, m_worldMax - eps);
-
-                    glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;  // For debug output
-
-                    // Unmirror ESVO idx to get physical octant for brick lookup
-                    // ESVO uses mirrored space (octant_mask) to make ray direction negative
-                    // Rebuild stores bricks in physical (non-mirrored) space
-                    // Formula: physicalOctant = mirroredOctant ^ octant_mask
-                    int leafOctant = idx ^ octant_mask;
-
-                    std::cout << "[BRICK LOOKUP] pos=(" << pos.x << "," << pos.y << "," << pos.z << ")"
-                              << " normalizedPos=(" << normalizedPos.x << "," << normalizedPos.y << "," << normalizedPos.z << ")"
-                              << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
-                              << " idx=" << idx << " octant_mask=" << octant_mask
-                              << " leafOctant=" << leafOctant << " (idx ^ octant_mask)\n";
-
-                    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
-
-                    if (brickView != nullptr) {
-                        // Get brick metadata
-                        uint8_t brickDepth = brickView->getDepth();
-                        size_t brickSideLength = 1u << brickDepth;  // 2^depth voxels per side
-
-                        // Use the brick's stored world position (set during rebuild)
-                        // This is more reliable than computing from normalized traversal position
-                        glm::vec3 brickWorldMin = brickView->getWorldMin();
-
-                        // Compute brick world size from stored bricksPerAxis value
-                        const float worldExtent = m_worldMax.x - m_worldMin.x;  // Uniform cube assumption
-                        const float brickWorldSizeVal = worldExtent / static_cast<float>(m_octree->bricksPerAxis);
-                        glm::vec3 brickWorldMax = brickWorldMin + glm::vec3(brickWorldSizeVal);
-
-                        // Voxel size within brick
-                        const float brickVoxelSize = brickWorldSizeVal / static_cast<float>(brickSideLength);
-
-                        std::cout << "[BRICK CHECK] parentIndex=" << parentDescriptorIndex
-                                  << " leafOctant=" << leafOctant
-                                  << " brickDepth=" << (int)brickDepth
-                                  << " brickSize=" << brickSideLength << "^3\n";
-
-                        // Compute ray-brick AABB intersection
-                        glm::vec3 invDir;
-                        for (int i = 0; i < 3; i++) {
-                            if (std::abs(rayDir[i]) < 1e-8f) {
-                                invDir[i] = (rayDir[i] >= 0) ? 1e8f : -1e8f;
-                            } else {
-                                invDir[i] = 1.0f / rayDir[i];
-                            }
-                        }
-                        glm::vec3 t0 = (brickWorldMin - origin) * invDir;
-                        glm::vec3 t1 = (brickWorldMax - origin) * invDir;
-
-                        glm::vec3 tNear = glm::min(t0, t1);
-                        glm::vec3 tFar = glm::max(t0, t1);
-
-                        float brickTMin = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
-                        float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
-                        brickTMin = glm::max(brickTMin, tEntry);
-
-                        std::cout << "[BRICK BOUNDS] worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z
-                                  << ") worldMax=(" << brickWorldMax.x << "," << brickWorldMax.y << "," << brickWorldMax.z
-                                  << ") brickTMin=" << brickTMin << " brickTMax=" << brickTMax << "\n";
-
-                        // Traverse brick using EntityBrickView
-                        auto brickHit = traverseBrickView(*brickView, brickWorldMin, brickVoxelSize,
-                                                          origin, rayDir, brickTMin, brickTMax);
-
-                        if (brickHit.has_value()) {
-                            std::cout << "[BRICK HIT] Returning brick hit at t=" << brickHit.value().tMin << "\n";
-                            return brickHit.value();
-                        } else {
-                            // Brick exists but no voxel hit - continue ESVO traversal to find next leaf
-                            std::cout << "[BRICK MISS] No hit in brick, continuing to next leaf\n";
-
-                            // Update t_min to exit this leaf and advance to next
-                            // This ensures we don't re-check the same empty leaf
-                            t_min = tv_max;
-
-                            // Skip the fallback leaf hit - go directly to ADVANCE phase
-                            goto advance_phase;
-                        }
-                    } else {
-                        // No brick view found for this leaf - this shouldn't happen after rebuild
-                        // Skip to next leaf
-                        std::cout << "[NO BRICK] No brick view for leafOctant " << leafOctant << ", continuing\n";
-                        t_min = tv_max;
-                        goto advance_phase;
-                    }
-
-                    // ============================================================
-                    // FALLBACK: Legacy leaf hit (no brick system)
-                    // Only reached if brick lookup code above is disabled
-                    // ============================================================
-
-                    // Leaf voxel hit! Return intersection
-                    // Convert normalized [1,2] t-values back to world t-values
-                    // CRITICAL: For axis-aligned rays, use the DOMINANT axis for conversion!
-                    // The normalized t-values are along the ray direction, not isotropic.
-                    // (worldSize already computed above)
-
-                    // Determine dominant axis based on ray direction
-                    float worldSizeLength;
-                    glm::vec3 absDir = glm::abs(rayDir);
-                    if (absDir.x > absDir.y && absDir.x > absDir.z) {
-                        worldSizeLength = worldSize.x;  // X dominant
-                    } else if (absDir.y > absDir.z) {
-                        worldSizeLength = worldSize.y;  // Y dominant
-                    } else {
-                        worldSizeLength = worldSize.z;  // Z dominant
-                    }
-
-                    float t_min_world = tEntry + t_min * worldSizeLength;
-                    float tv_max_world = tEntry + tv_max * worldSizeLength;
-
-                    // DEBUG: std::cout << "DEBUG LEAF HIT: tEntry=" << tEntry << " t_min=" << t_min
-                    //          << " worldSizeLength=" << worldSizeLength
-                    //          << " t_min_world=" << t_min_world << "\n";
-                    // DEBUG: std::cout << "  origin=(" << origin.x << "," << origin.y << "," << origin.z << ")"
-                    //          << " rayDir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ")\n";
-                    // DEBUG: std::cout << "  computed hit pos=" << (origin + rayDir * t_min_world).x << ","
-                    //          << (origin + rayDir * t_min_world).y << ","
-                    //          << (origin + rayDir * t_min_world).z << "\n";
-
-                    ISVOStructure::RayHit hit{};
-                    hit.hit = true;
-                    hit.tMin = t_min_world;
-                    hit.tMax = tv_max_world;
-                    hit.hitPoint = origin + rayDir * t_min_world;  // Renamed from position
-                    hit.scale = esvoToUserScale(scale);
-
-                    // Compute gradient-based surface normal from 6-neighbor sampling
-                    float voxelSize = getVoxelSize(hit.scale);
-                    hit.normal = computeSurfaceNormal(this, hit.hitPoint, voxelSize);
-
-                    // Legacy descriptor-based leaf hit (no entity data available)
-                    // Use rebuild() workflow to populate EntityBrickView instances
-                    hit.entity = gaia::ecs::Entity();  // Invalid entity
-
-                    return hit;
-                }
-
-                // ============================================================
-                // PUSH: Internal node, descend to children
-                // Reference lines 233-246
-                // ============================================================
-
-                // Push current state onto stack before descending
-                // ESVO uses scale-indexed stack: stack.nodes[scale] = parent
-                if (tc_max < h) {
-                    stack.push(scale, parent, t_max);
-                }
-                h = tc_max;
-
-                // ============================================================
-                // DESCEND: Complete child selection and update traversal state
-                // Reference lines 248-274
-                // ============================================================
-
-                // Calculate offset to child based on popcount of NON-LEAF mask
-                // ESVO childPointer points to array of ONLY non-leaf children
-                // Count how many NON-LEAF children come before current child
-                // Reference: OctreeRuntime.cpp:1124 - childIdx = popc8(nonLeafMask & (cmask - 1))
-                // For dynamically-inserted octrees in PHYSICAL space, use idx directly
-                int child_shift_idx = idx;
-
-                // Compute nonLeafMask (inverse of leafMask)
-                uint8_t nonLeafMask = ~parent->leafMask & parent->validMask;
-
-                // Count non-leaf children BEFORE current child
-                uint32_t mask_before_child = (1u << child_shift_idx) - 1; // e.g., for idx 7: 0x7F
-                uint32_t nonleaf_before_child = nonLeafMask & mask_before_child;
-                uint32_t child_offset = std::popcount(nonleaf_before_child);
-
-                // Update parent pointer to point to child
-                // In our structure, childPointer is an index into childDescriptors array
-                uint32_t child_index = parent->childPointer + child_offset;
-
-                // Bounds check
-                if (child_index >= m_octree->root->childDescriptors.size()) {
-                    // DEBUG: std::cout << "DEBUG: Invalid child_index=" << child_index << " >= size=" << m_octree->root->childDescriptors.size() << ", breaking\n";
-                    break; // Invalid child pointer - exit loop
-                }
-
-                const ChildDescriptor* new_parent = &m_octree->root->childDescriptors[child_index];
-
-                // Debug DESCEND at all levels
-                // DEBUG: std::cout << "DEBUG DESCEND scale=" << scale << ": parent=" << (parent - &m_octree->root->childDescriptors[0])
-                //          << " idx=" << idx << " nonLeafMask=0x" << std::hex << (int)nonLeafMask << std::dec
-                //          << " child_offset=" << child_offset << " → child_index=" << child_index << "\n";
-
-                debugDescend(scale, t_max, child_shift_idx, nonLeafMask,
-                           mask_before_child, nonleaf_before_child, child_offset,
-                           parent->childPointer, child_index, new_parent);
-                parent = new_parent;
-
-                // Descend to next level
-                idx = 0;
-                scale--;
-                scale_exp2 = half;
-
-                // DEBUG: std::cout << "DEBUG: After descent, scale=" << scale << " idx=" << idx << " t_min=" << t_min << "\n";
-
-                // ================================================================
-                // Octant Selection: Use PARENT's center values
-                // Reference: Raycast.inl:265-267
-                // ================================================================
-                // CRITICAL: ESVO uses the PARENT's tx_center values (computed before DESCEND)
-                // to select which child octant the ray is in. We should NOT recompute them!
-                // The tx_center values from before DESCEND tell us where the ray is relative
-                // to the PARENT's center, which determines which CHILD we're in.
-
-                // DEBUG: std::cout << "DEBUG: Using parent's center values: tx_center=" << tx_center << " ty_center=" << ty_center << " tz_center=" << tz_center << " t_min=" << t_min << "\n";
-                // DEBUG: std::cout << "DEBUG: pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
-
-                // ESVO octant selection (Raycast.inl:265-267)
-                // Simple parametric formula works for physical storage with octant mirroring
-                // The mirroring is handled uniformly by octant_mask, so no special cases needed
-                // DEBUG: std::cout << "DEBUG: Before octant selection, idx=" << idx << "\n";
-                // DEBUG: std::cout << "  tx_center - t_min = " << (tx_center - t_min)
-                //S          << " (tx_center > t_min)=" << (tx_center > t_min) << "\n";
-                if (tx_center > t_min) {
-                    // DEBUG: std::cout << "  Flipping X bit!\n";
-                    idx ^= 1, pos.x += scale_exp2;
-                }
-                if (ty_center > t_min) {
-                    // DEBUG: std::cout << "  Flipping Y bit: " << ty_center << " > " << t_min << "\n";
-                    idx ^= 2, pos.y += scale_exp2;
-                }
-                if (tz_center > t_min) {
-                    // DEBUG: std::cout << "  Flipping Z bit: " << tz_center << " > " << t_min << "\n";
-                    idx ^= 4, pos.z += scale_exp2;
-                }
-
-                // DEBUG: std::cout << "DEBUG: After octant selection, idx=" << idx << " pos=(" << pos.x << "," << pos.y << "," << pos.z << ")\n";
-
-                // Update active t-span and invalidate child descriptor
-                t_max = tv_max;
-                child_descriptor = 0;
-                // DEBUG: std::cout << "DEBUG: CONTINUE after descent, looping back to process child " << idx << "\n";
-                continue; // Continue main loop
-            } else {
-                // Can't descend (t_min > tv_max means voxel missed)
-                // At finest scale, this means we need to advance to next voxel
-                // If not at finest scale, we'll advance below
-            }
-        }
-
-        // ================================================================
-        // ADVANCE: Move to next voxel
-        // Reference lines 277-290
-        // ================================================================
-    advance_phase:
-
-        // Determine which dimensions we need to step in
-        // BUGFIX: For axis-parallel rays, only step along axes with non-trivial direction.
-        // Perpendicular axes have misleading corner values (0 on boundary, or extreme)
-        constexpr float dir_epsilon = 1e-5f;
-        constexpr float corner_threshold = 1000.0f;
-
-        bool canStepX = (std::abs(rayDir.x) >= dir_epsilon);
-        bool canStepY = (std::abs(rayDir.y) >= dir_epsilon);
-        bool canStepZ = (std::abs(rayDir.z) >= dir_epsilon);
-
-        // Compute corrected tc_max using only moving axes
-        float tx_valid = (canStepX && std::abs(tx_corner) < corner_threshold) ? tx_corner : std::numeric_limits<float>::max();
-        float ty_valid = (canStepY && std::abs(ty_corner) < corner_threshold) ? ty_corner : std::numeric_limits<float>::max();
-        float tz_valid = (canStepZ && std::abs(tz_corner) < corner_threshold) ? tz_corner : std::numeric_limits<float>::max();
-        float tc_max_corrected = std::min({tx_valid, ty_valid, tz_valid});
-
-        // If all values are extreme (fully axis-parallel), use the least extreme moving axis
-        if (tc_max_corrected == std::numeric_limits<float>::max()) {
-            tc_max_corrected = std::max({
-                canStepX ? tx_corner : -std::numeric_limits<float>::max(),
-                canStepY ? ty_corner : -std::numeric_limits<float>::max(),
-                canStepZ ? tz_corner : -std::numeric_limits<float>::max()
-            });
-        }
-
-        // Step only along axes that are both moving AND at their exit boundary
-        int step_mask = 0;
-        if (canStepX && tx_corner <= tc_max_corrected) step_mask ^= 1, pos.x -= scale_exp2;
-        if (canStepY && ty_corner <= tc_max_corrected) step_mask ^= 2, pos.y -= scale_exp2;
-        if (canStepZ && tz_corner <= tc_max_corrected) step_mask ^= 4, pos.z -= scale_exp2;
-
-        float old_t_min = t_min;
-        t_min = std::max(tc_max_corrected, 0.0f);
-
-        std::cout << "DEBUG ADVANCE[" << iter << "]: step_mask=" << step_mask
-                  << " tx_corner=" << tx_corner << " ty_corner=" << ty_corner << " tz_corner=" << tz_corner
-                  << " tc_max=" << tc_max << " tc_max_corrected=" << tc_max_corrected
-                  << " → t_min: " << old_t_min << " → " << t_min << " (delta=" << (t_min - old_t_min) << ") t_max=" << t_max << "\n";
-
-        int old_idx = idx;
-        idx ^= step_mask;
-        debugAdvance(step_mask, tc_max, old_idx, idx);
-
-        // ================================================================
-        // POP: Backtrack if we've exited the current parent voxel
-        // Reference lines 292-327
-        // ================================================================
-
-        // Check if bit flips disagree with ray direction (means we left parent)
-        if ((idx & step_mask) != 0)
-        {
-            // ============================================================
-            // POP: Ascend hierarchy based on differing position bits
-            // This works for ANY depth by using integer arithmetic
-            // (replaces ESVO's depth-23 specific float bit tricks)
-            // ============================================================
-
-            // ESVO approach: Find highest differing bit between pos and (pos + scale_exp2)
-            // to determine how many levels to ascend.
-            //
-            // For general depths: Convert positions to integers at the finest resolution,
-            // then find highest differing bit using integer operations.
-
-            // Convert normalized [1,2] positions to integer coordinates
-            // Using ESVO's standard 2^22 resolution for bit manipulation
-            // (this is independent of user's m_maxLevels - we always use ESVO scale internally)
-            const int MAX_RES = 1 << ESVO_MAX_SCALE;  // 2^22 = 4,194,304
-
-            // Compute integer positions in [0, MAX_RES)
-            // Input f is in [0, 1] normalized octree space
-            // IMPORTANT: pos can go outside [1,2] during traversal, so clamp first
-            auto floatToInt = [MAX_RES](float f) -> uint32_t {
-                // Clamp to [0,1] and convert to integer
-                float clamped = std::max(0.0f, std::min(f, 1.0f));
-                return static_cast<uint32_t>(std::max(0.0f, std::min(clamped * MAX_RES, static_cast<float>(MAX_RES - 1))));
-            };
-
-            // Convert from [1,2] space to [0,1] space, clamping to handle out-of-bounds
-            uint32_t pos_x_int = floatToInt(std::max(0.0f, pos.x - 1.0f));
-            uint32_t pos_y_int = floatToInt(std::max(0.0f, pos.y - 1.0f));
-            uint32_t pos_z_int = floatToInt(std::max(0.0f, pos.z - 1.0f));
-
-            // Compute next position ONLY for axes that were stepped
-            // For axes not stepped, next == pos (no change)
-            uint32_t next_x_int = (step_mask & 1) ? floatToInt(std::max(0.0f, pos.x + scale_exp2 - 1.0f)) : pos_x_int;
-            uint32_t next_y_int = (step_mask & 2) ? floatToInt(std::max(0.0f, pos.y + scale_exp2 - 1.0f)) : pos_y_int;
-            uint32_t next_z_int = (step_mask & 4) ? floatToInt(std::max(0.0f, pos.z + scale_exp2 - 1.0f)) : pos_z_int;
-
-            std::cout << "[POP DEBUG] pos=(" << pos.x << "," << pos.y << "," << pos.z << ") scale_exp2=" << scale_exp2 << "\n";
-            std::cout << "[POP DEBUG] pos_int=(0x" << std::hex << pos_x_int << ",0x" << pos_y_int << ",0x" << pos_z_int << std::dec << ")\n";
-            std::cout << "[POP DEBUG] next_int=(0x" << std::hex << next_x_int << ",0x" << next_y_int << ",0x" << next_z_int << std::dec << ")\n";
-
-            // Find differing bits (OR of XOR results)
-            uint32_t differing_bits = 0;
-            if ((step_mask & 1) != 0) differing_bits |= (pos_x_int ^ next_x_int);
-            if ((step_mask & 2) != 0) differing_bits |= (pos_y_int ^ next_y_int);
-            if ((step_mask & 4) != 0) differing_bits |= (pos_z_int ^ next_z_int);
-
-            if (differing_bits == 0) {
-                // No differing bits - we've exited the entire octree
-                break;
-            }
-
-            // Find highest set bit (determines how many levels to ascend)
-            // highest_bit = floor(log2(differing_bits))
-            int highest_bit = 31 - std::countl_zero(differing_bits);
-
-            // Convert bit position to ESVO scale level
-            // highest_bit tells us the voxel size as a power of 2 in integer space
-            // For ESVO space: scale = highest_bit (since finest ESVO scale = 0 corresponds to bit 0)
-            scale = highest_bit;
-
-            // Debug POP
-            std::cout << "[POP] differing_bits=0x" << std::hex << differing_bits << std::dec
-                      << " highest_bit=" << highest_bit << " → esvoScale=" << scale
-                      << " (userScale=" << esvoToUserScale(scale) << ")\n";
-
-            // Clamp scale to valid ESVO range [minESVOScale, ESVO_MAX_SCALE]
-            // Also exit if we popped ABOVE root (scale > ESVO_MAX_SCALE means we exited octree)
-            if (scale < minESVOScale) {
-                std::cout << "[POP] Scale " << scale << " below minimum (" << minESVOScale << "), exiting\n";
-                break;
-            }
-            if (scale > ESVO_MAX_SCALE) {
-                // Popped above root - ray exited octree
-                std::cout << "[POP] Scale " << scale << " above ESVO_MAX_SCALE (" << ESVO_MAX_SCALE << "), ray exited octree\n";
-                break;
-            }
-
-            // Recompute scale_exp2 from ESVO scale
-            // scale_exp2 = 2^(scale - ESVO_MAX_SCALE)
-            int exp_val = scale - ESVO_MAX_SCALE + 127;  // +127 is IEEE 754 exponent bias
-            scale_exp2 = std::bit_cast<float>(static_cast<uint32_t>(exp_val << 23));
-
-            std::cout << "[POP] Retrieving from stack: scale=" << scale << "\n";
-
-            // Restore parent descriptor and t_max from stack
-            parent = stack.getNode(scale);
-            t_max = stack.getTMax(scale);
-
-            std::cout << "[POP] Retrieved parent=" << static_cast<const void*>(parent) << " t_max=" << t_max << "\n";
-
-            if (parent == nullptr) {
-                // No parent at this scale - exit traversal
-                std::cout << "[POP] parent is null, exiting\n";
-                break;
-            }
-
-            // Round position to voxel boundary at new ESVO scale
-            // This masks off lower bits to snap to grid
-            int shift_amount = ESVO_MAX_SCALE - scale;
-            if (shift_amount < 0 || shift_amount >= 32) {
-                std::cout << "[POP] Invalid shift_amount=" << shift_amount << " (ESVO_MAX_SCALE=" << ESVO_MAX_SCALE << " scale=" << scale << "), exiting\n";
-                break;
-            }
-
-            uint32_t mask = ~((1u << shift_amount) - 1);
-            pos_x_int &= mask;
-            pos_y_int &= mask;
-            pos_z_int &= mask;
-
-            // Convert back to float
-            auto intToFloat = [MAX_RES](uint32_t i) -> float {
-                return 1.0f + static_cast<float>(i) / static_cast<float>(MAX_RES);
-            };
-
-            pos.x = intToFloat(pos_x_int);
-            pos.y = intToFloat(pos_y_int);
-            pos.z = intToFloat(pos_z_int);
-
-            // Extract child index from rounded position
-            int idx_shift = ESVO_MAX_SCALE - scale - 1;
-            if (idx_shift < 0 || idx_shift >= 32) {
-                std::cout << "[POP] Invalid idx_shift=" << idx_shift << " (ESVO_MAX_SCALE=" << ESVO_MAX_SCALE << " scale=" << scale << "), using idx=0\n";
-                idx = 0;
-            } else {
-                idx = ((pos_x_int >> idx_shift) & 1) |
-                      (((pos_y_int >> idx_shift) & 1) << 1) |
-                      (((pos_z_int >> idx_shift) & 1) << 2);
-            }
-
-            // Prevent same parent from being stored again and invalidate cached child descriptor
-            h = 0.0f;
-            child_descriptor = 0;
-        }
-    }
-
-    // ====================================================================
-    // TERMINATION: Undo mirroring and return result
-    // Reference lines 342-346
-    // ====================================================================
-
-    // Check why we exited the loop
-    // Convert ESVO scale to user scale for comparison
-    int userScale = esvoToUserScale(scale);
-
-    if (iter >= maxIter) {
-        std::cout << "DEBUG: Hit iteration limit! scale=" << scale << " (userScale=" << userScale << ")"
-                  << " iter=" << iter << " t_min=" << t_min << " parent=" << (parent - &m_octree->root->childDescriptors[0]) << "\n";
-    } else if (userScale >= m_maxLevels) {
-        std::cout << "DEBUG: Ray exited octree. scale=" << scale << " (userScale=" << userScale << " >= m_maxLevels=" << m_maxLevels << ")"
-                  << " iter=" << iter << " t_min=" << t_min << "\n";
-    } else {
-        std::cout << "DEBUG: Unknown exit condition. scale=" << scale << " (userScale=" << userScale << ")"
-                  << " iter=" << iter << " t_min=" << t_min << "\n";
-    }
-
-    // If we exited the octree, return miss
-    // userScale >= m_maxLevels means we popped above root
-    // userScale < 0 means we went below minimum scale (shouldn't happen with correct loop condition)
-    if (userScale >= m_maxLevels || userScale < 0 || iter >= maxIter) {
-        return miss;
-    }
-
-    // Undo coordinate mirroring
-    if ((octant_mask & 1) == 0) pos.x = 3.0f - scale_exp2 - pos.x;
-    if ((octant_mask & 2) == 0) pos.y = 3.0f - scale_exp2 - pos.y;
-    if ((octant_mask & 4) == 0) pos.z = 3.0f - scale_exp2 - pos.z;
-
-    // If we reach here without hitting, return miss
-    return miss;
 }
+
+float computeCorrectedTcMax(
+    float tx_corner, float ty_corner, float tz_corner,
+    const glm::vec3& rayDir, float t_max)
+{
+    constexpr float corner_threshold = 1000.0f;
+    constexpr float dir_epsilon = 1e-5f;
+
+    bool useXCorner = (std::abs(rayDir.x) >= dir_epsilon);
+    bool useYCorner = (std::abs(rayDir.y) >= dir_epsilon);
+    bool useZCorner = (std::abs(rayDir.z) >= dir_epsilon);
+
+    float tx_valid = (useXCorner && std::abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
+    float ty_valid = (useYCorner && std::abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
+    float tz_valid = (useZCorner && std::abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
+
+    return std::min({tx_valid, ty_valid, tz_valid});
+}
+
+void computeVoxelCorners(
+    const glm::vec3& pos,
+    const ESVORayCoefficients& coef,
+    float& tx_corner, float& ty_corner, float& tz_corner)
+{
+    tx_corner = pos.x * coef.tx_coef - coef.tx_bias;
+    ty_corner = pos.y * coef.ty_coef - coef.ty_bias;
+    tz_corner = pos.z * coef.tz_coef - coef.tz_bias;
+}
+
+} // anonymous namespace
+
+// ============================================================================
+// Legacy Code - Retained for fallback leaf hit path (rarely used)
+// ============================================================================
+
+namespace {
+// Helper to compute legacy leaf hit result (without brick system)
+ISVOStructure::RayHit computeLegacyLeafHit(
+    const LaineKarrasOctree* octree,
+    const glm::vec3& origin,
+    const glm::vec3& rayDir,
+    const glm::vec3& worldSize,
+    float tEntry,
+    float t_min,
+    float tv_max,
+    int scale,
+    int esvoScale)
+{
+    // Determine dominant axis for conversion
+    float worldSizeLength;
+    glm::vec3 absDir = glm::abs(rayDir);
+    if (absDir.x > absDir.y && absDir.x > absDir.z) {
+        worldSizeLength = worldSize.x;
+    } else if (absDir.y > absDir.z) {
+        worldSizeLength = worldSize.y;
+    } else {
+        worldSizeLength = worldSize.z;
+    }
+
+    float t_min_world = tEntry + t_min * worldSizeLength;
+    float tv_max_world = tEntry + tv_max * worldSizeLength;
+
+    ISVOStructure::RayHit hit{};
+    hit.hit = true;
+    hit.tMin = t_min_world;
+    hit.tMax = tv_max_world;
+    hit.hitPoint = origin + rayDir * t_min_world;
+    hit.scale = scale;
+
+    float voxelSize = octree->getVoxelSize(hit.scale);
+    hit.normal = computeSurfaceNormal(octree, hit.hitPoint, voxelSize);
+    hit.entity = gaia::ecs::Entity();
+
+    return hit;
+}
+} // anonymous namespace
 
 float LaineKarrasOctree::getVoxelSize(int scale) const {
     // scale parameter is user scale (0 to m_maxLevels-1)
@@ -2015,6 +1954,9 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
     // Voxel size = brick world size / brick side length
     float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);
+
+    // Normalized brick size (in [0,1]³ space)
+    float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
 
     std::cout << "[rebuild] Brick configuration: depth=" << brickDepth
               << " sideLength=" << brickSideLength

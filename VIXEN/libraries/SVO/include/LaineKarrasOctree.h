@@ -151,6 +151,73 @@ public:
     void lockForRendering();
     void unlockAfterRendering();
 
+    // ========================================================================
+    // Public Type Definitions for Traversal
+    // ========================================================================
+    // These types are exposed publicly so helper functions in the .cpp can use them.
+
+    /**
+     * Complete traversal state for ESVO ray casting.
+     * Encapsulates all mutable variables needed during octree traversal.
+     */
+    struct ESVOTraversalState {
+        // Current node and octant
+        const ChildDescriptor* parent = nullptr;
+        uint64_t child_descriptor = 0;
+        int idx = 0;              // Current child octant index (0-7)
+        int scale = 0;            // Current ESVO scale (0-22)
+        float scale_exp2 = 0.5f;  // 2^(scale - ESVO_MAX_SCALE)
+
+        // Position in normalized [1,2] space
+        glm::vec3 pos{1.0f, 1.0f, 1.0f};
+
+        // Active ray t-span
+        float t_min = 0.0f;
+        float t_max = 1.0f;
+        float h = 0.0f;  // Horizon value for stack management
+
+        // Center values (used for octant selection after DESCEND)
+        float tx_center = 0.0f;
+        float ty_center = 0.0f;
+        float tz_center = 0.0f;
+
+        // Iteration counter
+        int iter = 0;
+    };
+
+    /**
+     * Ray coefficients for parametric traversal.
+     * Precomputed values for efficient t-value calculations.
+     */
+    struct ESVORayCoefficients {
+        float tx_coef = 0.0f;
+        float ty_coef = 0.0f;
+        float tz_coef = 0.0f;
+        float tx_bias = 0.0f;
+        float ty_bias = 0.0f;
+        float tz_bias = 0.0f;
+        int octant_mask = 7;
+        glm::vec3 rayDir{0.0f};      // Normalized ray direction
+        glm::vec3 normOrigin{1.0f};  // Ray origin in normalized [1,2] space
+    };
+
+    /**
+     * Result from ADVANCE phase - indicates next action to take.
+     */
+    enum class AdvanceResult {
+        CONTINUE,     // Continue to next iteration
+        POP_NEEDED,   // Need to pop up the hierarchy
+        EXIT_OCTREE   // Ray exited the octree
+    };
+
+    /**
+     * Result from POP phase - indicates traversal status.
+     */
+    enum class PopResult {
+        CONTINUE,     // Continue traversal at new scale
+        EXIT_OCTREE   // Ray exited the octree (popped above root)
+    };
+
 private:
     std::unique_ptr<Octree> m_octree;
 
@@ -235,7 +302,7 @@ private:
         return esvoScale - (ESVO_MAX_SCALE - m_maxLevels + 1);
     }
 
-    // Ray casting helpers
+    // Ray casting helpers (legacy - kept for compatibility)
     struct TraversalState {
         ChildDescriptor* parent = nullptr;
         int childIdx = 0;
@@ -243,8 +310,98 @@ private:
         glm::vec3 position{0.0f};
     };
 
+    // Main ray casting implementation
     ISVOStructure::RayHit castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
                        float tMin, float tMax, float rayBias) const;
+
+    // ========================================================================
+    // Refactored Traversal Phase Methods
+    // ========================================================================
+    // Each method handles one logical phase of the ESVO traversal algorithm
+
+    /**
+     * Validate ray input parameters.
+     * Returns false if ray is invalid (null direction, NaN, etc.)
+     */
+    bool validateRayInput(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        glm::vec3& rayDirOut) const;
+
+    /**
+     * Initialize traversal state for ray casting.
+     * Sets up stack, initial position, and octant selection.
+     */
+    void initializeTraversalState(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef,
+        CastStack& stack) const;
+
+    /**
+     * Fetch child descriptor for current node if not cached.
+     */
+    void fetchChildDescriptor(ESVOTraversalState& state) const;
+
+    /**
+     * Check if current child is valid and compute t-span intersection.
+     * Returns true if the voxel should be processed (valid and intersected).
+     */
+    bool checkChildValidity(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef,
+        bool& isLeaf,
+        float& tv_max) const;
+
+    /**
+     * PUSH phase: Descend into child node.
+     * Updates parent pointer, scale, and position for child traversal.
+     */
+    void executePushPhase(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef,
+        CastStack& stack,
+        float tv_max) const;
+
+    /**
+     * ADVANCE phase: Move to next sibling voxel.
+     * Returns result indicating next action to take.
+     */
+    AdvanceResult executeAdvancePhase(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef) const;
+
+    /**
+     * POP phase: Ascend hierarchy when exiting parent voxel.
+     * Uses integer bit manipulation for correct scale computation.
+     */
+    PopResult executePopPhase(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef,
+        CastStack& stack,
+        int step_mask) const;
+
+    /**
+     * Handle leaf hit: perform brick traversal and return hit result.
+     * Returns nullopt if traversal should continue (brick miss).
+     */
+    std::optional<ISVOStructure::RayHit> handleLeafHit(
+        ESVOTraversalState& state,
+        const ESVORayCoefficients& coef,
+        const glm::vec3& origin,
+        float tRayStart,
+        float tEntry,
+        float tExit,
+        float tv_max) const;
+
+    /**
+     * Traverse brick and return hit result.
+     * Extracted from leaf hit handling for clarity.
+     */
+    std::optional<ISVOStructure::RayHit> traverseBrickAndReturnHit(
+        const ::GaiaVoxel::EntityBrickView& brickView,
+        const glm::vec3& origin,
+        const glm::vec3& rayDir,
+        float tEntry) const;
 
     // Traversal helpers (implements algorithm from Appendix A)
     bool intersectVoxel(const VoxelCube& voxel, const Contour* contour,

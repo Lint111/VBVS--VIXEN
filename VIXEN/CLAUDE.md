@@ -38,6 +38,11 @@ Use this index to find architecture docs, implementation guides, research papers
 
 **Default to `coding-partner` agent for all development work.** This agent provides collaborative coding assistance and automatically delegates to specialized agents when appropriate.
 
+### Model Selection
+- **Default**: Opus 4.5 for all agents (highest capability)
+- **Fallback**: Sonnet when Opus hits token limits or rate limits
+- **Exception**: `intern-army-refactor` uses Haiku (fast, repetitive tasks)
+
 Use `coding-partner` for:
 - Feature implementation and bug fixes
 - Code refactoring and improvements

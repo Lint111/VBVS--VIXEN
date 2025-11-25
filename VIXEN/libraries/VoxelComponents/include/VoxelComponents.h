@@ -244,8 +244,8 @@ struct AABB {
             return;
         }
 
-        min = glm::min(min, point);
-        max = glm::max(max, point);
+        min = (glm::min)(min, point);
+        max = (glm::max)(max, point);
     
     }
 
@@ -255,14 +255,6 @@ struct AABB {
         }
         expandToContain(other.min);
         expandToContain(other.max);
-    }
-
-    bool contains(const glm::vec3& point) const {
-        if(!isInitialized()) {
-            return false;
-        }
-
-        return glm::all(glm::lessThanEqual(min, point)) && glm::all(glm::lessThanEqual(point, max));
     }
 
     bool contains(const AABB& other) {
@@ -287,8 +279,8 @@ struct AABB {
 struct Volume {
     float voxelSize = 1.0f;  // Size of a single voxel in world units
 
-    const int MAX_DEPTH = 23; // Max depth to fit in 64-bit Morton code
-    const int MIN_DEPTH = 1;  // Minimum depth
+    static constexpr int MAX_DEPTH = 23; // Max depth to fit in 64-bit Morton code
+    static constexpr int MIN_DEPTH = 1;  // Minimum depth
     static constexpr const char* Name = "volume";
 
 
@@ -297,7 +289,7 @@ struct Volume {
             return MIN_DEPTH;
         }
         glm::vec3 size = aabb.getSize();
-        float maxExtent = glm::max(size.x, glm::max(size.y, size.z));
+        float maxExtent = (glm::max)(size.x, (glm::max)(size.y, size.z));
         int depth = static_cast<int>(std::ceil(std::log2(maxExtent / voxelSize)));
         return glm::clamp(depth, MIN_DEPTH, MAX_DEPTH);  // Clamp depth to reasonable range
     }
