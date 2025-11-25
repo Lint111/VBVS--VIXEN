@@ -177,7 +177,7 @@ TEST(GaiaVoxelWorldTest, SetColor) {
     auto entity = world.createVoxel(glm::vec3(0.0f));
 
     glm::vec3 newColor(0.1f, 0.2f, 0.3f);
-    world.setComponent<Color>(entity, Color{newColor});
+    world.setComponent<Color>(entity, newColor);
 
     auto color = world.getComponentValue<Color>(entity);
     ASSERT_TRUE(color.has_value());
@@ -190,7 +190,7 @@ TEST(GaiaVoxelWorldTest, SetNormal) {
     auto entity = world.createVoxel(glm::vec3(0.0f));
 
     glm::vec3 newNormal(1.0f, 0.0f, 0.0f); // +X
-    world.setComponent<Normal>(entity, Normal{newNormal});
+    world.setComponent<Normal>(entity, newNormal);
 
     auto normal = world.getComponentValue<Normal>(entity);
     ASSERT_TRUE(normal.has_value());
@@ -200,17 +200,12 @@ TEST(GaiaVoxelWorldTest, SetNormal) {
 TEST(GaiaVoxelWorldTest, GetNonExistentEntity) {
     GaiaVoxelWorld world;
 
-	struct position_t {};
-
-
     auto entity = world.createVoxel(glm::vec3(0.0f));
-
-
 
     world.destroyVoxel(entity);
 
     // All getters should return std::nullopt for destroyed entity
-    EXPECT_FALSE(world.getComponentValue<position_t>(entity).has_value());
+    EXPECT_FALSE(world.getPosition(entity).has_value());
     EXPECT_FALSE(world.getComponentValue<Density>(entity).has_value());
     EXPECT_FALSE(world.getComponentValue<Color>(entity).has_value());
     EXPECT_FALSE(world.getComponentValue<Normal>(entity).has_value());
@@ -337,7 +332,7 @@ TEST(GaiaVoxelWorldTest, CreateVoxelsBatch_CreationEntry) {
 
     auto color = world.getComponentValue<Color>(entities[0]);
     ASSERT_TRUE(color.has_value());
-    EXPECT_EQ(color.value(), glm::vec3(0.0f, 1.0f, 0.0f));
+    EXPECT_EQ(color.value(), glm::vec3(1.0f, 0.0f, 0.0f));  // Red, matching the Color{glm::vec3(1, 0, 0)} above
 }
 
 TEST(GaiaVoxelWorldTest, DestroyVoxelsBatch) {

@@ -1047,17 +1047,24 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     // Compute traditional normalized position (world-based, for octree traversal)
     glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;
 
-    // Compute brick index from world position
-    // Use world-relative normalized position and bricksPerAxis
+    // Compute brick index from world position using INTEGER GRID coordinates.
+    // Since voxels are stored at integer positions (unit voxels), brick boundaries
+    // align with brickSideLength intervals in the integer grid.
+    //
+    // Key insight: brickWorldSize should equal brickSideLength (not worldSize/bricksPerAxis)
+    // because voxels have unit size. The world bounds may not perfectly fit the grid,
+    // but brick addressing must use the actual local grid layout.
     int bricksPerAxis = m_octree->bricksPerAxis;
-    int brickSideLength = 1 << m_brickDepthLevels;  // e.g., 8 for depth 3
-    float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
+    int brickSideLength = m_octree->brickSideLength;  // Use stored value, not recompute
 
-    // Compute which brick the hit position falls into
+    // Convert world hit position to local grid position (relative to worldMin)
+    glm::vec3 localPos = worldHitPos - m_worldMin;
+
+    // Compute brick index using brickSideLength (unit voxels, so brick size = brickSideLength)
     glm::ivec3 brickIndex(
-        static_cast<int>((worldHitPos.x - m_worldMin.x) / brickWorldSize),
-        static_cast<int>((worldHitPos.y - m_worldMin.y) / brickWorldSize),
-        static_cast<int>((worldHitPos.z - m_worldMin.z) / brickWorldSize)
+        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
     );
     // Clamp to valid range
     brickIndex = glm::clamp(brickIndex, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
@@ -1990,8 +1997,9 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;  // Round up
     float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
 
-    // Store bricksPerAxis for use during ray casting
+    // Store brick grid info for use during ray casting
     m_octree->bricksPerAxis = bricksPerAxis;
+    m_octree->brickSideLength = brickSideLength;
 
     // Voxel size = brick world size / brick side length
     float voxelSize = brickWorldSize / static_cast<float>(brickSideLength);

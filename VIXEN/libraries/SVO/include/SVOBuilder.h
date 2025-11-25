@@ -86,7 +86,8 @@ struct Octree {
     int maxLevels;
     glm::vec3 worldMin;
     glm::vec3 worldMax;
-    int bricksPerAxis = 1;  // Number of bricks along each axis
+    int bricksPerAxis = 1;    // Number of bricks along each axis
+    int brickSideLength = 8;  // Voxels per brick side (2^brickDepth)
 
     // Statistics
     size_t totalVoxels = 0;
