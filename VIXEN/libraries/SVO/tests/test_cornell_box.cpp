@@ -157,8 +157,8 @@ TEST_F(CornellBoxTest, FloorHit_FromAbove) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Floor hit at y=" << hit.position.y << "\n";
-        EXPECT_LT(hit.position.y, 1.0f) << "Should hit floor (y close to 0)";
+        std::cout << "Floor hit at y=" << hit.hitPoint.y << "\n";
+        EXPECT_LT(hit.hitPoint.y, 1.0f) << "Should hit floor (y close to 0)";
     }
 }
 
@@ -174,8 +174,8 @@ TEST_F(CornellBoxTest, CeilingHit_FromBelow) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Ceiling hit at y=" << hit.position.y << "\n";
-        EXPECT_GT(hit.position.y, 9.0f) << "Should hit ceiling (y close to 10)";
+        std::cout << "Ceiling hit at y=" << hit.hitPoint.y << "\n";
+        EXPECT_GT(hit.hitPoint.y, 9.0f) << "Should hit ceiling (y close to 10)";
     }
 }
 
@@ -191,8 +191,8 @@ TEST_F(CornellBoxTest, LeftWallHit_Red) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Left wall hit at x=" << hit.position.x << "\n";
-        EXPECT_LT(hit.position.x, 1.0f) << "Should hit left wall (x close to 0)";
+        std::cout << "Left wall hit at x=" << hit.hitPoint.x << "\n";
+        EXPECT_LT(hit.hitPoint.x, 1.0f) << "Should hit left wall (x close to 0)";
 
         // If entity reference is valid, verify color is red
         if (world.exists(hit.entity)) {
@@ -217,8 +217,8 @@ TEST_F(CornellBoxTest, RightWallHit_Green) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Right wall hit at x=" << hit.position.x << "\n";
-        EXPECT_GT(hit.position.x, 9.0f) << "Should hit right wall (x close to 10)";
+        std::cout << "Right wall hit at x=" << hit.hitPoint.x << "\n";
+        EXPECT_GT(hit.hitPoint.x, 9.0f) << "Should hit right wall (x close to 10)";
 
         // If entity reference is valid, verify color is green
         if (world.exists(hit.entity)) {
@@ -243,8 +243,8 @@ TEST_F(CornellBoxTest, BackWallHit_Grey) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Back wall hit at z=" << hit.position.z << "\n";
-        EXPECT_GT(hit.position.z, 9.0f) << "Should hit back wall (z close to 10)";
+        std::cout << "Back wall hit at z=" << hit.hitPoint.z << "\n";
+        EXPECT_GT(hit.hitPoint.z, 9.0f) << "Should hit back wall (z close to 10)";
     }
 }
 
@@ -260,8 +260,8 @@ TEST_F(CornellBoxTest, InteriorRay_DiagonalCornerToCorner) {
     auto hit = cornellBox->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
     if (hit.hit) {
-        std::cout << "Diagonal hit at (" << hit.position.x << ", "
-                  << hit.position.y << ", " << hit.position.z << ")\n";
+        std::cout << "Diagonal hit at (" << hit.hitPoint.x << ", "
+                  << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
     }
 }
 

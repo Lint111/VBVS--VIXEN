@@ -109,12 +109,12 @@ TEST(BrickCreationTest, RayCastingWithGaiaWorldOctree) {
 
     if (result.hit) {
         std::cout << "Ray hit at t=" << result.tMin << " pos=("
-                  << result.position.x << "," << result.position.y << ","
-                  << result.position.z << ")\n";
+                  << result.hitPoint.x << "," << result.hitPoint.y << ","
+                  << result.hitPoint.z << ")\n";
 
         // The hit should be near the box front
-        EXPECT_GE(result.position.z, 39.0f);
-        EXPECT_LE(result.position.z, 61.0f);
+        EXPECT_GE(result.hitPoint.z, 39.0f);
+        EXPECT_LE(result.hitPoint.z, 61.0f);
     }
 }
 
@@ -219,7 +219,7 @@ TEST(BrickCreationTest, DenseVoxelGrid) {
     // Cast rays to verify data
     auto result = octree.castRay(glm::vec3(48, 48, 0), glm::vec3(0, 0, 1));
     if (result.hit) {
-        std::cout << "Dense grid hit at z=" << result.position.z << "\n";
-        EXPECT_GE(result.position.z, 39.0f);
+        std::cout << "Dense grid hit at z=" << result.hitPoint.z << "\n";
+        EXPECT_GE(result.hitPoint.z, 39.0f);
     }
 }

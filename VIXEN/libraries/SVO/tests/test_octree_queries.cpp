@@ -9,6 +9,7 @@
 #include <chrono>
 
 using namespace SVO;
+using namespace GaiaVoxel;
 
 // ===========================================================================
 // Helper: Create Simple Test Octree
@@ -16,6 +17,9 @@ using namespace SVO;
 
 class OctreeQueryTest : public ::testing::Test {
 protected:
+    // Dummy world for octree construction (not used for actual voxel data in these legacy tests)
+    GaiaVoxelWorld dummyWorld;
+
     void SetUp() override {
         // Create simple octree manually for testing
         octree = std::make_unique<Octree>();
@@ -72,9 +76,8 @@ protected:
         octree->leafVoxels = 8;
         octree->memoryUsage = octree->root->getTotalSize();
 
-        // Create LaineKarrasOctree wrapper (use AttributeRegistry constructor with nullptr for legacy tests)
-        ::VoxelData::AttributeRegistry* nullRegistry = nullptr;
-        lkOctree = std::make_unique<LaineKarrasOctree>(nullRegistry, 4, 3);
+        // Create LaineKarrasOctree wrapper (using dummyWorld for construction, setOctree for manual tree)
+        lkOctree = std::make_unique<LaineKarrasOctree>(dummyWorld, nullptr, 4, 3);
         lkOctree->setOctree(std::move(octree));
     }
 
@@ -1529,7 +1532,8 @@ TEST(LaineKarrasOctree, ParametricPlanes_AxisAligned) {
     // This test verifies the implementation handles axis-aligned rays correctly
     // by checking that the ray caster doesn't crash or produce NaN values
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1579,7 +1583,8 @@ TEST(LaineKarrasOctree, ParametricPlanes_Diagonal) {
     // ty_coef = 1 / -|1/sqrt(2)| ≈ -1.414
     // tz_coef = 1 / -|0| = 1 / -epsilon = very large negative
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1631,7 +1636,8 @@ TEST(LaineKarrasOctree, XORMirroring_PositiveDirection) {
     // Expected octant_mask = 7 XOR 1 XOR 2 XOR 4 = 0
     // (all axes mirrored since all positive)
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1676,7 +1682,8 @@ TEST(LaineKarrasOctree, XORMirroring_NegativeDirection) {
 
     // Expected octant_mask = 7 (no mirroring since all negative)
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1722,7 +1729,8 @@ TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
     // Expected octant_mask = 7 XOR 1 XOR 4 = 2
     // (X and Z mirrored, Y not mirrored)
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1768,7 +1776,8 @@ TEST(LaineKarrasOctree, XORMirroring_MixedDirection) {
  */
 TEST(LaineKarrasOctree, CastStack_PushPop) {
     // Create a simple octree structure to get ChildDescriptor pointers
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
@@ -1819,7 +1828,8 @@ TEST(LaineKarrasOctree, RayOriginInsideOctree) {
     glm::vec3 origin(0.5f, 0.5f, 0.5f);
     glm::vec3 direction(1.0f, 0.0f, 0.0f);  // Shoot towards +X
 
-    auto octree = std::make_unique<LaineKarrasOctree>(static_cast<::VoxelData::AttributeRegistry*>(nullptr), 8, 3);
+    GaiaVoxelWorld world;
+    auto octree = std::make_unique<LaineKarrasOctree>(world, nullptr, 8, 3);
     auto oct = std::make_unique<Octree>();
     oct->worldMin = glm::vec3(0.0f);
     oct->worldMax = glm::vec3(1.0f);
