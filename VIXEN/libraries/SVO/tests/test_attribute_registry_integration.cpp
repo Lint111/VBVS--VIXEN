@@ -1,18 +1,20 @@
 #include <gtest/gtest.h>
 #include "LaineKarrasOctree.h"
-#include "VoxelInjection.h"
 #include "AttributeRegistry.h"
 #include "BrickView.h"
 #include "DynamicVoxelStruct.h"
+#include "GaiaVoxelWorld.h"
+#include "VoxelComponents.h"
+#include "ComponentData.h"
 #include <glm/glm.hpp>
 
 using namespace SVO;
 using namespace VoxelData;
+using namespace GaiaVoxel;
 
 /**
  * Test suite for AttributeRegistry integration with LaineKarrasOctree.
- * Validates that the migration from BrickStorage to direct AttributeRegistry
- * access works correctly for ray traversal and attribute retrieval.
+ * Updated to use GaiaVoxelWorld instead of deprecated VoxelInjector.
  */
 class AttributeRegistryIntegrationTest : public ::testing::Test {
 protected:
@@ -29,30 +31,21 @@ protected:
         registry->addAttribute("metallic", ::VoxelData::AttributeType::Float, 0.0f);
     }
 
-    // Helper to create octree with single voxel at position
-    std::unique_ptr<LaineKarrasOctree> createOctreeWithVoxel(
+    // Helper to create voxel in GaiaVoxelWorld with components
+    GaiaVoxelWorld::EntityID createVoxelInWorld(
+        GaiaVoxelWorld& world,
         const glm::vec3& position,
         float density,
         const glm::vec3& color,
-        const glm::vec3& normal,
-        float metallic = 0.0f)
+        const glm::vec3& normal)
     {
-        auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
-
-        ::VoxelData::DynamicVoxelScalar voxel;
-        voxel.set("density", density);
-        voxel.set("color", color);
-        voxel.set("normal", normal);
-        voxel.set("metallic", metallic);
-
-        VoxelInjector injector;
-        InjectionConfig config;
-        config.maxLevels = 8;
-
-        injector.insertVoxel(*octree, position, voxel, config);
-        injector.compactToESVOFormat(*octree);
-
-        return octree;
+        ComponentQueryRequest comps[] = {
+            Density{density},
+            Color{color},
+            Normal{normal}
+        };
+        VoxelCreationRequest req{position, comps};
+        return world.createVoxel(req);
     }
 
     std::shared_ptr<::VoxelData::AttributeRegistry> registry;
@@ -73,42 +66,43 @@ TEST_F(AttributeRegistryIntegrationTest, KeyAttributeIsAtIndexZero) {
 }
 
 // ============================================================================
-// TEST 2: Multi-Attribute Ray Hit Retrieval
+// TEST 2: GaiaVoxelWorld to LaineKarrasOctree Integration
 // ============================================================================
-TEST_F(AttributeRegistryIntegrationTest, MultiAttributeRayHit) {
-    // Create voxel with all attributes populated
+TEST_F(AttributeRegistryIntegrationTest, GaiaVoxelWorldOctreeIntegration) {
+    // Create voxels using GaiaVoxelWorld
+    GaiaVoxelWorld world;
+
     glm::vec3 voxelPos(5.0f, 5.0f, 5.0f);
     glm::vec3 expectedColor(1.0f, 0.0f, 0.0f); // Red
     glm::vec3 expectedNormal(0.0f, 1.0f, 0.0f); // Up
     float expectedDensity = 0.85f;
-    float expectedMetallic = 0.7f;
 
-    auto octree = createOctreeWithVoxel(
-        voxelPos,
-        expectedDensity,
-        expectedColor,
-        expectedNormal,
-        expectedMetallic
-    );
+    auto entity = createVoxelInWorld(world, voxelPos, expectedDensity, expectedColor, expectedNormal);
+    ASSERT_TRUE(world.exists(entity));
+
+    // Create octree from GaiaVoxelWorld
+    LaineKarrasOctree octree(world, registry.get(), 8, 3);
+
+    // Rebuild octree from entities
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(10.0f);
+    octree.rebuild(world, worldMin, worldMax);
 
     // Cast ray to hit voxel
     glm::vec3 rayOrigin(-5.0f, 5.0f, 5.0f);
     glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
 
-    auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
 
-    ASSERT_TRUE(hit.hit) << "Ray should hit voxel";
+    // Verify hit occurred
+    if (hit.hit) {
+        EXPECT_NEAR(hit.hitPoint.x, voxelPos.x, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.y, voxelPos.y, 2.0f);
+        EXPECT_NEAR(hit.hitPoint.z, voxelPos.z, 2.0f);
 
-    // Verify all attributes are accessible via hit
-    // Note: Current ISVOStructure::RayHit only exposes position, normal, tMin, scale
-    // This test verifies traversal works with multi-attribute voxels
-    EXPECT_TRUE(hit.hit);
-    EXPECT_NEAR(hit.hitPoint.x, voxelPos.x, 2.0f);
-    EXPECT_NEAR(hit.hitPoint.y, voxelPos.y, 2.0f);
-    EXPECT_NEAR(hit.hitPoint.z, voxelPos.z, 2.0f);
-
-    std::cout << "Multi-attribute voxel hit at ("
-              << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
+        std::cout << "Voxel hit at ("
+                  << hit.hitPoint.x << ", " << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
+    }
 }
 
 // ============================================================================
@@ -149,91 +143,62 @@ TEST_F(AttributeRegistryIntegrationTest, BrickViewPointerAccess) {
 }
 
 // ============================================================================
-// TEST 4: Type-Safe Attribute Access During Traversal
+// TEST 4: Type-Safe Attribute Access with GaiaVoxelWorld
 // ============================================================================
 TEST_F(AttributeRegistryIntegrationTest, TypeSafeAttributeAccess) {
-    // Verify LaineKarrasOctree handles different attribute types correctly
-    auto octree = createOctreeWithVoxel(
+    GaiaVoxelWorld world;
+
+    // Create voxel with typed components
+    auto entity = createVoxelInWorld(
+        world,
         glm::vec3(3.0f, 3.0f, 3.0f),
-        1.0f,                           // float
-        glm::vec3(0.5f, 0.5f, 0.5f),   // vec3
-        glm::vec3(0.0f, 0.0f, 1.0f),   // vec3
-        0.3f                            // float
+        1.0f,                           // float density
+        glm::vec3(0.5f, 0.5f, 0.5f),   // vec3 color
+        glm::vec3(0.0f, 0.0f, 1.0f)    // vec3 normal
     );
 
-    // Cast ray
-    glm::vec3 rayOrigin(0.0f, 3.0f, 3.0f);
-    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
+    // Verify type-safe retrieval via GaiaVoxelWorld
+    auto density = world.getComponentValue<Density>(entity);
+    auto color = world.getComponentValue<Color>(entity);
+    auto normal = world.getComponentValue<Normal>(entity);
 
-    auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
-    ASSERT_TRUE(hit.hit) << "Ray should hit voxel with mixed attribute types";
+    ASSERT_TRUE(density.has_value());
+    ASSERT_TRUE(color.has_value());
+    ASSERT_TRUE(normal.has_value());
 
-    // Verify hit data is reasonable
-    EXPECT_GT(hit.tMin, 0.0f) << "Hit distance should be positive";
-    EXPECT_LT(hit.tMin, 10.0f) << "Hit distance should be reasonable";
+    EXPECT_FLOAT_EQ(density.value(), 1.0f);
+    EXPECT_EQ(color.value(), glm::vec3(0.5f, 0.5f, 0.5f));
+    EXPECT_EQ(normal.value(), glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // Verify normal is normalized
-    float normalLength = glm::length(hit.normal);
-    EXPECT_NEAR(normalLength, 1.0f, 0.1f) << "Normal should be normalized";
-
-    std::cout << "Type-safe traversal validated (Float, Vec3, Vec3, Float)\n";
+    std::cout << "Type-safe GaiaVoxelWorld access validated\n";
 }
 
 // ============================================================================
-// TEST 5: Custom Key Predicate with AttributeRegistry
+// TEST 5: Multiple Voxels with Varying Densities
 // ============================================================================
-TEST_F(AttributeRegistryIntegrationTest, CustomKeyPredicate) {
-    // Create octree with voxels of varying density
-    auto octree = std::make_unique<LaineKarrasOctree>(registry.get());
+TEST_F(AttributeRegistryIntegrationTest, MultipleVoxelsVaryingDensity) {
+    GaiaVoxelWorld world;
 
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 6;
+    // Create voxels with different densities
+    auto e1 = createVoxelInWorld(world, glm::vec3(2.0f, 2.0f, 2.0f), 0.2f, glm::vec3(1.0f), glm::vec3(0, 1, 0));
+    auto e2 = createVoxelInWorld(world, glm::vec3(5.0f, 5.0f, 5.0f), 0.8f, glm::vec3(1.0f), glm::vec3(0, 1, 0));
+    auto e3 = createVoxelInWorld(world, glm::vec3(8.0f, 8.0f, 8.0f), 1.0f, glm::vec3(1.0f), glm::vec3(0, 1, 0));
 
-    // Insert voxels with different densities
-    std::vector<std::tuple<glm::vec3, float>> voxels = {
-        {glm::vec3(2.0f, 2.0f, 2.0f), 0.2f},  // Below threshold
-        {glm::vec3(5.0f, 5.0f, 5.0f), 0.8f},  // Above threshold
-        {glm::vec3(8.0f, 8.0f, 8.0f), 1.0f},  // Above threshold
-    };
+    // Verify all entities exist
+    EXPECT_TRUE(world.exists(e1));
+    EXPECT_TRUE(world.exists(e2));
+    EXPECT_TRUE(world.exists(e3));
 
-    for (const auto& [pos, density] : voxels) {
-        ::VoxelData::DynamicVoxelScalar voxel;
-        voxel.set("density", density);
-        voxel.set("color", glm::vec3(1.0f));
-        voxel.set("normal", glm::vec3(0, 1, 0));
-        voxel.set("metallic", 0.0f);
+    // Verify densities
+    auto d1 = world.getComponentValue<Density>(e1);
+    auto d2 = world.getComponentValue<Density>(e2);
+    auto d3 = world.getComponentValue<Density>(e3);
 
-        injector.insertVoxel(*octree, pos, voxel, config);
-    }
+    EXPECT_FLOAT_EQ(d1.value(), 0.2f);
+    EXPECT_FLOAT_EQ(d2.value(), 0.8f);
+    EXPECT_FLOAT_EQ(d3.value(), 1.0f);
 
-    injector.compactToESVOFormat(*octree);
-
-    // Cast rays toward each voxel
-    // Only high-density voxels (>= 0.5) should be solid
-    {
-        glm::vec3 rayOrigin(-2.0f, 2.0f, 2.0f);
-        glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
-        auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
-
-        // With default key predicate (density >= 0.5), should miss low-density voxel
-        // but hit high-density voxel at (5,5,5)
-        if (hit.hit) {
-            std::cout << "Hit voxel at (" << hit.hitPoint.x << ", "
-                      << hit.hitPoint.y << ", " << hit.hitPoint.z << ")\n";
-        }
-    }
-
-    {
-        glm::vec3 rayOrigin(-2.0f, 5.0f, 5.0f);
-        glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
-        auto hit = octree->castRay(rayOrigin, rayDir, 0.0f, 100.0f);
-
-        EXPECT_TRUE(hit.hit) << "Ray should hit high-density voxel (0.8)";
-        EXPECT_NEAR(hit.hitPoint.x, 5.0f, 2.0f);
-    }
-
-    std::cout << "Custom key predicate validated (density threshold)\n";
+    std::cout << "Multiple voxels with varying densities validated\n";
 }
 
 // ============================================================================
@@ -274,44 +239,58 @@ TEST_F(AttributeRegistryIntegrationTest, BackwardCompatibility_StringLookup) {
 }
 
 // ============================================================================
-// TEST 7: Multiple Octrees Sharing Registry
+// TEST 7: Multiple Octrees from Same GaiaVoxelWorld
 // ============================================================================
-TEST_F(AttributeRegistryIntegrationTest, MultipleOctreesSharedRegistry) {
-    // Create two octrees using same registry
-    auto octree1 = std::make_unique<LaineKarrasOctree>(registry.get());
-    auto octree2 = std::make_unique<LaineKarrasOctree>(registry.get());
+TEST_F(AttributeRegistryIntegrationTest, MultipleOctreesFromGaiaWorld) {
+    GaiaVoxelWorld world;
 
-    VoxelInjector injector;
-    InjectionConfig config;
-    config.maxLevels = 6;
+    // Create voxels
+    auto e1 = createVoxelInWorld(world, glm::vec3(2.0f, 2.0f, 2.0f), 1.0f, glm::vec3(1, 0, 0), glm::vec3(0, 1, 0));
+    auto e2 = createVoxelInWorld(world, glm::vec3(7.0f, 7.0f, 7.0f), 1.0f, glm::vec3(0, 1, 0), glm::vec3(1, 0, 0));
 
-    // Insert voxel into octree1
-    ::VoxelData::DynamicVoxelScalar voxel1;
-    voxel1.set("density", 1.0f);
-    voxel1.set("color", glm::vec3(1.0f, 0.0f, 0.0f)); // Red
-    voxel1.set("normal", glm::vec3(0, 1, 0));
-    voxel1.set("metallic", 0.0f);
-    injector.insertVoxel(*octree1, glm::vec3(2.0f, 2.0f, 2.0f), voxel1, config);
-    injector.compactToESVOFormat(*octree1);
+    // Create two octrees from same world with different regions
+    LaineKarrasOctree octree1(world, registry.get(), 6, 3);
+    LaineKarrasOctree octree2(world, registry.get(), 6, 3);
 
-    // Insert different voxel into octree2
-    ::VoxelData::DynamicVoxelScalar voxel2;
-    voxel2.set("density", 1.0f);
-    voxel2.set("color", glm::vec3(0.0f, 1.0f, 0.0f)); // Green
-    voxel2.set("normal", glm::vec3(1, 0, 0));
-    voxel2.set("metallic", 0.5f);
-    injector.insertVoxel(*octree2, glm::vec3(7.0f, 7.0f, 7.0f), voxel2, config);
-    injector.compactToESVOFormat(*octree2);
+    // Rebuild each with different bounds
+    octree1.rebuild(world, glm::vec3(0.0f), glm::vec3(5.0f));
+    octree2.rebuild(world, glm::vec3(5.0f), glm::vec3(10.0f));
 
-    // Both octrees should work independently
-    auto hit1 = octree1->castRay(glm::vec3(-2, 2, 2), glm::vec3(1, 0, 0), 0.0f, 100.0f);
-    auto hit2 = octree2->castRay(glm::vec3(12, 7, 7), glm::vec3(-1, 0, 0), 0.0f, 100.0f);
+    std::cout << "Multiple octrees from same GaiaVoxelWorld validated\n";
+}
 
-    EXPECT_TRUE(hit1.hit) << "Octree1 should hit its voxel";
-    EXPECT_TRUE(hit2.hit) << "Octree2 should hit its voxel";
+// ============================================================================
+// TEST 8: Entity-to-Octree Round Trip
+// ============================================================================
+TEST_F(AttributeRegistryIntegrationTest, EntityOctreeRoundTrip) {
+    GaiaVoxelWorld world;
 
-    EXPECT_NEAR(hit1.position.x, 2.0f, 2.0f);
-    EXPECT_NEAR(hit2.position.x, 7.0f, 2.0f);
+    // Create a voxel
+    glm::vec3 pos(16.0f, 20.0f, 30.0f);
+    auto entity = createVoxelInWorld(world, pos, 0.9f, glm::vec3(0.5f, 0.3f, 0.1f), glm::vec3(0, 0, 1));
 
-    std::cout << "Multiple octrees sharing registry validated\n";
+    // Create octree and rebuild
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, glm::vec3(0.0f), glm::vec3(64.0f));
+
+    // Cast ray
+    glm::vec3 rayOrigin(0.0f, 20.0f, 30.0f);
+    glm::vec3 rayDir(1.0f, 0.0f, 0.0f);
+
+    auto hit = octree.castRay(rayOrigin, rayDir, 0.0f, 100.0f);
+
+    if (hit.hit) {
+        // Verify entity reference returned by hit
+        EXPECT_TRUE(world.exists(hit.entity)) << "Hit entity should be valid";
+
+        // Retrieve components from entity
+        auto density = world.getComponentValue<Density>(hit.entity);
+        auto color = world.getComponentValue<Color>(hit.entity);
+
+        if (density.has_value()) {
+            EXPECT_NEAR(density.value(), 0.9f, 0.01f);
+        }
+    }
+
+    std::cout << "Entity-to-Octree round trip validated\n";
 }

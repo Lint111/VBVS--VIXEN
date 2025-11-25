@@ -256,17 +256,18 @@ gtest_discover_tests(test_ray_casting_comprehensive)
 # Brick Creation Tests
 # ===========================================================================
 # Tests that bricks are properly allocated and populated during voxel injection,
-# and that ray casting finds and traverses them
+# and that ray casting finds and traverses them (using GaiaVoxelWorld API)
 
 add_executable(test_brick_creation
     test_brick_creation.cpp
 )
 
-if(TARGET SVO)
-    target_link_libraries(test_brick_creation PRIVATE GTest::gtest_main SVO)
-else()
-    target_link_libraries(test_brick_creation PRIVATE GTest::gtest_main)
-endif()
+target_link_libraries(test_brick_creation PRIVATE
+    GTest::gtest_main
+    SVO
+    GaiaVoxelWorld
+    VoxelComponents
+)
 
 set_target_properties(test_brick_creation PROPERTIES FOLDER "Tests/SVO Tests")
 
@@ -285,21 +286,21 @@ gtest_discover_tests(test_brick_creation)
 # ===========================================================================
 # AttributeRegistry Integration Tests
 # ===========================================================================
-# Tests LaineKarrasOctree integration with AttributeRegistry after migration
-# from BrickStorage. Validates key attribute lookup, multi-attribute access,
-# BrickView pointer access, type safety, and custom key predicates.
+# Tests LaineKarrasOctree integration with AttributeRegistry (using GaiaVoxelWorld API).
+# Validates key attribute lookup, multi-attribute access, BrickView pointer access,
+# type safety, and entity-to-octree integration.
 
 add_executable(test_attribute_registry_integration
     test_attribute_registry_integration.cpp
 )
 
-if(TARGET SVO AND TARGET VoxelData)
-    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main SVO VoxelData)
-elseif(TARGET SVO)
-    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main SVO)
-else()
-    target_link_libraries(test_attribute_registry_integration PRIVATE GTest::gtest_main)
-endif()
+target_link_libraries(test_attribute_registry_integration PRIVATE
+    GTest::gtest_main
+    SVO
+    VoxelData
+    GaiaVoxelWorld
+    VoxelComponents
+)
 
 set_target_properties(test_attribute_registry_integration PROPERTIES FOLDER "Tests/SVO Tests")
 
@@ -375,3 +376,35 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_rebuild_hierarchy)
+
+# ===========================================================================
+# Cornell Box Tests
+# ===========================================================================
+# Tests Cornell Box scene construction and ray casting using GaiaVoxelWorld.
+# Validates material color retrieval, normal vectors, and entity-based hits.
+
+add_executable(test_cornell_box
+    test_cornell_box.cpp
+)
+
+target_link_libraries(test_cornell_box PRIVATE
+    GTest::gtest_main
+    SVO
+    GaiaVoxelWorld
+    VoxelComponents
+    VoxelData
+)
+
+set_target_properties(test_cornell_box PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_cornell_box POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_cornell_box>
+        COMMENT "Copying TBB DLL for test_cornell_box"
+    )
+endif()
+
+gtest_discover_tests(test_cornell_box)

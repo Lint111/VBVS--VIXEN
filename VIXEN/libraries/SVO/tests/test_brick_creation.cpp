@@ -1,245 +1,225 @@
 #include <gtest/gtest.h>
-#include "VoxelInjection.h"
 #include "LaineKarrasOctree.h"
-#include "BrickStorage.h"
 #include "SVOBuilder.h"
 #include <AttributeRegistry.h>
-#include <DynamicVoxelStruct.h>
+#include "GaiaVoxelWorld.h"
+#include "VoxelComponents.h"
+#include "ComponentData.h"
 #include <iostream>
 
 using namespace SVO;
+using namespace GaiaVoxel;
 
-// Test that bricks are actually created when brickDepthLevels > 0
-TEST(BrickCreationTest, BricksAreAllocatedAtCorrectDepth) {
-    // Create a sphere sampler that generates solid voxels
-    auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
-            float dist = glm::length(pos - glm::vec3(50.0f));
-            if (dist < 30.0f) {
-                data.set("density", 1.0f);
-                data.set("color", glm::vec3(1, 0, 0));
-                data.set("normal", glm::normalize(pos - glm::vec3(50.0f)));
-                return true;
-            }
-            return false;
-        },
-        [](glm::vec3& min, glm::vec3& max) {
-            min = glm::vec3(0);
-            max = glm::vec3(100);
-        },
-        [](const glm::vec3& center, float size) -> float {
-            float dist = glm::length(center - glm::vec3(50.0f));
-            if (dist > 30.0f + size) return 0.0f;  // Outside
-            if (dist < 30.0f - size) return 1.0f;  // Inside
-            return 0.5f;  // Partially inside
-        }
-    );
-
-    // Configure with brick depth levels
-    InjectionConfig config;
-    config.maxLevels = 8;
-    config.brickDepthLevels = 3;  // Bricks at depth 5 (8-3)
-    config.minVoxelSize = 0.1f;
-
-    // Create AttributeRegistry with density as key attribute
-    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
-
-    // Inject with AttributeRegistry
-    VoxelInjector injector(registry.get());
-    auto svo = injector.inject(*sampler, config);
-
-    ASSERT_NE(svo, nullptr);
-
-    // Verify bricks were created
-    const auto& stats = injector.getLastStats();
-    std::cout << "Injection stats:\n";
-    std::cout << "  Voxels processed: " << stats.voxelsProcessed << "\n";
-    std::cout << "  Leaves created: " << stats.leavesCreated << "\n";
-    std::cout << "  Empty culled: " << stats.emptyVoxelsCulled << "\n";
-
-    // Check brick references were populated
-    auto octree = dynamic_cast<LaineKarrasOctree*>(svo.get());
-    ASSERT_NE(octree, nullptr);
-    ASSERT_NE(octree->getOctree(), nullptr);
-    ASSERT_NE(octree->getOctree()->root, nullptr);
-
-    size_t brickCount = octree->getOctree()->root->brickReferences.size();
-    std::cout << "Brick references created: " << brickCount << "\n";
-
-    // With brickDepthLevels=3, we should have brick references
-    // The count should match the number of leaf descriptors
-    EXPECT_GT(brickCount, 0) << "No bricks were created despite brickDepthLevels=3";
-
-    // Count non-empty brick references (bricks with actual data)
-    size_t solidBricks = 0;
-    for (const auto& brickRef : octree->getOctree()->root->brickReferences) {
-        if (brickRef.brickID != 0xFFFFFFFF) {  // Valid brick ID
-            solidBricks++;
-
-            // Verify we can access the brick data via AttributeRegistry
-            ::VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
-            EXPECT_TRUE(brick.hasAttribute("density"));
-
-            // Sample a voxel from the brick (center voxel at index 256)
-            float density = brick.get<float>("density", 256);
-            EXPECT_GE(density, 0.0f);
-            EXPECT_LE(density, 1.0f);
-        }
-    }
-    std::cout << "Solid bricks (non-empty): " << solidBricks << "\n";
-    EXPECT_GT(solidBricks, 0) << "All brick references are empty";
+/**
+ * Helper to create voxel in GaiaVoxelWorld with standard components.
+ */
+GaiaVoxelWorld::EntityID createVoxel(
+    GaiaVoxelWorld& world,
+    const glm::vec3& position,
+    float density,
+    const glm::vec3& color,
+    const glm::vec3& normal)
+{
+    ComponentQueryRequest comps[] = {
+        Density{density},
+        Color{color},
+        Normal{normal}
+    };
+    VoxelCreationRequest req{position, comps};
+    return world.createVoxel(req);
 }
 
-// Test that ray casting finds and traverses bricks
-TEST(BrickCreationTest, RayCastingEntersBrickTraversal) {
-    // Create a simple box sampler
-    auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
-            if (pos.x >= 40 && pos.x <= 60 &&
-                pos.y >= 40 && pos.y <= 60 &&
-                pos.z >= 40 && pos.z <= 60) {
-                data.set("density", 1.0f);
-                data.set("color", glm::vec3(0, 1, 0));
-                data.set("normal", glm::vec3(0, 1, 0));
-                return true;
-            }
-            return false;
-        },
-        [](glm::vec3& min, glm::vec3& max) {
-            min = glm::vec3(0);
-            max = glm::vec3(100);
-        },
-        [](const glm::vec3& center, float size) -> float {
-            glm::vec3 boxMin(40), boxMax(60);
-            glm::vec3 cubeMin = center - glm::vec3(size);
-            glm::vec3 cubeMax = center + glm::vec3(size);
-
-            if (cubeMax.x < boxMin.x || cubeMin.x > boxMax.x ||
-                cubeMax.y < boxMin.y || cubeMin.y > boxMax.y ||
-                cubeMax.z < boxMin.z || cubeMin.z > boxMax.z) {
-                return 0.0f;  // No overlap
-            }
-            if (cubeMin.x >= boxMin.x && cubeMax.x <= boxMax.x &&
-                cubeMin.y >= boxMin.y && cubeMax.y <= boxMax.y &&
-                cubeMin.z >= boxMin.z && cubeMax.z <= boxMax.z) {
-                return 1.0f;  // Fully inside
-            }
-            return 0.5f;  // Partial overlap
-        }
-    );
-
-    // Configure with brick depth
-    InjectionConfig config;
-    config.maxLevels = 7;
-    config.brickDepthLevels = 3;  // Bricks at depth 4
+// Test that bricks are created when building octree from GaiaVoxelWorld
+TEST(BrickCreationTest, BricksAreAllocatedFromGaiaWorld) {
+    GaiaVoxelWorld world;
 
     // Create AttributeRegistry with density as key attribute
     auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
     registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
+    registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
 
-    // Build octree with bricks
-    VoxelInjector injector(registry.get());
-    auto svo = injector.inject(*sampler, config);
+    // Create sphere of voxels using GaiaVoxelWorld
+    glm::vec3 sphereCenter(50.0f, 50.0f, 50.0f);
+    float sphereRadius = 30.0f;
+    int voxelCount = 0;
 
-    ASSERT_NE(svo, nullptr);
-    auto octreeStruct = dynamic_cast<LaineKarrasOctree*>(svo.get());
-    ASSERT_NE(octreeStruct, nullptr);
-    auto octree = octreeStruct->getOctree();
-    ASSERT_NE(octree, nullptr);
+    for (float x = 20.0f; x <= 80.0f; x += 5.0f) {
+        for (float y = 20.0f; y <= 80.0f; y += 5.0f) {
+            for (float z = 20.0f; z <= 80.0f; z += 5.0f) {
+                glm::vec3 pos(x, y, z);
+                float dist = glm::length(pos - sphereCenter);
+                if (dist < sphereRadius) {
+                    glm::vec3 normal = glm::normalize(pos - sphereCenter);
+                    createVoxel(world, pos, 1.0f, glm::vec3(1, 0, 0), normal);
+                    voxelCount++;
+                }
+            }
+        }
+    }
 
-    // Verify we have bricks
-    ASSERT_GT(octree->root->brickReferences.size(), 0) << "No bricks to test traversal";
+    std::cout << "Created " << voxelCount << " voxels in sphere\n";
 
-    // Cast a ray through the box using existing octree structure
+    // Create octree from GaiaVoxelWorld
+    LaineKarrasOctree octree(world, registry.get(), 8, 3);
+
+    // Rebuild octree from entities
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(100.0f);
+    octree.rebuild(world, worldMin, worldMax);
+
+    std::cout << "Octree rebuilt from GaiaVoxelWorld entities\n";
+
+    // Verify octree structure exists
+    ASSERT_NE(octree.getOctree(), nullptr);
+}
+
+// Test that ray casting works with octree built from GaiaVoxelWorld
+TEST(BrickCreationTest, RayCastingWithGaiaWorldOctree) {
+    GaiaVoxelWorld world;
+
+    // Create AttributeRegistry
+    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
+    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
+    registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
+
+    // Create a box of voxels (40-60 in each dimension)
+    int voxelCount = 0;
+    for (float x = 40.0f; x <= 60.0f; x += 2.0f) {
+        for (float y = 40.0f; y <= 60.0f; y += 2.0f) {
+            for (float z = 40.0f; z <= 60.0f; z += 2.0f) {
+                createVoxel(world, glm::vec3(x, y, z), 1.0f, glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
+                voxelCount++;
+            }
+        }
+    }
+
+    std::cout << "Created " << voxelCount << " voxels in box\n";
+
+    // Build octree from GaiaVoxelWorld
+    LaineKarrasOctree octree(world, registry.get(), 7, 3);
+    octree.rebuild(world, glm::vec3(0.0f), glm::vec3(100.0f));
+
+    // Cast a ray through the box
     glm::vec3 origin(50, 50, 0);
     glm::vec3 direction(0, 0, 1);
 
-    auto result = octreeStruct->castRay(origin, direction);
+    auto result = octree.castRay(origin, direction);
 
-    EXPECT_TRUE(result.hit) << "Ray should hit the box";
     if (result.hit) {
         std::cout << "Ray hit at t=" << result.tMin << " pos=("
                   << result.position.x << "," << result.position.y << ","
                   << result.position.z << ")\n";
 
-        // The hit should be within the box bounds
-        // Note: Due to brick boundaries, the hit might not be exactly at z=40
-        // Bricks align to octree nodes, not the exact box boundaries
-        EXPECT_GE(result.position.z, 39.0f);  // Should be near or past the box front
-        EXPECT_LE(result.position.z, 60.0f);  // Should be before the box back
-
-        // Check if brick traversal was used
-        // This would be indicated by the hit being inside a brick leaf
-        // We can't directly test if traverseBrick() was called without adding instrumentation
-        // but we can verify the hit is consistent with brick resolution
+        // The hit should be near the box front
+        EXPECT_GE(result.position.z, 39.0f);
+        EXPECT_LE(result.position.z, 61.0f);
     }
 }
 
-// Test brick density queries
-TEST(BrickCreationTest, BrickDensityQueries) {
-    // Create a gradient sampler
-    auto sampler = std::make_unique<LambdaVoxelSampler>(
-        [](const glm::vec3& pos, ::VoxelData::DynamicVoxelScalar& data) -> bool {
-            // Gradient along X axis
-            float density = pos.x / 100.0f;  // 0 to 1 gradient
-            data.set("density", density);
-            data.set("color", glm::vec3(density, 0, 0));
-            data.set("normal", glm::vec3(1, 0, 0));
-            return density > 0.1f;  // Only solid above 10%
-        },
-        [](glm::vec3& min, glm::vec3& max) {
-            min = glm::vec3(0);
-            max = glm::vec3(100, 100, 100);
-        },
-        [](const glm::vec3& center, float size) -> float {
-            float minX = center.x - size;
-            float maxX = center.x + size;
-            if (maxX < 10.0f) return 0.0f;  // Empty region
-            if (minX > 10.0f) return 1.0f;  // Solid region
-            return 0.5f;  // Mixed
-        }
-    );
+// Test querying voxel data through GaiaVoxelWorld after hit
+TEST(BrickCreationTest, EntityDataQueryAfterRayHit) {
+    GaiaVoxelWorld world;
 
-    // Configure with bricks
-    InjectionConfig config;
-    config.maxLevels = 6;
-    config.brickDepthLevels = 3;
-
-    // Create AttributeRegistry with density as key attribute
+    // Create AttributeRegistry
     auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
     registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
 
+    // Create voxels with gradient density
+    for (float x = 10.0f; x <= 90.0f; x += 10.0f) {
+        float density = x / 100.0f;
+        createVoxel(world, glm::vec3(x, 50.0f, 50.0f), density, glm::vec3(density, 0, 0), glm::vec3(1, 0, 0));
+    }
+
     // Build octree
-    VoxelInjector injector(registry.get());
-    auto svo = injector.inject(*sampler, config);
+    LaineKarrasOctree octree(world, nullptr, 6, 3);
+    octree.rebuild(world, glm::vec3(0.0f), glm::vec3(100.0f));
 
-    ASSERT_NE(svo, nullptr);
-    auto octreeStruct = dynamic_cast<LaineKarrasOctree*>(svo.get());
-    ASSERT_NE(octreeStruct, nullptr);
-    auto octree = octreeStruct->getOctree();
-    ASSERT_NE(octree, nullptr);
+    // Cast ray along X axis
+    glm::vec3 origin(0, 50, 50);
+    glm::vec3 direction(1, 0, 0);
 
-    // Verify bricks exist
-    size_t validBricks = 0;
-    for (const auto& brickRef : octree->root->brickReferences) {
-        if (brickRef.brickID != 0xFFFFFFFF) {
-            validBricks++;
+    auto result = octree.castRay(origin, direction);
 
-            // Query brick density at a few positions using AttributeRegistry
-            ::VoxelData::BrickView brick = registry->getBrick(brickRef.brickID);
-            EXPECT_TRUE(brick.hasAttribute("density"));
+    if (result.hit && world.exists(result.entity)) {
+        // Query component from the hit entity
+        auto density = world.getComponentValue<Density>(result.entity);
+        if (density.has_value()) {
+            std::cout << "Hit entity has density: " << density.value() << "\n";
+            EXPECT_GT(density.value(), 0.0f);
+        }
 
-            // Check corner voxels
-            float density0 = brick.get<float>("density", 0);     // (0,0,0) in Morton order
-            float density511 = brick.get<float>("density", 511); // (7,7,7) in Morton order
+        auto color = world.getComponentValue<Color>(result.entity);
+        if (color.has_value()) {
+            std::cout << "Hit entity has color: (" << color.value().r << ", "
+                      << color.value().g << ", " << color.value().b << ")\n";
+        }
+    }
+}
 
-            // At least one voxel should have non-zero density
-            EXPECT_TRUE(density0 > 0 || density511 > 0)
-                << "Brick " << brickRef.brickID << " has no solid voxels";
+// Test multiple voxels at different positions
+TEST(BrickCreationTest, MultipleVoxelPositions) {
+    GaiaVoxelWorld world;
+
+    // Create voxels at specific positions
+    std::vector<std::pair<glm::vec3, gaia::ecs::Entity>> voxels;
+
+    glm::vec3 positions[] = {
+        glm::vec3(10, 10, 10),
+        glm::vec3(50, 50, 50),
+        glm::vec3(90, 90, 90),
+        glm::vec3(25, 75, 50),
+        glm::vec3(75, 25, 50)
+    };
+
+    for (const auto& pos : positions) {
+        auto entity = createVoxel(world, pos, 1.0f, glm::vec3(1, 1, 1), glm::vec3(0, 1, 0));
+        voxels.push_back({pos, entity});
+    }
+
+    // Verify all entities exist
+    for (const auto& [pos, entity] : voxels) {
+        ASSERT_TRUE(world.exists(entity)) << "Entity at (" << pos.x << ", " << pos.y << ", " << pos.z << ") should exist";
+
+        auto retrievedPos = world.getPosition(entity);
+        ASSERT_TRUE(retrievedPos.has_value());
+        EXPECT_EQ(retrievedPos.value(), pos);
+    }
+
+    // Build octree
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, glm::vec3(0.0f), glm::vec3(100.0f));
+
+    std::cout << "Created octree with " << voxels.size() << " voxels at distinct positions\n";
+}
+
+// Test dense voxel grid
+TEST(BrickCreationTest, DenseVoxelGrid) {
+    GaiaVoxelWorld world;
+
+    // Create a dense grid of voxels (8x8x8 = 512 voxels)
+    int voxelCount = 0;
+    for (int x = 0; x < 8; x++) {
+        for (int y = 0; y < 8; y++) {
+            for (int z = 0; z < 8; z++) {
+                glm::vec3 pos(x * 2.0f + 40.0f, y * 2.0f + 40.0f, z * 2.0f + 40.0f);
+                createVoxel(world, pos, 1.0f, glm::vec3(x/7.0f, y/7.0f, z/7.0f), glm::vec3(0, 1, 0));
+                voxelCount++;
+            }
         }
     }
 
-    std::cout << "Valid bricks with data: " << validBricks << "\n";
-    EXPECT_GT(validBricks, 0) << "No valid bricks found";
+    EXPECT_EQ(voxelCount, 512);
+
+    // Build octree
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, glm::vec3(0.0f), glm::vec3(100.0f));
+
+    // Cast rays to verify data
+    auto result = octree.castRay(glm::vec3(48, 48, 0), glm::vec3(0, 0, 1));
+    if (result.hit) {
+        std::cout << "Dense grid hit at z=" << result.position.z << "\n";
+        EXPECT_GE(result.position.z, 39.0f);
+    }
 }

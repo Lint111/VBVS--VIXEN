@@ -885,11 +885,15 @@ TEST_F(OctreeQueryTest, TraversalPath_Complex_NearMiss) {
 }
 
 // ===========================================================================
-// Cornell Box Scene Tests - Material and Lighting Validation
+// Cornell Box Scene Tests - MOVED TO test_cornell_box.cpp
 // ===========================================================================
+// The CornellBoxTest fixture has been migrated to use GaiaVoxelWorld in
+// test_cornell_box.cpp. The old VoxelInjector-based implementation below
+// is disabled.
+#if 0  // DEPRECATED - See test_cornell_box.cpp for new implementation
 
 /**
- * Cornell Box Test Fixture
+ * Cornell Box Test Fixture (DEPRECATED)
  *
  * Classic Cornell box scene:
  * - Floor: Bright grey (0.8, 0.8, 0.8)
@@ -1499,6 +1503,8 @@ TEST_F(CornellBoxTest, NormalValidation_AllWalls) {
         EXPECT_GT(dotProduct, 0.5f) << test.wallName << " normal incorrect";
     }
 }
+
+#endif  // END DEPRECATED CornellBoxTest - See test_cornell_box.cpp
 
 // ===========================================================================
 // ESVO Reference Adoption Tests - Parametric Planes
