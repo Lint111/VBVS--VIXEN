@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: Import Phase-H optimization documentation\n\nImport documentation from claude/phase-h-overview branch describing:\n- Unified Resource Management (URM) architecture design\n- Stack allocation optimization strategies for hot paths\n- Resource aliasing for VRAM savings (50-80% potential)\n- RequestResource API designs (v1 and v2)\n- Type-safe resource identification patterns\n- Phase-H node integration plans\n\nNote: The Phase-H code implementation was not merged due to\nincompatibilities with the current codebase architecture:\n- RenderGraph was moved to libraries/RenderGraph/\n- ResourceVariant.h and Resource.h were refactored/removed\n- Include paths need updating\n\nThe documentation serves as a roadmap for future optimization work.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(cat:*)",
+      "Bash(cmake:*)",
+      "Bash(git add:*)",
+      "Bash(VIXEN/libraries/ResourceManagement/include/BoundedArray.h )",
+      "Bash(VIXEN/libraries/ResourceManagement/include/StackAllocatedRM.h )",
+      "Bash(VIXEN/libraries/ResourceManagement/include/UnifiedRM.h)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
