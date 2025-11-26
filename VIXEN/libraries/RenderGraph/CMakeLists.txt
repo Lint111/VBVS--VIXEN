@@ -92,13 +92,18 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/RenderGraph.h
     include/Core/ResourceBudgetManager.h
     include/Core/ResourceDependencyTracker.h
+    include/Core/ResourceHash.h
     include/Core/SlotTask.h
+    include/Core/StackResourceHandle.h
+    include/Core/StackResourceTracker.h
+    include/Core/StackTracker.h
     include/Core/StatefulContainer.h
     include/Core/Timer.h
     include/Core/TypedConnection.h
     include/Core/TypedNodeInstance.h
     include/Core/UnknownTypeRegistry.h
     include/Core/VariadicTypedNode.h
+    include/Core/VulkanLimits.h
 )
 
 set(RENDERGRAPH_DATA_CORE_SOURCES
@@ -119,6 +124,8 @@ set(RENDERGRAPH_CORE_SOURCES
     src/Core/ResourceBudgetManager.cpp
     src/Core/ResourceDependencyTracker.cpp
     src/Core/SlotTask.cpp
+    src/Core/StackResourceTracker.cpp
+    src/Core/StackTracker.cpp
     src/Core/Timer.cpp
 )
 
