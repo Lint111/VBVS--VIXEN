@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Core/TypedNodeInstance.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
+#include "BoundedArray.h"
+#include <array>
 #include <vector>
 
 namespace Vixen::RenderGraph {
@@ -23,7 +26,8 @@ public:
 /**
  * @brief FrameSyncNode - Manages frame-in-flight synchronization primitives
  *
- * Phase 0.2: Creates and manages MAX_FRAMES_IN_FLIGHT fences and semaphores
+ * Phase H: Uses stack-allocated arrays for synchronization primitives.
+ * Creates and manages MAX_FRAMES_IN_FLIGHT fences and semaphores
  * for CPU-GPU synchronization to prevent CPU from racing ahead of GPU.
  *
  * Inputs:
@@ -62,16 +66,31 @@ protected:
 
 private:
     // Per-flight synchronization data (for CPU-GPU sync)
+    // Phase H: Using stack-allocated array instead of std::vector
     struct FrameSyncData {
         VkFence inFlightFence = VK_NULL_HANDLE;
     };
 
-    std::vector<FrameSyncData> frameSyncData;    // Size = MAX_FRAMES_IN_FLIGHT
-    std::vector<VkSemaphore> imageAvailableSemaphores;  // Size = swapchain image count
-    std::vector<VkSemaphore> renderCompleteSemaphores;  // Size = swapchain image count
-    std::vector<VkFence> presentFences;          // Size = swapchain image count (VK_KHR_swapchain_maintenance1)
-    uint32_t currentFrameIndex = 0;              // Current frame-in-flight index
-    bool isCreated = false;
+    // Phase H: Stack-allocated arrays for synchronization primitives
+    // These have bounded sizes known at compile time
+    std::array<FrameSyncData, MAX_FRAMES_IN_FLIGHT> frameSyncData_{};
+    ResourceManagement::BoundedArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAvailableSemaphores_;
+    ResourceManagement::BoundedArray<VkSemaphore, MAX_SWAPCHAIN_IMAGES> renderCompleteSemaphores_;
+    ResourceManagement::BoundedArray<VkFence, MAX_SWAPCHAIN_IMAGES> presentFences_;
+
+    // Vector views for API compatibility (points to BoundedArray data)
+    // These are populated on-demand for output slots that expect std::vector&
+    mutable std::vector<VkSemaphore> imageAvailableSemaphoresView_;
+    mutable std::vector<VkSemaphore> renderCompleteSemaphoresView_;
+    mutable std::vector<VkFence> presentFencesView_;
+
+    uint32_t currentFrameIndex_ = 0;
+    uint32_t flightCount_ = 0;
+    uint32_t imageCount_ = 0;
+    bool isCreated_ = false;
+
+    // Helper to sync views with bounded arrays
+    void UpdateVectorViews();
 };
 
 } // namespace Vixen::RenderGraph
