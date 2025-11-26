@@ -3,6 +3,7 @@
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
 #include "Core/VulkanLimits.h"
+#include "Core/ResourceManagerBase.h"
 #include "Data/Nodes/FramebufferNodeConfig.h"
 #include "BoundedArray.h"
 
@@ -17,7 +18,8 @@ namespace Vixen::RenderGraph {
  * - Support optional depth attachment
  * - Manage framebuffer lifecycle
  *
- * Phase H: Uses stack-allocated BoundedArray for framebuffers and attachments.
+ * Phase H: Uses RequestAllocation API for automatic resource tracking.
+ * Storage is via AllocationResult which handles stack/heap fallback.
  *
  * Uses TypedNode with FramebufferNodeConfig for compile-time type safety.
  *
@@ -25,6 +27,8 @@ namespace Vixen::RenderGraph {
  */
 class FramebufferNode : public TypedNode<FramebufferNodeConfig> {
 public:
+    // Type aliases for cleaner code
+    using FramebufferAllocation = AllocationResult<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>;
 
     FramebufferNode(
         const std::string& instanceName,
@@ -33,10 +37,16 @@ public:
 
     ~FramebufferNode() override = default;
 
-    // Access framebuffers for external use (Phase-H: returns BoundedArray reference)
-    const ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>& GetFramebuffers() const { return framebuffers_; }
+    // Access framebuffers for external use
+    // Returns reference to underlying BoundedArray (throws if heap-allocated)
+    const ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>& GetFramebuffers() const {
+        if (!framebuffers_.IsStack()) {
+            throw std::runtime_error("FramebufferNode: Cannot get BoundedArray reference from heap allocation");
+        }
+        return framebuffers_.GetStack().data;
+    }
     VkFramebuffer GetFramebuffer(uint32_t index) const {
-        return (index < framebuffers_.Size()) ? framebuffers_[index] : VK_NULL_HANDLE;
+        return (index < framebuffers_.Size()) ? framebuffers_.Data()[index] : VK_NULL_HANDLE;
     }
     uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers_.Size()); }
 
@@ -50,12 +60,12 @@ protected:
 private:
     // Extracted compile helpers
     void ValidateInputs(VulkanDevice* devicePtr, VkRenderPass renderPass);
-    
+
     // Phase H: Stack-allocated attachment array (max 2: color + depth)
     static constexpr size_t MAX_ATTACHMENTS = 2;
     ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS> BuildAttachmentArray(
         VkImageView colorView, VkImageView depthView);
-    
+
     VkFramebuffer CreateSingleFramebuffer(
         VkRenderPass renderPass,
         const ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS>& attachments,
@@ -65,10 +75,10 @@ private:
     void CleanupPartialFramebuffers(size_t count);
 
     VulkanDevice* vulkanDevice = nullptr;
-    
-    // Phase H: Stack-allocated framebuffer storage
-    ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers_;
-    
+
+    // Phase H: Resource allocation result (handles stack/heap with automatic tracking)
+    FramebufferAllocation framebuffers_;
+
     bool hasDepth = false;
 };
 
