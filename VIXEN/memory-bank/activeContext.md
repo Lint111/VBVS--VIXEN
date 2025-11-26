@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 26, 2025
+**Last Updated**: November 26, 2025 (Session 8A)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Phase H Complete** | Ready for **Week 2: GPU Integration**
+**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | Buffer Upload Complete
 
 ---
 
@@ -49,10 +49,31 @@ octree.unlockAfterRendering();
 
 ---
 
-## Week 2: GPU Integration
+## Week 2: GPU Integration - IN PROGRESS 🔄
+
+### Session 8A Progress (Nov 26, 2025)
+
+**Completed**:
+- [x] Analyzed GPU integration gaps - Found `VoxelGridNode` wasn't uploading ESVO data
+- [x] Implemented `UploadESVOBuffers()` method in VoxelGridNode
+  - Extracts `ChildDescriptor` data → `esvoNodes` SSBO (binding 1)
+  - Extracts brick voxel data from `EntityBrickView` → `brickData` SSBO (binding 2)
+  - Material palette → `materials` SSBO (binding 3)
+- [x] Build passes successfully
+
+**Files Modified**:
+- [VoxelGridNode.h:76](libraries/RenderGraph/include/Nodes/VoxelGridNode.h#L76) - Added `UploadESVOBuffers()` declaration
+- [VoxelGridNode.cpp:132](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L132) - Call `UploadESVOBuffers()`
+- [VoxelGridNode.cpp:699-1033](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L699-L1033) - New `UploadESVOBuffers()` implementation
+
+**Next**:
+- [ ] Test GPU execution (run VIXEN.exe)
+- [ ] Scale to 1080p (change window size)
+- [ ] Benchmark Mrays/sec
 
 ### Goals
 - [ ] Render graph integration for voxel ray marching
+- [x] GPU buffer upload (ESVO structure to SSBO)
 - [ ] GPU compute shader execution
 - [ ] Target: >200 Mrays/sec at 1080p
 
@@ -61,10 +82,11 @@ octree.unlockAfterRendering();
 - [x] Shader binding infrastructure exists (`VoxelRayMarchNames.h`)
 - [x] Compute pipeline nodes exist (`ComputeDispatchNode`, `ComputePipelineNode`)
 - [x] Camera and VoxelGrid nodes exist
+- [x] **GPU buffer upload** - `UploadESVOBuffers()` implemented
 
 ### Week 2 Tasks
-1. **Buffer Upload** - Upload ESVO structure to GPU (SSBO)
-2. **Render Graph Wiring** - Connect compute shader to render graph
+1. ~~**Buffer Upload**~~ ✅ - Upload ESVO structure to GPU (SSBO)
+2. **Render Graph Wiring** - Connect compute shader to render graph (already wired)
 3. **Dispatch** - Execute compute shader at 1080p (1920×1080 = 2M rays)
 4. **Benchmark** - Measure actual Mrays/sec
 
@@ -99,8 +121,8 @@ octree.unlockAfterRendering();
 ## Todo List (Active Tasks)
 
 ### Week 2: GPU Integration (Current)
-- [ ] Upload ESVO structure to GPU (SSBO)
-- [ ] Wire compute shader in render graph
+- [x] Upload ESVO structure to GPU (SSBO) ✅
+- [x] Wire compute shader in render graph ✅ (already done)
 - [ ] Execute at 1080p (2M rays/frame)
 - [ ] Benchmark GPU performance (target >200 Mrays/sec)
 

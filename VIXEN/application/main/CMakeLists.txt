@@ -119,3 +119,17 @@ target_include_directories(VIXEN PRIVATE
 message(STATUS "VIXEN: Shaders compile at runtime from ${VIXEN_SHADER_SOURCE_DIR}")
 message(STATUS "VIXEN: Generated shader files output to ${APP_SHADER_OUTPUT_DIR}")
 message(STATUS "VIXEN: SDI headers output to ${APP_SDI_OUTPUT_DIR}")
+
+# ============================================================================
+# Runtime DLL Dependencies
+# ============================================================================
+# Copy TBB DLL to output directory (required by SVO library)
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET VIXEN POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:VIXEN>
+        COMMENT "Copying TBB DLL for VIXEN"
+    )
+    message(STATUS "VIXEN: TBB DLL will be copied to output directory")
+endif()

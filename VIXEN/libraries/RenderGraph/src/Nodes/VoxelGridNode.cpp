@@ -10,6 +10,7 @@
 // New SVO library integration
 #include "SVOBuilder.h"
 #include "LaineKarrasOctree.h"
+#include "GaiaVoxelWorld.h"   // For GaiaVoxelWorld entity-based voxel storage
 #include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
 using VIXEN::RenderGraph::VoxelGrid;
@@ -88,48 +89,84 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Generated " + std::to_string(voxelCount) + " voxels, density=" +
                   std::to_string(grid.GetDensityPercent()) + "%");
 
-    // Build sparse voxel octree using new SVO library
-    std::cout << "[VoxelGridNode] Building SVO octree (Laine-Karras ESVO)..." << std::endl;
+    // Build sparse voxel octree using LaineKarrasOctree with GaiaVoxelWorld
+    std::cout << "[VoxelGridNode] Building ESVO octree via LaineKarrasOctree..." << std::endl;
 
-    SVO::BuildParams params;
-    params.maxLevels = 16;           // Total hierarchy depth
-    params.brickDepthLevels = 3;     // Bottom 3 levels = 8×8×8 bricks
-    params.minVoxelSize = 0.01f;     // Stop if voxels < 0.01 world units
-    params.enableContours = false;   // Disable for now (Week 4)
-    params.enableCompression = false; // Disable for now (Week 3)
+    // 1. Create GaiaVoxelWorld to store voxel entities
+    GaiaVoxel::GaiaVoxelWorld voxelWorld;
 
-    SVO::SVOBuilder builder(params);
-    auto svoOctree = builder.buildFromVoxelGrid(
-        grid.GetData(),
-        resolution,
-        glm::vec3(0.0f),  // worldMin
-        glm::vec3(static_cast<float>(resolution)) // worldMax
-    );
+    // 2. Populate voxelWorld from VoxelGrid data
+    //    For each non-zero voxel in grid, create an entity with Material component
+    const auto& data = grid.GetData();
+    size_t solidVoxelCount = 0;
 
-    if (!svoOctree) {
-        throw std::runtime_error("[VoxelGridNode] Failed to build SVO octree");
+    for (uint32_t z = 0; z < resolution; ++z) {
+        for (uint32_t y = 0; y < resolution; ++y) {
+            for (uint32_t x = 0; x < resolution; ++x) {
+                size_t idx = static_cast<size_t>(z) * resolution * resolution +
+                             static_cast<size_t>(y) * resolution + x;
+                if (data[idx] != 0) {
+                    glm::vec3 pos(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+                    GaiaVoxel::ComponentQueryRequest components[] = {
+                        GaiaVoxel::Material{data[idx]}
+                    };
+                    GaiaVoxel::VoxelCreationRequest req{pos, components};
+                    voxelWorld.createVoxel(req);
+                    solidVoxelCount++;
+                }
+            }
+        }
     }
 
-    std::cout << "[VoxelGridNode] Built SVO octree: "
-              << svoOctree->root->childDescriptors.size() << " nodes, "
-              << "total voxels=" << svoOctree->totalVoxels << ", "
-              << "memory=" << (svoOctree->memoryUsage / 1024.0f / 1024.0f) << " MB" << std::endl;
-    NODE_LOG_INFO("Built SVO octree: " +
-                  std::to_string(svoOctree->root->childDescriptors.size()) + " nodes, " +
-                  "total voxels=" + std::to_string(svoOctree->totalVoxels));
+    std::cout << "[VoxelGridNode] Created " << solidVoxelCount << " voxel entities in GaiaVoxelWorld" << std::endl;
 
-    // TODO: Re-implement debug output for new SVO structure
-    // DEBUG: Sample voxel material IDs from first brick
-    // if (octree.GetBricks().size() > 0) {
-    //     const auto& bricks = octree.GetBricks();
-    //     std::cout << "[VoxelGridNode] DEBUG: First brick voxel samples (Z=0, Y=0):" << std::endl;
-    //     for (int x = 0; x < 8; ++x) {
-    //         std::cout << "  voxel[0][0][" << x << "] = " << static_cast<int>(bricks[0].voxels[0][0][x]) << std::endl;
-    //     }
-    // }
+    // 3. Create LaineKarrasOctree and rebuild from entities
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(static_cast<float>(resolution));
+
+    // Calculate appropriate maxLevels based on resolution
+    // For resolution 32: log2(32) = 5 levels for octree + 3 for bricks = 8
+    // For resolution 64: log2(64) = 6 levels for octree + 3 for bricks = 9
+    // For resolution 128: log2(128) = 7 levels for octree + 3 for bricks = 10
+    int brickDepth = 3;  // 8x8x8 bricks
+    int resolutionLevels = static_cast<int>(std::ceil(std::log2(resolution)));
+    int maxLevels = resolutionLevels;
+
+    std::cout << "[VoxelGridNode] Creating LaineKarrasOctree: maxLevels=" << maxLevels
+              << ", brickDepth=" << brickDepth << std::endl;
+
+    SVO::LaineKarrasOctree octree(voxelWorld, nullptr, maxLevels, brickDepth);
+    octree.rebuild(voxelWorld, worldMin, worldMax);
+
+    // 4. Get octree data for GPU upload
+    const auto* octreeData = octree.getOctree();
+    if (!octreeData || !octreeData->root) {
+        throw std::runtime_error("[VoxelGridNode] Failed to build LaineKarras octree");
+    }
+
+    std::cout << "[VoxelGridNode] Built ESVO octree: "
+              << octreeData->root->childDescriptors.size() << " nodes, "
+              << octreeData->root->brickViews.size() << " bricks, "
+              << "total voxels=" << octreeData->totalVoxels << ", "
+              << "memory=" << (octreeData->memoryUsage / 1024.0f / 1024.0f) << " MB" << std::endl;
+    NODE_LOG_INFO("Built ESVO octree: " +
+                  std::to_string(octreeData->root->childDescriptors.size()) + " nodes, " +
+                  std::to_string(octreeData->root->brickViews.size()) + " bricks, " +
+                  "total voxels=" + std::to_string(octreeData->totalVoxels));
+
+    // Debug: Print first few child descriptors
+    if (octreeData->root->childDescriptors.size() > 0) {
+        std::cout << "[VoxelGridNode] DEBUG: First child descriptors:" << std::endl;
+        for (size_t i = 0; i < std::min<size_t>(3, octreeData->root->childDescriptors.size()); ++i) {
+            const auto& desc = octreeData->root->childDescriptors[i];
+            std::cout << "  [" << i << "] childPointer=" << desc.childPointer
+                      << ", validMask=0x" << std::hex << static_cast<int>(desc.validMask)
+                      << ", leafMask=0x" << static_cast<int>(desc.leafMask) << std::dec << std::endl;
+        }
+    }
 
     // Upload ESVO octree to GPU buffers
-    UploadESVOBuffers(*svoOctree);
+    UploadESVOBuffers(*octreeData);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
     // Output resources
