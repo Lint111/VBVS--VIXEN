@@ -271,7 +271,11 @@ public:
         }, data_);
     }
 
-    // Convenience: Get raw pointer to data (works for both stack and heap)
+    // ========================================================================
+    // UNIFIED CONVENIENCE API - Works regardless of stack/heap storage
+    // ========================================================================
+
+    // Get raw pointer to data
     T* Data() {
         if (IsStack()) return GetStack().Data();
         if (IsHeap()) return GetHeap().Data();
@@ -284,11 +288,101 @@ public:
         return nullptr;
     }
 
+    // Get current size
     size_t Size() const {
         if (IsStack()) return GetStack().Size();
         if (IsHeap()) return GetHeap().Size();
         return 0;
     }
+
+    // Check if empty
+    bool Empty() const {
+        return Size() == 0;
+    }
+
+    // Add an element (works for both stack and heap)
+    void Add(const T& value) {
+        if (IsStack()) {
+            GetStack().Add(value);
+        } else if (IsHeap()) {
+            GetHeap().Add(value);
+        }
+        // If error state, silently ignore (or could throw)
+    }
+
+    // Clear all elements
+    void Clear() {
+        if (IsStack()) {
+            GetStack().Clear();
+        } else if (IsHeap()) {
+            GetHeap().Clear();
+        }
+    }
+
+    // Index operator
+    T& operator[](size_t i) {
+        if (IsStack()) return GetStack()[i];
+        return GetHeap()[i];  // Will throw if error state (undefined behavior)
+    }
+
+    const T& operator[](size_t i) const {
+        if (IsStack()) return GetStack()[i];
+        return GetHeap()[i];
+    }
+
+    // ========================================================================
+    // ITERATOR SUPPORT - Enables range-for loops
+    // ========================================================================
+
+    // Custom iterator that works with both storage types
+    class Iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+
+        Iterator(T* ptr) : ptr_(ptr) {}
+
+        reference operator*() const { return *ptr_; }
+        pointer operator->() { return ptr_; }
+        Iterator& operator++() { ++ptr_; return *this; }
+        Iterator operator++(int) { Iterator tmp = *this; ++ptr_; return tmp; }
+        friend bool operator==(const Iterator& a, const Iterator& b) { return a.ptr_ == b.ptr_; }
+        friend bool operator!=(const Iterator& a, const Iterator& b) { return a.ptr_ != b.ptr_; }
+
+    private:
+        T* ptr_;
+    };
+
+    class ConstIterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+
+        ConstIterator(const T* ptr) : ptr_(ptr) {}
+
+        reference operator*() const { return *ptr_; }
+        pointer operator->() const { return ptr_; }
+        ConstIterator& operator++() { ++ptr_; return *this; }
+        ConstIterator operator++(int) { ConstIterator tmp = *this; ++ptr_; return tmp; }
+        friend bool operator==(const ConstIterator& a, const ConstIterator& b) { return a.ptr_ == b.ptr_; }
+        friend bool operator!=(const ConstIterator& a, const ConstIterator& b) { return a.ptr_ != b.ptr_; }
+
+    private:
+        const T* ptr_;
+    };
+
+    Iterator begin() { return Iterator(Data()); }
+    Iterator end() { return Iterator(Data() + Size()); }
+    ConstIterator begin() const { return ConstIterator(Data()); }
+    ConstIterator end() const { return ConstIterator(Data() + Size()); }
+    ConstIterator cbegin() const { return ConstIterator(Data()); }
+    ConstIterator cend() const { return ConstIterator(Data() + Size()); }
 
 private:
     VariantType data_;

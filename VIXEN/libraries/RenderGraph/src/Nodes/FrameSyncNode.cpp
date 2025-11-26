@@ -49,26 +49,90 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    imageAvailableSemaphores_.Clear();
-    renderCompleteSemaphores_.Clear();
+    // Phase H: Use RequestAllocation API for automatic tracking
+    auto* rm = GetResourceManager();
+
+    if (rm) {
+        imageAvailableSemaphores_ = rm->RequestAllocation<VkSemaphore, MAX_FRAMES_IN_FLIGHT>(
+            AllocationConfig()
+                .WithStrategy(ResourceAllocStrategy::Stack)
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("imageAvailableSemaphores")
+                .WithOwner(GetInstanceId())
+                .WithHeapFallback(true)
+        );
+        if (imageAvailableSemaphores_.IsError()) {
+            throw std::runtime_error("Failed to allocate imageAvailableSemaphores: " +
+                std::string(imageAvailableSemaphores_.GetErrorString()));
+        }
+    } else {
+        imageAvailableSemaphores_ = ImageAvailableSemaphoreAllocation(
+            StackAllocationResult<VkSemaphore, MAX_FRAMES_IN_FLIGHT>{});
+    }
+
+    if (rm) {
+        renderCompleteSemaphores_ = rm->RequestAllocation<VkSemaphore, MAX_SWAPCHAIN_IMAGES>(
+            AllocationConfig()
+                .WithStrategy(ResourceAllocStrategy::Stack)
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("renderCompleteSemaphores")
+                .WithOwner(GetInstanceId())
+                .WithHeapFallback(true)
+        );
+        if (renderCompleteSemaphores_.IsError()) {
+            throw std::runtime_error("Failed to allocate renderCompleteSemaphores: " +
+                std::string(renderCompleteSemaphores_.GetErrorString()));
+        }
+    } else {
+        renderCompleteSemaphores_ = RenderCompleteSemaphoreAllocation(
+            StackAllocationResult<VkSemaphore, MAX_SWAPCHAIN_IMAGES>{});
+    }
+
+    if (rm) {
+        presentFences_ = rm->RequestAllocation<VkFence, MAX_SWAPCHAIN_IMAGES>(
+            AllocationConfig()
+                .WithStrategy(ResourceAllocStrategy::Stack)
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("presentFences")
+                .WithOwner(GetInstanceId())
+                .WithHeapFallback(true)
+        );
+        if (presentFences_.IsError()) {
+            throw std::runtime_error("Failed to allocate presentFences: " +
+                std::string(presentFences_.GetErrorString()));
+        }
+    } else {
+        presentFences_ = PresentFenceAllocation(
+            StackAllocationResult<VkFence, MAX_SWAPCHAIN_IMAGES>{});
+    }
+
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
     for (uint32_t i = 0; i < flightCount_; i++) {
         VkSemaphore semaphore = VK_NULL_HANDLE;
         if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create imageAvailable semaphore");
         }
-        imageAvailableSemaphores_.Add(semaphore);
+        if (imageAvailableSemaphores_.IsStack()) {
+            imageAvailableSemaphores_.GetStack().Add(semaphore);
+        } else {
+            imageAvailableSemaphores_.GetHeap().Add(semaphore);
+        }
     }
+
     for (uint32_t i = 0; i < imageCount_; i++) {
         VkSemaphore semaphore = VK_NULL_HANDLE;
         if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create renderComplete semaphore");
         }
-        renderCompleteSemaphores_.Add(semaphore);
+        if (renderCompleteSemaphores_.IsStack()) {
+            renderCompleteSemaphores_.GetStack().Add(semaphore);
+        } else {
+            renderCompleteSemaphores_.GetHeap().Add(semaphore);
+        }
     }
 
-    presentFences_.Clear();
     VkFenceCreateInfo presentFenceInfo{};
     presentFenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     presentFenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
@@ -77,38 +141,37 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &fence) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create present fence");
         }
-        presentFences_.Add(fence);
+        if (presentFences_.IsStack()) {
+            presentFences_.GetStack().Add(fence);
+        } else {
+            presentFences_.GetHeap().Add(fence);
+        }
     }
 
     isCreated_ = true;
     currentFrameIndex_ = 0;
-    
-    // Phase H: Track BoundedArrays with resource manager for profiling
-    if (auto* rm = GetResourceManager()) {
-        rm->TrackBoundedArray(imageAvailableSemaphores_, "imageAvailableSemaphores", GetInstanceId(), ResourceLifetime::GraphLocal);
-        rm->TrackBoundedArray(renderCompleteSemaphores_, "renderCompleteSemaphores", GetInstanceId(), ResourceLifetime::GraphLocal);
-        rm->TrackBoundedArray(presentFences_, "presentFences", GetInstanceId(), ResourceLifetime::GraphLocal);
+
+    if (!imageAvailableSemaphores_.IsStack() || !renderCompleteSemaphores_.IsStack() || !presentFences_.IsStack()) {
+        throw std::runtime_error("FrameSyncNode: Heap fallback not supported for output slot types");
     }
-    
-    // Phase H: Pass BoundedArray references directly (no vector view copies)
+
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex_);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData_[currentFrameIndex_].inFlightFence);
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_);
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_);
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_.GetStack().data);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_.GetStack().data);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_.GetStack().data);
 }
 
 void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     currentFrameIndex_ = (currentFrameIndex_ + 1) % flightCount_;
     VkFence currentFence = frameSyncData_[currentFrameIndex_].inFlightFence;
     vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
-    
-    // Phase H: Pass BoundedArray references directly (no vector view copies)
+
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex_);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, currentFence);
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_);
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_);
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_.GetStack().data);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_.GetStack().data);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_.GetStack().data);
 }
 
 void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -119,18 +182,52 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
                 frameSyncData_[i].inFlightFence = VK_NULL_HANDLE;
             }
         }
-        for (auto& semaphore : imageAvailableSemaphores_) {
-            if (semaphore != VK_NULL_HANDLE) vkDestroySemaphore(device->device, semaphore, nullptr);
+
+        if (imageAvailableSemaphores_.IsSuccess()) {
+            VkSemaphore* data = imageAvailableSemaphores_.Data();
+            size_t count = imageAvailableSemaphores_.Size();
+            for (size_t i = 0; i < count; i++) {
+                if (data[i] != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, data[i], nullptr);
+                }
+            }
+            if (imageAvailableSemaphores_.IsStack()) {
+                imageAvailableSemaphores_.GetStack().Clear();
+            } else {
+                imageAvailableSemaphores_.GetHeap().Clear();
+            }
         }
-        for (auto& semaphore : renderCompleteSemaphores_) {
-            if (semaphore != VK_NULL_HANDLE) vkDestroySemaphore(device->device, semaphore, nullptr);
+
+        if (renderCompleteSemaphores_.IsSuccess()) {
+            VkSemaphore* data = renderCompleteSemaphores_.Data();
+            size_t count = renderCompleteSemaphores_.Size();
+            for (size_t i = 0; i < count; i++) {
+                if (data[i] != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, data[i], nullptr);
+                }
+            }
+            if (renderCompleteSemaphores_.IsStack()) {
+                renderCompleteSemaphores_.GetStack().Clear();
+            } else {
+                renderCompleteSemaphores_.GetHeap().Clear();
+            }
         }
-        for (auto& fence : presentFences_) {
-            if (fence != VK_NULL_HANDLE) vkDestroyFence(device->device, fence, nullptr);
+
+        if (presentFences_.IsSuccess()) {
+            VkFence* data = presentFences_.Data();
+            size_t count = presentFences_.Size();
+            for (size_t i = 0; i < count; i++) {
+                if (data[i] != VK_NULL_HANDLE) {
+                    vkDestroyFence(device->device, data[i], nullptr);
+                }
+            }
+            if (presentFences_.IsStack()) {
+                presentFences_.GetStack().Clear();
+            } else {
+                presentFences_.GetHeap().Clear();
+            }
         }
-        imageAvailableSemaphores_.Clear();
-        renderCompleteSemaphores_.Clear();
-        presentFences_.Clear();
+
         currentFrameIndex_ = 0;
         flightCount_ = 0;
         imageCount_ = 0;
