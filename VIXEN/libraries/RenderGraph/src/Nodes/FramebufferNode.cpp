@@ -28,8 +28,12 @@ FramebufferNode::FramebufferNode(
 }
 
 void FramebufferNode::SetupImpl(TypedSetupContext& ctx) {
-    // Graph-scope initialization only (no input access)
     NODE_LOG_DEBUG("FramebufferNode: Setup (graph-scope initialization)");
+}
+
+void FramebufferNode::UpdateVectorView() {
+    // Sync vector view with bounded array for API compatibility
+    framebuffersView_.assign(framebuffers_.begin(), framebuffers_.end());
 }
 
 void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
@@ -62,32 +66,41 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error(error.toString());
     }
 
+    if (colorAttachmentCount > MAX_SWAPCHAIN_IMAGES) {
+        throw std::runtime_error("FramebufferNode: Too many swapchain images (" + 
+            std::to_string(colorAttachmentCount) + " > " + std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
+    }
+
     NODE_LOG_INFO("[FramebufferNode::Compile] Creating " + std::to_string(colorAttachmentCount) + " framebuffers from swapchain");
 
-    // Clear and resize framebuffer vector
-    framebuffers.clear();
-    framebuffers.resize(colorAttachmentCount);
+    // Phase H: Clear bounded array
+    framebuffers_.Clear();
 
     // Create one framebuffer per swapchain image
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         VkImageView colorView = swapchainInfo->colorBuffers[i].view;
-        NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i) + ", view=" + std::to_string(reinterpret_cast<uint64_t>(colorView)));
+        NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i));
 
-        std::vector<VkImageView> attachments = BuildAttachmentArray(colorView, depthView);
+        // Phase H: Stack-allocated attachment array
+        auto attachments = BuildAttachmentArray(colorView, depthView);
 
         try {
-            framebuffers[i] = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->Extent, layers);
-            NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]=" + std::to_string(reinterpret_cast<uint64_t>(framebuffers[i])));
+            VkFramebuffer fb = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->Extent, layers);
+            framebuffers_.Add(fb);
+            NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]");
         } catch (const std::exception&) {
-            CleanupPartialFramebuffers(i);
+            CleanupPartialFramebuffers(framebuffers_.Size());
             throw;
         }
     }
 
+    // Update vector view for API compatibility
+    UpdateVectorView();
+
     // Output framebuffers
-    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers);
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffersView_);
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
-    NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers.size()) + " framebuffers");
+    NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers_.Size()) + " framebuffers");
 }
 
 void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
@@ -95,15 +108,16 @@ void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (!framebuffers.empty() && device != nullptr) {
-        NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers.size()) + " framebuffers");
+    if (!framebuffers_.Empty() && device != nullptr) {
+        NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers_.Size()) + " framebuffers");
 
-        for (VkFramebuffer framebuffer : framebuffers) {
+        for (auto& framebuffer : framebuffers_) {
             if (framebuffer != VK_NULL_HANDLE) {
                 vkDestroyFramebuffer(device->device, framebuffer, nullptr);
             }
         }
-        framebuffers.clear();
+        framebuffers_.Clear();
+        framebuffersView_.clear();
     }
 }
 
@@ -117,12 +131,14 @@ void FramebufferNode::ValidateInputs(VulkanDevice* devicePtr, VkRenderPass rende
     }
 }
 
-std::vector<VkImageView> FramebufferNode::BuildAttachmentArray(VkImageView colorView, VkImageView depthView) {
-    std::vector<VkImageView> attachments;
-    attachments.push_back(colorView);
+ResourceManagement::BoundedArray<VkImageView, FramebufferNode::MAX_ATTACHMENTS> 
+FramebufferNode::BuildAttachmentArray(VkImageView colorView, VkImageView depthView) {
+    // Phase H: Stack-allocated attachment array
+    ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS> attachments;
+    attachments.Add(colorView);
 
     if (hasDepth) {
-        attachments.push_back(depthView);
+        attachments.Add(depthView);
     }
 
     return attachments;
@@ -130,15 +146,15 @@ std::vector<VkImageView> FramebufferNode::BuildAttachmentArray(VkImageView color
 
 VkFramebuffer FramebufferNode::CreateSingleFramebuffer(
     VkRenderPass renderPass,
-    const std::vector<VkImageView>& attachments,
+    const ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS>& attachments,
     const VkExtent2D& extent,
     uint32_t layers
 ) {
 
     VkFramebufferCreateInfo framebufferInfo = CreateFramebufferInfo(
         renderPass,
-        attachments.data(),
-        static_cast<uint32_t>(attachments.size()),
+        attachments.Data(),
+        static_cast<uint32_t>(attachments.Size()),
         extent.width,
         extent.height,
         layers
@@ -158,11 +174,11 @@ VkFramebuffer FramebufferNode::CreateSingleFramebuffer(
 
 void FramebufferNode::CleanupPartialFramebuffers(size_t count) {
     for (size_t j = 0; j < count; j++) {
-        if (framebuffers[j] != VK_NULL_HANDLE) {
-            vkDestroyFramebuffer(device->device, framebuffers[j], nullptr);
+        if (framebuffers_[j] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device->device, framebuffers_[j], nullptr);
         }
     }
-    framebuffers.clear();
+    framebuffers_.Clear();
 }
 
 } // namespace Vixen::RenderGraph

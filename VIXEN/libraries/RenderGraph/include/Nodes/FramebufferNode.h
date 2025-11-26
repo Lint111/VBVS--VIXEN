@@ -2,18 +2,23 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
+#include "Core/VulkanLimits.h"
 #include "Data/Nodes/FramebufferNodeConfig.h"
+#include "BoundedArray.h"
+#include <vector>
 
 namespace Vixen::RenderGraph {
 
 /**
- * @brief Framebuffer creation node
+ * @brief Framebuffer creation node (Phase H optimized)
  *
  * Responsibilities:
  * - Create framebuffers from render pass and attachments
  * - Handle multiple framebuffers (one per swapchain image)
  * - Support optional depth attachment
  * - Manage framebuffer lifecycle
+ *
+ * Phase H: Uses stack-allocated BoundedArray for framebuffers and attachments.
  *
  * Uses TypedNode with FramebufferNodeConfig for compile-time type safety.
  *
@@ -30,33 +35,45 @@ public:
     ~FramebufferNode() override = default;
 
     // Access framebuffers for external use (legacy compatibility)
-    const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffers; }
+    const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffersView_; }
     VkFramebuffer GetFramebuffer(uint32_t index) const {
-        return (index < framebuffers.size()) ? framebuffers[index] : VK_NULL_HANDLE;
+        return (index < framebuffers_.Size()) ? framebuffers_[index] : VK_NULL_HANDLE;
     }
-    uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers.size()); }
+    uint32_t GetFramebufferCount() const { return static_cast<uint32_t>(framebuffers_.Size()); }
 
 protected:
-	// Template method pattern - override *Impl() methods
-	void SetupImpl(TypedSetupContext& ctx) override;
-	void CompileImpl(TypedCompileContext& ctx) override;
-	void ExecuteImpl(TypedExecuteContext& ctx) override;
-	void CleanupImpl(TypedCleanupContext& ctx) override;
+    // Template method pattern - override *Impl() methods
+    void SetupImpl(TypedSetupContext& ctx) override;
+    void CompileImpl(TypedCompileContext& ctx) override;
+    void ExecuteImpl(TypedExecuteContext& ctx) override;
+    void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
     // Extracted compile helpers
     void ValidateInputs(VulkanDevice* devicePtr, VkRenderPass renderPass);
-    std::vector<VkImageView> BuildAttachmentArray(VkImageView colorView, VkImageView depthView);
+    
+    // Phase H: Stack-allocated attachment array (max 2: color + depth)
+    static constexpr size_t MAX_ATTACHMENTS = 2;
+    ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS> BuildAttachmentArray(
+        VkImageView colorView, VkImageView depthView);
+    
     VkFramebuffer CreateSingleFramebuffer(
         VkRenderPass renderPass,
-        const std::vector<VkImageView>& attachments,
+        const ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS>& attachments,
         const VkExtent2D& extent,
         uint32_t layers
     );
     void CleanupPartialFramebuffers(size_t count);
+    void UpdateVectorView();
 
     VulkanDevice* vulkanDevice = nullptr;
-    std::vector<VkFramebuffer> framebuffers;
+    
+    // Phase H: Stack-allocated framebuffer storage
+    ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers_;
+    
+    // Vector view for API compatibility
+    mutable std::vector<VkFramebuffer> framebuffersView_;
+    
     bool hasDepth = false;
 };
 
