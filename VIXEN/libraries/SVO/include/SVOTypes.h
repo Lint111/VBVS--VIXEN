@@ -207,4 +207,84 @@ float decodeContourPosition(const Contour& contour);
 // Population count for 8-bit value (helper for validMask/leafMask)
 int popc8(uint8_t mask);
 
+// ============================================================================
+// Mask Mirroring for ESVO Ray-Direction Space
+// ============================================================================
+
+/**
+ * Mirror an 8-bit octant mask based on ray direction.
+ *
+ * COORDINATE SPACES:
+ *   - LOCAL SPACE: Octree's own coordinate system, ray-independent. Descriptors and
+ *                  bricks are stored in local space during rebuild().
+ *   - MIRRORED SPACE: ESVO's ray-direction-dependent view where axes are flipped
+ *                     based on ray direction to simplify traversal (positive ray = negative octant).
+ *   - WORLD SPACE: Actual 3D world coordinates. Only used at volume entry/exit via mat4 transforms.
+ *
+ * The octant_mask encodes which axes are mirrored (ESVO paper convention):
+ *   - Bit 0 (1): X axis mirrored if CLEAR (ray.x < 0)
+ *   - Bit 1 (2): Y axis mirrored if CLEAR (ray.y < 0)
+ *   - Bit 2 (4): Z axis mirrored if CLEAR (ray.z < 0)
+ *
+ * This function permutes mask bits so that local-space masks (stored in descriptors)
+ * can be checked against mirrored-space indices (state.idx).
+ *
+ * Example: octant_mask=6 (Y,Z mirrored), local octant 0 → mirrored octant 6
+ *          So if validMask has bit 0 set, mirrored validMask should have bit 6 set.
+ *
+ * @param mask Local-space 8-bit mask (validMask or leafMask from ChildDescriptor)
+ * @param octant_mask Ray-direction mirroring mask (0-7)
+ * @return Mirrored mask for use with mirrored-space indices (state.idx)
+ */
+inline uint8_t mirrorMask(uint8_t mask, int octant_mask) {
+    // Fast path: no mirroring needed
+    if (octant_mask == 7) {
+        return mask;
+    }
+
+    // Permute bits: for each world octant i, move its bit to mirrored position (i ^ octant_mask)
+    uint8_t result = 0;
+    for (int i = 0; i < 8; i++) {
+        int mirroredIdx = i ^ octant_mask;
+        if (mask & (1 << i)) {
+            result |= (1 << mirroredIdx);
+        }
+    }
+    return result;
+}
+
+/**
+ * Convert mirrored-space octant index to local-space octant index.
+ *
+ * Use this when you have a mirrored-space index (state.idx) and need to look up
+ * data stored in local space (descriptors, bricks, leafToBrickView).
+ *
+ * @param mirroredIdx Octant index in mirrored space (state.idx)
+ * @param octant_mask Ray-direction mirroring mask (0-7)
+ * @return Local-space octant index (for descriptor/brick lookup)
+ */
+inline int mirroredToLocalOctant(int mirroredIdx, int octant_mask) {
+    return mirroredIdx ^ octant_mask;
+}
+
+/**
+ * Convert local-space octant index to mirrored-space octant index.
+ *
+ * @param localIdx Octant index in local space (from descriptor)
+ * @param octant_mask Ray-direction mirroring mask (0-7)
+ * @return Mirrored-space octant index
+ */
+inline int localToMirroredOctant(int localIdx, int octant_mask) {
+    return localIdx ^ octant_mask;  // XOR is its own inverse
+}
+
+// Legacy names for compatibility
+inline int mirroredToWorldOctant(int mirroredIdx, int octant_mask) {
+    return mirroredToLocalOctant(mirroredIdx, octant_mask);
+}
+
+inline int worldToMirroredOctant(int worldIdx, int octant_mask) {
+    return localToMirroredOctant(worldIdx, octant_mask);
+}
+
 } // namespace SVO

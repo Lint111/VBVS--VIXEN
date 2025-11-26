@@ -159,12 +159,20 @@ public:
     /**
      * Complete traversal state for ESVO ray casting.
      * Encapsulates all mutable variables needed during octree traversal.
+     *
+     * MIRRORED SPACE ARCHITECTURE:
+     * - idx: Current octant in MIRRORED space (ray-direction dependent)
+     * - mirroredValidMask: Parent's validMask converted to mirrored space
+     * - mirroredLeafMask: Parent's leafMask converted to mirrored space
+     *
+     * This allows direct comparison: (mirroredValidMask & (1 << idx)) works correctly
+     * without per-check conversion. Masks are converted once in fetchChildDescriptor().
      */
     struct ESVOTraversalState {
         // Current node and octant
         const ChildDescriptor* parent = nullptr;
         uint64_t child_descriptor = 0;
-        int idx = 0;              // Current child octant index (0-7)
+        int idx = 0;              // Current child octant index (0-7) in MIRRORED space
         int scale = 0;            // Current ESVO scale (0-22)
         float scale_exp2 = 0.5f;  // 2^(scale - ESVO_MAX_SCALE)
 
@@ -180,6 +188,11 @@ public:
         float tx_center = 0.0f;
         float ty_center = 0.0f;
         float tz_center = 0.0f;
+
+        // Mirrored masks - converted from world-space once per descriptor fetch
+        // These are set in fetchChildDescriptor() based on octant_mask
+        uint8_t mirroredValidMask = 0;  // Parent's validMask in mirrored space
+        uint8_t mirroredLeafMask = 0;   // Parent's leafMask in mirrored space
 
         // Iteration counter
         int iter = 0;
@@ -349,8 +362,9 @@ private:
 
     /**
      * Fetch child descriptor for current node if not cached.
+     * Mirrors validMask and leafMask based on octant_mask for correct traversal.
      */
-    void fetchChildDescriptor(ESVOTraversalState& state) const;
+    void fetchChildDescriptor(ESVOTraversalState& state, const ESVORayCoefficients& coef) const;
 
     /**
      * Check if current child is valid and compute t-span intersection.

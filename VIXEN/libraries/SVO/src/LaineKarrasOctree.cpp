@@ -738,14 +738,24 @@ void LaineKarrasOctree::initializeTraversalState(
 
 /**
  * Fetch child descriptor for current node if not cached.
+ * Mirrors validMask and leafMask based on octant_mask for correct traversal.
+ *
+ * This is the SINGLE CONVERSION POINT for mirrored-space traversal.
+ * After this call, state.mirroredValidMask and state.mirroredLeafMask can be
+ * used directly with state.idx (mirrored-space octant).
  */
-void LaineKarrasOctree::fetchChildDescriptor(ESVOTraversalState& state) const
+void LaineKarrasOctree::fetchChildDescriptor(ESVOTraversalState& state, const ESVORayCoefficients& coef) const
 {
     if (state.child_descriptor == 0) {
-        // Pack descriptor to match ESVO layout
-        uint32_t nonLeafMask = ~state.parent->leafMask & 0xFF;
+        // Mirror masks from world-space to mirrored-space based on ray direction
+        // This allows direct use: (mirroredValidMask & (1 << state.idx)) works correctly
+        state.mirroredValidMask = mirrorMask(state.parent->validMask, coef.octant_mask);
+        state.mirroredLeafMask = mirrorMask(state.parent->leafMask, coef.octant_mask);
+
+        // Pack descriptor to match ESVO layout (using mirrored masks)
+        uint32_t nonLeafMask = ~state.mirroredLeafMask & 0xFF;
         state.child_descriptor = nonLeafMask |
-                     (static_cast<uint64_t>(state.parent->validMask) << 8) |
+                     (static_cast<uint64_t>(state.mirroredValidMask) << 8) |
                      (static_cast<uint64_t>(state.parent->childPointer) << 16);
     }
 }
@@ -753,6 +763,9 @@ void LaineKarrasOctree::fetchChildDescriptor(ESVOTraversalState& state) const
 /**
  * Check if current child is valid and compute t-span intersection.
  * Returns true if the voxel should be processed (valid and intersected).
+ *
+ * Uses MIRRORED masks (set by fetchChildDescriptor) for correct traversal.
+ * state.idx is in mirrored space, so we check against mirroredValidMask/mirroredLeafMask.
  */
 bool LaineKarrasOctree::checkChildValidity(
     ESVOTraversalState& state,
@@ -760,9 +773,10 @@ bool LaineKarrasOctree::checkChildValidity(
     bool& isLeaf,
     float& tv_max) const
 {
-    // Check if child exists in parent's validMask
-    bool child_valid = (state.parent->validMask & (1u << state.idx)) != 0;
-    isLeaf = (state.parent->leafMask & (1u << state.idx)) != 0;
+    // Check if child exists using MIRRORED validMask (already converted in fetchChildDescriptor)
+    // state.idx is in mirrored space, mirroredValidMask is in mirrored space - direct comparison works!
+    bool child_valid = (state.mirroredValidMask & (1u << state.idx)) != 0;
+    isLeaf = (state.mirroredLeafMask & (1u << state.idx)) != 0;
 
     // At brick level, force leaf status
     int currentUserScale = esvoToUserScale(state.scale);
@@ -795,6 +809,9 @@ bool LaineKarrasOctree::checkChildValidity(
 /**
  * PUSH phase: Descend into child node.
  * Updates parent pointer, scale, and position for child traversal.
+ *
+ * IMPORTANT: Child descriptor storage is in WORLD space, but state.idx is in MIRRORED space.
+ * We convert state.idx to world space to compute the correct child offset.
  */
 void LaineKarrasOctree::executePushPhase(
     ESVOTraversalState& state,
@@ -813,9 +830,14 @@ void LaineKarrasOctree::executePushPhase(
     }
     state.h = tc_max;
 
-    // Calculate child offset (count non-leaf children before current)
+    // Convert mirrored idx to world space for child offset calculation
+    // Descriptors are stored in world-space order, so we need world-space octant
+    int worldIdx = mirroredToWorldOctant(state.idx, coef.octant_mask);
+
+    // Calculate child offset (count non-leaf children before current in WORLD space)
+    // Use WORLD-space masks since that's how descriptors are stored
     uint8_t nonLeafMask = ~state.parent->leafMask & state.parent->validMask;
-    uint32_t mask_before_child = (1u << state.idx) - 1;
+    uint32_t mask_before_child = (1u << worldIdx) - 1;
     uint32_t nonleaf_before_child = nonLeafMask & mask_before_child;
     uint32_t child_offset = std::popcount(nonleaf_before_child);
 
@@ -849,7 +871,7 @@ void LaineKarrasOctree::executePushPhase(
         state.pos.z += state.scale_exp2;
     }
 
-    // Update t-span and invalidate cached descriptor
+    // Update t-span and invalidate cached descriptor (forces re-mirroring for new parent)
     state.t_max = tv_max;
     state.child_descriptor = 0;
 }
@@ -1016,6 +1038,12 @@ PopResult LaineKarrasOctree::executePopPhase(
 /**
  * Handle leaf hit: perform brick traversal and return hit result.
  * Returns nullopt if traversal should continue (brick miss).
+ *
+ * BRICK LOOKUP STRATEGY:
+ * - state.idx is in MIRRORED space (ray-direction dependent)
+ * - leafToBrickView stores bricks by WORLD-space octant (ray-independent)
+ * - Convert: worldOctant = state.idx ^ octant_mask
+ * - This gives us direct, unambiguous brick lookup without position guessing
  */
 std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     ESVOTraversalState& state,
@@ -1026,62 +1054,27 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     float tExit,
     float tv_max) const
 {
-    DEBUG_PRINT("  handleLeafHit: idx=%d, state.t_min=%.4f, tv_max=%.4f, tRayStart=%.4f, tEntry=%.4f, tExit=%.4f\n",
-                state.idx, state.t_min, tv_max, tRayStart, tEntry, tExit);
+    // Convert mirrored idx to world-space octant for brick lookup
+    // Bricks are stored by world-space octant in leafToBrickView
+    int worldOctant = mirroredToWorldOctant(state.idx, coef.octant_mask);
+
+    DEBUG_PRINT("  handleLeafHit: mirroredIdx=%d, worldOctant=%d, octant_mask=%d, state.t_min=%.4f, tv_max=%.4f\n",
+                state.idx, worldOctant, coef.octant_mask, state.t_min, tv_max);
 
     size_t parentDescriptorIndex = state.parent - &m_octree->root->childDescriptors[0];
-    glm::vec3 worldSize = m_worldMax - m_worldMin;
-    int bricksPerAxis = m_octree->bricksPerAxis;
-    int brickSideLength = m_octree->brickSideLength;
 
-    // Compute octant center position in world space from ESVO state.pos
-    // state.pos is in mirrored [1,2] space - convert to world space
-    // 1. Convert mirrored pos to normalized [0,1] space
-    glm::vec3 mirroredNorm = state.pos - glm::vec3(1.0f);  // [0,1] in mirrored space
-
-    // 2. Un-mirror: flip axes where octant_mask bit is CLEAR (those are mirrored)
-    glm::vec3 worldNorm;
-    worldNorm.x = (coef.octant_mask & 1) ? mirroredNorm.x : (1.0f - mirroredNorm.x);
-    worldNorm.y = (coef.octant_mask & 2) ? mirroredNorm.y : (1.0f - mirroredNorm.y);
-    worldNorm.z = (coef.octant_mask & 4) ? mirroredNorm.z : (1.0f - mirroredNorm.z);
-
-    // 3. Compute octant center (add half of current scale to get center)
-    float halfScale = state.scale_exp2 * 0.5f;
-    glm::vec3 octantCenter = worldNorm + glm::vec3(halfScale);
-    octantCenter = glm::clamp(octantCenter, glm::vec3(0.001f), glm::vec3(0.999f));
-
-    // 4. Convert to world position
-    glm::vec3 octantWorldPos = m_worldMin + octantCenter * worldSize;
-
-    // Compute brick index from octant center position
-    glm::vec3 localPos = octantWorldPos - m_worldMin;
-    glm::ivec3 brickIndex(
-        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
-        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
-    );
-    brickIndex = glm::clamp(brickIndex, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
-
-    // Compute leafOctant from brickIndex (position-based)
-    int leafOctant = 0;
-    if (bricksPerAxis == 1) {
-        leafOctant = 0;
-    } else {
-        if (brickIndex.x > 0) leafOctant |= 1;
-        if (brickIndex.y > 0) leafOctant |= 2;
-        if (brickIndex.z > 0) leafOctant |= 4;
-    }
-
-    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
+    // Direct brick lookup using world-space octant
+    // This is the correct approach: state.idx is mirrored, convert to world for storage lookup
+    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, worldOctant);
 
     // Fallback: when there's only 1 brick (bricksPerAxis=1), it's registered at octant 0
-    // but ray may hit any octant. Try octant 0 as fallback.
+    // but ray may hit any octant due to full validMask. Try octant 0 as fallback.
     if (brickView == nullptr && m_octree->bricksPerAxis == 1) {
         brickView = m_octree->root->getBrickView(parentDescriptorIndex, 0);
     }
 
-    DEBUG_PRINT("    octantCenter=(%.3f,%.3f,%.3f), brickIndex=(%d,%d,%d), leafOctant=%d, brickView=%p\n",
-                octantCenter.x, octantCenter.y, octantCenter.z, brickIndex.x, brickIndex.y, brickIndex.z, leafOctant, (void*)brickView);
+    DEBUG_PRINT("    parentDescriptorIndex=%zu, worldOctant=%d, brickView=%p\n",
+                parentDescriptorIndex, worldOctant, (void*)brickView);
 
     if (brickView != nullptr) {
         // Transform ray to volume local space using mat4
@@ -1259,8 +1252,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     while (state.scale >= minESVOScale && state.scale <= ESVO_MAX_SCALE && state.iter < maxIter) {
         ++state.iter;
 
-        // Fetch child descriptor
-        fetchChildDescriptor(state);
+        // Fetch child descriptor and mirror masks based on ray direction
+        fetchChildDescriptor(state, coef);
 
         // Check child validity and compute t-span
         bool isLeaf = false;

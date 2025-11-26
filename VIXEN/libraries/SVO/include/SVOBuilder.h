@@ -54,12 +54,29 @@ struct OctreeBlock {
     // This maps leaf children to their brick views during ESVO traversal
     std::unordered_map<uint64_t, uint32_t> leafToBrickView;
 
+    // Mapping from brick grid coordinates to brickView index
+    // Key: (brickX | brickY << 10 | brickZ << 20) - supports up to 1024 bricks per axis
+    std::unordered_map<uint32_t, uint32_t> brickGridToBrickView;
+
     // Helper to look up brick view for a leaf hit
     // Returns nullptr if no brick at this (parent, octant) pair
     const ::GaiaVoxel::EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {
         uint64_t key = (static_cast<uint64_t>(parentDescriptorIndex) << 3) | static_cast<uint64_t>(octant);
         auto it = leafToBrickView.find(key);
         if (it != leafToBrickView.end() && it->second < brickViews.size()) {
+            return &brickViews[it->second];
+        }
+        return nullptr;
+    }
+
+    // Helper to look up brick view by grid coordinates (bypasses octant issues)
+    // This is the preferred lookup method for multi-brick grids
+    const ::GaiaVoxel::EntityBrickView* getBrickViewByGrid(int brickX, int brickY, int brickZ) const {
+        uint32_t key = static_cast<uint32_t>(brickX) |
+                       (static_cast<uint32_t>(brickY) << 10) |
+                       (static_cast<uint32_t>(brickZ) << 20);
+        auto it = brickGridToBrickView.find(key);
+        if (it != brickGridToBrickView.end() && it->second < brickViews.size()) {
             return &brickViews[it->second];
         }
         return nullptr;
