@@ -90,11 +90,7 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         try {
             VkFramebuffer fb = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->Extent, layers);
 
-            if (framebuffers_.IsStack()) {
-                framebuffers_.GetStack().Add(fb);
-            } else {
-                framebuffers_.GetHeap().Add(fb);
-            }
+            framebuffers_.Add(fb);
 
             NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]");
         } catch (const std::exception&) {
@@ -118,20 +114,12 @@ void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (framebuffers_.IsSuccess() && framebuffers_.Size() > 0 && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers_.Size()) + " framebuffers");
 
-        VkFramebuffer* data = framebuffers_.Data();
-        size_t count = framebuffers_.Size();
-
-        for (size_t i = 0; i < count; i++) {
-            if (data[i] != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device->device, data[i], nullptr);
+        for (auto& fb : framebuffers_) {
+            if (fb != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device->device, fb, nullptr);
             }
         }
-
-        if (framebuffers_.IsStack()) {
-            framebuffers_.GetStack().Clear();
-        } else {
-            framebuffers_.GetHeap().Clear();
-        }
+        framebuffers_.Clear();
     }
 }
 
@@ -184,18 +172,12 @@ VkFramebuffer FramebufferNode::CreateSingleFramebuffer(
 }
 
 void FramebufferNode::CleanupPartialFramebuffers(size_t count) {
-    VkFramebuffer* data = framebuffers_.Data();
-    for (size_t j = 0; j < count; j++) {
-        if (data[j] != VK_NULL_HANDLE) {
-            vkDestroyFramebuffer(device->device, data[j], nullptr);
+    for (auto& fb : framebuffers_) {
+        if (fb != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device->device, fb, nullptr);
         }
     }
-
-    if (framebuffers_.IsStack()) {
-        framebuffers_.GetStack().Clear();
-    } else if (framebuffers_.IsHeap()) {
-        framebuffers_.GetHeap().Clear();
-    }
+    framebuffers_.Clear();
 }
 
 } // namespace Vixen::RenderGraph

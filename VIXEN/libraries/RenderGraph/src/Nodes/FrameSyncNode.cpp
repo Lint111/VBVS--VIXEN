@@ -114,11 +114,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create imageAvailable semaphore");
         }
-        if (imageAvailableSemaphores_.IsStack()) {
-            imageAvailableSemaphores_.GetStack().Add(semaphore);
-        } else {
-            imageAvailableSemaphores_.GetHeap().Add(semaphore);
-        }
+        imageAvailableSemaphores_.Add(semaphore);
     }
 
     for (uint32_t i = 0; i < imageCount_; i++) {
@@ -126,11 +122,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         if (vkCreateSemaphore(device->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create renderComplete semaphore");
         }
-        if (renderCompleteSemaphores_.IsStack()) {
-            renderCompleteSemaphores_.GetStack().Add(semaphore);
-        } else {
-            renderCompleteSemaphores_.GetHeap().Add(semaphore);
-        }
+        renderCompleteSemaphores_.Add(semaphore);
     }
 
     VkFenceCreateInfo presentFenceInfo{};
@@ -141,11 +133,7 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
         if (vkCreateFence(device->device, &presentFenceInfo, nullptr, &fence) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create present fence");
         }
-        if (presentFences_.IsStack()) {
-            presentFences_.GetStack().Add(fence);
-        } else {
-            presentFences_.GetHeap().Add(fence);
-        }
+        presentFences_.Add(fence);
     }
 
     isCreated_ = true;
@@ -184,48 +172,30 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
         }
 
         if (imageAvailableSemaphores_.IsSuccess()) {
-            VkSemaphore* data = imageAvailableSemaphores_.Data();
-            size_t count = imageAvailableSemaphores_.Size();
-            for (size_t i = 0; i < count; i++) {
-                if (data[i] != VK_NULL_HANDLE) {
-                    vkDestroySemaphore(device->device, data[i], nullptr);
+            for (auto& semaphore : imageAvailableSemaphores_) {
+                if (semaphore != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, semaphore, nullptr);
                 }
             }
-            if (imageAvailableSemaphores_.IsStack()) {
-                imageAvailableSemaphores_.GetStack().Clear();
-            } else {
-                imageAvailableSemaphores_.GetHeap().Clear();
-            }
+            imageAvailableSemaphores_.Clear();
         }
 
         if (renderCompleteSemaphores_.IsSuccess()) {
-            VkSemaphore* data = renderCompleteSemaphores_.Data();
-            size_t count = renderCompleteSemaphores_.Size();
-            for (size_t i = 0; i < count; i++) {
-                if (data[i] != VK_NULL_HANDLE) {
-                    vkDestroySemaphore(device->device, data[i], nullptr);
+            for (auto& semaphore : renderCompleteSemaphores_) {
+                if (semaphore != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device->device, semaphore, nullptr);
                 }
             }
-            if (renderCompleteSemaphores_.IsStack()) {
-                renderCompleteSemaphores_.GetStack().Clear();
-            } else {
-                renderCompleteSemaphores_.GetHeap().Clear();
-            }
+            renderCompleteSemaphores_.Clear();
         }
 
         if (presentFences_.IsSuccess()) {
-            VkFence* data = presentFences_.Data();
-            size_t count = presentFences_.Size();
-            for (size_t i = 0; i < count; i++) {
-                if (data[i] != VK_NULL_HANDLE) {
-                    vkDestroyFence(device->device, data[i], nullptr);
+            for (auto& fence : presentFences_) {
+                if (fence != VK_NULL_HANDLE) {
+                    vkDestroyFence(device->device, fence, nullptr);
                 }
             }
-            if (presentFences_.IsStack()) {
-                presentFences_.GetStack().Clear();
-            } else {
-                presentFences_.GetHeap().Clear();
-            }
+            presentFences_.Clear();
         }
 
         currentFrameIndex_ = 0;
