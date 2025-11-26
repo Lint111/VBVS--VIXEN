@@ -1,38 +1,54 @@
 # Active Context
 
-**Last Updated**: November 26, 2025 (Session 6X - ALL RAY CASTING TESTS PASS!)
+**Last Updated**: November 26, 2025 (Session 6Y - Critical Bug Fixes)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **10/10 Ray Casting Tests PASSING** | ✅ **Multi-Brick Traversal Fixed** | ✅ **Phase H.2 Ray Casting Complete**
+**Status**: ✅ **10/10 Ray Casting Tests PASSING** | ✅ **Top-Down Rebuild Fixed**
 
 ---
 
-## Current Session Summary (Nov 26 - Session 6X)
+## Current Session Summary (Nov 26 - Session 6Y)
 
-### MAJOR ACHIEVEMENT: All 10 Ray Casting Tests Now Pass!
+### Bug Fixes This Session
 
-Fixed the long-standing multi-brick traversal issues. The key was implementing a dual-strategy brick lookup that handles both exterior and interior ray scenarios.
+1. **Fixed `mirrorMask()` fast path bug** ([SVOTypes.h:241](libraries/SVO/include/SVOTypes.h#L241))
+   - Changed `if (octant_mask == 7)` to `if (octant_mask == 0)`
+   - The original fast path incorrectly returned mask unchanged for `octant_mask=7`
+   - With all axes mirrored, bits need permutation (bit 0 ↔ bit 7)
+   - **Impact**: Fixed `RaysFromInsideGrid` test (rays with all-negative direction)
 
-**Key Fixes Made**:
+2. **Fixed hierarchy building to stop at true root** ([LaineKarrasOctree.cpp:2230-2286](libraries/SVO/src/LaineKarrasOctree.cpp#L2230-L2286))
+   - Added `isRootLevel` check to stop building parent levels at single node at origin
+   - Previously, redundant single-child parent levels were created above actual root
+   - This caused `validMask=0x01` instead of proper `validMask=0xFF` at root
+   - **Impact**: Fixed `RandomStressTesting` test (multi-brick octrees now work)
 
-1. **Fixed `mirroredToLocalOctant()` formula** ([SVOTypes.h:270-273](libraries/SVO/include/SVOTypes.h#L270-L273))
-   - Changed from `mirroredIdx ^ octant_mask` to `mirroredIdx ^ (~octant_mask & 7)`
-   - Fixed MultipleVoxelTraversal test
+### Test Results: ALL 10/10 RAY CASTING TESTS PASS
 
-2. **Added `brickGridToBrickView` mapping** ([SVOBuilder.h:59](libraries/SVO/include/SVOBuilder.h#L59), [LaineKarrasOctree.cpp:2147-2163](libraries/SVO/src/LaineKarrasOctree.cpp#L2147-L2163))
-   - Direct brick lookup by grid coordinates
-   - Bypasses ESVO octant/descriptor mapping issues
+| Test | Status | Time |
+|------|--------|------|
+| AxisAlignedRaysFromOutside | ✅ PASS | ~10ms |
+| DiagonalRaysVariousAngles | ✅ PASS | ~5ms |
+| RaysFromInsideGrid | ✅ PASS | ~25ms |
+| CompleteMissCases | ✅ PASS | ~3ms |
+| MultipleVoxelTraversal | ✅ PASS | ~5ms |
+| DenseVolumeTraversal | ✅ PASS | ~8ms |
+| EdgeCasesAndBoundaries | ✅ PASS | ~3ms |
+| RandomStressTesting | ✅ PASS | ~20ms |
+| PerformanceCharacteristics | ✅ PASS | ~5ms |
+| CornellBoxScene | ✅ PASS | ~11ms |
 
-3. **Implemented dual-strategy brick lookup** ([LaineKarrasOctree.cpp:1109-1151](libraries/SVO/src/LaineKarrasOctree.cpp#L1109-L1151))
-   - **Method 1**: ESVO state position (correct for multi-octant traversal)
-   - **Method 2**: Ray entry position (fallback for exterior rays into sparse octrees)
-   - **Method 3**: Legacy ESVO octant-based lookup
-   - First non-null result wins
+3. **Fixed rebuild() O(n³) brick collection** ([LaineKarrasOctree.cpp:2073-2160](libraries/SVO/src/LaineKarrasOctree.cpp#L2073-L2160))
+   - **Root cause**: Iterating all possible bricks O(bricksPerAxis³) - with 1024³ world, that's 128³ = 2M iterations
+   - **Fix**: Top-down spatial queries using BFS - only explore octants containing entities
+   - **Algorithm**: Start at root → queryRegion() → if empty, prune; if not, subdivide into 8 children → repeat until brick level
+   - **Complexity**: O(depth × populated_octants) instead of O(bricksPerAxis³)
+   - **Result**: `RebuildHierarchicalStructure` test now completes in 9ms (was hanging indefinitely)
 
-4. **Fixed mirrored-space coordinate conversion** ([LaineKarrasOctree.cpp:1072-1090](libraries/SVO/src/LaineKarrasOctree.cpp#L1072-L1090))
-   - Correctly converts ESVO state.pos from mirrored to local space
-   - Uses LOCAL ray direction for offset calculation (inverted for mirrored axes)
+---
 
-**Test Results**: ALL 10/10 PASS (92ms total)
+## Previous Session Summary (Nov 26 - Session 6X)
+
+### Key Fixes Made (Session 6X)
 
 | Test | Status | Time |
 |------|--------|------|

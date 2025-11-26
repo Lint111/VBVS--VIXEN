@@ -2070,7 +2070,9 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // Normalized brick size (in [0,1]³ space)
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
 
-    // 5. PHASE 1: Collect populated bricks
+    // 5. PHASE 1: Collect populated bricks using TOP-DOWN spatial queries
+    // This is O(depth × populated_octants) - efficient for both sparse and dense worlds
+    // We descend from root, only exploring octants that contain entities (spatial culling)
     struct BrickInfo {
         glm::ivec3 gridCoord;      // Brick grid coordinate (0 to bricksPerAxis-1)
         glm::vec3 normalizedMin;   // Normalized [0,1]³ minimum corner
@@ -2081,37 +2083,79 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     std::vector<BrickInfo> populatedBricks;
     size_t totalVoxels = 0;
 
-    for (int bz = 0; bz < bricksPerAxis; ++bz) {
-        for (int by = 0; by < bricksPerAxis; ++by) {
-            for (int bx = 0; bx < bricksPerAxis; ++bx) {
-                // Brick position in normalized [0,1]³ space
-                glm::vec3 brickNormalizedMin = glm::vec3(
-                    bx * normalizedBrickSize,
-                    by * normalizedBrickSize,
-                    bz * normalizedBrickSize
-                );
+    // Work item for top-down traversal
+    struct OctantWork {
+        glm::vec3 worldMin;        // World-space AABB min
+        glm::vec3 worldMax;        // World-space AABB max
+        glm::ivec3 gridCoord;      // Grid coordinate at current depth
+        int depth;                 // Current depth (0 = root, hierarchyDepth = brick level)
+    };
 
-                // Transform to world space for entity query
-                glm::vec3 brickWorldMin = m_transform.toWorld(brickNormalizedMin);
+    // BFS queue for level-by-level processing (bounded memory, no thread explosion)
+    std::queue<OctantWork> workQueue;
 
-                // Query entities in this brick region (cached query, very fast)
-                auto entitySpan = world.getEntityBlockRef(brickWorldMin, brickWorldSize, static_cast<uint8_t>(brickDepth));
+    // Start with root octant covering entire world
+    workQueue.push(OctantWork{worldMin, worldMax, glm::ivec3(0), 0});
 
-                // Skip empty bricks
-                if (entitySpan.empty()) {
-                    continue;
-                }
+    // Hierarchy depth from root to brick level: log2(bricksPerAxis)
+    int hierarchyDepth = 0;
+    {
+        int temp = bricksPerAxis;
+        while (temp > 1) { temp /= 2; hierarchyDepth++; }
+    }
 
-                totalVoxels += entitySpan.size();
+    while (!workQueue.empty()) {
+        OctantWork work = workQueue.front();
+        workQueue.pop();
 
-                // Store populated brick info (both normalized and world positions)
-                populatedBricks.push_back(BrickInfo{
-                    glm::ivec3(bx, by, bz),
-                    brickNormalizedMin,
-                    brickWorldMin,
-                    entitySpan.size()
-                });
-            }
+        // Query entities in this region using AABB query
+        auto entities = world.queryRegion(work.worldMin, work.worldMax);
+
+        // Skip empty regions - this is the key optimization!
+        // Entire subtrees are pruned if no entities in region
+        if (entities.empty()) {
+            continue;
+        }
+
+        // At brick level, record this brick
+        if (work.depth >= hierarchyDepth) {
+            glm::vec3 brickNormalizedMin = glm::vec3(
+                work.gridCoord.x * normalizedBrickSize,
+                work.gridCoord.y * normalizedBrickSize,
+                work.gridCoord.z * normalizedBrickSize
+            );
+
+            populatedBricks.push_back(BrickInfo{
+                work.gridCoord,
+                brickNormalizedMin,
+                work.worldMin,
+                entities.size()
+            });
+            totalVoxels += entities.size();
+            continue;
+        }
+
+        // Not at brick level yet - subdivide into 8 children
+        glm::vec3 center = (work.worldMin + work.worldMax) * 0.5f;
+
+        for (int octant = 0; octant < 8; ++octant) {
+            glm::vec3 childMin, childMax;
+
+            // Compute child AABB based on octant bits (x=bit0, y=bit1, z=bit2)
+            childMin.x = (octant & 1) ? center.x : work.worldMin.x;
+            childMax.x = (octant & 1) ? work.worldMax.x : center.x;
+            childMin.y = (octant & 2) ? center.y : work.worldMin.y;
+            childMax.y = (octant & 2) ? work.worldMax.y : center.y;
+            childMin.z = (octant & 4) ? center.z : work.worldMin.z;
+            childMax.z = (octant & 4) ? work.worldMax.z : center.z;
+
+            // Compute child grid coordinate (parent*2 + octant offset)
+            glm::ivec3 childGridCoord = work.gridCoord * 2;
+            if (octant & 1) childGridCoord.x += 1;
+            if (octant & 2) childGridCoord.y += 1;
+            if (octant & 4) childGridCoord.z += 1;
+
+            workQueue.push(OctantWork{childMin, childMax, childGridCoord, work.depth + 1});
         }
     }
 
@@ -2195,7 +2239,10 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     }
 
     // Build parent levels bottom-up
+    DEBUG_PRINT("[rebuild] Building hierarchy: brickDepth=%d, maxLevels=%d\n", brickDepth, m_maxLevels);
     for (int currentDepth = brickDepth + 1; currentDepth <= m_maxLevels; ++currentDepth) {
+        DEBUG_PRINT("[rebuild] Processing depth %d, nodeToDescriptorIndex.size()=%zu\n",
+                    currentDepth, nodeToDescriptorIndex.size());
         struct IVec3Hash {
             size_t operator()(const glm::ivec3& v) const {
                 size_t h1 = std::hash<int>{}(v.x);
@@ -2223,12 +2270,17 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
             parentToChildren[parentCoord].push_back({octant, descriptorIndex});
         }
 
+        DEBUG_PRINT("[rebuild] depth %d: found %zu parents from %d children at depth %d\n",
+                    currentDepth, parentToChildren.size(), childDepth, childDepth);
+
         if (parentToChildren.empty()) {
+            DEBUG_PRINT("[rebuild] No parents found, breaking\n");
             break;
         }
 
         // Check if we've reached the root (single parent at origin that will contain all children)
         bool isRootLevel = (parentToChildren.size() == 1 && parentToChildren.count(glm::ivec3(0, 0, 0)) == 1);
+        DEBUG_PRINT("[rebuild] isRootLevel=%d\n", isRootLevel ? 1 : 0);
 
         // Create parent descriptors
         size_t parentsCreated = 0;
