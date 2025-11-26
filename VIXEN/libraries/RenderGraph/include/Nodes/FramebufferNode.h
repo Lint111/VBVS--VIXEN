@@ -5,7 +5,6 @@
 #include "Core/VulkanLimits.h"
 #include "Data/Nodes/FramebufferNodeConfig.h"
 #include "BoundedArray.h"
-#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -34,8 +33,8 @@ public:
 
     ~FramebufferNode() override = default;
 
-    // Access framebuffers for external use (legacy compatibility)
-    const std::vector<VkFramebuffer>& GetFramebuffers() const { return framebuffersView_; }
+    // Access framebuffers for external use (Phase-H: returns BoundedArray reference)
+    const ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>& GetFramebuffers() const { return framebuffers_; }
     VkFramebuffer GetFramebuffer(uint32_t index) const {
         return (index < framebuffers_.Size()) ? framebuffers_[index] : VK_NULL_HANDLE;
     }
@@ -64,15 +63,11 @@ private:
         uint32_t layers
     );
     void CleanupPartialFramebuffers(size_t count);
-    void UpdateVectorView();
 
     VulkanDevice* vulkanDevice = nullptr;
     
     // Phase H: Stack-allocated framebuffer storage
     ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES> framebuffers_;
-    
-    // Vector view for API compatibility
-    mutable std::vector<VkFramebuffer> framebuffersView_;
     
     bool hasDepth = false;
 };

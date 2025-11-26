@@ -28,6 +28,7 @@
 #include <cassert>
 #include <memory>  // For std::shared_ptr
 #include "BoolVector.h"  // Include BoolVector wrapper
+#include "BoundedArray.h"  // Include BoundedArray for Phase-H stack optimization
 
 // Forward declarations (same as PassThroughStorage.h)
 struct SwapChainPublicVariables;
@@ -40,6 +41,9 @@ namespace Vixen::RenderGraph::Data {
 namespace ShaderManagement {
     struct CompiledProgram;
     struct ShaderDataBundle;
+}
+namespace ResourceManagement {
+    template<typename T, size_t N> class BoundedArray;
 }
 
 namespace Vixen::Vulkan::Resources {
@@ -235,6 +239,13 @@ struct IsValidTypeImpl {
     static constexpr bool is_shared_ptr_helper(...) { return false; }
     static constexpr bool is_shared_ptr = is_shared_ptr_helper(static_cast<Clean*>(nullptr));
 
+    // Check if it's a ResourceManagement::BoundedArray<U, N>
+    template<typename U, std::size_t N>
+    static constexpr bool is_bounded_array_helper(const ::ResourceManagement::BoundedArray<U, N>*) { return true; }
+    static constexpr bool is_bounded_array_helper(...) { return false; }
+    static constexpr bool is_bounded_array = is_bounded_array_helper(static_cast<Clean*>(nullptr));
+
+
     // Extract element type from vector (specialization-based)
     template<typename U>
     struct VectorElementType { using type = void; };  // Default: void for non-vectors
@@ -255,6 +266,14 @@ struct IsValidTypeImpl {
 
     template<typename U>
     struct SharedPtrElementType<std::shared_ptr<U>> { using type = U; };
+
+    // Extract element type from BoundedArray (specialization-based)
+    template<typename U>
+    struct BoundedArrayElementType { using type = void; };  // Default: void for non-BoundedArrays
+
+    template<typename U, std::size_t N>
+    struct BoundedArrayElementType<::ResourceManagement::BoundedArray<U, N>> { using type = U; };
+
 
     // Validate all types in a variant
     template<typename... Us>
@@ -295,6 +314,18 @@ struct IsValidTypeImpl {
         }
     }
 
+
+    // Helper: validate bounded_array element
+    template<typename BAType>
+    static constexpr bool validate_bounded_array_element() {
+        using Element = typename BoundedArrayElementType<BAType>::type;
+        if constexpr (std::is_same_v<Element, void>) {
+            return false;  // Not a BoundedArray
+        } else {
+            return IsValidTypeImpl<Element>::value;
+        }
+    }
+
     static constexpr bool value = []() constexpr {
         // Check original type first (early exit if registered)
         if constexpr (IsRegisteredType<T>::value) {
@@ -311,6 +342,8 @@ struct IsValidTypeImpl {
             return validate_array_element<Clean>();
         } else if constexpr (is_shared_ptr) {
             return validate_shared_ptr_element<Clean>();
+        } else if constexpr (is_bounded_array) {
+            return validate_bounded_array_element<Clean>();
         } else if constexpr (is_variant) {
             return all_variant_types_valid(static_cast<Clean*>(nullptr));
         } else {

@@ -6,7 +6,6 @@
 #include "VulkanDevice.h"
 #include "BoundedArray.h"
 #include <array>
-#include <vector>
 
 namespace Vixen::RenderGraph {
 
@@ -78,19 +77,10 @@ private:
     ResourceManagement::BoundedArray<VkSemaphore, MAX_SWAPCHAIN_IMAGES> renderCompleteSemaphores_;
     ResourceManagement::BoundedArray<VkFence, MAX_SWAPCHAIN_IMAGES> presentFences_;
 
-    // Vector views for API compatibility (points to BoundedArray data)
-    // These are populated on-demand for output slots that expect std::vector&
-    mutable std::vector<VkSemaphore> imageAvailableSemaphoresView_;
-    mutable std::vector<VkSemaphore> renderCompleteSemaphoresView_;
-    mutable std::vector<VkFence> presentFencesView_;
-
     uint32_t currentFrameIndex_ = 0;
     uint32_t flightCount_ = 0;
     uint32_t imageCount_ = 0;
     bool isCreated_ = false;
-
-    // Helper to sync views with bounded arrays
-    void UpdateVectorViews();
 };
 
 } // namespace Vixen::RenderGraph

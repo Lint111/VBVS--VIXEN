@@ -28,21 +28,6 @@ void FrameSyncNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("FrameSyncNode: Setup (graph-scope initialization)");
 }
 
-void FrameSyncNode::UpdateVectorViews() {
-    imageAvailableSemaphoresView_.assign(
-        imageAvailableSemaphores_.begin(),
-        imageAvailableSemaphores_.end()
-    );
-    renderCompleteSemaphoresView_.assign(
-        renderCompleteSemaphores_.begin(),
-        renderCompleteSemaphores_.end()
-    );
-    presentFencesView_.assign(
-        presentFences_.begin(),
-        presentFences_.end()
-    );
-}
-
 void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
     VulkanDevice* devicePtr = ctx.In(FrameSyncNodeConfig::VULKAN_DEVICE);
     if (devicePtr == nullptr) {
@@ -96,23 +81,26 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
 
     isCreated_ = true;
     currentFrameIndex_ = 0;
-    UpdateVectorViews();
+    
+    // Phase H: Pass BoundedArray references directly (no vector view copies)
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex_);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, frameSyncData_[currentFrameIndex_].inFlightFence);
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphoresView_);
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphoresView_);
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFencesView_);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_);
 }
 
 void FrameSyncNode::ExecuteImpl(TypedExecuteContext& ctx) {
     currentFrameIndex_ = (currentFrameIndex_ + 1) % flightCount_;
     VkFence currentFence = frameSyncData_[currentFrameIndex_].inFlightFence;
     vkWaitForFences(device->device, 1, &currentFence, VK_TRUE, UINT64_MAX);
+    
+    // Phase H: Pass BoundedArray references directly (no vector view copies)
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex_);
     ctx.Out(FrameSyncNodeConfig::IN_FLIGHT_FENCE, currentFence);
-    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphoresView_);
-    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphoresView_);
-    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFencesView_);
+    ctx.Out(FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY, imageAvailableSemaphores_);
+    ctx.Out(FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY, renderCompleteSemaphores_);
+    ctx.Out(FrameSyncNodeConfig::PRESENT_FENCES_ARRAY, presentFences_);
 }
 
 void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -135,9 +123,6 @@ void FrameSyncNode::CleanupImpl(TypedCleanupContext& ctx) {
         imageAvailableSemaphores_.Clear();
         renderCompleteSemaphores_.Clear();
         presentFences_.Clear();
-        imageAvailableSemaphoresView_.clear();
-        renderCompleteSemaphoresView_.clear();
-        presentFencesView_.clear();
         currentFrameIndex_ = 0;
         flightCount_ = 0;
         imageCount_ = 0;

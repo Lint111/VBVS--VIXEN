@@ -2,11 +2,12 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
 #include "Data/Core/CompileTimeResourceSystem.h"
+#include "BoundedArray.h"
+#include "Core/VulkanLimits.h"
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
 namespace Vixen::RenderGraph {
-
 
 // Compile-time slot counts (declared early for reuse)
 namespace FrameSyncNodeCounts {
@@ -17,6 +18,8 @@ namespace FrameSyncNodeCounts {
 
 /**
  * @brief Pure constexpr resource configuration for FrameSyncNode
+ *
+ * Phase H: Uses BoundedArray for stack-allocated synchronization primitive arrays.
  *
  * Phase 0.6: CORRECT two-tier synchronization per Vulkan validation guide
  * https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
@@ -53,21 +56,24 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 2,
+    // Phase H: Stack-allocated BoundedArray instead of std::vector
+    // ImageAvailable semaphores indexed by frame (MAX_FRAMES_IN_FLIGHT)
+    OUTPUT_SLOT(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, 
+        const ResourceManagement::BoundedArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT>&, 2,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, const std::vector<VkSemaphore>&, 3,
+    // RenderComplete semaphores indexed by image (MAX_SWAPCHAIN_IMAGES)
+    OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORES_ARRAY, 
+        const ResourceManagement::BoundedArray<VkSemaphore, MAX_SWAPCHAIN_IMAGES>&, 3,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, const std::vector<VkFence>&, 4,
+    // Present fences indexed by image (MAX_SWAPCHAIN_IMAGES)
+    OUTPUT_SLOT(PRESENT_FENCES_ARRAY, 
+        const ResourceManagement::BoundedArray<VkFence, MAX_SWAPCHAIN_IMAGES>&, 4,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
-
-    // Compile-time constants
-    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // CPU-GPU sync (fences) + both semaphore types
-    static constexpr uint32_t MAX_SWAPCHAIN_IMAGES = 3;  // Swapchain image count hint
 
     // Constructor for runtime descriptor initialization
     FrameSyncNodeConfig() {
@@ -82,11 +88,11 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
         HandleDescriptor fenceDesc{"VkFence"};
         INIT_OUTPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Persistent, fenceDesc);        
 
-        HandleDescriptor semaphoreArrayDesc{"VkSemaphoreArrayPtr"};
+        HandleDescriptor semaphoreArrayDesc{"BoundedArray<VkSemaphore>"};
         INIT_OUTPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
         INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores_array", ResourceLifetime::Persistent, semaphoreArrayDesc);
 
-        HandleDescriptor fenceArrayDesc{"VkFenceArrayPtr"};
+        HandleDescriptor fenceArrayDesc{"BoundedArray<VkFence>"};
         INIT_OUTPUT_DESC(PRESENT_FENCES_ARRAY, "present_fences_array", ResourceLifetime::Persistent, fenceArrayDesc);
     }
 
@@ -106,9 +112,12 @@ CONSTEXPR_NODE_CONFIG(FrameSyncNodeConfig,
     static_assert(std::is_same_v<VULKAN_DEVICE_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<CURRENT_FRAME_INDEX_Slot::Type, uint32_t>);
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
-    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
-    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
-    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, const std::vector<VkFence>&>);
+    static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, 
+        const ResourceManagement::BoundedArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT>&>);
+    static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, 
+        const ResourceManagement::BoundedArray<VkSemaphore, MAX_SWAPCHAIN_IMAGES>&>);
+    static_assert(std::is_same_v<PRESENT_FENCES_ARRAY_Slot::Type, 
+        const ResourceManagement::BoundedArray<VkFence, MAX_SWAPCHAIN_IMAGES>&>);
 };
 
 } // namespace Vixen::RenderGraph

@@ -11,6 +11,11 @@
 #include <vector>
 #include <functional>
 
+// Forward declaration for BoundedArray compatibility
+namespace ResourceManagement {
+    template<typename T, size_t N> class BoundedArray;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declare PassThroughStorage for type checking
@@ -57,11 +62,44 @@ struct AreTypesCompatible {
             std::remove_cv_t<std::remove_reference_t<TargetType>>
         >;
 
+    // Phase H: Check if source is BoundedArray and target is std::vector with same element type
+    // This allows BoundedArray<T,N> to connect to slots expecting std::vector<T>
+    // Helper to detect BoundedArray<T, N>
+    template<typename U>
+    struct IsBoundedArray : std::false_type {};
+    template<typename U, std::size_t M>
+    struct IsBoundedArray<::ResourceManagement::BoundedArray<U, M>> : std::true_type {};
+    
+    // Helper to detect std::vector<T>
+    template<typename U>
+    struct IsVector : std::false_type {};
+    template<typename U>
+    struct IsVector<std::vector<U>> : std::true_type {};
+    
+    // Helper to extract element type from BoundedArray
+    template<typename U>
+    struct BoundedArrayElement { using type = void; };
+    template<typename U, std::size_t M>
+    struct BoundedArrayElement<::ResourceManagement::BoundedArray<U, M>> { using type = U; };
+    
+    // Helper to extract element type from vector
+    template<typename U>
+    struct VectorElement { using type = void; };
+    template<typename U>
+    struct VectorElement<std::vector<U>> { using type = U; };
+    
+    // Check BoundedArray -> vector compatibility (same element type)
+    static constexpr bool boundedArrayToVector = 
+        IsBoundedArray<SourceBase>::value && 
+        IsVector<TargetBase>::value &&
+        std::is_same_v<typename BoundedArrayElement<SourceBase>::type, typename VectorElement<TargetBase>::type>;
+    
     // Types are compatible if:
     // 1. Exactly the same
     // 2. Adding const to reference
     // 3. Source or target is PassThroughStorage (generic type-erased)
-    static constexpr bool value = exactMatch || addingConst || isGenericSource || isGenericTarget;
+    // 4. Phase H: BoundedArray<T,N> can connect to std::vector<T> (same element type)
+    static constexpr bool value = exactMatch || addingConst || isGenericSource || isGenericTarget || boundedArrayToVector;
 };
 
 template<typename SourceType, typename TargetType>

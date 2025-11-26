@@ -5,6 +5,11 @@
 #include <variant>
 #include <type_traits>
 
+// Forward declaration for BoundedArray
+namespace ResourceManagement {
+    template<typename T, size_t N> class BoundedArray;
+}
+
 namespace Vixen::RenderGraph {
 
 // Forward declare ResourceType enum
@@ -84,6 +89,17 @@ struct StripContainer<T[N]> {
     static constexpr bool isVector = false;
     static constexpr bool isArray = true;
     static constexpr size_t arraySize = N;
+};
+
+// Specialization for ResourceManagement::BoundedArray<T, N>
+template<typename T, size_t N>
+struct StripContainer<::ResourceManagement::BoundedArray<T, N>> {
+    using Type = T;
+    static constexpr bool isContainer = true;
+    static constexpr bool isVector = false;
+    static constexpr bool isArray = true;  // Treat as array-like
+    static constexpr size_t arraySize = N;
+    static constexpr bool isBoundedArray = true;
 };
 
 // ============================================================================

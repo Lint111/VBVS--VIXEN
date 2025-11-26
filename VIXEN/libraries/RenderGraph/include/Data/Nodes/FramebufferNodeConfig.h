@@ -2,6 +2,8 @@
 
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
+#include "BoundedArray.h"  // Phase-H: Stack-allocated arrays
+#include "Core/VulkanLimits.h"  // For MAX_SWAPCHAIN_IMAGES
 
 namespace Vixen::RenderGraph {
 
@@ -73,7 +75,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
 
     // ===== OUTPUTS (2) =====
     // Framebuffer handles (vector containing all swapchain framebuffers)
-    OUTPUT_SLOT(FRAMEBUFFERS, std::vector<VkFramebuffer>, 0,
+    OUTPUT_SLOT(FRAMEBUFFERS, const ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>&, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -102,6 +104,11 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
             BufferDescription{}
         );
 
+        HandleDescriptor framebuffersDesc{"BoundedArray<VkFramebuffer>"};
+        INIT_OUTPUT_DESC(FRAMEBUFFERS, "framebuffers",
+            ResourceLifetime::Persistent,
+            framebuffersDesc);
+        
         INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "VulkanDevice",
             ResourceLifetime::Persistent,
             vulkanDeviceDesc
@@ -134,7 +141,7 @@ CONSTEXPR_NODE_CONFIG(FramebufferNodeConfig,
     static_assert(std::is_same_v<RENDER_PASS_Slot::Type, VkRenderPass>);
     static_assert(std::is_same_v<SWAPCHAIN_INFO_Slot::Type, SwapChainPublicVariables*>);
     static_assert(std::is_same_v<DEPTH_ATTACHMENT_Slot::Type, VkImageView>);
-    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, std::vector<VkFramebuffer>>);
+    static_assert(std::is_same_v<FRAMEBUFFERS_Slot::Type, const ResourceManagement::BoundedArray<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>&>);
     static_assert(std::is_same_v<VULKAN_DEVICE_OUT_Slot::Type, VulkanDevice*>);
 };
 

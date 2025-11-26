@@ -31,11 +31,6 @@ void FramebufferNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_DEBUG("FramebufferNode: Setup (graph-scope initialization)");
 }
 
-void FramebufferNode::UpdateVectorView() {
-    // Sync vector view with bounded array for API compatibility
-    framebuffersView_.assign(framebuffers_.begin(), framebuffers_.end());
-}
-
 void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
@@ -94,11 +89,8 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    // Update vector view for API compatibility
-    UpdateVectorView();
-
-    // Output framebuffers
-    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffersView_);
+    // Phase H: Output BoundedArray reference directly (no vector copy)
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers_);
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers_.Size()) + " framebuffers");
 }
@@ -117,7 +109,6 @@ void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
             }
         }
         framebuffers_.Clear();
-        framebuffersView_.clear();
     }
 }
 
