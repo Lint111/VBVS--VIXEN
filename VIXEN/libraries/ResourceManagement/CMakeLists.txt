@@ -7,6 +7,9 @@ project(ResourceManagement VERSION 1.0.0 LANGUAGES CXX)
 # ============================================================================
 
 set(RM_HEADERS
+    include/BoundedArray.h
+    include/UnifiedRM.h
+    include/StackAllocatedRM.h
     include/ResourceState.h
     include/RM.h
 )
