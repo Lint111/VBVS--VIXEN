@@ -32,7 +32,7 @@ namespace SVO {
 //
 // Note: Debug output is completely compiled out when disabled (zero runtime cost)
 //
-#define LKOCTREE_DEBUG_TRAVERSAL 1
+#define LKOCTREE_DEBUG_TRAVERSAL 0
 
 #if LKOCTREE_DEBUG_TRAVERSAL
     #define DEBUG_PRINT(...) printf(__VA_ARGS__)
