@@ -3,22 +3,18 @@
 #include "Core/NodeLogging.h"
 #include "Core/ResourceManagerBase.h"
 #include "error/VulkanError.h"
-#include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
+#include "VulkanSwapChain.h"
 #include "NodeHelpers/VulkanStructHelpers.h"
 
 using namespace RenderGraph::NodeHelpers;
 
 namespace Vixen::RenderGraph {
 
-// ====== FramebufferNodeType ======
-
 std::unique_ptr<NodeInstance> FramebufferNodeType::CreateInstance(
     const std::string& instanceName
 ) const {
     return std::make_unique<FramebufferNode>(instanceName, const_cast<FramebufferNodeType*>(this));
 }
-
-// ====== FramebufferNode ======
 
 FramebufferNode::FramebufferNode(
     const std::string& instanceName,
@@ -35,21 +31,17 @@ void FramebufferNode::SetupImpl(TypedSetupContext& ctx) {
 void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("Compile: Creating framebuffers");
 
-    // Validate and set up device
     VulkanDevice* devicePtr = ctx.In(FramebufferNodeConfig::VULKAN_DEVICE_IN);
     VkRenderPass renderPass = ctx.In(FramebufferNodeConfig::RENDER_PASS);
     ValidateInputs(devicePtr, renderPass);
     SetDevice(devicePtr);
 
-    // Get depth attachment
     VkImageView depthView = ctx.In(FramebufferNodeConfig::DEPTH_ATTACHMENT);
     hasDepth = (depthView != VK_NULL_HANDLE);
     NODE_LOG_DEBUG("Depth attachment: " + std::string(hasDepth ? "enabled" : "disabled"));
 
-    // Get parameters
     uint32_t layers = GetParameterValue<uint32_t>(FramebufferNodeConfig::PARAM_LAYERS, 1);
 
-    // Get swapchain info
     SwapChainPublicVariables* swapchainInfo = ctx.In(FramebufferNodeConfig::SWAPCHAIN_INFO);
     if (!swapchainInfo) {
         throw std::runtime_error("FramebufferNode: SwapChain info is null");
@@ -63,26 +55,47 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     if (colorAttachmentCount > MAX_SWAPCHAIN_IMAGES) {
-        throw std::runtime_error("FramebufferNode: Too many swapchain images (" + 
+        throw std::runtime_error("FramebufferNode: Too many swapchain images (" +
             std::to_string(colorAttachmentCount) + " > " + std::to_string(MAX_SWAPCHAIN_IMAGES) + ")");
     }
 
     NODE_LOG_INFO("[FramebufferNode::Compile] Creating " + std::to_string(colorAttachmentCount) + " framebuffers from swapchain");
 
-    // Phase H: Clear bounded array
-    framebuffers_.Clear();
+    // Phase H: Use RequestAllocation API for automatic tracking
+    auto* rm = GetResourceManager();
+    if (rm) {
+        framebuffers_ = rm->RequestAllocation<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>(
+            AllocationConfig()
+                .WithStrategy(ResourceAllocStrategy::Stack)
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("framebuffers")
+                .WithOwner(GetInstanceId())
+                .WithHeapFallback(true)
+        );
 
-    // Create one framebuffer per swapchain image
+        if (framebuffers_.IsError()) {
+            throw std::runtime_error("FramebufferNode: Failed to allocate framebuffer storage: " +
+                std::string(framebuffers_.GetErrorString()));
+        }
+    } else {
+        framebuffers_ = FramebufferAllocation(StackAllocationResult<VkFramebuffer, MAX_SWAPCHAIN_IMAGES>{});
+    }
+
     for (size_t i = 0; i < colorAttachmentCount; i++) {
         VkImageView colorView = swapchainInfo->colorBuffers[i].view;
         NODE_LOG_DEBUG("[FramebufferNode::Compile] Processing attachment " + std::to_string(i));
 
-        // Phase H: Stack-allocated attachment array
         auto attachments = BuildAttachmentArray(colorView, depthView);
 
         try {
             VkFramebuffer fb = CreateSingleFramebuffer(renderPass, attachments, swapchainInfo->Extent, layers);
-            framebuffers_.Add(fb);
+
+            if (framebuffers_.IsStack()) {
+                framebuffers_.GetStack().Add(fb);
+            } else {
+                framebuffers_.GetHeap().Add(fb);
+            }
+
             NODE_LOG_DEBUG("[FramebufferNode::Compile] Created framebuffer[" + std::to_string(i) + "]");
         } catch (const std::exception&) {
             CleanupPartialFramebuffers(framebuffers_.Size());
@@ -90,35 +103,37 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         }
     }
 
-    // Phase H: Track BoundedArray with resource manager for profiling
-    if (auto* rm = GetResourceManager()) {
-        rm->TrackBoundedArray(framebuffers_, "framebuffers", GetInstanceId(), ResourceLifetime::GraphLocal);
+    if (!framebuffers_.IsStack()) {
+        throw std::runtime_error("FramebufferNode: Heap fallback not supported for output slot type");
     }
-    
-    // Phase H: Output BoundedArray reference directly (no vector copy)
-    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers_);
+    ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers_.GetStack().data);
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);
     NODE_LOG_INFO("Compile complete: Created " + std::to_string(framebuffers_.Size()) + " framebuffers");
 }
 
 void FramebufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
-    // No-op - framebuffers are created in Compile phase
 }
 
 void FramebufferNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (!framebuffers_.Empty() && device != nullptr) {
+    if (framebuffers_.IsSuccess() && framebuffers_.Size() > 0 && device != nullptr) {
         NODE_LOG_DEBUG("Cleanup: Destroying " + std::to_string(framebuffers_.Size()) + " framebuffers");
 
-        for (auto& framebuffer : framebuffers_) {
-            if (framebuffer != VK_NULL_HANDLE) {
-                vkDestroyFramebuffer(device->device, framebuffer, nullptr);
+        VkFramebuffer* data = framebuffers_.Data();
+        size_t count = framebuffers_.Size();
+
+        for (size_t i = 0; i < count; i++) {
+            if (data[i] != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device->device, data[i], nullptr);
             }
         }
-        framebuffers_.Clear();
+
+        if (framebuffers_.IsStack()) {
+            framebuffers_.GetStack().Clear();
+        } else {
+            framebuffers_.GetHeap().Clear();
+        }
     }
 }
-
-// ====== Private Helper Methods ======
 
 void FramebufferNode::ValidateInputs(VulkanDevice* devicePtr, VkRenderPass renderPass) {
     if (devicePtr == nullptr) {
@@ -128,9 +143,8 @@ void FramebufferNode::ValidateInputs(VulkanDevice* devicePtr, VkRenderPass rende
     }
 }
 
-ResourceManagement::BoundedArray<VkImageView, FramebufferNode::MAX_ATTACHMENTS> 
+ResourceManagement::BoundedArray<VkImageView, FramebufferNode::MAX_ATTACHMENTS>
 FramebufferNode::BuildAttachmentArray(VkImageView colorView, VkImageView depthView) {
-    // Phase H: Stack-allocated attachment array
     ResourceManagement::BoundedArray<VkImageView, MAX_ATTACHMENTS> attachments;
     attachments.Add(colorView);
 
@@ -170,12 +184,18 @@ VkFramebuffer FramebufferNode::CreateSingleFramebuffer(
 }
 
 void FramebufferNode::CleanupPartialFramebuffers(size_t count) {
+    VkFramebuffer* data = framebuffers_.Data();
     for (size_t j = 0; j < count; j++) {
-        if (framebuffers_[j] != VK_NULL_HANDLE) {
-            vkDestroyFramebuffer(device->device, framebuffers_[j], nullptr);
+        if (data[j] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(device->device, data[j], nullptr);
         }
     }
-    framebuffers_.Clear();
+
+    if (framebuffers_.IsStack()) {
+        framebuffers_.GetStack().Clear();
+    } else if (framebuffers_.IsHeap()) {
+        framebuffers_.GetHeap().Clear();
+    }
 }
 
 } // namespace Vixen::RenderGraph

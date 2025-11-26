@@ -2,6 +2,7 @@
 
 #include "Core/TypedNodeInstance.h"
 #include "Core/VulkanLimits.h"
+#include "Core/ResourceManagerBase.h"
 #include "Data/Nodes/FrameSyncNodeConfig.h"
 #include "VulkanDevice.h"
 #include "BoundedArray.h"
@@ -25,7 +26,7 @@ public:
 /**
  * @brief FrameSyncNode - Manages frame-in-flight synchronization primitives
  *
- * Phase H: Uses stack-allocated arrays for synchronization primitives.
+ * Phase H: Uses RequestAllocation API for automatic resource tracking.
  * Creates and manages MAX_FRAMES_IN_FLIGHT fences and semaphores
  * for CPU-GPU synchronization to prevent CPU from racing ahead of GPU.
  *
@@ -48,6 +49,10 @@ public:
  */
 class FrameSyncNode : public TypedNode<FrameSyncNodeConfig> {
 public:
+    // Type aliases for allocation results
+    using ImageAvailableSemaphoreAllocation = AllocationResult<VkSemaphore, MAX_FRAMES_IN_FLIGHT>;
+    using RenderCompleteSemaphoreAllocation = AllocationResult<VkSemaphore, MAX_SWAPCHAIN_IMAGES>;
+    using PresentFenceAllocation = AllocationResult<VkFence, MAX_SWAPCHAIN_IMAGES>;
 
     FrameSyncNode(
         const std::string& instanceName,
@@ -65,17 +70,17 @@ protected:
 
 private:
     // Per-flight synchronization data (for CPU-GPU sync)
-    // Phase H: Using stack-allocated array instead of std::vector
     struct FrameSyncData {
         VkFence inFlightFence = VK_NULL_HANDLE;
     };
 
-    // Phase H: Stack-allocated arrays for synchronization primitives
-    // These have bounded sizes known at compile time
+    // Phase H: Stack-allocated array for in-flight fences (fixed size)
     std::array<FrameSyncData, MAX_FRAMES_IN_FLIGHT> frameSyncData_{};
-    ResourceManagement::BoundedArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAvailableSemaphores_;
-    ResourceManagement::BoundedArray<VkSemaphore, MAX_SWAPCHAIN_IMAGES> renderCompleteSemaphores_;
-    ResourceManagement::BoundedArray<VkFence, MAX_SWAPCHAIN_IMAGES> presentFences_;
+
+    // Phase H: Resource allocations with automatic tracking
+    ImageAvailableSemaphoreAllocation imageAvailableSemaphores_;
+    RenderCompleteSemaphoreAllocation renderCompleteSemaphores_;
+    PresentFenceAllocation presentFences_;
 
     uint32_t currentFrameIndex_ = 0;
     uint32_t flightCount_ = 0;
