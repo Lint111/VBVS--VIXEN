@@ -243,6 +243,12 @@ private:
     size_t m_voxelCount{ 0 };
     size_t m_memoryUsage{ 0 };
 
+    // Transform: maps local [0, worldSize] space ↔ world space
+    // localToWorld: transforms local-space positions to world space
+    // worldToLocal: transforms world-space rays into local space for traversal
+    glm::mat4 m_localToWorld{1.0f};   // identity by default
+    glm::mat4 m_worldToLocal{1.0f};   // inverse of localToWorld
+
     // Transform: maps normalized [0,1]³ octree space ↔ world space
     ::GaiaVoxel::VolumeTransform m_transform;
 

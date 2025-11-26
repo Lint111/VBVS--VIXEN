@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
-#include <iostream>
 #include <queue>
 #include <unordered_map>
 
@@ -456,6 +455,20 @@ ISVOStructure::VoxelBounds LaineKarrasOctree::getVoxelBounds(const glm::vec3& po
 namespace {
 
 /**
+ * Check if a point is inside an axis-aligned bounding box.
+ * Used to detect interior rays that start inside the volume.
+ */
+bool isPointInsideAABB(
+    const glm::vec3& point,
+    const glm::vec3& boxMin,
+    const glm::vec3& boxMax)
+{
+    return point.x >= boxMin.x && point.x <= boxMax.x &&
+           point.y >= boxMin.y && point.y <= boxMax.y &&
+           point.z >= boxMin.z && point.z <= boxMax.z;
+}
+
+/**
  * Ray-AABB intersection (robust slab method).
  * Returns true if ray intersects box, with entry/exit t-values in tMin/tMax.
  *
@@ -721,9 +734,6 @@ void LaineKarrasOctree::initializeTraversalState(
 
     // Select initial octant
     selectInitialOctant(state, coef);
-
-    std::cout << "DEBUG ROOT SETUP: normOrigin=(" << coef.normOrigin.x << "," << coef.normOrigin.y << "," << coef.normOrigin.z << ")\n";
-    std::cout << "  octant_mask=" << coef.octant_mask << " idx=" << state.idx << " pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") AFTER MIRROR\n";
 }
 
 /**
@@ -753,10 +763,6 @@ bool LaineKarrasOctree::checkChildValidity(
     // Check if child exists in parent's validMask
     bool child_valid = (state.parent->validMask & (1u << state.idx)) != 0;
     isLeaf = (state.parent->leafMask & (1u << state.idx)) != 0;
-
-    std::cout << "[CHILD CHECK] idx=" << state.idx << " validMask=0x" << std::hex << (int)state.parent->validMask
-              << std::dec << " child_valid=" << child_valid << " child_is_leaf=" << isLeaf
-              << " t_min=" << state.t_min << " t_max=" << state.t_max << "\n";
 
     // At brick level, force leaf status
     int currentUserScale = esvoToUserScale(state.scale);
@@ -884,17 +890,9 @@ AdvanceResult LaineKarrasOctree::executeAdvancePhase(
     if (canStepY && ty_corner <= tc_max_corrected) { step_mask ^= 2; state.pos.y -= state.scale_exp2; }
     if (canStepZ && tz_corner <= tc_max_corrected) { step_mask ^= 4; state.pos.z -= state.scale_exp2; }
 
-    float old_t_min = state.t_min;
     state.t_min = std::max(tc_max_corrected, 0.0f);
 
-    std::cout << "DEBUG ADVANCE[" << state.iter << "]: step_mask=" << step_mask
-              << " tx_corner=" << tx_corner << " ty_corner=" << ty_corner << " tz_corner=" << tz_corner
-              << " tc_max_corrected=" << tc_max_corrected
-              << " -> t_min: " << old_t_min << " -> " << state.t_min << " (delta=" << (state.t_min - old_t_min) << ") t_max=" << state.t_max << "\n";
-
-    int old_idx = state.idx;
     state.idx ^= step_mask;
-    debugAdvance(step_mask, tc_max_corrected, old_idx, state.idx);
 
     // Check if we need to POP (bit flips disagree with ray direction)
     if ((state.idx & step_mask) != 0) {
@@ -916,13 +914,17 @@ PopResult LaineKarrasOctree::executePopPhase(
 {
     // For flat octrees at root scale, check for octree exit
     if (state.scale == ESVO_MAX_SCALE) {
-        if (state.t_min > state.t_max) {
-            std::cout << "[FLAT OCTREE] Ray exited octree: t_min=" << state.t_min << " > t_max=" << state.t_max << "\n";
+        // Exit if t-span is invalid or position is outside [1,2]³ ESVO space
+        if (state.t_min > state.t_max ||
+            state.pos.x < 1.0f || state.pos.x >= 2.0f ||
+            state.pos.y < 1.0f || state.pos.y >= 2.0f ||
+            state.pos.z < 1.0f || state.pos.z >= 2.0f) {
+            DEBUG_PRINT("  POP: Exiting octree - pos=(%.3f,%.3f,%.3f) t=[%.4f,%.4f]\n",
+                        state.pos.x, state.pos.y, state.pos.z, state.t_min, state.t_max);
             return PopResult::EXIT_OCTREE;
         }
         // Stay at root, continue with new idx
         state.child_descriptor = 0;
-        std::cout << "[FLAT OCTREE] At root scale, continuing with sibling idx=" << state.idx << "\n";
         return PopResult::CONTINUE;
     }
 
@@ -943,8 +945,6 @@ PopResult LaineKarrasOctree::executePopPhase(
     uint32_t next_y_int = (step_mask & 2) ? floatToInt(std::max(0.0f, state.pos.y + state.scale_exp2 - 1.0f)) : pos_y_int;
     uint32_t next_z_int = (step_mask & 4) ? floatToInt(std::max(0.0f, state.pos.z + state.scale_exp2 - 1.0f)) : pos_z_int;
 
-    std::cout << "[POP DEBUG] pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") scale_exp2=" << state.scale_exp2 << "\n";
-
     // Find differing bits to determine ascent level
     uint32_t differing_bits = 0;
     if ((step_mask & 1) != 0) differing_bits |= (pos_x_int ^ next_x_int);
@@ -958,10 +958,6 @@ PopResult LaineKarrasOctree::executePopPhase(
     // Find highest set bit
     int highest_bit = 31 - std::countl_zero(differing_bits);
     state.scale = highest_bit;
-
-    std::cout << "[POP] differing_bits=0x" << std::hex << differing_bits << std::dec
-              << " highest_bit=" << highest_bit << " -> esvoScale=" << state.scale
-              << " (userScale=" << esvoToUserScale(state.scale) << ")\n";
 
     // Validate scale range
     int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
@@ -1030,87 +1026,87 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     float tExit,
     float tv_max) const
 {
-    std::cout << "[LEAF HIT] scale=" << state.scale << " pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ") "
-              << "t_min=" << state.t_min << " tv_max=" << tv_max << "\n";
+    DEBUG_PRINT("  handleLeafHit: idx=%d, state.t_min=%.4f, tv_max=%.4f, tRayStart=%.4f, tEntry=%.4f, tExit=%.4f\n",
+                state.idx, state.t_min, tv_max, tRayStart, tEntry, tExit);
 
     size_t parentDescriptorIndex = state.parent - &m_octree->root->childDescriptors[0];
     glm::vec3 worldSize = m_worldMax - m_worldMin;
-
-    // Map ESVO t_min to world ray parameter
-    float worldT = tRayStart + state.t_min * (tExit - tRayStart);
-    glm::vec3 worldHitPos = origin + coef.rayDir * worldT;
-
-    // Clamp to world bounds
-    float eps = 0.001f;
-    worldHitPos = glm::clamp(worldHitPos, m_worldMin + eps, m_worldMax - eps);
-
-    // Compute traditional normalized position (world-based, for octree traversal)
-    glm::vec3 normalizedPos = (worldHitPos - m_worldMin) / worldSize;
-
-    // Compute brick index from world position using INTEGER GRID coordinates.
-    // Since voxels are stored at integer positions (unit voxels), brick boundaries
-    // align with brickSideLength intervals in the integer grid.
-    //
-    // Key insight: brickWorldSize should equal brickSideLength (not worldSize/bricksPerAxis)
-    // because voxels have unit size. The world bounds may not perfectly fit the grid,
-    // but brick addressing must use the actual local grid layout.
     int bricksPerAxis = m_octree->bricksPerAxis;
-    int brickSideLength = m_octree->brickSideLength;  // Use stored value, not recompute
+    int brickSideLength = m_octree->brickSideLength;
 
-    // Convert world hit position to local grid position (relative to worldMin)
-    glm::vec3 localPos = worldHitPos - m_worldMin;
+    // Compute octant center position in world space from ESVO state.pos
+    // state.pos is in mirrored [1,2] space - convert to world space
+    // 1. Convert mirrored pos to normalized [0,1] space
+    glm::vec3 mirroredNorm = state.pos - glm::vec3(1.0f);  // [0,1] in mirrored space
 
-    // Compute brick index using brickSideLength (unit voxels, so brick size = brickSideLength)
+    // 2. Un-mirror: flip axes where octant_mask bit is CLEAR (those are mirrored)
+    glm::vec3 worldNorm;
+    worldNorm.x = (coef.octant_mask & 1) ? mirroredNorm.x : (1.0f - mirroredNorm.x);
+    worldNorm.y = (coef.octant_mask & 2) ? mirroredNorm.y : (1.0f - mirroredNorm.y);
+    worldNorm.z = (coef.octant_mask & 4) ? mirroredNorm.z : (1.0f - mirroredNorm.z);
+
+    // 3. Compute octant center (add half of current scale to get center)
+    float halfScale = state.scale_exp2 * 0.5f;
+    glm::vec3 octantCenter = worldNorm + glm::vec3(halfScale);
+    octantCenter = glm::clamp(octantCenter, glm::vec3(0.001f), glm::vec3(0.999f));
+
+    // 4. Convert to world position
+    glm::vec3 octantWorldPos = m_worldMin + octantCenter * worldSize;
+
+    // Compute brick index from octant center position
+    glm::vec3 localPos = octantWorldPos - m_worldMin;
     glm::ivec3 brickIndex(
         static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
         static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
         static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
     );
-    // Clamp to valid range
     brickIndex = glm::clamp(brickIndex, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
 
-    // Compute octant from brick index (for 2x2x2 brick grid, indices 0-1 per axis)
-    // Only lower octant uses the simple formula when bricksPerAxis <= 2
+    // Compute leafOctant from brickIndex (position-based)
     int leafOctant = 0;
     if (bricksPerAxis == 1) {
-        // Single brick case - always octant 0
         leafOctant = 0;
     } else {
-        // Multi-brick: compute octant from brick index
-        // For 2 bricks per axis: index 0 = octant bit 0, index 1 = octant bit 1
         if (brickIndex.x > 0) leafOctant |= 1;
         if (brickIndex.y > 0) leafOctant |= 2;
         if (brickIndex.z > 0) leafOctant |= 4;
     }
-
-    // Also compute grid position for debugging
-    glm::ivec3 gridPos = ::GaiaVoxel::VolumeGrid::quantize(worldHitPos);
-
-    std::cout << "[BRICK LOOKUP] pos=(" << state.pos.x << "," << state.pos.y << "," << state.pos.z << ")"
-              << " brickIndex=(" << brickIndex.x << "," << brickIndex.y << "," << brickIndex.z << ")"
-              << " gridPos=(" << gridPos.x << "," << gridPos.y << "," << gridPos.z << ")"
-              << " worldHitPos=(" << worldHitPos.x << "," << worldHitPos.y << "," << worldHitPos.z << ")"
-              << " idx=" << state.idx << " octant_mask=" << coef.octant_mask
-              << " leafOctant=" << leafOctant << " bricksPerAxis=" << bricksPerAxis << "\n";
 
     const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, leafOctant);
 
     // Fallback: when there's only 1 brick (bricksPerAxis=1), it's registered at octant 0
     // but ray may hit any octant. Try octant 0 as fallback.
     if (brickView == nullptr && m_octree->bricksPerAxis == 1) {
-        std::cout << "[BRICK FALLBACK] Single-brick octree, trying octant 0\n";
         brickView = m_octree->root->getBrickView(parentDescriptorIndex, 0);
     }
 
+    DEBUG_PRINT("    octantCenter=(%.3f,%.3f,%.3f), brickIndex=(%d,%d,%d), leafOctant=%d, brickView=%p\n",
+                octantCenter.x, octantCenter.y, octantCenter.z, brickIndex.x, brickIndex.y, brickIndex.z, leafOctant, (void*)brickView);
+
     if (brickView != nullptr) {
-        // Transform ray to volume local space (origin at volumeGridMin = 0,0,0)
-        // Brick bounds are now local: (0,0,0)-(8,8,8), (8,0,0)-(16,8,8), etc.
-        glm::vec3 localRayOrigin = origin - m_worldMin;
-        return traverseBrickAndReturnHit(*brickView, localRayOrigin, coef.rayDir, tEntry);
+        // Transform ray to volume local space using mat4
+        // Local space: [0, worldSize] integer grid
+        // World space: [worldMin, worldMax]
+        glm::vec3 localRayOrigin = glm::vec3(m_worldToLocal * glm::vec4(origin, 1.0f));
+        // Direction only needs rotation (no translation), but for axis-aligned volumes
+        // this is identity. For rotated volumes, use mat3(m_worldToLocal).
+        glm::vec3 localRayDir = glm::mat3(m_worldToLocal) * coef.rayDir;
+
+        DEBUG_PRINT("    localRayOrigin=(%.2f,%.2f,%.2f), brickView->voxelsPerBrick=%zu\n",
+                    localRayOrigin.x, localRayOrigin.y, localRayOrigin.z, brickView->getVoxelsPerBrick());
+        auto hitResult = traverseBrickAndReturnHit(*brickView, localRayOrigin, localRayDir, tEntry);
+
+        // Transform hit point back to world space using mat4
+        if (hitResult.has_value()) {
+            hitResult->hitPoint = glm::vec3(m_localToWorld * glm::vec4(hitResult->hitPoint, 1.0f));
+            // Transform normal back to world space (use inverse transpose for proper normal transformation)
+            // For axis-aligned volumes, this is identity. For rotated volumes, use:
+            // hitResult->normal = glm::normalize(glm::mat3(glm::transpose(m_worldToLocal)) * hitResult->normal);
+        }
+        return hitResult;
     }
 
-    // No brick view found
-    std::cout << "[NO BRICK] No brick view for leafOctant " << leafOctant << ", continuing\n";
+    DEBUG_PRINT("    No brickView found, returning miss\n");
     return std::nullopt;
 }
 
@@ -1159,6 +1155,10 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHi
     float brickTMax = glm::min(glm::min(tFar.x, tFar.y), tFar.z);
     brickTMin = glm::max(brickTMin, tEntry);
 
+    DEBUG_PRINT("    traverseBrickAndReturnHit: brickLocalMin=(%.1f,%.1f,%.1f), brickLocalMax=(%.1f,%.1f,%.1f)\n",
+                brickLocalMin.x, brickLocalMin.y, brickLocalMin.z, brickLocalMax.x, brickLocalMax.y, brickLocalMax.z);
+    DEBUG_PRINT("    brickTMin=%.4f, brickTMax=%.4f, tEntry=%.4f\n", brickTMin, brickTMax, tEntry);
+
     // Pass local ray and local brick bounds to traverseBrickView
     // EntityBrickView uses local gridOrigin for entity lookup (LocalGrid query mode)
     return traverseBrickView(brickView, brickLocalMin, brickVoxelSize, localRayOrigin, rayDir, brickTMin, brickTMax);
@@ -1184,12 +1184,16 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         return miss;
     }
 
-    // Phase 2: Intersect ray with world bounds
+    // Phase 2: Detect interior ray and intersect with world bounds
+    bool rayStartsInside = isPointInsideAABB(origin, m_worldMin, m_worldMax);
+
     float tEntry, tExit;
     if (!intersectAABB(origin, rayDir, m_worldMin, m_worldMax, tEntry, tExit)) {
         return miss;
     }
 
+    // For interior rays, tEntry will be negative (ray already inside)
+    // Clamp to user-specified range
     tEntry = std::max(tEntry, tMin);
     tExit = std::min(tExit, tMax);
     if (tEntry >= tExit || tExit < 0.0f) {
@@ -1197,34 +1201,47 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     }
 
     // Phase 3: Setup ray coefficients and normalized coordinates
-    float tRayStart = std::max(0.0f, tEntry);
+    // For interior rays, start from origin (t=0); for exterior, start from entry point
+    float tRayStart = rayStartsInside ? 0.0f : std::max(0.0f, tEntry);
     glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
     glm::vec3 worldSize = m_worldMax - m_worldMin;
     glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
 
     ESVORayCoefficients coef = computeRayCoefficients(rayDir, normOrigin);
 
-    std::cout << "DEBUG TRAVERSAL START: origin=(" << origin.x << "," << origin.y << "," << origin.z << ") "
-              << "dir=(" << rayDir.x << "," << rayDir.y << "," << rayDir.z << ") "
-              << "tEntry=" << tEntry << " tExit=" << tExit << "\n";
-    std::cout << "DEBUG INIT: tx_coef=" << coef.tx_coef << " ty_coef=" << coef.ty_coef << " tz_coef=" << coef.tz_coef << "\n";
-    std::cout << "DEBUG INIT: tx_bias=" << coef.tx_bias << " ty_bias=" << coef.ty_bias << " tz_bias=" << coef.tz_bias << "\n";
-    std::cout << "DEBUG INIT: normOrigin=(" << normOrigin.x << "," << normOrigin.y << "," << normOrigin.z << ")\n";
-
     // Phase 4: Initialize traversal state
     ESVOTraversalState state;
-    state.t_min = std::max({2.0f * coef.tx_coef - coef.tx_bias,
-                            2.0f * coef.ty_coef - coef.ty_bias,
-                            2.0f * coef.tz_coef - coef.tz_bias});
-    state.t_max = std::min({coef.tx_coef - coef.tx_bias,
-                            coef.ty_coef - coef.ty_bias,
-                            coef.tz_coef - coef.tz_bias});
-    state.h = state.t_max;
-    state.t_min = std::max(state.t_min, 0.0f);
-    state.t_max = std::min(state.t_max, 1.0f);
 
-    std::cout << "DEBUG INIT: t_min=" << state.t_min << " t_max=" << state.t_max << " h=" << state.h << "\n";
-    std::cout << "DEBUG INIT: m_maxLevels=" << m_maxLevels << " esvoScale=" << ESVO_MAX_SCALE << " (userScale=" << esvoToUserScale(ESVO_MAX_SCALE) << ")\n";
+    DEBUG_PRINT("\n=== Interior Ray Detection ===\n");
+    DEBUG_PRINT("  rayStartsInside=%d\n", rayStartsInside ? 1 : 0);
+    DEBUG_PRINT("  origin=(%.3f, %.3f, %.3f), tEntry=%.6f, tExit=%.6f\n",
+                origin.x, origin.y, origin.z, tEntry, tExit);
+    DEBUG_PRINT("  worldBounds=[(%.3f,%.3f,%.3f), (%.3f,%.3f,%.3f)]\n",
+                m_worldMin.x, m_worldMin.y, m_worldMin.z, m_worldMax.x, m_worldMax.y, m_worldMax.z);
+    DEBUG_PRINT("  normOrigin=(%.6f, %.6f, %.6f)\n", normOrigin.x, normOrigin.y, normOrigin.z);
+
+    if (rayStartsInside) {
+        // Interior ray: start from current position (t=0 in ESVO parametric space)
+        // The normalized origin is already at the ray's starting position within [1,2]³
+        // Set t_min=0 to indicate we're starting here, not from an external entry point
+        state.t_min = 0.0f;
+        state.t_max = std::min({coef.tx_coef - coef.tx_bias,
+                                coef.ty_coef - coef.ty_bias,
+                                coef.tz_coef - coef.tz_bias});
+        state.t_max = std::min(state.t_max, 1.0f);
+        DEBUG_PRINT("  INTERIOR: state.t_min=%.6f, state.t_max=%.6f\n", state.t_min, state.t_max);
+    } else {
+        // Exterior ray: standard ESVO t-span computation
+        state.t_min = std::max({2.0f * coef.tx_coef - coef.tx_bias,
+                                2.0f * coef.ty_coef - coef.ty_bias,
+                                2.0f * coef.tz_coef - coef.tz_bias});
+        state.t_max = std::min({coef.tx_coef - coef.tx_bias,
+                                coef.ty_coef - coef.ty_bias,
+                                coef.tz_coef - coef.tz_bias});
+        state.t_min = std::max(state.t_min, 0.0f);
+        state.t_max = std::min(state.t_max, 1.0f);
+    }
+    state.h = state.t_max;
 
     CastStack stack;
     initializeTraversalState(state, coef, stack);
@@ -1232,6 +1249,12 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     // Phase 5: Main traversal loop
     const int maxIter = 500;
     int minESVOScale = ESVO_MAX_SCALE - m_maxLevels + 1;
+
+    DEBUG_PRINT("\n=== Main Traversal Loop ===\n");
+    DEBUG_PRINT("  minESVOScale=%d, maxLevels=%d, brickDepthLevels=%d\n", minESVOScale, m_maxLevels, m_brickDepthLevels);
+    DEBUG_PRINT("  bricksPerAxis=%d, brickSideLength=%d\n",
+                m_octree ? m_octree->bricksPerAxis : -1,
+                m_octree ? m_octree->brickSideLength : -1);
 
     while (state.scale >= minESVOScale && state.scale <= ESVO_MAX_SCALE && state.iter < maxIter) {
         ++state.iter;
@@ -1244,23 +1267,24 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         float tv_max = 0.0f;
         bool shouldProcess = checkChildValidity(state, coef, isLeaf, tv_max);
 
+        DEBUG_PRINT("[iter %d] scale=%d idx=%d pos=(%.3f,%.3f,%.3f) t=[%.4f,%.4f] shouldProcess=%d isLeaf=%d validMask=0x%02X leafMask=0x%02X\n",
+                    state.iter, state.scale, state.idx, state.pos.x, state.pos.y, state.pos.z,
+                    state.t_min, state.t_max, shouldProcess ? 1 : 0, isLeaf ? 1 : 0,
+                    state.parent ? state.parent->validMask : 0,
+                    state.parent ? state.parent->leafMask : 0);
+
         bool skipToAdvance = false;
 
         if (shouldProcess) {
-            debugValidVoxel(state.t_min, tv_max);
-
             // Handle leaf hit
             if (isLeaf) {
-                debugLeafHit(state.scale);
                 auto leafResult = handleLeafHit(state, coef, origin, tRayStart, tEntry, tExit, tv_max);
 
                 if (leafResult.has_value()) {
-                    std::cout << "[BRICK HIT] Returning brick hit at t=" << leafResult.value().tMin << "\n";
                     return leafResult.value();
                 }
 
                 // Brick miss - continue to next leaf via ADVANCE phase
-                std::cout << "[BRICK MISS] No hit in brick, continuing to next leaf\n";
                 state.t_min = tv_max;
                 skipToAdvance = true;
             }
@@ -1292,20 +1316,6 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
                 break;
             }
         }
-    }
-
-    // Phase 6: Termination
-    int userScale = esvoToUserScale(state.scale);
-
-    if (state.iter >= maxIter) {
-        std::cout << "DEBUG: Hit iteration limit! scale=" << state.scale << " (userScale=" << userScale << ")"
-                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
-    } else if (userScale >= m_maxLevels) {
-        std::cout << "DEBUG: Ray exited octree. scale=" << state.scale << " (userScale=" << userScale << " >= m_maxLevels=" << m_maxLevels << ")"
-                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
-    } else {
-        std::cout << "DEBUG: Unknown exit condition. scale=" << state.scale << " (userScale=" << userScale << ")"
-                  << " iter=" << state.iter << " t_min=" << state.t_min << "\n";
     }
 
     return miss;
@@ -1365,6 +1375,11 @@ void selectInitialOctant(
     float mirroredOriginY = (coef.octant_mask & 2) ? coef.normOrigin.y : (3.0f - coef.normOrigin.y);
     float mirroredOriginZ = (coef.octant_mask & 4) ? coef.normOrigin.z : (3.0f - coef.normOrigin.z);
 
+    DEBUG_PRINT("\n=== selectInitialOctant ===\n");
+    DEBUG_PRINT("  usePositionBased=%d, t_min=%.6f, octant_mask=%d\n",
+                usePositionBasedSelection ? 1 : 0, state.t_min, coef.octant_mask);
+    DEBUG_PRINT("  mirroredOrigin=(%.6f, %.6f, %.6f)\n", mirroredOriginX, mirroredOriginY, mirroredOriginZ);
+
     // X axis selection
     if (std::abs(coef.rayDir.x) < axis_epsilon || usePositionBasedSelection) {
         if (mirroredOriginX >= 1.5f) { state.idx |= 1; state.pos.x = 1.5f; }
@@ -1385,6 +1400,8 @@ void selectInitialOctant(
     } else {
         if (1.5f * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5f; }
     }
+
+    DEBUG_PRINT("  RESULT: idx=%d, pos=(%.3f, %.3f, %.3f)\n", state.idx, state.pos.x, state.pos.y, state.pos.z);
 }
 
 float computeCorrectedTcMax(
@@ -1573,21 +1590,14 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
     float tMin,
     float tMax) const
 {
-    std::cout << "[TRAVERSE BRICK] brickID=" << brickRef.brickID
-              << " worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z << ")"
-              << " voxelSize=" << brickVoxelSize
-              << " tMin=" << tMin << " tMax=" << tMax << "\n";
-
     // Brick dimensions
     const int brickN = brickRef.getSideLength();  // 2^depth (e.g., 8 for depth=3)
 
     // 1. Compute ray entry point into brick
     const glm::vec3 entryPoint = rayOrigin + rayDir * tMin;
-    // DEBUG: std::cout << "  Entry point: (" << entryPoint.x << "," << entryPoint.y << "," << entryPoint.z << ")\n";
 
     // 2. Transform entry point to brick-local [0, N]³ space
     const glm::vec3 localEntry = (entryPoint - brickWorldMin) / brickVoxelSize;
-    // DEBUG: std::cout << "  Local entry: (" << localEntry.x << "," << localEntry.y << "," << localEntry.z << ")\n";
 
     // 3. Initialize current voxel (integer coordinates)
     glm::ivec3 currentVoxel{
@@ -1598,7 +1608,6 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
 
     // Clamp to brick bounds [0, N-1]
     currentVoxel = glm::clamp(currentVoxel, glm::ivec3(0), glm::ivec3(brickN - 1));
-    // DEBUG: std::cout << "  Start voxel: (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z << ")\n";
 
     // 4. Compute DDA step directions and tDelta
     glm::ivec3 step;
@@ -1670,19 +1679,12 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
             const std::any& keyAttributeValue = brick.getKeyAttributePointer()[localIdx];
 
             if(!keyAttributeValue.has_value()) {
-                // DEBUG: std::cout << "  Warning: Voxel at (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                //          << ") has no key attribute value!\n";
                 voxelOccupied = false;
                 return std::nullopt;
             }
 
             // Evaluate key predicate (respects custom solidity tests)
             voxelOccupied = m_registry->evaluateKey(keyAttributeValue);
-
-            if (stepCount == 1) {  // First voxel debug
-                // DEBUG: std::cout << "  First voxel (" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                //          << ") occupied=" << voxelOccupied << "\n";
-            }
         }
 
         if (voxelOccupied) {
@@ -1792,11 +1794,6 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
     float tMin,
     float tMax) const
 {
-    std::cout << "[TRAVERSE BRICK VIEW] depth=" << (int)brickView.getDepth()
-              << " worldMin=(" << brickWorldMin.x << "," << brickWorldMin.y << "," << brickWorldMin.z << ")"
-              << " voxelSize=" << brickVoxelSize
-              << " tMin=" << tMin << " tMax=" << tMax << "\n";
-
     // Brick dimensions
     const int brickN = 1 << brickView.getDepth();  // 2^depth
 
@@ -1876,13 +1873,6 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             auto density = m_voxelWorld->getComponentValue<Density>(entity);
             if (density.has_value() && *density > 0.0f) {
                 voxelOccupied = true;
-                std::cout << "[BRICK DDA] Found voxel at local(" << currentVoxel.x << "," << currentVoxel.y
-                          << "," << currentVoxel.z << ") world(" << voxelWorldPos.x << "," << voxelWorldPos.y
-                          << "," << voxelWorldPos.z << ") entity.id=" << entity.id() << "\n";
-            } else {
-                std::cout << "[BRICK DDA] Empty at local(" << currentVoxel.x << "," << currentVoxel.y
-                          << "," << currentVoxel.z << ") world(" << voxelWorldPos.x << "," << voxelWorldPos.y
-                          << "," << voxelWorldPos.z << ") entity.id=" << entity.id() << "\n";
             }
         }
 
@@ -1912,6 +1902,8 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             glm::vec3 tFar = glm::max(t0, t1);
 
             float hitT = glm::max(glm::max(tNear.x, tNear.y), tNear.z);
+            // Clamp to non-negative (ray can start inside voxel due to FP precision)
+            hitT = std::max(hitT, 0.0f);
 
             // Compute entry normal
             glm::vec3 entryNormal;
@@ -1931,9 +1923,6 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
             hit.scale = m_maxLevels - 1;  // Finest detail level
             hit.normal = entryNormal;
             hit.entity = entity;  // Return entity reference (zero-copy!)
-
-            std::cout << "[BRICK VIEW HIT] voxel=(" << currentVoxel.x << "," << currentVoxel.y << "," << currentVoxel.z
-                      << ") t=" << hitT << " entity.id=" << entity.id() << "\n";
 
             return hit;
         }
@@ -1986,6 +1975,13 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     m_octree->maxLevels = m_maxLevels;
     m_worldMin = worldMin;
     m_worldMax = worldMax;
+
+    // 3b. Setup local-to-world transformation matrices
+    // Local space: [0, worldSize] integer grid (voxels at integer positions)
+    // World space: [worldMin, worldMax]
+    // localToWorld = translate(worldMin) transforms local [0, worldSize] → world [worldMin, worldMax]
+    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin);
+    m_worldToLocal = glm::inverse(m_localToWorld);
 
     // 4. Calculate brick grid dimensions in normalized [0,1]³ space
     int brickDepth = m_brickDepthLevels;
@@ -2317,7 +2313,6 @@ void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t bloc
     // 4. Update ChildDescriptor for this block
     // 5. Create/update EntityBrickView
     // 6. Unlock block, unlock octree
-    std::cout << "[updateBlock] NOT YET IMPLEMENTED\n";
 }
 
 void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
@@ -2327,7 +2322,6 @@ void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t bloc
     // 3. Remove EntityBrickView
     // 4. Mark block as empty (clear validMask/leafMask)
     // 5. Unlock octree
-    std::cout << "[removeBlock] NOT YET IMPLEMENTED\n";
 }
 
 void LaineKarrasOctree::lockForRendering() {
