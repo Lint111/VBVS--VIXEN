@@ -1041,9 +1041,9 @@ PopResult LaineKarrasOctree::executePopPhase(
  *
  * BRICK LOOKUP STRATEGY:
  * - state.idx is in MIRRORED space (ray-direction dependent)
- * - leafToBrickView stores bricks by WORLD-space octant (ray-independent)
- * - Convert: worldOctant = state.idx ^ octant_mask
- * - This gives us direct, unambiguous brick lookup without position guessing
+ * - leafToBrickView stores bricks by LOCAL-space octant (ray-independent)
+ * - Convert mirrored→local: localOctant = state.idx ^ octant_mask
+ * - Also compute position-based leafOctant as fallback for edge cases
  */
 std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     ESVOTraversalState& state,
@@ -1054,27 +1054,101 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     float tExit,
     float tv_max) const
 {
-    // Convert mirrored idx to world-space octant for brick lookup
-    // Bricks are stored by world-space octant in leafToBrickView
-    int worldOctant = mirroredToWorldOctant(state.idx, coef.octant_mask);
-
-    DEBUG_PRINT("  handleLeafHit: mirroredIdx=%d, worldOctant=%d, octant_mask=%d, state.t_min=%.4f, tv_max=%.4f\n",
-                state.idx, worldOctant, coef.octant_mask, state.t_min, tv_max);
+    DEBUG_PRINT("  handleLeafHit: idx=%d, state.t_min=%.4f, tv_max=%.4f, tRayStart=%.4f, tEntry=%.4f, tExit=%.4f\n",
+                state.idx, state.t_min, tv_max, tRayStart, tEntry, tExit);
 
     size_t parentDescriptorIndex = state.parent - &m_octree->root->childDescriptors[0];
+    glm::vec3 worldSize = m_worldMax - m_worldMin;
+    int bricksPerAxis = m_octree->bricksPerAxis;
+    int brickSideLength = m_octree->brickSideLength;
 
-    // Direct brick lookup using world-space octant
-    // This is the correct approach: state.idx is mirrored, convert to world for storage lookup
-    const auto* brickView = m_octree->root->getBrickView(parentDescriptorIndex, worldOctant);
+    // Compute brick from ESVO state position (for axes the ray is moving along)
+    // and actual ray position (for stationary axes where ray doesn't move).
+    //
+    // The ESVO state.pos is in mirrored parametric space [1,2].
+    // Convert to local space [0,1] then to world units [0, worldSize].
+    constexpr float axis_epsilon = 1e-5f;
 
-    // Fallback: when there's only 1 brick (bricksPerAxis=1), it's registered at octant 0
-    // but ray may hit any octant due to full validMask. Try octant 0 as fallback.
-    if (brickView == nullptr && m_octree->bricksPerAxis == 1) {
-        brickView = m_octree->root->getBrickView(parentDescriptorIndex, 0);
+    // Get ray position from ESVO state (mirrored → local conversion)
+    glm::vec3 mirroredNorm = state.pos - glm::vec3(1.0f);  // [1,2] → [0,1]
+    glm::vec3 localNorm;
+    localNorm.x = (coef.octant_mask & 1) ? mirroredNorm.x : (1.0f - mirroredNorm.x);
+    localNorm.y = (coef.octant_mask & 2) ? mirroredNorm.y : (1.0f - mirroredNorm.y);
+    localNorm.z = (coef.octant_mask & 4) ? mirroredNorm.z : (1.0f - mirroredNorm.z);
+
+    // Add small offset in LOCAL ray direction to get point inside the octant (not on boundary)
+    // For mirrored axes, the local direction is OPPOSITE to the world direction
+    float offset = 0.001f;
+    glm::vec3 localRayDir;
+    localRayDir.x = (coef.octant_mask & 1) ? coef.rayDir.x : -coef.rayDir.x;
+    localRayDir.y = (coef.octant_mask & 2) ? coef.rayDir.y : -coef.rayDir.y;
+    localRayDir.z = (coef.octant_mask & 4) ? coef.rayDir.z : -coef.rayDir.z;
+    glm::vec3 offsetDir;
+    offsetDir.x = (localRayDir.x > 0) ? offset : -offset;
+    offsetDir.y = (localRayDir.y > 0) ? offset : -offset;
+    offsetDir.z = (localRayDir.z > 0) ? offset : -offset;
+    glm::vec3 octantInside = localNorm + offsetDir;
+
+    // For stationary axes (ray perpendicular), use actual ray position
+    glm::vec3 rayPosWorld = origin + coef.rayDir * std::max(tEntry, 0.0f);
+    glm::vec3 rayPosLocal = (rayPosWorld - m_worldMin) / worldSize;
+    rayPosLocal = glm::clamp(rayPosLocal, glm::vec3(0.001f), glm::vec3(0.999f));
+
+    if (std::abs(coef.rayDir.x) < axis_epsilon) {
+        octantInside.x = rayPosLocal.x;
+    }
+    if (std::abs(coef.rayDir.y) < axis_epsilon) {
+        octantInside.y = rayPosLocal.y;
+    }
+    if (std::abs(coef.rayDir.z) < axis_epsilon) {
+        octantInside.z = rayPosLocal.z;
     }
 
-    DEBUG_PRINT("    parentDescriptorIndex=%zu, worldOctant=%d, brickView=%p\n",
-                parentDescriptorIndex, worldOctant, (void*)brickView);
+    octantInside = glm::clamp(octantInside, glm::vec3(0.001f), glm::vec3(0.999f));
+
+    // Primary strategy: Use ESVO state position (advances with octant traversal)
+    // This correctly handles multi-brick traversal.
+
+    const ::GaiaVoxel::EntityBrickView* brickView = nullptr;
+    glm::ivec3 brickIndex;
+
+    // Method 1: ESVO state position (correct for multi-octant traversal)
+    // Convert normalized [0,1] to local position [0, worldSize]
+    glm::vec3 hitPosLocal = octantInside * worldSize;
+    hitPosLocal = glm::clamp(hitPosLocal, glm::vec3(0.0f), worldSize - glm::vec3(0.001f));
+
+    brickIndex = glm::ivec3(
+        static_cast<int>(hitPosLocal.x / static_cast<float>(brickSideLength)),
+        static_cast<int>(hitPosLocal.y / static_cast<float>(brickSideLength)),
+        static_cast<int>(hitPosLocal.z / static_cast<float>(brickSideLength))
+    );
+    brickIndex = glm::clamp(brickIndex, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+    brickView = m_octree->root->getBrickViewByGrid(brickIndex.x, brickIndex.y, brickIndex.z);
+
+    // Method 2: Ray entry position (fallback for exterior rays into sparse octrees)
+    if (brickView == nullptr) {
+        glm::vec3 rayEntryWorld = origin + coef.rayDir * std::max(tEntry, 0.0f);
+        glm::vec3 rayEntryLocal = rayEntryWorld - m_worldMin;
+        rayEntryLocal += coef.rayDir * 0.01f;  // Small offset into the volume
+        rayEntryLocal = glm::clamp(rayEntryLocal, glm::vec3(0.0f), worldSize - glm::vec3(0.001f));
+
+        brickIndex = glm::ivec3(
+            static_cast<int>(rayEntryLocal.x / static_cast<float>(brickSideLength)),
+            static_cast<int>(rayEntryLocal.y / static_cast<float>(brickSideLength)),
+            static_cast<int>(rayEntryLocal.z / static_cast<float>(brickSideLength))
+        );
+        brickIndex = glm::clamp(brickIndex, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+        brickView = m_octree->root->getBrickViewByGrid(brickIndex.x, brickIndex.y, brickIndex.z);
+    }
+
+    // Fallback 3: ESVO octant-based lookup (legacy compatibility)
+    if (brickView == nullptr) {
+        int localOctant = mirroredToLocalOctant(state.idx, coef.octant_mask);
+        brickView = m_octree->root->getBrickView(parentDescriptorIndex, localOctant);
+    }
+
+    DEBUG_PRINT("    parentDescriptorIndex=%zu, brickIndex=(%d,%d,%d), brickView=%p\n",
+                parentDescriptorIndex, brickIndex.x, brickIndex.y, brickIndex.z, (void*)brickView);
 
     if (brickView != nullptr) {
         // Transform ray to volume local space using mat4
@@ -2080,6 +2154,10 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // Mapping from descriptor index → brick view index (only for brick-level descriptors)
     std::unordered_map<uint32_t, uint32_t> descriptorToBrickView;
 
+    // Mapping from brick grid coordinates → brick view index
+    // Key: (brickX | brickY << 10 | brickZ << 20)
+    std::unordered_map<uint32_t, uint32_t> brickGridToBrickView;
+
     // Initialize brick-level nodes (depth = brickDepth)
     for (const auto& brick : populatedBricks) {
         NodeKey key{brickDepth, brick.gridCoord};
@@ -2087,6 +2165,12 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         uint32_t brickViewIndex = static_cast<uint32_t>(tempBrickViews.size());
         nodeToDescriptorIndex[key] = descriptorIndex;
         descriptorToBrickView[descriptorIndex] = brickViewIndex;
+
+        // Add grid-to-brickview mapping for position-based lookup
+        uint32_t gridKey = static_cast<uint32_t>(brick.gridCoord.x) |
+                          (static_cast<uint32_t>(brick.gridCoord.y) << 10) |
+                          (static_cast<uint32_t>(brick.gridCoord.z) << 20);
+        brickGridToBrickView[gridKey] = brickViewIndex;
 
         // Create brick descriptor (all children are leaf voxels)
         ChildDescriptor desc{};
@@ -2293,6 +2377,7 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     m_octree->root->childDescriptors = std::move(finalDescriptors);
     m_octree->root->brickViews = std::move(finalBrickViews);
     m_octree->root->leafToBrickView = std::move(leafToBrickView);
+    m_octree->root->brickGridToBrickView = std::move(brickGridToBrickView);
     m_octree->totalVoxels = totalVoxels;
 
     // Lock automatically released when lock goes out of scope

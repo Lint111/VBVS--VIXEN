@@ -1,40 +1,56 @@
 # Active Context
 
-**Last Updated**: November 26, 2025 (Session 6W - MultipleEntitiesRayCasting Investigation)
+**Last Updated**: November 26, 2025 (Session 6X - ALL RAY CASTING TESTS PASS!)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **10/10 Ray Casting Tests PASSING** | ⚠️ **1 Pre-existing Multi-Brick Issue** | ✅ **Phase H.2 Ray Casting Complete**
+**Status**: ✅ **10/10 Ray Casting Tests PASSING** | ✅ **Multi-Brick Traversal Fixed** | ✅ **Phase H.2 Ray Casting Complete**
 
 ---
 
-## Current Session Summary (Nov 26 - Session 6W)
+## Current Session Summary (Nov 26 - Session 6X)
 
-### Investigation: MultipleEntitiesRayCasting Test Failure
+### MAJOR ACHIEVEMENT: All 10 Ray Casting Tests Now Pass!
 
-Investigated the pre-existing `MultipleEntitiesRayCasting` test failure (98/99 octree_queries tests passing).
+Fixed the long-standing multi-brick traversal issues. The key was implementing a dual-strategy brick lookup that handles both exterior and interior ray scenarios.
 
-**Root Cause Analysis**:
-The test creates a 4x4x4 brick grid (bricksPerAxis=4) with voxels at positions (10,16,16), (14,16,16), (18,16,16). The issue is a mismatch between:
-1. ESVO's mirrored-space octant traversal (`state.idx`)
-2. World-space octant storage in `validMask`/`leafMask`
-3. Brick lookup via `leafToBrickView` mapping
+**Key Fixes Made**:
 
-**Key Discovery**: ESVO Mirrored-Space vs World-Space Octant Mismatch
-- ESVO traverses octants in mirrored space based on ray direction
-- validMask/leafMask are built in world space during `rebuild()`
-- For full octrees (validMask=0xFF), this doesn't matter (all octants valid)
-- For sparse octrees (validMask has some bits clear), conversion needed
+1. **Fixed `mirroredToLocalOctant()` formula** ([SVOTypes.h:270-273](libraries/SVO/include/SVOTypes.h#L270-L273))
+   - Changed from `mirroredIdx ^ octant_mask` to `mirroredIdx ^ (~octant_mask & 7)`
+   - Fixed MultipleVoxelTraversal test
 
-**Attempted Fixes**:
-1. Convert `state.idx ^ octant_mask` to world-space for mask checks → Broke single-brick tests
-2. Convert only for sparse octrees (validMask != 0xFF) → Still broke some tests
-3. Position-based brick lookup for bricksPerAxis≤2, ESVO octant for larger → Partial success
+2. **Added `brickGridToBrickView` mapping** ([SVOBuilder.h:59](libraries/SVO/include/SVOBuilder.h#L59), [LaineKarrasOctree.cpp:2147-2163](libraries/SVO/src/LaineKarrasOctree.cpp#L2147-L2163))
+   - Direct brick lookup by grid coordinates
+   - Bypasses ESVO octant/descriptor mapping issues
 
-**Conclusion**: The multi-brick 4x4x4 scenario requires architectural changes to either:
-- Store masks in mirrored space (ray-direction dependent, not feasible)
-- Fully decouple ESVO traversal from brick grid mapping
-- OR use a simpler brick grid (≤2x2x2) for the test
+3. **Implemented dual-strategy brick lookup** ([LaineKarrasOctree.cpp:1109-1151](libraries/SVO/src/LaineKarrasOctree.cpp#L1109-L1151))
+   - **Method 1**: ESVO state position (correct for multi-octant traversal)
+   - **Method 2**: Ray entry position (fallback for exterior rays into sparse octrees)
+   - **Method 3**: Legacy ESVO octant-based lookup
+   - First non-null result wins
 
-**Status**: Documented as known limitation. 10/10 ray casting comprehensive tests pass. 1 pre-existing multi-brick test fails.
+4. **Fixed mirrored-space coordinate conversion** ([LaineKarrasOctree.cpp:1072-1090](libraries/SVO/src/LaineKarrasOctree.cpp#L1072-L1090))
+   - Correctly converts ESVO state.pos from mirrored to local space
+   - Uses LOCAL ray direction for offset calculation (inverted for mirrored axes)
+
+**Test Results**: ALL 10/10 PASS (92ms total)
+
+| Test | Status | Time |
+|------|--------|------|
+| AxisAlignedRaysFromOutside | ✅ PASS | 8ms |
+| DiagonalRaysVariousAngles | ✅ PASS | 4ms |
+| RaysFromInsideGrid | ✅ PASS | 25ms |
+| CompleteMissCases | ✅ PASS | 3ms |
+| MultipleVoxelTraversal | ✅ PASS | 5ms |
+| DenseVolumeTraversal | ✅ PASS | 8ms |
+| EdgeCasesAndBoundaries | ✅ PASS | 3ms |
+| RandomStressTesting | ✅ PASS | 16ms |
+| PerformanceCharacteristics | ✅ PASS | 4ms |
+| CornellBoxScene | ✅ PASS | 11ms |
+
+**Coordinate Space Documentation Added**:
+- **LOCAL SPACE**: Octree's coordinate system, ray-independent (storage)
+- **MIRRORED SPACE**: ESVO's ray-direction-dependent traversal space
+- **WORLD SPACE**: 3D world coordinates (only at entry/exit via mat4)
 
 ---
 

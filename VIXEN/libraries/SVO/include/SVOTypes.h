@@ -259,23 +259,30 @@ inline uint8_t mirrorMask(uint8_t mask, int octant_mask) {
  * Use this when you have a mirrored-space index (state.idx) and need to look up
  * data stored in local space (descriptors, bricks, leafToBrickView).
  *
+ * The octant_mask encodes which axes are NOT mirrored (bit=1 means NOT mirrored).
+ * We need to flip bits where the axis IS mirrored (bit=0), so we XOR with
+ * the INVERSE of octant_mask (i.e., ~octant_mask & 7).
+ *
  * @param mirroredIdx Octant index in mirrored space (state.idx)
- * @param octant_mask Ray-direction mirroring mask (0-7)
+ * @param octant_mask Ray-direction mirroring mask (0-7, bit=0 means axis is mirrored)
  * @return Local-space octant index (for descriptor/brick lookup)
  */
 inline int mirroredToLocalOctant(int mirroredIdx, int octant_mask) {
-    return mirroredIdx ^ octant_mask;
+    // Flip bits where axis IS mirrored (octant_mask bit = 0)
+    return mirroredIdx ^ (~octant_mask & 7);
 }
 
 /**
  * Convert local-space octant index to mirrored-space octant index.
  *
  * @param localIdx Octant index in local space (from descriptor)
- * @param octant_mask Ray-direction mirroring mask (0-7)
+ * @param octant_mask Ray-direction mirroring mask (0-7, bit=0 means axis is mirrored)
  * @return Mirrored-space octant index
  */
 inline int localToMirroredOctant(int localIdx, int octant_mask) {
-    return localIdx ^ octant_mask;  // XOR is its own inverse
+    // Flip bits where axis IS mirrored (octant_mask bit = 0)
+    // XOR with inverse is its own inverse, so same formula as mirroredToLocal
+    return localIdx ^ (~octant_mask & 7);
 }
 
 // Legacy names for compatibility
