@@ -237,12 +237,12 @@ int popc8(uint8_t mask);
  * @return Mirrored mask for use with mirrored-space indices (state.idx)
  */
 inline uint8_t mirrorMask(uint8_t mask, int octant_mask) {
-    // Fast path: no mirroring needed
-    if (octant_mask == 7) {
+    // Fast path: no mirroring needed when ray direction is all positive
+    if (octant_mask == 0) {
         return mask;
     }
 
-    // Permute bits: for each world octant i, move its bit to mirrored position (i ^ octant_mask)
+    // Permute bits: for each local octant i, move its bit to mirrored position (i ^ octant_mask)
     uint8_t result = 0;
     for (int i = 0; i < 8; i++) {
         int mirroredIdx = i ^ octant_mask;

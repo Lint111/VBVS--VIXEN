@@ -32,7 +32,7 @@ namespace SVO {
 //
 // Note: Debug output is completely compiled out when disabled (zero runtime cost)
 //
-#define LKOCTREE_DEBUG_TRAVERSAL 0
+#define LKOCTREE_DEBUG_TRAVERSAL 1
 
 #if LKOCTREE_DEBUG_TRAVERSAL
     #define DEBUG_PRINT(...) printf(__VA_ARGS__)
@@ -2227,6 +2227,9 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
             break;
         }
 
+        // Check if we've reached the root (single parent at origin that will contain all children)
+        bool isRootLevel = (parentToChildren.size() == 1 && parentToChildren.count(glm::ivec3(0, 0, 0)) == 1);
+
         // Create parent descriptors
         size_t parentsCreated = 0;
         for (const auto& [parentCoord, children] : parentToChildren) {
@@ -2276,8 +2279,10 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
             parentsCreated++;
         }
 
-        if (parentsCreated == 1) {
-            break;  // Root node created
+        // If this is the root level (single parent at origin with all children),
+        // stop building - no more parents needed above the root
+        if (isRootLevel) {
+            break;
         }
     }
 
