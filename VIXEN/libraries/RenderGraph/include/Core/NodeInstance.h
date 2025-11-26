@@ -668,6 +668,19 @@ protected:
     ResourceBudgetManager* GetBudgetManager() const;
 
     /**
+     * @brief Get the unified resource manager from owning graph
+     *
+     * Provides access to the unified resource management facade.
+     * Use this for:
+     * - Tracking BoundedArray allocations
+     * - Querying stack usage
+     * - Budget management
+     *
+     * @return Pointer to ResourceManagerBase, or nullptr if graph not set
+     */
+    ResourceManagerBase* GetResourceManager() const;
+
+    /**
      * @brief Get SlotScope for an input slot
      *
      * Queries the node's config to determine the resource scope for a slot.

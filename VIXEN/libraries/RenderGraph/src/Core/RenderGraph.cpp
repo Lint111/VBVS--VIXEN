@@ -1,4 +1,5 @@
 #include "Core/RenderGraph.h"
+#include "Core/ResourceManagerBase.h"
 #include "Core/IGraphCompilable.h"
 #include "Nodes/SwapChainNode.h"
 #include "Nodes/PresentNode.h"
@@ -32,6 +33,9 @@ RenderGraph::RenderGraph(
     if (mainLogger) {
         this->mainLogger = mainLogger;
     }
+
+    // Initialize unified resource manager (Phase-H)
+    resourceManager_ = std::make_unique<ResourceManagerBase>();
 
     // Subscribe to cleanup events if bus provided
     if (messageBus) {

@@ -1,6 +1,7 @@
 #include "Nodes/FramebufferNode.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/ResourceManagerBase.h"
 #include "error/VulkanError.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables definition
 #include "NodeHelpers/VulkanStructHelpers.h"
@@ -89,6 +90,11 @@ void FramebufferNode::CompileImpl(TypedCompileContext& ctx) {
         }
     }
 
+    // Phase H: Track BoundedArray with resource manager for profiling
+    if (auto* rm = GetResourceManager()) {
+        rm->TrackBoundedArray(framebuffers_, "framebuffers", GetInstanceId(), ResourceLifetime::GraphLocal);
+    }
+    
     // Phase H: Output BoundedArray reference directly (no vector copy)
     ctx.Out(FramebufferNodeConfig::FRAMEBUFFERS, framebuffers_);
     ctx.Out(FramebufferNodeConfig::VULKAN_DEVICE_OUT, device);

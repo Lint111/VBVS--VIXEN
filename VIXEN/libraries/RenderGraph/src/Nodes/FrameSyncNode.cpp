@@ -1,6 +1,7 @@
 #include "Nodes/FrameSyncNode.h"
 #include "Core/RenderGraph.h"
 #include "Core/VulkanLimits.h"
+#include "Core/ResourceManagerBase.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
 #include <stdexcept>
@@ -81,6 +82,13 @@ void FrameSyncNode::CompileImpl(TypedCompileContext& ctx) {
 
     isCreated_ = true;
     currentFrameIndex_ = 0;
+    
+    // Phase H: Track BoundedArrays with resource manager for profiling
+    if (auto* rm = GetResourceManager()) {
+        rm->TrackBoundedArray(imageAvailableSemaphores_, "imageAvailableSemaphores", GetInstanceId(), ResourceLifetime::GraphLocal);
+        rm->TrackBoundedArray(renderCompleteSemaphores_, "renderCompleteSemaphores", GetInstanceId(), ResourceLifetime::GraphLocal);
+        rm->TrackBoundedArray(presentFences_, "presentFences", GetInstanceId(), ResourceLifetime::GraphLocal);
+    }
     
     // Phase H: Pass BoundedArray references directly (no vector view copies)
     ctx.Out(FrameSyncNodeConfig::CURRENT_FRAME_INDEX, currentFrameIndex_);

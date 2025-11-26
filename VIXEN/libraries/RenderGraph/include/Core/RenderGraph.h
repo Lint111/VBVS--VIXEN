@@ -16,6 +16,7 @@
 #include "MainCacher.h"
 #include "Core/LoopManager.h"
 #include "Core/GraphLifecycleHooks.h"
+#include "Core/ResourceManagerBase.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -300,6 +301,17 @@ public:
      */
     ResourceBudgetManager* GetBudgetManager() { return budgetManager.get(); }
     const ResourceBudgetManager* GetBudgetManager() const { return budgetManager.get(); }
+
+    /**
+     * @brief Get the unified resource manager
+     *
+     * Provides access to the unified resource management facade that
+     * dispatches to specialized managers (stack, budget, vulkan, etc.)
+     *
+     * @return Pointer to ResourceManagerBase
+     */
+    ResourceManagerBase* GetResourceManager() { return resourceManager_.get(); }
+    const ResourceManagerBase* GetResourceManager() const { return resourceManager_.get(); }
 
     /**
      * @brief Process pending events from the message bus

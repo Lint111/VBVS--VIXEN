@@ -394,6 +394,13 @@ ResourceBudgetManager* NodeInstance::GetBudgetManager() const {
     return nullptr;
 }
 
+ResourceManagerBase* NodeInstance::GetResourceManager() const {
+    if (owningGraph) {
+        return owningGraph->GetResourceManager();
+    }
+    return nullptr;
+}
+
 SlotScope NodeInstance::GetSlotScope(uint32_t slotIndex) const {
     if (!nodeType) {
         return SlotScope::NodeLevel;
