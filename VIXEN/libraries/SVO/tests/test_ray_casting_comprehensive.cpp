@@ -3,6 +3,8 @@
 #include <glm/gtc/random.hpp>
 #include <vector>
 #include <random>
+#include <chrono>
+#include <iomanip>
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"
 #include "VoxelComponents.h"  // For Density, Color components
@@ -686,4 +688,88 @@ TEST_F(ComprehensiveRayCastingTest, CornellBoxScene) {
         auto hit = octree->castRay(origin, direction, 0.0f, 100.0f);
         EXPECT_TRUE(hit.hit) << "Bounce ray should hit something";
     }
+}
+
+// ============================================================================
+// TEST 11: Ray Casting Throughput Benchmark
+// ============================================================================
+TEST_F(ComprehensiveRayCastingTest, ThroughputBenchmark) {
+    // Create a dense scene for benchmarking
+    std::vector<glm::vec3> voxels;
+
+    // Create a 4x4x4 solid cube (64 voxels)
+    for (int x = 2; x < 6; x++) {
+        for (int y = 2; y < 6; y++) {
+            for (int z = 2; z < 6; z++) {
+                voxels.push_back(glm::vec3(x, y, z));
+            }
+        }
+    }
+
+    auto octree = createOctreeWithVoxels(voxels, 8);
+
+    // Benchmark parameters
+    constexpr int NUM_RAYS = 10000;
+    constexpr int NUM_WARMUP = 100;
+
+    // Generate random ray directions from a sphere around the scene
+    std::mt19937 rng(42);  // Fixed seed for reproducibility
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    std::vector<std::pair<glm::vec3, glm::vec3>> rays;
+    rays.reserve(NUM_RAYS + NUM_WARMUP);
+
+    glm::vec3 sceneCenter(4.0f, 4.0f, 4.0f);
+    float sceneRadius = 10.0f;
+
+    for (int i = 0; i < NUM_RAYS + NUM_WARMUP; i++) {
+        // Random point on sphere
+        glm::vec3 dir;
+        do {
+            dir = glm::vec3(dist(rng), dist(rng), dist(rng));
+        } while (glm::length(dir) < 0.01f);
+        dir = glm::normalize(dir);
+
+        glm::vec3 origin = sceneCenter - dir * sceneRadius;
+        rays.push_back({origin, dir});
+    }
+
+    // Warmup (not timed)
+    for (int i = 0; i < NUM_WARMUP; i++) {
+        auto hit = octree->castRay(rays[i].first, rays[i].second, 0.0f, 100.0f);
+        (void)hit;  // Prevent optimization
+    }
+
+    // Timed benchmark
+    auto start = std::chrono::high_resolution_clock::now();
+
+    int hitCount = 0;
+    for (int i = NUM_WARMUP; i < NUM_RAYS + NUM_WARMUP; i++) {
+        auto hit = octree->castRay(rays[i].first, rays[i].second, 0.0f, 100.0f);
+        if (hit.hit) hitCount++;
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    double seconds = duration.count() / 1000000.0;
+    double raysPerSecond = NUM_RAYS / seconds;
+    double megaRaysPerSecond = raysPerSecond / 1000000.0;
+
+    // Print results
+    std::cout << "\n======== RAY CASTING BENCHMARK ========\n";
+    std::cout << "Rays cast:    " << NUM_RAYS << "\n";
+    std::cout << "Hits:         " << hitCount << " (" << (100.0 * hitCount / NUM_RAYS) << "%)\n";
+    std::cout << "Total time:   " << duration.count() << " μs\n";
+    std::cout << "Throughput:   " << std::fixed << std::setprecision(2) << megaRaysPerSecond << " Mrays/sec\n";
+    std::cout << "Avg ray time: " << (duration.count() / (double)NUM_RAYS) << " μs/ray\n";
+    std::cout << "========================================\n\n";
+
+    // Sanity checks
+    EXPECT_GT(hitCount, 0) << "Should have some hits";
+    // Note: Dense 4x4x4 cube is visible from all directions, so 100% hit rate is expected
+
+    // Performance threshold (very conservative for Debug builds)
+    // Debug: ~4K rays/sec, Release: ~50K-500K rays/sec
+    EXPECT_GT(raysPerSecond, 1000.0) << "Should cast at least 1K rays/sec even in Debug";
 }
