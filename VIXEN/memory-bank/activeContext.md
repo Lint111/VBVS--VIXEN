@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 26, 2025 (Session 8A)
+**Last Updated**: November 27, 2025 (Session 8B)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | Buffer Upload Complete
+**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | VoxelGridNode Refactored
 
 ---
 
@@ -51,6 +51,42 @@ octree.unlockAfterRendering();
 
 ## Week 2: GPU Integration - IN PROGRESS 🔄
 
+### Session 8B Progress (Nov 27, 2025)
+
+**Completed**:
+- [x] **MAJOR REFACTOR**: Replaced `SVOBuilder` with `LaineKarrasOctree` in `VoxelGridNode::CompileImpl()`
+  - OLD: `SVOBuilder::buildFromVoxelGrid()` - Incomplete ESVO structure (childPointer always 0)
+  - NEW: `GaiaVoxelWorld` + `LaineKarrasOctree::rebuild()` - Proper ESVO with valid childPointer
+- [x] Build passes successfully
+- [x] All 47 octree tests still pass
+
+**Files Modified**:
+- [VoxelGridNode.cpp:13](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L13) - Added `GaiaVoxelWorld.h` include
+- [VoxelGridNode.cpp:92-169](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L92-L169) - Replaced octree building code:
+  1. Create `GaiaVoxelWorld`
+  2. Populate from `VoxelGrid` (non-zero voxels → entities with Material component)
+  3. Create `LaineKarrasOctree` and call `rebuild()`
+  4. Get octree data via `getOctree()` for GPU upload
+
+**Key Change**:
+```cpp
+// OLD (broken - childPointer always 0):
+SVO::SVOBuilder builder(params);
+auto svoOctree = builder.buildFromVoxelGrid(data, resolution, worldMin, worldMax);
+
+// NEW (working - proper ESVO structure):
+GaiaVoxel::GaiaVoxelWorld voxelWorld;
+// ... populate voxelWorld from VoxelGrid ...
+SVO::LaineKarrasOctree octree(voxelWorld, nullptr, maxLevels, brickDepth);
+octree.rebuild(voxelWorld, worldMin, worldMax);
+const auto* octreeData = octree.getOctree();  // Has valid childPointer values!
+```
+
+**Next**:
+- [ ] Test GPU execution (run VIXEN.exe)
+- [ ] Scale to 1080p (change window size)
+- [ ] Benchmark Mrays/sec
+
 ### Session 8A Progress (Nov 26, 2025)
 
 **Completed**:
@@ -60,16 +96,6 @@ octree.unlockAfterRendering();
   - Extracts brick voxel data from `EntityBrickView` → `brickData` SSBO (binding 2)
   - Material palette → `materials` SSBO (binding 3)
 - [x] Build passes successfully
-
-**Files Modified**:
-- [VoxelGridNode.h:76](libraries/RenderGraph/include/Nodes/VoxelGridNode.h#L76) - Added `UploadESVOBuffers()` declaration
-- [VoxelGridNode.cpp:132](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L132) - Call `UploadESVOBuffers()`
-- [VoxelGridNode.cpp:699-1033](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L699-L1033) - New `UploadESVOBuffers()` implementation
-
-**Next**:
-- [ ] Test GPU execution (run VIXEN.exe)
-- [ ] Scale to 1080p (change window size)
-- [ ] Benchmark Mrays/sec
 
 ### Goals
 - [ ] Render graph integration for voxel ray marching
