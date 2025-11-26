@@ -208,23 +208,50 @@ float decodeContourPosition(const Contour& contour);
 int popc8(uint8_t mask);
 
 // ============================================================================
+// Coordinate Space Transformations for ESVO Traversal
+// ============================================================================
+//
+// Three coordinate spaces are used in this implementation:
+//
+// 1. WORLD SPACE (External API)
+//    - Actual 3D world coordinates where the octree volume exists
+//    - Used for ray origin/direction in castRay() API
+//    - Transformed to local space via m_worldToLocal matrix
+//
+// 2. LOCAL SPACE (Internal Storage)
+//    - Octree's own coordinate system, ray-independent
+//    - All descriptors, bricks, and entity mappings are stored here
+//    - Normalized to [1,2]³ for ESVO traversal math
+//
+// 3. MIRRORED SPACE (ESVO Traversal)
+//    - Ray-direction-dependent view where axes are flipped
+//    - Enables traversal to always go from high→low indices
+//    - state.idx is always in mirrored space during traversal
+//
+// The octant_mask encodes mirroring (ESVO paper convention):
+//    - octant_mask = 7 initially
+//    - For each POSITIVE ray direction component, XOR that bit
+//    - Result: bit=0 means that axis IS mirrored, bit=1 means NOT mirrored
+//
+// Conversion formulas:
+//    - Local→Mirrored: mirroredIdx = localIdx ^ (~octant_mask & 7)
+//    - Mirrored→Local: localIdx = mirroredIdx ^ (~octant_mask & 7)
+//    - Same formula both ways because XOR is its own inverse
+//
+// ============================================================================
 // Mask Mirroring for ESVO Ray-Direction Space
 // ============================================================================
 
 /**
  * Mirror an 8-bit octant mask based on ray direction.
  *
- * COORDINATE SPACES:
- *   - LOCAL SPACE: Octree's own coordinate system, ray-independent. Descriptors and
- *                  bricks are stored in local space during rebuild().
- *   - MIRRORED SPACE: ESVO's ray-direction-dependent view where axes are flipped
- *                     based on ray direction to simplify traversal (positive ray = negative octant).
- *   - WORLD SPACE: Actual 3D world coordinates. Only used at volume entry/exit via mat4 transforms.
+ * Converts a LOCAL-SPACE mask (stored in descriptors) to MIRRORED-SPACE
+ * for use with mirrored-space indices (state.idx).
  *
  * The octant_mask encodes which axes are mirrored (ESVO paper convention):
- *   - Bit 0 (1): X axis mirrored if CLEAR (ray.x < 0)
- *   - Bit 1 (2): Y axis mirrored if CLEAR (ray.y < 0)
- *   - Bit 2 (4): Z axis mirrored if CLEAR (ray.z < 0)
+ *   - Bit 0 (1): X axis mirrored if CLEAR (positive ray.x)
+ *   - Bit 1 (2): Y axis mirrored if CLEAR (positive ray.y)
+ *   - Bit 2 (4): Z axis mirrored if CLEAR (positive ray.z)
  *
  * This function permutes mask bits so that local-space masks (stored in descriptors)
  * can be checked against mirrored-space indices (state.idx).
@@ -237,15 +264,21 @@ int popc8(uint8_t mask);
  * @return Mirrored mask for use with mirrored-space indices (state.idx)
  */
 inline uint8_t mirrorMask(uint8_t mask, int octant_mask) {
-    // Fast path: no mirroring needed when ray direction is all positive
-    if (octant_mask == 0) {
+    // Fast path: no mirroring needed when ray direction is all negative
+    // (octant_mask = 7 means no axes are positive, so no mirroring)
+    if (octant_mask == 7) {
         return mask;
     }
 
-    // Permute bits: for each local octant i, move its bit to mirrored position (i ^ octant_mask)
+    // octant_mask convention: bit=0 means that axis IS mirrored (positive ray direction)
+    //                         bit=1 means that axis is NOT mirrored (negative ray direction)
+    // To convert world octant to mirrored octant, flip bits where octant_mask has 0
+    uint8_t flipMask = (~octant_mask) & 7;
+
+    // Permute bits: for each local octant i, move its bit to mirrored position
     uint8_t result = 0;
     for (int i = 0; i < 8; i++) {
-        int mirroredIdx = i ^ octant_mask;
+        int mirroredIdx = i ^ flipMask;
         if (mask & (1 << i)) {
             result |= (1 << mirroredIdx);
         }
