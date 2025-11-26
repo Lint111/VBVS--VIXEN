@@ -125,7 +125,76 @@ struct AllocationConfig {
 };
 
 // ============================================================================
-// ALLOCATION RESULT TYPES
+// SINGLE ALLOCATION RESULT TYPE
+// ============================================================================
+
+/**
+ * @brief Result wrapper for single-value allocations
+ *
+ * Used for tracking individual Vulkan handles (VkImage, VkBuffer, etc.)
+ * through the resource manager for memory profiling and budget tracking.
+ *
+ * Usage:
+ * @code
+ * auto result = rm->RequestSingle<VkImage>(
+ *     AllocationConfig()
+ *         .WithLifetime(ResourceLifetime::GraphLocal)
+ *         .WithName("depthImage")
+ *         .WithOwner(GetInstanceId())
+ * );
+ *
+ * if (result.IsError()) {
+ *     throw std::runtime_error(result.GetErrorString());
+ * }
+ *
+ * // Create the Vulkan resource
+ * vkCreateImage(device, &imageInfo, nullptr, &result.Get());
+ * @endcode
+ */
+template<typename T>
+class SingleAllocationResult {
+public:
+    // Constructors
+    SingleAllocationResult() : data_(AllocationError::None), value_{}, trackingHash_(0) {}
+    explicit SingleAllocationResult(AllocationError error) : data_(error), value_{}, trackingHash_(0) {}
+    explicit SingleAllocationResult(T value, uint64_t hash = 0)
+        : data_(AllocationError::None), value_(value), trackingHash_(hash) {}
+
+    // Type queries
+    bool IsError() const { return data_ != AllocationError::None; }
+    bool IsSuccess() const { return !IsError(); }
+
+    // Accessors
+    AllocationError GetError() const { return data_; }
+    const char* GetErrorString() const { return AllocationErrorToString(data_); }
+
+    // Value access (throws if error state - use IsSuccess() first)
+    T& Get() { return value_; }
+    const T& Get() const { return value_; }
+    T* GetPtr() { return &value_; }
+    const T* GetPtr() const { return &value_; }
+
+    // Implicit conversion for convenience
+    operator T&() { return value_; }
+    operator const T&() const { return value_; }
+
+    // Assignment to underlying value
+    SingleAllocationResult& operator=(const T& val) { value_ = val; return *this; }
+
+    // Tracking hash for profiling
+    uint64_t GetTrackingHash() const { return trackingHash_; }
+
+    // Reset to null handle (for cleanup)
+    void Reset() { value_ = T{}; }
+
+private:
+    AllocationError data_;
+    T value_;
+    uint64_t trackingHash_;
+};
+
+// ============================================================================
+// ARRAY ALLOCATION RESULT TYPES
 // ============================================================================
 
 /**
@@ -703,6 +772,74 @@ public:
         }
 
         return AllocationResult<T, N>(AllocationError::UnsupportedStrategy);
+    }
+
+    /**
+     * @brief Request allocation of a single resource
+     *
+     * For tracking individual Vulkan handles (VkImage, VkBuffer, VkDeviceMemory, etc.)
+     * through the resource manager. This enables complete memory visibility across
+     * the entire application.
+     *
+     * The returned SingleAllocationResult contains the handle storage. Create the
+     * Vulkan resource using the pointer from GetPtr() or assign directly with operator=.
+     *
+     * @tparam T Handle type (e.g., VkImage, VkBuffer, VkDeviceMemory)
+     * @param config Allocation configuration
+     * @param sizeBytes Size of the resource in bytes (for tracking/budgeting)
+     * @return SingleAllocationResult containing either error or initialized handle storage
+     *
+     * Usage:
+     * @code
+     * // Request tracked allocation for a depth image
+     * auto depthImage = rm->RequestSingle<VkImage>(
+     *     AllocationConfig()
+     *         .WithLifetime(ResourceLifetime::GraphLocal)
+     *         .WithName("depthImage")
+     *         .WithOwner(GetInstanceId()),
+     *     imageSize  // Size for budget tracking
+     * );
+     *
+     * if (depthImage.IsError()) {
+     *     throw std::runtime_error(depthImage.GetErrorString());
+     * }
+     *
+     * // Create the Vulkan resource - use GetPtr() for vkCreate* functions
+     * VkResult result = vkCreateImage(device, &imageInfo, nullptr, depthImage.GetPtr());
+     *
+     * // Or use implicit conversion
+     * VkImage img = depthImage;  // Get the handle
+     * @endcode
+     */
+    template<typename T>
+    SingleAllocationResult<T> RequestSingle(const AllocationConfig& config, size_t sizeBytes = sizeof(T)) {
+        // Check budget constraints
+        if (config.strictBudget && budgetManager_) {
+            if (!budgetManager_->TryAllocate(BudgetResourceType::HostMemory, sizeBytes)) {
+                return SingleAllocationResult<T>(AllocationError::BudgetExceeded);
+            }
+        }
+
+        // Compute tracking hash
+        uint64_t trackingHash = ComputeResourceHash(config.ownerNodeId, config.debugName);
+
+        // Track the allocation
+        TrackAllocationInternal(
+            nullptr,  // Address not known until Vulkan creates the resource
+            sizeBytes,
+            config.ownerNodeId,
+            config.debugName,
+            config.lifetime,
+            true  // Single allocations are considered "stack-like" for tracking
+        );
+
+        // Record in budget manager (non-strict mode)
+        if (budgetManager_ && !config.strictBudget) {
+            budgetManager_->RecordAllocation(BudgetResourceType::HostMemory, sizeBytes);
+        }
+
+        // Return initialized result with default-constructed handle
+        return SingleAllocationResult<T>(T{}, trackingHash);
     }
 
     /**

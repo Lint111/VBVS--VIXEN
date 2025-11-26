@@ -2,6 +2,7 @@
 
 #include "Core/NodeType.h"
 #include "Core/TypedNodeInstance.h"
+#include "Core/ResourceManagerBase.h"
 #include "Data/Nodes/DepthBufferNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -40,6 +41,13 @@ protected:
 	void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
+    // Resource allocations tracked through ResourceManager
+    VkFormat depthFormat_ = VK_FORMAT_UNDEFINED;
+    SingleAllocationResult<VkImage> depthImage_;
+    SingleAllocationResult<VkDeviceMemory> depthMemory_;
+    SingleAllocationResult<VkImageView> depthImageView_;
+
+    // Legacy struct for backward compatibility with accessor
     struct DepthImage {
         VkFormat format = VK_FORMAT_UNDEFINED;
         VkImage image = VK_NULL_HANDLE;
