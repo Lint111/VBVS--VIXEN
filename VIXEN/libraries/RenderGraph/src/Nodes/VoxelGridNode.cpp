@@ -10,6 +10,7 @@
 // New SVO library integration
 #include "SVOBuilder.h"
 #include "LaineKarrasOctree.h"
+#include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
 using VIXEN::RenderGraph::VoxelGrid;
 using VIXEN::RenderGraph::SparseVoxelOctree; // Legacy - will be removed
@@ -127,10 +128,9 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     //     }
     // }
 
-    // TODO: Implement GPU buffer upload for new SVO structure
-    // For now, create placeholder buffers
-    // UploadOctreeBuffers(octree);
-    std::cout << "[VoxelGridNode] TODO: Implement GPU buffer upload for new SVO structure" << std::endl;
+    // Upload ESVO octree to GPU buffers
+    UploadESVOBuffers(*svoOctree);
+    std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
@@ -694,6 +694,343 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     }
 
     NODE_LOG_INFO("Uploaded octree buffers to GPU");
+}
+
+void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree) {
+    if (!octree.root) {
+        throw std::runtime_error("[VoxelGridNode] ESVO octree has no root block");
+    }
+
+    const auto& rootBlock = *octree.root;
+    const auto& childDescriptors = rootBlock.childDescriptors;
+    const auto& brickViews = rootBlock.brickViews;
+
+    // ============================================================================
+    // ESVO NODES BUFFER (binding 1)
+    // ============================================================================
+    // ChildDescriptor is 64 bits = uvec2 in GLSL
+    // Layout matches SVOTypes.h:
+    //   Part 1 (32 bits): childPointer:15, farBit:1, validMask:8, leafMask:8
+    //   Part 2 (32 bits): contourPointer:24, contourMask:8
+
+    VkDeviceSize nodesBufferSize = childDescriptors.size() * sizeof(SVO::ChildDescriptor);
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Uploading " << childDescriptors.size()
+              << " ESVO nodes (" << nodesBufferSize << " bytes)" << std::endl;
+
+    if (childDescriptors.empty()) {
+        // Create minimal buffer with single empty node
+        std::vector<SVO::ChildDescriptor> emptyNode(1);
+        emptyNode[0] = {};  // Zero-initialized
+        nodesBufferSize = sizeof(SVO::ChildDescriptor);
+
+        // Log warning
+        std::cout << "[VoxelGridNode::UploadESVOBuffers] WARNING: Empty descriptors, creating placeholder" << std::endl;
+    }
+
+    // ============================================================================
+    // BRICK DATA BUFFER (binding 2)
+    // ============================================================================
+    // Each brick is 8x8x8 = 512 voxels
+    // Each voxel stores material ID as uint32_t
+    // Layout: brickData[brickIndex * 512 + z * 64 + y * 8 + x]
+
+    const size_t voxelsPerBrick = 512;  // 8^3
+    const size_t brickCount = brickViews.size();
+    VkDeviceSize bricksBufferSize = brickCount * voxelsPerBrick * sizeof(uint32_t);
+
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Extracting " << brickCount
+              << " bricks (" << bricksBufferSize << " bytes)" << std::endl;
+
+    // Extract brick voxel data from EntityBrickViews
+    std::vector<uint32_t> brickData(brickCount * voxelsPerBrick, 0);
+
+    for (size_t brickIdx = 0; brickIdx < brickCount; ++brickIdx) {
+        const auto& brickView = brickViews[brickIdx];
+        const size_t brickOffset = brickIdx * voxelsPerBrick;
+
+        // Extract material IDs from each voxel in the brick
+        for (int z = 0; z < 8; ++z) {
+            for (int y = 0; y < 8; ++y) {
+                for (int x = 0; x < 8; ++x) {
+                    size_t linearIdx = static_cast<size_t>(z * 64 + y * 8 + x);
+
+                    // Get material ID from EntityBrickView
+                    auto materialOpt = brickView.getComponentValue<GaiaVoxel::Material>(linearIdx);
+                    uint32_t materialId = materialOpt.value_or(0);
+
+                    brickData[brickOffset + linearIdx] = materialId;
+                }
+            }
+        }
+    }
+
+    // Debug: Print first brick sample
+    if (brickCount > 0) {
+        std::cout << "[VoxelGridNode::UploadESVOBuffers] First brick voxel samples:" << std::endl;
+        size_t nonZeroCount = 0;
+        for (size_t i = 0; i < voxelsPerBrick && i < 16; ++i) {
+            if (brickData[i] != 0) {
+                std::cout << "  brickData[" << i << "] = " << brickData[i] << std::endl;
+                nonZeroCount++;
+            }
+        }
+        std::cout << "  Non-zero voxels in first 16: " << nonZeroCount << std::endl;
+    }
+
+    NODE_LOG_INFO("Uploading ESVO buffers: " +
+                  std::to_string(nodesBufferSize) + " bytes (nodes), " +
+                  std::to_string(bricksBufferSize) + " bytes (bricks)");
+
+    const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
+
+    // ============================================================================
+    // CREATE NODES BUFFER
+    // ============================================================================
+    VkBufferCreateInfo nodesBufferInfo{};
+    nodesBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    nodesBufferInfo.size = nodesBufferSize;
+    nodesBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    nodesBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkResult result = vkCreateBuffer(vulkanDevice->device, &nodesBufferInfo, nullptr, &octreeNodesBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to create ESVO nodes buffer: " + std::to_string(result));
+    }
+
+    // Allocate device-local memory for nodes
+    VkMemoryRequirements nodesMemReq;
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeNodesBuffer, &nodesMemReq);
+
+    VkMemoryAllocateInfo nodesAllocInfo{};
+    nodesAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    nodesAllocInfo.allocationSize = nodesMemReq.size;
+
+    uint32_t memoryTypeIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((nodesMemReq.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    if (memoryTypeIndex == UINT32_MAX) {
+        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for ESVO nodes");
+    }
+    nodesAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(vulkanDevice->device, &nodesAllocInfo, nullptr, &octreeNodesMemory);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate ESVO nodes memory: " + std::to_string(result));
+    }
+    vkBindBufferMemory(vulkanDevice->device, octreeNodesBuffer, octreeNodesMemory, 0);
+
+    // ============================================================================
+    // CREATE BRICKS BUFFER
+    // ============================================================================
+    VkDeviceSize actualBricksBufferSize = bricksBufferSize > 0 ? bricksBufferSize : sizeof(uint32_t);
+
+    VkBufferCreateInfo bricksBufferInfo{};
+    bricksBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bricksBufferInfo.size = actualBricksBufferSize;
+    bricksBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bricksBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    result = vkCreateBuffer(vulkanDevice->device, &bricksBufferInfo, nullptr, &octreeBricksBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to create ESVO bricks buffer: " + std::to_string(result));
+    }
+
+    VkMemoryRequirements bricksMemReq;
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeBricksBuffer, &bricksMemReq);
+
+    VkMemoryAllocateInfo bricksAllocInfo{};
+    bricksAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    bricksAllocInfo.allocationSize = bricksMemReq.size;
+
+    memoryTypeIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((bricksMemReq.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    if (memoryTypeIndex == UINT32_MAX) {
+        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for ESVO bricks");
+    }
+    bricksAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(vulkanDevice->device, &bricksAllocInfo, nullptr, &octreeBricksMemory);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate ESVO bricks memory: " + std::to_string(result));
+    }
+    vkBindBufferMemory(vulkanDevice->device, octreeBricksBuffer, octreeBricksMemory, 0);
+
+    // ============================================================================
+    // CREATE MATERIALS BUFFER (same as legacy - material palette)
+    // ============================================================================
+    struct GPUMaterial {
+        float albedo[3];
+        float roughness;
+        float metallic;
+        float emissive;
+        float padding[2];
+    };
+
+    // Cornell Box material palette
+    std::vector<GPUMaterial> defaultMaterials(21);
+    defaultMaterials[0] = {{0.8f, 0.8f, 0.8f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};   // Default white
+    defaultMaterials[1] = {{0.75f, 0.1f, 0.1f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};  // Red (left wall)
+    defaultMaterials[2] = {{0.1f, 0.75f, 0.1f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};  // Green (right wall)
+    defaultMaterials[3] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};   // White (back wall)
+    defaultMaterials[4] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};   // White (floor)
+    defaultMaterials[5] = {{0.9f, 0.9f, 0.9f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};   // White (ceiling)
+    defaultMaterials[6] = {{0.7f, 0.7f, 0.7f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};   // Light gray
+    defaultMaterials[7] = {{0.3f, 0.3f, 0.3f}, 0.9f, 0.0f, 0.0f, {0.0f, 0.0f}};   // Dark gray
+    defaultMaterials[8] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};   // Reserved
+    defaultMaterials[9] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};   // Reserved
+    defaultMaterials[10] = {{0.8f, 0.7f, 0.5f}, 0.8f, 0.0f, 0.0f, {0.0f, 0.0f}};  // Left cube (beige)
+    defaultMaterials[11] = {{0.4f, 0.6f, 0.8f}, 0.7f, 0.0f, 0.0f, {0.0f, 0.0f}};  // Right cube (blue)
+    for (uint32_t i = 12; i < 19; ++i) {
+        defaultMaterials[i] = {{0.5f, 0.5f, 0.5f}, 0.5f, 0.0f, 0.0f, {0.0f, 0.0f}};
+    }
+    defaultMaterials[19] = {{1.0f, 0.0f, 1.0f}, 0.0f, 0.0f, 0.0f, {0.0f, 0.0f}};  // Debug marker
+    defaultMaterials[20] = {{1.0f, 1.0f, 0.9f}, 0.0f, 0.0f, 5.0f, {0.0f, 0.0f}};  // Ceiling light
+
+    VkDeviceSize materialsBufferSize = defaultMaterials.size() * sizeof(GPUMaterial);
+
+    VkBufferCreateInfo materialsBufferInfo{};
+    materialsBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    materialsBufferInfo.size = materialsBufferSize;
+    materialsBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    materialsBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    result = vkCreateBuffer(vulkanDevice->device, &materialsBufferInfo, nullptr, &octreeMaterialsBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to create materials buffer: " + std::to_string(result));
+    }
+
+    VkMemoryRequirements materialsMemReq;
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeMaterialsBuffer, &materialsMemReq);
+
+    VkMemoryAllocateInfo materialsAllocInfo{};
+    materialsAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    materialsAllocInfo.allocationSize = materialsMemReq.size;
+
+    memoryTypeIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((materialsMemReq.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    if (memoryTypeIndex == UINT32_MAX) {
+        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for materials");
+    }
+    materialsAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(vulkanDevice->device, &materialsAllocInfo, nullptr, &octreeMaterialsMemory);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate materials memory: " + std::to_string(result));
+    }
+    vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer, octreeMaterialsMemory, 0);
+
+    // ============================================================================
+    // UPLOAD DATA VIA STAGING BUFFERS
+    // ============================================================================
+    VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    auto uploadBuffer = [&](VkBuffer dstBuffer, const void* srcData, VkDeviceSize size) {
+        if (size == 0) return;
+
+        // Create staging buffer
+        VkBufferCreateInfo stagingInfo{};
+        stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        stagingInfo.size = size;
+        stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer stagingBuffer;
+        vkCreateBuffer(vulkanDevice->device, &stagingInfo, nullptr, &stagingBuffer);
+
+        VkMemoryRequirements stagingMemReq;
+        vkGetBufferMemoryRequirements(vulkanDevice->device, stagingBuffer, &stagingMemReq);
+
+        VkMemoryAllocateInfo stagingAllocInfo{};
+        stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        stagingAllocInfo.allocationSize = stagingMemReq.size;
+
+        uint32_t stagingMemTypeIdx = UINT32_MAX;
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+            if ((stagingMemReq.memoryTypeBits & (1 << i)) &&
+                (memProperties.memoryTypes[i].propertyFlags & stagingProps) == stagingProps) {
+                stagingMemTypeIdx = i;
+                break;
+            }
+        }
+        stagingAllocInfo.memoryTypeIndex = stagingMemTypeIdx;
+
+        VkDeviceMemory stagingMemory;
+        vkAllocateMemory(vulkanDevice->device, &stagingAllocInfo, nullptr, &stagingMemory);
+        vkBindBufferMemory(vulkanDevice->device, stagingBuffer, stagingMemory, 0);
+
+        // Copy data to staging
+        void* mappedData;
+        vkMapMemory(vulkanDevice->device, stagingMemory, 0, size, 0, &mappedData);
+        std::memcpy(mappedData, srcData, size);
+        vkUnmapMemory(vulkanDevice->device, stagingMemory);
+
+        // Copy from staging to device
+        VkCommandBufferAllocateInfo cmdAllocInfo{};
+        cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmdAllocInfo.commandPool = commandPool;
+        cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmdAllocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer cmdBuffer;
+        vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, &cmdBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.size = size;
+        vkCmdCopyBuffer(cmdBuffer, stagingBuffer, dstBuffer, 1, &copyRegion);
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+
+        vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(vulkanDevice->queue);
+
+        vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);
+        vkDestroyBuffer(vulkanDevice->device, stagingBuffer, nullptr);
+        vkFreeMemory(vulkanDevice->device, stagingMemory, nullptr);
+    };
+
+    // Upload nodes
+    if (!childDescriptors.empty()) {
+        uploadBuffer(octreeNodesBuffer, childDescriptors.data(), nodesBufferSize);
+    }
+
+    // Upload bricks
+    if (!brickData.empty()) {
+        uploadBuffer(octreeBricksBuffer, brickData.data(), brickData.size() * sizeof(uint32_t));
+    }
+
+    // Upload materials
+    uploadBuffer(octreeMaterialsBuffer, defaultMaterials.data(), materialsBufferSize);
+
+    NODE_LOG_INFO("Uploaded ESVO buffers to GPU");
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete" << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

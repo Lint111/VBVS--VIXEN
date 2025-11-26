@@ -17,6 +17,10 @@ namespace VIXEN::RenderGraph {
     class SparseVoxelOctree;
 }
 
+namespace SVO {
+    struct Octree;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -67,6 +71,9 @@ private:
 
     // Buffer upload orchestration
     void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
+
+    // New ESVO buffer upload (SVO::Octree structure)
+    void UploadESVOBuffers(const SVO::Octree& octree);
 
     // Buffer creation steps (extracted from UploadOctreeBuffers)
     void CreateOctreeNodesBuffer(VkDeviceSize size, const void* nodeData);
