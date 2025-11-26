@@ -1404,3 +1404,130 @@ Each addition follows the established pattern:
 - Create dedicated class for subsystem
 - Manage resource lifecycle via RAII
 - Integrate with VulkanApplication orchestration
+
+---
+
+## Voxel Infrastructure Patterns (November 26, 2025 - Phase H.2)
+
+### 19. Entity-Based Voxel Storage Pattern
+**Classes**: `GaiaVoxelWorld`, `VoxelComponents`, `MortonKey`
+
+**Implementation**:
+```cpp
+// Create voxel world and populate
+GaiaVoxelWorld world;
+ComponentQueryRequest components[] = {
+    Density{1.0f},
+    Color{glm::vec3(1, 0, 0)}
+};
+world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+// Morton key encodes 3D position in single uint64
+MortonKey key = MortonKey::fromPosition(glm::ivec3(x, y, z));
+```
+
+**Purpose**: Sparse voxel storage with O(1) position lookup via Morton codes
+
+**Location**: `libraries/GaiaVoxelWorld/`, `libraries/VoxelComponents/`
+
+---
+
+### 20. EntityBrickView Zero-Storage Pattern
+**Classes**: `EntityBrickView`, `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// Zero-storage brick view - queries entities on demand
+EntityBrickView brickView(world, localGridOrigin, depth, worldMin, EntityBrickView::LocalSpace);
+
+// View stores only: world ref + grid origin + depth = 16 bytes
+// vs legacy: 512 voxels × 140 bytes = 70 KB per brick (94% reduction)
+
+// Query voxel data on-demand
+if (brickView.hasVoxel(x, y, z)) {
+    auto entity = brickView.getVoxel(x, y, z);
+    auto color = world.getComponentValue<Color>(entity);
+}
+```
+
+**Purpose**: Eliminate data duplication - SVO stores spatial index, ECS owns data
+
+**Location**: `libraries/GaiaVoxelWorld/include/EntityBrickView.h`
+
+---
+
+### 21. ESVO Ray Casting Pattern
+**Classes**: `LaineKarrasOctree`, `ESVOTraversalState`
+
+**Implementation**:
+```cpp
+// Build octree from entities
+LaineKarrasOctree octree(world, nullptr, maxLevels, brickDepth);
+octree.rebuild(world, worldMin, worldMax);
+
+// Cast ray
+auto hit = octree.castRay(origin, direction, tMin, tMax);
+if (hit.hit) {
+    glm::vec3 hitPoint = hit.hitPoint;
+    auto entity = hit.entity;
+}
+```
+
+**Key Algorithm Components**:
+- **Mirrored Space**: `octant_mask` XOR convention for ray direction handling
+- **Parametric Plane Traversal**: tx_coef, ty_coef, tz_coef for efficient octant selection
+- **Brick DDA**: 3D DDA within leaf bricks (Amanatides & Woo 1987)
+
+**Coordinate Conversion**:
+```cpp
+// Mirrored ↔ Local conversion
+int localOctant = mirroredIdx ^ ((~octant_mask) & 7);
+```
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp`
+
+---
+
+### 22. Partial Block Update Pattern
+**Classes**: `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// Thread-safe partial updates
+octree.updateBlock(blockWorldMin, depth);  // Add or update brick
+octree.removeBlock(blockWorldMin, depth);  // Remove brick
+
+// Concurrency control for rendering
+octree.lockForRendering();
+// ... ray casting (GPU or CPU) ...
+octree.unlockAfterRendering();
+```
+
+**Internal Details**:
+- Uses `std::shared_mutex` for reader-writer locking
+- Brick lookup via hash map: `brickGridToBrickView[gridKey]`
+- Placement new for brick view updates (no default constructor)
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp:2443-2552`
+
+---
+
+### 23. GLSL Shader Sync Pattern
+**Files**: `VoxelRayMarch.comp`, `OctreeTraversal-ESVO.glsl`
+
+**Key Functions (mirrored C++ ↔ GLSL)**:
+```glsl
+// Coordinate space conversion
+int mirrorMask(int mask, int octant_mask);
+int mirroredToLocalOctant(int mirroredIdx, int octant_mask);
+
+// Child descriptor navigation
+uint countChildrenBefore(uint childMask, int childIndex);
+
+// FP precision fix for rays starting inside voxels
+float t = max(max(brickT.x, startT), 0.0);
+```
+
+**Purpose**: Keep CPU (C++) and GPU (GLSL) implementations in sync
+
+**Location**: `shaders/VoxelRayMarch.comp`, `shaders/OctreeTraversal-ESVO.glsl`

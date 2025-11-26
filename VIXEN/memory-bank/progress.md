@@ -1,34 +1,70 @@
 # Progress
 
-## Current State: Phase H.2 Voxel Infrastructure (Nov 2025)
+## Current State: Phase H Complete - Ready for Week 2 GPU (Nov 2025)
 
-**Last Updated**: November 25, 2025 (Session 6Q)
+**Last Updated**: November 26, 2025 (Session 7B)
 
-### Latest Achievements (Nov 19-25, 2025)
-- ✅ **Week 1.5**: ESVO CPU Traversal + Brick DDA (Complete - Nov 19)
-- ✅ **Sessions 1-6**: GaiaVoxelWorld library, VoxelComponents, macro-based registry (Nov 22-23)
-- ✅ **Sessions 6G-6K**: EntityBrickView zero-storage pattern, rebuild() API (Nov 23)
-- ✅ **Session 6N**: Fixed infinite loop bug - legacy API created malformed octrees (Nov 23)
-- ✅ **Session 6Q**: ESVO traversal refactored - extracted 886-line castRayImpl into 10 focused methods (Nov 25)
+### Phase H Complete ✅ (Nov 19-26, 2025)
+- ✅ **Week 1.5**: ESVO CPU Traversal + Brick DDA (Nov 19)
+- ✅ **Sessions 1-6**: GaiaVoxelWorld, VoxelComponents, macro-based registry (Nov 22-23)
+- ✅ **Sessions 6G-6N**: EntityBrickView, rebuild() API, infinite loop fix (Nov 23)
+- ✅ **Session 6Q**: ESVO traversal refactored (886 lines → 10 methods) (Nov 25)
+- ✅ **Sessions 6V-6Z**: All 10 ray casting tests fixed (Nov 26)
+- ✅ **Session 7A**: GLSL shader sync, CPU benchmark (54K rays/sec) (Nov 26)
+- ✅ **Session 7B**: Partial block updates API + 5 tests (Nov 26)
 
 ---
 
-## Test Suite Status (150 Total Tests)
+## Test Suite Status
 
 | Library | Tests | Status |
 |---------|-------|--------|
 | VoxelComponents | 8/8 | ✅ 100% |
 | GaiaVoxelWorld | 96/96 | ✅ 100% |
-| SVO (octree_queries) | 98/98 | ✅ 100% |
-| SVO (entity_brick_view) | 36/36 | ✅ 100% |
-| SVO (ray_casting) | 6/10 | 🟡 60% |
-| SVO (rebuild_hierarchy) | 4/4 | ✅ 100% |
+| SVO (octree_queries) | 47/47 | ✅ 100% |
+| SVO (ray_casting) | 11/11 | ✅ 100% |
 
-**Overall**: ~147/150 passing (~98%)
+**Overall**: 58 SVO tests passing (Phase H focus area)
 
 ---
 
-## Phase H.2: Voxel Infrastructure (Nov 19-25, 2025)
+## Phase H Completion Summary (Nov 26, 2025)
+
+### What Was Built
+
+| Component | Description |
+|-----------|-------------|
+| **GaiaVoxelWorld** | ECS-backed voxel storage with Morton code indexing |
+| **VoxelComponents** | Shared component library (Density, Color, Normal) |
+| **EntityBrickView** | Zero-storage brick views (16 bytes vs 70 KB) |
+| **LaineKarrasOctree** | ESVO-based ray casting with brick DDA |
+| **Partial Updates** | `updateBlock()`, `removeBlock()` with thread safety |
+| **GLSL Shaders** | Synced `VoxelRayMarch.comp` and `OctreeTraversal-ESVO.glsl` |
+
+### Key APIs
+
+```cpp
+// Voxel creation
+world.createVoxel(VoxelCreationRequest{pos, {Density{1.0f}, Color{red}}});
+
+// Octree build
+octree.rebuild(world, worldMin, worldMax);
+
+// Ray casting
+auto hit = octree.castRay(origin, direction);
+
+// Partial updates
+octree.updateBlock(blockMin, depth);
+octree.removeBlock(blockMin, depth);
+```
+
+### Performance
+- CPU Release: **54K rays/sec** (single-threaded)
+- Target GPU: **>200 Mrays/sec** (Week 2)
+
+---
+
+## Historical Sessions (Nov 19-26)
 
 ### Nov 25 - Session 6Q: ESVO Refactoring ✅
 **Achievement**: Extracted monolithic traversal into focused helper methods.

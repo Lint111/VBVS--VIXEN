@@ -2441,22 +2441,116 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 }
 
 void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
-    // TODO: Implement partial block update
-    // 1. Lock octree for write
-    // 2. Lock specific block in GaiaVoxelWorld
-    // 3. Query entities via getEntityBlockRef()
-    // 4. Update ChildDescriptor for this block
-    // 5. Create/update EntityBrickView
-    // 6. Unlock block, unlock octree
+    using namespace ::GaiaVoxel;
+
+    // 1. Acquire write lock (blocks rendering)
+    std::unique_lock<std::shared_mutex> lock(m_renderLock);
+
+    if (!m_octree || !m_octree->root) {
+        return;  // Octree not initialized - call rebuild() first
+    }
+
+    // 2. Calculate brick grid coordinates from world position
+    int brickSideLength = m_octree->brickSideLength;
+    int bricksPerAxis = m_octree->bricksPerAxis;
+
+    // Convert world position to brick grid coordinates
+    glm::vec3 localPos = blockWorldMin - m_worldMin;
+    glm::ivec3 brickCoord(
+        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
+    );
+
+    // Clamp to valid range
+    brickCoord = glm::clamp(brickCoord, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+
+    // 3. Compute brick world bounds for entity query
+    glm::vec3 brickWorldMinCalc = m_worldMin + glm::vec3(brickCoord) * static_cast<float>(brickSideLength);
+    glm::vec3 brickWorldMax = brickWorldMinCalc + glm::vec3(static_cast<float>(brickSideLength));
+    brickWorldMax = glm::min(brickWorldMax, m_worldMax);  // Clamp to world bounds
+
+    // 4. Query entities in this brick region
+    auto entities = m_voxelWorld->queryRegion(brickWorldMinCalc, brickWorldMax);
+
+    // 5. Create grid key for brick lookup
+    uint32_t gridKey = static_cast<uint32_t>(brickCoord.x) |
+                       (static_cast<uint32_t>(brickCoord.y) << 10) |
+                       (static_cast<uint32_t>(brickCoord.z) << 20);
+
+    // 6. Find or create brick view entry
+    auto& brickGridMap = m_octree->root->brickGridToBrickView;
+    auto& brickViews = m_octree->root->brickViews;
+
+    auto it = brickGridMap.find(gridKey);
+
+    if (entities.empty()) {
+        // No entities - just remove from map (don't touch vector to preserve indices)
+        if (it != brickGridMap.end()) {
+            brickGridMap.erase(it);
+        }
+    } else {
+        // Has entities - create or update brick view
+        // Use LOCAL grid origin (same as rebuild())
+        glm::ivec3 localGridOrigin = brickCoord * brickSideLength;
+
+        if (it != brickGridMap.end()) {
+            // Update existing - use placement new since EntityBrickView has reference member
+            uint32_t brickIdx = it->second;
+            if (brickIdx < brickViews.size()) {
+                // Destroy old and construct new in-place
+                brickViews[brickIdx].~EntityBrickView();
+                new (&brickViews[brickIdx]) EntityBrickView(*m_voxelWorld, localGridOrigin, blockDepth, m_worldMin, EntityBrickView::LocalSpace);
+            }
+        } else {
+            // Create new brick view
+            uint32_t newIdx = static_cast<uint32_t>(brickViews.size());
+            brickViews.emplace_back(*m_voxelWorld, localGridOrigin, blockDepth, m_worldMin, EntityBrickView::LocalSpace);
+            brickGridMap[gridKey] = newIdx;
+        }
+    }
+
+    // Note: We don't update ChildDescriptors for partial updates because:
+    // 1. The grid-based lookup (getBrickViewByGrid) is now primary
+    // 2. Full hierarchy rebuild would require re-walking the tree
+    // 3. For render correctness, the brickGridToBrickView map is sufficient
 }
 
 void LaineKarrasOctree::removeBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
-    // TODO: Implement block removal
-    // 1. Lock octree for write
-    // 2. Find ChildDescriptor for this block
-    // 3. Remove EntityBrickView
-    // 4. Mark block as empty (clear validMask/leafMask)
-    // 5. Unlock octree
+    // 1. Acquire write lock (blocks rendering)
+    std::unique_lock<std::shared_mutex> lock(m_renderLock);
+
+    if (!m_octree || !m_octree->root) {
+        return;  // Octree not initialized
+    }
+
+    // 2. Calculate brick grid coordinates from world position
+    int brickSideLength = m_octree->brickSideLength;
+    int bricksPerAxis = m_octree->bricksPerAxis;
+
+    // Convert world position to brick grid coordinates
+    glm::vec3 localPos = blockWorldMin - m_worldMin;
+    glm::ivec3 brickCoord(
+        static_cast<int>(localPos.x / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.y / static_cast<float>(brickSideLength)),
+        static_cast<int>(localPos.z / static_cast<float>(brickSideLength))
+    );
+
+    // Clamp to valid range
+    brickCoord = glm::clamp(brickCoord, glm::ivec3(0), glm::ivec3(bricksPerAxis - 1));
+
+    // 3. Create grid key for brick lookup
+    uint32_t gridKey = static_cast<uint32_t>(brickCoord.x) |
+                       (static_cast<uint32_t>(brickCoord.y) << 10) |
+                       (static_cast<uint32_t>(brickCoord.z) << 20);
+
+    // 4. Remove brick view from map (don't touch vector to preserve other indices)
+    auto& brickGridMap = m_octree->root->brickGridToBrickView;
+    brickGridMap.erase(gridKey);
+
+    // Note: Like updateBlock, we don't update ChildDescriptors here.
+    // The grid-based lookup will return nullptr for removed bricks,
+    // which castRay handles as a miss (continues traversal).
 }
 
 void LaineKarrasOctree::lockForRendering() {

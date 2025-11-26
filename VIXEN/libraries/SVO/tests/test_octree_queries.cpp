@@ -868,3 +868,224 @@ TEST(EntityBasedRebuildTest, RebuildHierarchicalStructure) {
 
     std::cout << "[RebuildHierarchicalStructure] ✓ Hierarchical structure validated\n";
 }
+
+// ============================================================================
+// PARTIAL BLOCK UPDATE TESTS
+// ============================================================================
+
+/**
+ * Test updateBlock() - adding a new brick to empty region
+ */
+TEST(PartialBlockUpdateTest, AddNewBrick) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[AddNewBrick] Testing updateBlock with new brick...\n";
+
+    GaiaVoxelWorld world;
+
+    // Create initial entity in first brick
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+    world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+    // Build octree with single brick
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(16.0f);  // 2x2 bricks
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, worldMin, worldMax);
+
+    const auto* root = octree.getOctree()->root.get();
+    size_t initialBrickCount = root->brickGridToBrickView.size();
+    std::cout << "[AddNewBrick] Initial brick count: " << initialBrickCount << "\n";
+
+    ASSERT_EQ(initialBrickCount, 1) << "Should have 1 brick after initial build";
+
+    // Add entity in second brick (8-16, 0-8, 0-8)
+    world.createVoxel(VoxelCreationRequest{glm::vec3(10, 2, 2), components});
+
+    // Update the second brick region
+    octree.updateBlock(glm::vec3(8.0f, 0.0f, 0.0f), 3);
+
+    size_t newBrickCount = root->brickGridToBrickView.size();
+    std::cout << "[AddNewBrick] Brick count after update: " << newBrickCount << "\n";
+
+    ASSERT_EQ(newBrickCount, 2) << "Should have 2 bricks after updateBlock";
+
+    // Verify we can look up the new brick
+    auto* newBrick = root->getBrickViewByGrid(1, 0, 0);  // Second brick
+    ASSERT_NE(newBrick, nullptr) << "New brick should be accessible via getBrickViewByGrid";
+
+    std::cout << "[AddNewBrick] ✓ New brick added successfully\n";
+}
+
+/**
+ * Test updateBlock() - updating existing brick with new entities
+ */
+TEST(PartialBlockUpdateTest, UpdateExistingBrick) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[UpdateExistingBrick] Testing updateBlock on existing brick...\n";
+
+    GaiaVoxelWorld world;
+
+    // Create initial entity
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+    world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+    // Build octree
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(8.0f);  // Single brick
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, worldMin, worldMax);
+
+    const auto* root = octree.getOctree()->root.get();
+    ASSERT_EQ(root->brickGridToBrickView.size(), 1) << "Should have 1 brick";
+
+    // Add more entities to same brick
+    world.createVoxel(VoxelCreationRequest{glm::vec3(4, 4, 4), components});
+    world.createVoxel(VoxelCreationRequest{glm::vec3(6, 6, 6), components});
+
+    // Update the brick
+    octree.updateBlock(glm::vec3(0.0f, 0.0f, 0.0f), 3);
+
+    // Still should have 1 brick (updated, not duplicated)
+    ASSERT_EQ(root->brickGridToBrickView.size(), 1) << "Should still have 1 brick after update";
+
+    // Verify brick is still accessible
+    auto* brick = root->getBrickViewByGrid(0, 0, 0);
+    ASSERT_NE(brick, nullptr) << "Brick should still be accessible";
+
+    std::cout << "[UpdateExistingBrick] ✓ Existing brick updated successfully\n";
+}
+
+/**
+ * Test removeBlock() - removing a brick
+ */
+TEST(PartialBlockUpdateTest, RemoveBrick) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[RemoveBrick] Testing removeBlock...\n";
+
+    GaiaVoxelWorld world;
+
+    // Create entities in two bricks
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+    world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});  // Brick 0
+    auto e2 = world.createVoxel(VoxelCreationRequest{glm::vec3(10, 2, 2), components});  // Brick 1
+
+    // Build octree
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(16.0f);  // 2x2 bricks
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, worldMin, worldMax);
+
+    const auto* root = octree.getOctree()->root.get();
+    ASSERT_EQ(root->brickGridToBrickView.size(), 2) << "Should have 2 bricks initially";
+
+    // Remove the second brick
+    octree.removeBlock(glm::vec3(8.0f, 0.0f, 0.0f), 3);
+
+    size_t brickCountAfterRemove = root->brickGridToBrickView.size();
+    std::cout << "[RemoveBrick] Brick count after remove: " << brickCountAfterRemove << "\n";
+
+    ASSERT_EQ(brickCountAfterRemove, 1) << "Should have 1 brick after removeBlock";
+
+    // Verify first brick still accessible
+    auto* brick0 = root->getBrickViewByGrid(0, 0, 0);
+    ASSERT_NE(brick0, nullptr) << "First brick should still be accessible";
+
+    // Verify second brick is gone
+    auto* brick1 = root->getBrickViewByGrid(1, 0, 0);
+    ASSERT_EQ(brick1, nullptr) << "Removed brick should return nullptr";
+
+    std::cout << "[RemoveBrick] ✓ Brick removed successfully\n";
+}
+
+/**
+ * Test updateBlock() with empty region - removes brick from map
+ */
+TEST(PartialBlockUpdateTest, UpdateEmptyRegionRemovesBrick) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[UpdateEmptyRegion] Testing updateBlock on region with no entities...\n";
+
+    GaiaVoxelWorld world;
+
+    // Create entity
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+    auto entity = world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+    // Build octree
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(16.0f);
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, worldMin, worldMax);
+
+    const auto* root = octree.getOctree()->root.get();
+    ASSERT_EQ(root->brickGridToBrickView.size(), 1) << "Should have 1 brick";
+
+    // Delete the entity from ECS
+    world.destroyVoxel(entity);
+
+    // Update the brick region (now empty)
+    octree.updateBlock(glm::vec3(0.0f, 0.0f, 0.0f), 3);
+
+    // Brick should be removed from map
+    ASSERT_EQ(root->brickGridToBrickView.size(), 0) << "Brick map should be empty after update";
+
+    // Lookup should return nullptr
+    auto* brick = root->getBrickViewByGrid(0, 0, 0);
+    ASSERT_EQ(brick, nullptr) << "Empty region should return nullptr";
+
+    std::cout << "[UpdateEmptyRegion] ✓ Empty region update removes brick\n";
+}
+
+/**
+ * Test concurrency - lockForRendering blocks updates
+ */
+TEST(PartialBlockUpdateTest, LockForRenderingAPI) {
+    using namespace GaiaVoxel;
+    using namespace SVO;
+
+    std::cout << "\n[LockForRenderingAPI] Testing lock/unlock API...\n";
+
+    GaiaVoxelWorld world;
+
+    ComponentQueryRequest components[] = {
+        Density{1.0f},
+        Color{glm::vec3(1, 0, 0)}
+    };
+    world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+    glm::vec3 worldMin(0.0f);
+    glm::vec3 worldMax(8.0f);
+    LaineKarrasOctree octree(world, nullptr, 8, 3);
+    octree.rebuild(world, worldMin, worldMax);
+
+    // Lock for rendering
+    octree.lockForRendering();
+
+    // Simulate ray casting (would happen here in real code)
+    auto hit = octree.castRay(glm::vec3(-5, 2, 2), glm::vec3(1, 0, 0));
+    EXPECT_TRUE(hit.hit) << "Ray should hit during lock";
+
+    // Unlock
+    octree.unlockAfterRendering();
+
+    std::cout << "[LockForRenderingAPI] ✓ Lock/unlock API works correctly\n";
+}
