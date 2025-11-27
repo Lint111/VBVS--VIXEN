@@ -3,8 +3,8 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
-#include "Data/Nodes/VoxelGridNodeConfig.h"
 #include "Core/ResourceManagerBase.h"
+#include "Data/Nodes/VoxelGridNodeConfig.h"
 #include <memory>
 #include <vector>
 
@@ -83,7 +83,15 @@ private:
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Octree SSBO buffers
+    // Resource allocations tracked through ResourceManager
+    SingleAllocationResult<VkBuffer> octreeNodesBuffer_;
+    SingleAllocationResult<VkDeviceMemory> octreeNodesMemory_;
+    SingleAllocationResult<VkBuffer> octreeBricksBuffer_;
+    SingleAllocationResult<VkDeviceMemory> octreeBricksMemory_;
+    SingleAllocationResult<VkBuffer> octreeMaterialsBuffer_;
+    SingleAllocationResult<VkDeviceMemory> octreeMaterialsMemory_;
+
+    // Legacy public accessors (backward compatibility)
     VkBuffer octreeNodesBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeNodesMemory = VK_NULL_HANDLE;
     VkBuffer octreeBricksBuffer = VK_NULL_HANDLE;

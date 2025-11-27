@@ -194,7 +194,7 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
 
 void GraphicsPipelineNode::CreatePipelineCache() {
     // Only create if not already created
-    if (pipelineCache_.IsSuccess() && pipelineCache_.Get() != VK_NULL_HANDLE) {
+    if (pipelineCache != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("GraphicsPipelineNode: Pipeline cache already exists, reusing");
         return;
     }
@@ -206,32 +206,16 @@ void GraphicsPipelineNode::CreatePipelineCache() {
     cacheInfo.pInitialData = nullptr;
     cacheInfo.flags = 0;
 
-    // Request tracked allocation for pipeline cache
-    auto* rm = GetResourceManager();
-    if (rm) {
-        pipelineCache_ = rm->RequestSingle<VkPipelineCache>(
-            AllocationConfig()
-                .WithLifetime(ResourceLifetime::GraphLocal)
-                .WithName("pipelineCache")
-                .WithOwner(GetInstanceId())
-        );
-        if (pipelineCache_.IsError()) {
-            throw std::runtime_error("Failed to allocate pipelineCache: " +
-                std::string(pipelineCache_.GetErrorString()));
-        }
-    }
-
     VkResult result = vkCreatePipelineCache(
         device->device,
         &cacheInfo,
         nullptr,
-        pipelineCache_.GetPtr()
+        &pipelineCache
     );
 
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline cache");
     }
-    pipelineCache = pipelineCache_.Get();  // Keep legacy handle in sync
 }
 
 void GraphicsPipelineNode::CreatePipelineLayout() {

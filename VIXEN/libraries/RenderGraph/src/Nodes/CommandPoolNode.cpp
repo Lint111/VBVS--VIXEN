@@ -61,6 +61,24 @@ void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
+    // Get ResourceManager for tracked allocation
+    auto* rm = GetResourceManager();
+
+    // Request allocation from ResourceManager
+    commandPool_ = rm->RequestSingle<VkCommandPool>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("commandPool")
+            .WithOwner(GetInstanceId())
+    );
+
+    if (commandPool_.IsError()) {
+        std::string errorMsg = "Failed to allocate command pool resource: " +
+                               std::string(commandPool_.GetErrorString());
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
     uint32_t queueFamilyIndex = GetParameterValue<uint32_t>(
@@ -74,7 +92,7 @@ void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     poolInfo.queueFamilyIndex = queueFamilyIndex;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, &commandPool);
+    VkResult result = vkCreateCommandPool(device->device, &poolInfo, nullptr, commandPool_.GetPtr());
     if (result != VK_SUCCESS) {
         std::string errorMsg = "Failed to create command pool for node: " + instanceName;
         NODE_LOG_ERROR(errorMsg);
@@ -84,7 +102,7 @@ void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     isCreated = true;
 
     // Store command pool handle in output resource (NEW VARIANT API)
-    ctx.Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool);
+    ctx.Out(CommandPoolNodeConfig::COMMAND_POOL, commandPool_.Get());
     ctx.Out(CommandPoolNodeConfig::VULKAN_DEVICE_OUT, device);
 
     NODE_LOG_INFO("Created command pool for queue family " + std::to_string(queueFamilyIndex));
@@ -96,9 +114,9 @@ void CommandPoolNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void CommandPoolNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (isCreated && commandPool != VK_NULL_HANDLE && device != nullptr) {
-        vkDestroyCommandPool(device->device, commandPool, nullptr);
-        commandPool = VK_NULL_HANDLE;
+    if (commandPool_.IsSuccess() && commandPool_.Get() != VK_NULL_HANDLE && device != nullptr) {
+        vkDestroyCommandPool(device->device, commandPool_.Get(), nullptr);
+        commandPool_.Reset();
         isCreated = false;
 
         NODE_LOG_INFO("Destroyed command pool");
