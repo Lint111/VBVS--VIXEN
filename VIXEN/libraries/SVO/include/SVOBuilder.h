@@ -58,6 +58,11 @@ struct OctreeBlock {
     // Key: (brickX | brickY << 10 | brickZ << 20) - supports up to 1024 bricks per axis
     std::unordered_map<uint32_t, uint32_t> brickGridToBrickView;
 
+    // Pre-computed brick material data for GPU upload (avoids per-voxel ECS queries)
+    // Layout: [brick0_voxel0..511, brick1_voxel0..511, ...] - 512 uint32_t per brick
+    // Material ID 0 = empty, 1+ = solid material index
+    std::vector<uint32_t> brickMaterialData;
+
     // Helper to look up brick view for a leaf hit
     // Returns nullptr if no brick at this (parent, octant) pair
     const ::GaiaVoxel::EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {

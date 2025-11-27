@@ -15,12 +15,14 @@ namespace GaiaVoxel {
 
 
 struct GaiaVoxelWorld::Impl {
-    World world;   
+    World world;
+
+    // Morton code → Entity index for O(1) spatial lookup
+    // Key = Morton code from fromPosition(), Value = Entity
+    std::unordered_map<uint64_t, gaia::ecs::Entity> mortonIndex;
 
     void Init() {
     }
-
-    
 };
 
 // ============================================================================
@@ -59,6 +61,9 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(
     world.add<Color>(entity, Color(color));
     world.add<Normal>(entity, Normal(normal));
 
+    // Add to spatial index for O(1) lookup
+    m_impl->mortonIndex[key.code] = entity;
+
     return entity;
 }
 
@@ -83,6 +88,9 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::createVoxel(const VoxelCreationRequest&
             }
         }, compReq.component);
     }
+
+    // Add to spatial index for O(1) lookup
+    m_impl->mortonIndex[key.code] = entity;
 
     // Auto-parent to existing chunk if position falls within chunk bounds
     tryAutoParentToChunk(entity, request.position);
@@ -145,6 +153,12 @@ void GaiaVoxelWorld::tryAutoParentToChunk(EntityID voxelEntity, const glm::vec3&
 
 void GaiaVoxelWorld::destroyVoxel(EntityID id) {
     if (m_impl->world.valid(id)) {
+        // Get Morton key before deletion for index removal
+        if (m_impl->world.has<MortonKey>(id)) {
+            MortonKey key = m_impl->world.get<MortonKey>(id);
+            m_impl->mortonIndex.erase(key.code);
+        }
+
         // Get position before deletion for cache invalidation
         std::optional<glm::vec3> pos = getPosition(id);
 
@@ -169,6 +183,9 @@ void GaiaVoxelWorld::clear() {
     for (auto entity : toDelete) {
         m_impl->world.del(entity);
     }
+
+    // Clear Morton index
+    m_impl->mortonIndex.clear();
 
     // Invalidate block cache (structural change)
     invalidateBlockCache();
@@ -365,23 +382,15 @@ void GaiaVoxelWorld::invalidateBlockCacheAt(const glm::vec3& position) {
 }
 
 GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByWorldSpace(glm::vec3 worldPos) const {
-    // Query all entities with MortonKey component
-    auto query = m_impl->world.query().all<MortonKey>();
+    // O(1) lookup via Morton index
+    MortonKey mortonKey = fromPosition(worldPos);
 
-	MortonKey mortonKey = fromPosition(worldPos);
+    auto it = m_impl->mortonIndex.find(mortonKey.code);
+    if (it != m_impl->mortonIndex.end()) {
+        return it->second;
+    }
 
-    EntityID result;
-    int entityCount = 0;
-    query.each([&](gaia::ecs::Entity entity) {
-        entityCount++;
-        const auto& key = m_impl->world.get<MortonKey>(entity);
-        if (key.code == mortonKey.code) {
-            result = entity;
-            // Note: Could optimize with spatial index/hash map in future
-        }
-    });
-
-    return result;  // Returns invalid entity if not found
+    return EntityID{};  // Returns invalid entity if not found
 }
 
 // ============================================================================
@@ -428,6 +437,9 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
             }, compReq.component);
         }
 
+        // Add to spatial index for O(1) lookup
+        m_impl->mortonIndex[key.code] = entity;
+
         // NOTE: Skip tryAutoParentToChunk() and invalidateBlockCacheAt() for speed
         // These are O(chunks) per voxel - too slow for bulk loading
 
@@ -445,6 +457,11 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
 void GaiaVoxelWorld::destroyVoxelsBatch(const std::vector<EntityID>& ids) {
     for (auto id : ids) {
         if (m_impl->world.valid(id)) {
+            // Remove from Morton index before deletion
+            if (m_impl->world.has<MortonKey>(id)) {
+                MortonKey key = m_impl->world.get<MortonKey>(id);
+                m_impl->mortonIndex.erase(key.code);
+            }
             m_impl->world.del(id);
         }
     }
