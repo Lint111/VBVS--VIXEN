@@ -62,19 +62,27 @@ octree.unlockAfterRendering();
   - Counts set bits before child index for packed child array indexing
   - Fixed compilation error at shader:397
 - [x] **CMake Fix**: Added TBB DLL copy command for VIXEN target
+- [x] **Morton Index Optimization**: Added `unordered_map<uint64_t, Entity>` to `GaiaVoxelWorld`
+  - `getEntityByWorldSpace()` now O(1) instead of O(N)
+  - Fixed brick extraction freeze (643,072 lookups now instant)
 - [x] Build passes successfully
+- [x] Application runs without freeze
 
 **Files Modified**:
 - [VoxelRayMarch.comp:84-95](shaders/VoxelRayMarch.comp#L84-L95) - Added `countChildrenBefore()` function
 - [VoxelGridNode.cpp:108-155](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L108-L155) - Use `VoxelInjectionQueue` for parallel entity creation
-- [GaiaVoxelWorld.cpp:383-435](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L383-L435) - Optimized `createVoxelsBatch()`
-- [VoxelInjectionQueue.cpp:167-171](libraries/GaiaVoxelWorld/src/VoxelInjectionQueue.cpp#L167-L171) - Use batch API in worker
-- [CMakeLists.txt:127-135](application/main/CMakeLists.txt#L127-L135) - TBB DLL POST_BUILD copy
+- [GaiaVoxelWorld.cpp:17-26](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L17-L26) - Morton index in Impl struct
+- [GaiaVoxelWorld.cpp:375-384](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L375-L384) - O(1) spatial lookup
+- [SVOBuilder.h:61-64](libraries/SVO/include/SVOBuilder.h#L61-L64) - Added `brickMaterialData` to OctreeBlock
+
+**Current Issue**:
+- Application runs but renders only black/blue background (no Cornell box visible)
+- Shader file has git staging issues (auto-reverts from staged to unstaged)
 
 **Next**:
-- [ ] Test GPU execution (run VIXEN.exe)
+- [ ] Debug why voxels not rendering (bug-hunter investigation)
+- [ ] Fix shader git staging issue
 - [ ] Verify rendering output (expect Cornell box)
-- [ ] Scale to 1080p (change window size)
 - [ ] Benchmark Mrays/sec
 
 ### Session 8B Progress (Nov 27, 2025)
