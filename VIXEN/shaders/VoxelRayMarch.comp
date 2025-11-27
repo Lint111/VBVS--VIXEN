@@ -81,59 +81,6 @@ bool childIsLeaf(uint nonLeafMask, int childIndex) {
     return (childIndex >= 7) || ((nonLeafMask >> childIndex) & 1u) == 0u;
 }
 
-// Count how many children exist before this one (for pointer offset calculation)
-// childMask has child[0] at bit 7, child[7] at bit 0 (REVERSED order)
-uint countChildrenBefore(uint childMask, int childIndex) {
-    // Create mask for all children before childIndex
-    // Since bit ordering is reversed: child[0] at bit 7, child[7] at bit 0
-    // To count children 0..(childIndex-1), we count bits 7..(8-childIndex)
-    uint count = 0u;
-    for (int i = 0; i < childIndex; i++) {
-        int bit_pos = 7 - i;
-        if ((childMask & (1u << bit_pos)) != 0u) {
-            count++;
-        }
-    }
-    return count;
-}
-
-// ============================================================================
-// COORDINATE SPACE CONVERSION (C++ sync - Session 6Z)
-// ============================================================================
-// These functions match the C++ implementation in SVOTypes.h
-//
-// ESVO Mirrored Space Convention:
-// - octant_mask starts at 7, XOR each bit for positive ray direction
-// - bit=0 means axis IS mirrored (positive direction)
-// - bit=1 means axis is NOT mirrored (negative direction)
-
-// Mirror a local-space 8-bit mask to mirrored-space
-// Use this for validMask/leafMask to make direct checks work with state.idx
-uint mirrorMask(uint mask, int octant_mask) {
-    // Fast path: no mirroring needed when all axes negative (octant_mask = 7)
-    if (octant_mask == 7) {
-        return mask;
-    }
-
-    // Flip bits where octant_mask has 0 (axis is mirrored)
-    uint flipMask = uint((~octant_mask) & 7);
-
-    // Permute bits: for each local octant i, move its bit to mirrored position
-    uint result = 0u;
-    for (int i = 0; i < 8; i++) {
-        int mirroredIdx = i ^ int(flipMask);
-        if ((mask & (1u << i)) != 0u) {
-            result |= (1u << mirroredIdx);
-        }
-    }
-    return result;
-}
-
-// Convert mirrored-space octant index to local-space for brick/descriptor lookup
-int mirroredToLocalOctant(int mirroredIdx, int octant_mask) {
-    return mirroredIdx ^ ((~octant_mask) & 7);
-}
-
 
 // Brick node helpers
 bool isConstant(uvec2 node) {
@@ -176,9 +123,7 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
     vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
     if (brickT.y < 0.0) return false;
 
-    // Clamp to non-negative: ray can start inside brick due to FP precision
-    // (C++ sync fix - Session 6Z)
-    float t = max(max(brickT.x, startT), 0.0);
+    float t = max(brickT.x, startT);
     if (t > brickT.y) return false;
 
     vec3 brickSize = brickMax - brickMin;

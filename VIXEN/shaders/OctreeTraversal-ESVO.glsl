@@ -77,43 +77,6 @@ int popc8(int mask) {
 }
 
 // ============================================================================
-// COORDINATE SPACE CONVERSION (C++ sync - Session 6Z)
-// ============================================================================
-// These functions match the C++ implementation in SVOTypes.h
-//
-// ESVO Mirrored Space Convention:
-// - octant_mask starts at 7, XOR each bit for positive ray direction
-// - bit=0 means axis IS mirrored (positive direction)
-// - bit=1 means axis is NOT mirrored (negative direction)
-
-// Mirror a local-space 8-bit mask to mirrored-space
-// Use this for validMask/leafMask to make direct checks work with state.idx
-int mirrorMask(int mask, int octant_mask) {
-    // Fast path: no mirroring needed when all axes negative (octant_mask = 7)
-    if (octant_mask == 7) {
-        return mask;
-    }
-
-    // Flip bits where octant_mask has 0 (axis is mirrored)
-    int flipMask = (~octant_mask) & 7;
-
-    // Permute bits: for each local octant i, move its bit to mirrored position
-    int result = 0;
-    for (int i = 0; i < 8; i++) {
-        int mirroredIdx = i ^ flipMask;
-        if ((mask & (1 << i)) != 0) {
-            result |= (1 << mirroredIdx);
-        }
-    }
-    return result;
-}
-
-// Convert mirrored-space octant index to local-space for brick/descriptor lookup
-int mirroredToLocalOctant(int mirroredIdx, int octant_mask) {
-    return mirroredIdx ^ ((~octant_mask) & 7);
-}
-
-// ============================================================================
 // ESVO RAY CASTING (Main Algorithm)
 // ============================================================================
 
