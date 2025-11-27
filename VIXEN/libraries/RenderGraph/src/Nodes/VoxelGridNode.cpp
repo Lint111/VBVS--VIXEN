@@ -6,13 +6,12 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <thread>
+#include <span>
 
 // New SVO library integration
 #include "SVOBuilder.h"
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"   // For GaiaVoxelWorld entity-based voxel storage
-#include "VoxelInjectionQueue.h" // For parallel voxel creation
 #include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
 using VIXEN::RenderGraph::VoxelGrid;
@@ -97,31 +96,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // 1. Create GaiaVoxelWorld to store voxel entities
     GaiaVoxel::GaiaVoxelWorld voxelWorld;
 
-    // 2. Populate voxelWorld from VoxelGrid data using VoxelInjectionQueue
-    //    This uses a lock-free ring buffer with worker threads for parallel creation
+    // 2. Populate voxelWorld from VoxelGrid data using batched sequential creation
+    //    Note: Gaia ECS doesn't support concurrent structural changes, so we use single-threaded batching
     const auto& data = grid.GetData();
 
-    // First pass: count solid voxels
-    size_t solidVoxelCount = 0;
-    for (size_t i = 0; i < data.size(); ++i) {
-        if (data[i] != 0) solidVoxelCount++;
-    }
-
-    std::cout << "[VoxelGridNode] Found " << solidVoxelCount << " solid voxels" << std::endl;
-
-    // Use VoxelInjectionQueue for parallel entity creation
-    // Queue capacity should be larger than batch size for smooth throughput
-    GaiaVoxel::VoxelInjectionQueue injectionQueue(voxelWorld, 65536);
-
-    // Start worker threads (use hardware concurrency)
-    size_t numWorkers = std::max(1u, std::thread::hardware_concurrency() / 2);
-    std::cout << "[VoxelGridNode] Starting " << numWorkers << " worker threads for voxel injection..." << std::endl;
-    injectionQueue.start(numWorkers);
-
-    // Enqueue all voxels
-    size_t enqueuedCount = 0;
-    size_t progressInterval = solidVoxelCount / 10;
-    if (progressInterval == 0) progressInterval = 1;
+    // First pass: count solid voxels and collect requests
+    std::vector<GaiaVoxel::VoxelCreationRequest> requests;
+    requests.reserve(data.size() / 4);  // Estimate ~25% solid
 
     for (uint32_t z = 0; z < resolution; ++z) {
         for (uint32_t y = 0; y < resolution; ++y) {
@@ -133,30 +114,36 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                     GaiaVoxel::ComponentQueryRequest components[] = {
                         GaiaVoxel::Material{data[idx]}
                     };
-                    GaiaVoxel::VoxelCreationRequest req{pos, components};
-
-                    // Spin if queue is full (backpressure)
-                    while (!injectionQueue.enqueue(req)) {
-                        std::this_thread::yield();
-                    }
-
-                    enqueuedCount++;
-                    if (enqueuedCount % progressInterval == 0) {
-                        std::cout << "[VoxelGridNode] Enqueued: " << (enqueuedCount * 100 / solidVoxelCount) << "%" << std::endl;
-                    }
+                    requests.push_back(GaiaVoxel::VoxelCreationRequest{pos, components});
                 }
             }
         }
     }
 
-    std::cout << "[VoxelGridNode] All " << enqueuedCount << " voxels enqueued, waiting for workers..." << std::endl;
+    std::cout << "[VoxelGridNode] Found " << requests.size() << " solid voxels" << std::endl;
 
-    // Wait for all entities to be created
-    injectionQueue.flush();
-    injectionQueue.stop();
+    // Process in batches for progress reporting
+    constexpr size_t BATCH_SIZE = 10000;
+    size_t processed = 0;
+    size_t lastProgress = 0;
 
-    auto stats = injectionQueue.getStats();
-    std::cout << "[VoxelGridNode] Injection complete: " << stats.entitiesCreated << " entities created" << std::endl;
+    while (processed < requests.size()) {
+        size_t batchEnd = std::min(processed + BATCH_SIZE, requests.size());
+        std::span<const GaiaVoxel::VoxelCreationRequest> batch(
+            requests.data() + processed, batchEnd - processed);
+
+        voxelWorld.createVoxelsBatch(batch);
+        processed = batchEnd;
+
+        // Progress reporting every 10%
+        size_t progress = (processed * 100) / requests.size();
+        if (progress >= lastProgress + 10) {
+            std::cout << "[VoxelGridNode] Created: " << progress << "%" << std::endl;
+            lastProgress = progress;
+        }
+    }
+
+    std::cout << "[VoxelGridNode] Created " << requests.size() << " voxel entities" << std::endl;
 
     // 3. Create LaineKarrasOctree and rebuild from entities
     glm::vec3 worldMin(0.0f);
