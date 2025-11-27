@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
+#include "Core/ResourceManagerBase.h"
 #include "Data/Nodes/VertexBufferNodeConfig.h"
 #include "MeshData.h"  // From application/main/include (available via RenderGraph include paths)
 #include <memory>
@@ -75,9 +76,15 @@ private:
     // Cached mesh wrapper (owns Vulkan buffers and cached CPU data)
     std::shared_ptr<CashSystem::MeshWrapper> cachedMeshWrapper;
 
-    // Direct buffer references (for convenience, point to cached wrapper's buffers)
+    // Legacy variables for backward compatibility (point to cached wrapper's buffers)
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
     VkBuffer indexBuffer = VK_NULL_HANDLE;
+
+    // Resource allocations tracked through ResourceManager (for legacy methods)
+    SingleAllocationResult<VkBuffer> vertexBuffer_;
+    SingleAllocationResult<VkDeviceMemory> vertexMemory_;
+    SingleAllocationResult<VkBuffer> indexBuffer_;
+    SingleAllocationResult<VkDeviceMemory> indexMemory_;
 
     // Vertex input description
     VkVertexInputBindingDescription vertexBinding{};
@@ -95,7 +102,7 @@ private:
     void CreateMeshBuffers();
     void SetupVertexInputDescription();
 
-    // Legacy buffer creation methods (unused - kept for reference)
+    // Legacy buffer creation methods (unused - kept for reference, updated to use RequestSingle)
     void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory);
     void UploadData(VkDeviceMemory memory, const void* data, VkDeviceSize size);
 };

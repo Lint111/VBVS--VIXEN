@@ -2,7 +2,6 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/GraphicsPipelineNodeConfig.h"
-#include "Core/ResourceManagerBase.h"
 #include <memory>
 #include <unordered_map>
 
@@ -64,13 +63,6 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:    
-    // Resource allocations tracked through ResourceManager
-    SingleAllocationResult<VkPipeline> pipeline_;
-    SingleAllocationResult<VkPipelineLayout> pipelineLayout_;
-    SingleAllocationResult<VkPipelineCache> pipelineCache_;
-    SingleAllocationResult<VkRenderPass> renderPass_;  // Tracked for lifetime management
-
-    // Legacy handles for backward compatibility
     // Pipeline resources (outputs)
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

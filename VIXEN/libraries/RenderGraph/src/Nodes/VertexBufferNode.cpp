@@ -76,11 +76,37 @@ void VertexBufferNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void VertexBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
+    VkDevice vkDevice = device ? device->device : VK_NULL_HANDLE;
+
+    // Clean up cached mesh wrapper (primary path)
     if (cachedMeshWrapper) {
         NODE_LOG_DEBUG("Cleanup: Releasing cached mesh wrapper");
         cachedMeshWrapper.reset();
         vertexBuffer = VK_NULL_HANDLE;
         indexBuffer = VK_NULL_HANDLE;
+    }
+
+    // Clean up legacy tracked resources (if legacy CreateBuffer was used)
+    if (vkDevice) {
+        // Index buffer and memory
+        if (indexBuffer_.IsSuccess() && indexBuffer_.Get() != VK_NULL_HANDLE) {
+            vkDestroyBuffer(vkDevice, indexBuffer_.Get(), nullptr);
+            indexBuffer_.Reset();
+        }
+        if (indexMemory_.IsSuccess() && indexMemory_.Get() != VK_NULL_HANDLE) {
+            vkFreeMemory(vkDevice, indexMemory_.Get(), nullptr);
+            indexMemory_.Reset();
+        }
+
+        // Vertex buffer and memory
+        if (vertexBuffer_.IsSuccess() && vertexBuffer_.Get() != VK_NULL_HANDLE) {
+            vkDestroyBuffer(vkDevice, vertexBuffer_.Get(), nullptr);
+            vertexBuffer_.Reset();
+        }
+        if (vertexMemory_.IsSuccess() && vertexMemory_.Get() != VK_NULL_HANDLE) {
+            vkFreeMemory(vkDevice, vertexMemory_.Get(), nullptr);
+            vertexMemory_.Reset();
+        }
     }
 }
 
@@ -141,6 +167,24 @@ void VertexBufferNode::CreateBuffer(
     VkBuffer& buffer,
     VkDeviceMemory& memory
 ) {
+    // Get ResourceManager
+    auto* rm = GetResourceManager();
+    if (!rm) {
+        throw std::runtime_error("VertexBufferNode: ResourceManager not available");
+    }
+
+    // Request tracked allocation for buffer
+    auto bufferResult = rm->RequestSingle<VkBuffer>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("vertexBuffer")
+            .WithOwner(GetInstanceId())
+    );
+    if (bufferResult.IsError()) {
+        throw std::runtime_error("Failed to allocate VkBuffer: " +
+            std::string(bufferResult.GetErrorString()));
+    }
+
     // Create buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -152,7 +196,7 @@ void VertexBufferNode::CreateBuffer(
     bufferInfo.pQueueFamilyIndices = nullptr;
     bufferInfo.flags = 0;
 
-    VkResult result = vkCreateBuffer(device->device, &bufferInfo, nullptr, &buffer);
+    VkResult result = vkCreateBuffer(device->device, &bufferInfo, nullptr, bufferResult.GetPtr());
     if (result != VK_SUCCESS) {
         VulkanError error{result, "Failed to create buffer"};
         NODE_LOG_ERROR(error.toString());
@@ -161,8 +205,22 @@ void VertexBufferNode::CreateBuffer(
 
     // Get memory requirements
     VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device->device, buffer, &memRequirements);
-    
+    vkGetBufferMemoryRequirements(device->device, bufferResult.Get(), &memRequirements);
+
+    // Request tracked allocation for device memory with actual size
+    auto memoryResult = rm->RequestSingle<VkDeviceMemory>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("vertexMemory")
+            .WithOwner(GetInstanceId()),
+        memRequirements.size  // Track actual GPU memory size
+    );
+    if (memoryResult.IsError()) {
+        vkDestroyBuffer(device->device, bufferResult.Get(), nullptr);
+        throw std::runtime_error("Failed to allocate VkDeviceMemory: " +
+            std::string(memoryResult.GetErrorString()));
+    }
+
     // Allocate memory
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -181,7 +239,7 @@ void VertexBufferNode::CreateBuffer(
 
     if (!memoryTypeIndex.has_value())
     {
-        vkDestroyBuffer(device->device, buffer, nullptr);
+        vkDestroyBuffer(device->device, bufferResult.Get(), nullptr);
         VulkanError error{VK_ERROR_INITIALIZATION_FAILED, "Failed to find suitable memory type for buffer"};
         NODE_LOG_ERROR(error.toString());
 		throw std::runtime_error(error.toString());
@@ -189,23 +247,29 @@ void VertexBufferNode::CreateBuffer(
 
     allocInfo.memoryTypeIndex = memoryTypeIndex.value();
 
-    result = vkAllocateMemory(device->device, &allocInfo, nullptr, &memory);
+    result = vkAllocateMemory(device->device, &allocInfo, nullptr, memoryResult.GetPtr());
     if (result != VK_SUCCESS) {
-        vkDestroyBuffer(device->device, buffer, nullptr);
+        vkDestroyBuffer(device->device, bufferResult.Get(), nullptr);
         VulkanError error{result, "Failed to allocate buffer memory"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
 
+    NODE_LOG_DEBUG("Vertex buffer memory allocated (" + std::to_string(memRequirements.size) + " bytes)");
+
     // Bind buffer to memory
-    result = vkBindBufferMemory(device->device, buffer, memory, 0);
+    result = vkBindBufferMemory(device->device, bufferResult.Get(), memoryResult.Get(), 0);
     if (result != VK_SUCCESS) {
-        vkFreeMemory(device->device, memory, nullptr);
-        vkDestroyBuffer(device->device, buffer, nullptr);
+        vkFreeMemory(device->device, memoryResult.Get(), nullptr);
+        vkDestroyBuffer(device->device, bufferResult.Get(), nullptr);
         VulkanError error{result, "Failed to bind buffer memory"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
+
+    // Set output parameters using Get()
+    buffer = bufferResult.Get();
+    memory = memoryResult.Get();
 }
 
 void VertexBufferNode::UploadData(

@@ -4,7 +4,6 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
-#include "Core/ResourceManagerBase.h"
 #include <memory>
 #include <vector>
 

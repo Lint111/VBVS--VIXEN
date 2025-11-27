@@ -103,19 +103,24 @@ void DepthBufferNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (isCreated) {
         VkDevice device = vulkanDevice ? vulkanDevice->device : VK_NULL_HANDLE;
         if (!device) return;
-        
-        if (depthImage.view != VK_NULL_HANDLE) {
-            vkDestroyImageView(device, depthImage.view, nullptr);
+
+        if (depthImageView_.IsSuccess() && depthImageView_.Get() != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, depthImageView_.Get(), nullptr);
+            depthImageView_.Reset();
         }
 
-        if (depthImage.image != VK_NULL_HANDLE) {
-            vkDestroyImage(device, depthImage.image, nullptr);
+        if (depthImage_.IsSuccess() && depthImage_.Get() != VK_NULL_HANDLE) {
+            vkDestroyImage(device, depthImage_.Get(), nullptr);
+            depthImage_.Reset();
         }
 
-        if (depthImage.mem != VK_NULL_HANDLE) {
-            vkFreeMemory(device, depthImage.mem, nullptr);
+        if (depthMemory_.IsSuccess() && depthMemory_.Get() != VK_NULL_HANDLE) {
+            vkFreeMemory(device, depthMemory_.Get(), nullptr);
+            depthMemory_.Reset();
         }
 
+        // Clear legacy struct
+        depthImage = {};
         isCreated = false;
     }
 }
@@ -135,8 +140,24 @@ VkFormat DepthBufferNode::ConvertDepthFormat(DepthFormat format) {
 
 void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, VkFormat format) {
 
-    depthImage.format = format;
+    depthFormat_ = format;
+    depthImage.format = format;  // Keep legacy struct in sync
     VkDevice device = vulkanDevice->device;
+
+    // Request tracked allocation for depth image
+    auto* rm = GetResourceManager();
+    if (rm) {
+        depthImage_ = rm->RequestSingle<VkImage>(
+            AllocationConfig()
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("depthImage")
+                .WithOwner(GetInstanceId())
+        );
+        if (depthImage_.IsError()) {
+            throw std::runtime_error("Failed to allocate depthImage: " +
+                std::string(depthImage_.GetErrorString()));
+        }
+    }
 
     // Create image using helper
     VkImageCreateInfo imageInfo = CreateImageInfo(
@@ -148,36 +169,70 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
     );
 
-    VkResult result = vkCreateImage(device, &imageInfo, nullptr, &depthImage.image);
+    VkResult result = vkCreateImage(device, &imageInfo, nullptr, depthImage_.GetPtr());
     ValidateVulkanResult(result, "Depth image creation");
+    depthImage.image = depthImage_.Get();  // Keep legacy struct in sync
     NODE_LOG_DEBUG("Depth image created");
 
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, depthImage.image, &memRequirements);
+    vkGetImageMemoryRequirements(device, depthImage_.Get(), &memRequirements);
+
+    // Request tracked allocation for device memory
+    if (rm) {
+        depthMemory_ = rm->RequestSingle<VkDeviceMemory>(
+            AllocationConfig()
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("depthMemory")
+                .WithOwner(GetInstanceId()),
+            memRequirements.size  // Track actual GPU memory size
+        );
+        if (depthMemory_.IsError()) {
+            vkDestroyImage(device, depthImage_.Get(), nullptr);
+            throw std::runtime_error("Failed to allocate depthMemory: " +
+                std::string(depthMemory_.GetErrorString()));
+        }
+    }
 
     // TODO: Memory type selection should come from device node or helper
     uint32_t memoryTypeIndex = 0; // Placeholder
-    
+
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = memoryTypeIndex;
 
-    result = vkAllocateMemory(device, &allocInfo, nullptr, &depthImage.mem);
+    result = vkAllocateMemory(device, &allocInfo, nullptr, depthMemory_.GetPtr());
     if (result != VK_SUCCESS) {
-        vkDestroyImage(device, depthImage.image, nullptr);
+        vkDestroyImage(device, depthImage_.Get(), nullptr);
         VulkanError error{result, "Failed to allocate depth image memory"};
         NODE_LOG_ERROR(error.toString());
         throw std::runtime_error(error.toString());
     }
-    NODE_LOG_DEBUG("Depth image memory allocated");
+    depthImage.mem = depthMemory_.Get();  // Keep legacy struct in sync
+    NODE_LOG_DEBUG("Depth image memory allocated (" + std::to_string(memRequirements.size) + " bytes)");
 
-    vkBindImageMemory(device, depthImage.image, depthImage.mem, 0);
+    vkBindImageMemory(device, depthImage_.Get(), depthMemory_.Get(), 0);
+
+    // Request tracked allocation for image view
+    if (rm) {
+        depthImageView_ = rm->RequestSingle<VkImageView>(
+            AllocationConfig()
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("depthImageView")
+                .WithOwner(GetInstanceId())
+        );
+        if (depthImageView_.IsError()) {
+            vkFreeMemory(device, depthMemory_.Get(), nullptr);
+            vkDestroyImage(device, depthImage_.Get(), nullptr);
+            throw std::runtime_error("Failed to allocate depthImageView: " +
+                std::string(depthImageView_.GetErrorString()));
+        }
+    }
 
     // Create image view using helper
     VkImageViewCreateInfo viewInfo = CreateImageViewInfo(
-        depthImage.image,
+        depthImage_.Get(),
         VK_IMAGE_VIEW_TYPE_2D,
         format,
         VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -185,8 +240,9 @@ void DepthBufferNode::CreateDepthImageAndView(uint32_t width, uint32_t height, V
         1   // arrayLayers
     );
 
-    result = vkCreateImageView(device, &viewInfo, nullptr, &depthImage.view);
+    result = vkCreateImageView(device, &viewInfo, nullptr, depthImageView_.GetPtr());
     ValidateVulkanResult(result, "Depth image view creation");
+    depthImage.view = depthImageView_.Get();  // Keep legacy struct in sync
     NODE_LOG_DEBUG("Depth image view created");
 }
 
@@ -212,7 +268,7 @@ void DepthBufferNode::TransitionDepthImageLayout(VkCommandPool cmdPool) {
     // Transition layout
     TransitionImageLayout(
         cmdBuffer,
-        depthImage.image,
+        depthImage_.Get(),
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     );
