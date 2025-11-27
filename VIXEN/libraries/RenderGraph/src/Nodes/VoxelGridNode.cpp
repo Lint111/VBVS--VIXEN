@@ -165,49 +165,55 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
 }
 
+
 void VoxelGridNode::DestroyOctreeBuffers() {
     if (!vulkanDevice) return;
 
-    // Destroy nodes buffer and memory
-    if (octreeNodesBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeNodesBuffer, nullptr);
-        octreeNodesBuffer = VK_NULL_HANDLE;
+    // Destroy nodes buffer and memory (using IsSuccess checks)
+    if (octreeNodesBuffer_.IsSuccess() && octreeNodesBuffer_.Get() != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeNodesBuffer_.Get(), nullptr);
+        octreeNodesBuffer_.Reset();
+        octreeNodesBuffer = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeNodesBuffer destroyed");
     }
 
-    if (octreeNodesMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeNodesMemory, nullptr);
-        octreeNodesMemory = VK_NULL_HANDLE;
+    if (octreeNodesMemory_.IsSuccess() && octreeNodesMemory_.Get() != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeNodesMemory_.Get(), nullptr);
+        octreeNodesMemory_.Reset();
+        octreeNodesMemory = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeNodesMemory freed");
     }
 
     // Destroy bricks buffer and memory
-    if (octreeBricksBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer, nullptr);
-        octreeBricksBuffer = VK_NULL_HANDLE;
+    if (octreeBricksBuffer_.IsSuccess() && octreeBricksBuffer_.Get() != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer_.Get(), nullptr);
+        octreeBricksBuffer_.Reset();
+        octreeBricksBuffer = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeBricksBuffer destroyed");
     }
 
-    if (octreeBricksMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeBricksMemory, nullptr);
-        octreeBricksMemory = VK_NULL_HANDLE;
+    if (octreeBricksMemory_.IsSuccess() && octreeBricksMemory_.Get() != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeBricksMemory_.Get(), nullptr);
+        octreeBricksMemory_.Reset();
+        octreeBricksMemory = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeBricksMemory freed");
     }
 
     // Destroy materials buffer and memory
-    if (octreeMaterialsBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer, nullptr);
-        octreeMaterialsBuffer = VK_NULL_HANDLE;
+    if (octreeMaterialsBuffer_.IsSuccess() && octreeMaterialsBuffer_.Get() != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer_.Get(), nullptr);
+        octreeMaterialsBuffer_.Reset();
+        octreeMaterialsBuffer = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeMaterialsBuffer destroyed");
     }
 
-    if (octreeMaterialsMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
-        octreeMaterialsMemory = VK_NULL_HANDLE;
+    if (octreeMaterialsMemory_.IsSuccess() && octreeMaterialsMemory_.Get() != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory_.Get(), nullptr);
+        octreeMaterialsMemory_.Reset();
+        octreeMaterialsMemory = VK_NULL_HANDLE;  // Sync legacy variable
         LogCleanupProgress("octreeMaterialsMemory freed");
     }
 }
-
 void VoxelGridNode::LogCleanupProgress(const std::string& stage) {
     NODE_LOG_DEBUG("[VoxelGridNode::Cleanup] " + stage);
 }
@@ -286,6 +292,28 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
                   std::to_string(nodesBufferSize) + " bytes (nodes), " +
                   std::to_string(bricksBufferSize) + " bytes (bricks)");
 
+    // Get ResourceManager
+    auto* rm = GetResourceManager();
+    if (!rm) {
+        throw std::runtime_error("[VoxelGridNode] ResourceManager not available");
+    }
+
+    // === REQUEST TRACKED ALLOCATIONS ===
+    
+    // Request octreeNodesBuffer allocation
+    octreeNodesBuffer_ = rm->RequestSingle<VkBuffer>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeNodesBuffer")
+            .WithOwner(GetInstanceId()),
+        nodesBufferSize
+    );
+    if (octreeNodesBuffer_.IsError()) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeNodesBuffer: " +
+            std::string(octreeNodesBuffer_.GetErrorString()));
+    }
+
+
     // === CREATE NODES BUFFER ===
     VkBufferCreateInfo nodesBufferInfo{};
     nodesBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -293,14 +321,30 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     nodesBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     nodesBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VkResult result = vkCreateBuffer(vulkanDevice->device, &nodesBufferInfo, nullptr, &octreeNodesBuffer);
+    VkResult result = vkCreateBuffer(vulkanDevice->device, &nodesBufferInfo, nullptr, octreeNodesBuffer_.GetPtr());
+    octreeNodesBuffer = octreeNodesBuffer_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to create octree nodes buffer: " + std::to_string(result));
     }
 
     // Allocate device-local memory for nodes
     VkMemoryRequirements nodesMemReq;
-    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeNodesBuffer, &nodesMemReq);
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeNodesBuffer_.Get(), &nodesMemReq);
+
+    // Request octreeNodesMemory allocation with actual size
+    octreeNodesMemory_ = rm->RequestSingle<VkDeviceMemory>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeNodesMemory")
+            .WithOwner(GetInstanceId()),
+        nodesMemReq.size  // Track actual GPU memory size
+    );
+    if (octreeNodesMemory_.IsError()) {
+        vkDestroyBuffer(vulkanDevice->device, octreeNodesBuffer_.Get(), nullptr);
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeNodesMemory: " +
+            std::string(octreeNodesMemory_.GetErrorString()));
+    }
+
 
     VkMemoryAllocateInfo nodesAllocInfo{};
     nodesAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -321,12 +365,27 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
     nodesAllocInfo.memoryTypeIndex = memoryTypeIndex;
 
-    result = vkAllocateMemory(vulkanDevice->device, &nodesAllocInfo, nullptr, &octreeNodesMemory);
+    result = vkAllocateMemory(vulkanDevice->device, &nodesAllocInfo, nullptr, octreeNodesMemory_.GetPtr());
+    octreeNodesMemory = octreeNodesMemory_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to allocate octree nodes memory: " + std::to_string(result));
     }
 
-    vkBindBufferMemory(vulkanDevice->device, octreeNodesBuffer, octreeNodesMemory, 0);
+    vkBindBufferMemory(vulkanDevice->device, octreeNodesBuffer_.Get(), octreeNodesMemory_.Get(), 0);
+
+
+    // Request octreeBricksBuffer allocation
+    octreeBricksBuffer_ = rm->RequestSingle<VkBuffer>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeBricksBuffer")
+            .WithOwner(GetInstanceId()),
+        bricksBufferSize
+    );
+    if (octreeBricksBuffer_.IsError()) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeBricksBuffer: " +
+            std::string(octreeBricksBuffer_.GetErrorString()));
+    }
 
     // === CREATE BRICKS BUFFER ===
     VkBufferCreateInfo bricksBufferInfo{};
@@ -335,14 +394,30 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     bricksBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bricksBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    result = vkCreateBuffer(vulkanDevice->device, &bricksBufferInfo, nullptr, &octreeBricksBuffer);
+    result = vkCreateBuffer(vulkanDevice->device, &bricksBufferInfo, nullptr, octreeBricksBuffer_.GetPtr());
+    octreeBricksBuffer = octreeBricksBuffer_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to create octree bricks buffer: " + std::to_string(result));
     }
 
     // Allocate device-local memory for bricks
     VkMemoryRequirements bricksMemReq;
-    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeBricksBuffer, &bricksMemReq);
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeBricksBuffer_.Get(), &bricksMemReq);
+
+    // Request octreeBricksMemory allocation with actual size
+    octreeBricksMemory_ = rm->RequestSingle<VkDeviceMemory>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeBricksMemory")
+            .WithOwner(GetInstanceId()),
+        bricksMemReq.size  // Track actual GPU memory size
+    );
+    if (octreeBricksMemory_.IsError()) {
+        vkDestroyBuffer(vulkanDevice->device, octreeBricksBuffer_.Get(), nullptr);
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeBricksMemory: " +
+            std::string(octreeBricksMemory_.GetErrorString()));
+    }
+
 
     VkMemoryAllocateInfo bricksAllocInfo{};
     bricksAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -362,12 +437,13 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
     bricksAllocInfo.memoryTypeIndex = memoryTypeIndex;
 
-    result = vkAllocateMemory(vulkanDevice->device, &bricksAllocInfo, nullptr, &octreeBricksMemory);
+    result = vkAllocateMemory(vulkanDevice->device, &bricksAllocInfo, nullptr, octreeBricksMemory_.GetPtr());
+    octreeBricksMemory = octreeBricksMemory_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to allocate octree bricks memory: " + std::to_string(result));
     }
 
-    vkBindBufferMemory(vulkanDevice->device, octreeBricksBuffer, octreeBricksMemory, 0);
+    vkBindBufferMemory(vulkanDevice->device, octreeBricksBuffer_.Get(), octreeBricksMemory_.Get(), 0);
 
     // === CREATE MATERIALS BUFFER ===
     // TODO: Extract materials from octree. For now, create minimal default material palette.
@@ -423,20 +499,50 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
     VkDeviceSize materialsBufferSize = defaultMaterials.size() * sizeof(GPUMaterial);
 
+    // Request octreeMaterialsBuffer allocation
+    octreeMaterialsBuffer_ = rm->RequestSingle<VkBuffer>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeMaterialsBuffer")
+            .WithOwner(GetInstanceId()),
+        materialsBufferSize
+    );
+    if (octreeMaterialsBuffer_.IsError()) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeMaterialsBuffer: " +
+            std::string(octreeMaterialsBuffer_.GetErrorString()));
+    }
+
+
     VkBufferCreateInfo materialsBufferInfo{};
     materialsBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     materialsBufferInfo.size = materialsBufferSize;
     materialsBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     materialsBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    result = vkCreateBuffer(vulkanDevice->device, &materialsBufferInfo, nullptr, &octreeMaterialsBuffer);
+    result = vkCreateBuffer(vulkanDevice->device, &materialsBufferInfo, nullptr, octreeMaterialsBuffer_.GetPtr());
+    octreeMaterialsBuffer = octreeMaterialsBuffer_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to create octree materials buffer: " + std::to_string(result));
     }
 
     // Allocate device-local memory for materials
     VkMemoryRequirements materialsMemReq;
-    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeMaterialsBuffer, &materialsMemReq);
+    vkGetBufferMemoryRequirements(vulkanDevice->device, octreeMaterialsBuffer_.Get(), &materialsMemReq);
+
+    // Request octreeMaterialsMemory allocation with actual size
+    octreeMaterialsMemory_ = rm->RequestSingle<VkDeviceMemory>(
+        AllocationConfig()
+            .WithLifetime(ResourceLifetime::GraphLocal)
+            .WithName("octreeMaterialsMemory")
+            .WithOwner(GetInstanceId()),
+        materialsMemReq.size  // Track actual GPU memory size
+    );
+    if (octreeMaterialsMemory_.IsError()) {
+        vkDestroyBuffer(vulkanDevice->device, octreeMaterialsBuffer_.Get(), nullptr);
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate octreeMaterialsMemory: " +
+            std::string(octreeMaterialsMemory_.GetErrorString()));
+    }
+
 
     VkMemoryAllocateInfo materialsAllocInfo{};
     materialsAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -456,12 +562,13 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
     materialsAllocInfo.memoryTypeIndex = memoryTypeIndex;
 
-    result = vkAllocateMemory(vulkanDevice->device, &materialsAllocInfo, nullptr, &octreeMaterialsMemory);
+    result = vkAllocateMemory(vulkanDevice->device, &materialsAllocInfo, nullptr, octreeMaterialsMemory_.GetPtr());
+    octreeMaterialsMemory = octreeMaterialsMemory_.Get();  // Sync legacy variable
     if (result != VK_SUCCESS) {
         throw std::runtime_error("[VoxelGridNode] Failed to allocate octree materials memory: " + std::to_string(result));
     }
 
-    vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer, octreeMaterialsMemory, 0);
+    vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer_.Get(), octreeMaterialsMemory_.Get(), 0);
 
     // === UPLOAD DATA VIA STAGING BUFFER ===
 
@@ -498,7 +605,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkDeviceMemory nodesStagingMemory;
         vkAllocateMemory(vulkanDevice->device, &nodesStagingAllocInfo, nullptr, &nodesStagingMemory);
-        vkBindBufferMemory(vulkanDevice->device, nodesStagingBuffer, nodesStagingMemory, 0);
+        vkBindBufferMemory(vulkanDevice->device, nodesStagingBuffer_.Get(), nodesStagingMemory_.Get(), 0);
 
         // Copy data to staging buffer (use nodesData pointer determined earlier)
         void* data;
@@ -524,7 +631,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkBufferCopy copyRegion{};
         copyRegion.size = nodesBufferSize;
-        vkCmdCopyBuffer(cmdBuffer, nodesStagingBuffer, octreeNodesBuffer, 1, &copyRegion);
+        vkCmdCopyBuffer(cmdBuffer, nodesStagingBuffer_.Get(), octreeNodesBuffer_.Get(), 1, &copyRegion);
 
         vkEndCommandBuffer(cmdBuffer);
 
@@ -574,7 +681,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkDeviceMemory bricksStagingMemory;
         vkAllocateMemory(vulkanDevice->device, &bricksStagingAllocInfo, nullptr, &bricksStagingMemory);
-        vkBindBufferMemory(vulkanDevice->device, bricksStagingBuffer, bricksStagingMemory, 0);
+        vkBindBufferMemory(vulkanDevice->device, bricksStagingBuffer_.Get(), bricksStagingMemory_.Get(), 0);
 
         // Copy data to staging buffer
         void* data;
@@ -600,7 +707,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkBufferCopy copyRegion{};
         copyRegion.size = bricksBufferSize;
-        vkCmdCopyBuffer(cmdBuffer, bricksStagingBuffer, octreeBricksBuffer, 1, &copyRegion);
+        vkCmdCopyBuffer(cmdBuffer, bricksStagingBuffer_.Get(), octreeBricksBuffer_.Get(), 1, &copyRegion);
 
         vkEndCommandBuffer(cmdBuffer);
 
@@ -650,7 +757,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkDeviceMemory materialsStagingMemory;
         vkAllocateMemory(vulkanDevice->device, &materialsStagingAllocInfo, nullptr, &materialsStagingMemory);
-        vkBindBufferMemory(vulkanDevice->device, materialsStagingBuffer, materialsStagingMemory, 0);
+        vkBindBufferMemory(vulkanDevice->device, materialsStagingBuffer_.Get(), materialsStagingMemory_.Get(), 0);
 
         // Copy data to staging buffer
         void* data;
@@ -676,7 +783,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
 
         VkBufferCopy copyRegion{};
         copyRegion.size = materialsBufferSize;
-        vkCmdCopyBuffer(cmdBuffer, materialsStagingBuffer, octreeMaterialsBuffer, 1, &copyRegion);
+        vkCmdCopyBuffer(cmdBuffer, materialsStagingBuffer_.Get(), octreeMaterialsBuffer_.Get(), 1, &copyRegion);
 
         vkEndCommandBuffer(cmdBuffer);
 

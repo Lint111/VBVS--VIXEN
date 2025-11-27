@@ -3,7 +3,6 @@
 #include "Core/TypedNodeInstance.h"
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
-#include "Core/ResourceManagerBase.h"
 #include "Data/Nodes/ComputePipelineNodeConfig.h"
 
 // Forward declarations
@@ -69,11 +68,11 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    // Resource allocations tracked through ResourceManager
-    SingleAllocationResult<VkPipeline> pipeline_;
-    SingleAllocationResult<VkPipelineLayout> pipelineLayout_;
-    SingleAllocationResult<VkPipelineCache> pipelineCache_;
-    SingleAllocationResult<VkShaderModule> shaderModule_;
+    // Cached outputs (resources owned by cachers, not tracked individually)
+    VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+    VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;
+    VkShaderModule shaderModule_ = VK_NULL_HANDLE;
 
     // Entry point name storage (must outlive GetOrCreate call)
     std::string entryPointName_;
