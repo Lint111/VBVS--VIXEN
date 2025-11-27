@@ -179,15 +179,41 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                   std::to_string(octreeData->root->brickViews.size()) + " bricks, " +
                   "total voxels=" + std::to_string(octreeData->totalVoxels));
 
-    // Debug: Print first few child descriptors
+    // Debug: Print hierarchy structure with leaf analysis
     if (octreeData->root->childDescriptors.size() > 0) {
-        std::cout << "[VoxelGridNode] DEBUG: First child descriptors:" << std::endl;
-        for (size_t i = 0; i < std::min<size_t>(3, octreeData->root->childDescriptors.size()); ++i) {
+        std::cout << "[VoxelGridNode] DEBUG: Hierarchy structure:" << std::endl;
+        std::cout << "  Total nodes: " << octreeData->root->childDescriptors.size() << std::endl;
+
+        // Count nodes with leaves
+        int nodesWithLeaves = 0;
+        int totalLeafBits = 0;
+        for (size_t i = 0; i < octreeData->root->childDescriptors.size(); ++i) {
             const auto& desc = octreeData->root->childDescriptors[i];
-            std::cout << "  [" << i << "] childPointer=" << desc.childPointer
-                      << ", validMask=0x" << std::hex << static_cast<int>(desc.validMask)
-                      << ", leafMask=0x" << static_cast<int>(desc.leafMask) << std::dec << std::endl;
+            if (desc.leafMask != 0) {
+                nodesWithLeaves++;
+                totalLeafBits += std::popcount(static_cast<unsigned>(desc.leafMask));
+            }
         }
+        std::cout << "  Nodes with leafMask!=0: " << nodesWithLeaves << std::endl;
+        std::cout << "  Total leaf bits set: " << totalLeafBits << std::endl;
+
+        // Print first few nodes with leafMask != 0
+        std::cout << "  First nodes with leaves:" << std::endl;
+        int printed = 0;
+        for (size_t i = 0; i < octreeData->root->childDescriptors.size() && printed < 5; ++i) {
+            const auto& desc = octreeData->root->childDescriptors[i];
+            if (desc.leafMask != 0) {
+                std::cout << "    [" << i << "] validMask=0x" << std::hex << static_cast<int>(desc.validMask)
+                          << ", leafMask=0x" << static_cast<int>(desc.leafMask) << std::dec << std::endl;
+                printed++;
+            }
+        }
+
+        // Print root and first level
+        const auto& root = octreeData->root->childDescriptors[0];
+        std::cout << "  ROOT[0]: childPointer=" << root.childPointer
+                  << ", validMask=0x" << std::hex << static_cast<int>(root.validMask)
+                  << ", leafMask=0x" << static_cast<int>(root.leafMask) << std::dec << std::endl;
     }
 
     // Upload ESVO octree to GPU buffers

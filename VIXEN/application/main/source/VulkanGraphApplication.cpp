@@ -704,10 +704,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Uncomment one preset below:
 
     // PRESET 1: Front view looking into box (camera outside grid)
+    // Camera convention: yaw=0 looks toward -Z, so yaw=180° (π) looks toward +Z
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 64.0f);   // Center X
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 64.0f);   // Center Y
     camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -50.0f);  // Outside grid looking in
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Look toward +Z
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 3.14159f);     // Look toward +Z (π radians = 180°)
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
     // PRESET 2: Offset to see both left (red) and right (green) walls
