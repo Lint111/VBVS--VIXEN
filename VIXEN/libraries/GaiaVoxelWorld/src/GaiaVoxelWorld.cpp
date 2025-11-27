@@ -386,10 +386,50 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::createVoxelsBatch(
     std::vector<EntityID> ids;
     ids.reserve(requests.size());
 
-    // Type-safe batch creation - zero string lookups
-    for (const auto& req : requests) {
-        ids.push_back(createVoxel(req));
+    auto& world = m_impl->world;
+
+    // FAST PATH: Bulk entity creation without per-entity overhead
+    // Skip chunk parenting and cache invalidation during bulk load
+    // (invalidate cache once at end instead of per-entity)
+
+    size_t progressInterval = requests.size() / 10;  // Report every 10%
+    if (progressInterval == 0) progressInterval = 1;
+
+    for (size_t i = 0; i < requests.size(); ++i) {
+        const auto& request = requests[i];
+
+        // Progress reporting for long operations
+        if (i % progressInterval == 0) {
+            std::cout << "[GaiaVoxelWorld] Batch progress: " << (i * 100 / requests.size()) << "%" << std::endl;
+        }
+
+        // Create entity
+        auto entity = world.add();
+
+        // Add MortonKey
+        MortonKey key = fromPosition(request.position);
+        world.add<MortonKey>(entity, key);
+
+        // Add components using std::visit (compile-time dispatch)
+        for (const auto& compReq : request.components) {
+            std::visit([&](auto&& component) {
+                using T = std::decay_t<decltype(component)>;
+                if constexpr (!std::is_same_v<T, MortonKey> && !std::is_same_v<T, std::monostate>) {
+                    world.add<T>(entity, component);
+                }
+            }, compReq.component);
+        }
+
+        // NOTE: Skip tryAutoParentToChunk() and invalidateBlockCacheAt() for speed
+        // These are O(chunks) per voxel - too slow for bulk loading
+
+        ids.push_back(entity);
     }
+
+    std::cout << "[GaiaVoxelWorld] Batch complete: " << ids.size() << " entities" << std::endl;
+
+    // Single cache invalidation at end (not per-entity)
+    invalidateBlockCache();
 
     return ids;
 }

@@ -164,17 +164,11 @@ void VoxelInjectionQueue::processWorker() {
 
         m_readIndex.store(currentRead, std::memory_order_release);
 
-        // Process batch - create entities using simple API
+        // Process batch - use createVoxelsBatch for fast bulk creation
         if (!batch.empty()) {
             try {
-                std::vector<gaia::ecs::Entity> entities;
-                entities.reserve(batch.size());
-
-                // Create entities using VoxelCreationRequest API
-                for (const auto& entry : batch) {
-                    auto entity = m_world.createVoxel(entry);
-                    entities.push_back(entity);
-                }
+                // Use batch API (skips per-entity chunk parenting and cache invalidation)
+                auto entities = m_world.createVoxelsBatch(batch);
 
                 // Store created entities
                 {

@@ -6,11 +6,13 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <thread>
 
 // New SVO library integration
 #include "SVOBuilder.h"
 #include "LaineKarrasOctree.h"
 #include "GaiaVoxelWorld.h"   // For GaiaVoxelWorld entity-based voxel storage
+#include "VoxelInjectionQueue.h" // For parallel voxel creation
 #include "VoxelComponents.h"  // For GaiaVoxel::Material component
 
 using VIXEN::RenderGraph::VoxelGrid;
@@ -95,10 +97,31 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // 1. Create GaiaVoxelWorld to store voxel entities
     GaiaVoxel::GaiaVoxelWorld voxelWorld;
 
-    // 2. Populate voxelWorld from VoxelGrid data
-    //    For each non-zero voxel in grid, create an entity with Material component
+    // 2. Populate voxelWorld from VoxelGrid data using VoxelInjectionQueue
+    //    This uses a lock-free ring buffer with worker threads for parallel creation
     const auto& data = grid.GetData();
+
+    // First pass: count solid voxels
     size_t solidVoxelCount = 0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (data[i] != 0) solidVoxelCount++;
+    }
+
+    std::cout << "[VoxelGridNode] Found " << solidVoxelCount << " solid voxels" << std::endl;
+
+    // Use VoxelInjectionQueue for parallel entity creation
+    // Queue capacity should be larger than batch size for smooth throughput
+    GaiaVoxel::VoxelInjectionQueue injectionQueue(voxelWorld, 65536);
+
+    // Start worker threads (use hardware concurrency)
+    size_t numWorkers = std::max(1u, std::thread::hardware_concurrency() / 2);
+    std::cout << "[VoxelGridNode] Starting " << numWorkers << " worker threads for voxel injection..." << std::endl;
+    injectionQueue.start(numWorkers);
+
+    // Enqueue all voxels
+    size_t enqueuedCount = 0;
+    size_t progressInterval = solidVoxelCount / 10;
+    if (progressInterval == 0) progressInterval = 1;
 
     for (uint32_t z = 0; z < resolution; ++z) {
         for (uint32_t y = 0; y < resolution; ++y) {
@@ -111,14 +134,29 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                         GaiaVoxel::Material{data[idx]}
                     };
                     GaiaVoxel::VoxelCreationRequest req{pos, components};
-                    voxelWorld.createVoxel(req);
-                    solidVoxelCount++;
+
+                    // Spin if queue is full (backpressure)
+                    while (!injectionQueue.enqueue(req)) {
+                        std::this_thread::yield();
+                    }
+
+                    enqueuedCount++;
+                    if (enqueuedCount % progressInterval == 0) {
+                        std::cout << "[VoxelGridNode] Enqueued: " << (enqueuedCount * 100 / solidVoxelCount) << "%" << std::endl;
+                    }
                 }
             }
         }
     }
 
-    std::cout << "[VoxelGridNode] Created " << solidVoxelCount << " voxel entities in GaiaVoxelWorld" << std::endl;
+    std::cout << "[VoxelGridNode] All " << enqueuedCount << " voxels enqueued, waiting for workers..." << std::endl;
+
+    // Wait for all entities to be created
+    injectionQueue.flush();
+    injectionQueue.stop();
+
+    auto stats = injectionQueue.getStats();
+    std::cout << "[VoxelGridNode] Injection complete: " << stats.entitiesCreated << " entities created" << std::endl;
 
     // 3. Create LaineKarrasOctree and rebuild from entities
     glm::vec3 worldMin(0.0f);

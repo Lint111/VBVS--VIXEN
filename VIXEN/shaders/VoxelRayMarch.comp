@@ -81,6 +81,19 @@ bool childIsLeaf(uint nonLeafMask, int childIndex) {
     return (childIndex >= 7) || ((nonLeafMask >> childIndex) & 1u) == 0u;
 }
 
+// Count how many set bits (existing children) come before childIndex in childMask
+// childMask has child[0] at bit 7, child[7] at bit 0 (REVERSED order)
+// This gives the local storage index for accessing packed child array
+uint countChildrenBefore(uint childMask, int childIndex) {
+    // Create mask for all children with index < childIndex
+    // In reversed bit order: child[0] at bit 7, child[1] at bit 6, etc.
+    // Children before index N are at bit positions (7-0) to (7-(N-1)) = (7) to (8-N)
+    // Mask = bits from (8-childIndex) to 7
+    if (childIndex <= 0) return 0u;
+    uint mask = ((1u << childIndex) - 1u) << (8 - childIndex);
+    return uint(bitCount(childMask & mask));
+}
+
 
 // Brick node helpers
 bool isConstant(uvec2 node) {

@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 27, 2025 (Session 8B)
+**Last Updated**: November 27, 2025 (Session 8C)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | VoxelGridNode Refactored
+**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | Parallel Injection + Shader Fix
 
 ---
 
@@ -51,6 +51,32 @@ octree.unlockAfterRendering();
 
 ## Week 2: GPU Integration - IN PROGRESS 🔄
 
+### Session 8C Progress (Nov 27, 2025)
+
+**Completed**:
+- [x] **Performance Optimization**: Parallel voxel injection via `VoxelInjectionQueue`
+  - Uses lock-free ring buffer with worker threads
+  - `createVoxelsBatch()` now skips per-entity chunk parenting (O(chunks) → O(1))
+  - Single cache invalidation at end instead of per-entity
+- [x] **Shader Fix**: Added missing `countChildrenBefore()` function to `VoxelRayMarch.comp`
+  - Counts set bits before child index for packed child array indexing
+  - Fixed compilation error at shader:397
+- [x] **CMake Fix**: Added TBB DLL copy command for VIXEN target
+- [x] Build passes successfully
+
+**Files Modified**:
+- [VoxelRayMarch.comp:84-95](shaders/VoxelRayMarch.comp#L84-L95) - Added `countChildrenBefore()` function
+- [VoxelGridNode.cpp:108-155](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L108-L155) - Use `VoxelInjectionQueue` for parallel entity creation
+- [GaiaVoxelWorld.cpp:383-435](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L383-L435) - Optimized `createVoxelsBatch()`
+- [VoxelInjectionQueue.cpp:167-171](libraries/GaiaVoxelWorld/src/VoxelInjectionQueue.cpp#L167-L171) - Use batch API in worker
+- [CMakeLists.txt:127-135](application/main/CMakeLists.txt#L127-L135) - TBB DLL POST_BUILD copy
+
+**Next**:
+- [ ] Test GPU execution (run VIXEN.exe)
+- [ ] Verify rendering output (expect Cornell box)
+- [ ] Scale to 1080p (change window size)
+- [ ] Benchmark Mrays/sec
+
 ### Session 8B Progress (Nov 27, 2025)
 
 **Completed**:
@@ -59,33 +85,6 @@ octree.unlockAfterRendering();
   - NEW: `GaiaVoxelWorld` + `LaineKarrasOctree::rebuild()` - Proper ESVO with valid childPointer
 - [x] Build passes successfully
 - [x] All 47 octree tests still pass
-
-**Files Modified**:
-- [VoxelGridNode.cpp:13](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L13) - Added `GaiaVoxelWorld.h` include
-- [VoxelGridNode.cpp:92-169](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L92-L169) - Replaced octree building code:
-  1. Create `GaiaVoxelWorld`
-  2. Populate from `VoxelGrid` (non-zero voxels → entities with Material component)
-  3. Create `LaineKarrasOctree` and call `rebuild()`
-  4. Get octree data via `getOctree()` for GPU upload
-
-**Key Change**:
-```cpp
-// OLD (broken - childPointer always 0):
-SVO::SVOBuilder builder(params);
-auto svoOctree = builder.buildFromVoxelGrid(data, resolution, worldMin, worldMax);
-
-// NEW (working - proper ESVO structure):
-GaiaVoxel::GaiaVoxelWorld voxelWorld;
-// ... populate voxelWorld from VoxelGrid ...
-SVO::LaineKarrasOctree octree(voxelWorld, nullptr, maxLevels, brickDepth);
-octree.rebuild(voxelWorld, worldMin, worldMax);
-const auto* octreeData = octree.getOctree();  // Has valid childPointer values!
-```
-
-**Next**:
-- [ ] Test GPU execution (run VIXEN.exe)
-- [ ] Scale to 1080p (change window size)
-- [ ] Benchmark Mrays/sec
 
 ### Session 8A Progress (Nov 26, 2025)
 
