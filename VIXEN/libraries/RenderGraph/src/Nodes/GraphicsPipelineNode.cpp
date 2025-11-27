@@ -167,26 +167,35 @@ void GraphicsPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     if (cachedPipelineWrapper) {
         NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Releasing cached pipeline wrapper (cacher owns all resources)");
         cachedPipelineWrapper.reset();
+        pipeline_.Reset();
+        pipelineLayout_.Reset();
+        pipelineCache_.Reset();
         pipeline = VK_NULL_HANDLE;
         pipelineLayout = VK_NULL_HANDLE;
         pipelineCache = VK_NULL_HANDLE;
     } else {
         // Fallback: cleanup locally-created resources (if created without cacher)
-    if (pipeline != VK_NULL_HANDLE && device != nullptr) {
+        VkDevice dev = device ? device->device : VK_NULL_HANDLE;
+        if (!dev) return;
+
+        if (pipeline_.IsSuccess() && pipeline_.Get() != VK_NULL_HANDLE) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline");
-            vkDestroyPipeline(device->device, pipeline, nullptr);
+            vkDestroyPipeline(dev, pipeline_.Get(), nullptr);
+            pipeline_.Reset();
             pipeline = VK_NULL_HANDLE;
         }
 
-    if (pipelineLayout != VK_NULL_HANDLE && device != nullptr) {
+        if (pipelineLayout_.IsSuccess() && pipelineLayout_.Get() != VK_NULL_HANDLE) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline layout");
-            vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
+            vkDestroyPipelineLayout(dev, pipelineLayout_.Get(), nullptr);
+            pipelineLayout_.Reset();
             pipelineLayout = VK_NULL_HANDLE;
         }
 
-    if (pipelineCache != VK_NULL_HANDLE && device != nullptr) {
+        if (pipelineCache_.IsSuccess() && pipelineCache_.Get() != VK_NULL_HANDLE) {
             NODE_LOG_DEBUG("GraphicsPipelineNode::CleanupImpl: Destroying locally-created pipeline cache");
-            vkDestroyPipelineCache(device->device, pipelineCache, nullptr);
+            vkDestroyPipelineCache(dev, pipelineCache_.Get(), nullptr);
+            pipelineCache_.Reset();
             pipelineCache = VK_NULL_HANDLE;
         }
     }
@@ -236,10 +245,26 @@ void GraphicsPipelineNode::CreatePipelineCache() {
 
 void GraphicsPipelineNode::CreatePipelineLayout() {
     // Destroy old layout if exists (happens during recompile)
-    if (pipelineLayout != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
+    if (pipelineLayout_.IsSuccess() && pipelineLayout_.Get() != VK_NULL_HANDLE) {
         NODE_LOG_DEBUG("GraphicsPipelineNode: Destroying old pipeline layout before recompile");
-        vkDestroyPipelineLayout(device->device, pipelineLayout, nullptr);
+        vkDestroyPipelineLayout(device->device, pipelineLayout_.Get(), nullptr);
+        pipelineLayout_.Reset();
         pipelineLayout = VK_NULL_HANDLE;
+    }
+
+    // Request tracked allocation for pipeline layout
+    auto* rm = GetResourceManager();
+    if (rm) {
+        pipelineLayout_ = rm->RequestSingle<VkPipelineLayout>(
+            AllocationConfig()
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("pipelineLayout")
+                .WithOwner(GetInstanceId())
+        );
+        if (pipelineLayout_.IsError()) {
+            throw std::runtime_error("Failed to allocate pipelineLayout: " +
+                std::string(pipelineLayout_.GetErrorString()));
+        }
     }
 
     // NOTE: descriptorSetLayout is already set in CompileImpl (either manual or auto-generated)
@@ -257,12 +282,13 @@ void GraphicsPipelineNode::CreatePipelineLayout() {
         device->device,
         &layoutInfo,
         nullptr,
-        &pipelineLayout
+        pipelineLayout_.GetPtr()
     );
 
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
+    pipelineLayout = pipelineLayout_.Get();  // Keep legacy handle in sync
 }
 
 void GraphicsPipelineNode::BuildShaderStages(std::shared_ptr<ShaderManagement::ShaderDataBundle> bundle) {
@@ -500,6 +526,21 @@ void GraphicsPipelineNode::CreatePipeline(TypedCompileContext& ctx) {
     BuildViewportState(viewportState);
 
     // Assemble graphics pipeline create info
+    // Request tracked allocation for pipeline
+    auto* rm = GetResourceManager();
+    if (rm) {
+        pipeline_ = rm->RequestSingle<VkPipeline>(
+            AllocationConfig()
+                .WithLifetime(ResourceLifetime::GraphLocal)
+                .WithName("graphicsPipeline")
+                .WithOwner(GetInstanceId())
+        );
+        if (pipeline_.IsError()) {
+            throw std::runtime_error("Failed to allocate pipeline: " +
+                std::string(pipeline_.GetErrorString()));
+        }
+    }
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = static_cast<uint32_t>(shaderStageInfos.size());
@@ -520,12 +561,13 @@ void GraphicsPipelineNode::CreatePipeline(TypedCompileContext& ctx) {
     pipelineInfo.basePipelineIndex = -1;
 
     VkResult result = vkCreateGraphicsPipelines(
-        device->device, pipelineCache, 1, &pipelineInfo, nullptr, &pipeline
+        device->device, pipelineCache, 1, &pipelineInfo, nullptr, pipeline_.GetPtr()
     );
 
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
+    pipeline = pipeline_.Get();  // Keep legacy handle in sync
 
     ctx.Out(GraphicsPipelineNodeConfig::PIPELINE, pipeline);
     ctx.Out(GraphicsPipelineNodeConfig::PIPELINE_LAYOUT, pipelineLayout);
