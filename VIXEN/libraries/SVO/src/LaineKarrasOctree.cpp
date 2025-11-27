@@ -2070,9 +2070,10 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     // Normalized brick size (in [0,1]³ space)
     float normalizedBrickSize = 1.0f / static_cast<float>(bricksPerAxis);
 
-    // 5. PHASE 1: Collect populated bricks using TOP-DOWN spatial queries
-    // This is O(depth × populated_octants) - efficient for both sparse and dense worlds
-    // We descend from root, only exploring octants that contain entities (spatial culling)
+    // 5. PHASE 1: Collect populated bricks using DIRECT BINNING (O(N) approach)
+    // Query all solid voxels once, then bin them by brick coordinate.
+    // This is O(N) where N = number of voxels, much faster than the previous
+    // O(N × Q) top-down approach where Q = number of spatial queries.
     struct BrickInfo {
         glm::ivec3 gridCoord;      // Brick grid coordinate (0 to bricksPerAxis-1)
         glm::vec3 normalizedMin;   // Normalized [0,1]³ minimum corner
@@ -2083,80 +2084,64 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     std::vector<BrickInfo> populatedBricks;
     size_t totalVoxels = 0;
 
-    // Work item for top-down traversal
-    struct OctantWork {
-        glm::vec3 worldMin;        // World-space AABB min
-        glm::vec3 worldMax;        // World-space AABB max
-        glm::ivec3 gridCoord;      // Grid coordinate at current depth
-        int depth;                 // Current depth (0 = root, hierarchyDepth = brick level)
+    std::cout << "[LaineKarrasOctree] Rebuilding: bricksPerAxis=" << bricksPerAxis
+              << ", brickSideLength=" << brickSideLength << std::endl;
+
+    // Step 1: Query all solid voxels once (O(N))
+    std::cout << "[LaineKarrasOctree] Querying all solid voxels..." << std::endl;
+    auto allVoxels = world.querySolidVoxels();
+    std::cout << "[LaineKarrasOctree] Found " << allVoxels.size() << " solid voxels" << std::endl;
+
+    // Step 2: Bin voxels by brick coordinate using a hash map
+    // Key = linearized brick coordinate, Value = count
+    std::unordered_map<uint64_t, size_t> brickCounts;
+    brickCounts.reserve(allVoxels.size() / 64);  // Estimate: ~64 voxels per brick average
+
+    auto toBrickKey = [brickSideLength, bricksPerAxis](const glm::vec3& pos) -> uint64_t {
+        int bx = std::clamp(static_cast<int>(pos.x) / brickSideLength, 0, bricksPerAxis - 1);
+        int by = std::clamp(static_cast<int>(pos.y) / brickSideLength, 0, bricksPerAxis - 1);
+        int bz = std::clamp(static_cast<int>(pos.z) / brickSideLength, 0, bricksPerAxis - 1);
+        return static_cast<uint64_t>(bx) |
+               (static_cast<uint64_t>(by) << 16) |
+               (static_cast<uint64_t>(bz) << 32);
     };
 
-    // BFS queue for level-by-level processing (bounded memory, no thread explosion)
-    std::queue<OctantWork> workQueue;
+    auto fromBrickKey = [](uint64_t key) -> glm::ivec3 {
+        return glm::ivec3(
+            static_cast<int>(key & 0xFFFF),
+            static_cast<int>((key >> 16) & 0xFFFF),
+            static_cast<int>((key >> 32) & 0xFFFF)
+        );
+    };
 
-    // Start with root octant covering entire world
-    workQueue.push(OctantWork{worldMin, worldMax, glm::ivec3(0), 0});
-
-    // Hierarchy depth from root to brick level: log2(bricksPerAxis)
-    int hierarchyDepth = 0;
-    {
-        int temp = bricksPerAxis;
-        while (temp > 1) { temp /= 2; hierarchyDepth++; }
+    std::cout << "[LaineKarrasOctree] Binning voxels by brick..." << std::endl;
+    for (const auto& entity : allVoxels) {
+        auto posOpt = world.getPosition(entity);
+        if (!posOpt) continue;  // Skip entities without position
+        uint64_t key = toBrickKey(*posOpt);
+        brickCounts[key]++;
+        totalVoxels++;
     }
 
-    while (!workQueue.empty()) {
-        OctantWork work = workQueue.front();
-        workQueue.pop();
+    std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
 
-        // Query entities in this region using AABB query
-        auto entities = world.queryRegion(work.worldMin, work.worldMax);
+    // Step 3: Convert hash map to sorted brick list
+    populatedBricks.reserve(brickCounts.size());
+    for (const auto& [key, count] : brickCounts) {
+        glm::ivec3 gridCoord = fromBrickKey(key);
+        glm::vec3 brickNormalizedMin = glm::vec3(
+            gridCoord.x * normalizedBrickSize,
+            gridCoord.y * normalizedBrickSize,
+            gridCoord.z * normalizedBrickSize
+        );
+        glm::vec3 brickWorldMin = glm::vec3(gridCoord) * static_cast<float>(brickSideLength) + worldMin;
 
-        // Skip empty regions - this is the key optimization!
-        // Entire subtrees are pruned if no entities in region
-        if (entities.empty()) {
-            continue;
-        }
-
-        // At brick level, record this brick
-        if (work.depth >= hierarchyDepth) {
-            glm::vec3 brickNormalizedMin = glm::vec3(
-                work.gridCoord.x * normalizedBrickSize,
-                work.gridCoord.y * normalizedBrickSize,
-                work.gridCoord.z * normalizedBrickSize
-            );
-
-            populatedBricks.push_back(BrickInfo{
-                work.gridCoord,
-                brickNormalizedMin,
-                work.worldMin,
-                entities.size()
-            });
-            totalVoxels += entities.size();
-            continue;
-        }
-
-        // Not at brick level yet - subdivide into 8 children
-        glm::vec3 center = (work.worldMin + work.worldMax) * 0.5f;
-
-        for (int octant = 0; octant < 8; ++octant) {
-            glm::vec3 childMin, childMax;
-
-            // Compute child AABB based on octant bits (x=bit0, y=bit1, z=bit2)
-            childMin.x = (octant & 1) ? center.x : work.worldMin.x;
-            childMax.x = (octant & 1) ? work.worldMax.x : center.x;
-            childMin.y = (octant & 2) ? center.y : work.worldMin.y;
-            childMax.y = (octant & 2) ? work.worldMax.y : center.y;
-            childMin.z = (octant & 4) ? center.z : work.worldMin.z;
-            childMax.z = (octant & 4) ? work.worldMax.z : center.z;
-
-            // Compute child grid coordinate (parent*2 + octant offset)
-            glm::ivec3 childGridCoord = work.gridCoord * 2;
-            if (octant & 1) childGridCoord.x += 1;
-            if (octant & 2) childGridCoord.y += 1;
-            if (octant & 4) childGridCoord.z += 1;
-
-            workQueue.push(OctantWork{childMin, childMax, childGridCoord, work.depth + 1});
-        }
+        populatedBricks.push_back(BrickInfo{
+            gridCoord,
+            brickNormalizedMin,
+            brickWorldMin,
+            count
+        });
     }
 
     if (populatedBricks.empty()) {

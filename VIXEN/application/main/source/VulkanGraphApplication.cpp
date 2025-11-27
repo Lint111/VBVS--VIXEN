@@ -700,14 +700,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
     camera->SetParameter(CameraNodeConfig::PARAM_NEAR_PLANE, 0.1f);
     camera->SetParameter(CameraNodeConfig::PARAM_FAR_PLANE, 500.0f);
-    // Camera presets for Cornell box (grid center at z=-8, extends from -10 to -6)
+    // Camera presets for Cornell box (grid spans [0,128], center at 64,64,64)
     // Uncomment one preset below:
 
-    // PRESET 1: Front view looking into box (camera in front of grid)
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 0.0f);
-    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -10.0f);  // Outside grid (grid spans -8 to 8, camera at -10)
-    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 180.0f);  // Turn 180° to look toward +Z (into grid)
+    // PRESET 1: Front view looking into box (camera outside grid)
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_X, 64.0f);   // Center X
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Y, 64.0f);   // Center Y
+    camera->SetParameter(CameraNodeConfig::PARAM_CAMERA_Z, -50.0f);  // Outside grid looking in
+    camera->SetParameter(CameraNodeConfig::PARAM_YAW, 0.0f);         // Look toward +Z
     camera->SetParameter(CameraNodeConfig::PARAM_PITCH, 0.0f);
 
     // PRESET 2: Offset to see both left (red) and right (green) walls

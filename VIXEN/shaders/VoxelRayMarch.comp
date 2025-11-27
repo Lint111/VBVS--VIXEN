@@ -547,9 +547,9 @@ void main() {
     vec3 hitColor, hitNormal;
     float hitT;
 
-    // Grid bounds for octree (Cornell box is centered at origin, spans [-8,8])
-    vec3 gridMin = vec3(-8.0, -8.0, -8.0);
-    vec3 gridMax = vec3(8.0, 8.0, 8.0);
+    // Grid bounds for octree (VoxelGridNode uses resolution 128, spans [0,128])
+    vec3 gridMin = vec3(0.0, 0.0, 0.0);
+    vec3 gridMax = vec3(128.0, 128.0, 128.0);
 
     // DEBUG: Test ray-AABB intersection first
     vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);

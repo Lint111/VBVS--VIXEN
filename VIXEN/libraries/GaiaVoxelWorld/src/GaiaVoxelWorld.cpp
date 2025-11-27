@@ -248,9 +248,17 @@ std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::queryBrick(
 std::vector<GaiaVoxelWorld::EntityID> GaiaVoxelWorld::querySolidVoxels() const {
     std::vector<EntityID> results;
 
-    auto query = m_impl->world.query().all<Density>();
+    // Query all entities with position (MortonKey).
+    // If Density component exists, filter by density > 0; otherwise include all.
+    auto query = m_impl->world.query().all<MortonKey>();
     query.each([&](gaia::ecs::Entity entity) {
-        if (m_impl->world.get<Density>(entity).value > 0.0f) {
+        // Check if entity has Density component
+        if (m_impl->world.has<Density>(entity)) {
+            if (m_impl->world.get<Density>(entity).value > 0.0f) {
+                results.push_back(entity);
+            }
+        } else {
+            // Entity without Density component is considered solid (e.g., Material-only voxels)
             results.push_back(entity);
         }
     });
