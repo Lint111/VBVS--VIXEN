@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 27, 2025 (Session 8C)
+**Last Updated**: November 28, 2025 (Session 8D)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: 🔄 **Week 2: GPU Integration IN PROGRESS** | Parallel Injection + Shader Fix
+**Status**: ✅ **Week 2: GPU Integration WORKING** | Cornell Box Rendering!
 
 ---
 
@@ -49,41 +49,48 @@ octree.unlockAfterRendering();
 
 ---
 
-## Week 2: GPU Integration - IN PROGRESS 🔄
+## Week 2: GPU Integration - WORKING ✅
 
-### Session 8C Progress (Nov 27, 2025)
+### Session 8D Progress (Nov 28, 2025) - MAJOR BREAKTHROUGH
 
-**Completed**:
-- [x] **Performance Optimization**: Parallel voxel injection via `VoxelInjectionQueue`
-  - Uses lock-free ring buffer with worker threads
-  - `createVoxelsBatch()` now skips per-entity chunk parenting (O(chunks) → O(1))
-  - Single cache invalidation at end instead of per-entity
-- [x] **Shader Fix**: Added missing `countChildrenBefore()` function to `VoxelRayMarch.comp`
-  - Counts set bits before child index for packed child array indexing
-  - Fixed compilation error at shader:397
-- [x] **CMake Fix**: Added TBB DLL copy command for VIXEN target
-- [x] **Morton Index Optimization**: Added `unordered_map<uint64_t, Entity>` to `GaiaVoxelWorld`
-  - `getEntityByWorldSpace()` now O(1) instead of O(N)
-  - Fixed brick extraction freeze (643,072 lookups now instant)
-- [x] Build passes successfully
-- [x] Application runs without freeze
+**Cornell Box Now Rendering on GPU!** 🎉
+
+Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunter sessions:
+
+| # | Bug | Root Cause | Fix |
+|---|-----|------------|-----|
+| 1 | No rendering | Missing brick-level leaf forcing | Force `isLeaf=true` at brick scale |
+| 2 | Yellow everywhere | Missing octant offset in handleLeafHit | Added boundary offset |
+| 3 | Grid pattern | DDA `invDir` always positive | Preserve sign: `1.0/rayDir` not `1.0/abs(rayDir)` |
+| 4 | Brick-level only | Wrong ESVO scale | `getBrickESVOScale()` = 18 not 20 |
+| 5 | POV-dependent stripes | Corner+offset wrong for mirrored rays | Use octant center instead |
+| 6 | Interior wall gaps | tMax from `pos` not `rayOrigin` | Absolute t parameter |
 
 **Files Modified**:
-- [VoxelRayMarch.comp:84-95](shaders/VoxelRayMarch.comp#L84-L95) - Added `countChildrenBefore()` function
-- [VoxelGridNode.cpp:108-155](libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp#L108-L155) - Use `VoxelInjectionQueue` for parallel entity creation
-- [GaiaVoxelWorld.cpp:17-26](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L17-L26) - Morton index in Impl struct
-- [GaiaVoxelWorld.cpp:375-384](libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp#L375-L384) - O(1) spatial lookup
-- [SVOBuilder.h:61-64](libraries/SVO/include/SVOBuilder.h#L61-L64) - Added `brickMaterialData` to OctreeBlock
+- [VoxelRayMarch.comp](shaders/VoxelRayMarch.comp) - All 6 bug fixes
+- [InputState.h:101-121](libraries/RenderGraph/include/Data/InputState.h#L101-L121) - Arrow key look axes
+- [InputNode.cpp:37-41](libraries/RenderGraph/src/Nodes/InputNode.cpp#L37-L41) - Arrow key tracking
+- [CameraNode.cpp:133-138](libraries/RenderGraph/src/Nodes/CameraNode.cpp#L133-L138) - Arrow key rotation
 
-**Current Issue**:
-- Application runs but renders only black/blue background (no Cornell box visible)
-- Shader file has git staging issues (auto-reverts from staged to unstaged)
+**New Controls**:
+| Key | Action |
+|-----|--------|
+| Arrow Left/Right | Look left/right (yaw) |
+| Arrow Up/Down | Look up/down (pitch) |
+| W/A/S/D | Move forward/left/back/right |
+| Q/E | Move down/up |
+| Mouse | Look (still works) |
+| ESC | Exit |
+
+**Current State**:
+- ✅ Cornell Box renders with correct colors (red, green, yellow, white walls)
+- ✅ Camera controls work smoothly
+- ⚠️ Minor artifacts may remain at brick boundaries (needs verification)
 
 **Next**:
-- [ ] Debug why voxels not rendering (bug-hunter investigation)
-- [ ] Fix shader git staging issue
-- [ ] Verify rendering output (expect Cornell box)
-- [ ] Benchmark Mrays/sec
+- [ ] Final visual verification
+- [ ] Benchmark Mrays/sec at 1080p
+- [ ] Update progress.md
 
 ### Session 8B Progress (Nov 27, 2025)
 
@@ -153,10 +160,13 @@ octree.unlockAfterRendering();
 
 ## Todo List (Active Tasks)
 
-### Week 2: GPU Integration (Current)
+### Week 2: GPU Integration (Current) - MOSTLY COMPLETE ✅
 - [x] Upload ESVO structure to GPU (SSBO) ✅
-- [x] Wire compute shader in render graph ✅ (already done)
-- [ ] Execute at 1080p (2M rays/frame)
+- [x] Wire compute shader in render graph ✅
+- [x] Fix shader bugs (6 bugs fixed in Session 8D) ✅
+- [x] Cornell Box rendering correctly ✅
+- [x] Arrow key camera controls ✅
+- [ ] Final visual verification (check for remaining artifacts)
 - [ ] Benchmark GPU performance (target >200 Mrays/sec)
 
 ### Week 3: DXT Compression

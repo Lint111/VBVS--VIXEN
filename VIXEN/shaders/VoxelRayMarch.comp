@@ -566,7 +566,9 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
     ivec3 currentVoxel = ivec3(floor(localPos));
     currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
 
-    // Compute initial tMax - distance to next voxel boundary along each axis
+    // Compute initial tMax - ABSOLUTE ray parameter to next voxel boundary
+    // Must use absolute t (from rayOrigin), not relative distance from pos
+    // This matches CPU traverseBrickView which uses tMin + distToNextBoundary/rayDir
     vec3 tMax;
     for (int axis = 0; axis < 3; axis++) {
         if (abs(rayDir[axis]) < EPSILON) {
@@ -574,11 +576,13 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
         } else if (rayDir[axis] > 0.0) {
             // Next boundary is at currentVoxel + 1
             float nextBoundary = brickMin[axis] + float(currentVoxel[axis] + 1) * voxelSize[axis];
-            tMax[axis] = (nextBoundary - pos[axis]) * invDir[axis];
+            // FIXED: Compute absolute t from rayOrigin, not distance from pos
+            tMax[axis] = (nextBoundary - rayOrigin[axis]) * invDir[axis];
         } else {
             // Next boundary is at currentVoxel (min edge)
             float nextBoundary = brickMin[axis] + float(currentVoxel[axis]) * voxelSize[axis];
-            tMax[axis] = (nextBoundary - pos[axis]) * invDir[axis];
+            // FIXED: Compute absolute t from rayOrigin, not distance from pos
+            tMax[axis] = (nextBoundary - rayOrigin[axis]) * invDir[axis];
         }
     }
 

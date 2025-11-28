@@ -4,7 +4,7 @@
 //
 // Program: VoxelRayMarch
 // UUID: 43bded93fcbc37f9
-// Generated: 2025-11-28 11:30:25
+// Generated: 2025-11-28 11:56:21
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
