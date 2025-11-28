@@ -1,6 +1,6 @@
 # Active Context
 
-**Last Updated**: November 28, 2025 (Session 8D)
+**Last Updated**: November 28, 2025 (Session 8F)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
 **Status**: ✅ **Week 2: GPU Integration WORKING** | Cornell Box Rendering!
 
@@ -51,9 +51,62 @@ octree.unlockAfterRendering();
 
 ## Week 2: GPU Integration - WORKING ✅
 
+### Session 8F Progress (Nov 28, 2025) - AXIS-PARALLEL RAY TRAVERSAL FIX
+
+**Root Cause Found**: Shader didn't filter axis-parallel rays in ADVANCE phase, causing incorrect octant stepping.
+
+**Bug**: The `executeAdvancePhase()` function used a simple `min(tx_corner, ty_corner, tz_corner)` for tc_max, without filtering out axes where the ray is nearly parallel. This caused:
+1. Misleading large t-values from perpendicular axes
+2. Incorrect step decisions (stepping along parallel axes)
+3. Partial rendering - some bricks work, others don't (viewing-angle dependent)
+
+**Fix**: Port CPU's `computeCorrectedTcMax()` and axis-filtering logic to shader:
+
+```glsl
+// Filter out corners for axis-parallel rays
+float computeCorrectedTcMax(float tx_corner, float ty_corner, float tz_corner,
+                            vec3 rayDir, float t_max) {
+    const float corner_threshold = 1000.0;
+    const float dir_epsilon = 1e-5;
+    bool useXCorner = (abs(rayDir.x) >= dir_epsilon);
+    // ... filter invalid corners
+}
+
+// Only step non-parallel axes
+if (canStepX && tx_corner <= tc_max) { step_mask ^= 1; ... }
+```
+
+**Files Modified**:
+- [VoxelRayMarch.comp:342-358](shaders/VoxelRayMarch.comp#L342-L358) - Added `computeCorrectedTcMax()` helper
+- [VoxelRayMarch.comp:391-393](shaders/VoxelRayMarch.comp#L391-L393) - `checkChildValidity()` uses corrected tc_max
+- [VoxelRayMarch.comp:451-480](shaders/VoxelRayMarch.comp#L451-L480) - `executeAdvancePhase()` filters axis-parallel rays
+
+### Session 8E Progress (Nov 28, 2025) - POV-DEPENDENT STRIPING FIX
+
+**Root Cause Found**: Offset direction was inverted for positive ray directions in `handleLeafHit()`.
+
+**Bug**: The `localRayDir` calculation used mirrored ray direction (`-rayDir` for positive rays) when computing the offset to apply to `localNorm`, which is in WORLD space. This caused the offset to push sample points BACKWARD for positive-direction rays, resulting in wrong brick lookups at boundaries.
+
+**Fix**: Use world `rayDir` directly since `localNorm` is in world space after unmirroring.
+
+Before (WRONG):
+```glsl
+localRayDir.x = ((coef.octant_mask & 1u) != 0u) ? rayDir.x : -rayDir.x;  // Inverts positive rays!
+offsetDir.x = (localRayDir.x > 0.0) ? offset : -offset;
+```
+
+After (CORRECT):
+```glsl
+offsetDir.x = (rayDir.x > 0.0) ? offset : -offset;  // Use world direction
+```
+
+**Files Modified**:
+- [VoxelRayMarch.comp:675-686](shaders/VoxelRayMarch.comp#L675-L686) - GPU shader fix
+- [LaineKarrasOctree.cpp:1079-1088](libraries/SVO/src/LaineKarrasOctree.cpp#L1079-L1088) - CPU fix for consistency
+
 ### Session 8D Progress (Nov 28, 2025) - MAJOR BREAKTHROUGH
 
-**Cornell Box Now Rendering on GPU!** 🎉
+**Cornell Box Now Rendering on GPU!**
 
 Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunter sessions:
 
@@ -65,6 +118,8 @@ Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunte
 | 4 | Brick-level only | Wrong ESVO scale | `getBrickESVOScale()` = 18 not 20 |
 | 5 | POV-dependent stripes | Corner+offset wrong for mirrored rays | Use octant center instead |
 | 6 | Interior wall gaps | tMax from `pos` not `rayOrigin` | Absolute t parameter |
+| 7 | Vertical striping | Offset direction inverted for +rays | Use world rayDir directly |
+| 8 | Partial rendering | No axis-parallel filtering in ADVANCE | `computeCorrectedTcMax()` + canStepX/Y/Z |
 
 **Files Modified**:
 - [VoxelRayMarch.comp](shaders/VoxelRayMarch.comp) - All 6 bug fixes
