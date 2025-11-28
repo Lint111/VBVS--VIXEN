@@ -63,10 +63,17 @@ int esvoToUserScale(int esvoScale) {
     return esvoScale - (ESVO_MAX_SCALE - USER_MAX_LEVELS + 1);
 }
 
-// Brick level in user scale = USER_MAX_LEVELS - BRICK_DEPTH = 7-3 = 4
-// Brick level in ESVO scale = userToESVOScale(4) = 22-(7-1-4) = 20
+// Brick level: octants that are 8x8x8 voxels (2^BRICK_DEPTH per side)
+// For resolution 128 with 8x8x8 bricks: 128/8 = 16 bricks per axis = 2^4
+// Need 4 subdivisions from root to reach brick level
+// ESVO scale = ESVO_MAX_SCALE - log2(resolution / brickSize)
+//            = 22 - log2(128/8) = 22 - 4 = 18
+// Or equivalently: root scale (22) - (USER_MAX_LEVELS - BRICK_DEPTH) levels
+//                = 22 - (7 - 3) = 22 - 4 = 18
 int getBrickESVOScale() {
-    return userToESVOScale(USER_MAX_LEVELS - BRICK_DEPTH);
+    // Each descent from root halves the octant size
+    // We need (USER_MAX_LEVELS - BRICK_DEPTH) descents to reach brick level
+    return ESVO_MAX_SCALE - (USER_MAX_LEVELS - BRICK_DEPTH);
 }
 
 // ============================================================================
@@ -337,6 +344,14 @@ bool checkChildValidity(TraversalState state, RayCoefficients coef,
     bool child_valid = childExists(validMask, localChildIdx);
     isLeaf = childIsLeaf(leafMask, localChildIdx);
 
+    // Force leaf status at brick level (matches CPU behavior)
+    // At brick level, treat all valid children as leaves to trigger brick DDA
+    // Brick ESVO scale = 22 - (7-3) = 18 for resolution 128
+    int brickESVOScale = getBrickESVOScale();
+    if (state.scale == brickESVOScale && child_valid) {
+        isLeaf = true;
+    }
+
     if (!child_valid || state.t_min > state.t_max) {
         return false;
     }
@@ -536,24 +551,46 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
     // Start position in world space
     vec3 pos = rayOrigin + rayDir * (t + EPSILON);
 
-    // DDA setup
-    vec3 invDir = 1.0 / max(abs(rayDir), vec3(EPSILON));
+    // DDA setup - compute step direction and inverse direction
+    // NOTE: invDir must preserve sign for correct tMax calculation
+    vec3 invDir;
+    invDir.x = abs(rayDir.x) > EPSILON ? 1.0 / rayDir.x : (rayDir.x >= 0.0 ? 1e20 : -1e20);
+    invDir.y = abs(rayDir.y) > EPSILON ? 1.0 / rayDir.y : (rayDir.y >= 0.0 ? 1e20 : -1e20);
+    invDir.z = abs(rayDir.z) > EPSILON ? 1.0 / rayDir.z : (rayDir.z >= 0.0 ? 1e20 : -1e20);
+
     ivec3 step = ivec3(sign(rayDir));
-    vec3 deltaDist = voxelSize * invDir;
+    vec3 deltaDist = abs(voxelSize * invDir);
+
+    // Compute initial voxel and tMax values
+    vec3 localPos = (pos - brickMin) / voxelSize;
+    ivec3 currentVoxel = ivec3(floor(localPos));
+    currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
+
+    // Compute initial tMax - distance to next voxel boundary along each axis
+    vec3 tMax;
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < EPSILON) {
+            tMax[axis] = 1e20;  // Ray parallel to axis, never crosses
+        } else if (rayDir[axis] > 0.0) {
+            // Next boundary is at currentVoxel + 1
+            float nextBoundary = brickMin[axis] + float(currentVoxel[axis] + 1) * voxelSize[axis];
+            tMax[axis] = (nextBoundary - pos[axis]) * invDir[axis];
+        } else {
+            // Next boundary is at currentVoxel (min edge)
+            float nextBoundary = brickMin[axis] + float(currentVoxel[axis]) * voxelSize[axis];
+            tMax[axis] = (nextBoundary - pos[axis]) * invDir[axis];
+        }
+    }
 
     const int MAX_STEPS = 64;
     for (int i = 0; i < MAX_STEPS; i++) {
-        // Convert world position to voxel indices
-        vec3 localPos = (pos - brickMin) / voxelSize;
-        ivec3 voxelIdx = ivec3(floor(localPos));
-
         // Check bounds
-        if (any(lessThan(voxelIdx, ivec3(0))) || any(greaterThanEqual(voxelIdx, ivec3(8)))) {
+        if (any(lessThan(currentVoxel, ivec3(0))) || any(greaterThanEqual(currentVoxel, ivec3(8)))) {
             break;
         }
 
         // Sample brick voxel (linear index: z*64 + y*8 + x)
-        uint voxelLinearIdx = uint(voxelIdx.z * 64 + voxelIdx.y * 8 + voxelIdx.x);
+        uint voxelLinearIdx = uint(currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x);
         uint voxelData = brickData[brickIndex * 512u + voxelLinearIdx];
 
         if (voxelData != 0u) {
@@ -569,40 +606,41 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
             else if (matID == 6u) hitColor = vec3(0.7, 0.7, 0.7);  // Light gray (short box)
             else hitColor = vec3(float(matID) / 10.0);             // Fallback: grayscale
 
-            // Compute normal from face exit
-            vec3 normal = vec3(0.0);
-            vec3 voxelCenter = brickMin + (vec3(voxelIdx) + 0.5) * voxelSize;
-            vec3 toCenter = pos - voxelCenter;
-            vec3 absToCenter = abs(toCenter);
+            // Compute entry normal based on which axis we entered from
+            hitNormal = vec3(0.0);
+            if (axisMask == 1u) hitNormal.x = -float(step.x);
+            else if (axisMask == 2u) hitNormal.y = -float(step.y);
+            else hitNormal.z = -float(step.z);
 
-            if (absToCenter.x > absToCenter.y && absToCenter.x > absToCenter.z) {
-                normal.x = sign(toCenter.x);
-            } else if (absToCenter.y > absToCenter.z) {
-                normal.y = sign(toCenter.y);
-            } else {
-                normal.z = sign(toCenter.z);
+            // First iteration: use ray direction for normal
+            if (i == 0) {
+                vec3 absRayDir = abs(rayDir);
+                if (absRayDir.x > absRayDir.y && absRayDir.x > absRayDir.z) {
+                    hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
+                } else if (absRayDir.y > absRayDir.z) {
+                    hitNormal = vec3(0.0, -sign(rayDir.y), 0.0);
+                } else {
+                    hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
+                }
             }
 
-            hitNormal = normalize(normal);
             return true;
         }
 
-        // DDA step to next voxel
-        vec3 nextBounds = brickMin + vec3(voxelIdx + (step + 1) / 2) * voxelSize;
-        vec3 tMax = (nextBounds - pos) * invDir;
-
+        // DDA step - advance to next voxel along axis with smallest tMax
         if (tMax.x < tMax.y && tMax.x < tMax.z) {
-            pos += rayDir * tMax.x;
+            currentVoxel.x += step.x;
+            tMax.x += deltaDist.x;
             axisMask = 1u;
         } else if (tMax.y < tMax.z) {
-            pos += rayDir * tMax.y;
+            currentVoxel.y += step.y;
+            tMax.y += deltaDist.y;
             axisMask = 2u;
         } else {
-            pos += rayDir * tMax.z;
+            currentVoxel.z += step.z;
+            tMax.z += deltaDist.z;
             axisMask = 4u;
         }
-
-        pos += rayDir * EPSILON;
     }
 
     return false;
@@ -616,30 +654,37 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridSize,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    // CRITICAL: Convert mirrored position to local (world) space
-    // state.pos is in mirrored [1,2] space where ray always moves toward origin
-    // We need to unmirror to get actual world position
-    vec3 mirroredNorm = state.pos - vec3(1.0);  // [1,2] → [0,1]
+    // Use octant CENTER instead of min corner for robust brick lookup
+    // state.pos is the min corner of the octant in mirrored [1,2] space
+    // Adding half the scale moves to the center, avoiding boundary issues
+    vec3 octantCenter = state.pos + vec3(state.scale_exp2 * 0.5);
+    vec3 mirroredNorm = octantCenter - vec3(1.0);  // [1,2] → [0,1] in mirrored space
+
+    // Unmirror based on octant_mask (ESVO convention from SVOTypes.h):
+    // - bit=1: axis is NOT mirrored (negative ray direction) -> use mirroredNorm directly
+    // - bit=0: axis IS mirrored (positive ray direction) -> flip: 1.0 - mirroredNorm
     vec3 localNorm;
-    localNorm.x = ((coef.octant_mask & 1) != 0) ? mirroredNorm.x : (1.0 - mirroredNorm.x);
-    localNorm.y = ((coef.octant_mask & 2) != 0) ? mirroredNorm.y : (1.0 - mirroredNorm.y);
-    localNorm.z = ((coef.octant_mask & 4) != 0) ? mirroredNorm.z : (1.0 - mirroredNorm.z);
+    localNorm.x = ((coef.octant_mask & 1u) != 0u) ? mirroredNorm.x : (1.0 - mirroredNorm.x);
+    localNorm.y = ((coef.octant_mask & 2u) != 0u) ? mirroredNorm.y : (1.0 - mirroredNorm.y);
+    localNorm.z = ((coef.octant_mask & 4u) != 0u) ? mirroredNorm.z : (1.0 - mirroredNorm.z);
 
-    // Compute brick bounds in world space
-    vec3 brickMinNorm = localNorm;
-    vec3 brickMaxNorm = localNorm + state.scale_exp2;
-    vec3 brickMinWorld = gridMin + brickMinNorm * gridSize;
-    vec3 brickMaxWorld = gridMin + brickMaxNorm * gridSize;
+    // Clamp to valid range (center should already be well within bounds)
+    vec3 octantInside = clamp(localNorm, vec3(0.001), vec3(0.999));
 
-    // Compute brick index from world position
-    // Bricks are stored in LINEAR GRID ORDER: brickZ * bricksPerAxis^2 + brickY * bricksPerAxis + brickX
+    // Convert to world-space local position [0, gridSize]
+    vec3 hitPosLocal = octantInside * gridSize;
+    hitPosLocal = clamp(hitPosLocal, vec3(0.001), gridSize - vec3(0.001));
+
+    // Compute brick index from position
     const int BRICK_SIZE = 8;
     int bricksPerAxis = int(gridSize.x) / BRICK_SIZE;
 
-    // Use center of brick to compute grid coordinates
-    vec3 brickCenter = (brickMinWorld + brickMaxWorld) * 0.5;
-    ivec3 brickCoord = ivec3(floor((brickCenter - gridMin) / float(BRICK_SIZE)));
+    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
     brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+
+    // Compute brick bounds in world space for DDA
+    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE);
+    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE));
 
     uint brickIndex = uint(brickCoord.z * bricksPerAxis * bricksPerAxis +
                           brickCoord.y * bricksPerAxis +
@@ -653,6 +698,12 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
         return true;
     }
 
+    // Debug: Show hit position as color gradient
+    // Use hitPosLocal normalized to [0,1] to create a smooth gradient
+    // This will show if the coordinate calculation is correct
+    vec3 normPos = hitPosLocal / gridSize;
+    // 4-corner gradient: black(0,0) -> red(1,0) -> green(0,1) -> yellow(1,1)
+    hitColor = vec3(normPos.x, normPos.y, normPos.z * 0.5);
     return false;
 }
 
@@ -877,8 +928,8 @@ void main() {
             } else if (g_debugExitCode == DEBUG_EXIT_SCALE_EXCEEDED) {
                 color = vec3(1.0, 1.0, 0.0);  // Yellow = scale exceeded root
             } else if (g_debugExitCode == DEBUG_LEAF_FOUND) {
-                // Leaf found but no voxel hit - orange
-                color = vec3(1.0, 0.5, 0.0);
+                // Leaf found but no voxel hit - show hitColor which has brick debug info
+                color = hitColor;
             } else if (g_debugExitCode == DEBUG_EXIT_POP_EXIT) {
                 // Pop exited octree - show first iteration debug info from hitColor
                 // R = localChildIdx / 8 (0-7 valid octant)

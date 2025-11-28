@@ -216,8 +216,8 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                   << ", leafMask=0x" << static_cast<int>(root.leafMask) << std::dec << std::endl;
     }
 
-    // Upload ESVO octree to GPU buffers
-    UploadESVOBuffers(*octreeData);
+    // Upload ESVO octree to GPU buffers (pass grid for direct brick data extraction)
+    UploadESVOBuffers(*octreeData, grid);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
     // Output resources
@@ -784,7 +784,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     NODE_LOG_INFO("Uploaded octree buffers to GPU");
 }
 
-void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree) {
+void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid& grid) {
     if (!octree.root) {
         throw std::runtime_error("[VoxelGridNode] ESVO octree has no root block");
     }
@@ -836,51 +836,75 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree) {
               << " bricks (grid: " << bricksPerAxis << "^3 = " << totalBricks
               << " slots, " << bricksBufferSize << " bytes)" << std::endl;
 
-    // Extract brick voxel data from EntityBrickViews in LINEAR GRID ORDER
+    // Extract brick voxel data DIRECTLY from VoxelGrid (bypassing EntityBrickView)
     // Initialize all voxels to 0 (empty) first
     std::vector<uint32_t> brickData(totalBricks * voxelsPerBrick, 0);
 
-    // Iterate through brickGridToBrickView mapping and place each brick in its grid slot
-    const auto& brickGridMap = rootBlock.brickGridToBrickView;
+    // Get grid data and resolution
+    const auto& gridData = grid.GetData();
+    uint32_t gridRes = grid.GetResolution();
+
+    // Iterate through all bricks and extract voxel data directly from grid
     size_t populatedBricks = 0;
+    size_t nonZeroVoxels = 0;
 
-    for (const auto& [gridKey, brickViewIndex] : brickGridMap) {
-        // Decode grid coordinates from key: (x | y << 10 | z << 20)
-        int brickX = static_cast<int>(gridKey & 0x3FF);
-        int brickY = static_cast<int>((gridKey >> 10) & 0x3FF);
-        int brickZ = static_cast<int>((gridKey >> 20) & 0x3FF);
+    for (int brickZ = 0; brickZ < bricksPerAxis; ++brickZ) {
+        for (int brickY = 0; brickY < bricksPerAxis; ++brickY) {
+            for (int brickX = 0; brickX < bricksPerAxis; ++brickX) {
+                // Compute linear brick index
+                size_t linearBrickIndex = static_cast<size_t>(brickZ) * bricksPerAxis * bricksPerAxis +
+                                          static_cast<size_t>(brickY) * bricksPerAxis +
+                                          static_cast<size_t>(brickX);
+                const size_t brickOffset = linearBrickIndex * voxelsPerBrick;
 
-        // Compute linear grid index for this brick
-        size_t linearBrickIndex = static_cast<size_t>(brickZ) * bricksPerAxis * bricksPerAxis +
-                                  static_cast<size_t>(brickY) * bricksPerAxis +
-                                  static_cast<size_t>(brickX);
+                // World-space origin of this brick
+                int worldBaseX = brickX * 8;
+                int worldBaseY = brickY * 8;
+                int worldBaseZ = brickZ * 8;
 
-        if (linearBrickIndex >= totalBricks || brickViewIndex >= brickViews.size()) {
-            std::cout << "[VoxelGridNode] WARNING: Brick index out of range: grid=("
-                      << brickX << "," << brickY << "," << brickZ << "), linear="
-                      << linearBrickIndex << ", viewIdx=" << brickViewIndex << std::endl;
-            continue;
-        }
+                bool hasSolidVoxel = false;
 
-        const auto& brickView = brickViews[brickViewIndex];
-        const size_t brickOffset = linearBrickIndex * voxelsPerBrick;
+                // Extract material IDs directly from VoxelGrid
+                for (int z = 0; z < 8; ++z) {
+                    for (int y = 0; y < 8; ++y) {
+                        for (int x = 0; x < 8; ++x) {
+                            int worldX = worldBaseX + x;
+                            int worldY = worldBaseY + y;
+                            int worldZ = worldBaseZ + z;
 
-        // Extract material IDs from each voxel in the brick
-        for (int z = 0; z < 8; ++z) {
-            for (int y = 0; y < 8; ++y) {
-                for (int x = 0; x < 8; ++x) {
-                    size_t voxelIdx = static_cast<size_t>(z * 64 + y * 8 + x);
+                            // Bounds check
+                            if (worldX >= static_cast<int>(gridRes) ||
+                                worldY >= static_cast<int>(gridRes) ||
+                                worldZ >= static_cast<int>(gridRes)) {
+                                continue;
+                            }
 
-                    // Get material ID from EntityBrickView
-                    auto materialOpt = brickView.getComponentValue<GaiaVoxel::Material>(voxelIdx);
-                    uint32_t materialId = materialOpt.value_or(0);
+                            // Get voxel from grid
+                            size_t gridIdx = static_cast<size_t>(worldZ) * gridRes * gridRes +
+                                             static_cast<size_t>(worldY) * gridRes + worldX;
+                            uint8_t materialId = gridData[gridIdx];
 
-                    brickData[brickOffset + voxelIdx] = materialId;
+                            if (materialId != 0) {
+                                hasSolidVoxel = true;
+                                nonZeroVoxels++;
+                            }
+
+                            // Store in brick buffer
+                            size_t voxelIdx = static_cast<size_t>(z * 64 + y * 8 + x);
+                            brickData[brickOffset + voxelIdx] = static_cast<uint32_t>(materialId);
+                        }
+                    }
+                }
+
+                if (hasSolidVoxel) {
+                    populatedBricks++;
                 }
             }
         }
-        populatedBricks++;
     }
+
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Extracted " << nonZeroVoxels
+              << " non-zero voxels across " << populatedBricks << " bricks from VoxelGrid" << std::endl;
 
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Populated " << populatedBricks
               << " bricks in grid-ordered buffer" << std::endl;

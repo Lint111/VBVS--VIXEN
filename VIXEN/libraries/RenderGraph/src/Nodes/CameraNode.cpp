@@ -130,6 +130,13 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         rotationDelta.x += inputState->mouseDelta.x;
         rotationDelta.y += inputState->mouseDelta.y;
 
+        // Arrow keys for smooth look rotation (scaled for comfortable speed)
+        float lookHorizontal = inputState->GetAxisLookHorizontal();
+        float lookVertical = inputState->GetAxisLookVertical();
+        const float arrowKeyLookSpeed = 100.0f;  // Pixels-equivalent per frame
+        rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * inputState->deltaTime;
+        rotationDelta.y -= lookVertical * arrowKeyLookSpeed * inputState->deltaTime;  // Inverted Y
+
         // Get keyboard movement axes
         float horizontal = inputState->GetAxisHorizontal();
         float vertical = inputState->GetAxisVertical();

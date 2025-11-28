@@ -72,8 +72,8 @@ private:
     // Buffer upload orchestration
     void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
 
-    // New ESVO buffer upload (SVO::Octree structure)
-    void UploadESVOBuffers(const SVO::Octree& octree);
+    // New ESVO buffer upload (SVO::Octree structure + direct grid access)
+    void UploadESVOBuffers(const SVO::Octree& octree, const VIXEN::RenderGraph::VoxelGrid& grid);
 
     // Buffer creation steps (extracted from UploadOctreeBuffers)
     void CreateOctreeNodesBuffer(VkDeviceSize size, const void* nodeData);

@@ -34,6 +34,11 @@ InputNode::InputNode(
     keyStates[KeyCode::Ctrl] = KeyState{};
     keyStates[KeyCode::Alt] = KeyState{};
     keyStates[KeyCode::Escape] = KeyState{};
+    // Arrow keys for look rotation
+    keyStates[KeyCode::Left] = KeyState{};
+    keyStates[KeyCode::Right] = KeyState{};
+    keyStates[KeyCode::Up] = KeyState{};
+    keyStates[KeyCode::Down] = KeyState{};
 }
 
 void InputNode::SetupImpl(TypedSetupContext& ctx) {

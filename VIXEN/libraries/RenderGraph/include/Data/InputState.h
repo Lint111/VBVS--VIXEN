@@ -97,6 +97,28 @@ struct InputState {
         if (IsKeyDown(EventBus::KeyCode::E)) value += 1.0f;
         return value;
     }
+
+    /**
+     * @brief Get look horizontal axis (Arrow Left/Right for yaw rotation)
+     * Returns -1 = look left, +1 = look right
+     */
+    float GetAxisLookHorizontal() const {
+        float value = 0.0f;
+        if (IsKeyDown(EventBus::KeyCode::Left)) value -= 1.0f;
+        if (IsKeyDown(EventBus::KeyCode::Right)) value += 1.0f;
+        return value;
+    }
+
+    /**
+     * @brief Get look vertical axis (Arrow Up/Down for pitch rotation)
+     * Returns -1 = look down, +1 = look up
+     */
+    float GetAxisLookVertical() const {
+        float value = 0.0f;
+        if (IsKeyDown(EventBus::KeyCode::Down)) value -= 1.0f;
+        if (IsKeyDown(EventBus::KeyCode::Up)) value += 1.0f;
+        return value;
+    }
 };
 
 // Pointer type for passing InputState through render graph
