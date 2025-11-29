@@ -136,6 +136,7 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     }
     resourceArray_.resize(maxBinding + 1);
     slotRoleArray_.resize(maxBinding + 1, SlotRole::Dependency);  // Default to Dependency
+    debugCaptures_.clear();  // Reset debug captures for this compile
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
 
@@ -149,12 +150,16 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal));
     }
 
-    // Output resource array, slot roles, and pass through shader bundle
+    // Output resource array, slot roles, debug captures, and pass through shader bundle
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleArray_);
+    ctx.Out(DescriptorResourceGathererNodeConfig::DEBUG_CAPTURES, debugCaptures_);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries");
+    if (!debugCaptures_.empty()) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DEBUG_CAPTURES with " + std::to_string(debugCaptures_.size()) + " debug resources");
+    }
 }
 
 void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
@@ -443,6 +448,21 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
         StoreFieldExtractionResource(slotIndex, binding, slotInfo->fieldOffset, slotInfo->resource);
     } else {
         StoreRegularResource(slotIndex, binding, slotInfo->slotName, slotInfo->slotRole, slotInfo->resource);
+    }
+
+    // Check for Debug role - collect IDebugCapture interface if present
+    if (HasDebug(slotInfo->slotRole)) {
+        // Try to get IDebugCapture interface from the resource
+        // The resource must implement GetDebugCapture() or be castable to IDebugCapture
+        if (auto* debugCapture = slotInfo->resource->GetInterface<Debug::IDebugCapture>()) {
+            debugCaptures_.push_back(debugCapture);
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Collected debug capture from slot " +
+                          std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", name=" +
+                          debugCapture->GetDebugName() + ")");
+        } else {
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Debug-flagged slot " +
+                          std::to_string(slotIndex) + " does not implement IDebugCapture");
+        }
     }
 
     return true;

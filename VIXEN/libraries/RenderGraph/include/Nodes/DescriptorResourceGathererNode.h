@@ -3,6 +3,7 @@
 #include "Core/VariadicTypedNode.h"
 #include "Core/NodeType.h"
 #include "Data/Nodes/DescriptorResourceGathererNodeConfig.h"
+#include "Debug/IDebugCapture.h"
 #include "ShaderDataBundle.h"
 #include <memory>
 #include <vector>
@@ -113,6 +114,9 @@ private:
     // Output resource array (indexed by binding)
     std::vector<DescriptorHandleVariant> resourceArray_;
     std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
+
+    // Debug captures - auto-collected from slots with Debug role
+    std::vector<Debug::IDebugCapture*> debugCaptures_;
 
     // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);

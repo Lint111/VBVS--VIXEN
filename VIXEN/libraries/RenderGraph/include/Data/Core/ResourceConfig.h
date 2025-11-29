@@ -63,9 +63,9 @@ enum class SlotRole : uint8_t {
 	None         = 0u,        // No role assigned
     Dependency   = 1u << 0,  // Accessed during Compile (creates dependency)
     Execute      = 1u << 1,  // Accessed during Execute (can be combined with Dependency)
-    CleanupOnly  = 1u << 2,   // Only accessed during Cleanup
-    Output       = 1u << 3        // Output slot (role only applies to inputs)
-
+    CleanupOnly  = 1u << 2,  // Only accessed during Cleanup
+    Output       = 1u << 3,  // Output slot (role only applies to inputs)
+    Debug        = 1u << 4   // Debug resource - auto-routed to debug output by gatherer
 };
 
 // Bitwise operators for SlotRole
@@ -108,6 +108,10 @@ inline bool HasDependency(SlotRole role) {
 
 inline bool HasExecute(SlotRole role) {
     return HasRole(role, SlotRole::Execute);
+}
+
+inline bool HasDebug(SlotRole role) {
+    return HasRole(role, SlotRole::Debug);
 }
 
 inline bool IsDependencyOnly(SlotRole role) {

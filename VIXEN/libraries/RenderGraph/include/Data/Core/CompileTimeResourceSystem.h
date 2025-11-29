@@ -596,6 +596,29 @@ public:
         return nullptr;
     }
 
+    // Interface extension mechanism
+    // Allows resources to expose additional interfaces (e.g., IDebugCapture)
+    // Note: interfacePtr_ is non-owning - caller must ensure lifetime
+    void SetInterfacePtr(void* iface, size_t typeHash) {
+        interfacePtr_ = iface;
+        interfaceTypeHash_ = typeHash;
+    }
+
+    template<typename InterfaceType>
+    void SetInterface(InterfaceType* iface) {
+        SetInterfacePtr(static_cast<void*>(iface), typeid(InterfaceType).hash_code());
+    }
+
+    template<typename InterfaceType>
+    InterfaceType* GetInterface() const {
+        if (interfacePtr_ != nullptr && interfaceTypeHash_ == typeid(InterfaceType).hash_code()) {
+            return static_cast<InterfaceType*>(interfacePtr_);
+        }
+        return nullptr;
+    }
+
+    bool HasInterface() const { return interfacePtr_ != nullptr; }
+
 
     // Extract handle as DescriptorHandleVariant for inter-node communication
     // This method attempts to extract common descriptor handle types
@@ -726,6 +749,10 @@ private:
     ResourceLifetime lifetime_ = ResourceLifetime::Transient;
     ResourceDescriptorVariant descriptor_;
     bool isSet_ = false;
+
+    // Interface extension storage (non-owning)
+    void* interfacePtr_ = nullptr;
+    size_t interfaceTypeHash_ = 0;
 };
 
 // ============================================================================
