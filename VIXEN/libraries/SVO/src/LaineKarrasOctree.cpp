@@ -1066,27 +1066,33 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     // and actual ray position (for stationary axes where ray doesn't move).
     //
     // The ESVO state.pos is in mirrored parametric space [1,2].
-    // Convert to local space [0,1] then to world units [0, worldSize].
+    // Must convert to LOCAL [1,2] space first using NVIDIA's formula, then to [0,1].
+    //
+    // NVIDIA ESVO approach (Raycast.inl lines 344-346):
+    //   if ((octant_mask & 1) == 0) pos.x = 3.0f - scale_exp2 - pos.x;
+    // This correctly accounts for octant size when unmirroring.
     constexpr float axis_epsilon = 1e-5f;
 
-    // Get ray position from ESVO state (mirrored → local conversion)
-    glm::vec3 mirroredNorm = state.pos - glm::vec3(1.0f);  // [1,2] → [0,1]
-    glm::vec3 localNorm;
-    localNorm.x = (coef.octant_mask & 1) ? mirroredNorm.x : (1.0f - mirroredNorm.x);
-    localNorm.y = (coef.octant_mask & 2) ? mirroredNorm.y : (1.0f - mirroredNorm.y);
-    localNorm.z = (coef.octant_mask & 4) ? mirroredNorm.z : (1.0f - mirroredNorm.z);
+    // Get ray position from ESVO state (mirrored → local conversion using NVIDIA formula)
+    glm::vec3 localPos = state.pos;  // Start with mirrored [1,2] position
+    float octantSize = state.scale_exp2;  // Current octant size
 
-    // Add small offset in LOCAL ray direction to get point inside the octant (not on boundary)
-    // For mirrored axes, the local direction is OPPOSITE to the world direction
+    // Unmirror using NVIDIA's formula: 3.0 - scale_exp2 - pos
+    // For mirrored axes (octant_mask bit = 0), apply the transformation
+    if ((coef.octant_mask & 1) == 0) localPos.x = 3.0f - octantSize - localPos.x;
+    if ((coef.octant_mask & 2) == 0) localPos.y = 3.0f - octantSize - localPos.y;
+    if ((coef.octant_mask & 4) == 0) localPos.z = 3.0f - octantSize - localPos.z;
+
+    // Now localPos is in LOCAL [1,2] space - convert to [0,1] normalized space
+    glm::vec3 localNorm = localPos - glm::vec3(1.0f);
+
+    // Add small offset along world ray direction to get point inside the octant (not on boundary)
+    // Unlike the mirrored approach, in local space the ray direction is unchanged
     float offset = 0.001f;
-    glm::vec3 localRayDir;
-    localRayDir.x = (coef.octant_mask & 1) ? coef.rayDir.x : -coef.rayDir.x;
-    localRayDir.y = (coef.octant_mask & 2) ? coef.rayDir.y : -coef.rayDir.y;
-    localRayDir.z = (coef.octant_mask & 4) ? coef.rayDir.z : -coef.rayDir.z;
     glm::vec3 offsetDir;
-    offsetDir.x = (localRayDir.x > 0) ? offset : -offset;
-    offsetDir.y = (localRayDir.y > 0) ? offset : -offset;
-    offsetDir.z = (localRayDir.z > 0) ? offset : -offset;
+    offsetDir.x = (coef.rayDir.x > 0) ? offset : -offset;
+    offsetDir.y = (coef.rayDir.y > 0) ? offset : -offset;
+    offsetDir.z = (coef.rayDir.z > 0) ? offset : -offset;
     glm::vec3 octantInside = localNorm + offsetDir;
 
     // For stationary axes (ray perpendicular), use actual ray position
