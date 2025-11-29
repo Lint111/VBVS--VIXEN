@@ -220,6 +220,26 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     UploadESVOBuffers(*octreeData, grid);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
+    // Create debug capture buffer for ray traversal analysis
+    constexpr uint32_t DEBUG_SAMPLE_CAPACITY = 2048;
+    constexpr uint32_t DEBUG_BINDING_INDEX = 4;  // Matches shader binding 4
+    debugCaptureResource_ = std::make_unique<Debug::DebugCaptureResource>(
+        vulkanDevice->device,
+        *vulkanDevice->gpu,  // VulkanDevice stores VkPhysicalDevice* as 'gpu'
+        DEBUG_SAMPLE_CAPACITY,
+        "RayTraversal",
+        DEBUG_BINDING_INDEX,
+        true  // hostVisible for direct readback
+    );
+
+    if (!debugCaptureResource_->IsValid()) {
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create debug capture buffer");
+    } else {
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created debug capture buffer: " +
+                      std::to_string(DEBUG_SAMPLE_CAPACITY) + " samples, buffer=" +
+                      std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
+    }
+
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
     std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << std::endl;
@@ -228,6 +248,15 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
+
+    // Output debug capture buffer with IDebugCapture interface attached
+    // When connected with SlotRole::Debug, the gatherer will auto-collect it
+    if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
+        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+                            debugCaptureResource_->GetBuffer(),
+                            static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
+        std::cout << "  DEBUG_CAPTURE_BUFFER=" << debugCaptureResource_->GetBuffer() << std::endl;
+    }
 
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTS SET !!!!" << std::endl;
 
@@ -248,6 +277,15 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
+
+    // Re-output debug capture buffer (with interface)
+    if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
+        // Reset write index before each frame to allow fresh capture
+        debugCaptureResource_->ResetWriteIndex();
+        ctx.OutWithInterface(VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+                            debugCaptureResource_->GetBuffer(),
+                            static_cast<Debug::IDebugCapture*>(debugCaptureResource_.get()));
+    }
 
     NODE_LOG_INFO("=== VoxelGridNode::ExecuteImpl END ===");
     NODE_LOG_DEBUG("[VoxelGridNode::ExecuteImpl] COMPLETED");
@@ -310,6 +348,11 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     vkDeviceWaitIdle(vulkanDevice->device);
     DestroyOctreeBuffers();
+
+    // Clean up debug capture resource (it owns its own Vulkan resources)
+    debugCaptureResource_.reset();
+    LogCleanupProgress("debugCaptureResource destroyed");
+
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Cleanup complete");
 }
 

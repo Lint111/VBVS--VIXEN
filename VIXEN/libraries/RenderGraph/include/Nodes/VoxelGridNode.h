@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
+#include "Debug/DebugCaptureResource.h"
 #include <memory>
 #include <vector>
 
@@ -96,6 +97,9 @@ private:
     VkDeviceMemory octreeBricksMemory = VK_NULL_HANDLE;
     VkBuffer octreeMaterialsBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeMaterialsMemory = VK_NULL_HANDLE;
+
+    // Debug capture resource (owns buffer, implements IDebugCapture)
+    std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 
     // Parameters
     uint32_t resolution = 128;

@@ -295,6 +295,9 @@ struct IsValidTypeImpl {
         }
     }
 
+    // Check if Bare is a raw pointer
+    static constexpr bool is_pointer = std::is_pointer_v<Bare>;
+
     static constexpr bool value = []() constexpr {
         // Check original type first (early exit if registered)
         if constexpr (IsRegisteredType<T>::value) {
@@ -302,6 +305,11 @@ struct IsValidTypeImpl {
         }
         // Check both pointer type (Bare) and depointed type (Clean)
         else if constexpr (IsRegisteredType<Bare>::value || IsRegisteredType<Clean>::value) {
+            return true;
+        }
+        // Raw pointers to any class/struct are valid as passthrough types
+        // This allows interface pointers (e.g., IDebugCapture*) without explicit registration
+        else if constexpr (is_pointer && (std::is_class_v<Clean> || std::is_void_v<Clean>)) {
             return true;
         }
         // Only decompose if not directly registered
@@ -597,27 +605,36 @@ public:
     }
 
     // Interface extension mechanism
-    // Allows resources to expose additional interfaces (e.g., IDebugCapture)
-    // Note: interfacePtr_ is non-owning - caller must ensure lifetime
-    void SetInterfacePtr(void* iface, size_t typeHash) {
-        interfacePtr_ = iface;
-        interfaceTypeHash_ = typeHash;
-    }
-
+    // Allows resources to expose multiple interfaces (e.g., IDebugCapture, ISerializable)
+    // Note: interface pointers are non-owning - caller must ensure lifetime
     template<typename InterfaceType>
     void SetInterface(InterfaceType* iface) {
-        SetInterfacePtr(static_cast<void*>(iface), typeid(InterfaceType).hash_code());
+        if (iface) {
+            size_t typeHash = typeid(InterfaceType).hash_code();
+            // Replace existing interface of same type, or add new
+            for (auto& entry : interfaces_) {
+                if (entry.typeHash == typeHash) {
+                    entry.ptr = static_cast<void*>(iface);
+                    return;
+                }
+            }
+            interfaces_.push_back({static_cast<void*>(iface), typeHash});
+        }
     }
 
     template<typename InterfaceType>
     InterfaceType* GetInterface() const {
-        if (interfacePtr_ != nullptr && interfaceTypeHash_ == typeid(InterfaceType).hash_code()) {
-            return static_cast<InterfaceType*>(interfacePtr_);
+        size_t typeHash = typeid(InterfaceType).hash_code();
+        for (const auto& entry : interfaces_) {
+            if (entry.typeHash == typeHash) {
+                return static_cast<InterfaceType*>(entry.ptr);
+            }
         }
         return nullptr;
     }
 
-    bool HasInterface() const { return interfacePtr_ != nullptr; }
+    bool HasInterface() const { return !interfaces_.empty(); }
+    size_t InterfaceCount() const { return interfaces_.size(); }
 
 
     // Extract handle as DescriptorHandleVariant for inter-node communication
@@ -750,9 +767,12 @@ private:
     ResourceDescriptorVariant descriptor_;
     bool isSet_ = false;
 
-    // Interface extension storage (non-owning)
-    void* interfacePtr_ = nullptr;
-    size_t interfaceTypeHash_ = 0;
+    // Interface extension storage (non-owning, supports multiple interfaces)
+    struct InterfaceEntry {
+        void* ptr = nullptr;
+        size_t typeHash = 0;
+    };
+    std::vector<InterfaceEntry> interfaces_;
 };
 
 // ============================================================================

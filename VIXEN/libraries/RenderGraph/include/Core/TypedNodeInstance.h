@@ -209,6 +209,35 @@ public:
         }
 
         /**
+         * @brief Set output value and attach an interface to the resource
+         *
+         * Use this when an output resource needs to expose an interface
+         * (e.g., IDebugCapture for debug buffers). The interface can be
+         * retrieved later via Resource::GetInterface<T>().
+         *
+         * Example:
+         *   ctx.OutWithInterface(Config::DEBUG_BUFFER, buffer.buffer, &debugCapture);
+         */
+        template<typename SlotType, typename U, typename InterfaceType>
+        void OutWithInterface(SlotType slot, U&& value, InterfaceType* iface) {
+            static_assert(SlotType::index < ConfigType::OUTPUT_COUNT, "Output index out of bounds");
+            typedNode->EnsureOutputSlot(SlotType::index, this->taskIndex);
+            Resource* res = typedNode->NodeInstance::GetOutput(SlotType::index, this->taskIndex);
+
+            using SlotT = typename SlotType::Type;
+            if constexpr (std::is_lvalue_reference_v<SlotT>) {
+                res->SetHandle<SlotT>(value);
+            } else {
+                res->SetHandle<SlotT>(static_cast<SlotT>(std::forward<U>(value)));
+            }
+
+            // Attach interface to the resource
+            if (iface) {
+                res->SetInterface<InterfaceType>(iface);
+            }
+        }
+
+        /**
          * @brief Get input descriptor bound to this task's index
          */
         template<typename SlotType>

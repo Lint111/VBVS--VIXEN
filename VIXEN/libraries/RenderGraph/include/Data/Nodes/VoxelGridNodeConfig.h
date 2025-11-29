@@ -2,6 +2,11 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
 
+// Forward declaration for debug capture
+namespace Vixen::RenderGraph::Debug {
+    class IDebugCapture;
+}
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
@@ -10,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 3;  // Changed: 4 → 5 (added material buffer)
+    static constexpr size_t OUTPUTS = 4;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -21,7 +26,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 3 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER)
+ * Outputs: 4 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -54,6 +59,13 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Debug capture buffer - outputs VkBuffer; connect with SlotRole::Debug
+    // When connecting: batch.ConnectVariadic(voxelNode, DEBUG_CAPTURE_BUFFER, gatherer, binding, SlotRole::Debug);
+    // The IDebugCapture interface is attached via ctx.OutWithInterface() so gatherer can collect it
+    OUTPUT_SLOT(DEBUG_CAPTURE_BUFFER, VkBuffer, 3,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -82,6 +94,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         octreeMaterialsDesc.size = 256 * 32;  // Capacity: 256 materials * 32 bytes
         octreeMaterialsDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_MATERIALS_BUFFER, "octree_materials_buffer", ResourceLifetime::Persistent, octreeMaterialsDesc);
+
+        // Debug capture buffer - for ray traversal analysis
+        BufferDescriptor debugCaptureDesc{};
+        debugCaptureDesc.size = 2048 * 64;  // Default: 2048 samples * ~64 bytes per DebugRaySample
+        debugCaptureDesc.usage = ResourceUsage::StorageBuffer;
+        INIT_OUTPUT_DESC(DEBUG_CAPTURE_BUFFER, "debug_capture_buffer", ResourceLifetime::Persistent, debugCaptureDesc);
     }
 
     // Automated config validation
@@ -92,12 +110,15 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 0, "OCTREE_NODES_BUFFER must be at index 0");
     static_assert(OCTREE_BRICKS_BUFFER_Slot::index == 1, "OCTREE_BRICKS_BUFFER must be at index 1");
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
+    static_assert(DEBUG_CAPTURE_BUFFER_Slot::index == 3, "DEBUG_CAPTURE_BUFFER must be at index 3");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<OCTREE_NODES_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph
