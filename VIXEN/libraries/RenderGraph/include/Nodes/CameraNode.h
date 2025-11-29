@@ -70,8 +70,12 @@ private:
     float pitch = 0.0f;
     float fov = 45.0f;
     float nearPlane = 0.1f;
-    float farPlane = 100.0f;
+    float farPlane = 5000.0f;  // Extended for far viewing
     uint32_t gridResolution = 128;
+
+    // Orbit mode: WASD/QE moves orbit center, arrow keys rotate around it
+    glm::vec3 orbitCenter{64.0f, 64.0f, 64.0f};  // Center of Cornell Box (128/2)
+    float orbitDistance = 500.0f;  // Distance from orbit center (increased for better overview)
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE

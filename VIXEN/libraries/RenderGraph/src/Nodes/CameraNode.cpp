@@ -133,7 +133,7 @@ void CameraNode::ExecuteImpl(TypedExecuteContext& ctx) {
         // Arrow keys for smooth look rotation (scaled for comfortable speed)
         float lookHorizontal = inputState->GetAxisLookHorizontal();
         float lookVertical = inputState->GetAxisLookVertical();
-        const float arrowKeyLookSpeed = 100.0f;  // Pixels-equivalent per frame
+        const float arrowKeyLookSpeed = 500.0f;  // Increased for faster orbit rotation
         rotationDelta.x += lookHorizontal * arrowKeyLookSpeed * inputState->deltaTime;
         rotationDelta.y -= lookVertical * arrowKeyLookSpeed * inputState->deltaTime;  // Inverted Y
 
@@ -167,19 +167,23 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
         farPlane
     );
 
-    // Create view matrix from camera position and orientation
-    // Standard convention: yaw=0, pitch=0 looks toward -Z (forward)
-    glm::vec3 forward;
-    forward.x = cos(pitch) * sin(yaw);
-    forward.y = sin(pitch);
-    forward.z = -cos(pitch) * cos(yaw);  // Negative Z for forward
-    forward = glm::normalize(forward);
+    // ORBIT MODE: Camera orbits around orbitCenter
+    // yaw/pitch control the orbit angle, camera looks at orbitCenter
+    // Camera position is computed from orbit parameters
+    glm::vec3 orbitOffset;
+    orbitOffset.x = orbitDistance * cos(pitch) * sin(yaw);
+    orbitOffset.y = orbitDistance * sin(pitch);
+    orbitOffset.z = orbitDistance * cos(pitch) * cos(yaw);
+
+    cameraPosition = orbitCenter + orbitOffset;
+
+    // Forward direction points toward orbit center
+    glm::vec3 forward = glm::normalize(orbitCenter - cameraPosition);
 
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
     glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
-    glm::vec3 target = cameraPosition + forward;
-    glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::lookAt(cameraPosition, orbitCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Update camera data struct
     currentCameraData.cameraPos = cameraPosition;
@@ -249,31 +253,23 @@ void CameraNode::ApplyMovement(float deltaTime) {
         return;
     }
 
-    // Compute local-space vectors
-    glm::vec3 forward;
-    forward.x = cos(pitch) * sin(yaw);
-    forward.y = sin(pitch);
-    forward.z = -cos(pitch) * cos(yaw);
-    forward = glm::normalize(forward);
+    // ORBIT MODE:
+    // W/S: Zoom in/out (change orbit distance)
+    // A/D: Move orbit center left/right (X axis)
+    // Q/E: Move orbit center up/down (Y axis)
 
-    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    // W/S controls zoom (orbit distance)
+    float zoomSpeed = 700.0f;  // Increased for faster zoom
+    orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
+    orbitDistance = glm::clamp(orbitDistance, 1.0f, 3000.0f);  // Allow closer and farther
 
-    // Helicopter controls: horizontal movement in XZ plane
-    glm::vec3 forwardHorizontal = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
-    glm::vec3 rightHorizontal = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
+    // A/D and Q/E move the orbit center
+    glm::vec3 moveVector(0.0f);
+    moveVector.x = movementDelta.x;  // A/D moves left/right (X axis)
+    moveVector.y = movementDelta.y;  // Q/E moves up/down (Y axis)
 
-    glm::vec3 moveVector = forwardHorizontal * movementDelta.z + rightHorizontal * movementDelta.x;
-
-    // Normalize to prevent faster diagonal movement
-    float horizontalLength = glm::length(glm::vec2(moveVector.x, moveVector.z));
-    if (horizontalLength > 1.0f) {
-        moveVector.x /= horizontalLength;
-        moveVector.z /= horizontalLength;
-    }
-
-    // Apply horizontal and vertical movement
-    cameraPosition += moveVector * moveSpeed * deltaTime;
-    cameraPosition.y += movementDelta.y * verticalSpeed * deltaTime;
+    // Apply movement to orbit center
+    orbitCenter += moveVector * moveSpeed * deltaTime;
 
     // Clear movement delta
     movementDelta = glm::vec3(0.0f);

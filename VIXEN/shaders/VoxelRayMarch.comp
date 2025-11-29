@@ -49,7 +49,28 @@ const int BRICK_DEPTH = 3;      // 8x8x8 bricks = 2^3
 // Derived constants
 const int STACK_SIZE = 23;      // Must cover full ESVO range
 const int MAX_ITERS = 512;
-const float EPSILON = 0.001;
+const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
+const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
+
+// Debug: set to 1 to visualize octant_mask instead of geometry
+#define DEBUG_OCTANT_MASK 0
+
+// Debug: set to 1 to only render rays with specific octant_mask (isolate working case)
+// Set DEBUG_ONLY_OCTANT to the mask value to render (0-7), others show magenta
+#define DEBUG_ISOLATE_OCTANT 0
+#define DEBUG_ONLY_OCTANT 0
+
+// Debug: set to 1 to force all rays to use octant_mask=0 (tests if mirroring is the issue)
+#define DEBUG_FORCE_OCTANT_ZERO 0
+
+// Debug: set to 1 to show localNorm as color in handleLeafHit (helps debug position mapping)
+#define DEBUG_LOCAL_NORM 0
+
+// Debug: set to 1 to show brick coordinates as color
+#define DEBUG_BRICK_COORD 0
+
+// Debug: set to 1 to highlight axis-parallel rays (rayDir component < epsilon)
+#define DEBUG_AXIS_PARALLEL 0
 
 // Scale mapping: Convert between user scale and ESVO internal scale
 // For depth 7: userScales [0-6] map to esvoScales [16-22]
@@ -111,6 +132,7 @@ struct RayCoefficients {
     float tx_bias, ty_bias, tz_bias;
     int octant_mask;
     vec3 rayDir;
+    vec3 normOrigin;  // Normalized origin in [1,2] space (for position-based selection)
 };
 
 // Stack entry for DFS traversal (matches CastStack)
@@ -240,6 +262,7 @@ RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld, vec3 gridMi
 
     // Transform to octree space [1,2] - ESVO standard space
     vec3 p = ((rayStartWorld - gridMin) * invGridSize) + 1.0;
+    coef.normOrigin = p;  // Store for position-based octant selection
 
     // Use world-space ray direction (matching CPU implementation exactly)
     // The ESVO algorithm uses normalized [1,2] positions with world-space direction
@@ -270,6 +293,11 @@ RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld, vec3 gridMi
     if (d.x > 0.0) { coef.octant_mask ^= 1; coef.tx_bias = 3.0 * coef.tx_coef - coef.tx_bias; }
     if (d.y > 0.0) { coef.octant_mask ^= 2; coef.ty_bias = 3.0 * coef.ty_coef - coef.ty_bias; }
     if (d.z > 0.0) { coef.octant_mask ^= 4; coef.tz_bias = 3.0 * coef.tz_coef - coef.tz_bias; }
+
+#if DEBUG_FORCE_OCTANT_ZERO
+    // DEBUG: Force octant_mask=0 - geometry will be wrong but tests if traversal works
+    coef.octant_mask = 0;
+#endif
 
     return coef;
 }
@@ -320,10 +348,39 @@ TraversalState initTraversalState(RayCoefficients coef, inout StackEntry stack[S
     }
 
     // Select initial child octant based on ray entry point (1.5 is center of [1,2])
+    // Must match CPU selectInitialOctant - handles axis-parallel rays and interior starts
     state.idx = 0;
-    if (1.5 * coef.tx_coef - coef.tx_bias > state.t_min) { state.idx ^= 1; state.pos.x = 1.5; }
-    if (1.5 * coef.ty_coef - coef.ty_bias > state.t_min) { state.idx ^= 2; state.pos.y = 1.5; }
-    if (1.5 * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5; }
+    const float boundary_epsilon = 1e-4;  // Use tight epsilon for boundary detection
+    bool usePositionBased = (state.t_min < boundary_epsilon);
+
+    // Compute mirrored origin for position-based selection
+    // coef.normOrigin is in [1,2] space
+    // For mirrored axes (octant_mask bit = 0), reflect: mirrored = 3.0 - normOrigin
+    vec3 mirroredOrigin;
+    mirroredOrigin.x = ((coef.octant_mask & 1) != 0) ? coef.normOrigin.x : (3.0 - coef.normOrigin.x);
+    mirroredOrigin.y = ((coef.octant_mask & 2) != 0) ? coef.normOrigin.y : (3.0 - coef.normOrigin.y);
+    mirroredOrigin.z = ((coef.octant_mask & 4) != 0) ? coef.normOrigin.z : (3.0 - coef.normOrigin.z);
+
+    // X axis selection
+    if (abs(coef.rayDir.x) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.x >= 1.5) { state.idx |= 1; state.pos.x = 1.5; }
+    } else {
+        if (1.5 * coef.tx_coef - coef.tx_bias > state.t_min) { state.idx ^= 1; state.pos.x = 1.5; }
+    }
+
+    // Y axis selection
+    if (abs(coef.rayDir.y) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.y >= 1.5) { state.idx |= 2; state.pos.y = 1.5; }
+    } else {
+        if (1.5 * coef.ty_coef - coef.ty_bias > state.t_min) { state.idx ^= 2; state.pos.y = 1.5; }
+    }
+
+    // Z axis selection
+    if (abs(coef.rayDir.z) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.z >= 1.5) { state.idx |= 4; state.pos.z = 1.5; }
+    } else {
+        if (1.5 * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5; }
+    }
 
     return state;
 }
@@ -344,11 +401,10 @@ void computeVoxelCorners(vec3 pos, RayCoefficients coef,
 float computeCorrectedTcMax(float tx_corner, float ty_corner, float tz_corner,
                             vec3 rayDir, float t_max) {
     const float corner_threshold = 1000.0;
-    const float dir_epsilon = 1e-5;
 
-    bool useXCorner = (abs(rayDir.x) >= dir_epsilon);
-    bool useYCorner = (abs(rayDir.y) >= dir_epsilon);
-    bool useZCorner = (abs(rayDir.z) >= dir_epsilon);
+    bool useXCorner = (abs(rayDir.x) >= DIR_EPSILON);
+    bool useYCorner = (abs(rayDir.y) >= DIR_EPSILON);
+    bool useZCorner = (abs(rayDir.z) >= DIR_EPSILON);
 
     float tx_valid = (useXCorner && abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
     float ty_valid = (useYCorner && abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
@@ -454,13 +510,20 @@ int executeAdvancePhase(inout TraversalState state, RayCoefficients coef, out in
     computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
 
     // Determine which axes can step (non-parallel)
-    const float dir_epsilon = 1e-5;
-    bool canStepX = (abs(coef.rayDir.x) >= dir_epsilon);
-    bool canStepY = (abs(coef.rayDir.y) >= dir_epsilon);
-    bool canStepZ = (abs(coef.rayDir.z) >= dir_epsilon);
+    bool canStepX = (abs(coef.rayDir.x) >= DIR_EPSILON);
+    bool canStepY = (abs(coef.rayDir.y) >= DIR_EPSILON);
+    bool canStepZ = (abs(coef.rayDir.z) >= DIR_EPSILON);
 
     // Compute corrected tc_max (filters out invalid corners for axis-parallel rays)
     float tc_max = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+
+    // Fallback for fully axis-parallel rays (matches CPU)
+    if (tc_max >= 1e10) {
+        float fallbackX = canStepX ? tx_corner : -1e10;
+        float fallbackY = canStepY ? ty_corner : -1e10;
+        float fallbackZ = canStepZ ? tz_corner : -1e10;
+        tc_max = max(max(fallbackX, fallbackY), fallbackZ);
+    }
 
     // Step along axes at their exit boundary (in mirrored space, pos decreases)
     // Only step axes that are non-parallel to avoid incorrect traversal
@@ -572,13 +635,165 @@ int executePopPhase(inout TraversalState state, RayCoefficients coef,
 // BRICK DDA MARCHING (Matching traverseBrickView)
 // ============================================================================
 
+// Debug: set to 1 to show brick miss as magenta
+#define DEBUG_BRICK_MISS 0
+
+// Debug: set to 1 to show initial DDA voxel as color (for debugging start position)
+#define DEBUG_DDA_START_VOXEL 0
+
+// marchBrickFromPos: DDA through brick starting from ESVO-computed position
+// This avoids the diagonal striping artifact caused by recomputing entry position
+// from ray-AABB intersection, which has floating-point precision issues at boundaries.
+//
+// Parameters:
+//   rayDir      - World-space ray direction (normalized)
+//   posInBrick  - Position within brick in local brick coordinates [0, BRICK_SIZE]
+//   brickMin/Max - World-space brick AABB
+//   brickIndex  - Index into brickData array
+//
+bool marchBrickFromPos(vec3 rayDir, vec3 posInBrick, uint brickIndex,
+                       out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
+    // posInBrick is in brick-local voxel coordinates [0, 8]
+    // DDA works entirely in this local voxel space
+
+    // Compute initial voxel from ESVO-provided position
+    ivec3 currentVoxel = ivec3(floor(posInBrick));
+    currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
+
+#if DEBUG_DDA_START_VOXEL
+    // Debug: show initial voxel position as color (X,Y,Z -> R,G,B normalized to [0,1])
+    hitColor = vec3(currentVoxel) / 7.0;
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    axisMask = 0u;
+    return true;
+#endif
+
+    // DDA setup - step direction
+    ivec3 step = ivec3(sign(rayDir));
+    // Fix for axis-parallel rays: step = 0 would cause infinite loop
+    if (step.x == 0) step.x = 1;
+    if (step.y == 0) step.y = 1;
+    if (step.z == 0) step.z = 1;
+
+    // DDA in LOCAL voxel space [0,8] - deltaDist is distance per voxel crossing
+    // Since we're working in voxel units, deltaDist = 1.0 / abs(rayDir) in voxel space
+    vec3 deltaDist;
+    deltaDist.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / abs(rayDir.x) : 1e20;
+    deltaDist.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / abs(rayDir.y) : 1e20;
+    deltaDist.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / abs(rayDir.z) : 1e20;
+
+    // Compute initial tMax - distance to next voxel boundary in each axis
+    // All in LOCAL voxel units [0,8] - consistent with deltaDist
+    //
+    // Key insight: posInBrick might be exactly on a boundary (e.g., 3.0000001 or 2.9999999)
+    // In these cases, distToNext could be tiny or negative. We must ensure:
+    // 1. distToNext is always positive
+    // 2. We sample the current voxel before stepping
+    vec3 tMax;
+    const float MIN_DIST = 0.0001;  // Minimum distance to prevent immediate stepping
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
+            tMax[axis] = 1e20;  // Ray parallel to axis, never crosses
+        } else {
+            float posLocal = posInBrick[axis];  // Position in brick [0,8]
+            float distToNext;
+            if (rayDir[axis] > 0.0) {
+                // Distance to next boundary (currentVoxel + 1)
+                distToNext = float(currentVoxel[axis] + 1) - posLocal;
+            } else {
+                // Distance to previous boundary (currentVoxel)
+                distToNext = posLocal - float(currentVoxel[axis]);
+            }
+            // Ensure positive distance to prevent skipping current voxel
+            distToNext = max(distToNext, MIN_DIST);
+            tMax[axis] = distToNext / abs(rayDir[axis]);
+        }
+    }
+
+    axisMask = 0u;
+    const int MAX_STEPS = 64;
+    for (int i = 0; i < MAX_STEPS; i++) {
+        // Check bounds
+        if (any(lessThan(currentVoxel, ivec3(0))) || any(greaterThanEqual(currentVoxel, ivec3(8)))) {
+            break;
+        }
+
+        // Sample brick voxel (linear index: z*64 + y*8 + x)
+        uint voxelLinearIdx = uint(currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x);
+        uint voxelData = brickData[brickIndex * 512u + voxelLinearIdx];
+
+        if (voxelData != 0u) {
+            // Hit! Extract material ID
+            uint matID = voxelData & 0xFFu;
+
+            // Color by material ID (Cornell box palette)
+            if (matID == 1u) hitColor = vec3(1.0, 0.0, 0.0);       // Red (left wall)
+            else if (matID == 2u) hitColor = vec3(0.0, 1.0, 0.0);  // Green (right wall)
+            else if (matID == 3u) hitColor = vec3(0.9, 0.9, 0.9);  // White (floor/ceiling/back)
+            else if (matID == 4u) hitColor = vec3(1.0, 0.8, 0.0);  // Yellow (light)
+            else if (matID == 5u) hitColor = vec3(0.8, 0.8, 0.8);  // Gray (tall box)
+            else if (matID == 6u) hitColor = vec3(0.7, 0.7, 0.7);  // Light gray (short box)
+            else hitColor = vec3(float(matID) / 10.0);             // Fallback: grayscale
+
+            // Compute entry normal based on which axis we entered from
+            hitNormal = vec3(0.0);
+            if (axisMask == 1u) hitNormal.x = -float(step.x);
+            else if (axisMask == 2u) hitNormal.y = -float(step.y);
+            else hitNormal.z = -float(step.z);
+
+            // First iteration: use ray direction for normal
+            if (i == 0) {
+                vec3 absRayDir = abs(rayDir);
+                if (absRayDir.x > absRayDir.y && absRayDir.x > absRayDir.z) {
+                    hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
+                } else if (absRayDir.y > absRayDir.z) {
+                    hitNormal = vec3(0.0, -sign(rayDir.y), 0.0);
+                } else {
+                    hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
+                }
+            }
+
+            return true;
+        }
+
+        // DDA step - advance to next voxel along axis with smallest tMax
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            currentVoxel.x += step.x;
+            tMax.x += deltaDist.x;
+            axisMask = 1u;
+        } else if (tMax.y < tMax.z) {
+            currentVoxel.y += step.y;
+            tMax.y += deltaDist.y;
+            axisMask = 2u;
+        } else {
+            currentVoxel.z += step.z;
+            tMax.z += deltaDist.z;
+            axisMask = 4u;
+        }
+    }
+
+#if DEBUG_BRICK_MISS
+    hitColor = vec3(0.0, 1.0, 1.0);  // Cyan = DDA traversed but found no solid
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    return true;
+#endif
+    return false;
+}
+
 bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
                 vec3 brickMin, vec3 brickMax, uint brickIndex,
                 out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
 
     // Ray-AABB test for brick bounds
     vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
-    if (brickT.y < 0.0) return false;
+    if (brickT.y < 0.0) {
+#if DEBUG_BRICK_MISS
+        hitColor = vec3(1.0, 0.0, 1.0);  // Magenta = ray missed brick AABB
+        hitNormal = vec3(0.0, 1.0, 0.0);
+        return true;  // Return true to show the debug color
+#endif
+        return false;
+    }
 
     float t = max(brickT.x, startT);
     if (t > brickT.y) return false;
@@ -587,30 +802,47 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
     vec3 voxelSize = brickSize / 8.0;
 
     // Start position in world space
-    // FIXED: Use minimal epsilon to avoid skipping first voxel at oblique angles
-    // Large epsilon can push position past voxel boundaries
-    vec3 pos = rayOrigin + rayDir * (t + EPSILON * 0.01);
+    // Use tiny epsilon to push position slightly along ray to avoid starting exactly on boundary
+    vec3 pos = rayOrigin + rayDir * (t + EPSILON);
 
     // DDA setup - compute step direction and inverse direction
     // NOTE: invDir must preserve sign for correct tMax calculation
     vec3 invDir;
-    invDir.x = abs(rayDir.x) > EPSILON ? 1.0 / rayDir.x : (rayDir.x >= 0.0 ? 1e20 : -1e20);
-    invDir.y = abs(rayDir.y) > EPSILON ? 1.0 / rayDir.y : (rayDir.y >= 0.0 ? 1e20 : -1e20);
-    invDir.z = abs(rayDir.z) > EPSILON ? 1.0 / rayDir.z : (rayDir.z >= 0.0 ? 1e20 : -1e20);
+    invDir.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / rayDir.x : (rayDir.x >= 0.0 ? 1e20 : -1e20);
+    invDir.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / rayDir.y : (rayDir.y >= 0.0 ? 1e20 : -1e20);
+    invDir.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / rayDir.z : (rayDir.z >= 0.0 ? 1e20 : -1e20);
 
     ivec3 step = ivec3(sign(rayDir));
     vec3 deltaDist = abs(voxelSize * invDir);
 
     // Compute initial voxel and tMax values
     vec3 localPos = (pos - brickMin) / voxelSize;
+
+    // For axis-parallel rays, nudge position slightly to avoid boundary ambiguity
+    // This prevents floor() from picking the wrong voxel when pos is exactly on boundary
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
+            // Axis-parallel: nudge toward center of brick
+            localPos[axis] = clamp(localPos[axis], EPSILON, 8.0 - EPSILON);
+        }
+    }
+
     ivec3 currentVoxel = ivec3(floor(localPos));
     currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
+
+#if DEBUG_DDA_START_VOXEL
+    // Debug: show initial voxel position as color (X,Y,Z -> R,G,B normalized to [0,1])
+    hitColor = vec3(currentVoxel) / 7.0;
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    axisMask = 0u;
+    return true;
+#endif
 
     // Compute initial tMax - ABSOLUTE ray parameter to next voxel boundary
     // Must match CPU traverseBrickView: tMin + distToNextBoundary / abs(rayDir)
     vec3 tMax;
     for (int axis = 0; axis < 3; axis++) {
-        if (abs(rayDir[axis]) < EPSILON) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
             tMax[axis] = 1e20;  // Ray parallel to axis, never crosses
         } else if (rayDir[axis] > 0.0) {
             // Next boundary is at currentVoxel + 1
@@ -624,6 +856,9 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
             tMax[axis] = t + distToNextBoundary / abs(rayDir[axis]);   // use abs() like CPU
         }
     }
+
+    // Debug: track if we found any valid voxel positions
+    bool anyValidPosition = false;
 
     const int MAX_STEPS = 64;
     for (int i = 0; i < MAX_STEPS; i++) {
@@ -686,6 +921,12 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
         }
     }
 
+    // DDA completed without finding solid voxel - show cyan for debug
+#if DEBUG_BRICK_MISS
+    hitColor = vec3(0.0, 1.0, 1.0);  // Cyan = DDA traversed but found no solid
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    return true;
+#endif
     return false;
 }
 
@@ -697,34 +938,70 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridSize,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    // FIXED: Match CPU handleLeafHit approach - use ESVO state position with
-    // directional offset to move inside the octant (not on boundary)
-    //
-    // The ESVO state.pos is in mirrored parametric space [1,2].
-    // Convert to local space [0,1] then to world units [0, gridSize].
+    // NVIDIA ESVO approach (from Raycast.inl lines 342-354):
+    // 1. Unmirror pos using octant_mask
+    // 2. Compute ray position: ray.orig + t_min * ray.dir
+    // 3. Clamp ray position to [pos, pos + scale_exp2]
 
-    // Get ray position from ESVO state (mirrored -> local conversion)
-    vec3 mirroredNorm = state.pos - vec3(1.0);  // [1,2] -> [0,1]
-    vec3 localNorm;
-    localNorm.x = ((coef.octant_mask & 1u) != 0u) ? mirroredNorm.x : (1.0 - mirroredNorm.x);
-    localNorm.y = ((coef.octant_mask & 2u) != 0u) ? mirroredNorm.y : (1.0 - mirroredNorm.y);
-    localNorm.z = ((coef.octant_mask & 4u) != 0u) ? mirroredNorm.z : (1.0 - mirroredNorm.z);
+    // First, unmirror pos (state.pos is in mirrored [1,2] space)
+    vec3 pos = state.pos;
+    float scale_exp2 = state.scale_exp2;
 
-    // Apply small offset in WORLD ray direction to push sample point into the octant
-    // This prevents boundary ambiguity when floor() could land on either side
-    // CRITICAL: localNorm is in WORLD space after unmirroring, so use world rayDir
-    const float offset = 0.001;
-    vec3 offsetDir;
-    offsetDir.x = (rayDir.x > 0.0) ? offset : -offset;
-    offsetDir.y = (rayDir.y > 0.0) ? offset : -offset;
-    offsetDir.z = (rayDir.z > 0.0) ? offset : -offset;
+    // Unmirror: if octant_mask bit is 0, axis was mirrored
+    if ((coef.octant_mask & 1) == 0) pos.x = 3.0 - scale_exp2 - pos.x;
+    if ((coef.octant_mask & 2) == 0) pos.y = 3.0 - scale_exp2 - pos.y;
+    if ((coef.octant_mask & 4) == 0) pos.z = 3.0 - scale_exp2 - pos.z;
+
+    // Compute ray position from ray equation (in [1,2] octree space)
+    // normOrigin is the ray start in [1,2] space
+    vec3 rayPos12 = coef.normOrigin + state.t_min * rayDir;
+
+    // Clamp to voxel bounds [pos, pos + scale_exp2]
+    const float epsilon = exp2(-23.0);  // Match NVIDIA: exp2f(-CAST_STACK_DEPTH)
+    rayPos12.x = min(max(rayPos12.x, pos.x + epsilon), pos.x + scale_exp2 - epsilon);
+    rayPos12.y = min(max(rayPos12.y, pos.y + epsilon), pos.y + scale_exp2 - epsilon);
+    rayPos12.z = min(max(rayPos12.z, pos.z + epsilon), pos.z + scale_exp2 - epsilon);
+
+    // Convert from [1,2] to [0,1] normalized space
+    vec3 localNorm = rayPos12 - vec3(1.0);
+
+    // Clamp to valid range
+    localNorm = clamp(localNorm, vec3(0.0), vec3(1.0));
+
+    // Offset for brick lookup (push slightly into the voxel)
+    float offset = 0.001;
+    vec3 offsetDir = sign(rayDir) * offset;
+    if (abs(rayDir.x) < 1e-6) offsetDir.x = offset;
+    if (abs(rayDir.y) < 1e-6) offsetDir.y = offset;
+    if (abs(rayDir.z) < 1e-6) offsetDir.z = offset;
 
     vec3 octantInside = localNorm + offsetDir;
     octantInside = clamp(octantInside, vec3(0.001), vec3(0.999));
 
+#if DEBUG_LOCAL_NORM
+    // Debug: show localNorm as color to verify position mapping
+    hitColor = localNorm;
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = state.t_min;
+    return true;
+#endif
+
+#if DEBUG_OCTANT_MASK
+    // Debug: show octant_mask as RGB (each bit = one color channel)
+    // octant_mask = 0 -> black, 1 -> red, 2 -> green, 3 -> yellow, 4 -> blue, 5 -> magenta, 6 -> cyan, 7 -> white
+    hitColor = vec3(
+        ((coef.octant_mask & 1) != 0) ? 1.0 : 0.0,
+        ((coef.octant_mask & 2) != 0) ? 1.0 : 0.0,
+        ((coef.octant_mask & 4) != 0) ? 1.0 : 0.0
+    );
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = state.t_min;
+    return true;
+#endif
+
     // Convert normalized [0,1] to local position [0, gridSize]
     vec3 hitPosLocal = octantInside * gridSize;
-    hitPosLocal = clamp(hitPosLocal, vec3(0.001), gridSize - vec3(0.001));
+    hitPosLocal = clamp(hitPosLocal, vec3(EPSILON), gridSize - vec3(EPSILON));
 
     // Compute brick index from position
     const int BRICK_SIZE = 8;
@@ -741,10 +1018,23 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                           brickCoord.y * bricksPerAxis +
                           brickCoord.x);
 
-    // March through the brick's voxels
+// Debug: show brick coordinates as color (controlled by top-of-file define)
+#if DEBUG_BRICK_COORD
+    // Show brick X,Y,Z as R,G,B (normalized to [0,1] based on bricksPerAxis)
+    hitColor = vec3(brickCoord) / float(bricksPerAxis - 1);
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = state.t_min;
+    return true;
+#endif
+
+    // Compute the initial voxel position within the brick from hitPosLocal
+    // This uses the ESVO-computed position, which is more accurate than re-computing from ray
+    vec3 posInBrick = hitPosLocal - vec3(brickCoord) * float(BRICK_SIZE);
+    posInBrick = clamp(posInBrick, vec3(0.001), vec3(float(BRICK_SIZE) - 0.001));
+
+    // March through the brick's voxels, passing the ESVO-computed start position
     uint axisMask;
-    if (marchBrick(rayOrigin, rayDir, 0.0, brickMinWorld, brickMaxWorld, brickIndex,
-                   hitColor, hitNormal, axisMask)) {
+    if (marchBrickFromPos(rayDir, posInBrick, brickIndex, hitColor, hitNormal, axisMask)) {
         hitT = state.t_min;
         return true;
     }
@@ -815,7 +1105,13 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                                   hitColor, hitNormal, hitT)) {
                     return true;
                 }
-                // Skip past empty brick
+                // Brick miss - continue to next brick
+                // DEBUG: Uncomment to visualize brick misses as cyan
+                // hitColor = vec3(0.0, 1.0, 1.0);
+                // hitNormal = vec3(0.0, 1.0, 0.0);
+                // hitT = state.t_min;
+                // return true;
+
                 state.t_min = tv_max;
             } else {
                 // Internal node - PUSH & DESCEND
@@ -876,6 +1172,47 @@ void main() {
     // Grid bounds for octree
     vec3 gridMin = vec3(0.0, 0.0, 0.0);
     vec3 gridMax = vec3(128.0, 128.0, 128.0);
+
+    // Compute octant_mask for debug purposes
+    int debugMask = 7;
+    if (rayDir.x > 0.0) debugMask ^= 1;
+    if (rayDir.y > 0.0) debugMask ^= 2;
+    if (rayDir.z > 0.0) debugMask ^= 4;
+
+#if DEBUG_OCTANT_MASK
+    // Debug: visualize octant_mask based on ray direction
+    // octant_mask bits: X(1), Y(2), Z(4) - set if ray component is negative
+    // Color by mask: R=X bit, G=Y bit, B=Z bit
+    color = vec3(
+        ((debugMask & 1) != 0) ? 1.0 : 0.0,
+        ((debugMask & 2) != 0) ? 1.0 : 0.0,
+        ((debugMask & 4) != 0) ? 1.0 : 0.0
+    );
+    imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+    return;
+#endif
+
+#if DEBUG_ISOLATE_OCTANT
+    // Only render rays with specific octant_mask, show magenta for others
+    if (debugMask != DEBUG_ONLY_OCTANT) {
+        imageStore(outputImage, pixelCoords, vec4(1.0, 0.0, 1.0, 1.0));  // Magenta
+        return;
+    }
+#endif
+
+#if DEBUG_AXIS_PARALLEL
+    // Highlight axis-parallel rays: R=X parallel, G=Y parallel, B=Z parallel
+    // Use very small threshold - normalized ray components are typically in [-1, 1]
+    const float axisEps = 0.0001;  // Very tight threshold
+    vec3 parallelColor = vec3(0.0);
+    if (abs(rayDir.x) < axisEps) parallelColor.r = 1.0;
+    if (abs(rayDir.y) < axisEps) parallelColor.g = 1.0;
+    if (abs(rayDir.z) < axisEps) parallelColor.b = 1.0;
+    if (parallelColor != vec3(0.0)) {
+        imageStore(outputImage, pixelCoords, vec4(parallelColor, 1.0));
+        return;
+    }
+#endif
 
     vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
 
