@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: 43bded93fcbc37f9
-// Generated: 2025-11-28 11:56:21
+// UUID: e2700c11bf8cd8c4
+// Generated: 2025-11-29 18:53:38
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,7 +21,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace _43bded93fcbc37f9 {
+namespace e2700c11bf8cd8c4 {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -83,6 +83,38 @@ struct MaterialBuffer {
         static constexpr uint32_t OFFSET = 0;
         static constexpr uint32_t SIZE = 32;
         static constexpr uint32_t BINDING = 0;
+    };
+
+};
+
+/**
+ * @brief DebugCaptureBuffer
+ * Size: 0 bytes
+ * Alignment: 16 bytes
+ * Layout VixenHash: 0x959cbc17adac4206 (for runtime discovery)
+ */
+struct DebugCaptureBuffer {
+    // Phase H: Discovery system layout hash
+    static constexpr uint64_t LAYOUT_HASH = 0x959cbc17adac4206ULL;
+
+    // Member metadata structs
+    struct pc_0 {
+        static constexpr const char* TYPE = "int32_t";
+        static constexpr uint32_t OFFSET = 0;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 0;
+    };
+    struct pc_1 {
+        static constexpr const char* TYPE = "int32_t";
+        static constexpr uint32_t OFFSET = 4;
+        static constexpr uint32_t SIZE = 4;
+        static constexpr uint32_t BINDING = 1;
+    };
+    struct pc_2 {
+        static constexpr const char* TYPE = "DebugRaySample";
+        static constexpr uint32_t OFFSET = 16;
+        static constexpr uint32_t SIZE = 112;
+        static constexpr uint32_t BINDING = 2;
     };
 
 };
@@ -150,6 +182,21 @@ namespace Set0 {
         static constexpr uint32_t COUNT = 1;
         static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
         using DataType = MaterialBuffer;
+    };
+
+    /**
+     * @brief 
+     * Type: STORAGE_BUFFER
+     * Stages: COMPUTE
+     * Count: 1
+     */
+    struct Binding4 {
+        static constexpr uint32_t SET = 0;
+        static constexpr uint32_t BINDING = 4;
+        static constexpr VkDescriptorType DESCRIPTOR_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        static constexpr uint32_t COUNT = 1;
+        static constexpr VkShaderStageFlags STAGES = VK_SHADER_STAGE_COMPUTE_BIT;
+        using DataType = DebugCaptureBuffer;
     };
 
 } // namespace Set0
@@ -239,7 +286,7 @@ struct pc {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "VoxelRayMarch";
-    static constexpr const char* INTERFACE_HASH = "fa8d814be59efd31";
+    static constexpr const char* INTERFACE_HASH = "fa0251c4c067b647";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

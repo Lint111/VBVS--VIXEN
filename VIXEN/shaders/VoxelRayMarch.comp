@@ -32,13 +32,7 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
-#if DEBUG_CAPTURE_RAY_DATA
-layout(std430, binding = 4) buffer DebugCaptureBuffer {
-    uint debugWriteIndex;
-    uint debugCapacity;
-    DebugRaySample debugSamples[];
-};
-#endif
+// NOTE: Debug capture buffer is declared after DebugRaySample struct (see below)
 
 // ============================================================================
 // CONSTANTS - MUST MATCH C++ LaineKarrasOctree.h
@@ -102,6 +96,13 @@ struct DebugRaySample {
     float reserved2;
     vec3 rayDir;
     float reserved3;
+};
+
+// Debug capture buffer - always declared for SDI reflection, but only written when DEBUG_CAPTURE_RAY_DATA=1
+layout(std430, binding = 4) buffer DebugCaptureBuffer {
+    uint debugWriteIndex;
+    uint debugCapacity;
+    DebugRaySample debugSamples[];
 };
 
 const uint DEBUG_EXIT_NONE = 0u;
@@ -213,9 +214,9 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
     info.posMirrored = state.pos;
     info.localNorm = computeLocalNorm(state.pos, state.scale_exp2, coef.octant_mask);
 #else
-    (void)state;
-    (void)coef;
-    (void)info;
+    // Suppress unused parameter warnings in GLSL (no-op assignments)
+    int _unused = state.scale + coef.octant_mask;
+    info.scale = info.scale;
 #endif
 }
 

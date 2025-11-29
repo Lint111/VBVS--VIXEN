@@ -25,10 +25,13 @@ add_executable(VIXEN
 )
 
 # Add include directories for generated SDI headers
-# Primary: Runtime-generated SDI files (generated during shader compilation)
-# Fallback: Build-time generated SDI files (precompiled assets)
+# Priority order (first found wins):
+#   1. Dev-time: Tool-generated SDI files in source tree (generated/sdi/)
+#   2. Build-time: CMake-generated SDI files in build tree
+#   3. Fallback: Precompiled assets
 target_include_directories(VIXEN PRIVATE
-    ${CMAKE_SOURCE_DIR}/binaries/generated/sdi
+    ${CMAKE_SOURCE_DIR}/generated/sdi
+    ${CMAKE_BINARY_DIR}/application/main/generated/sdi
     ${CMAKE_SOURCE_DIR}/BuiltAssets/GeneratedIncludes
 )
 

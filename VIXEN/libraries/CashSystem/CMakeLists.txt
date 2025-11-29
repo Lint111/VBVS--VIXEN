@@ -19,8 +19,11 @@ target_include_directories(CashSystem PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     # Main application includes (so CashSystem can use common headers)
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
-    # Generated SDI headers
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
+    # Generated SDI headers - priority order:
+    #   1. Dev-time: Tool-generated SDI files in source tree
+    #   2. Build-time: CMake-generated SDI files
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/generated/sdi>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
 )
 
 # Link dependencies here if/when required

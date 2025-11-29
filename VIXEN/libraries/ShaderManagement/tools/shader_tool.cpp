@@ -561,6 +561,66 @@ bool LoadBundleFromJson(const fs::path& jsonPath, ShaderDataBundle& bundle) {
 }
 
 /**
+ * @brief Load old bundle UUID from JSON file (for cleanup)
+ * @return Old UUID if file exists and is valid, empty string otherwise
+ */
+std::string LoadOldBundleUuid(const fs::path& jsonPath) {
+    if (!fs::exists(jsonPath)) {
+        return "";
+    }
+
+    std::ifstream inFile(jsonPath);
+    if (!inFile.is_open()) {
+        return "";
+    }
+
+    try {
+        nlohmann::json j;
+        inFile >> j;
+        if (j.contains("uuid")) {
+            return j["uuid"].get<std::string>();
+        }
+    } catch (const std::exception&) {
+        // Ignore parse errors
+    }
+
+    return "";
+}
+
+/**
+ * @brief Clean up old SDI and SPIRV files when UUID changes
+ */
+void CleanupOldSdiFiles(const std::string& oldUuid, const fs::path& sdiDir, bool verbose) {
+    if (oldUuid.empty()) {
+        return;
+    }
+
+    // Delete old SDI header
+    fs::path oldSdiPath = sdiDir / (oldUuid + "-SDI.h");
+    if (fs::exists(oldSdiPath)) {
+        if (verbose) {
+            std::cout << "Cleaning up old SDI: " << oldSdiPath << "\n";
+        }
+        fs::remove(oldSdiPath);
+    }
+
+    // Delete old SPIRV files (pattern: {uuid}_stage*.spv)
+    try {
+        for (const auto& entry : fs::directory_iterator(sdiDir)) {
+            std::string filename = entry.path().filename().string();
+            if (filename.find(oldUuid + "_stage") == 0 && filename.ends_with(".spv")) {
+                if (verbose) {
+                    std::cout << "Cleaning up old SPIRV: " << entry.path() << "\n";
+                }
+                fs::remove(entry.path());
+            }
+        }
+    } catch (const fs::filesystem_error&) {
+        // Ignore errors when iterating directory
+    }
+}
+
+/**
  * @brief Command: Compile shader stages
  */
 int CommandCompile(const ToolOptions& options) {
@@ -581,6 +641,27 @@ int CommandCompile(const ToolOptions& options) {
             std::cout << file << " ";
         }
         std::cout << "\n";
+    }
+
+    // Determine output path early to check for existing bundle
+    fs::path outputPath;
+    fs::path outputDir;
+    if (!options.outputPath.empty()) {
+        outputPath = options.outputPath;
+        outputDir = outputPath.parent_path();
+    } else if (!options.outputDir.empty()) {
+        fs::create_directories(options.outputDir);
+        outputDir = options.outputDir;
+        outputPath = fs::path(options.outputDir) / (options.programName + ".json");
+    } else {
+        outputDir = ".";
+        outputPath = options.programName + ".json";
+    }
+
+    // Load old UUID before building (for cleanup if hash changes)
+    std::string oldUuid = LoadOldBundleUuid(outputPath);
+    if (options.verbose && !oldUuid.empty()) {
+        std::cout << "Existing bundle UUID: " << oldUuid << "\n";
     }
 
     // Create builder
@@ -649,19 +730,15 @@ int CommandCompile(const ToolOptions& options) {
         std::cout << "  Descriptor hash: " << result.bundle->descriptorInterfaceHash << "\n";
     }
 
-    // Determine output path
-    fs::path outputPath;
-    fs::path outputDir;
-    if (!options.outputPath.empty()) {
-        outputPath = options.outputPath;
-        outputDir = outputPath.parent_path();
-    } else if (!options.outputDir.empty()) {
-        fs::create_directories(options.outputDir);
-        outputDir = options.outputDir;
-        outputPath = fs::path(options.outputDir) / (options.programName + ".json");
-    } else {
-        outputDir = ".";
-        outputPath = options.programName + ".json";
+    // Clean up old SDI files if UUID changed (outputPath/outputDir already determined above)
+    const std::string& newUuid = result.bundle->uuid;
+    if (!oldUuid.empty() && oldUuid != newUuid) {
+        if (options.verbose) {
+            std::cout << "UUID changed: " << oldUuid << " -> " << newUuid << "\n";
+        }
+        CleanupOldSdiFiles(oldUuid, options.sdiConfig.outputDirectory, options.verbose);
+    } else if (!oldUuid.empty() && options.verbose) {
+        std::cout << "UUID unchanged, reusing existing SDI\n";
     }
 
     // Security: Validate output path

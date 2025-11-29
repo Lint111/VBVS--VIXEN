@@ -19,6 +19,7 @@ namespace Vixen::RenderGraph {
 
 // Forward declarations
 class NodeType;
+enum class DebugExportFormat;
 
 // Type alias for const pointer (needed for variant compatibility)
 using DescriptorLayoutSpecPtr = const ::ShaderManagement::DescriptorLayoutSpec*;
@@ -102,6 +103,7 @@ struct PerformanceStats {
     PARAM_TYPE(AttachmentLoadOp, AttachmentLoadOp) \
     PARAM_TYPE(AttachmentStoreOp, AttachmentStoreOp) \
     PARAM_TYPE(ImageLayout, ImageLayout) \
+    PARAM_TYPE(DebugExportFormat, DebugExportFormat) \
     PARAM_TYPE_LAST(DescriptorLayoutSpecPtr, DescriptorLayoutSpecPtr)
 
 // Generate enum from macro

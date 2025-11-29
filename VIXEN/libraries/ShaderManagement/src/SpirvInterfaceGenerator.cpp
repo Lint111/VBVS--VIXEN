@@ -174,11 +174,18 @@ std::string SpirvInterfaceGenerator::Generate(
     const SpirvReflectionData& reflectionData
 ) {
     try {
+        std::filesystem::path filePath = GetSdiPath(uuid);
+
+        // Skip generation if SDI file already exists for this UUID (same descriptor hash)
+        if (std::filesystem::exists(filePath)) {
+            LOG_INFO("Reusing existing SDI file: " + filePath.string());
+            return filePath.string();
+        }
+
         // Generate code to string
         std::string code = GenerateToString(uuid, reflectionData);
 
         // Write to file
-        std::filesystem::path filePath = GetSdiPath(uuid);
         std::ofstream file(filePath);
         if (!file.is_open()) {
             return "";

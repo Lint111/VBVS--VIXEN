@@ -38,6 +38,7 @@
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
+#include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 
 extern std::vector<const char*> instanceExtensionNames;
 extern std::vector<const char*> layerNames;
@@ -428,8 +429,9 @@ void VulkanGraphApplication::RegisterNodeTypes() {
     nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
     nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
     nodeRegistry->RegisterNodeType(std::make_unique<InputNodeType>());  // Input polling and event publishing
+    nodeRegistry->RegisterNodeType(std::make_unique<DebugBufferReaderNodeType>());  // Debug: Compute shader debug capture
 
-    mainLogger->Info("Successfully registered 27 node types");
+    mainLogger->Info("Successfully registered 28 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -489,9 +491,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Input Node ---
     NodeHandle inputNode = renderGraph->AddNode("Input", "input_handler");
 
-    // --- Phase 0.4: Loop System Nodes ---
     NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
     NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
+    
+    NodeHandle debugCaptureNode = renderGraph->AddNode("DebugCapture", "debug_capture");
 
     mainLogger->Info("Created 29 node instances (including compute pipeline, camera, voxel grid, and gatherers)");
 
@@ -764,6 +767,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
         pcLogger->SetTerminalOutput(true);
     }
 
+    auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, 1000u);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT,DebugExportFormat::JSON);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries\\compute_debug_output.json"));
+    if (auto* debugLogger = debugCapture->GetLogger()) {
+        debugLogger->SetEnabled(true);
+        debugLogger->SetTerminalOutput(true);
+    }
+
+    
+
     mainLogger->Info("Configured all node parameters (including camera and voxel grid)");
 
     // ===================================================================
@@ -953,6 +968,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE,
+                  debugCaptureNode, DebugBufferReaderNodeConfig::DEBUG_CAPTURE);
+
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
                   presentNode, PresentNodeConfig::PRESENT_FENCE_ARRAY);
@@ -1071,6 +1089,10 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
                           descriptorGatherer, VoxelRayMarch::materials::BINDING,
                           SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+                          descriptorGatherer, VoxelRayMarch::debugWriteIndex::BINDING,
+                          SlotRole::Execute);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
