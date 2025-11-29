@@ -1,5 +1,6 @@
 #include "Nodes/DebugBufferReaderNode.h"
 #include "Debug/IDebugExportable.h"
+#include "Debug/IDebugCapture.h"
 #include "VulkanDevice.h"
 #include <cstring>
 #include <algorithm>
@@ -35,39 +36,62 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
 void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::CompileImpl");
     // Get device wrapper reference for later use
-    vulkanDevice = ctx.In(DebugBufferReaderNodeConfig::VULKAN_DEVICE_IN);
+    VulkanDevice* vulkanDevice = ctx.In(DebugBufferReaderNodeConfig::VULKAN_DEVICE_IN);
     if (vulkanDevice == nullptr) {
         NODE_LOG_ERROR("No VulkanDevice provided");
         return;
     }
+    SetDevice(vulkanDevice);
 }
 
 void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::ExecuteImpl");
 
-    if (vulkanDevice == nullptr) {
+    if (GetDevice() == nullptr) {
         NODE_LOG_ERROR("No VulkanDevice available");
         return;
     }
 
-    VkDevice device = GetDevice()->device;
-    VkBuffer debugBuffer = ctx.In(DebugBufferReaderNodeConfig::DEBUG_BUFFER);
+    VkDevice vkDevice = GetDevice()->device;
 
-    if (device == VK_NULL_HANDLE) {
+    // Get the debug capture interface
+    Debug::IDebugCapture* debugCapture = ctx.In(DebugBufferReaderNodeConfig::DEBUG_CAPTURE);
+
+    if (vkDevice == VK_NULL_HANDLE) {
         NODE_LOG_ERROR("No VkDevice handle");
         return;
     }
 
-    if (debugBuffer == VK_NULL_HANDLE) {
-        NODE_LOG_WARNING("No debug buffer provided - skipping readback");
+    if (debugCapture == nullptr) {
+        NODE_LOG_WARNING("No debug capture interface provided - skipping readback");
         return;
     }
 
-    // Read buffer to host
-    if (!ReadBufferToHost(device, debugBuffer)) {
-        NODE_LOG_ERROR("Failed to read debug buffer");
+    if (!debugCapture->IsCaptureEnabled()) {
+        NODE_LOG_INFO("Debug capture is disabled for '%s'", debugCapture->GetDebugName().c_str());
         return;
     }
+
+    // Get the capture buffer from the interface
+    Debug::DebugCaptureBuffer* captureBuffer = debugCapture->GetCaptureBuffer();
+    if (captureBuffer == nullptr || !captureBuffer->IsValid()) {
+        NODE_LOG_WARNING("Debug capture buffer is invalid - skipping readback");
+        return;
+    }
+
+    // Read samples directly from the capture buffer
+    uint32_t sampleCount = captureBuffer->ReadSamples(vkDevice);
+    if (sampleCount == 0) {
+        NODE_LOG_INFO("No debug samples captured this frame for '%s'", debugCapture->GetDebugName().c_str());
+        return;
+    }
+
+    // Copy samples to our local storage
+    samples = captureBuffer->samples;
+    totalSamplesInBuffer = sampleCount;
+
+    NODE_LOG_INFO("Read %u debug samples from '%s' (binding %u)",
+                  sampleCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
 
     // Export if auto-export enabled
     if (autoExport && !samples.empty()) {
@@ -81,85 +105,6 @@ void DebugBufferReaderNode::CleanupImpl(TypedCleanupContext& ctx) {
     // Cleanup staging buffer if it exists
     // Note: Need device handle here - store during Compile
     samples.clear();
-}
-
-// ============================================================================
-// Buffer readback
-// ============================================================================
-
-bool DebugBufferReaderNode::ReadBufferToHost(VkDevice device, VkBuffer srcBuffer) {
-    // For now, assume the buffer is host-visible (created with HOST_VISIBLE | HOST_COHERENT)
-    // In a production implementation, we'd use a staging buffer and copy commands
-
-    // Get buffer memory
-    VkDeviceMemory bufferMemory = VK_NULL_HANDLE;
-
-    // TODO: We need to get the buffer's memory handle
-    // This requires either:
-    // 1. Passing the memory handle as an additional input
-    // 2. Using VMA or a custom allocator that tracks buffer->memory mappings
-    // 3. Creating the debug buffer with HOST_VISIBLE memory
-
-    // For now, we'll implement a simplified version that assumes
-    // the debug buffer info is passed via a descriptor
-
-    NODE_LOG_WARNING("ReadBufferToHost: Full implementation requires memory handle");
-
-    // Placeholder: Create some test data for demonstration
-    samples.clear();
-
-    // In actual implementation:
-    // 1. Map buffer memory
-    // 2. Read header (writeIndex, capacity)
-    // 3. Read samples up to writeIndex
-    // 4. Unmap memory
-
-    return true;
-}
-
-void DebugBufferReaderNode::CreateStagingBuffer(VkDevice device, VkDeviceSize size) {
-    if (stagingBuffer != VK_NULL_HANDLE && stagingBufferSize >= size) {
-        return; // Reuse existing buffer
-    }
-
-    // Cleanup old buffer
-    DestroyStagingBuffer(device);
-
-    // Create staging buffer
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
-        NODE_LOG_ERROR("Failed to create staging buffer");
-        return;
-    }
-
-    // Get memory requirements
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
-
-    // Allocate memory (HOST_VISIBLE | HOST_COHERENT)
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    // TODO: Find proper memory type index for HOST_VISIBLE | HOST_COHERENT
-
-    stagingBufferSize = size;
-}
-
-void DebugBufferReaderNode::DestroyStagingBuffer(VkDevice device) {
-    if (stagingBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        stagingBuffer = VK_NULL_HANDLE;
-    }
-    if (stagingMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(device, stagingMemory, nullptr);
-        stagingMemory = VK_NULL_HANDLE;
-    }
-    stagingBufferSize = 0;
 }
 
 // ============================================================================

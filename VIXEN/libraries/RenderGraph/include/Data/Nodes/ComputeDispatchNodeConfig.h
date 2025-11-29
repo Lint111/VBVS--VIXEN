@@ -6,16 +6,23 @@
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 
+// Forward declaration for debug capture
+namespace Vixen::RenderGraph::Debug {
+    class IDebugCapture;
+}
+
 namespace Vixen::RenderGraph {
 
+// Type alias for debug capture interface
+using IDebugCapture = Debug::IDebugCapture;
 
 // ============================================================================
 // SLOT COUNTS
 // ============================================================================
 
 namespace ComputeDispatchNodeCounts {
-    static constexpr size_t INPUTS = 14;  // Added PUSH_CONSTANT_DATA and PUSH_CONSTANT_METADATA
-    static constexpr size_t OUTPUTS = 3;  // Added RENDER_COMPLETE_SEMAPHORE output
+    static constexpr size_t INPUTS = 15;  // Added DEBUG_CAPTURE input
+    static constexpr size_t OUTPUTS = 4;  // Added DEBUG_CAPTURE_OUT output
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -179,7 +186,18 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (3) =====
+    /**
+     * @brief Debug capture interface (optional)
+     * If provided, the dispatch node will output it for debug reader nodes.
+     * This allows automatic debug buffer passthrough without manual wiring.
+     */
+    INPUT_SLOT(DEBUG_CAPTURE, IDebugCapture*, 14,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // ===== OUTPUTS (4) =====
 
     /**
      * @brief Recorded command buffer with vkCmdDispatch
@@ -200,6 +218,15 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
      */
     OUTPUT_SLOT(RENDER_COMPLETE_SEMAPHORE, VkSemaphore, 2,
         SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    /**
+     * @brief Debug capture interface passthrough
+     * Passes through any debug capture resource from input to output,
+     * allowing downstream debug reader nodes to receive it.
+     */
+    OUTPUT_SLOT(DEBUG_CAPTURE_OUT, IDebugCapture*, 3,
+        SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
     // ===== COMPILE-TIME VALIDATIONS =====

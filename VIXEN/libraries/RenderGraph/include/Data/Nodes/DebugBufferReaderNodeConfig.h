@@ -2,10 +2,20 @@
 #include "Data/Core/ResourceConfig.h"
 #include "VulkanDevice.h"
 
+// Forward declarations
+namespace Vixen::RenderGraph::Debug {
+    struct DebugCaptureBuffer;
+    class IDebugCapture;
+}
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
+
+// Type alias for debug types
+using DebugCaptureBuffer = Debug::DebugCaptureBuffer;
+using IDebugCapture = Debug::IDebugCapture;
 
 // Compile-time slot counts
 namespace DebugBufferReaderNodeCounts {
@@ -44,7 +54,9 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    INPUT_SLOT(DEBUG_BUFFER, VkBuffer, 2,
+    // DEBUG_CAPTURE: IDebugCapture interface for automatic detection of debug buffers
+    // This accepts any type implementing IDebugCapture (e.g., DebugCaptureResource)
+    INPUT_SLOT(DEBUG_CAPTURE, IDebugCapture*, 2,
         SlotNullability::Optional,  // Optional - node does nothing if not provided
         SlotRole::Execute,
         SlotMutability::ReadOnly,
@@ -65,11 +77,9 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
         CommandPoolDescriptor commandPoolDesc{};
         INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
 
-        // Debug buffer - SSBO containing DebugRaySample array
-        BufferDescriptor debugBufferDesc{};
-        debugBufferDesc.size = 0;  // Size determined at runtime
-        debugBufferDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferSrc;
-        INIT_INPUT_DESC(DEBUG_BUFFER, "debug_buffer", ResourceLifetime::Transient, debugBufferDesc);
+        // Debug capture interface
+        HandleDescriptor debugCaptureDesc{"IDebugCapture*"};
+        INIT_INPUT_DESC(DEBUG_CAPTURE, "debug_capture", ResourceLifetime::Transient, debugCaptureDesc);
     }
 
     // Automated config validation
@@ -78,12 +88,12 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
     // Static assertions for slot indices
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
-    static_assert(DEBUG_BUFFER_Slot::index == 2, "DEBUG_BUFFER must be at index 2");
+    static_assert(DEBUG_CAPTURE_Slot::index == 2, "DEBUG_CAPTURE must be at index 2");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
-    static_assert(std::is_same_v<DEBUG_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<DEBUG_CAPTURE_Slot::Type, IDebugCapture*>);
 };
 
 } // namespace Vixen::RenderGraph

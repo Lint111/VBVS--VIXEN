@@ -247,6 +247,26 @@ struct RuntimeStructDescriptor : ResourceDescriptorBase {
 };
 
 /**
+ * @brief Debug capture buffer descriptor
+ *
+ * Phase H: Debug instrumentation for ray traversal analysis.
+ * Holds metadata for a GPU debug capture SSBO.
+ */
+struct DebugCaptureBufferDescriptor : ResourceDescriptorBase {
+    uint32_t capacity = 2048;        // Max samples to capture
+    bool hostVisible = true;         // If true, use HOST_VISIBLE memory for direct readback
+    std::string exportPath = "";     // Optional: auto-export path
+
+    bool Validate() const override {
+        return capacity > 0;
+    }
+
+    std::unique_ptr<ResourceDescriptorBase> Clone() const override {
+        return std::make_unique<DebugCaptureBufferDescriptor>(*this);
+    }
+};
+
+/**
  * @brief Runtime struct buffer with typed field access
  *
  * Holds actual data for a runtime-described struct.
@@ -314,10 +334,11 @@ using ResourceDescriptorVariant = std::variant<
     HandleDescriptor,
     CommandPoolDescriptor,
     ShaderProgramHandleDescriptor,
-    StorageImageDescriptor,  // Phase G.2: Compute shader storage images
-    Texture3DDescriptor,     // Phase G.2: 3D voxel textures
-    RuntimeStructDescriptor, // Phase H: Runtime-discovered struct layouts
-    RuntimeStructBuffer      // Phase H: Runtime struct data storage
+    StorageImageDescriptor,         // Phase G.2: Compute shader storage images
+    Texture3DDescriptor,            // Phase G.2: 3D voxel textures
+    RuntimeStructDescriptor,        // Phase H: Runtime-discovered struct layouts
+    RuntimeStructBuffer,            // Phase H: Runtime struct data storage
+    DebugCaptureBufferDescriptor    // Phase H: Debug ray capture buffer
 >;
 
 

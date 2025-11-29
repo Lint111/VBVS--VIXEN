@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/DebugBufferReaderNodeConfig.h"
 #include "Debug/DebugRaySample.h"
+#include "Debug/DebugCaptureBuffer.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -132,10 +133,6 @@ protected:
     void CleanupImpl(TypedCleanupContext& ctx) override;
 
 private:
-    // Buffer readback
-    bool ReadBufferToHost(VkDevice device, VkBuffer srcBuffer);
-    void CreateStagingBuffer(VkDevice device, VkDeviceSize size);
-    void DestroyStagingBuffer(VkDevice device);
 
     // Export
     void ExportSamples();
@@ -150,11 +147,6 @@ private:
     bool autoExport = true;
     std::function<bool(const Debug::DebugRaySample&)> sampleFilter;
 
-    // Vulkan resources
-    Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice = nullptr;
-    VkBuffer stagingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
-    VkDeviceSize stagingBufferSize = 0;
 
     // Data
     std::vector<Debug::DebugRaySample> samples;
