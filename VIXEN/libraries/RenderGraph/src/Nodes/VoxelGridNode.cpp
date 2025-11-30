@@ -25,6 +25,33 @@ using VIXEN::RenderGraph::VoxelBrick; // Legacy - will be removed
 namespace Vixen::RenderGraph {
 
 // ============================================================================
+// OCTREE CONFIG STRUCT (GPU UBO layout, must match shader std140)
+// ============================================================================
+// Contains all configurable octree parameters - eliminates hard-coded constants in shader
+// Layout: std140 requires vec3 alignment to 16 bytes, int to 4 bytes
+struct OctreeConfig {
+    // ESVO scale parameters (matching LaineKarrasOctree.h)
+    int32_t esvoMaxScale;       // Always 22 (ESVO normalized space)
+    int32_t userMaxLevels;      // log2(resolution) = 7 for 128³
+    int32_t brickDepthLevels;   // 3 for 8³ bricks
+    int32_t brickSize;          // 8 (voxels per brick axis)
+
+    // Derived scale values
+    int32_t minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
+    int32_t brickESVOScale;     // Scale at which nodes are brick parents = 20
+    int32_t bricksPerAxis;      // resolution / brickSize = 16
+    int32_t _padding1;          // Pad to 16-byte alignment
+
+    // Grid bounds (in world units)
+    float gridMinX, gridMinY, gridMinZ;
+    float _padding2;            // Pad vec3 to vec4
+
+    float gridMaxX, gridMaxY, gridMaxZ;
+    float _padding3;            // Pad vec3 to vec4
+};
+static_assert(sizeof(OctreeConfig) == 64, "OctreeConfig must be 64 bytes for std140 alignment");
+
+// ============================================================================
 // NODE TYPE FACTORY
 // ============================================================================
 
@@ -220,6 +247,149 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     UploadESVOBuffers(*octreeData, grid);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
+    // Create and upload OctreeConfig UBO with scale parameters
+    {
+        OctreeConfig config{};
+        config.esvoMaxScale = 22;  // ESVO_MAX_SCALE constant (always 22)
+        config.userMaxLevels = maxLevels;
+        config.brickDepthLevels = brickDepth;
+        config.brickSize = 1 << brickDepth;  // 2^3 = 8
+
+        // Derived scale values (matching LaineKarrasOctree formulas)
+        config.minESVOScale = config.esvoMaxScale - config.userMaxLevels + 1;  // 22 - 7 + 1 = 16
+
+        // brickESVOScale = scale where userScale == brickUserScale
+        // brickUserScale = maxLevels - brickDepthLevels = 7 - 3 = 4
+        // esvoScale = esvoMaxScale - (maxLevels - 1 - userScale) = 22 - (7 - 1 - 4) = 22 - 2 = 20
+        int brickUserScale = config.userMaxLevels - config.brickDepthLevels;
+        config.brickESVOScale = config.esvoMaxScale - (config.userMaxLevels - 1 - brickUserScale);  // 20
+
+        config.bricksPerAxis = octreeData->bricksPerAxis;
+
+        // Grid bounds
+        config.gridMinX = 0.0f;
+        config.gridMinY = 0.0f;
+        config.gridMinZ = 0.0f;
+        config.gridMaxX = static_cast<float>(resolution);
+        config.gridMaxY = static_cast<float>(resolution);
+        config.gridMaxZ = static_cast<float>(resolution);
+
+        std::cout << "[VoxelGridNode] OctreeConfig: esvoMaxScale=" << config.esvoMaxScale
+                  << ", userMaxLevels=" << config.userMaxLevels
+                  << ", brickDepthLevels=" << config.brickDepthLevels
+                  << ", minESVOScale=" << config.minESVOScale
+                  << ", brickESVOScale=" << config.brickESVOScale
+                  << ", bricksPerAxis=" << config.bricksPerAxis << std::endl;
+
+        // Create UBO buffer
+        VkBufferCreateInfo configBufferInfo{};
+        configBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        configBufferInfo.size = sizeof(OctreeConfig);
+        configBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        configBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkResult result = vkCreateBuffer(vulkanDevice->device, &configBufferInfo, nullptr, &octreeConfigBuffer);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[VoxelGridNode] Failed to create octree config buffer");
+        }
+
+        // Allocate device-local memory
+        VkMemoryRequirements memReq;
+        vkGetBufferMemoryRequirements(vulkanDevice->device, octreeConfigBuffer, &memReq);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReq.size;
+
+        const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
+        uint32_t memoryTypeIndex = UINT32_MAX;
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+            if ((memReq.memoryTypeBits & (1 << i)) &&
+                (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                memoryTypeIndex = i;
+                break;
+            }
+        }
+        if (memoryTypeIndex == UINT32_MAX) {
+            throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for config buffer");
+        }
+        allocInfo.memoryTypeIndex = memoryTypeIndex;
+
+        result = vkAllocateMemory(vulkanDevice->device, &allocInfo, nullptr, &octreeConfigMemory);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("[VoxelGridNode] Failed to allocate config buffer memory");
+        }
+        vkBindBufferMemory(vulkanDevice->device, octreeConfigBuffer, octreeConfigMemory, 0);
+
+        // Upload via staging buffer
+        VkBufferCreateInfo stagingInfo{};
+        stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        stagingInfo.size = sizeof(OctreeConfig);
+        stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer stagingBuffer;
+        vkCreateBuffer(vulkanDevice->device, &stagingInfo, nullptr, &stagingBuffer);
+
+        VkMemoryRequirements stagingMemReq;
+        vkGetBufferMemoryRequirements(vulkanDevice->device, stagingBuffer, &stagingMemReq);
+
+        VkMemoryAllocateInfo stagingAllocInfo{};
+        stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        stagingAllocInfo.allocationSize = stagingMemReq.size;
+
+        VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+            if ((stagingMemReq.memoryTypeBits & (1 << i)) &&
+                (memProperties.memoryTypes[i].propertyFlags & stagingProps) == stagingProps) {
+                stagingAllocInfo.memoryTypeIndex = i;
+                break;
+            }
+        }
+
+        VkDeviceMemory stagingMemory;
+        vkAllocateMemory(vulkanDevice->device, &stagingAllocInfo, nullptr, &stagingMemory);
+        vkBindBufferMemory(vulkanDevice->device, stagingBuffer, stagingMemory, 0);
+
+        void* data;
+        vkMapMemory(vulkanDevice->device, stagingMemory, 0, sizeof(OctreeConfig), 0, &data);
+        std::memcpy(data, &config, sizeof(OctreeConfig));
+        vkUnmapMemory(vulkanDevice->device, stagingMemory);
+
+        VkCommandBufferAllocateInfo cmdAllocInfo{};
+        cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmdAllocInfo.commandPool = commandPool;
+        cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmdAllocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer cmdBuffer;
+        vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, &cmdBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        VkBufferCopy copyRegion{};
+        copyRegion.size = sizeof(OctreeConfig);
+        vkCmdCopyBuffer(cmdBuffer, stagingBuffer, octreeConfigBuffer, 1, &copyRegion);
+        vkEndCommandBuffer(cmdBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+
+        vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(vulkanDevice->queue);
+
+        vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);
+        vkDestroyBuffer(vulkanDevice->device, stagingBuffer, nullptr);
+        vkFreeMemory(vulkanDevice->device, stagingMemory, nullptr);
+
+        std::cout << "[VoxelGridNode] OctreeConfig UBO uploaded (" << sizeof(OctreeConfig) << " bytes)" << std::endl;
+    }
+
     // Create ray trace buffer for per-ray traversal capture
     // Each ray captures up to 64 steps * 48 bytes + 16 byte header = 3088 bytes/ray
     // 256 rays = ~790KB buffer, reasonable for debug capture
@@ -244,12 +414,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
-    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << std::endl;
+    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
 
     // Output octree buffers
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
+    ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
 
     // Output debug capture buffer with IDebugCapture interface attached
     // When connected with SlotRole::Debug, the gatherer will auto-collect it
@@ -279,6 +450,7 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
+    ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
 
     // Re-output debug capture buffer (with interface)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
@@ -333,6 +505,19 @@ void VoxelGridNode::DestroyOctreeBuffers() {
         vkFreeMemory(vulkanDevice->device, octreeMaterialsMemory, nullptr);
         octreeMaterialsMemory = VK_NULL_HANDLE;
         LogCleanupProgress("octreeMaterialsMemory freed");
+    }
+
+    // Destroy config buffer and memory
+    if (octreeConfigBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, octreeConfigBuffer, nullptr);
+        octreeConfigBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeConfigBuffer destroyed");
+    }
+
+    if (octreeConfigMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, octreeConfigMemory, nullptr);
+        octreeConfigMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("octreeConfigMemory freed");
     }
 }
 

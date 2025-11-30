@@ -2,7 +2,7 @@
 
 **Last Updated**: November 30, 2025 (Session 8H)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: 🔴 **Bug #9 Identified** | ESVO↔Brick Index Mismatch
+**Status**: ✅ **Bug #9 FIXED** | ESVO Scale + Brick Occupancy Check
 
 ---
 
@@ -51,35 +51,46 @@ octree.unlockAfterRendering();
 
 ## Week 2: GPU Integration - WORKING ✅
 
-### Session 8H Progress (Nov 30, 2025) - ESVO↔BRICK INDEX MISMATCH BUG
+### Session 8H Progress (Nov 30, 2025) - BUG #9 FIX: ESVO↔BRICK INDEX MISMATCH
 
-**Bug #9 Root Cause Identified**:
+**Bug #9 Root Cause Identified & Fixed**:
 
-The shader's `handleLeafHit()` computes brick index from ESVO position, but this computed brick may not match the brick that the ESVO hierarchy marked as valid in the parent's `leafMask`.
+The shader's `handleLeafHit()` computed brick index from ESVO position, but this computed brick could be an empty interior brick even though the ESVO hierarchy said "some brick exists in this region".
 
 **Issue Details**:
-1. At scale 19 (depth 4), one ESVO node covers a 2×2×2 brick region (8 possible bricks)
-2. The node's `leafMask` indicates which of the 8 octants contain populated bricks
-3. When `childIsLeaf()` returns true, the shader enters `BRICK_ENTER`
-4. **BUG**: The shader computes `brickCoord` from position using `floor(hitPosLocal / BRICK_SIZE)`
-5. This computed brick index may differ from the brick that the ESVO hierarchy thinks should be there
+1. At scale 20, ESVO nodes cover 2×2×2 brick regions (8 possible bricks each)
+2. The node's `validMask` indicates which of 8 child octants (at scale 19) have bricks
+3. Position-based brick calculation might land in an empty interior brick
 
-**Example from Debug Trace**:
+**Fixes Applied**:
+
+1. **Fixed `getBrickESVOScale()`**: Changed from 18 to **20**
+   - Previous value (18) forced `isLeaf` too late, at half-brick scale
+   - Correct value (20) is the brick-parent level where children are bricks
+   - CPU formula: `brickUserScale = maxLevels - brickDepth = 7 - 3 = 4`, ESVO scale = 20
+
+2. **Added brick occupancy check** in `handleLeafHit()`:
+   - Samples 5 positions (corners + center) to detect empty bricks
+   - Returns `false` for empty bricks, allowing ESVO traversal to continue
+   - Skips wasteful DDA on interior bricks
+
+**Files Modified**:
+- [VoxelRayMarch.comp:232-252](shaders/VoxelRayMarch.comp#L232-L252) - `getBrickESVOScale()` → 20 with full derivation comments
+- [VoxelRayMarch.comp:703-708](shaders/VoxelRayMarch.comp#L703-L708) - Updated comment in `checkChildValidity()`
+- [VoxelRayMarch.comp:1274-1288](shaders/VoxelRayMarch.comp#L1274-L1288) - Brick occupancy check before DDA
+
+**ESVO Scale Derivation (reference)**:
 ```
-Ray at position (1.625, 1.4375, 1.8125) in mirrored space at scale 19
-Unmirrors to localNorm (0.3125, 0.4375, 0.8125)
-gridPos = localNorm × 128 = (40, 56, 104)
-brickCoord = floor(gridPos / 8) = (5, 7, 13)
-BUT brick (5, 7, 13) is EMPTY (interior of Cornell Box)
-The ESVO hierarchy marked this region as having a leaf, expecting a DIFFERENT brick
+Scale 22: 64 units (root)
+Scale 21: 32 units
+Scale 20: 16 units (2×2×2 bricks) ← BRICK PARENT LEVEL
+Scale 19: 8 units (1 brick)
+Scale 18: 4 units (half brick)
+
+CPU: brickUserScale = maxLevels - brickDepthLevels = 7 - 3 = 4
+     esvoToUserScale(scale) = scale - 16
+     brickESVOScale = 20 (where userScale = 4)
 ```
-
-**Architecture Conflict**: Two different indexing schemes (sparse ESVO octant vs dense grid brick slots) are not aligned.
-
-**Fix Options Under Investigation**:
-1. **Use ESVO octant info**: Derive brick coordinate from ESVO octant index (`state.idx`) instead of position
-2. **Add brick existence check**: Check if computed brick actually has non-zero voxels before DDA
-3. **Align ESVO structure with dense grid**: Ensure ESVO octants at brick level correspond exactly to dense grid brick slots
 
 ---
 

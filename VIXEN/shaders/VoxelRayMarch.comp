@@ -32,23 +32,52 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
+// ============================================================================
+// OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
+// ============================================================================
+// Must match OctreeConfig struct in VoxelGridNode.cpp (std140 layout)
+layout(std140, binding = 5) uniform OctreeConfigUBO {
+    // ESVO scale parameters
+    int esvoMaxScale;       // Always 22 (ESVO normalized space)
+    int userMaxLevels;      // log2(resolution) = 7 for 128³
+    int brickDepthLevels;   // 3 for 8³ bricks
+    int brickSize;          // 8 (voxels per brick axis)
+
+    // Derived scale values
+    int minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
+    int brickESVOScale;     // Scale at which nodes are brick parents = 20
+    int bricksPerAxis;      // resolution / brickSize = 16
+    int _padding1;          // Pad to 16-byte alignment
+
+    // Grid bounds (in world units)
+    vec3 gridMin;
+    float _padding2;        // Pad vec3 to vec4
+
+    vec3 gridMax;
+    float _padding3;        // Pad vec3 to vec4
+} octreeConfig;
+
 // NOTE: Ray trace buffer is declared after TraceStep/RayTraceHeader structs (see below)
 
 // ============================================================================
-// CONSTANTS - MUST MATCH C++ LaineKarrasOctree.h
+// CONSTANTS - NOW MOSTLY FROM UBO (octreeConfig)
 // ============================================================================
 
 // ESVO uses fixed 23-bit mantissa precision for float bit manipulation tricks
 // This is INDEPENDENT of user's octree depth - it's how ESVO normalizes [1,2] space
-const int ESVO_MAX_SCALE = 22;  // Root scale in ESVO normalized space (matches C++)
+// NOTE: esvoMaxScale is now in octreeConfig UBO (always 22)
+const int ESVO_MAX_SCALE = 22;  // Kept as const for IEEE 754 bit manipulation
 
-// User-defined octree parameters (must match VoxelGridNode setup)
-// TODO: Move these to octree UBO for runtime configuration
-// For resolution 128: maxLevels=7, brickDepth=3
-const int USER_MAX_LEVELS = 7;  // log2(128) = 7 levels
-const int BRICK_DEPTH = 3;      // 8x8x8 bricks = 2^3
+// User-defined octree parameters are now from octreeConfig UBO:
+// - octreeConfig.userMaxLevels (was USER_MAX_LEVELS)
+// - octreeConfig.brickDepthLevels (was BRICK_DEPTH)
+// - octreeConfig.brickSize
+// - octreeConfig.bricksPerAxis
+// - octreeConfig.brickESVOScale (was computed in getBrickESVOScale())
+// - octreeConfig.minESVOScale
+// - octreeConfig.gridMin/gridMax
 
-// Derived constants
+// Fixed constants (not configuration-dependent)
 const int STACK_SIZE = 23;      // Must cover full ESVO range
 const int MAX_ITERS = 512;
 const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
@@ -158,82 +187,31 @@ const uint DEBUG_EXIT_STACK = 3u;
 const uint DEBUG_EXIT_INVALID_SPAN = 4u;
 
 // Scale mapping: Convert between user scale and ESVO internal scale
+// Using UBO values for runtime configuration
 // For depth 7: userScales [0-6] map to esvoScales [16-22]
 // userScale 0 (finest) -> ESVO 22-(7-1-0) = 16
 // userScale 6 (root)   -> ESVO 22-(7-1-6) = 22
 int userToESVOScale(int userScale) {
-    return ESVO_MAX_SCALE - (USER_MAX_LEVELS - 1 - userScale);
+    return octreeConfig.esvoMaxScale - (octreeConfig.userMaxLevels - 1 - userScale);
 }
 
 int esvoToUserScale(int esvoScale) {
-    return esvoScale - (ESVO_MAX_SCALE - USER_MAX_LEVELS + 1);
+    return esvoScale - (octreeConfig.esvoMaxScale - octreeConfig.userMaxLevels + 1);
 }
 
-// Brick level: octants that are 8x8x8 voxels (2^BRICK_DEPTH per side)
-// For resolution 128 with 8x8x8 bricks: 128/8 = 16 bricks per axis = 2^4
+// Brick level: The scale at which ESVO nodes are "brick parents"
+// whose children ARE individual bricks. This is pre-computed in CPU
+// using the formula:
+//   brickUserScale = maxLevels - brickDepthLevels = 7 - 3 = 4
+//   brickESVOScale = esvoMaxScale - (maxLevels - 1 - brickUserScale) = 22 - 2 = 20
 //
-// ESVO scale_exp2 formula: At scale N, scale_exp2 = 2^(N - ESVO_MAX_SCALE - 1)
-//   - Root (scale 22): scale_exp2 = 2^(22-22-1) = 0.5 => 64 world units per octant side
-//   - Scale 21: scale_exp2 = 0.25 => 32 world units
-//   - Scale 20: scale_exp2 = 0.125 => 16 world units
-//   - Scale 19: scale_exp2 = 0.0625 => 8 world units (BRICK SIZE!)
-//   - Scale 18: scale_exp2 = 0.03125 => 4 world units
-//
-// CORRECTED: Mapping between ESVO scale and user depth:
-//   - Root is at ESVO scale 22, user depth 7 (USER_MAX_LEVELS)
-//   - Each level down: scale--, depth--
-//   - Brick level is at user depth = BRICK_DEPTH = 3
-//   - Therefore: brickScale = ESVO_MAX_SCALE - (USER_MAX_LEVELS - BRICK_DEPTH)
-//                           = 22 - (7 - 3) = 22 - 4 = 18
-//
-// But wait - scale_exp2 at scale 18 = 2^(18-23) = 2^(-5) = 0.03125 = 4 world units
-// That's HALF the brick size! Bricks are 8 world units.
-//
-// Actually the scale arithmetic differs between ESVO and our hierarchy:
-// ESVO: root scale_exp2 = 0.5 means octant is HALF the [1,2] range = 0.5 units
-//       So full grid [1,2] = 1.0 unit = 128 world units
-//       scale_exp2 = 0.5 => 64 world units (root children)
-//       scale_exp2 = 0.0625 => 8 world units = brick size
-//
-// For scale_exp2 = 0.0625 = 2^(-4), we need scale - ESVO_MAX_SCALE - 1 = -4
-// => scale = ESVO_MAX_SCALE + 1 - 4 = 22 + 1 - 4 = 19
-//
-// CRITICAL FIX: The scale_exp2 arithmetic gives octant size in [1,2] normalized space,
-// but the ESVO hierarchy depth determines when we hit actual brick nodes.
-//
-// CPU hierarchy depth mapping (from rebuild()):
-//   - brickDepth = 3 (8^3 voxel bricks)
-//   - Brick nodes are at depth = brickDepth = 3
-//   - Parent nodes at depth 4, 5, 6, 7 (root)
-//
-// ESVO scale to depth conversion:
-//   - Root at scale ESVO_MAX_SCALE (22), depth = USER_MAX_LEVELS (7)
-//   - depth = scale - (ESVO_MAX_SCALE - USER_MAX_LEVELS)
-//   - depth = scale - (22 - 7) = scale - 15
-//
-// For brick level (depth = brickDepth = 3):
-//   - scale = depth + 15 = 3 + 15 = 18
-//
-// Verification: at scale 18, scale_exp2 = 2^(18-23) = 2^(-5) = 0.03125
-// This is 4 world units, which is HALF a brick. This seems wrong...
-//
-// But actually the parent's validMask check happens at scale 19 (depth 4),
-// and children are at scale 18 (depth 3 = brick level).
-// The shader should force isLeaf when the CHILD is a brick, i.e., at parent scale 19.
-// But the position calculation should use the child's scale_exp2 (0.03125), not parent's.
-//
-// Actually, looking at the trace: at BRICK_ENTER, scale=19 and scale_exp2=0.0625 (8 units).
-// This suggests the shader IS at the correct scale, but scale_exp2 is parent's not child's.
-//
-// The fundamental issue may be that scale 19 nodes cover 16-unit regions (2x2x2 bricks),
-// not individual 8-unit bricks. Forcing isLeaf at scale 19 means we're calling handleLeafHit
-// for a 16-unit region and computing ONE brick index, when we might need to try 8 bricks.
-//
-// For now, let's change to scale 18 and see what happens:
+// At scale 20, each octant represents a 2x2x2 region of bricks (16 world units).
+// The leafMask at this scale tells us which of the 8 child bricks exist.
+// When we force isLeaf at scale 20, we enter handleLeafHit which uses
+// the position to compute which specific brick to DDA through.
 int getBrickESVOScale() {
-    // Brick level: scale = brickDepth + (ESVO_MAX_SCALE - USER_MAX_LEVELS)
-    //                    = 3 + (22 - 7) = 3 + 15 = 18
-    return 18;
+    // Use pre-computed value from UBO
+    return octreeConfig.brickESVOScale;
 }
 
 // ============================================================================
@@ -685,11 +663,25 @@ bool checkChildValidity(TraversalState state, RayCoefficients coef,
     bool child_valid = childExists(validMask, localChildIdx);
     isLeaf = childIsLeaf(leafMask, localChildIdx);
 
-    // Force leaf status at brick level (matches CPU behavior)
-    // At brick level, treat all valid children as leaves to trigger brick DDA
-    int brickESVOScale = getBrickESVOScale();  // Returns 18
-    if (state.scale == brickESVOScale && child_valid) {
-        isLeaf = true;
+    // At brick-parent level (brickESVOScale from UBO), the leafMask acts as brick occupancy:
+    // - validMask indicates which octants have SOMETHING (either bricks or further children)
+    // - leafMask indicates which octants ARE bricks (leaf = brick exists, non-leaf = empty interior)
+    //
+    // If we're at brickESVOScale and the octant is marked valid but NOT a leaf,
+    // it means this is an empty interior octant (no brick data exists).
+    // Return false to skip it and continue ESVO traversal to find actual bricks.
+    int brickESVOScale = getBrickESVOScale();  // Now returns 20 from UBO
+    if (state.scale == brickESVOScale) {
+        // At brick-parent level: leafMask indicates which octants contain bricks
+        // Only proceed if this octant actually HAS a brick (isLeaf from leafMask)
+        if (child_valid && isLeaf) {
+            // Brick exists in this octant - proceed to handleLeafHit
+            isLeaf = true;
+        } else if (child_valid && !isLeaf) {
+            // Valid octant but NOT a leaf = no brick data here
+            // Return false to trigger ADVANCE and try sibling octants
+            return false;
+        }
     }
 
     if (!child_valid || state.t_min > state.t_max) {
@@ -1241,9 +1233,9 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     return true;
 #endif
 
-    // Compute brick index from position
-    const int BRICK_SIZE = 8;
-    int bricksPerAxis = int(gridSize.x) / BRICK_SIZE;
+    // Compute brick index from position using UBO values
+    int BRICK_SIZE = octreeConfig.brickSize;
+    int bricksPerAxis = octreeConfig.bricksPerAxis;
 
     ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
     brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));

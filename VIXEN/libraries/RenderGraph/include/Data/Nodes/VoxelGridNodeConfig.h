@@ -15,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 4;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER
+    static constexpr size_t OUTPUTS = 5;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -26,7 +26,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 4 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER)
+ * Outputs: 5 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -66,6 +66,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    // Octree configuration UBO - contains scale parameters for shader
+    // Eliminates hard-coded constants in shader, allows runtime configuration
+    OUTPUT_SLOT(OCTREE_CONFIG_BUFFER, VkBuffer, 4,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -100,6 +106,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         debugCaptureDesc.size = 2048 * 64;  // Default: 2048 samples * ~64 bytes per DebugRaySample
         debugCaptureDesc.usage = ResourceUsage::StorageBuffer;
         INIT_OUTPUT_DESC(DEBUG_CAPTURE_BUFFER, "debug_capture_buffer", ResourceLifetime::Persistent, debugCaptureDesc);
+
+        // Octree config UBO - scale and grid parameters
+        BufferDescriptor octreeConfigDesc{};
+        octreeConfigDesc.size = 64;  // OctreeConfig struct padded to 64 bytes (std140 alignment)
+        octreeConfigDesc.usage = ResourceUsage::UniformBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
     }
 
     // Automated config validation
@@ -111,6 +123,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_BRICKS_BUFFER_Slot::index == 1, "OCTREE_BRICKS_BUFFER must be at index 1");
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
     static_assert(DEBUG_CAPTURE_BUFFER_Slot::index == 3, "DEBUG_CAPTURE_BUFFER must be at index 3");
+    static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 4, "OCTREE_CONFIG_BUFFER must be at index 4");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -119,6 +132,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<OCTREE_BRICKS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

@@ -1121,6 +1121,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
                           SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
 
+    // Binding 5: octreeConfig (UBO) - octree scale parameters
+    // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+                          descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
+                          SlotRole::Dependency | SlotRole::Execute);
+
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings
     batch.Connect(swapChainNode, SwapChainNodeConfig::SWAPCHAIN_PUBLIC,

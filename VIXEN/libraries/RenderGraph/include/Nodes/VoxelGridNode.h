@@ -98,6 +98,10 @@ private:
     VkBuffer octreeMaterialsBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeMaterialsMemory = VK_NULL_HANDLE;
 
+    // Octree config UBO (scale parameters for shader)
+    VkBuffer octreeConfigBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory octreeConfigMemory = VK_NULL_HANDLE;
+
     // Debug capture resource (owns buffer, implements IDebugCapture)
     std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 
