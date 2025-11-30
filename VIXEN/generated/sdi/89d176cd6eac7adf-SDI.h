@@ -2,8 +2,8 @@
 // SPIRV Descriptor Interface (SDI)
 // ============================================================================
 //
-// UUID: e2700c11bf8cd8c4
-// Generated: 2025-11-29 18:53:38
+// UUID: 89d176cd6eac7adf
+// Generated: 2025-11-30 13:42:24
 //
 // This file provides compile-time type-safe access to shader resources.
 // It is automatically generated from SPIRV reflection data.
@@ -21,7 +21,7 @@
 #include <glm/glm.hpp>
 
 namespace ShaderInterface {
-namespace e2700c11bf8cd8c4 {
+namespace _89d176cd6eac7adf {
 
 // ============================================================================
 // Shader Struct Definitions
@@ -209,11 +209,11 @@ namespace Set0 {
  * @brief PushConstants
  * Size: 64 bytes
  * Alignment: 16 bytes
- * Layout VixenHash: 0x796faee378fa3795 (for runtime discovery)
+ * Layout VixenHash: 0x9beba6e385f4b387 (for runtime discovery)
  */
 struct PushConstants {
     // Phase H: Discovery system layout hash
-    static constexpr uint64_t LAYOUT_HASH = 0x796faee378fa3795ULL;
+    static constexpr uint64_t LAYOUT_HASH = 0x9beba6e385f4b387ULL;
 
     // Member metadata structs
     struct pc_0 {
@@ -259,7 +259,7 @@ struct PushConstants {
         static constexpr uint32_t BINDING = 6;
     };
     struct pc_7 {
-        static constexpr const char* TYPE = "float";
+        static constexpr const char* TYPE = "int32_t";
         static constexpr uint32_t OFFSET = 60;
         static constexpr uint32_t SIZE = 4;
         static constexpr uint32_t BINDING = 7;
@@ -286,7 +286,7 @@ struct pc {
 
 struct Metadata {
     static constexpr const char* PROGRAM_NAME = "VoxelRayMarch";
-    static constexpr const char* INTERFACE_HASH = "fa0251c4c067b647";
+    static constexpr const char* INTERFACE_HASH = "7eb057c3c5209651";
     static constexpr uint32_t NUM_DESCRIPTOR_SETS = 1;
     static constexpr uint32_t NUM_PUSH_CONSTANTS = 1;
     static constexpr uint32_t NUM_VERTEX_INPUTS = 0;

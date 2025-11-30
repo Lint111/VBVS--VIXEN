@@ -1086,6 +1086,12 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           pushConstantGatherer, VoxelRayMarch::cameraRight::BINDING,  // vec3 cameraRight
                           &CameraData::cameraRight, SlotRole::Execute);  // Mark as Execute-only
 
+    // Connect debugMode from InputState to push constant gatherer for debug visualization
+    // Press 0-9 keys to switch between visualization modes at runtime
+    batch.ConnectVariadic(inputNode, InputNodeConfig::INPUT_STATE,
+                          pushConstantGatherer, VoxelRayMarch::debugMode::BINDING,  // int debugMode
+                          &InputState::debugMode, SlotRole::Execute);  // Mark as Execute-only
+
     // Connect ray marching resources to descriptor gatherer using VoxelRayMarchNames.h bindings
     // Binding 0: outputImage - Transient (Execute-only), others are Persistent (Dependency|Execute)
     // Binding 0: outputImage (swapchain image view) - changes per frame

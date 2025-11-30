@@ -1,16 +1,16 @@
 {
-  "descriptorInterfaceHash": "43bded93fcbc37f9",
+  "descriptorInterfaceHash": "89d176cd6eac7adf",
   "pipelineType": 2,
   "programName": "VoxelRayMarch",
-  "sdiHeaderPath": "generated\\sdi\\43bded93fcbc37f9-SDI.h",
-  "sdiNamespace": "ShaderInterface::43bded93fcbc37f9",
+  "sdiHeaderPath": "generated/sdi\\89d176cd6eac7adf-SDI.h",
+  "sdiNamespace": "ShaderInterface::89d176cd6eac7adf",
   "stages": [
     {
       "entryPoint": "main",
-      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\43bded93fcbc37f9_stage32.spv",
-      "spirvSize": 8847,
+      "spirvFile": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\generated\\89d176cd6eac7adf_stage32.spv",
+      "spirvSize": 17473,
       "stage": 32
     }
   ],
-  "uuid": "43bded93fcbc37f9"
+  "uuid": "89d176cd6eac7adf"
 }
