@@ -1188,12 +1188,35 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
               << nodesWithBricks << " nodes from leafToBrickView ("
               << rootBlock.leafToBrickView.size() << " entries)" << std::endl;
 
+    // Debug: Print node indices from leafToBrickView
+    std::set<uint32_t> leafToBrickViewNodes;
+    for (const auto& [key, brickViewIdx] : rootBlock.leafToBrickView) {
+        leafToBrickViewNodes.insert(static_cast<uint32_t>(key >> 3));
+    }
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] leafToBrickView node indices (first 10): ";
+    int cnt = 0;
+    for (uint32_t idx : leafToBrickViewNodes) {
+        if (cnt++ >= 10) break;
+        std::cout << idx << " ";
+    }
+    std::cout << std::endl;
+
     // Debug: Print first few base indices
     int printedBases = 0;
     for (size_t i = 0; i < brickBaseIndex.size() && printedBases < 5; ++i) {
         if (brickBaseIndex[i] != 0xFFFFFFFFu) {
             std::cout << "  brickBaseIndex[" << i << "] = " << brickBaseIndex[i] << std::endl;
             printedBases++;
+        }
+    }
+
+    // Debug: Check specific nodes from debug trace (187, 189)
+    std::cout << "[DEBUG] Checking nodes from shader trace:" << std::endl;
+    for (uint32_t testNode : {30u, 187u, 189u}) {
+        if (testNode < brickBaseIndex.size()) {
+            uint32_t base = brickBaseIndex[testNode];
+            std::cout << "  brickBaseIndex[" << testNode << "] = "
+                      << (base == 0xFFFFFFFFu ? "INVALID" : std::to_string(base)) << std::endl;
         }
     }
 

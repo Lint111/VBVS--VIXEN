@@ -680,12 +680,17 @@ bool checkChildValidity(TraversalState state, RayCoefficients coef,
     isLeaf = childIsLeaf(leafMask, localChildIdx);
 
     // At brick level (brickESVOScale from UBO), force leaf status to trigger brick DDA
-    // This matches CPU behavior: when currentUserScale == brickUserScale, force isLeaf = true
-    // At scale 20 with 128³ grid, octants are 16 world units = 2×2×2 brick regions
+    // BUT ONLY if the child is actually a leaf according to the descriptor's leafMask.
+    // We cannot force non-leaf children to be leaves - they have more internal structure.
+    //
+    // The leafMask tells us which children are actual leaves (bricks).
+    // If isLeaf is already true from the descriptor, we keep it.
+    // We do NOT force isLeaf=true for children that have their own children.
     int brickESVOScale = getBrickESVOScale();  // Returns 20 from UBO
-    if (state.scale == brickESVOScale && child_valid) {
-        isLeaf = true;
-    }
+    // REMOVED: Forced leaf at scale 20 - this was wrong because some children are internal nodes
+    // if (state.scale == brickESVOScale && child_valid) {
+    //     isLeaf = true;
+    // }
 
     if (!child_valid || state.t_min > state.t_max) {
         return false;
@@ -1183,13 +1188,10 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
     // ============================================================================
-    // STEP 1: Verify we're at brick-parent scale
+    // STEP 1: We now rely on actual leafMask from descriptor, not forced scale
     // ============================================================================
-    int brickESVOScale = getBrickESVOScale();
-    // DEBUG: Skip scale check to see if we're getting hits at other scales
-    // if (state.scale != brickESVOScale) {
-    //     return false;
-    // }
+    // The traversal calls handleLeafHit only when isLeaf is true from descriptor
+    // No scale check needed - if we're here, the descriptor says this is a leaf
 
     // ============================================================================
     // STEP 2: Convert mirrored octant index to local-space for descriptor lookup
@@ -1213,12 +1215,7 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // ============================================================================
     uint baseIndex = brickBaseIndex[parentNodeIndex];
     if (baseIndex == 0xFFFFFFFFu) {
-        // DEBUG: Show cyan for "no brickBaseIndex"
-        hitColor = vec3(0.0, 1.0, 1.0);
-        hitNormal = vec3(0.0, 1.0, 0.0);
-        hitT = state.t_min;
-        return true;
-        // return false;  // Node has no bricks
+        return false;  // Node has no bricks (shouldn't happen for actual leaf parents)
     }
 
     // Count leaf children before this one to get offset
