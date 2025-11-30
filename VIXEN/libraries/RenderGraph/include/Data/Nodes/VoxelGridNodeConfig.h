@@ -15,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 5;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG
+    static constexpr size_t OUTPUTS = 6;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, BRICK_BASE_INDEX
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -26,7 +26,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 5 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER)
+ * Outputs: 6 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, BRICK_BASE_INDEX_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -72,6 +72,13 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Brick base index buffer - per-node mapping to sparse brick array (binding 6)
+    // For nodes at brickESVOScale with leafMask != 0, stores the starting index
+    // into the sparse brickData array. 0xFFFFFFFF = no bricks at this node.
+    OUTPUT_SLOT(BRICK_BASE_INDEX_BUFFER, VkBuffer, 5,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -112,6 +119,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         octreeConfigDesc.size = 64;  // OctreeConfig struct padded to 64 bytes (std140 alignment)
         octreeConfigDesc.usage = ResourceUsage::UniformBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
+
+        // Brick base index buffer - one uint32 per node
+        BufferDescriptor brickBaseIndexDesc{};
+        brickBaseIndexDesc.size = 4096 * 4;  // Initial capacity: 4096 nodes * 4 bytes
+        brickBaseIndexDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(BRICK_BASE_INDEX_BUFFER, "brick_base_index_buffer", ResourceLifetime::Persistent, brickBaseIndexDesc);
     }
 
     // Automated config validation
@@ -124,6 +137,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
     static_assert(DEBUG_CAPTURE_BUFFER_Slot::index == 3, "DEBUG_CAPTURE_BUFFER must be at index 3");
     static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 4, "OCTREE_CONFIG_BUFFER must be at index 4");
+    static_assert(BRICK_BASE_INDEX_BUFFER_Slot::index == 5, "BRICK_BASE_INDEX_BUFFER must be at index 5");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -133,6 +147,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<BRICK_BASE_INDEX_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

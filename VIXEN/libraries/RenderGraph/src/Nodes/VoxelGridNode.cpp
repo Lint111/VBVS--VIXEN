@@ -414,13 +414,16 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
-    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
+    std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer
+              << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer
+              << ", brickBaseIndexBuffer=" << brickBaseIndexBuffer << std::endl;
 
     // Output octree buffers
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
+    ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
 
     // Output debug capture buffer with IDebugCapture interface attached
     // When connected with SlotRole::Debug, the gatherer will auto-collect it
@@ -451,6 +454,7 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
+    ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
 
     // Re-output debug capture buffer (with interface)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
@@ -518,6 +522,19 @@ void VoxelGridNode::DestroyOctreeBuffers() {
         vkFreeMemory(vulkanDevice->device, octreeConfigMemory, nullptr);
         octreeConfigMemory = VK_NULL_HANDLE;
         LogCleanupProgress("octreeConfigMemory freed");
+    }
+
+    // Destroy brick base index buffer and memory
+    if (brickBaseIndexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, brickBaseIndexBuffer, nullptr);
+        brickBaseIndexBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("brickBaseIndexBuffer destroyed");
+    }
+
+    if (brickBaseIndexMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, brickBaseIndexMemory, nullptr);
+        brickBaseIndexMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("brickBaseIndexMemory freed");
     }
 }
 
@@ -1046,118 +1063,178 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
     }
 
     // ============================================================================
-    // BRICK DATA BUFFER (binding 2)
+    // SPARSE BRICK DATA BUFFER (binding 2) + BRICK BASE INDEX (binding 6)
     // ============================================================================
-    // Each brick is 8x8x8 = 512 voxels
-    // Each voxel stores material ID as uint32_t
-    // Layout: brickData[brickIndex * 512 + z * 64 + y * 8 + x]
-    // where brickIndex = brickZ * bricksPerAxis^2 + brickY * bricksPerAxis + brickX
+    // NEW ARCHITECTURE: Sparse brick storage with topological indexing
     //
-    // IMPORTANT: Bricks must be stored in LINEAR GRID ORDER (not hash map order)
-    // so the shader can compute brickIndex directly from world position.
+    // Instead of dense grid-ordered bricks, we now:
+    // 1. Build compact brickData from actual brickViews (sparse)
+    // 2. Compute brickBaseIndex[nodeId] for nodes at brickESVOScale
+    // 3. GPU uses validMask/leafMask + countLeavesBefore to find brickIndex
+    //
+    // This matches the ESVO paper's efficient sparse representation.
 
     const size_t voxelsPerBrick = 512;  // 8^3
     const int bricksPerAxis = octree.bricksPerAxis;
     const int brickSideLength = octree.brickSideLength;
-    const size_t totalBricks = static_cast<size_t>(bricksPerAxis * bricksPerAxis * bricksPerAxis);
-    VkDeviceSize bricksBufferSize = totalBricks * voxelsPerBrick * sizeof(uint32_t);
 
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Extracting " << brickViews.size()
-              << " bricks (grid: " << bricksPerAxis << "^3 = " << totalBricks
-              << " slots, " << bricksBufferSize << " bytes)" << std::endl;
-
-    // Extract brick voxel data DIRECTLY from VoxelGrid (bypassing EntityBrickView)
-    // Initialize all voxels to 0 (empty) first
-    std::vector<uint32_t> brickData(totalBricks * voxelsPerBrick, 0);
-
-    // Get grid data and resolution
+    // Get grid data and resolution for direct voxel extraction
     const auto& gridData = grid.GetData();
     uint32_t gridRes = grid.GetResolution();
 
-    // Iterate through all bricks and extract voxel data directly from grid
-    size_t populatedBricks = 0;
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Building sparse brick data from "
+              << brickViews.size() << " brick views (bricksPerAxis=" << bricksPerAxis << ")" << std::endl;
+
+    // ============================================================================
+    // Step 1: Build sparse brickData from brickViews
+    // ============================================================================
+    // Each brick in brickViews gets a sequential index in the sparse array
+    // Brick order matches brickViews order (which is the order GPU will use)
+
+    std::vector<uint32_t> sparseBrickData;
+    sparseBrickData.reserve(brickViews.size() * voxelsPerBrick);
+
+    // Map from grid coordinates (brickX | brickY<<10 | brickZ<<20) to sparse brick index
+    std::unordered_map<uint32_t, uint32_t> gridCoordToSparseIndex;
+
     size_t nonZeroVoxels = 0;
+    uint32_t nextSparseBrickIndex = 0;
 
-    for (int brickZ = 0; brickZ < bricksPerAxis; ++brickZ) {
-        for (int brickY = 0; brickY < bricksPerAxis; ++brickY) {
-            for (int brickX = 0; brickX < bricksPerAxis; ++brickX) {
-                // Compute linear brick index
-                size_t linearBrickIndex = static_cast<size_t>(brickZ) * bricksPerAxis * bricksPerAxis +
-                                          static_cast<size_t>(brickY) * bricksPerAxis +
-                                          static_cast<size_t>(brickX);
-                const size_t brickOffset = linearBrickIndex * voxelsPerBrick;
+    for (size_t viewIdx = 0; viewIdx < brickViews.size(); ++viewIdx) {
+        const auto& view = brickViews[viewIdx];
+        const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
 
-                // World-space origin of this brick
-                int worldBaseX = brickX * 8;
-                int worldBaseY = brickY * 8;
-                int worldBaseZ = brickZ * 8;
+        // Compute brick grid coordinates
+        int brickX = gridOrigin.x / brickSideLength;
+        int brickY = gridOrigin.y / brickSideLength;
+        int brickZ = gridOrigin.z / brickSideLength;
 
-                bool hasSolidVoxel = false;
+        // Store mapping for later use
+        uint32_t gridKey = static_cast<uint32_t>(brickX) |
+                          (static_cast<uint32_t>(brickY) << 10) |
+                          (static_cast<uint32_t>(brickZ) << 20);
+        gridCoordToSparseIndex[gridKey] = nextSparseBrickIndex;
 
-                // Extract material IDs directly from VoxelGrid
-                for (int z = 0; z < 8; ++z) {
-                    for (int y = 0; y < 8; ++y) {
-                        for (int x = 0; x < 8; ++x) {
-                            int worldX = worldBaseX + x;
-                            int worldY = worldBaseY + y;
-                            int worldZ = worldBaseZ + z;
+        // Extract voxel data for this brick directly from grid
+        for (int z = 0; z < brickSideLength; ++z) {
+            for (int y = 0; y < brickSideLength; ++y) {
+                for (int x = 0; x < brickSideLength; ++x) {
+                    int worldX = gridOrigin.x + x;
+                    int worldY = gridOrigin.y + y;
+                    int worldZ = gridOrigin.z + z;
 
-                            // Bounds check
-                            if (worldX >= static_cast<int>(gridRes) ||
-                                worldY >= static_cast<int>(gridRes) ||
-                                worldZ >= static_cast<int>(gridRes)) {
-                                continue;
-                            }
-
-                            // Get voxel from grid
-                            size_t gridIdx = static_cast<size_t>(worldZ) * gridRes * gridRes +
-                                             static_cast<size_t>(worldY) * gridRes + worldX;
-                            uint8_t materialId = gridData[gridIdx];
-
-                            if (materialId != 0) {
-                                hasSolidVoxel = true;
-                                nonZeroVoxels++;
-                            }
-
-                            // Store in brick buffer
-                            size_t voxelIdx = static_cast<size_t>(z * 64 + y * 8 + x);
-                            brickData[brickOffset + voxelIdx] = static_cast<uint32_t>(materialId);
-                        }
+                    uint32_t materialId = 0;
+                    if (worldX >= 0 && worldX < static_cast<int>(gridRes) &&
+                        worldY >= 0 && worldY < static_cast<int>(gridRes) &&
+                        worldZ >= 0 && worldZ < static_cast<int>(gridRes)) {
+                        size_t gridIdx = static_cast<size_t>(worldZ) * gridRes * gridRes +
+                                         static_cast<size_t>(worldY) * gridRes + worldX;
+                        materialId = static_cast<uint32_t>(gridData[gridIdx]);
+                        if (materialId != 0) nonZeroVoxels++;
                     }
-                }
 
-                if (hasSolidVoxel) {
-                    populatedBricks++;
+                    sparseBrickData.push_back(materialId);
                 }
+            }
+        }
+
+        nextSparseBrickIndex++;
+    }
+
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Built sparse brick array: "
+              << nextSparseBrickIndex << " bricks, " << nonZeroVoxels << " non-zero voxels, "
+              << (sparseBrickData.size() * sizeof(uint32_t)) << " bytes" << std::endl;
+
+    // ============================================================================
+    // Step 2: Compute brickBaseIndex per node
+    // ============================================================================
+    // For each node at brickESVOScale (scale 20), compute the base index into
+    // the sparse brick array. Leaf children of that node can then be found via:
+    //   brickIndex = brickBaseIndex[nodeId] + countLeavesBefore(validMask, leafMask, octant)
+    //
+    // We use the leafToBrickView mapping from the octree to connect ESVO topology
+    // to the sparse brick array.
+
+    std::vector<uint32_t> brickBaseIndex(childDescriptors.size(), 0xFFFFFFFFu);
+
+    // For correct mapping, we need to iterate nodes that have leaves
+    // and count how many leaf children precede each one
+    size_t nodesWithLeaves = 0;
+
+    for (size_t nodeIdx = 0; nodeIdx < childDescriptors.size(); ++nodeIdx) {
+        const auto& desc = childDescriptors[nodeIdx];
+
+        // Only nodes with leaf children need a base index
+        if (desc.leafMask == 0) {
+            continue;
+        }
+
+        // Find first leaf child's brick view to determine base index
+        // Look up using leafToBrickView mapping
+        bool foundFirst = false;
+        uint32_t baseIndex = 0xFFFFFFFFu;
+
+        for (int octant = 0; octant < 8 && !foundFirst; ++octant) {
+            if ((desc.validMask & (1 << octant)) != 0 && (desc.leafMask & (1 << octant)) != 0) {
+                // This is a leaf child - look up its brick view
+                uint64_t key = (static_cast<uint64_t>(nodeIdx) << 3) | static_cast<uint64_t>(octant);
+                auto it = rootBlock.leafToBrickView.find(key);
+                if (it != rootBlock.leafToBrickView.end()) {
+                    // Found brick view - its index IS the sparse brick index
+                    // since we built sparseBrickData in brickViews order
+                    baseIndex = it->second;
+                    foundFirst = true;
+                }
+            }
+        }
+
+        if (foundFirst) {
+            // Adjust base index by subtracting the number of leaves before the first leaf
+            // This way: brickIndex = baseIndex + countLeavesBefore(validMask, leafMask, octant)
+            // equals the actual sparse brick index for that leaf
+            int firstLeafOctant = -1;
+            for (int octant = 0; octant < 8; ++octant) {
+                if ((desc.validMask & (1 << octant)) != 0 && (desc.leafMask & (1 << octant)) != 0) {
+                    firstLeafOctant = octant;
+                    break;
+                }
+            }
+
+            if (firstLeafOctant >= 0) {
+                // Count leaves before first leaf octant (should be 0)
+                uint8_t leafChildren = desc.validMask & desc.leafMask;
+                uint32_t leavesBefore = std::popcount(static_cast<uint8_t>(leafChildren & ((1u << firstLeafOctant) - 1)));
+                brickBaseIndex[nodeIdx] = baseIndex - leavesBefore;
+                nodesWithLeaves++;
             }
         }
     }
 
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Extracted " << nonZeroVoxels
-              << " non-zero voxels across " << populatedBricks << " bricks from VoxelGrid" << std::endl;
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Computed brickBaseIndex for "
+              << nodesWithLeaves << " nodes with leaves" << std::endl;
 
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Populated " << populatedBricks
-              << " bricks in grid-ordered buffer" << std::endl;
-
-    // Debug: Print some non-zero voxels from first populated brick
-    if (populatedBricks > 0) {
-        std::cout << "[VoxelGridNode::UploadESVOBuffers] Scanning for non-zero voxels..." << std::endl;
-        size_t nonZeroTotal = 0;
-        for (size_t i = 0; i < brickData.size() && nonZeroTotal < 10; ++i) {
-            if (brickData[i] != 0) {
-                size_t brickIdx = i / voxelsPerBrick;
-                size_t voxelIdx = i % voxelsPerBrick;
-                std::cout << "  brickData[brick " << brickIdx << ", voxel " << voxelIdx
-                          << "] = " << brickData[i] << std::endl;
-                nonZeroTotal++;
-            }
+    // Debug: Print first few base indices
+    int printedBases = 0;
+    for (size_t i = 0; i < brickBaseIndex.size() && printedBases < 5; ++i) {
+        if (brickBaseIndex[i] != 0xFFFFFFFFu) {
+            std::cout << "  brickBaseIndex[" << i << "] = " << brickBaseIndex[i] << std::endl;
+            printedBases++;
         }
-        std::cout << "  Found " << nonZeroTotal << " non-zero voxels (showing first 10)" << std::endl;
     }
+
+    VkDeviceSize bricksBufferSize = sparseBrickData.size() * sizeof(uint32_t);
+    if (bricksBufferSize == 0) {
+        // Create minimal buffer if no bricks
+        sparseBrickData.resize(voxelsPerBrick, 0);
+        bricksBufferSize = voxelsPerBrick * sizeof(uint32_t);
+    }
+
+    VkDeviceSize baseIndexBufferSize = brickBaseIndex.size() * sizeof(uint32_t);
 
     NODE_LOG_INFO("Uploading ESVO buffers: " +
                   std::to_string(nodesBufferSize) + " bytes (nodes), " +
-                  std::to_string(bricksBufferSize) + " bytes (bricks)");
+                  std::to_string(bricksBufferSize) + " bytes (sparse bricks), " +
+                  std::to_string(baseIndexBufferSize) + " bytes (base indices)");
 
     const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
 
@@ -1315,6 +1392,46 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
     vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer, octreeMaterialsMemory, 0);
 
     // ============================================================================
+    // CREATE BRICK BASE INDEX BUFFER (binding 6)
+    // ============================================================================
+    VkBufferCreateInfo baseIndexBufferInfo{};
+    baseIndexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    baseIndexBufferInfo.size = baseIndexBufferSize;
+    baseIndexBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    baseIndexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    result = vkCreateBuffer(vulkanDevice->device, &baseIndexBufferInfo, nullptr, &brickBaseIndexBuffer);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to create brick base index buffer: " + std::to_string(result));
+    }
+
+    VkMemoryRequirements baseIndexMemReq;
+    vkGetBufferMemoryRequirements(vulkanDevice->device, brickBaseIndexBuffer, &baseIndexMemReq);
+
+    VkMemoryAllocateInfo baseIndexAllocInfo{};
+    baseIndexAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    baseIndexAllocInfo.allocationSize = baseIndexMemReq.size;
+
+    memoryTypeIndex = UINT32_MAX;
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((baseIndexMemReq.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    if (memoryTypeIndex == UINT32_MAX) {
+        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for brick base index");
+    }
+    baseIndexAllocInfo.memoryTypeIndex = memoryTypeIndex;
+
+    result = vkAllocateMemory(vulkanDevice->device, &baseIndexAllocInfo, nullptr, &brickBaseIndexMemory);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelGridNode] Failed to allocate brick base index memory: " + std::to_string(result));
+    }
+    vkBindBufferMemory(vulkanDevice->device, brickBaseIndexBuffer, brickBaseIndexMemory, 0);
+
+    // ============================================================================
     // UPLOAD DATA VIA STAGING BUFFERS
     // ============================================================================
     VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1399,16 +1516,22 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
         uploadBuffer(octreeNodesBuffer, childDescriptors.data(), nodesBufferSize);
     }
 
-    // Upload bricks
-    if (!brickData.empty()) {
-        uploadBuffer(octreeBricksBuffer, brickData.data(), brickData.size() * sizeof(uint32_t));
+    // Upload sparse bricks
+    if (!sparseBrickData.empty()) {
+        uploadBuffer(octreeBricksBuffer, sparseBrickData.data(), sparseBrickData.size() * sizeof(uint32_t));
     }
 
     // Upload materials
     uploadBuffer(octreeMaterialsBuffer, defaultMaterials.data(), materialsBufferSize);
 
-    NODE_LOG_INFO("Uploaded ESVO buffers to GPU");
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete" << std::endl;
+    // Upload brick base indices
+    if (!brickBaseIndex.empty()) {
+        uploadBuffer(brickBaseIndexBuffer, brickBaseIndex.data(), baseIndexBufferSize);
+    }
+
+    NODE_LOG_INFO("Uploaded ESVO buffers to GPU (sparse brick architecture)");
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
+              << nextSparseBrickIndex << ", base indices: " << nodesWithLeaves << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

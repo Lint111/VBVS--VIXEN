@@ -32,6 +32,13 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
+// Brick base index buffer - maps node index to sparse brick array base
+// For nodes at brickESVOScale with leaves, stores starting index into brickData
+// 0xFFFFFFFF = no bricks at this node
+layout(std430, binding = 6) readonly buffer BrickBaseIndexBuffer {
+    uint brickBaseIndex[];
+};
+
 // ============================================================================
 // OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
 // ============================================================================
@@ -99,6 +106,15 @@ const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel dete
 
 // Debug: set to 1 to show brick coordinates as color
 #define DEBUG_BRICK_COORD 0
+
+// Debug: set to 1 to show first voxel of each brick (tests if brick data is populated)
+#define DEBUG_FIRST_VOXEL 0
+
+// Debug: set to 1 to compute brick from ray hit point instead of ESVO position
+#define DEBUG_RAY_BRICK_LOOKUP 0
+
+// Debug: BYPASS ESVO ENTIRELY - just do raw ray-grid intersection to test brick data
+#define DEBUG_BYPASS_ESVO 0
 
 // Debug: set to 1 to highlight axis-parallel rays (rayDir component < epsilon)
 #define DEBUG_AXIS_PARALLEL 0
@@ -663,25 +679,12 @@ bool checkChildValidity(TraversalState state, RayCoefficients coef,
     bool child_valid = childExists(validMask, localChildIdx);
     isLeaf = childIsLeaf(leafMask, localChildIdx);
 
-    // At brick-parent level (brickESVOScale from UBO), the leafMask acts as brick occupancy:
-    // - validMask indicates which octants have SOMETHING (either bricks or further children)
-    // - leafMask indicates which octants ARE bricks (leaf = brick exists, non-leaf = empty interior)
-    //
-    // If we're at brickESVOScale and the octant is marked valid but NOT a leaf,
-    // it means this is an empty interior octant (no brick data exists).
-    // Return false to skip it and continue ESVO traversal to find actual bricks.
-    int brickESVOScale = getBrickESVOScale();  // Now returns 20 from UBO
-    if (state.scale == brickESVOScale) {
-        // At brick-parent level: leafMask indicates which octants contain bricks
-        // Only proceed if this octant actually HAS a brick (isLeaf from leafMask)
-        if (child_valid && isLeaf) {
-            // Brick exists in this octant - proceed to handleLeafHit
-            isLeaf = true;
-        } else if (child_valid && !isLeaf) {
-            // Valid octant but NOT a leaf = no brick data here
-            // Return false to trigger ADVANCE and try sibling octants
-            return false;
-        }
+    // At brick level (brickESVOScale from UBO), force leaf status to trigger brick DDA
+    // This matches CPU behavior: when currentUserScale == brickUserScale, force isLeaf = true
+    // At scale 20 with 128³ grid, octants are 16 world units = 2×2×2 brick regions
+    int brickESVOScale = getBrickESVOScale();  // Returns 20 from UBO
+    if (state.scale == brickESVOScale && child_valid) {
+        isLeaf = true;
     }
 
     if (!child_valid || state.t_min > state.t_max) {
@@ -838,8 +841,8 @@ int executePopPhase(inout TraversalState state, RayCoefficients coef,
     // NVIDIA: scale_exp2 = __int_as_float((scale - CAST_STACK_DEPTH + 127) << 23)
     state.scale_exp2 = uintBitsToFloat(uint(state.scale - ESVO_MAX_SCALE - 1 + 127) << 23u);
 
-    // Validate scale range
-    int minESVOScale = ESVO_MAX_SCALE - USER_MAX_LEVELS + 1;
+    // Validate scale range using UBO values
+    int minESVOScale = octreeConfig.minESVOScale;
     if (state.scale < minESVOScale || state.scale > ESVO_MAX_SCALE) {
         return 1;  // EXIT_OCTREE
     }
@@ -1168,35 +1171,59 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
 }
 
 // ============================================================================
-// LEAF HIT HANDLING (Matching handleLeafHit)
+// LEAF HIT HANDLING (Matching handleLeafHit) - SPARSE BRICK ARCHITECTURE
 // ============================================================================
+// Uses topological brick indexing via brickBaseIndex buffer instead of
+// position-based lookup. This matches the ESVO paper's efficient sparse
+// representation where brick identity comes from descriptor masks.
 
 bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridSize,
+                   uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
-    // Compute brick position from ESVO state.pos (maintained by PUSH/ADVANCE/POP phases)
-    // state.pos is in MIRRORED [1,2] space - must convert to LOCAL [1,2] space first
-    //
-    // NVIDIA ESVO approach (Raycast.inl lines 344-346):
-    //   if ((octant_mask & 1) == 0) pos.x = 3.0f - scale_exp2 - pos.x;
-    // This correctly accounts for octant size when unmirroring.
-    //
-    // The formula works because in mirrored space:
-    //   - pos is the "far corner" of the octant (where traversal enters from)
-    //   - For mirrored axes, we need to flip around the center of [1,2] space
-    //   - But the octant has size scale_exp2, so the flip formula is: 3.0 - scale_exp2 - pos
-    //
-    // Example for octant at mirrored pos=1.5 with scale_exp2=0.5:
-    //   - Mirrored octant spans [1.5, 2.0] (pos to pos+scale_exp2)
-    //   - Unmirrored: 3.0 - 0.5 - 1.5 = 1.0, spans [1.0, 1.5]
-    //   - This correctly maps the "high" octant in mirrored space to "low" in local space
+    // ============================================================================
+    // STEP 1: Verify we're at brick-parent scale
+    // ============================================================================
+    int brickESVOScale = getBrickESVOScale();
+    if (state.scale != brickESVOScale) {
+        return false;
+    }
 
+    // ============================================================================
+    // STEP 2: Convert mirrored octant index to local-space for descriptor lookup
+    // ============================================================================
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+
+    // ============================================================================
+    // STEP 3: Verify this child exists and is a leaf
+    // ============================================================================
+    if (!childExists(validMask, localChildIdx) || !childIsLeaf(leafMask, localChildIdx)) {
+        return false;  // No brick at this octant
+    }
+
+    // ============================================================================
+    // STEP 4: Fetch brick base index and compute sparse brick index
+    // ============================================================================
+    uint baseIndex = brickBaseIndex[parentNodeIndex];
+    if (baseIndex == 0xFFFFFFFFu) {
+        return false;  // Node has no bricks
+    }
+
+    // Count leaf children before this one to get offset
+    uint leafOffset = countLeavesBefore(validMask, leafMask, localChildIdx);
+    uint brickIndex = baseIndex + leafOffset;
+
+    // ============================================================================
+    // STEP 5: Compute brick world-space bounds for DDA
+    // ============================================================================
+    // We still need position for DDA entry point, but brick identity comes from topology
+
+    // Compute position from ESVO state for DDA
     vec3 localPos = unmirrorToLocalSpace(state.pos, state.scale_exp2, coef.octant_mask);
     vec3 localNorm = localPos - vec3(1.0);
 
-    // Add small offset along world ray direction to get point inside the octant (not on boundary)
-    // Unlike the mirrored approach, in local space the ray direction is unchanged
+    // Add small offset along ray direction to get point inside the octant
     const float offset = 0.001;
     vec3 offsetDir;
     offsetDir.x = (rayDir.x > 0.0) ? offset : -offset;
@@ -1204,16 +1231,22 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     offsetDir.z = (rayDir.z > 0.0) ? offset : -offset;
 
     vec3 octantInside = localNorm + offsetDir;
-
-    // Clamp to valid [0,1] range
     octantInside = clamp(octantInside, vec3(0.001), vec3(0.999));
 
-    // Convert to grid space [0, gridSize]
+    // Convert to grid space for brick bounds
     vec3 hitPosLocal = octantInside * gridSize;
     hitPosLocal = clamp(hitPosLocal, vec3(EPSILON), gridSize - vec3(EPSILON));
 
+    int BRICK_SIZE = octreeConfig.brickSize;
+    int bricksPerAxis = octreeConfig.bricksPerAxis;
+
+    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
+    brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+
+    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE);
+    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE));
+
 #if DEBUG_LOCAL_NORM
-    // Debug: show localNorm as color to verify position mapping
     hitColor = localNorm;
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT = state.t_min;
@@ -1221,8 +1254,6 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
 #endif
 
 #if DEBUG_OCTANT_MASK
-    // Debug: show octant_mask as RGB (each bit = one color channel)
-    // octant_mask = 0 -> black, 1 -> red, 2 -> green, 3 -> yellow, 4 -> blue, 5 -> magenta, 6 -> cyan, 7 -> white
     hitColor = vec3(
         ((coef.octant_mask & 1) != 0) ? 1.0 : 0.0,
         ((coef.octant_mask & 2) != 0) ? 1.0 : 0.0,
@@ -1233,33 +1264,43 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     return true;
 #endif
 
-    // Compute brick index from position using UBO values
-    int BRICK_SIZE = octreeConfig.brickSize;
-    int bricksPerAxis = octreeConfig.bricksPerAxis;
-
-    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
-    brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
-
-    // Compute brick bounds in world space for DDA
-    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE);
-    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE));
-
-    uint brickIndex = uint(brickCoord.z * bricksPerAxis * bricksPerAxis +
-                          brickCoord.y * bricksPerAxis +
-                          brickCoord.x);
-
-// Debug: show brick coordinates as color (controlled by top-of-file define)
 #if DEBUG_BRICK_COORD
-    // Show brick X,Y,Z as R,G,B (normalized to [0,1] based on bricksPerAxis)
     hitColor = vec3(brickCoord) / float(bricksPerAxis - 1);
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT = state.t_min;
     return true;
 #endif
 
-    // Use standard ray-AABB based brick marching
-    // This computes the ray entry point directly from ray-brick intersection,
-    // which is more robust than deriving from ESVO position
+#if DEBUG_FIRST_VOXEL
+    uint anyNonZero = 0u;
+    for (int vz = 0; vz < 8; vz++) {
+        for (int vy = 0; vy < 8; vy++) {
+            for (int vx = 0; vx < 8; vx++) {
+                uint voxelLinearIdx = uint(vz * 64 + vy * 8 + vx);
+                uint voxelData = brickData[brickIndex * 512u + voxelLinearIdx];
+                if (voxelData != 0u) {
+                    anyNonZero = voxelData;
+                    break;
+                }
+            }
+            if (anyNonZero != 0u) break;
+        }
+        if (anyNonZero != 0u) break;
+    }
+
+    if (anyNonZero != 0u) {
+        hitColor = vec3(0.0, 1.0, 0.0);
+    } else {
+        hitColor = vec3(1.0, 0.0, 0.0);
+    }
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = state.t_min;
+    return true;
+#endif
+
+    // ============================================================================
+    // STEP 6: DDA through brick voxels using sparse brick index
+    // ============================================================================
     uint axisMask;
     if (marchBrick(rayOrigin, rayDir, 0.0, brickMinWorld, brickMaxWorld, brickIndex,
                    hitColor, hitNormal, axisMask)) {
@@ -1267,8 +1308,6 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
         return true;
     }
 
-    // No solid voxel found in brick - return false without setting hitColor
-    // This allows the ray to continue traversal or exit cleanly to background
     return false;
 }
 
@@ -1354,8 +1393,10 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                 recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale, uint(state.idx),
                                 state.pos, state.t_min, tv_max, parent_descriptor);
 
-                // Try to hit voxels in this brick
+                // Try to hit voxels in this brick using sparse brick architecture
+                // Pass parent descriptor info for topological brick lookup
                 if (handleLeafHit(state, coef, rayOrigin, rayDir, gridMin, gridSize,
+                                  parent_descriptor, validMask, leafMask, state.parentPtr,
                                   hitColor, hitNormal, hitT)) {
                     // Record HIT trace
                     recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(state.idx),
@@ -1523,6 +1564,52 @@ void main() {
         imageStore(outputImage, pixelCoords, vec4(parallelColor, 1.0));
         return;
     }
+#endif
+
+#if DEBUG_BYPASS_ESVO
+    // COMPLETELY bypass ESVO - just do raw ray-grid intersection
+    // This tests if the brick data buffer is correct, independent of ESVO traversal
+    vec2 rawGridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    if (rawGridT.y >= 0.0 && rawGridT.x < rawGridT.y) {
+        float rawT = max(rawGridT.x, 0.0) + 0.01;  // Small offset into grid
+        vec3 rawHitWorld = rayOrigin + rayDir * rawT;
+        vec3 rawHitLocal = rawHitWorld - gridMin;
+        rawHitLocal = clamp(rawHitLocal, vec3(0.0), gridMax - gridMin - vec3(0.001));
+
+        // Compute brick from raw position
+        int BRICK_SIZE = octreeConfig.brickSize;
+        int bricksPerAxis = octreeConfig.bricksPerAxis;
+        ivec3 rawBrickCoord = ivec3(floor(rawHitLocal / float(BRICK_SIZE)));
+        rawBrickCoord = clamp(rawBrickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+
+        uint rawBrickIndex = uint(rawBrickCoord.z * bricksPerAxis * bricksPerAxis +
+                                  rawBrickCoord.y * bricksPerAxis +
+                                  rawBrickCoord.x);
+
+        // Check if this brick has any non-zero voxels
+        uint rawBrickHasData = 0u;
+        for (int vz = 0; vz < 8 && rawBrickHasData == 0u; vz++) {
+            for (int vy = 0; vy < 8 && rawBrickHasData == 0u; vy++) {
+                for (int vx = 0; vx < 8 && rawBrickHasData == 0u; vx++) {
+                    uint voxelLinearIdx = uint(vz * 64 + vy * 8 + vx);
+                    uint voxelData = brickData[rawBrickIndex * 512u + voxelLinearIdx];
+                    if (voxelData != 0u) {
+                        rawBrickHasData = voxelData;
+                    }
+                }
+            }
+        }
+
+        if (rawBrickHasData != 0u) {
+            color = vec3(0.0, 1.0, 0.0);  // Green = brick has data
+        } else {
+            color = vec3(1.0, 0.0, 0.0);  // Red = brick empty
+        }
+    } else {
+        color = vec3(0.1, 0.1, 0.3);  // Blue-ish = ray missed grid
+    }
+    imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+    return;
 #endif
 
     vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);

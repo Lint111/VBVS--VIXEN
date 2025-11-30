@@ -102,6 +102,10 @@ private:
     VkBuffer octreeConfigBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeConfigMemory = VK_NULL_HANDLE;
 
+    // Brick base index buffer - per-node mapping to sparse brick array (binding 6)
+    VkBuffer brickBaseIndexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory brickBaseIndexMemory = VK_NULL_HANDLE;
+
     // Debug capture resource (owns buffer, implements IDebugCapture)
     std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 
