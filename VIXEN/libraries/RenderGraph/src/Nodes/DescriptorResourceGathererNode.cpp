@@ -129,36 +129,36 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
         return;
     }
 
-    // Find max binding to size output arrays
+    // Find max binding to size output array
     uint32_t maxBinding = 0;
     for (const auto& binding : layoutSpec->bindings) {
         maxBinding = std::max(maxBinding, binding.binding);
     }
-    resourceArray_.resize(maxBinding + 1);
-    slotRoleArray_.resize(maxBinding + 1, SlotRole::Dependency);  // Default to Dependency
-    debugCaptures_.clear();  // Reset debug captures for this compile
+    resourceArray_.resize(maxBinding + 1);  // Each entry: handle + slotRole + debugCapture
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Validation complete. Gathering " + std::to_string(GetVariadicInputCount()) + " resources");
 
     // Gather resources from validated slots
     GatherResources(ctx);
 
-    // Debug: Log slot roles being output
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Outputting slot roles:");
-    for (size_t i = 0; i < slotRoleArray_.size(); ++i) {
-        uint8_t roleVal = static_cast<uint8_t>(slotRoleArray_[i]);
-        NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal));
+    // Debug: Log entries being output
+    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Outputting resource entries:");
+    size_t debugCaptureCount = 0;
+    for (size_t i = 0; i < resourceArray_.size(); ++i) {
+        uint8_t roleVal = static_cast<uint8_t>(resourceArray_[i].slotRole);
+        bool hasDebug = resourceArray_[i].debugCapture != nullptr;
+        if (hasDebug) debugCaptureCount++;
+        NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal) +
+                      (hasDebug ? " [DEBUG]" : ""));
     }
 
-    // Output resource array, slot roles, debug captures, and pass through shader bundle
+    // Output resource array and pass through shader bundle
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
-    ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_SLOT_ROLES, slotRoleArray_);
-    ctx.Out(DescriptorResourceGathererNodeConfig::DEBUG_CAPTURES, debugCaptures_);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries");
-    if (!debugCaptures_.empty()) {
-        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DEBUG_CAPTURES with " + std::to_string(debugCaptures_.size()) + " debug resources");
+    if (debugCaptureCount > 0) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] " + std::to_string(debugCaptureCount) + " entries have debug capture interfaces");
     }
 }
 
@@ -207,7 +207,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
             continue;
         }
 
-        // Update resource array with fresh value
+        // Update resource entry's handle with fresh value (preserving slotRole and debugCapture)
         uint32_t binding = slotInfo->binding;
         auto variant = freshResource->GetDescriptorHandle();
 
@@ -218,7 +218,7 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
                        std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
                        std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
 
-        resourceArray_[binding] = variant;
+        resourceArray_[binding].handle = variant;
     }
 
     if (hasTransients) {
@@ -228,12 +228,12 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         // Log what we're outputting
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Re-output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries (transients updated):");
         for (size_t i = 0; i < resourceArray_.size(); ++i) {
-            const auto& variant = resourceArray_[i];
+            const auto& entry = resourceArray_[i];
             NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": " +
-                          (std::holds_alternative<std::monostate>(variant) ? "monostate" :
-                           std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
-                           std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
-                           std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
+                          (std::holds_alternative<std::monostate>(entry.handle) ? "monostate" :
+                           std::holds_alternative<VkImageView>(entry.handle) ? "VkImageView" :
+                           std::holds_alternative<VkBuffer>(entry.handle) ? "VkBuffer" :
+                           std::holds_alternative<VkSampler>(entry.handle) ? "VkSampler" : "unknown"));
         }
     } else {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] No Execute-role resources found - skipping output");
@@ -427,7 +427,7 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
     }
 
     uint32_t binding = slotInfo->binding;
-    slotRoleArray_[binding] = slotInfo->slotRole;
+    resourceArray_[binding].slotRole = slotInfo->slotRole;
 
     // Handle Execute-only slots
     if (!HasDependency(slotInfo->slotRole)) {
@@ -450,15 +450,13 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
         StoreRegularResource(slotIndex, binding, slotInfo->slotName, slotInfo->slotRole, slotInfo->resource);
     }
 
-    // Check for Debug role - collect IDebugCapture interface if present
+    // Check for Debug role - attach IDebugCapture interface to the entry if present
     if (HasDebug(slotInfo->slotRole)) {
         // Try to get IDebugCapture interface from the resource
-        // The resource must implement GetDebugCapture() or be castable to IDebugCapture
         if (auto* debugCapture = slotInfo->resource->GetInterface<Debug::IDebugCapture>()) {
-            debugCaptures_.push_back(debugCapture);
-            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Collected debug capture from slot " +
-                          std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", name=" +
-                          debugCapture->GetDebugName() + ")");
+            resourceArray_[binding].debugCapture = debugCapture;
+            NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Attached debug capture to binding " +
+                          std::to_string(binding) + " (name=" + debugCapture->GetDebugName() + ")");
         } else {
             NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Debug-flagged slot " +
                           std::to_string(slotIndex) + " does not implement IDebugCapture");
@@ -471,18 +469,19 @@ bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const Variadi
 void DescriptorResourceGathererNode::InitializeExecuteOnlySlot(size_t slotIndex, uint32_t binding, SlotRole role) {
     // Initialize placeholder entry to prevent accessing uninitialized memory
     // This ensures resourceArray_[binding] exists even before Execute phase
-    resourceArray_[binding] = std::monostate{};
+    // slotRole already set by ProcessSlot, just initialize handle
+    resourceArray_[binding].handle = std::monostate{};
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::InitializeExecuteOnlySlot] Recorded role for Execute-only slot " + std::to_string(slotIndex) + " (binding=" + std::to_string(binding) + ", role=" + std::to_string(static_cast<uint8_t>(role)) + ") - placeholder initialized, resource will be gathered in Execute phase");
 }
 
 void DescriptorResourceGathererNode::StoreFieldExtractionResource(size_t slotIndex, uint32_t binding, size_t fieldOffset, Resource* resource) {
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Extracting field at offset " + std::to_string(fieldOffset) + " from struct for binding " + std::to_string(binding));
 
-    // Extract handle from resource and store in variant
+    // Extract handle from resource and store in entry
     auto handle = resource->GetDescriptorHandle();
 
     // Store handle - downstream nodes will handle field extraction if needed
-    resourceArray_[binding] = handle;
+    resourceArray_[binding].handle = handle;
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreFieldExtractionResource] Stored handle with field at offset " + std::to_string(fieldOffset) + " for binding " + std::to_string(binding) + " (downstream will extract)");
 }
@@ -503,9 +502,9 @@ const void* DescriptorResourceGathererNode::ExtractRawPointerFromVariant(T&& str
 }
 
 void DescriptorResourceGathererNode::StoreRegularResource(size_t slotIndex, uint32_t binding, const std::string& slotName, SlotRole role, Resource* resource) {
-    // Extract handle from resource and store in variant
+    // Extract handle from resource and store in entry
     auto handle = resource->GetDescriptorHandle();
-    resourceArray_[binding] = handle;
+    resourceArray_[binding].handle = handle;
 
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::StoreRegularResource] Gathered resource for binding " + std::to_string(binding) + " (" + slotName + "), variant index=" + std::to_string(handle.index()) + ", role=" + std::to_string(static_cast<int>(role)));
 }

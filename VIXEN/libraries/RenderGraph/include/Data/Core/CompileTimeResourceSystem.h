@@ -352,6 +352,36 @@ struct ImageSamplerPair {
 REGISTER_COMPILE_TIME_TYPE(ImageSamplerPair);
 
 // ============================================================================
+// DESCRIPTOR RESOURCE ENTRY (For inter-node communication with metadata)
+// ============================================================================
+
+// Forward declare IDebugCapture for DescriptorResourceEntry
+namespace Debug { class IDebugCapture; }
+
+// Forward declare SlotRole (defined in ResourceConfig.h)
+enum class SlotRole : uint8_t;
+
+/**
+ * @brief Descriptor resource entry with metadata
+ *
+ * Wraps a DescriptorHandleVariant with:
+ * - SlotRole: Execution phase information (Dependency vs Execute)
+ * - IDebugCapture*: Optional debug capture interface
+ *
+ * This consolidates all per-binding metadata into a single struct,
+ * eliminating the need for parallel arrays.
+ */
+struct DescriptorResourceEntry {
+    DescriptorHandleVariant handle;
+    SlotRole slotRole = static_cast<SlotRole>(0);  // Default to no role flags
+    Debug::IDebugCapture* debugCapture = nullptr;  // Non-owning, set if resource is debug-capturable
+
+    DescriptorResourceEntry() = default;
+    explicit DescriptorResourceEntry(DescriptorHandleVariant h, SlotRole role = static_cast<SlotRole>(0), Debug::IDebugCapture* dbg = nullptr)
+        : handle(std::move(h)), slotRole(role), debugCapture(dbg) {}
+};
+
+// ============================================================================
 // DESCRIPTOR HANDLE VARIANT (For inter-node communication)
 // ============================================================================
 
@@ -478,6 +508,7 @@ REGISTER_COMPILE_TIME_TYPE(PassThroughStorage);
 
 // Register DescriptorHandleVariant (now that it's fully defined and all elements are registered)
 REGISTER_COMPILE_TIME_TYPE(DescriptorHandleVariant);
+REGISTER_COMPILE_TIME_TYPE(DescriptorResourceEntry);
 
 // ============================================================================
 // RESOURCE CLASS (Drop-in replacement for old Resource)

@@ -229,7 +229,68 @@ CONSTEXPR_NODE_CONFIG(ComputeDispatchNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    // ===== CONSTRUCTOR (Runtime descriptor initialization) =====
+
+    ComputeDispatchNodeConfig() {
+        // Initialize input descriptors
+        HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
+        INIT_INPUT_DESC(VULKAN_DEVICE_IN, "vulkan_device", ResourceLifetime::Persistent, vulkanDeviceDesc);
+
+        HandleDescriptor commandPoolDesc{"VkCommandPool"};
+        INIT_INPUT_DESC(COMMAND_POOL, "command_pool", ResourceLifetime::Persistent, commandPoolDesc);
+
+        HandleDescriptor pipelineDesc{"VkPipeline"};
+        INIT_INPUT_DESC(COMPUTE_PIPELINE, "compute_pipeline", ResourceLifetime::Persistent, pipelineDesc);
+
+        HandleDescriptor layoutDesc{"VkPipelineLayout"};
+        INIT_INPUT_DESC(PIPELINE_LAYOUT, "pipeline_layout", ResourceLifetime::Persistent, layoutDesc);
+
+        HandleDescriptor descSetsDesc{"std::vector<VkDescriptorSet>"};
+        INIT_INPUT_DESC(DESCRIPTOR_SETS, "descriptor_sets", ResourceLifetime::Persistent, descSetsDesc);
+
+        HandleDescriptor swapchainDesc{"SwapChainPublicVariables*"};
+        INIT_INPUT_DESC(SWAPCHAIN_INFO, "swapchain_info", ResourceLifetime::Persistent, swapchainDesc);
+
+        HandleDescriptor uint32Desc{"uint32_t"};
+        INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, uint32Desc);
+        INIT_INPUT_DESC(CURRENT_FRAME_INDEX, "current_frame_index", ResourceLifetime::Transient, uint32Desc);
+
+        HandleDescriptor fenceDesc{"VkFence"};
+        INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Transient, fenceDesc);
+
+        HandleDescriptor semaphoreArrayDesc{"std::vector<VkSemaphore>"};
+        INIT_INPUT_DESC(IMAGE_AVAILABLE_SEMAPHORES_ARRAY, "image_available_semaphores", ResourceLifetime::Persistent, semaphoreArrayDesc);
+        INIT_INPUT_DESC(RENDER_COMPLETE_SEMAPHORES_ARRAY, "render_complete_semaphores", ResourceLifetime::Persistent, semaphoreArrayDesc);
+
+        HandleDescriptor shaderBundleDesc{"ShaderDataBundle"};
+        INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderBundleDesc);
+
+        HandleDescriptor pushConstDataDesc{"std::vector<uint8_t>"};
+        INIT_INPUT_DESC(PUSH_CONSTANT_DATA, "push_constant_data", ResourceLifetime::Transient, pushConstDataDesc);
+
+        HandleDescriptor pushConstRangesDesc{"std::vector<VkPushConstantRange>"};
+        INIT_INPUT_DESC(PUSH_CONSTANT_RANGES, "push_constant_ranges", ResourceLifetime::Transient, pushConstRangesDesc);
+
+        HandleDescriptor debugCaptureDesc{"IDebugCapture*"};
+        INIT_INPUT_DESC(DEBUG_CAPTURE, "debug_capture", ResourceLifetime::Transient, debugCaptureDesc);
+
+        // Initialize output descriptors
+        HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};
+        INIT_OUTPUT_DESC(COMMAND_BUFFER, "command_buffer", ResourceLifetime::Transient, cmdBufferDesc);
+
+        HandleDescriptor deviceOutDesc{"VulkanDevice*"};
+        INIT_OUTPUT_DESC(VULKAN_DEVICE_OUT, "vulkan_device_out", ResourceLifetime::Persistent, deviceOutDesc);
+
+        HandleDescriptor semaphoreDesc{"VkSemaphore"};
+        INIT_OUTPUT_DESC(RENDER_COMPLETE_SEMAPHORE, "render_complete_semaphore", ResourceLifetime::Transient, semaphoreDesc);
+
+        HandleDescriptor debugCaptureOutDesc{"IDebugCapture*"};
+        INIT_OUTPUT_DESC(DEBUG_CAPTURE_OUT, "debug_capture_out", ResourceLifetime::Transient, debugCaptureOutDesc);
+    }
+
     // ===== COMPILE-TIME VALIDATIONS =====
+
+    VALIDATE_NODE_CONFIG(ComputeDispatchNodeConfig, ComputeDispatchNodeCounts);
 
     static constexpr bool ValidateDispatchDimensions(uint32_t x, uint32_t y, uint32_t z) {
         // Max dispatch size varies by GPU, but 65535 is safe minimum (Vulkan spec)

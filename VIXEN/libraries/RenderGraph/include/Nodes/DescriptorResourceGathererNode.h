@@ -112,11 +112,8 @@ private:
     std::vector<DescriptorSlotInfo> descriptorSlots_;
 
     // Output resource array (indexed by binding)
-    std::vector<DescriptorHandleVariant> resourceArray_;
-    std::vector<SlotRole> slotRoleArray_;  // Parallel array: slot role for each binding
-
-    // Debug captures - auto-collected from slots with Debug role
-    std::vector<Debug::IDebugCapture*> debugCaptures_;
+    // Each entry contains: handle + slotRole + optional debugCapture
+    std::vector<DescriptorResourceEntry> resourceArray_;
 
     // Primary workflow helpers
     void DiscoverDescriptors(VariadicCompileContext& ctx);

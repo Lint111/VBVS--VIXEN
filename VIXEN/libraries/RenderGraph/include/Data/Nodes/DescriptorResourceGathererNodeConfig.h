@@ -7,12 +7,6 @@ namespace ShaderManagement {
     struct ShaderDataBundle;
 }
 
-using SlotRoleEnum = Vixen::RenderGraph::SlotRole;  // For descriptor filtering
-
-namespace Vixen::RenderGraph::Debug {
-    class IDebugCapture;  // Forward declaration for debug capture interface
-}
-
 namespace Vixen::RenderGraph {
 
 /**
@@ -43,7 +37,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts
 namespace DescriptorResourceGathererNodeCounts {
     static constexpr size_t INPUTS = 1;   // SHADER_DATA_BUNDLE (+ dynamic variadic resources)
-    static constexpr size_t OUTPUTS = 4;  // DESCRIPTOR_RESOURCES array + SLOT_ROLES + DEBUG_CAPTURES + SHADER_DATA_BUNDLE_OUT
+    static constexpr size_t OUTPUTS = 2;  // DESCRIPTOR_RESOURCES array (with embedded slotRole + debugCapture) + SHADER_DATA_BUNDLE_OUT
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -59,21 +53,13 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (4) =====
-    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorHandleVariant>, 0,
+    // ===== OUTPUTS (2) =====
+    // Resource entries include handle + slotRole + optional debug capture metadata
+    OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorResourceEntry>, 0,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    OUTPUT_SLOT(DESCRIPTOR_SLOT_ROLES, std::vector<SlotRoleEnum>, 1,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    // Debug captures auto-collected from slots with Debug role
-    OUTPUT_SLOT(DEBUG_CAPTURES, std::vector<Debug::IDebugCapture*>, 2,
-        SlotNullability::Optional,
-        SlotMutability::WriteOnly);
-
-    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 3,
+    OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 1,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
@@ -84,19 +70,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
             ResourceLifetime::Persistent, shaderDataBundleDesc);
 
         // Initialize output descriptors
-        HandleDescriptor descriptorResourcesDesc{"std::vector<ResourceHandleVariant>"};
+        // DescriptorResourceEntry includes handle + slotRole + optional debug capture pointer
+        HandleDescriptor descriptorResourcesDesc{"std::vector<DescriptorResourceEntry>"};
         INIT_OUTPUT_DESC(DESCRIPTOR_RESOURCES, "descriptor_resources",
             ResourceLifetime::Transient, descriptorResourcesDesc);
-
-        // SlotRole array is metadata, not a Vulkan resource
-        HandleDescriptor slotRolesDesc{"std::vector<SlotRoleEnum>"};
-        INIT_OUTPUT_DESC(DESCRIPTOR_SLOT_ROLES, "descriptor_slot_roles",
-            ResourceLifetime::Transient, slotRolesDesc);
-
-        // Debug captures - auto-collected from slots with Debug role
-        HandleDescriptor debugCapturesDesc{"std::vector<IDebugCapture*>"};
-        INIT_OUTPUT_DESC(DEBUG_CAPTURES, "debug_captures",
-            ResourceLifetime::Transient, debugCapturesDesc);
 
         INIT_OUTPUT_DESC(SHADER_DATA_BUNDLE_OUT, "shader_data_bundle_out",
             ResourceLifetime::Persistent, shaderDataBundleDesc);
@@ -111,20 +88,12 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(DESCRIPTOR_RESOURCES_Slot::index == 0, "DESCRIPTOR_RESOURCES must be at index 0");
     static_assert(!DESCRIPTOR_RESOURCES_Slot::nullable, "DESCRIPTOR_RESOURCES is required");
 
-    static_assert(DESCRIPTOR_SLOT_ROLES_Slot::index == 1, "DESCRIPTOR_SLOT_ROLES must be at index 1");
-    static_assert(!DESCRIPTOR_SLOT_ROLES_Slot::nullable, "DESCRIPTOR_SLOT_ROLES is required");
-
-    static_assert(DEBUG_CAPTURES_Slot::index == 2, "DEBUG_CAPTURES must be at index 2");
-    static_assert(DEBUG_CAPTURES_Slot::nullable, "DEBUG_CAPTURES is optional");
-
-    static_assert(SHADER_DATA_BUNDLE_OUT_Slot::index == 3, "SHADER_DATA_BUNDLE_OUT must be at index 3");
+    static_assert(SHADER_DATA_BUNDLE_OUT_Slot::index == 1, "SHADER_DATA_BUNDLE_OUT must be at index 1");
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
     // Type validations
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
-    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorHandleVariant>>);
-    static_assert(std::is_same_v<DESCRIPTOR_SLOT_ROLES_Slot::Type, std::vector<SlotRoleEnum>>);
-    static_assert(std::is_same_v<DEBUG_CAPTURES_Slot::Type, std::vector<Debug::IDebugCapture*>>);
+    static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorResourceEntry>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
 };
 } // namespace Vixen::RenderGraph
