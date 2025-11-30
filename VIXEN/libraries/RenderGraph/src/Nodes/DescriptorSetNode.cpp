@@ -250,13 +250,13 @@ void DescriptorSetNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Phase H: Bind Dependency (static) descriptors in Compile
     // Execute (transient) descriptors bound per-frame in Execute
+    // DescriptorResourceEntry contains: handle + slotRole + debugCapture
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
-    auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
 
-    // Debug: Log received slot roles
-    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Received " + std::to_string(slotRoles.size()) + " slot roles:");
-    for (size_t i = 0; i < slotRoles.size(); ++i) {
-        uint8_t roleVal = static_cast<uint8_t>(slotRoles[i]);
+    // Debug: Log received slot roles (now embedded in entries)
+    NODE_LOG_DEBUG("[DescriptorSetNode::Compile] Received " + std::to_string(descriptorResources.size()) + " resource entries:");
+    for (size_t i = 0; i < descriptorResources.size(); ++i) {
+        uint8_t roleVal = static_cast<uint8_t>(descriptorResources[i].slotRole);
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": role=" + std::to_string(roleVal) +
                       " (Dependency=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Dependency)) +
                       ", Execute=" + std::to_string(roleVal & static_cast<uint8_t>(SlotRole::Execute)) + ")");
@@ -297,19 +297,21 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     uint32_t imageIndex = ctx.In(DescriptorSetNodeConfig::IMAGE_INDEX);
 
     // Get descriptor inputs
+    // DescriptorResourceEntry contains: handle + slotRole + debugCapture
     auto shaderBundle = ctx.In(DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
     auto descriptorResources = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
-    auto slotRoles = ctx.In(DescriptorSetNodeConfig::DESCRIPTOR_SLOT_ROLES);
 
     NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Frame " + std::to_string(imageIndex) +
                   " - Received DESCRIPTOR_RESOURCES with " + std::to_string(descriptorResources.size()) + " entries:");
     for (size_t i = 0; i < descriptorResources.size(); ++i) {
-        const auto& variant = descriptorResources[i];
+        const auto& entry = descriptorResources[i];
+        const auto& variant = entry.handle;
         NODE_LOG_DEBUG("  Binding " + std::to_string(i) + ": " +
                       (std::holds_alternative<std::monostate>(variant) ? "monostate" :
                        std::holds_alternative<VkImageView>(variant) ? "VkImageView" :
                        std::holds_alternative<VkBuffer>(variant) ? "VkBuffer" :
-                       std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown"));
+                       std::holds_alternative<VkSampler>(variant) ? "VkSampler" : "unknown") +
+                      ", role=" + std::to_string(static_cast<uint8_t>(entry.slotRole)));
     }
 
     if (!shaderBundle || descriptorResources.empty()) {
@@ -328,7 +330,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
         for (uint32_t i = 0; i < static_cast<uint32_t>(descriptorSets.size()); i++) {
             auto dependencyWrites = BuildDescriptorWrites(i, descriptorResources, descriptorBindings,
                                                          perFrameImageInfos[i], perFrameBufferInfos[i],
-                                                         slotRoles, SlotRole::Dependency);
+                                                         SlotRole::Dependency);
             if (!dependencyWrites.empty()) {
                 vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(dependencyWrites.size()), dependencyWrites.data(), 0, nullptr);
                 NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Bound " + std::to_string(dependencyWrites.size()) + " Dependency descriptor(s) for frame " + std::to_string(i));
@@ -341,7 +343,7 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
     NODE_LOG_DEBUG("[DescriptorSetNode::Execute] Building Execute writes for frame " + std::to_string(imageIndex));
     auto writes = BuildDescriptorWrites(imageIndex, descriptorResources, descriptorBindings,
                                        perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
-                                       slotRoles, SlotRole::Execute);
+                                       SlotRole::Execute);
 
     NODE_LOG_DEBUG("[DescriptorSetNode::Execute] BuildDescriptorWrites returned " + std::to_string(writes.size()) + " Execute writes");
 
@@ -355,25 +357,25 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 VkSampler DescriptorSetNode::FindSamplerResource(
-    const std::vector<DescriptorHandleVariant>& descriptorResources,
+    const std::vector<DescriptorResourceEntry>& descriptorResources,
     uint32_t targetBinding
 ) {
     // First check the binding index itself
     if (targetBinding < descriptorResources.size()) {
-        const auto& resource = descriptorResources[targetBinding];
-        if (std::holds_alternative<VkSampler>(resource)) {
-            return std::get<VkSampler>(resource);
+        const auto& handle = descriptorResources[targetBinding].handle;
+        if (std::holds_alternative<VkSampler>(handle)) {
+            return std::get<VkSampler>(handle);
         }
     }
 
     // Search all resources for a sampler (for combined image samplers)
     // The gatherer may have placed it elsewhere due to overwriting
     for (size_t i = 0; i < descriptorResources.size(); ++i) {
-        const auto& resource = descriptorResources[i];
-        if (std::holds_alternative<VkSampler>(resource)) {
+        const auto& handle = descriptorResources[i].handle;
+        if (std::holds_alternative<VkSampler>(handle)) {
             // Found a sampler - assume it's for this combined sampler binding
             // TODO: Better tracking of which sampler belongs to which binding
-            return std::get<VkSampler>(resource);
+            return std::get<VkSampler>(handle);
         }
     }
 
@@ -382,8 +384,7 @@ VkSampler DescriptorSetNode::FindSamplerResource(
 
 bool DescriptorSetNode::ValidateAndFilterBinding(
     const ShaderManagement::SpirvDescriptorBinding& binding,
-    const std::vector<DescriptorHandleVariant>& descriptorResources,
-    const std::vector<SlotRole>& slotRoles,
+    const std::vector<DescriptorResourceEntry>& descriptorResources,
     SlotRole roleFilter
 ) {
     // Use binding.binding (shader binding number) to index into resources, not loop index
@@ -394,31 +395,32 @@ bool DescriptorSetNode::ValidateAndFilterBinding(
         return false;
     }
 
+    // Get the entry (contains handle + slotRole + debugCapture)
+    const auto& entry = descriptorResources[binding.binding];
+
     // Filter by slot role FIRST - this determines which descriptors to bind in this pass
     // Support combined roles (e.g., Dependency | Execute)
     // A binding matches the filter if it has ANY of the filter's flags set
-    if (!slotRoles.empty() && binding.binding < slotRoles.size()) {
-        SlotRole bindingRole = slotRoles[binding.binding];
-        uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
-        uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
+    SlotRole bindingRole = entry.slotRole;
+    uint8_t bindingFlags = static_cast<uint8_t>(bindingRole);
+    uint8_t filterFlags = static_cast<uint8_t>(roleFilter);
 
-        // Check if binding has any of the filter flags
-        // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
-        // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
-        bool matchesFilter = (bindingFlags & filterFlags) != 0;
+    // Check if binding has any of the filter flags
+    // For Dependency filter (1): matches roles 1 (Dependency) or 3 (Dependency|Execute)
+    // For Execute filter (2): matches roles 2 (Execute) or 3 (Dependency|Execute)
+    bool matchesFilter = (bindingFlags & filterFlags) != 0;
 
-        NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
-                      " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
-                      ", filter=" + std::to_string(filterFlags) +
-                      ", matches=" + (matchesFilter ? "YES" : "NO"));
+    NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
+                  " (" + binding.name + "): role=" + std::to_string(bindingFlags) +
+                  ", filter=" + std::to_string(filterFlags) +
+                  ", matches=" + (matchesFilter ? "YES" : "NO"));
 
-        if (!matchesFilter) {
-            return false;  // Skip this binding - doesn't match filter
-        }
+    if (!matchesFilter) {
+        return false;  // Skip this binding - doesn't match filter
     }
 
     // THEN check resource variant - only after role filtering
-    const auto& resourceVariant = descriptorResources[binding.binding];
+    const auto& resourceVariant = entry.handle;
 
     NODE_LOG_DEBUG("[ValidateAndFilterBinding] Binding " + std::to_string(binding.binding) +
                   " (" + binding.name + ") resource type: " +
@@ -564,7 +566,7 @@ void DescriptorSetNode::HandleSampler(
 void DescriptorSetNode::HandleCombinedImageSampler(
     const ShaderManagement::SpirvDescriptorBinding& binding,
     const DescriptorHandleVariant& resourceVariant,
-    const std::vector<DescriptorHandleVariant>& descriptorResources,
+    const std::vector<DescriptorResourceEntry>& descriptorResources,
     uint32_t imageIndex,
     size_t bindingIdx,
     VkWriteDescriptorSet& write,
@@ -630,9 +632,9 @@ void DescriptorSetNode::HandleCombinedImageSampler(
 
         // Try to get sampler array from next slot
         if (bindingIdx + 1 < descriptorResources.size()) {
-            const auto& nextResource = descriptorResources[bindingIdx + 1];
-            if (std::holds_alternative<std::vector<VkSampler>>(nextResource)) {
-                samplerArray = std::get<std::vector<VkSampler>>(nextResource);
+            const auto& nextHandle = descriptorResources[bindingIdx + 1].handle;
+            if (std::holds_alternative<std::vector<VkSampler>>(nextHandle)) {
+                samplerArray = std::get<std::vector<VkSampler>>(nextHandle);
             }
         }
 
@@ -673,11 +675,10 @@ void DescriptorSetNode::HandleBuffer(
 
 std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     uint32_t imageIndex,
-    const std::vector<DescriptorHandleVariant>& descriptorResources,
+    const std::vector<DescriptorResourceEntry>& descriptorResources,
     const std::vector<ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
     std::vector<VkDescriptorImageInfo>& imageInfos,
     std::vector<VkDescriptorBufferInfo>& bufferInfos,
-    const std::vector<SlotRole>& slotRoles,
     SlotRole roleFilter
 ) {
     std::vector<VkWriteDescriptorSet> writes;
@@ -699,15 +700,16 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
 
         NODE_LOG_DEBUG("[BuildDescriptorWrites] Processing binding " + std::to_string(binding.binding) + " (" + binding.name + ")");
 
-        // Validate and filter binding
-        if (!ValidateAndFilterBinding(binding, descriptorResources, slotRoles, roleFilter)) {
+        // Validate and filter binding (slotRole is now embedded in DescriptorResourceEntry)
+        if (!ValidateAndFilterBinding(binding, descriptorResources, roleFilter)) {
             NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) + " filtered out");
             continue;
         }
 
         NODE_LOG_DEBUG("[BuildDescriptorWrites] Binding " + std::to_string(binding.binding) + " passed filter, processing...");
 
-        const auto& resourceVariant = descriptorResources[binding.binding];
+        // Extract handle from entry
+        const auto& resourceVariant = descriptorResources[binding.binding].handle;
 
         // Initialize write descriptor
         VkWriteDescriptorSet write{};

@@ -164,20 +164,19 @@ private:
      */
     std::vector<VkWriteDescriptorSet> BuildDescriptorWrites(
         uint32_t imageIndex,
-        const std::vector<DescriptorHandleVariant>& descriptorResources,
+        const std::vector<DescriptorResourceEntry>& descriptorResources,
         const std::vector<::ShaderManagement::SpirvDescriptorBinding>& descriptorBindings,
         std::vector<VkDescriptorImageInfo>& imageInfos,
         std::vector<VkDescriptorBufferInfo>& bufferInfos,
-        const std::vector<SlotRole>& slotRoles = {},
-        SlotRole roleFilter = SlotRole::Dependency  // Filter to process (Dependency or ExecuteOnly)
+        SlotRole roleFilter = SlotRole::Dependency  // Filter to process (Dependency or Execute)
     );
 
     // Descriptor write helpers - extracted from BuildDescriptorWrites for readability
-    VkSampler FindSamplerResource(const std::vector<DescriptorHandleVariant>& descriptorResources, uint32_t targetBinding);
+    // Uses DescriptorResourceEntry which contains handle + slotRole + debugCapture
+    VkSampler FindSamplerResource(const std::vector<DescriptorResourceEntry>& descriptorResources, uint32_t targetBinding);
     bool ValidateAndFilterBinding(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
-        const std::vector<DescriptorHandleVariant>& descriptorResources,
-        const std::vector<SlotRole>& slotRoles,
+        const std::vector<DescriptorResourceEntry>& descriptorResources,
         SlotRole roleFilter
     );
     void HandleStorageImage(
@@ -206,7 +205,7 @@ private:
     void HandleCombinedImageSampler(
         const ::ShaderManagement::SpirvDescriptorBinding& binding,
         const DescriptorHandleVariant& resourceVariant,
-        const std::vector<DescriptorHandleVariant>& descriptorResources,
+        const std::vector<DescriptorResourceEntry>& descriptorResources,
         uint32_t imageIndex,
         size_t bindingIdx,
         VkWriteDescriptorSet& write,
