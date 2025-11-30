@@ -91,7 +91,23 @@ public:
     // ====== Graph Building ======
 
     /**
-     * @brief Add a node to the graph
+     * @brief Add a node to the graph using C++ type (preferred - zero strings)
+     * @tparam TNodeType The NodeType-derived class (e.g., WindowNodeType)
+     * @param instanceName Unique name for this instance
+     * @return Handle to the created node
+     */
+    template<typename TNodeType>
+    NodeHandle AddNode(const std::string& instanceName) {
+        static_assert(std::is_base_of_v<NodeType, TNodeType>, "TNodeType must derive from NodeType");
+        TNodeType* nodeType = typeRegistry->Get<TNodeType>();
+        if (!nodeType) {
+            throw std::runtime_error("Node type not registered: " + std::string(typeid(TNodeType).name()));
+        }
+        return AddNodeImpl(nodeType, instanceName);
+    }
+
+    /**
+     * @brief Add a node to the graph (legacy string-based API)
      * @param typeName The name of the node type
      * @param instanceName Unique name for this instance
      * @return Handle to the created node
@@ -99,7 +115,7 @@ public:
     NodeHandle AddNode(const std::string& typeName, const std::string& instanceName);
 
     /**
-     * @brief Add a node using type ID
+     * @brief Add a node using type ID (legacy ID-based API)
      */
     NodeHandle AddNode(NodeTypeId typeId, const std::string& instanceName);
 
@@ -428,6 +444,9 @@ public:
 
 
 private:
+    // Internal implementation for AddNode (used by both template and non-template versions)
+    NodeHandle AddNodeImpl(NodeType* nodeType, const std::string& instanceName);
+
     // Core components
     NodeTypeRegistry* typeRegistry;
     EventBus::MessageBus* messageBus = nullptr;  // Non-owning pointer

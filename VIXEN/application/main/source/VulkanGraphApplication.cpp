@@ -401,37 +401,44 @@ void VulkanGraphApplication::RegisterNodeTypes() {
 
     mainLogger->Info("Registering all built-in node types");
 
-    // Register all node types
-    nodeRegistry->RegisterNodeType(std::make_unique<InstanceNodeType>());  // Phase 1.1: Instance creation
-    nodeRegistry->RegisterNodeType(std::make_unique<WindowNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<DeviceNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<CommandPoolNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<FrameSyncNodeType>());  // Phase 0.2
-    nodeRegistry->RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<DepthBufferNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<SwapChainNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<VertexBufferNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<RenderPassNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<FramebufferNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<ShaderLibraryNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<DescriptorSetNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<GraphicsPipelineNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<PresentNodeType>());
-    nodeRegistry->RegisterNodeType(std::make_unique<ShaderConstantNodeType>());  // MVP: VulkanShader* injection
-    nodeRegistry->RegisterNodeType(std::make_unique<ConstantNodeType>());  // Generic parameter injection
-    nodeRegistry->RegisterNodeType(std::make_unique<LoopBridgeNodeType>());  // Phase 0.4: Loop system
-    nodeRegistry->RegisterNodeType(std::make_unique<BoolOpNodeType>());  // Phase 0.4: Boolean logic
-    nodeRegistry->RegisterNodeType(std::make_unique<ComputePipelineNodeType>());  // Phase G: Compute pipeline
-    nodeRegistry->RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());  // Phase G: Compute dispatch
-    nodeRegistry->RegisterNodeType(std::make_unique<DescriptorResourceGathererNodeType>());  // Phase H: Descriptor resource gatherer
-    nodeRegistry->RegisterNodeType(std::make_unique<PushConstantGathererNodeType>());  // Phase H: Push constant gatherer
-    nodeRegistry->RegisterNodeType(std::make_unique<CameraNodeType>());  // Ray marching: Camera UBO
-    nodeRegistry->RegisterNodeType(std::make_unique<VoxelGridNodeType>());  // Ray marching: Voxel grid
-    nodeRegistry->RegisterNodeType(std::make_unique<InputNodeType>());  // Input polling and event publishing
-    nodeRegistry->RegisterNodeType(std::make_unique<DebugBufferReaderNodeType>());  // Debug: Compute shader debug capture
+    // Register all node types using type-based API (zero strings)
+    // Phase F+ nodes:
+    nodeRegistry->Register<InstanceNodeType>();
+    nodeRegistry->Register<WindowNodeType>();
+    nodeRegistry->Register<DeviceNodeType>();
+    nodeRegistry->Register<CommandPoolNodeType>();
+    nodeRegistry->Register<FrameSyncNodeType>();
+    nodeRegistry->Register<TextureLoaderNodeType>();
+    nodeRegistry->Register<DepthBufferNodeType>();
+    nodeRegistry->Register<SwapChainNodeType>();
+    nodeRegistry->Register<VertexBufferNodeType>();
+    nodeRegistry->Register<RenderPassNodeType>();
+    nodeRegistry->Register<FramebufferNodeType>();
+    nodeRegistry->Register<ShaderLibraryNodeType>();
+    nodeRegistry->Register<DescriptorSetNodeType>();
+    nodeRegistry->Register<GraphicsPipelineNodeType>();
+    nodeRegistry->Register<GeometryRenderNodeType>();
+    nodeRegistry->Register<PresentNodeType>();
+    nodeRegistry->Register<LoopBridgeNodeType>();
+    nodeRegistry->Register<BoolOpNodeType>();
 
-    mainLogger->Info("Successfully registered 28 node types");
+    // Phase G nodes:
+    nodeRegistry->Register<ComputePipelineNodeType>();
+    nodeRegistry->Register<ComputeDispatchNodeType>();
+
+    // Phase H nodes:
+    nodeRegistry->Register<DescriptorResourceGathererNodeType>();
+    nodeRegistry->Register<PushConstantGathererNodeType>();
+    nodeRegistry->Register<CameraNodeType>();
+    nodeRegistry->Register<VoxelGridNodeType>();
+    nodeRegistry->Register<InputNodeType>();
+    nodeRegistry->Register<DebugBufferReaderNodeType>();
+
+    // Special nodes (require RenderGraph.h to be included - circular dependency in library)
+    nodeRegistry->Register<ShaderConstantNodeType>();
+    nodeRegistry->Register<ConstantNodeType>();
+
+    mainLogger->Info("Successfully registered 30 node types");
 }
 
 void VulkanGraphApplication::BuildRenderGraph() {
@@ -447,12 +454,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // ===================================================================
 
     // --- Infrastructure Nodes ---
-    NodeHandle instanceNode = renderGraph->AddNode("InstanceNode", "main_instance");  // Phase 1.1
-    NodeHandle windowNode = renderGraph->AddNode("Window", "main_window");
-    NodeHandle deviceNode = renderGraph->AddNode("Device", "main_device");
-    NodeHandle frameSyncNode = renderGraph->AddNode("FrameSync", "frame_sync");
-    NodeHandle swapChainNode = renderGraph->AddNode("SwapChain", "main_swapchain");
-    NodeHandle commandPoolNode = renderGraph->AddNode("CommandPool", "main_cmd_pool");
+    NodeHandle instanceNode = renderGraph->AddNode<InstanceNodeType>( "main_instance");  // Phase 1.1
+    NodeHandle windowNode = renderGraph->AddNode<WindowNodeType>("main_window");
+    NodeHandle deviceNode = renderGraph->AddNode<DeviceNodeType>("main_device");
+    NodeHandle swapChainNode = renderGraph->AddNode<SwapChainNodeType>("main_swapchain");
+    NodeHandle commandPoolNode = renderGraph->AddNode<CommandPoolNodeType>("main_cmd_pool");
 
     // --- Resource Nodes ---
     // DISABLED FOR COMPUTE TEST: Graphics pipeline nodes
@@ -474,27 +480,28 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // --- Execution Nodes ---
     NodeHandle geometryRenderNode = renderGraph->AddNode("GeometryRender", "triangle_render");
     */
-    NodeHandle presentNode = renderGraph->AddNode("Present", "present");
+    NodeHandle presentNode = renderGraph->AddNode<PresentNodeType>("present");
 
     // --- Phase G: Compute Pipeline Nodes ---
-    NodeHandle computeShaderLib = renderGraph->AddNode("ShaderLibrary", "compute_shader_lib");
-    NodeHandle descriptorGatherer = renderGraph->AddNode("DescriptorResourceGatherer", "compute_desc_gatherer");  // Phase H
-    NodeHandle pushConstantGatherer = renderGraph->AddNode("PushConstantGatherer", "push_constant_gatherer");  // Phase H
-    NodeHandle computeDescriptorSet = renderGraph->AddNode("DescriptorSet", "compute_descriptors");
-    NodeHandle computePipeline = renderGraph->AddNode("ComputePipeline", "test_compute_pipeline");
-    NodeHandle computeDispatch = renderGraph->AddNode("ComputeDispatch", "test_dispatch");
+    NodeHandle computeShaderLib = renderGraph->AddNode<ShaderLibraryNodeType>("compute_shader_lib");
+    NodeHandle descriptorGatherer = renderGraph->AddNode<DescriptorResourceGathererNodeType>("compute_desc_gatherer");  // Phase H
+    NodeHandle pushConstantGatherer = renderGraph->AddNode<PushConstantGathererNodeType>("push_constant_gatherer");  // Phase H
+    NodeHandle computeDescriptorSet = renderGraph->AddNode<DescriptorSetNodeType>("compute_descriptors");
+    NodeHandle computePipeline = renderGraph->AddNode<ComputePipelineNodeType>("test_compute_pipeline");
+    NodeHandle computeDispatch = renderGraph->AddNode<ComputeDispatchNodeType>("test_dispatch");
+    NodeHandle frameSyncNode = renderGraph->AddNode<FrameSyncNodeType>("frame_sync");
 
     // --- Ray Marching Nodes ---
-    NodeHandle cameraNode = renderGraph->AddNode("Camera", "raymarch_camera");
-    NodeHandle voxelGridNode = renderGraph->AddNode("VoxelGrid", "voxel_grid");
+    NodeHandle cameraNode = renderGraph->AddNode<CameraNodeType>("raymarch_camera");
+    NodeHandle voxelGridNode = renderGraph->AddNode<VoxelGridNodeType>("voxel_grid");
 
     // --- Input Node ---
-    NodeHandle inputNode = renderGraph->AddNode("Input", "input_handler");
+    NodeHandle inputNode = renderGraph->AddNode<InputNodeType>("input_handler");
 
-    NodeHandle physicsLoopBridge = renderGraph->AddNode("LoopBridge", "physics_loop");
-    NodeHandle physicsLoopIDConstant = renderGraph->AddNode("ConstantNode", "physics_loop_id");
+    NodeHandle physicsLoopBridge = renderGraph->AddNode<LoopBridgeNodeType>("physics_loop");
+    NodeHandle physicsLoopIDConstant = renderGraph->AddNode<ConstantNodeType>("physics_loop_id");
     
-    NodeHandle debugCaptureNode = renderGraph->AddNode("DebugCapture", "debug_capture");
+    NodeHandle debugCaptureNode = renderGraph->AddNode<DebugBufferReaderNodeType>("debug_capture");
 
     mainLogger->Info("Created 29 node instances (including compute pipeline, camera, voxel grid, and gatherers)");
 
@@ -625,6 +632,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     if (mainLogger && mainLogger->IsEnabled()) {
         mainLogger->Info("[BuildRenderGraph] Loop ID set, moving to shader library...");
     }
+
+    auto* frameSync = static_cast<FrameSyncNode*>(renderGraph->GetInstance(frameSyncNode));
 
     // Voxel ray marching compute shader (VoxelRayMarch.comp)
     // Load from pre-compiled shaders in build directory
@@ -968,7 +977,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE,
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
-    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE,
+    batch.Connect(computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE_OUT,
                   debugCaptureNode, DebugBufferReaderNodeConfig::DEBUG_CAPTURE);
 
     // --- FrameSync → Present connections (Phase 0.7) ---

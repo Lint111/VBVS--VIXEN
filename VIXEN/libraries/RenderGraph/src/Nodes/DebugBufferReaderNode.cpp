@@ -5,7 +5,7 @@
 #include <cstring>
 #include <algorithm>
 #include <numeric>
-#include "NodeLogging.h"
+#include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
 

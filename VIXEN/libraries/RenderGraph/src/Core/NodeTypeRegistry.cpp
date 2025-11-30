@@ -23,6 +23,17 @@
 #include "Nodes/ComputePipelineNode.h"
 #include "Nodes/ComputeDispatchNode.h"
 
+// Phase H node types
+#include "Nodes/InstanceNode.h"
+#include "Nodes/CameraNode.h"
+#include "Nodes/VoxelGridNode.h"
+#include "Nodes/InputNode.h"
+// Note: ConstantNodeType excluded - has circular dependency (ConstantNode.h uses RenderGraph inline)
+// ConstantNodeType must be registered separately where RenderGraph.h is already included
+#include "Nodes/DescriptorResourceGathererNode.h"
+#include "Nodes/PushConstantGathererNode.h"
+#include "Nodes/DebugBufferReaderNode.h"
+
 namespace Vixen::RenderGraph {
 
 bool NodeTypeRegistry::RegisterNodeType(std::unique_ptr<NodeType> nodeType) {
@@ -141,32 +152,43 @@ std::vector<NodeType*> NodeTypeRegistry::GetNodeTypesWithCapability(DeviceCapabi
 void NodeTypeRegistry::Clear() {
     nodeTypesById.clear();
     nameToId.clear();
+    typeIndexToId.clear();
     nextTypeId = 1;
 }
 
 void RegisterBuiltInNodeTypes(NodeTypeRegistry& registry) {
-    // Register built-in node types
+    // Register built-in node types using type-based API (zero string literals)
     // Phase F+ nodes:
-    registry.RegisterNodeType(std::make_unique<WindowNodeType>());
-    registry.RegisterNodeType(std::make_unique<DeviceNodeType>());
-    registry.RegisterNodeType(std::make_unique<SwapChainNodeType>());
-    registry.RegisterNodeType(std::make_unique<DepthBufferNodeType>());
-    registry.RegisterNodeType(std::make_unique<RenderPassNodeType>());
-    registry.RegisterNodeType(std::make_unique<FramebufferNodeType>());
-    registry.RegisterNodeType(std::make_unique<FrameSyncNodeType>());
-    registry.RegisterNodeType(std::make_unique<ShaderLibraryNodeType>());
-    registry.RegisterNodeType(std::make_unique<GraphicsPipelineNodeType>());
-    registry.RegisterNodeType(std::make_unique<DescriptorSetNodeType>());
-    registry.RegisterNodeType(std::make_unique<VertexBufferNodeType>());
-    registry.RegisterNodeType(std::make_unique<TextureLoaderNodeType>());
-    registry.RegisterNodeType(std::make_unique<CommandPoolNodeType>());
-    registry.RegisterNodeType(std::make_unique<GeometryRenderNodeType>());
-    registry.RegisterNodeType(std::make_unique<PresentNodeType>());
-    registry.RegisterNodeType(std::make_unique<LoopBridgeNodeType>());
+    registry.Register<WindowNodeType>();
+    registry.Register<DeviceNodeType>();
+    registry.Register<SwapChainNodeType>();
+    registry.Register<DepthBufferNodeType>();
+    registry.Register<RenderPassNodeType>();
+    registry.Register<FramebufferNodeType>();
+    registry.Register<FrameSyncNodeType>();
+    registry.Register<ShaderLibraryNodeType>();
+    registry.Register<GraphicsPipelineNodeType>();
+    registry.Register<DescriptorSetNodeType>();
+    registry.Register<VertexBufferNodeType>();
+    registry.Register<TextureLoaderNodeType>();
+    registry.Register<CommandPoolNodeType>();
+    registry.Register<GeometryRenderNodeType>();
+    registry.Register<PresentNodeType>();
+    registry.Register<LoopBridgeNodeType>();
 
     // Phase G nodes:
-    registry.RegisterNodeType(std::make_unique<ComputePipelineNodeType>());
-    registry.RegisterNodeType(std::make_unique<ComputeDispatchNodeType>());
+    registry.Register<ComputePipelineNodeType>();
+    registry.Register<ComputeDispatchNodeType>();
+
+    // Phase H nodes:
+    registry.Register<InstanceNodeType>();
+    registry.Register<CameraNodeType>();
+    registry.Register<VoxelGridNodeType>();
+    registry.Register<InputNodeType>();
+    // Note: ConstantNodeType must be registered in application code (circular dependency)
+    registry.Register<DescriptorResourceGathererNodeType>();
+    registry.Register<PushConstantGathererNodeType>();
+    registry.Register<DebugBufferReaderNodeType>();
 }
 
 } // namespace Vixen::RenderGraph

@@ -134,6 +134,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/ComputePipelineNode.h
     include/Nodes/ConstantNode.h
     include/Nodes/ConstantNodeType.h
+    include/Nodes/DebugBufferReaderNode.h
     include/Nodes/DepthBufferNode.h
     include/Nodes/DescriptorResourceGathererNode.h
     include/Nodes/DescriptorSetNode.h
@@ -165,6 +166,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/CommandPoolNode.cpp
     src/Nodes/ComputeDispatchNode.cpp
     src/Nodes/ComputePipelineNode.cpp
+    src/Nodes/DebugBufferReaderNode.cpp
     src/Nodes/DepthBufferNode.cpp
     src/Nodes/DescriptorResourceGathererNode.cpp
     src/Nodes/DescriptorSetNode.cpp

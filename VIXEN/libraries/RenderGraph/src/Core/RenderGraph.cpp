@@ -98,7 +98,8 @@ RenderGraph::RenderGraph(
 RenderGraph::~RenderGraph() {
     // Note: Device-dependent cache cleanup happens in DeviceNode::CleanupImpl()
     // Only cleanup global (device-independent) caches here
-    if (mainCacher) {
+    // Guard against corrupted pointer (can happen during exception-triggered destruction)
+    if (mainCacher && reinterpret_cast<uintptr_t>(mainCacher) != 0xFFFFFFFFFFFFFFFF) {
         mainCacher->CleanupGlobalCaches();
     }
 
@@ -127,33 +128,24 @@ RenderGraph::~RenderGraph() {
     Clear();
 }
 
-NodeHandle RenderGraph::AddNode(
-    const std::string& typeName,
-    const std::string& instanceName
-) {
+NodeHandle RenderGraph::AddNodeImpl(NodeType* nodeType, const std::string& instanceName) {
     // Check if instance name already exists
     if (nameToHandle.find(instanceName) != nameToHandle.end()) {
         throw std::runtime_error("Instance name already exists: " + instanceName);
     }
 
-    // Get node type
-    NodeType* type = typeRegistry->GetNodeType(typeName);
-    if (!type) {
-        throw std::runtime_error("Unknown node type: " + typeName);
-    }
-
     // Check instancing limits
-    NodeTypeId typeId = type->GetTypeId();
+    NodeTypeId typeId = nodeType->GetTypeId();
     uint32_t currentCount = GetInstanceCount(typeId);
-    uint32_t maxInstances = type->GetMaxInstances();
+    uint32_t maxInstances = nodeType->GetMaxInstances();
     if (maxInstances > 0 && currentCount >= maxInstances) {
-        throw std::runtime_error("Max instance count reached for type: " + typeName);
+        throw std::runtime_error("Max instance count reached for type: " + nodeType->GetTypeName());
     }
 
     // Create instance
-    auto instance = type->CreateInstance(instanceName);
+    auto instance = nodeType->CreateInstance(instanceName);
     if (!instance) {
-        throw std::runtime_error("Failed to create instance for type: " + typeName);
+        throw std::runtime_error("Failed to create instance for type: " + nodeType->GetTypeName());
     }
 
     // Add to graph
@@ -183,12 +175,23 @@ NodeHandle RenderGraph::AddNode(
     return handle;
 }
 
+NodeHandle RenderGraph::AddNode(
+    const std::string& typeName,
+    const std::string& instanceName
+) {
+    NodeType* type = typeRegistry->GetNodeType(typeName);
+    if (!type) {
+        throw std::runtime_error("Unknown node type: " + typeName);
+    }
+    return AddNodeImpl(type, instanceName);
+}
+
 NodeHandle RenderGraph::AddNode(NodeTypeId typeId, const std::string& instanceName) {
     NodeType* type = typeRegistry->GetNodeType(typeId);
     if (!type) {
         throw std::runtime_error("Unknown node type ID");
     }
-    return AddNode(type->GetTypeName(), instanceName);
+    return AddNodeImpl(type, instanceName);
 }
 
 void RenderGraph::ConnectNodes(
