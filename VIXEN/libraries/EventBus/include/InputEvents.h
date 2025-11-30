@@ -12,6 +12,18 @@ namespace Vixen::EventBus {
  * https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
  */
 enum class KeyCode : uint32_t {
+    // Number keys (top row)
+    Key0 = 0x30,
+    Key1 = 0x31,
+    Key2 = 0x32,
+    Key3 = 0x33,
+    Key4 = 0x34,
+    Key5 = 0x35,
+    Key6 = 0x36,
+    Key7 = 0x37,
+    Key8 = 0x38,
+    Key9 = 0x39,
+
     // Movement keys
     W = 0x57,  // 'W'
     A = 0x41,  // 'A'

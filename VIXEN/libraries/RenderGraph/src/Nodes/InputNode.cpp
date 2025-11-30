@@ -39,6 +39,17 @@ InputNode::InputNode(
     keyStates[KeyCode::Right] = KeyState{};
     keyStates[KeyCode::Up] = KeyState{};
     keyStates[KeyCode::Down] = KeyState{};
+    // Number keys for debug mode switching
+    keyStates[KeyCode::Key0] = KeyState{};
+    keyStates[KeyCode::Key1] = KeyState{};
+    keyStates[KeyCode::Key2] = KeyState{};
+    keyStates[KeyCode::Key3] = KeyState{};
+    keyStates[KeyCode::Key4] = KeyState{};
+    keyStates[KeyCode::Key5] = KeyState{};
+    keyStates[KeyCode::Key6] = KeyState{};
+    keyStates[KeyCode::Key7] = KeyState{};
+    keyStates[KeyCode::Key8] = KeyState{};
+    keyStates[KeyCode::Key9] = KeyState{};
 }
 
 void InputNode::SetupImpl(TypedSetupContext& ctx) {
@@ -109,6 +120,20 @@ void InputNode::PopulateInputState() {
             inputState.keyReleased[key] = true;
         }
     }
+
+    // Update debug mode based on number key presses (0-9)
+    // debugMode persists until another number is pressed
+    using EventBus::KeyCode;
+    if (inputState.IsKeyPressed(KeyCode::Key0)) inputState.debugMode = 0;
+    else if (inputState.IsKeyPressed(KeyCode::Key1)) inputState.debugMode = 1;
+    else if (inputState.IsKeyPressed(KeyCode::Key2)) inputState.debugMode = 2;
+    else if (inputState.IsKeyPressed(KeyCode::Key3)) inputState.debugMode = 3;
+    else if (inputState.IsKeyPressed(KeyCode::Key4)) inputState.debugMode = 4;
+    else if (inputState.IsKeyPressed(KeyCode::Key5)) inputState.debugMode = 5;
+    else if (inputState.IsKeyPressed(KeyCode::Key6)) inputState.debugMode = 6;
+    else if (inputState.IsKeyPressed(KeyCode::Key7)) inputState.debugMode = 7;
+    else if (inputState.IsKeyPressed(KeyCode::Key8)) inputState.debugMode = 8;
+    else if (inputState.IsKeyPressed(KeyCode::Key9)) inputState.debugMode = 9;
 
     // Get current mouse position and calculate delta
     POINT cursorPos;

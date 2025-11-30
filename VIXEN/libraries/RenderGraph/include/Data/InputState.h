@@ -27,6 +27,10 @@ struct InputState {
     std::unordered_map<EventBus::KeyCode, bool> keyPressed;    // Just pressed this frame
     std::unordered_map<EventBus::KeyCode, bool> keyReleased;   // Just released this frame
 
+    // Debug visualization mode (0=normal, 1-9=debug modes)
+    // Updated by pressing number keys 0-9
+    int32_t debugMode = 0;
+
     // Frame timing (for framerate-independent input)
     float deltaTime = 0.0f;  // Seconds since last frame
 

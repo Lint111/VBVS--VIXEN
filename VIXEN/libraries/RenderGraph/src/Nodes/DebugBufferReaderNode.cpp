@@ -99,7 +99,7 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Read samples directly from the capture buffer
+    // Read samples directly from the capture buffer (handles ring buffer ordering)
     uint32_t sampleCount = captureBuffer->ReadSamples(vkDevice);
     if (sampleCount == 0) {
         NODE_LOG_INFO("No debug samples captured this frame for '%s'", debugCapture->GetDebugName().c_str());
@@ -110,8 +110,14 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     samples = captureBuffer->samples;
     totalSamplesInBuffer = sampleCount;
 
-    NODE_LOG_INFO("Read %u debug samples from '%s' (binding %u)",
-                  sampleCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+    // Log ring buffer status
+    if (captureBuffer->HasWrapped()) {
+        NODE_LOG_INFO("Read %u debug samples from '%s' (ring buffer wrapped, %u total writes)",
+                      sampleCount, debugCapture->GetDebugName().c_str(), captureBuffer->GetTotalWrites());
+    } else {
+        NODE_LOG_INFO("Read %u debug samples from '%s' (binding %u)",
+                      sampleCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+    }
 
     // Export if auto-export enabled
     if (autoExport && !samples.empty()) {
