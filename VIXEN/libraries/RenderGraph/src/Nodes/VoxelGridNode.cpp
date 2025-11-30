@@ -220,23 +220,25 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     UploadESVOBuffers(*octreeData, grid);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
-    // Create debug capture buffer for ray traversal analysis
-    constexpr uint32_t DEBUG_SAMPLE_CAPACITY = 2048;
+    // Create ray trace buffer for per-ray traversal capture
+    // Each ray captures up to 64 steps * 48 bytes + 16 byte header = 3088 bytes/ray
+    // 256 rays = ~790KB buffer, reasonable for debug capture
+    constexpr uint32_t RAY_TRACE_CAPACITY = 256;
     constexpr uint32_t DEBUG_BINDING_INDEX = 4;  // Matches shader binding 4
     debugCaptureResource_ = std::make_unique<Debug::DebugCaptureResource>(
         vulkanDevice->device,
         *vulkanDevice->gpu,  // VulkanDevice stores VkPhysicalDevice* as 'gpu'
-        DEBUG_SAMPLE_CAPACITY,
+        RAY_TRACE_CAPACITY,
         "RayTraversal",
         DEBUG_BINDING_INDEX,
         true  // hostVisible for direct readback
     );
 
     if (!debugCaptureResource_->IsValid()) {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create debug capture buffer");
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] WARNING: Failed to create ray trace buffer");
     } else {
-        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created debug capture buffer: " +
-                      std::to_string(DEBUG_SAMPLE_CAPACITY) + " samples, buffer=" +
+        NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] Created ray trace buffer: " +
+                      std::to_string(RAY_TRACE_CAPACITY) + " rays, buffer=" +
                       std::to_string(reinterpret_cast<uint64_t>(debugCaptureResource_->GetBuffer())));
     }
 

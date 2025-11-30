@@ -82,47 +82,29 @@ public:
     void SetOutputPath(const std::string& path) { outputPath = path; }
 
     /**
-     * @brief Set maximum samples to read (0 = all)
+     * @brief Set maximum traces to read (0 = all)
      */
-    void SetMaxSamples(uint32_t max) { maxSamples = max; }
+    void SetMaxTraces(uint32_t max) { maxTraces = max; }
 
     /**
      * @brief Enable/disable automatic export on execute
      */
     void SetAutoExport(bool enable) { autoExport = enable; }
 
-    /**
-     * @brief Set filter function for samples (optional)
-     * Return true to include sample, false to exclude
-     */
-    void SetFilter(std::function<bool(const Debug::DebugRaySample&)> filter) {
-        sampleFilter = filter;
-    }
-
     // =========================================================================
     // Data access
     // =========================================================================
 
     /**
-     * @brief Get the last read samples
+     * @brief Get the last read ray traces
      */
-    const std::vector<Debug::DebugRaySample>& GetSamples() const { return samples; }
+    const std::vector<Debug::RayTrace>& GetRayTraces() const { return rayTraces; }
 
     /**
-     * @brief Get samples filtered by octant mask
+     * @brief Get ray traces that hit vs missed
      */
-    std::vector<Debug::DebugRaySample> GetSamplesByOctant(uint32_t octantMask) const;
-
-    /**
-     * @brief Get samples filtered by exit code
-     */
-    std::vector<Debug::DebugRaySample> GetSamplesByExitCode(Debug::DebugExitCode code) const;
-
-    /**
-     * @brief Get samples that hit vs missed
-     */
-    std::vector<Debug::DebugRaySample> GetHitSamples() const;
-    std::vector<Debug::DebugRaySample> GetMissSamples() const;
+    std::vector<Debug::RayTrace> GetHitTraces() const;
+    std::vector<Debug::RayTrace> GetMissTraces() const;
 
     /**
      * @brief Print summary statistics
@@ -138,22 +120,20 @@ protected:
 private:
 
     // Export
-    void ExportSamples();
+    void ExportRayTraces();
     void ExportToConsole();
     void ExportToCSV();
     void ExportToJSON();
 
     // Configuration
     DebugExportFormat exportFormat = DebugExportFormat::Console;
-    std::string outputPath = "debug_ray_samples";
-    uint32_t maxSamples = 1000;
+    std::string outputPath = "debug_ray_traces";
+    uint32_t maxTraces = 100;
     bool autoExport = true;
-    std::function<bool(const Debug::DebugRaySample&)> sampleFilter;
-
 
     // Data
-    std::vector<Debug::DebugRaySample> samples;
-    uint32_t totalSamplesInBuffer = 0;
+    std::vector<Debug::RayTrace> rayTraces;
+    uint32_t totalTracesInBuffer = 0;
 };
 
 } // namespace Vixen::RenderGraph

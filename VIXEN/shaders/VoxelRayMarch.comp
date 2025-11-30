@@ -32,7 +32,7 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
-// NOTE: Debug capture buffer is declared after DebugRaySample struct (see below)
+// NOTE: Ray trace buffer is declared after TraceStep/RayTraceHeader structs (see below)
 
 // ============================================================================
 // CONSTANTS - MUST MATCH C++ LaineKarrasOctree.h
@@ -74,58 +74,15 @@ const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel dete
 // Debug: set to 1 to highlight axis-parallel rays (rayDir component < epsilon)
 #define DEBUG_AXIS_PARALLEL 0
 
-// Debug: set to 1 to capture per-ray traversal data into RW buffer
-#define DEBUG_CAPTURE_RAY_DATA 1
-
-// Grid spacing for debug samples - captures one ray every N pixels in each dimension
-// E.g., 64 means capture a grid of (width/64) x (height/64) samples
-#define DEBUG_GRID_SPACING 64
-
-struct DebugRaySample {
-    uvec2 pixel;          // offset 0 (8 bytes)
-    uint octantMask;      // offset 8
-    uint hitFlag;         // offset 12
-    uint exitCode;        // offset 16
-    uint lastStepMask;    // offset 20
-    uint iterationCount;  // offset 24
-    int scale;            // offset 28
-    uint stateIdx;        // offset 32
-    float tMin;           // offset 36
-    float tMax;           // offset 40
-    float scaleExp2;      // offset 44
-    float reserved0;      // offset 48
-    float _padding1;      // offset 52 (explicit padding for vec3 alignment)
-    float _padding2;      // offset 56
-    float _padding3;      // offset 60
-    vec3 posMirrored;     // offset 64 (16-byte aligned)
-    float reserved1;      // offset 76
-    vec3 localNorm;       // offset 80 (already 16-byte aligned)
-    float reserved2;      // offset 92
-    vec3 rayDir;          // offset 96 (already 16-byte aligned)
-    float reserved3;      // offset 108
-    // Total: 112 bytes
-};
-
-// Debug capture buffer - always declared for SDI reflection, but only written when DEBUG_CAPTURE_RAY_DATA=1
-layout(std430, binding = 4) buffer DebugCaptureBuffer {
-    uint debugWriteIndex;
-    uint debugCapacity;
-    DebugRaySample debugSamples[];
-};
-
-const uint DEBUG_EXIT_NONE = 0u;
-const uint DEBUG_EXIT_HIT = 1u;
-const uint DEBUG_EXIT_NO_HIT = 2u;
-const uint DEBUG_EXIT_STACK = 3u;
-const uint DEBUG_EXIT_INVALID_SPAN = 4u;
-
 // ============================================================================
 // PER-RAY TRAVERSAL DEBUG CAPTURE (Full path trace)
 // ============================================================================
 // Captures every step of ray traversal: PUSH/ADVANCE/POP in octree, brick entry/exit
-// Use DEBUG_TRACE_RAY_PATH=1 to enable (more expensive than point sampling)
+// This replaces the old point-sample debug capture with full path tracing
 
-#define DEBUG_TRACE_RAY_PATH 0  // Set to 1 to capture full traversal paths
+// Grid spacing for debug samples - captures one ray every N pixels in each dimension
+// E.g., 64 means capture a grid of (width/64) x (height/64) samples
+#define DEBUG_GRID_SPACING 64
 #define MAX_TRACE_STEPS 64      // Max steps per traced ray
 
 // Step types for traversal trace
@@ -138,7 +95,7 @@ const uint TRACE_STEP_BRICK_EXIT = 5u;  // Exited brick without hit
 const uint TRACE_STEP_HIT = 6u;         // Found solid voxel
 const uint TRACE_STEP_MISS = 7u;        // Exited octree without hit
 
-// Per-step trace record (must match C++ exactly - std430 layout)
+// Per-step trace record (must match C++ exactly - std430 layout, 48 bytes)
 struct TraceStep {
     uint stepType;        // TRACE_STEP_* constant
     uint nodeIndex;       // Current octree node index
@@ -152,24 +109,53 @@ struct TraceStep {
     uint _padding;        // Align to 48 bytes
 };
 
-// Per-ray trace header
+// Per-ray trace header (16 bytes)
 struct RayTraceHeader {
     uvec2 pixel;          // Pixel coordinates
     uint stepCount;       // Number of steps recorded
     uint flags;           // Bit 0: hit, Bit 1: overflow (more than MAX_TRACE_STEPS)
 };
 
-// Trace buffer layout (binding 5):
-// [RayTraceHeader][TraceStep x MAX_TRACE_STEPS] per sampled ray
-// Total rays = (width/DEBUG_GRID_SPACING) * (height/DEBUG_GRID_SPACING)
-#if DEBUG_TRACE_RAY_PATH
-layout(std430, binding = 5) buffer RayTraceBuffer {
-    uint traceWriteIndex;     // Next ray slot to write
+// Trace buffer at binding 4 (replaces old DebugCaptureBuffer)
+// Layout: [header: writeIndex, capacity, padding] then [ray data...]
+// Each ray: [RayTraceHeader][TraceStep * MAX_TRACE_STEPS]
+layout(std430, binding = 4) buffer RayTraceBuffer {
+    uint traceWriteIndex;     // Next ray slot to write (atomic)
     uint traceCapacity;       // Max rays (not steps)
+    uint _padding[2];         // Align to 16 bytes
     // Data follows: for each ray, [RayTraceHeader][TraceStep * MAX_TRACE_STEPS]
     uint traceData[];
 };
-#endif
+
+// ============================================================================
+// DEBUG VISUALIZATION STATE (local struct, not a buffer)
+// ============================================================================
+// Used for in-shader debug visualization modes (keys 1-9)
+// This is NOT written to a buffer - it's just passed through traverseOctree
+
+struct DebugRaySample {
+    uvec2 pixel;          // Pixel coordinates
+    uint octantMask;      // Ray octant mask
+    uint hitFlag;         // 1 if hit, 0 if miss
+    uint exitCode;        // Exit reason
+    uint lastStepMask;    // Last step direction mask
+    uint iterationCount;  // Total iterations
+    int scale;            // Final ESVO scale
+    uint stateIdx;        // Final state index
+    float tMin;           // Final t_min
+    float tMax;           // Final t_max
+    float scaleExp2;      // Final scale_exp2
+    vec3 posMirrored;     // Final position in mirrored space
+    vec3 localNorm;       // Computed local normal
+    vec3 rayDir;          // Ray direction
+};
+
+// Exit code constants
+const uint DEBUG_EXIT_NONE = 0u;
+const uint DEBUG_EXIT_HIT = 1u;
+const uint DEBUG_EXIT_NO_HIT = 2u;
+const uint DEBUG_EXIT_STACK = 3u;
+const uint DEBUG_EXIT_INVALID_SPAN = 4u;
 
 // Scale mapping: Convert between user scale and ESVO internal scale
 // For depth 7: userScales [0-6] map to esvoScales [16-22]
@@ -275,8 +261,8 @@ vec3 computeLocalNorm(vec3 mirroredPos, float octantSize, int octantMask) {
     return clamp(localPos - vec3(1.0), vec3(0.0), vec3(1.0));
 }
 
+// Snapshot traversal state for debug visualization (local struct, not buffer)
 void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout DebugRaySample info) {
-#if DEBUG_CAPTURE_RAY_DATA
     info.scale = state.scale;
     info.stateIdx = uint(max(state.idx, 0));
     info.tMin = state.t_min;
@@ -284,33 +270,17 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
     info.scaleExp2 = state.scale_exp2;
     info.posMirrored = state.pos;
     info.localNorm = computeLocalNorm(state.pos, state.scale_exp2, coef.octant_mask);
-#else
-    // Suppress unused parameter warnings in GLSL (no-op assignments)
-    int _unused = state.scale + coef.octant_mask;
-    info.scale = info.scale;
-#endif
 }
 
-#if DEBUG_CAPTURE_RAY_DATA
+// ============================================================================
+// PER-RAY TRACE RECORDING FUNCTIONS
+// ============================================================================
+
 // Returns true if this pixel should capture debug data (grid-based sampling)
 bool shouldCaptureDebug(ivec2 pixelCoords) {
     return (pixelCoords.x % DEBUG_GRID_SPACING == 0) &&
            (pixelCoords.y % DEBUG_GRID_SPACING == 0);
 }
-
-void writeDebugRaySample(DebugRaySample raySample) {
-    // Ring buffer: atomically increment and wrap around capacity
-    // This allows continuous capture, with oldest samples being overwritten
-    uint writeIndex = atomicAdd(debugWriteIndex, 1u);
-    uint arrayIndex = writeIndex % debugCapacity;
-    debugSamples[arrayIndex] = raySample;
-}
-#endif
-
-// ============================================================================
-// PER-RAY TRACE RECORDING FUNCTIONS
-// ============================================================================
-#if DEBUG_TRACE_RAY_PATH
 
 // Size constants for buffer layout
 const uint TRACE_HEADER_SIZE = 16;   // sizeof(RayTraceHeader) = 4*4 = 16 bytes
@@ -328,22 +298,19 @@ bool beginRayTrace(ivec2 pixelCoords) {
         return false;
     }
 
-    // Allocate a ray slot
+    // Allocate a ray slot (ring buffer style - wraps around)
     uint slot = atomicAdd(traceWriteIndex, 1u);
-    if (slot >= traceCapacity) {
-        g_traceRaySlot = 0xFFFFFFFF;
-        return false;
-    }
+    slot = slot % traceCapacity;  // Wrap around for ring buffer
 
     g_traceRaySlot = slot;
     g_traceStepCount = 0;
 
     // Write header (pixel coords, stepCount will be updated at end)
     uint baseOffset = (slot * TRACE_RAY_SIZE) / 4;  // Convert bytes to uint offset
-    traceData[baseOffset + 0] = pixelCoords.x;
-    traceData[baseOffset + 1] = pixelCoords.y;
-    traceData[baseOffset + 2] = 0;  // stepCount (updated at end)
-    traceData[baseOffset + 3] = 0;  // flags
+    traceData[baseOffset + 0] = uint(pixelCoords.x);
+    traceData[baseOffset + 1] = uint(pixelCoords.y);
+    traceData[baseOffset + 2] = 0u;  // stepCount (updated at end)
+    traceData[baseOffset + 3] = 0u;  // flags
 
     return true;
 }
@@ -371,7 +338,7 @@ void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
     traceData[stepBase + 8] = floatBitsToUint(tMax);
     traceData[stepBase + 9] = childDesc.x;
     traceData[stepBase + 10] = childDesc.y;
-    traceData[stepBase + 11] = 0;  // padding
+    traceData[stepBase + 11] = 0u;  // padding
 
     g_traceStepCount++;
 }
@@ -386,21 +353,13 @@ void endRayTrace(bool hit) {
     uint baseOffset = (g_traceRaySlot * TRACE_RAY_SIZE) / 4;
     traceData[baseOffset + 2] = g_traceStepCount;
 
-    uint flags = 0;
+    uint flags = 0u;
     if (hit) flags |= 1u;
     if (g_traceStepCount >= MAX_TRACE_STEPS) flags |= 2u;  // overflow flag
     traceData[baseOffset + 3] = flags;
 
     g_traceRaySlot = 0xFFFFFFFF;
 }
-
-#else
-// Stub functions when tracing is disabled
-bool beginRayTrace(ivec2 pixelCoords) { return false; }
-void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
-                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {}
-void endRayTrace(bool hit) {}
-#endif
 
 // ============================================================================
 // ESVO DESCRIPTOR HELPERS (Matching SVOTypes.h ChildDescriptor)
@@ -1323,11 +1282,18 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     TraversalState state = initTraversalState(coef, stack, rayStartsInside);
     snapshotTraversalState(state, coef, debugInfo);
 
+    // Begin per-ray trace capture (if enabled and this pixel is sampled)
+    ivec2 pixelCoords = ivec2(debugInfo.pixel);
+    bool isTracing = beginRayTrace(pixelCoords);
+
     // Check for valid initial t-span
     if (state.t_min >= state.t_max) {
         snapshotTraversalState(state, coef, debugInfo);
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
         debugInfo.iterationCount = 0u;
+        recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
+                        state.pos, state.t_min, state.t_max, uvec2(0u));
+        endRayTrace(false);
         return false;
     }
 
@@ -1349,15 +1315,29 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                                isLeaf, tv_max, tx_center, ty_center, tz_center)) {
 
             if (isLeaf) {
+                // Record brick entry trace
+                recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, tv_max, parent_descriptor);
+
                 // Try to hit voxels in this brick
                 if (handleLeafHit(state, coef, rayOrigin, rayDir, gridMin, gridSize,
                                   hitColor, hitNormal, hitT)) {
+                    // Record HIT trace
+                    recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(state.idx),
+                                    state.pos, state.t_min, tv_max, parent_descriptor);
+                    endRayTrace(true);
+
                     snapshotTraversalState(state, coef, debugInfo);
                     debugInfo.hitFlag = 1u;
                     debugInfo.exitCode = DEBUG_EXIT_HIT;
                     debugInfo.iterationCount = uint(iter + 1);
                     return true;
                 }
+
+                // Record brick exit (miss) trace
+                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, tv_max, parent_descriptor);
+
                 // Brick miss - update t_min to skip past empty brick
                 // Fall through to ADVANCE phase to find next brick
                 state.t_min = tv_max;
@@ -1366,6 +1346,11 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                 // Internal node - PUSH & DESCEND
                 executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
                                  tv_max, tx_center, ty_center, tz_center);
+
+                // Record PUSH trace (after state is updated)
+                recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, state.t_max, parent_descriptor);
+
                 snapshotTraversalState(state, coef, debugInfo);
                 continue;
             }
@@ -1374,14 +1359,29 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         // ADVANCE to next sibling
         int step_mask;
         int advanceResult = executeAdvancePhase(state, coef, step_mask);
+
+        // Record ADVANCE trace
+        recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale, uint(state.idx),
+                        state.pos, state.t_min, state.t_max, parent_descriptor);
+
         debugInfo.lastStepMask = uint(step_mask);
         snapshotTraversalState(state, coef, debugInfo);
 
         if (advanceResult == 1) {
             // POP needed
             int popResult = executePopPhase(state, coef, stack, step_mask);
+
+            // Record POP trace (after state is updated)
+            recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale, uint(state.idx),
+                            state.pos, state.t_min, state.t_max, uvec2(0u));
+
             snapshotTraversalState(state, coef, debugInfo);
             if (popResult == 1) {
+                // Record MISS trace for octree exit via POP
+                recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, state.t_max, uvec2(0u));
+                endRayTrace(false);
+
                 debugInfo.exitCode = DEBUG_EXIT_STACK;
                 debugInfo.iterationCount = uint(iter + 1);
                 return false;
@@ -1390,6 +1390,10 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     }
 
     // No hit - hitColor is undefined, caller should use background
+    recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
+                    state.pos, state.t_min, state.t_max, uvec2(0u));
+    endRayTrace(false);
+
     debugInfo.exitCode = DEBUG_EXIT_NO_HIT;
     debugInfo.iterationCount = uint(iter);
     return false;
@@ -1511,12 +1515,6 @@ void main() {
         color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
         // hitT already 0.0 from initialization
     }
-
-#if DEBUG_CAPTURE_RAY_DATA
-    if (shouldCaptureDebug(pixelCoords)) {
-        writeDebugRaySample(debugSample);
-    }
-#endif
 
     // Apply debug visualization if enabled
     if (pc.debugMode > 0) {

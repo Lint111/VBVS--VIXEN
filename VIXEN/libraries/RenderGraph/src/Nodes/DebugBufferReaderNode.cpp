@@ -34,7 +34,7 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
 
     // Read parameters
     outputPath = GetParameterValue<std::string>(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, outputPath);
-    maxSamples = GetParameterValue<uint32_t>(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, maxSamples);
+    maxTraces = GetParameterValue<uint32_t>(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, maxTraces);
     autoExport = GetParameterValue<bool>(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, autoExport);
 
     // Read export format (stored as int for parameter system compatibility)
@@ -42,7 +42,7 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
     exportFormat = static_cast<DebugExportFormat>(formatInt);
 
     NODE_LOG_INFO("  outputPath: %s", outputPath.c_str());
-    NODE_LOG_INFO("  maxSamples: %u", maxSamples);
+    NODE_LOG_INFO("  maxTraces: %u", maxTraces);
     NODE_LOG_INFO("  autoExport: %s", autoExport ? "true" : "false");
     NODE_LOG_INFO("  exportFormat: %d", static_cast<int>(exportFormat));
 }
@@ -99,45 +99,42 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         return;
     }
 
-    // Read samples directly from the capture buffer (handles ring buffer ordering)
-    uint32_t sampleCount = captureBuffer->ReadSamples(vkDevice);
-    if (sampleCount == 0) {
-        NODE_LOG_INFO("No debug samples captured this frame for '%s'", debugCapture->GetDebugName().c_str());
+    // Read ray traces from the capture buffer
+    uint32_t traceCount = captureBuffer->ReadRayTraces(vkDevice);
+    if (traceCount == 0) {
+        NODE_LOG_INFO("No ray traces captured this frame for '%s'", debugCapture->GetDebugName().c_str());
         return;
     }
 
-    // Copy samples to our local storage
-    samples = captureBuffer->samples;
-    totalSamplesInBuffer = sampleCount;
+    // Copy traces to our local storage
+    rayTraces = captureBuffer->rayTraces;
+    totalTracesInBuffer = traceCount;
 
     // Log ring buffer status
     if (captureBuffer->HasWrapped()) {
-        NODE_LOG_INFO("Read %u debug samples from '%s' (ring buffer wrapped, %u total writes)",
-                      sampleCount, debugCapture->GetDebugName().c_str(), captureBuffer->GetTotalWrites());
+        NODE_LOG_INFO("Read %u ray traces from '%s' (ring buffer wrapped, %u total writes)",
+                      traceCount, debugCapture->GetDebugName().c_str(), captureBuffer->GetTotalWrites());
     } else {
-        NODE_LOG_INFO("Read %u debug samples from '%s' (binding %u)",
-                      sampleCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
+        NODE_LOG_INFO("Read %u ray traces from '%s' (binding %u)",
+                      traceCount, debugCapture->GetDebugName().c_str(), debugCapture->GetBindingIndex());
     }
 
     // Export if auto-export enabled
-    if (autoExport && !samples.empty()) {
-        ExportSamples();
+    if (autoExport && !rayTraces.empty()) {
+        ExportRayTraces();
     }
 }
 
 void DebugBufferReaderNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::CleanupImpl");
-
-    // Cleanup staging buffer if it exists
-    // Note: Need device handle here - store during Compile
-    samples.clear();
+    rayTraces.clear();
 }
 
 // ============================================================================
 // Export
 // ============================================================================
 
-void DebugBufferReaderNode::ExportSamples() {
+void DebugBufferReaderNode::ExportRayTraces() {
     switch (exportFormat) {
         case DebugExportFormat::Console:
             ExportToConsole();
@@ -157,25 +154,17 @@ void DebugBufferReaderNode::ExportSamples() {
 }
 
 void DebugBufferReaderNode::ExportToConsole() {
-    NODE_LOG_INFO("=== Debug Ray Samples ===");
-    NODE_LOG_INFO("Total samples: %zu", samples.size());
-
-    // Apply filter if set
-    std::vector<Debug::DebugRaySample> filtered;
-    if (sampleFilter) {
-        std::copy_if(samples.begin(), samples.end(), std::back_inserter(filtered), sampleFilter);
-    } else {
-        filtered = samples;
-    }
+    NODE_LOG_INFO("=== Ray Traces ===");
+    NODE_LOG_INFO("Total traces: %zu", rayTraces.size());
 
     // Limit output
-    size_t count = std::min(static_cast<size_t>(maxSamples), filtered.size());
+    size_t count = std::min(static_cast<size_t>(maxTraces), rayTraces.size());
     for (size_t i = 0; i < count; ++i) {
-        printf("[%zu] %s\n", i, filtered[i].ToString().c_str());
+        printf("%s\n", rayTraces[i].ToString().c_str());
     }
 
-    if (filtered.size() > count) {
-        printf("... and %zu more samples\n", filtered.size() - count);
+    if (rayTraces.size() > count) {
+        printf("... and %zu more traces\n", rayTraces.size() - count);
     }
 
     PrintSummary();
@@ -183,126 +172,86 @@ void DebugBufferReaderNode::ExportToConsole() {
 
 void DebugBufferReaderNode::ExportToCSV() {
     std::string filename = outputPath + ".csv";
-
-    // Apply filter
-    std::vector<Debug::DebugRaySample> filtered;
-    if (sampleFilter) {
-        std::copy_if(samples.begin(), samples.end(), std::back_inserter(filtered), sampleFilter);
-    } else {
-        filtered = samples;
-    }
-
-    if (Debug::DebugExporter::ToCSVFile(filtered, filename)) {
-        NODE_LOG_INFO("Exported %zu samples to %s", filtered.size(), filename.c_str());
-    } else {
-        NODE_LOG_ERROR("Failed to export to %s", filename.c_str());
-    }
+    NODE_LOG_INFO("CSV export for ray traces not yet implemented: %s", filename.c_str());
+    // TODO: Implement CSV export for ray traces
 }
 
 void DebugBufferReaderNode::ExportToJSON() {
     std::string filename = outputPath + ".json";
-
-    // Apply filter
-    std::vector<Debug::DebugRaySample> filtered;
-    if (sampleFilter) {
-        std::copy_if(samples.begin(), samples.end(), std::back_inserter(filtered), sampleFilter);
-    } else {
-        filtered = samples;
-    }
-
-    if (Debug::DebugExporter::ToJSONFile(filtered, filename)) {
-        NODE_LOG_INFO("Exported %zu samples to %s", filtered.size(), filename.c_str());
-    } else {
-        NODE_LOG_ERROR("Failed to export to %s", filename.c_str());
-    }
+    NODE_LOG_INFO("JSON export for ray traces not yet implemented: %s", filename.c_str());
+    // TODO: Implement JSON export for ray traces
 }
 
 // ============================================================================
 // Filtering
 // ============================================================================
 
-std::vector<Debug::DebugRaySample> DebugBufferReaderNode::GetSamplesByOctant(uint32_t octantMask) const {
-    std::vector<Debug::DebugRaySample> result;
-    std::copy_if(samples.begin(), samples.end(), std::back_inserter(result),
-        [octantMask](const Debug::DebugRaySample& s) { return s.octantMask == octantMask; });
+std::vector<Debug::RayTrace> DebugBufferReaderNode::GetHitTraces() const {
+    std::vector<Debug::RayTrace> result;
+    std::copy_if(rayTraces.begin(), rayTraces.end(), std::back_inserter(result),
+        [](const Debug::RayTrace& t) { return t.header.IsHit(); });
     return result;
 }
 
-std::vector<Debug::DebugRaySample> DebugBufferReaderNode::GetSamplesByExitCode(Debug::DebugExitCode code) const {
-    std::vector<Debug::DebugRaySample> result;
-    std::copy_if(samples.begin(), samples.end(), std::back_inserter(result),
-        [code](const Debug::DebugRaySample& s) { return s.GetExitCode() == code; });
-    return result;
-}
-
-std::vector<Debug::DebugRaySample> DebugBufferReaderNode::GetHitSamples() const {
-    std::vector<Debug::DebugRaySample> result;
-    std::copy_if(samples.begin(), samples.end(), std::back_inserter(result),
-        [](const Debug::DebugRaySample& s) { return s.IsHit(); });
-    return result;
-}
-
-std::vector<Debug::DebugRaySample> DebugBufferReaderNode::GetMissSamples() const {
-    std::vector<Debug::DebugRaySample> result;
-    std::copy_if(samples.begin(), samples.end(), std::back_inserter(result),
-        [](const Debug::DebugRaySample& s) { return !s.IsHit(); });
+std::vector<Debug::RayTrace> DebugBufferReaderNode::GetMissTraces() const {
+    std::vector<Debug::RayTrace> result;
+    std::copy_if(rayTraces.begin(), rayTraces.end(), std::back_inserter(result),
+        [](const Debug::RayTrace& t) { return !t.header.IsHit(); });
     return result;
 }
 
 void DebugBufferReaderNode::PrintSummary() const {
-    if (samples.empty()) {
-        printf("No samples captured\n");
+    if (rayTraces.empty()) {
+        printf("No traces captured\n");
         return;
     }
 
     printf("\n=== Summary ===\n");
-    printf("Total samples: %zu\n", samples.size());
+    printf("Total traces: %zu\n", rayTraces.size());
 
-    // Count by exit code
-    std::array<size_t, 5> exitCounts{};
-    for (const auto& s : samples) {
-        if (s.exitCode < 5) exitCounts[s.exitCode]++;
+    // Count hits and misses
+    size_t hits = 0, misses = 0;
+    uint32_t minSteps = UINT32_MAX, maxSteps = 0;
+    uint64_t totalSteps = 0;
+    size_t overflows = 0;
+
+    for (const auto& trace : rayTraces) {
+        if (trace.header.IsHit()) hits++;
+        else misses++;
+
+        if (trace.header.HasOverflow()) overflows++;
+
+        uint32_t steps = trace.header.stepCount;
+        minSteps = std::min(minSteps, steps);
+        maxSteps = std::max(maxSteps, steps);
+        totalSteps += steps;
     }
 
-    printf("Exit codes:\n");
-    printf("  NONE: %zu\n", exitCounts[0]);
-    printf("  HIT: %zu\n", exitCounts[1]);
-    printf("  NO_HIT: %zu\n", exitCounts[2]);
-    printf("  STACK_EXIT: %zu\n", exitCounts[3]);
-    printf("  INVALID_SPAN: %zu\n", exitCounts[4]);
-
-    // Count by octant mask
-    std::array<size_t, 8> octantCounts{};
-    for (const auto& s : samples) {
-        if (s.octantMask < 8) octantCounts[s.octantMask]++;
+    printf("Hits: %zu (%.1f%%)\n", hits, 100.0 * hits / rayTraces.size());
+    printf("Misses: %zu (%.1f%%)\n", misses, 100.0 * misses / rayTraces.size());
+    printf("Steps: min=%u, max=%u, avg=%.1f\n",
+           minSteps, maxSteps, static_cast<double>(totalSteps) / rayTraces.size());
+    if (overflows > 0) {
+        printf("Overflows (>64 steps): %zu\n", overflows);
     }
 
-    printf("Octant masks:\n");
-    for (int i = 0; i < 8; ++i) {
-        if (octantCounts[i] > 0) {
-            printf("  %d: %zu (%.1f%%)\n", i, octantCounts[i],
-                   100.0 * octantCounts[i] / samples.size());
+    // Count step types
+    std::array<size_t, 8> stepTypeCounts{};
+    for (const auto& trace : rayTraces) {
+        for (const auto& step : trace.steps) {
+            if (step.stepType < 8) {
+                stepTypeCounts[step.stepType]++;
+            }
         }
     }
 
-    // Check for octant_mask correctness
-    size_t correctMasks = 0;
-    for (const auto& s : samples) {
-        if (s.IsOctantMaskCorrect()) correctMasks++;
+    printf("Step types:\n");
+    const char* stepNames[] = {"PUSH", "ADVANCE", "POP", "BRICK_ENTER", "BRICK_DDA", "BRICK_EXIT", "HIT", "MISS"};
+    for (size_t i = 0; i < 8; ++i) {
+        if (stepTypeCounts[i] > 0) {
+            printf("  %s: %zu\n", stepNames[i], stepTypeCounts[i]);
+        }
     }
-    printf("Octant mask correctness: %zu / %zu (%.1f%%)\n",
-           correctMasks, samples.size(), 100.0 * correctMasks / samples.size());
-
-    // Iteration stats
-    uint32_t minIter = UINT32_MAX, maxIter = 0;
-    uint64_t totalIter = 0;
-    for (const auto& s : samples) {
-        minIter = std::min(minIter, s.iterationCount);
-        maxIter = std::max(maxIter, s.iterationCount);
-        totalIter += s.iterationCount;
-    }
-    printf("Iterations: min=%u, max=%u, avg=%.1f\n",
-           minIter, maxIter, static_cast<double>(totalIter) / samples.size());
 }
 
 } // namespace Vixen::RenderGraph
