@@ -131,6 +131,9 @@ private:
     uint32_t maxTraces = 100;
     bool autoExport = true;
 
+    uint32_t framesPerExport = 1000;
+    uint32_t frameCounter = 0;
+
     // Data
     std::vector<Debug::RayTrace> rayTraces;
     uint32_t totalTracesInBuffer = 0;

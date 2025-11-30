@@ -39,6 +39,7 @@ void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
     outputPath = GetParameterValue<std::string>(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, outputPath);
     maxTraces = GetParameterValue<uint32_t>(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, maxTraces);
     autoExport = GetParameterValue<bool>(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, autoExport);
+    framesPerExport = GetParameterValue<uint32_t>(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, framesPerExport);
 
     // Read export format (stored as int for parameter system compatibility)
     auto formatInt = GetParameterValue<int>(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(exportFormat));
@@ -68,6 +69,11 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
         NODE_LOG_ERROR("No VulkanDevice available");
         return;
     }
+
+    if(frameCounter++ < framesPerExport - 1) {
+        return;
+    }
+    frameCounter = 0;
 
     VkDevice vkDevice = GetDevice()->device;
 

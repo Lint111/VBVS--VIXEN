@@ -705,8 +705,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Enable camera logger to debug position
     if (auto* cameraLogger = camera->GetLogger()) {
-        cameraLogger->SetEnabled(true);
-        cameraLogger->SetTerminalOutput(true);
+        cameraLogger->SetEnabled(false);
+        cameraLogger->SetTerminalOutput(false);
     }
 
     camera->SetParameter(CameraNodeConfig::PARAM_FOV, 45.0f);
@@ -761,21 +761,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // Enable logging for descriptor gatherer to debug bindings
     auto* descGatherer = static_cast<DescriptorResourceGathererNode*>(renderGraph->GetInstance(descriptorGatherer));
     if (auto* gathererLogger = descGatherer->GetLogger()) {
-        gathererLogger->SetEnabled(true);
-        gathererLogger->SetTerminalOutput(true);
+        gathererLogger->SetEnabled(false);  // Enable to debug descriptor bindings
+        gathererLogger->SetTerminalOutput(false);
     }
 
     // Enable logging for compute dispatch to see execution
     if (auto* dispatchLogger = dispatch->GetLogger()) {
-        dispatchLogger->SetEnabled(true);
-        dispatchLogger->SetTerminalOutput(true);
+        dispatchLogger->SetEnabled(false);
+        dispatchLogger->SetTerminalOutput(false);
     }
 
     // Enable logging for push constant gatherer to see packing
     auto* pcGatherer = static_cast<PushConstantGathererNode*>(renderGraph->GetInstance(pushConstantGatherer));
     if (auto* pcLogger = pcGatherer->GetLogger()) {
-        pcLogger->SetEnabled(true);
-        pcLogger->SetTerminalOutput(true);
+        pcLogger->SetEnabled(false);
+        pcLogger->SetTerminalOutput(false);
     }
 
     auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
@@ -783,6 +783,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(DebugExportFormat::JSON));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries/compute_debug_output"));
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 1000u);
     if (auto* debugLogger = debugCapture->GetLogger()) {
         debugLogger->SetEnabled(true);
         debugLogger->SetTerminalOutput(true);
@@ -1125,6 +1126,11 @@ void VulkanGraphApplication::BuildRenderGraph() {
     // TODO: Add VoxelRayMarch::octreeConfig to VoxelRayMarchNames.h after regenerating SDI
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 6: brickBaseIndex (SSBO) - per-node sparse brick base index
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER,
+                          descriptorGatherer, 6,  // Binding 6 (hardcoded until SDI regenerated)
                           SlotRole::Dependency | SlotRole::Execute);
 
     // Swapchain connections to descriptor set and dispatch

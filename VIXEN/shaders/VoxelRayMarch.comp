@@ -1186,9 +1186,10 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // STEP 1: Verify we're at brick-parent scale
     // ============================================================================
     int brickESVOScale = getBrickESVOScale();
-    if (state.scale != brickESVOScale) {
-        return false;
-    }
+    // DEBUG: Skip scale check to see if we're getting hits at other scales
+    // if (state.scale != brickESVOScale) {
+    //     return false;
+    // }
 
     // ============================================================================
     // STEP 2: Convert mirrored octant index to local-space for descriptor lookup
@@ -1199,6 +1200,11 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // STEP 3: Verify this child exists and is a leaf
     // ============================================================================
     if (!childExists(validMask, localChildIdx) || !childIsLeaf(leafMask, localChildIdx)) {
+        // DEBUG: Show magenta for "child not valid or not leaf"
+        // hitColor = vec3(1.0, 0.0, 1.0);
+        // hitNormal = vec3(0.0, 1.0, 0.0);
+        // hitT = state.t_min;
+        // return true;
         return false;  // No brick at this octant
     }
 
@@ -1207,7 +1213,12 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // ============================================================================
     uint baseIndex = brickBaseIndex[parentNodeIndex];
     if (baseIndex == 0xFFFFFFFFu) {
-        return false;  // Node has no bricks
+        // DEBUG: Show cyan for "no brickBaseIndex"
+        hitColor = vec3(0.0, 1.0, 1.0);
+        hitNormal = vec3(0.0, 1.0, 0.0);
+        hitT = state.t_min;
+        return true;
+        // return false;  // Node has no bricks
     }
 
     // Count leaf children before this one to get offset

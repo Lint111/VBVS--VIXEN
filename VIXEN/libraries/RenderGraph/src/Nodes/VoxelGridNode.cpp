@@ -1084,6 +1084,8 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
 
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Building sparse brick data from "
               << brickViews.size() << " brick views (bricksPerAxis=" << bricksPerAxis << ")" << std::endl;
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] leafToBrickView has "
+              << rootBlock.leafToBrickView.size() << " entries" << std::endl;
 
     // ============================================================================
     // Step 1: Build sparse brickData from brickViews
@@ -1148,70 +1150,43 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
     // ============================================================================
     // Step 2: Compute brickBaseIndex per node
     // ============================================================================
-    // For each node at brickESVOScale (scale 20), compute the base index into
-    // the sparse brick array. Leaf children of that node can then be found via:
-    //   brickIndex = brickBaseIndex[nodeId] + countLeavesBefore(validMask, leafMask, octant)
+    // IMPORTANT: The shader forces isLeaf=true for ALL children at brickESVOScale,
+    // regardless of the descriptor's leafMask. This means we need brickBaseIndex
+    // for ALL nodes, not just those with leafMask set.
     //
-    // We use the leafToBrickView mapping from the octree to connect ESVO topology
-    // to the sparse brick array.
+    // We use the leafToBrickView mapping which maps (nodeIndex, octant) -> brickViewIndex
+    // for actual leaf children. For non-leaf children at scale 20, we need a different approach.
 
     std::vector<uint32_t> brickBaseIndex(childDescriptors.size(), 0xFFFFFFFFu);
+    size_t nodesWithBricks = 0;
 
-    // For correct mapping, we need to iterate nodes that have leaves
-    // and count how many leaf children precede each one
-    size_t nodesWithLeaves = 0;
+    // Iterate over ALL entries in leafToBrickView to populate brickBaseIndex
+    // The map key is (nodeIndex << 3) | octant, value is brickViewIndex
+    for (const auto& [key, brickViewIdx] : rootBlock.leafToBrickView) {
+        uint32_t nodeIdx = static_cast<uint32_t>(key >> 3);
+        uint32_t octant = static_cast<uint32_t>(key & 7);
 
-    for (size_t nodeIdx = 0; nodeIdx < childDescriptors.size(); ++nodeIdx) {
+        if (nodeIdx >= childDescriptors.size()) continue;
+
         const auto& desc = childDescriptors[nodeIdx];
 
-        // Only nodes with leaf children need a base index
-        if (desc.leafMask == 0) {
-            continue;
-        }
+        // Compute base index: brickViewIdx - countLeavesBefore(octant)
+        // This way: brickIndex = base + countLeavesBefore(validMask, leafMask, targetOctant) = brickViewIdx for targetOctant
+        uint8_t leafChildren = desc.validMask & desc.leafMask;
+        uint32_t leavesBefore = std::popcount(static_cast<uint8_t>(leafChildren & ((1u << octant) - 1)));
 
-        // Find first leaf child's brick view to determine base index
-        // Look up using leafToBrickView mapping
-        bool foundFirst = false;
-        uint32_t baseIndex = 0xFFFFFFFFu;
+        uint32_t computedBase = brickViewIdx - leavesBefore;
 
-        for (int octant = 0; octant < 8 && !foundFirst; ++octant) {
-            if ((desc.validMask & (1 << octant)) != 0 && (desc.leafMask & (1 << octant)) != 0) {
-                // This is a leaf child - look up its brick view
-                uint64_t key = (static_cast<uint64_t>(nodeIdx) << 3) | static_cast<uint64_t>(octant);
-                auto it = rootBlock.leafToBrickView.find(key);
-                if (it != rootBlock.leafToBrickView.end()) {
-                    // Found brick view - its index IS the sparse brick index
-                    // since we built sparseBrickData in brickViews order
-                    baseIndex = it->second;
-                    foundFirst = true;
-                }
-            }
-        }
-
-        if (foundFirst) {
-            // Adjust base index by subtracting the number of leaves before the first leaf
-            // This way: brickIndex = baseIndex + countLeavesBefore(validMask, leafMask, octant)
-            // equals the actual sparse brick index for that leaf
-            int firstLeafOctant = -1;
-            for (int octant = 0; octant < 8; ++octant) {
-                if ((desc.validMask & (1 << octant)) != 0 && (desc.leafMask & (1 << octant)) != 0) {
-                    firstLeafOctant = octant;
-                    break;
-                }
-            }
-
-            if (firstLeafOctant >= 0) {
-                // Count leaves before first leaf octant (should be 0)
-                uint8_t leafChildren = desc.validMask & desc.leafMask;
-                uint32_t leavesBefore = std::popcount(static_cast<uint8_t>(leafChildren & ((1u << firstLeafOctant) - 1)));
-                brickBaseIndex[nodeIdx] = baseIndex - leavesBefore;
-                nodesWithLeaves++;
-            }
+        // Only set if not already set, or verify consistency
+        if (brickBaseIndex[nodeIdx] == 0xFFFFFFFFu) {
+            brickBaseIndex[nodeIdx] = computedBase;
+            nodesWithBricks++;
         }
     }
 
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Computed brickBaseIndex for "
-              << nodesWithLeaves << " nodes with leaves" << std::endl;
+              << nodesWithBricks << " nodes from leafToBrickView ("
+              << rootBlock.leafToBrickView.size() << " entries)" << std::endl;
 
     // Debug: Print first few base indices
     int printedBases = 0;
@@ -1531,7 +1506,7 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
 
     NODE_LOG_INFO("Uploaded ESVO buffers to GPU (sparse brick architecture)");
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
-              << nextSparseBrickIndex << ", base indices: " << nodesWithLeaves << std::endl;
+              << nextSparseBrickIndex << ", base indices: " << nodesWithBricks << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

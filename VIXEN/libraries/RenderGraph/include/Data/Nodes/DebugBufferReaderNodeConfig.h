@@ -74,6 +74,7 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
     static constexpr const char* PARAM_MAX_SAMPLES = "max_samples";
     static constexpr const char* PARAM_EXPORT_FORMAT = "export_format";  // "console", "csv", "json", "all"
     static constexpr const char* PARAM_AUTO_EXPORT = "auto_export";
+    static constexpr const char* PARAM_FRAMES_PER_EXPORT = "frames_per_export";
 
     // Constructor for runtime descriptor initialization
     DebugBufferReaderNodeConfig() {
