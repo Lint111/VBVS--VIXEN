@@ -156,6 +156,17 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
     ctx.Out(DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES, resourceArray_);
     ctx.Out(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE_OUT, shaderBundle);
 
+    // Extract and output first debug capture for downstream debug reader nodes
+    Debug::IDebugCapture* firstDebugCapture = nullptr;
+    for (const auto& entry : resourceArray_) {
+        if (entry.debugCapture != nullptr) {
+            firstDebugCapture = entry.debugCapture;
+            NODE_LOG_INFO("[DescriptorResourceGathererNode::Compile] Outputting debug capture: " + firstDebugCapture->GetDebugName());
+            break;
+        }
+    }
+    ctx.Out(DescriptorResourceGathererNodeConfig::DEBUG_CAPTURE, firstDebugCapture);
+
     NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Output DESCRIPTOR_RESOURCES with " + std::to_string(resourceArray_.size()) + " entries");
     if (debugCaptureCount > 0) {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] " + std::to_string(debugCaptureCount) + " entries have debug capture interfaces");
@@ -238,6 +249,16 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
     } else {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] No Execute-role resources found - skipping output");
     }
+
+    // Always output debug capture (it may be needed per-frame for readback after dispatch)
+    Debug::IDebugCapture* firstDebugCapture = nullptr;
+    for (const auto& entry : resourceArray_) {
+        if (entry.debugCapture != nullptr) {
+            firstDebugCapture = entry.debugCapture;
+            break;
+        }
+    }
+    ctx.Out(DescriptorResourceGathererNodeConfig::DEBUG_CAPTURE, firstDebugCapture);
 }
 
 void DescriptorResourceGathererNode::CleanupImpl(VariadicCleanupContext& ctx) {

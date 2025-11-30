@@ -7,7 +7,14 @@ namespace ShaderManagement {
     struct ShaderDataBundle;
 }
 
+// Forward declare IDebugCapture for output slot
+namespace Vixen::RenderGraph::Debug {
+    class IDebugCapture;
+}
+
 namespace Vixen::RenderGraph {
+
+using IDebugCapture = Debug::IDebugCapture;
 
 /**
  * @brief Configuration for DescriptorResourceGathererNode
@@ -37,7 +44,7 @@ namespace Vixen::RenderGraph {
 // Compile-time slot counts
 namespace DescriptorResourceGathererNodeCounts {
     static constexpr size_t INPUTS = 1;   // SHADER_DATA_BUNDLE (+ dynamic variadic resources)
-    static constexpr size_t OUTPUTS = 2;  // DESCRIPTOR_RESOURCES array (with embedded slotRole + debugCapture) + SHADER_DATA_BUNDLE_OUT
+    static constexpr size_t OUTPUTS = 3;  // DESCRIPTOR_RESOURCES, SHADER_DATA_BUNDLE_OUT, DEBUG_CAPTURE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -53,7 +60,7 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // ===== OUTPUTS (2) =====
+    // ===== OUTPUTS (3) =====
     // Resource entries include handle + slotRole + optional debug capture metadata
     OUTPUT_SLOT(DESCRIPTOR_RESOURCES, std::vector<DescriptorResourceEntry>, 0,
         SlotNullability::Required,
@@ -61,6 +68,11 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
 
     OUTPUT_SLOT(SHADER_DATA_BUNDLE_OUT, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 1,
         SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    // First debug capture found in resources (for downstream debug reader nodes)
+    OUTPUT_SLOT(DEBUG_CAPTURE, IDebugCapture*, 2,
+        SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
     DescriptorResourceGathererNodeConfig() {
@@ -77,6 +89,10 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
 
         INIT_OUTPUT_DESC(SHADER_DATA_BUNDLE_OUT, "shader_data_bundle_out",
             ResourceLifetime::Persistent, shaderDataBundleDesc);
+
+        HandleDescriptor debugCaptureDesc{"IDebugCapture*"};
+        INIT_OUTPUT_DESC(DEBUG_CAPTURE, "debug_capture",
+            ResourceLifetime::Transient, debugCaptureDesc);
     }
 
     // Automated config validation
@@ -91,9 +107,13 @@ CONSTEXPR_NODE_CONFIG(DescriptorResourceGathererNodeConfig,
     static_assert(SHADER_DATA_BUNDLE_OUT_Slot::index == 1, "SHADER_DATA_BUNDLE_OUT must be at index 1");
     static_assert(!SHADER_DATA_BUNDLE_OUT_Slot::nullable, "SHADER_DATA_BUNDLE_OUT is required");
 
+    static_assert(DEBUG_CAPTURE_Slot::index == 2, "DEBUG_CAPTURE must be at index 2");
+    static_assert(DEBUG_CAPTURE_Slot::nullable, "DEBUG_CAPTURE is optional");
+
     // Type validations
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
     static_assert(std::is_same_v<DESCRIPTOR_RESOURCES_Slot::Type, std::vector<DescriptorResourceEntry>>);
     static_assert(std::is_same_v<SHADER_DATA_BUNDLE_OUT_Slot::Type, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&>);
+    static_assert(std::is_same_v<DEBUG_CAPTURE_Slot::Type, IDebugCapture*>);
 };
 } // namespace Vixen::RenderGraph

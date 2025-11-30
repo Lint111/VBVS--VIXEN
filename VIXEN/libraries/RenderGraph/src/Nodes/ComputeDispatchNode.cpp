@@ -4,6 +4,7 @@
 #include "Core/ComputePerformanceLogger.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderDataBundle.h"
+#include "Debug/IDebugCapture.h"  // For debug capture passthrough
 #include "Core/NodeLogging.h"
 #include <stdexcept>
 #include <chrono>
@@ -202,6 +203,17 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Output semaphore for Present to wait on
     ctx.Out(ComputeDispatchNodeConfig::RENDER_COMPLETE_SEMAPHORE, renderCompleteSemaphore);
+
+    // Pass through debug capture for downstream debug reader nodes
+    // Debug capture input comes from DescriptorResourceGathererNode
+    Debug::IDebugCapture* debugCapture = ctx.In(ComputeDispatchNodeConfig::DEBUG_CAPTURE);
+    ctx.Out(ComputeDispatchNodeConfig::DEBUG_CAPTURE_OUT, debugCapture);
+    if (debugCapture) {
+        static int debugLogCount = 0;
+        if (debugLogCount++ < 3) {
+            NODE_LOG_INFO("[ComputeDispatchNode] Passing through debug capture: " + debugCapture->GetDebugName());
+        }
+    }
 }
 
 // ============================================================================

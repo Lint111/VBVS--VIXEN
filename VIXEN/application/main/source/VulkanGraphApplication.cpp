@@ -978,11 +978,14 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   presentNode, PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
 
 
-    // --- ComputeDispatch → DebugBufferReader connections ---
+    // --- Gatherer/ComputeDispatch → DebugBufferReader connections ---
     batch.Connect(deviceNode, DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   debugCaptureNode, DebugBufferReaderNodeConfig::VULKAN_DEVICE_IN);
     batch.Connect(commandPoolNode, CommandPoolNodeConfig::COMMAND_POOL,
                   debugCaptureNode, DebugBufferReaderNodeConfig::COMMAND_POOL);
+    // Debug capture flows: Gatherer extracts from entries → ComputeDispatch (passthrough) → DebugReader
+    batch.Connect(descriptorGatherer, DescriptorResourceGathererNodeConfig::DEBUG_CAPTURE,
+                  computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE);
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE_OUT,
                   debugCaptureNode, DebugBufferReaderNodeConfig::DEBUG_CAPTURE);
 
