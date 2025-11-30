@@ -2131,6 +2131,33 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 
     std::cout << "[LaineKarrasOctree] Found " << brickCounts.size() << " populated bricks" << std::endl;
 
+    // Debug: Print first 10 populated brick coordinates
+    std::cout << "[LaineKarrasOctree] First 10 populated bricks:" << std::endl;
+    int printCount = 0;
+    for (const auto& [key, count] : brickCounts) {
+        if (printCount >= 10) break;
+        glm::ivec3 coord = fromBrickKey(key);
+        std::cout << "  Brick (" << coord.x << ", " << coord.y << ", " << coord.z
+                  << ") with " << count << " voxels" << std::endl;
+        printCount++;
+    }
+
+    // Check specific bricks that trace showed
+    std::cout << "[LaineKarrasOctree] Checking for specific bricks:" << std::endl;
+    auto checkBrick = [&](int x, int y, int z) {
+        uint64_t key = static_cast<uint64_t>(x) |
+                       (static_cast<uint64_t>(y) << 16) |
+                       (static_cast<uint64_t>(z) << 32);
+        if (brickCounts.count(key)) {
+            std::cout << "  Brick (" << x << ", " << y << ", " << z << ") EXISTS with " << brickCounts[key] << " voxels" << std::endl;
+        } else {
+            std::cout << "  Brick (" << x << ", " << y << ", " << z << ") NOT FOUND" << std::endl;
+        }
+    };
+    checkBrick(5, 7, 13);  // From trace
+    checkBrick(4, 6, 13);  // Nearby
+    checkBrick(0, 7, 13);  // Left wall at same Y,Z
+
     // Step 3: Convert hash map to sorted brick list
     populatedBricks.reserve(brickCounts.size());
     for (const auto& [key, count] : brickCounts) {

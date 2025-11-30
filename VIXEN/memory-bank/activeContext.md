@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 30, 2025 (Session 8G)
+**Last Updated**: November 30, 2025 (Session 8H)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Week 2: GPU Integration WORKING** | Debug Capture System Integrated!
+**Status**: 🔴 **Bug #9 Identified** | ESVO↔Brick Index Mismatch
 
 ---
 
@@ -50,6 +50,38 @@ octree.unlockAfterRendering();
 ---
 
 ## Week 2: GPU Integration - WORKING ✅
+
+### Session 8H Progress (Nov 30, 2025) - ESVO↔BRICK INDEX MISMATCH BUG
+
+**Bug #9 Root Cause Identified**:
+
+The shader's `handleLeafHit()` computes brick index from ESVO position, but this computed brick may not match the brick that the ESVO hierarchy marked as valid in the parent's `leafMask`.
+
+**Issue Details**:
+1. At scale 19 (depth 4), one ESVO node covers a 2×2×2 brick region (8 possible bricks)
+2. The node's `leafMask` indicates which of the 8 octants contain populated bricks
+3. When `childIsLeaf()` returns true, the shader enters `BRICK_ENTER`
+4. **BUG**: The shader computes `brickCoord` from position using `floor(hitPosLocal / BRICK_SIZE)`
+5. This computed brick index may differ from the brick that the ESVO hierarchy thinks should be there
+
+**Example from Debug Trace**:
+```
+Ray at position (1.625, 1.4375, 1.8125) in mirrored space at scale 19
+Unmirrors to localNorm (0.3125, 0.4375, 0.8125)
+gridPos = localNorm × 128 = (40, 56, 104)
+brickCoord = floor(gridPos / 8) = (5, 7, 13)
+BUT brick (5, 7, 13) is EMPTY (interior of Cornell Box)
+The ESVO hierarchy marked this region as having a leaf, expecting a DIFFERENT brick
+```
+
+**Architecture Conflict**: Two different indexing schemes (sparse ESVO octant vs dense grid brick slots) are not aligned.
+
+**Fix Options Under Investigation**:
+1. **Use ESVO octant info**: Derive brick coordinate from ESVO octant index (`state.idx`) instead of position
+2. **Add brick existence check**: Check if computed brick actually has non-zero voxels before DDA
+3. **Align ESVO structure with dense grid**: Ensure ESVO octants at brick level correspond exactly to dense grid brick slots
+
+---
 
 ### Session 8G Progress (Nov 30, 2025) - DEBUG CAPTURE SYSTEM INTEGRATION
 

@@ -173,23 +173,67 @@ int esvoToUserScale(int esvoScale) {
 // For resolution 128 with 8x8x8 bricks: 128/8 = 16 bricks per axis = 2^4
 //
 // ESVO scale_exp2 formula: At scale N, scale_exp2 = 2^(N - ESVO_MAX_SCALE - 1)
-//   - Root (scale 22): scale_exp2 = 2^(22-22-1) = 0.5 => 64 world units
+//   - Root (scale 22): scale_exp2 = 2^(22-22-1) = 0.5 => 64 world units per octant side
 //   - Scale 21: scale_exp2 = 0.25 => 32 world units
 //   - Scale 20: scale_exp2 = 0.125 => 16 world units
 //   - Scale 19: scale_exp2 = 0.0625 => 8 world units (BRICK SIZE!)
 //   - Scale 18: scale_exp2 = 0.03125 => 4 world units
 //
-// For 8x8x8 bricks (8 world units), we need scale_exp2 = 8/128 = 0.0625 = 2^(-4)
-// Solving: 2^(N - 23) = 2^(-4) => N = 19
+// CORRECTED: Mapping between ESVO scale and user depth:
+//   - Root is at ESVO scale 22, user depth 7 (USER_MAX_LEVELS)
+//   - Each level down: scale--, depth--
+//   - Brick level is at user depth = BRICK_DEPTH = 3
+//   - Therefore: brickScale = ESVO_MAX_SCALE - (USER_MAX_LEVELS - BRICK_DEPTH)
+//                           = 22 - (7 - 3) = 22 - 4 = 18
 //
-// General formula: scale = ESVO_MAX_SCALE - (USER_MAX_LEVELS - BRICK_DEPTH - 1)
-//                        = 22 - (7 - 3 - 1) = 22 - 3 = 19
+// But wait - scale_exp2 at scale 18 = 2^(18-23) = 2^(-5) = 0.03125 = 4 world units
+// That's HALF the brick size! Bricks are 8 world units.
+//
+// Actually the scale arithmetic differs between ESVO and our hierarchy:
+// ESVO: root scale_exp2 = 0.5 means octant is HALF the [1,2] range = 0.5 units
+//       So full grid [1,2] = 1.0 unit = 128 world units
+//       scale_exp2 = 0.5 => 64 world units (root children)
+//       scale_exp2 = 0.0625 => 8 world units = brick size
+//
+// For scale_exp2 = 0.0625 = 2^(-4), we need scale - ESVO_MAX_SCALE - 1 = -4
+// => scale = ESVO_MAX_SCALE + 1 - 4 = 22 + 1 - 4 = 19
+//
+// CRITICAL FIX: The scale_exp2 arithmetic gives octant size in [1,2] normalized space,
+// but the ESVO hierarchy depth determines when we hit actual brick nodes.
+//
+// CPU hierarchy depth mapping (from rebuild()):
+//   - brickDepth = 3 (8^3 voxel bricks)
+//   - Brick nodes are at depth = brickDepth = 3
+//   - Parent nodes at depth 4, 5, 6, 7 (root)
+//
+// ESVO scale to depth conversion:
+//   - Root at scale ESVO_MAX_SCALE (22), depth = USER_MAX_LEVELS (7)
+//   - depth = scale - (ESVO_MAX_SCALE - USER_MAX_LEVELS)
+//   - depth = scale - (22 - 7) = scale - 15
+//
+// For brick level (depth = brickDepth = 3):
+//   - scale = depth + 15 = 3 + 15 = 18
+//
+// Verification: at scale 18, scale_exp2 = 2^(18-23) = 2^(-5) = 0.03125
+// This is 4 world units, which is HALF a brick. This seems wrong...
+//
+// But actually the parent's validMask check happens at scale 19 (depth 4),
+// and children are at scale 18 (depth 3 = brick level).
+// The shader should force isLeaf when the CHILD is a brick, i.e., at parent scale 19.
+// But the position calculation should use the child's scale_exp2 (0.03125), not parent's.
+//
+// Actually, looking at the trace: at BRICK_ENTER, scale=19 and scale_exp2=0.0625 (8 units).
+// This suggests the shader IS at the correct scale, but scale_exp2 is parent's not child's.
+//
+// The fundamental issue may be that scale 19 nodes cover 16-unit regions (2x2x2 bricks),
+// not individual 8-unit bricks. Forcing isLeaf at scale 19 means we're calling handleLeafHit
+// for a 16-unit region and computing ONE brick index, when we might need to try 8 bricks.
+//
+// For now, let's change to scale 18 and see what happens:
 int getBrickESVOScale() {
-    // At brick level, octant size = 2^BRICK_DEPTH world units = brick side length
-    // scale_exp2 must equal 2^BRICK_DEPTH / resolution = 2^BRICK_DEPTH / 2^USER_MAX_LEVELS
-    // 2^(scale - ESVO_MAX_SCALE - 1) = 2^(BRICK_DEPTH - USER_MAX_LEVELS)
-    // scale = ESVO_MAX_SCALE + 1 + BRICK_DEPTH - USER_MAX_LEVELS
-    return ESVO_MAX_SCALE + 1 + BRICK_DEPTH - USER_MAX_LEVELS;
+    // Brick level: scale = brickDepth + (ESVO_MAX_SCALE - USER_MAX_LEVELS)
+    //                    = 3 + (22 - 7) = 3 + 15 = 18
+    return 18;
 }
 
 // ============================================================================
@@ -643,8 +687,7 @@ bool checkChildValidity(TraversalState state, RayCoefficients coef,
 
     // Force leaf status at brick level (matches CPU behavior)
     // At brick level, treat all valid children as leaves to trigger brick DDA
-    // Brick ESVO scale = 22 + 1 + 3 - 7 = 19 for resolution 128 with 8x8x8 bricks
-    int brickESVOScale = getBrickESVOScale();
+    int brickESVOScale = getBrickESVOScale();  // Returns 18
     if (state.scale == brickESVOScale && child_valid) {
         isLeaf = true;
     }

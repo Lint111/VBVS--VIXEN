@@ -330,23 +330,6 @@ void ComputeDispatchNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuff
 
     // Use gathered push constants if available
     if (!pushConstantDataVec.empty() && !pushConstantRanges.empty()) {
-        // DEBUG: Log push constant data for first few frames
-        static int debugPCFrames = 0;
-        if (debugPCFrames < 3) {
-            std::cout << "[ComputeDispatch DEBUG] Push constant buffer size: " << pushConstantDataVec.size() << " bytes\n";
-            if (pushConstantDataVec.size() >= 12) {
-                const float* cameraPos = reinterpret_cast<const float*>(pushConstantDataVec.data());
-                std::cout << "[ComputeDispatch DEBUG] cameraPos @ offset 0: ("
-                          << cameraPos[0] << ", " << cameraPos[1] << ", " << cameraPos[2] << ")\n";
-            }
-            if (pushConstantDataVec.size() >= 28) {
-                const float* cameraDir = reinterpret_cast<const float*>(pushConstantDataVec.data() + 16);
-                std::cout << "[ComputeDispatch DEBUG] cameraDir @ offset 16: ("
-                          << cameraDir[0] << ", " << cameraDir[1] << ", " << cameraDir[2] << ")\n";
-            }
-            debugPCFrames++;
-        }
-
         // Apply each push constant range
         for (const auto& range : pushConstantRanges) {
             if (range.offset + range.size <= pushConstantDataVec.size()) {

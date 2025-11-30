@@ -469,17 +469,6 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
             // Direct memcpy from field to dest
             std::memcpy(dest, fieldPtr, field.size);
 
-            // DEBUG: Log camera data for first few frames
-            static int debugFrames = 0;
-            if (debugFrames < 3 && field.fieldName.find("camera") != std::string::npos) {
-                if (field.size == 12) {  // vec3
-                    float* vec = reinterpret_cast<float*>(dest);
-                    std::cout << "[PushConstantGatherer DEBUG] " << field.fieldName
-                              << " = (" << vec[0] << ", " << vec[1] << ", " << vec[2] << ")\n";
-                }
-            }
-            if (variadicIdx == 0) debugFrames++;
-
             NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +
                           "' at offset " + std::to_string(field.offset) + " (field extraction, " +
                           std::to_string(field.size) + " bytes copied)");
