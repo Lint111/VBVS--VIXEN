@@ -75,27 +75,35 @@ const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel dete
 #define DEBUG_AXIS_PARALLEL 0
 
 // Debug: set to 1 to capture per-ray traversal data into RW buffer
-#define DEBUG_CAPTURE_RAY_DATA 0
+#define DEBUG_CAPTURE_RAY_DATA 1
+
+// Grid spacing for debug samples - captures one ray every N pixels in each dimension
+// E.g., 64 means capture a grid of (width/64) x (height/64) samples
+#define DEBUG_GRID_SPACING 64
 
 struct DebugRaySample {
-    uvec2 pixel;
-    uint octantMask;
-    uint hitFlag;
-    uint exitCode;
-    uint lastStepMask;
-    uint iterationCount;
-    int scale;
-    uint stateIdx;
-    float tMin;
-    float tMax;
-    float scaleExp2;
-    float reserved0;
-    vec3 posMirrored;
-    float reserved1;
-    vec3 localNorm;
-    float reserved2;
-    vec3 rayDir;
-    float reserved3;
+    uvec2 pixel;          // offset 0 (8 bytes)
+    uint octantMask;      // offset 8
+    uint hitFlag;         // offset 12
+    uint exitCode;        // offset 16
+    uint lastStepMask;    // offset 20
+    uint iterationCount;  // offset 24
+    int scale;            // offset 28
+    uint stateIdx;        // offset 32
+    float tMin;           // offset 36
+    float tMax;           // offset 40
+    float scaleExp2;      // offset 44
+    float reserved0;      // offset 48
+    float _padding1;      // offset 52 (explicit padding for vec3 alignment)
+    float _padding2;      // offset 56
+    float _padding3;      // offset 60
+    vec3 posMirrored;     // offset 64 (16-byte aligned)
+    float reserved1;      // offset 76
+    vec3 localNorm;       // offset 80 (already 16-byte aligned)
+    float reserved2;      // offset 92
+    vec3 rayDir;          // offset 96 (already 16-byte aligned)
+    float reserved3;      // offset 108
+    // Total: 112 bytes
 };
 
 // Debug capture buffer - always declared for SDI reflection, but only written when DEBUG_CAPTURE_RAY_DATA=1
@@ -221,12 +229,18 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
 }
 
 #if DEBUG_CAPTURE_RAY_DATA
-void writeDebugRaySample(DebugRaySample sample) {
+// Returns true if this pixel should capture debug data (grid-based sampling)
+bool shouldCaptureDebug(ivec2 pixelCoords) {
+    return (pixelCoords.x % DEBUG_GRID_SPACING == 0) &&
+           (pixelCoords.y % DEBUG_GRID_SPACING == 0);
+}
+
+void writeDebugRaySample(DebugRaySample raySample) {
     uint writeIndex = atomicAdd(debugWriteIndex, 1u);
     if (writeIndex >= debugCapacity) {
         return;
     }
-    debugSamples[writeIndex] = sample;
+    debugSamples[writeIndex] = raySample;
 }
 #endif
 
@@ -1341,7 +1355,9 @@ void main() {
     }
 
 #if DEBUG_CAPTURE_RAY_DATA
-    writeDebugRaySample(debugSample);
+    if (shouldCaptureDebug(pixelCoords)) {
+        writeDebugRaySample(debugSample);
+    }
 #endif
 
     // Alpha = depth (more opaque the deeper we go)

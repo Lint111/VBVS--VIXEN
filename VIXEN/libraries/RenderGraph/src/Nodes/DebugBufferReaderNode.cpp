@@ -31,6 +31,20 @@ DebugBufferReaderNode::DebugBufferReaderNode(
 
 void DebugBufferReaderNode::SetupImpl(TypedSetupContext& ctx) {
     NODE_LOG_INFO("DebugBufferReaderNode::SetupImpl");
+
+    // Read parameters
+    outputPath = GetParameterValue<std::string>(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, outputPath);
+    maxSamples = GetParameterValue<uint32_t>(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, maxSamples);
+    autoExport = GetParameterValue<bool>(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, autoExport);
+
+    // Read export format (stored as int for parameter system compatibility)
+    auto formatInt = GetParameterValue<int>(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(exportFormat));
+    exportFormat = static_cast<DebugExportFormat>(formatInt);
+
+    NODE_LOG_INFO("  outputPath: %s", outputPath.c_str());
+    NODE_LOG_INFO("  maxSamples: %u", maxSamples);
+    NODE_LOG_INFO("  autoExport: %s", autoExport ? "true" : "false");
+    NODE_LOG_INFO("  exportFormat: %d", static_cast<int>(exportFormat));
 }
 
 void DebugBufferReaderNode::CompileImpl(TypedCompileContext& ctx) {
@@ -70,6 +84,12 @@ void DebugBufferReaderNode::ExecuteImpl(TypedExecuteContext& ctx) {
     if (!debugCapture->IsCaptureEnabled()) {
         NODE_LOG_INFO("Debug capture is disabled for '%s'", debugCapture->GetDebugName().c_str());
         return;
+    }
+
+    // Wait for GPU to finish before reading
+    VkFence inFlightFence = ctx.In(DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
+    if (inFlightFence != VK_NULL_HANDLE) {
+        vkWaitForFences(vkDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
     }
 
     // Get the capture buffer from the interface

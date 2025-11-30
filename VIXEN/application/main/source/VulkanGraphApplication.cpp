@@ -779,8 +779,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
     auto* debugCapture = static_cast<DebugBufferReaderNode*>(renderGraph->GetInstance(debugCaptureNode));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_MAX_SAMPLES, 1000u);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
-    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT,DebugExportFormat::JSON);
-    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries\\compute_debug_output.json"));
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(DebugExportFormat::JSON));
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries/compute_debug_output"));
     if (auto* debugLogger = debugCapture->GetLogger()) {
         debugLogger->SetEnabled(true);
         debugLogger->SetTerminalOutput(true);
@@ -988,6 +988,9 @@ void VulkanGraphApplication::BuildRenderGraph() {
                   computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE);
     batch.Connect(computeDispatch, ComputeDispatchNodeConfig::DEBUG_CAPTURE_OUT,
                   debugCaptureNode, DebugBufferReaderNodeConfig::DEBUG_CAPTURE);
+    // Fence connection - wait for GPU to finish before reading debug buffer
+    batch.Connect(frameSyncNode, FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  debugCaptureNode, DebugBufferReaderNodeConfig::IN_FLIGHT_FENCE);
 
     // --- FrameSync → Present connections (Phase 0.7) ---
     batch.Connect(frameSyncNode, FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
@@ -1108,7 +1111,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
                           descriptorGatherer, VoxelRayMarch::debugWriteIndex::BINDING,
-                          SlotRole::Execute);
+                          SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings

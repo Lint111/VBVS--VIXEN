@@ -19,7 +19,7 @@ using IDebugCapture = Debug::IDebugCapture;
 
 // Compile-time slot counts
 namespace DebugBufferReaderNodeCounts {
-    static constexpr size_t INPUTS = 3;
+    static constexpr size_t INPUTS = 4;
     static constexpr size_t OUTPUTS = 0;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -62,6 +62,13 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // IN_FLIGHT_FENCE: Fence to wait on before reading (ensures GPU has finished writing)
+    INPUT_SLOT(IN_FLIGHT_FENCE, VkFence, 3,
+        SlotNullability::Required,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_OUTPUT_PATH = "output_path";
     static constexpr const char* PARAM_MAX_SAMPLES = "max_samples";
@@ -80,6 +87,10 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
         // Debug capture interface
         HandleDescriptor debugCaptureDesc{"IDebugCapture*"};
         INIT_INPUT_DESC(DEBUG_CAPTURE, "debug_capture", ResourceLifetime::Transient, debugCaptureDesc);
+
+        // In-flight fence for synchronization
+        HandleDescriptor fenceDesc{"VkFence"};
+        INIT_INPUT_DESC(IN_FLIGHT_FENCE, "in_flight_fence", ResourceLifetime::Transient, fenceDesc);
     }
 
     // Automated config validation
@@ -89,11 +100,13 @@ CONSTEXPR_NODE_CONFIG(DebugBufferReaderNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0, "VULKAN_DEVICE_IN must be at index 0");
     static_assert(COMMAND_POOL_Slot::index == 1, "COMMAND_POOL must be at index 1");
     static_assert(DEBUG_CAPTURE_Slot::index == 2, "DEBUG_CAPTURE must be at index 2");
+    static_assert(IN_FLIGHT_FENCE_Slot::index == 3, "IN_FLIGHT_FENCE must be at index 3");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
     static_assert(std::is_same_v<COMMAND_POOL_Slot::Type, VkCommandPool>);
     static_assert(std::is_same_v<DEBUG_CAPTURE_Slot::Type, IDebugCapture*>);
+    static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
 };
 
 } // namespace Vixen::RenderGraph
