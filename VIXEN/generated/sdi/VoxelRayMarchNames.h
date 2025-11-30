@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch
-// UUID: 89d176cd6eac7adf
-// Generated: 2025-11-30 13:49:17
+// UUID: d13217acbd913730
+// Generated: 2025-11-30 14:50:37
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "89d176cd6eac7adf-SDI.h"
+#include "d13217acbd913730-SDI.h"
 
 namespace VoxelRayMarch {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_89d176cd6eac7adf;
+namespace SDI = ShaderInterface::d13217acbd913730;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -43,9 +43,9 @@ constexpr const char* brickData_name = "brickData";
 // materials (Set 0, Binding 3)
 using materials = SDI::Set0::Binding3;
 constexpr const char* materials_name = "materials";
-// debugWriteIndex (Set 0, Binding 4)
-using debugWriteIndex = SDI::Set0::Binding4;
-constexpr const char* debugWriteIndex_name = "debugWriteIndex";
+// traceWriteIndex (Set 0, Binding 4)
+using traceWriteIndex = SDI::Set0::Binding4;
+constexpr const char* traceWriteIndex_name = "traceWriteIndex";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)

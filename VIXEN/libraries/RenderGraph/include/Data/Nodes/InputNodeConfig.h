@@ -48,9 +48,10 @@ CONSTEXPR_NODE_CONFIG(InputNodeConfig,
         HandleDescriptor hwndDesc{"HWND"};
         INIT_INPUT_DESC(HWND_IN, "hwnd", ResourceLifetime::Persistent, hwndDesc);
 
-        // InputState pointer output (Transient: changes every frame, like IMAGE_INDEX)
+        // InputState pointer output (Persistent: pointer is stable, internal state changes each frame)
+        // Using Persistent because member field extraction requires stable memory addresses
         HandleDescriptor inputStateDesc{"InputState*"};
-        INIT_OUTPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Transient, inputStateDesc);
+        INIT_OUTPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Persistent, inputStateDesc);
     }
 
     // Compile-time validation

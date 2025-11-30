@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: November 28, 2025 (Session 8F)
+**Last Updated**: November 30, 2025 (Session 8G)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Week 2: GPU Integration WORKING** | Cornell Box Rendering!
+**Status**: ✅ **Week 2: GPU Integration WORKING** | Debug Capture System Integrated!
 
 ---
 
@@ -50,6 +50,38 @@ octree.unlockAfterRendering();
 ---
 
 ## Week 2: GPU Integration - WORKING ✅
+
+### Session 8G Progress (Nov 30, 2025) - DEBUG CAPTURE SYSTEM INTEGRATION
+
+**Completed**:
+- [x] Fixed `INPUT_STATE` lifetime: Changed from `Transient` to `Persistent` in `InputNodeConfig.h` and `CameraNodeConfig.h`
+  - Field extraction requires stable memory addresses for member pointers
+- [x] Fixed SDI binding name mismatch: `debugWriteIndex` → `traceWriteIndex` in `VulkanGraphApplication.cpp`
+- [x] Implemented JSON export for ray traces in `DebugBufferReaderNode.cpp`
+  - Full per-ray traversal path data with PUSH/ADVANCE/POP steps
+  - Output: `binaries/compute_debug_output.json` (~1.9 MB, 130 traces)
+- [x] Fixed push constant field extraction for `InputState*` type
+  - `PushConstantGathererNode.cpp` now tries multiple pointer types (CameraData*, InputState*)
+  - Debug mode (keys 0-9) now properly passed to shader
+
+**Debug Capture System**:
+- Ring buffer captures up to 256 rays per frame
+- Each ray trace records up to 64 steps (PUSH, ADVANCE, POP, BRICK_ENTER, HIT, MISS)
+- JSON export includes: pixel, stepCount, hit/miss, overflow flag, and full step details
+- Per-step data: type, nodeIndex, scale, octantMask, position, tMin/tMax, childDescriptor
+
+**Files Modified**:
+- [InputNodeConfig.h:51-54](libraries/RenderGraph/include/Data/Nodes/InputNodeConfig.h#L51-L54) - `INPUT_STATE` → Persistent
+- [CameraNodeConfig.h:94](libraries/RenderGraph/include/Data/Nodes/CameraNodeConfig.h#L94) - `INPUT_STATE` input → Persistent
+- [VulkanGraphApplication.cpp:1119](application/main/source/VulkanGraphApplication.cpp#L1119) - `traceWriteIndex` binding fix
+- [DebugBufferReaderNode.cpp:182-229](libraries/RenderGraph/src/Nodes/DebugBufferReaderNode.cpp#L182-L229) - JSON export implementation
+- [PushConstantGathererNode.cpp:436-472](libraries/RenderGraph/src/Nodes/PushConstantGathererNode.cpp#L436-L472) - Multi-type field extraction
+
+**Debug Visualization Modes (Keys 0-9)**:
+- Now properly working via `InputState::debugMode` → push constants → shader
+- Press number keys to switch visualization modes in real-time
+
+---
 
 ### Session 8F Progress (Nov 28, 2025) - AXIS-PARALLEL RAY TRAVERSAL FIX
 
@@ -215,13 +247,15 @@ Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunte
 
 ## Todo List (Active Tasks)
 
-### Week 2: GPU Integration (Current) - MOSTLY COMPLETE ✅
+### Week 2: GPU Integration (Current) - COMPLETE ✅
 - [x] Upload ESVO structure to GPU (SSBO) ✅
 - [x] Wire compute shader in render graph ✅
-- [x] Fix shader bugs (6 bugs fixed in Session 8D) ✅
+- [x] Fix shader bugs (8 bugs fixed through Session 8F) ✅
 - [x] Cornell Box rendering correctly ✅
 - [x] Arrow key camera controls ✅
-- [ ] Final visual verification (check for remaining artifacts)
+- [x] Debug capture system integrated (Session 8G) ✅
+- [x] Per-ray traversal trace capture with JSON export ✅
+- [x] Debug visualization modes (keys 0-9) working ✅
 - [ ] Benchmark GPU performance (target >200 Mrays/sec)
 
 ### Week 3: DXT Compression

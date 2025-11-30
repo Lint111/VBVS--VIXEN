@@ -91,7 +91,7 @@ CONSTEXPR_NODE_CONFIG(CameraNodeConfig,
         INIT_INPUT_DESC(IMAGE_INDEX, "image_index", ResourceLifetime::Transient, imageIndexDesc);
 
         HandleDescriptor inputStateDesc{"InputState*"};
-        INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Transient, inputStateDesc);
+        INIT_INPUT_DESC(INPUT_STATE, "input_state", ResourceLifetime::Persistent, inputStateDesc);
 
         // Initialize output descriptor
         HandleDescriptor cameraDataDesc{"CameraDataPtr"};

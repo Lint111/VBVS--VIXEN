@@ -5,6 +5,9 @@
 #include <cstring>
 #include <algorithm>
 #include <numeric>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 #include "Core/NodeLogging.h"
 
 namespace Vixen::RenderGraph {
@@ -178,8 +181,51 @@ void DebugBufferReaderNode::ExportToCSV() {
 
 void DebugBufferReaderNode::ExportToJSON() {
     std::string filename = outputPath + ".json";
-    NODE_LOG_INFO("JSON export for ray traces not yet implemented: %s", filename.c_str());
-    // TODO: Implement JSON export for ray traces
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        NODE_LOG_ERROR("Failed to open JSON file for writing: %s", filename.c_str());
+        return;
+    }
+
+    file << std::fixed << std::setprecision(6);
+    file << "{\n";
+    file << "  \"totalTraces\": " << rayTraces.size() << ",\n";
+    file << "  \"traces\": [\n";
+
+    size_t count = std::min(static_cast<size_t>(maxTraces), rayTraces.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& trace = rayTraces[i];
+        file << "    {\n";
+        file << "      \"pixel\": [" << trace.header.pixelX << ", " << trace.header.pixelY << "],\n";
+        file << "      \"stepCount\": " << trace.header.stepCount << ",\n";
+        file << "      \"hit\": " << (trace.header.IsHit() ? "true" : "false") << ",\n";
+        file << "      \"overflow\": " << (trace.header.HasOverflow() ? "true" : "false") << ",\n";
+        file << "      \"steps\": [\n";
+
+        for (size_t s = 0; s < trace.steps.size(); ++s) {
+            const auto& step = trace.steps[s];
+            file << "        {\n";
+            file << "          \"type\": \"" << Debug::TraceStepTypeToString(step.GetStepType()) << "\",\n";
+            file << "          \"typeId\": " << step.stepType << ",\n";
+            file << "          \"nodeIndex\": " << step.nodeIndex << ",\n";
+            file << "          \"scale\": " << step.scale << ",\n";
+            file << "          \"octantMask\": " << step.octantMask << ",\n";
+            file << "          \"position\": [" << step.posX << ", " << step.posY << ", " << step.posZ << "],\n";
+            file << "          \"tMin\": " << step.tMin << ",\n";
+            file << "          \"tMax\": " << step.tMax << ",\n";
+            file << "          \"childDesc\": [" << step.childDescLow << ", " << step.childDescHigh << "]\n";
+            file << "        }" << (s + 1 < trace.steps.size() ? "," : "") << "\n";
+        }
+
+        file << "      ]\n";
+        file << "    }" << (i + 1 < count ? "," : "") << "\n";
+    }
+
+    file << "  ]\n";
+    file << "}\n";
+
+    file.close();
+    NODE_LOG_INFO("Exported %zu ray traces to JSON: %s", count, filename.c_str());
 }
 
 // ============================================================================

@@ -5,6 +5,7 @@
 #include "ResourceExtractor.h"
 #include "NodeHelpers/ValidationHelpers.h"
 #include "VulkanDevice.h"  // For device limits validation
+#include "Data/InputState.h"    // For InputState pointer field extraction
 #include <cstring>
 #include <iostream>
 #include <unordered_map>
@@ -432,23 +433,52 @@ void PushConstantGathererNode::PackPushConstantData(VariadicExecuteContext& ctx)
         const auto& field = pushConstantFields_[variadicIdx];
         uint8_t* dest = pushConstantData_.data() + field.offset;
 
+
+        //Todo: Make the code universal by using the new resource structure 
         // Handle field extraction case
         if (slotInfo && slotInfo->hasFieldExtraction) {
             // Resource points to the struct, field is at resource + fieldOffset
-            // Since Resource doesn't expose raw pointer, we need to use GetHandle with proper type
-            // For now, assume CameraData struct (HACK - should be type-generic)
-            auto* cameraDataPtr = resource->GetHandle<const CameraData*>();
-            if (!cameraDataPtr) {
+            // Try multiple struct pointer types since Resource doesn't expose raw pointer
+            const uint8_t* structPtr = nullptr;
+
+            // Try CameraData* first (most common for push constants)
+            if (auto* cameraDataPtr = resource->GetHandle<const CameraData*>()) {
+                structPtr = reinterpret_cast<const uint8_t*>(cameraDataPtr);
+            }
+            // Try InputState* (for debugMode field)
+            else if (auto* inputStatePtr = resource->GetHandle<const InputState*>()) {
+                structPtr = reinterpret_cast<const uint8_t*>(inputStatePtr);
+            }
+            // Try non-const versions
+            else if (auto* cameraDataPtrMut = resource->GetHandle<CameraData*>()) {
+                structPtr = reinterpret_cast<const uint8_t*>(cameraDataPtrMut);
+            }
+            else if (auto* inputStatePtrMut = resource->GetHandle<InputState*>()) {
+                structPtr = reinterpret_cast<const uint8_t*>(inputStatePtrMut);
+            }
+
+            if (!structPtr) {
                 NODE_LOG_WARNING("[PushConstantGathererNode::Pack] Field extraction failed for field '" +
-                                field.fieldName + "': null struct pointer");
+                                field.fieldName + "': null struct pointer (tried CameraData*, InputState*)");
                 continue;
             }
 
             // Calculate field address
-            const uint8_t* fieldPtr = reinterpret_cast<const uint8_t*>(cameraDataPtr) + slotInfo->fieldOffset;
+            const uint8_t* fieldPtr = structPtr + slotInfo->fieldOffset;
 
             // Direct memcpy from field to dest
             std::memcpy(dest, fieldPtr, field.size);
+
+            // DEBUG: Log camera data for first few frames
+            static int debugFrames = 0;
+            if (debugFrames < 3 && field.fieldName.find("camera") != std::string::npos) {
+                if (field.size == 12) {  // vec3
+                    float* vec = reinterpret_cast<float*>(dest);
+                    std::cout << "[PushConstantGatherer DEBUG] " << field.fieldName
+                              << " = (" << vec[0] << ", " << vec[1] << ", " << vec[2] << ")\n";
+                }
+            }
+            if (variadicIdx == 0) debugFrames++;
 
             NODE_LOG_DEBUG("[PushConstantGathererNode::Pack] Field '" + field.fieldName +
                           "' at offset " + std::to_string(field.offset) + " (field extraction, " +

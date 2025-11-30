@@ -1116,7 +1116,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           SlotRole::Dependency | SlotRole::Execute);
 
     batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
-                          descriptorGatherer, VoxelRayMarch::debugWriteIndex::BINDING,
+                          descriptorGatherer, VoxelRayMarch::traceWriteIndex::BINDING,
                           SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
 
     // Swapchain connections to descriptor set and dispatch
