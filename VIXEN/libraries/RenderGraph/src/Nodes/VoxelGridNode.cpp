@@ -1133,50 +1133,46 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
               << (sparseBrickData.size() * sizeof(uint32_t)) << " bytes" << std::endl;
 
     // ============================================================================
-    // Step 2: Build brick grid coordinate -> brickViewIndex lookup table
+    // Step 2: Build DENSE brick grid lookup: brickGridLookup[bx + by*N + bz*N*N] -> brickViewIndex
     // ============================================================================
-    // Use LOCAL brick grid coordinates for position-independent lookup.
-    // Key: (brickX | brickY << 10 | brickZ << 20) -> brickViewIndex
+    // UNIFIED APPROACH: Use local brick grid coordinates for lookup.
+    // This is position-based (not topology-based) so it's view-independent.
     //
-    // This approach is GPU-friendly (O(1) direct array lookup) and works in
-    // pure local space - no world coordinates needed.
+    // Key: linearized brick coordinate (bx + by*bricksPerAxis + bz*bricksPerAxis²)
+    // Value: brickViewIndex (sparse index into brick data), or 0xFFFFFFFF if empty
     //
-    // Buffer layout: Flat array indexed by packed grid coordinates.
-    // Max grid key with 10 bits per axis = 1024^3, but we only allocate for
-    // the actual bricksPerAxis^3 size.
+    // GPU shader computes brick coords from ESVO octant position in [0,1] local space.
 
-    // Calculate buffer size based on brick grid dimensions
-    // Using 10 bits per axis allows up to 1024 bricks per axis
-    const size_t maxBricksPerAxis = 1024;  // 10 bits per coordinate
     size_t brickGridLookupSize = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
     std::vector<uint32_t> brickGridLookup(brickGridLookupSize, 0xFFFFFFFFu);
 
     size_t populatedBricks = 0;
 
-    // Populate from brickGridToBrickView mapping (local grid coordinates)
+    // Populate from brickGridToBrickView mapping (created in LaineKarrasOctree::rebuild)
     for (const auto& [gridKey, brickViewIdx] : rootBlock.brickGridToBrickView) {
         if (brickViewIdx >= brickViews.size()) continue;
 
-        // Extract coordinates from packed key
-        uint32_t bx = gridKey & 0x3FF;         // bits 0-9
-        uint32_t by = (gridKey >> 10) & 0x3FF; // bits 10-19
-        uint32_t bz = (gridKey >> 20) & 0x3FF; // bits 20-29
+        // Decode grid key: bx | (by << 10) | (bz << 20)
+        uint32_t bx = gridKey & 0x3FF;
+        uint32_t by = (gridKey >> 10) & 0x3FF;
+        uint32_t bz = (gridKey >> 20) & 0x3FF;
 
-        // Convert to linear index for our dense array
-        // Linear index = bx + by * bricksPerAxis + bz * bricksPerAxis^2
-        if (bx < static_cast<uint32_t>(bricksPerAxis) &&
-            by < static_cast<uint32_t>(bricksPerAxis) &&
-            bz < static_cast<uint32_t>(bricksPerAxis)) {
-            size_t linearIdx = bx + by * bricksPerAxis + bz * bricksPerAxis * bricksPerAxis;
-            if (linearIdx < brickGridLookup.size()) {
-                brickGridLookup[linearIdx] = brickViewIdx;
-                populatedBricks++;
-            }
+        if (bx >= static_cast<uint32_t>(bricksPerAxis) ||
+            by >= static_cast<uint32_t>(bricksPerAxis) ||
+            bz >= static_cast<uint32_t>(bricksPerAxis)) {
+            continue;  // Out of bounds
+        }
+
+        // Linearize: bx + by*N + bz*N*N
+        size_t linearIdx = bx + by * bricksPerAxis + bz * bricksPerAxis * bricksPerAxis;
+        if (linearIdx < brickGridLookup.size()) {
+            brickGridLookup[linearIdx] = brickViewIdx;
+            populatedBricks++;
         }
     }
 
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Built brickGridLookup table: "
-              << brickGridLookupSize << " entries (" << bricksPerAxis << "^3), "
+              << brickGridLookupSize << " entries (dense), "
               << populatedBricks << " populated bricks" << std::endl;
 
     // Debug: Print first few valid entries
@@ -1184,9 +1180,9 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
     int printed = 0;
     for (size_t i = 0; i < brickGridLookup.size() && printed < 10; ++i) {
         if (brickGridLookup[i] != 0xFFFFFFFFu) {
-            uint32_t bx = static_cast<uint32_t>(i % bricksPerAxis);
-            uint32_t by = static_cast<uint32_t>((i / bricksPerAxis) % bricksPerAxis);
             uint32_t bz = static_cast<uint32_t>(i / (bricksPerAxis * bricksPerAxis));
+            uint32_t by = static_cast<uint32_t>((i / bricksPerAxis) % bricksPerAxis);
+            uint32_t bx = static_cast<uint32_t>(i % bricksPerAxis);
             std::cout << "  [brick(" << bx << "," << by << "," << bz << ")] -> sparse index " << brickGridLookup[i] << std::endl;
             printed++;
         }
