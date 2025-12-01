@@ -218,84 +218,16 @@ Research papers, optimization techniques, bibliography.
 
 Previous phases, architectural reviews, experiments, and obsolete documentation.
 
-### Architectural Reviews (Phase Progression)
+### Archive Directory
 
-| File | Purpose | Phase |
-|------|---------|-------|
-| [documentation/archive/architectural-reviews/ArchitecturalReview-2025-10.md](documentation/archive/architectural-reviews/ArchitecturalReview-2025-10.md) | October review | Phase F |
-| [documentation/archive/architectural-reviews/ArchitecturalReview-2025-10-31.md](documentation/archive/architectural-reviews/ArchitecturalReview-2025-10-31.md) | Late October review | Phase F-G |
-| [documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-01.md](documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-01.md) | Early November review | Phase G |
-| [documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-02-PhaseF.md](documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-02-PhaseF.md) | Phase F summary | Phase F |
-| [documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-05.md](documentation/archive/architectural-reviews/ArchitecturalReview-2025-11-05.md) | Phase G completion | Phase G |
+| Directory | Purpose |
+|-----------|---------|
+| [documentation/archive/2025-12-01-cleanup/](documentation/archive/2025-12-01-cleanup/) | Old build logs and temp files from Nov 2025 |
 
-### Phase Plans (Archive)
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/phase-plans/Phase0-Plan.md](documentation/archive/phase-plans/Phase0-Plan.md) | Phase 0: Basic Vulkan setup |
-| [documentation/archive/phase-plans/Phase0.4-MultiRateLoop-Plan.md](documentation/archive/phase-plans/Phase0.4-MultiRateLoop-Plan.md) | Phase 0.4: Multi-rate loop system |
-| [documentation/archive/phase-plans/Phase-B-Plan.md](documentation/archive/phase-plans/Phase-B-Plan.md) | Phase B: Early node system |
-| [documentation/archive/phase-plans/PhaseG-ComputePipeline-Plan.md](documentation/archive/phase-plans/PhaseG-ComputePipeline-Plan.md) | Phase G: Compute shader pipeline |
-| [documentation/archive/phase-plans/Phase_Separation_Migration_Plan.md](documentation/archive/phase-plans/Phase_Separation_Migration_Plan.md) | Phase separation and migration |
-
-### Archive: Integration & System Design
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/CashSystem-Integration.md](documentation/archive/CashSystem-Integration.md) | CashSystem integration work |
-| [documentation/archive/CashSystem-RenderGraph-Integration.md](documentation/archive/CashSystem-RenderGraph-Integration.md) | CashSystem-RenderGraph integration |
-| [documentation/archive/EventBus-Implementation-Checklist.md](documentation/archive/EventBus-Implementation-Checklist.md) | EventBus implementation tasks |
-| [documentation/archive/EventBus-RenderGraph-Integration-Approach.md](documentation/archive/EventBus-RenderGraph-Integration-Approach.md) | EventBus integration approach |
-| [documentation/archive/EventBus-Performance-Optimizations.md](documentation/archive/EventBus-Performance-Optimizations.md) | EventBus performance tuning |
-| [documentation/archive/BugFixes-RenderGraphIntegration.md](documentation/archive/BugFixes-RenderGraphIntegration.md) | Bug fixes and integration issues |
-
-### Archive: Resource Management
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/ResourceVariant-Migration.md](documentation/archive/ResourceVariant-Migration.md) | Variant system migration |
-| [documentation/archive/DeferredDestruction-Usage-Guide.md](documentation/archive/DeferredDestruction-Usage-Guide.md) | Deferred destruction patterns |
-| [documentation/archive/Device-Sync-Implementation-Summary.md](documentation/archive/Device-Sync-Implementation-Summary.md) | Device synchronization |
-| [documentation/archive/Cleanup-Architecture.md](documentation/archive/Cleanup-Architecture.md) | Resource cleanup architecture |
-| [documentation/archive/DynamicCleanupSystem.md](documentation/archive/DynamicCleanupSystem.md) | Dynamic cleanup system |
-
-### Archive: Node System & Design
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/PolymorphicSlotSystem-Design-DRAFT.md](documentation/archive/PolymorphicSlotSystem-Design-DRAFT.md) | SlotRole design (draft, superseded) |
-| [documentation/archive/InstanceGroup_Decision_Matrix.md](documentation/archive/InstanceGroup_Decision_Matrix.md) | Instance group design decisions |
-| [documentation/archive/InstanceGroup_Parameter_Distribution.md](documentation/archive/InstanceGroup_Parameter_Distribution.md) | Instance parameter distribution |
-| [documentation/archive/InstanceGroup_TypedConnection_Integration.md](documentation/archive/InstanceGroup_TypedConnection_Integration.md) | Typed connection integration |
-| [documentation/archive/drawable-refactoring.md](documentation/archive/drawable-refactoring.md) | Drawable system refactoring |
-
-### Archive: Implementation Details
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/Phase1_ImplementationGuide.md](documentation/archive/Phase1_ImplementationGuide.md) | Phase 1 implementation guide |
-| [documentation/archive/ImplementationStatus.md](documentation/archive/ImplementationStatus.md) | Implementation status report |
-| [documentation/archive/Project-Status-Summary.md](documentation/archive/Project-Status-Summary.md) | Project status snapshot |
-| [documentation/archive/IntegrationTest.md](documentation/archive/IntegrationTest.md) | Integration test documentation |
-| [documentation/archive/RenderFrameArchitecture.md](documentation/archive/RenderFrameArchitecture.md) | Render frame architecture (old) |
-| [documentation/archive/render-graph-architecture.md](documentation/archive/render-graph-architecture.md) | Render graph architecture (old) |
-
-### Archive: Analysis & Audit
-
-| File | Purpose |
-|------|---------|
-| [documentation/archive/CashSystem-Consumer-Analysis.md](documentation/archive/CashSystem-Consumer-Analysis.md) | CashSystem consumer analysis |
-| [documentation/archive/CapabilityAudit.md](documentation/archive/CapabilityAudit.md) | Capability audit |
-| [documentation/archive/AlignmentPlan.md](documentation/archive/AlignmentPlan.md) | Alignment planning |
-| [documentation/archive/caching_system_integration.md](documentation/archive/caching_system_integration.md) | Caching integration |
-| [documentation/archive/EventDrivenCleanup.md](documentation/archive/EventDrivenCleanup.md) | Event-driven cleanup |
-
-### Archive: Checkpoints & Summaries
-
-| File | Purpose |
-|------|---------|
-| [documentation/ArchitecturalPhases-Checkpoint.md](documentation/ArchitecturalPhases-Checkpoint.md) | Architectural phases checkpoint |
-| [documentation/archive/type-system-experiments/README.md](documentation/archive/type-system-experiments/README.md) | Type system experiments directory |
+**Note**: Historical archive files from Phases 0-G were not preserved during earlier cleanup operations. Current project state is fully documented in:
+- [documentation/ArchitecturalPhases-Checkpoint.md](documentation/ArchitecturalPhases-Checkpoint.md) - Complete phase history
+- [memory-bank/progress.md](memory-bank/progress.md) - Implementation status
+- [documentation/ArchitecturalReview-CurrentState.md](documentation/ArchitecturalReview-CurrentState.md) - Current architecture state
 
 ## Main Documentation Files
 
@@ -419,8 +351,8 @@ Previous phases, architectural reviews, experiments, and obsolete documentation.
 | Build System | 3 | 50 | CMake, Vulkan SDK, optimization |
 | Type System | 3 | 75 | Variants, safety, migration |
 | Research | 3 | 75 | Bibliography, profiling, roadmap |
-| Archive | 40+ | 1000 | Historical phases, experiments |
-| **Total** | **125+** | **3,200** | Complete project documentation |
+| Archive | 1 | 10 | December 2025 cleanup |
+| **Total** | **~85** | **~2,200** | Complete project documentation |
 
 ## Using This Index
 
@@ -439,11 +371,15 @@ Previous phases, architectural reviews, experiments, and obsolete documentation.
 
 ---
 
-**Last Updated**: December 1, 2025
-**Status**: Week 2 GPU Integration COMPLETE | 1,700 Mrays/sec achieved | Week 3 DXT Compression In Progress
-**Scope**: 120+ files, 3,200+ pages, 14 major topic areas
+**Last Updated**: December 2, 2025
+**Status**: Week 2 GPU Integration COMPLETE | 1,700 Mrays/sec achieved | Week 3 DXT Compression PENDING
+**Scope**: ~85 files, ~2,200 pages, 14 major topic areas
 
-**Recent Changes**:
-- Archived 5 duplicate semaphore docs from GraphArchitecture (now in StutterAnalysisAndPlan only)
-- Updated ArchitecturalReview-CurrentState.md to reflect Week 2 completion
-- GPU profiling gap marked as RESOLVED
+**Recent Changes (December 2, 2025)**:
+- Removed 40+ orphaned archive file references (files never existed)
+- Archived old build logs from temp/ directory
+- Deleted large debug logs (vixen_debug.log, vixen_run.log)
+- Deleted orphaned CashSystem- file
+- Updated PhaseH-VoxelInfrastructure-Plan.md with Week 2 completion status
+- Updated ArchitecturalPhases-Checkpoint.md with current progress
+- Fixed stale "IN PROGRESS" statuses to reflect completed work

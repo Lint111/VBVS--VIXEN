@@ -1,0 +1,113 @@
+CMake is re-running because C:/cpp/VBVS--VIXEN/VIXEN/build/libraries/SVO/tests/CMakeFiles/generate.stamp is out-of-date.
+  the file 'C:/cpp/VBVS--VIXEN/VIXEN/libraries/SVO/tests/CMakeLists.txt'
+  is newer than 'C:/cpp/VBVS--VIXEN/VIXEN/build/libraries/SVO/tests/CMakeFiles/generate.stamp.depend'
+  result='-1'
+-- Found sccache: C:/ProgramData/chocolatey/bin/sccache.exe
+-- Attempting auto locate Vulkan using CMake......
+-- Vulkan SDK found: C:/VulkanSDK/1.4.321.1
+-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+-- OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256
+-- *************************************************************
+-- gaia-ecs v0.9.3 (Debug)
+-- Copyright (c) 2025 Richard Biely <richardbiely@gmail.com>
+-- *************************************************************
+-- Compiler: MSVC
+-- CompPath: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/cl.exe
+-- CompSim: 
+-- CPU: AMD64
+-- *************************************************************
+-- GAIA_BUILD_BENCHMARK = OFF
+-- GAIA_BUILD_EXAMPLES = OFF
+-- GAIA_BUILD_SRC = OFF
+-- GAIA_BUILD_UNITTEST = OFF
+-- GAIA_DEVMODE = OFF
+-- GAIA_DISABLE_ASSERTS = OFF
+-- GAIA_ECS_CHUNK_ALLOCATOR = ON
+-- GAIA_FORCE_DEBUG = OFF
+-- GAIA_GENERATE_CC = OFF
+-- GAIA_MACOS_BUILD_HACK = OFF
+-- GAIA_MAKE_PACKAGES, = OFF
+-- GAIA_MAKE_SINGLE_HEADER = OFF
+-- GAIA_PROFILER_BUILD = OFF
+-- GAIA_PROFILER_CPU = OFF
+-- GAIA_PROFILER_MEM = OFF
+-- GAIA_USE_LIBCPP = OFF
+-- GAIA_USE_SANITIZER = 
+-- GAIA_VERSION = 0.9.3
+-- GAIA_VERSION_REGEX = #define GAIA_VERSION_.*[ 	]+(.+)
+-- Gaia ECS fetched - available to all libraries
+-- GoogleTest fetched - test targets available to subdirectories
+-- Dependencies configured - all third-party libraries fetched
+-- Shader source directory configured: C:/cpp/VBVS--VIXEN/VIXEN/shaders
+-- ShaderAssets target created with 0 shader files
+-- Logger: Precompiled headers enabled
+-- ShaderManagement: Using glslang libraries from Vulkan SDK
+-- OpenSSL not found - ShaderManagement will use the project hash fallback or header-only provider if available
+-- ShaderManagement: Precompiled headers enabled (using ShaderManagementHeaders.h)
+-- Using the multi-header code from C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/nlohmann_json-src/include/
+-- ShaderManagement: Building shader tools
+-- ShaderManagement tests configured
+-- VulkanResources: Precompiled headers enabled (using Headers.h)
+-- RenderGraph: Precompiled headers enabled (using RenderGraphHeaders.h)
+-- Configuring test_array_type_validation (trimmed build compatible)
+-- ✓ test_array_type_validation configured (trimmed build: FALSE)
+-- Configuring test_field_extraction (trimmed build compatible)
+-- ✓ test_field_extraction configured (trimmed build: FALSE)
+-- Configuring test_resource_gatherer (trimmed build compatible)
+-- ✓ test_resource_gatherer configured (trimmed build: FALSE)
+-- Configuring test_graph_topology (trimmed build compatible)
+-- ✓ test_graph_topology configured (trimmed build: FALSE)
+-- Configuring test_resource_management (trimmed build compatible)
+-- ✓ test_resource_management configured (trimmed build: FALSE)
+-- [RenderGraph Tests] Added: test_timer
+-- [RenderGraph Tests] Added: test_loop_manager
+-- [RenderGraph Tests] Added: test_resource_dependency_tracker
+-- [RenderGraph Tests] Added: test_per_frame_resources
+-- [RenderGraph Tests] Added: test_device_node
+-- [RenderGraph Tests] Added: test_window_node
+-- [RenderGraph Tests] Added: test_command_pool_node
+-- [RenderGraph Tests] Added: test_swap_chain_node
+-- [RenderGraph Tests] Added: test_frame_sync_node
+-- [RenderGraph Tests] Added: test_push_constant_gatherer_node
+-- [RenderGraph Tests] Added: test_descriptor_resource_gatherer_node
+-- ⊗ test_descriptor_gatherer_comprehensive skipped (outdated API - requires refactoring)
+-- ✓ test_passthroughstorage_handles configured
+-- [RenderGraph Tests] Added: test_voxel_octree
+-- [RenderGraph Tests] Added: test_scene_generators
+-- [RenderGraph Tests] Added: test_voxel_traversal
+-- [CompileTimeResourceSystem Tests] Added: 8 test executables (1 disabled)
+-- TBB not found - fetching oneTBB from GitHub
+-- HWLOC target HWLOC::hwloc_1_11 doesn't exist. The tbbbind target cannot be created
+-- HWLOC target HWLOC::hwloc_2 doesn't exist. The tbbbind_2_0 target cannot be created
+-- HWLOC target HWLOC::hwloc_2_5 doesn't exist. The tbbbind_2_5 target cannot be created
+-- Libraries configured - all static libraries defined
+-- VIXEN: Precompiled headers enabled (using Headers.h)
+-- VIXEN: Shaders compile at runtime from C:/cpp/VBVS--VIXEN/VIXEN/shaders
+-- VIXEN: Generated shader files output to C:/cpp/VBVS--VIXEN/VIXEN/build/application/main/generated/shaders
+-- VIXEN: SDI headers output to C:/cpp/VBVS--VIXEN/VIXEN/build/application/main/generated/sdi
+-- Application configured - all executables defined
+-- Tests aggregation ready. Use ctest to run the discovered tests.
+-- Unit tests enabled - use 'ctest' or 'make test' to run
+-- Configuring done (12.2s)
+-- Generating done (14.0s)
+-- Build files have been written to: C:/cpp/VBVS--VIXEN/VIXEN/build
+MSBuild version 18.0.5+e22287bf1 for .NET Framework
+
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\glm.lib
+  VoxelComponents.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelComponents.lib
+  GaiaVoxelWorld.cpp
+  VoxelInjectionQueue.cpp
+  VoxelInjector.cpp
+  EntityBrickView.cpp
+  GaiaVoxelWorld.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\GaiaVoxelWorld.lib
+  VoxelData.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelData.lib
+  tbb.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\msvc_19.50_cxx_64_md_debug\tbb12_debug.dll
+  SVO.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\SVO.lib
+  gtest.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest.lib
+  gtest_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest_main.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/SVO/tests/CMakeLists.txt
+  test_rebuild_hierarchy.cpp
+  test_rebuild_hierarchy.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\Debug\test_rebuild_hierarchy.exe
+  Copying TBB DLL for test_rebuild_hierarchy	

@@ -1,0 +1,321 @@
+﻿MSBuild version 18.0.5+e22287bf1 for .NET Framework
+
+MSBuild version 18.0.5+e22287bf1 for .NET Framework
+
+  1>Checking Build System
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/glm-src/glm/CMakeLists.txt
+  glm.cpp
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\glm.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/VoxelComponents/CMakeLists.txt
+  VoxelComponents.cpp
+  VoxelComponents.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelComponents.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/GaiaVoxelWorld/CMakeLists.txt
+  GaiaVoxelWorld.cpp
+  VoxelInjectionQueue.cpp
+  VoxelInjector.cpp
+  EntityBrickView.cpp
+  GaiaVoxelWorld.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\GaiaVoxelWorld.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/VoxelData/CMakeLists.txt
+  AttributeRegistry.cpp
+  AttributeStorage.cpp
+  BrickView.cpp
+  DynamicVoxelStruct.cpp
+  Generating Code...
+  VoxelData.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelData.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/build/_deps/tbb-src/src/tbb/CMakeLists.txt
+  address_waiter.cpp
+  allocator.cpp
+  arena.cpp
+  arena_slot.cpp
+  concurrent_bounded_queue.cpp
+  dynamic_link.cpp
+  exception.cpp
+  governor.cpp
+  global_control.cpp
+  itt_notify.cpp
+  main.cpp
+  market.cpp
+  tcm_adaptor.cpp
+  misc.cpp
+  misc_ex.cpp
+  observer_proxy.cpp
+  parallel_pipeline.cpp
+  private_server.cpp
+  profiling.cpp
+  rml_tbb.cpp
+  Generating Code...
+  Compiling...
+  rtm_mutex.cpp
+  rtm_rw_mutex.cpp
+  semaphore.cpp
+  small_object_pool.cpp
+  task.cpp
+  task_dispatcher.cpp
+  task_group_context.cpp
+  thread_dispatcher.cpp
+  thread_request_serializer.cpp
+  threading_control.cpp
+  version.cpp
+  queuing_rw_mutex.cpp
+  Generating Code...
+     Creating library C:/cpp/VBVS--VIXEN/VIXEN/build/msvc_19.50_cxx_64_md_debug/tbb12_debug.lib and object C:/cpp/VBVS--VIXEN/VIXEN/build/msvc_19.50_cxx_64_md_debug/tbb12_debug.exp
+  tbb.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\msvc_19.50_cxx_64_md_debug\tbb12_debug.dll
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/SVO/CMakeLists.txt
+  ISVOStructure.cpp
+  SVOTypes.cpp
+  SVOBuilder.cpp
+  ContourBuilder.cpp
+  AttributeIntegrator.cpp
+  LaineKarrasOctree.cpp
+  VoxelInjection.cpp
+  VoxelSamplers.cpp
+  Serialization.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\AttributeIntegrator.cpp(56,39): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\AttributeIntegrator.cpp(56,39): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\AttributeIntegrator.cpp(97,39): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\AttributeIntegrator.cpp(97,39): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\ContourBuilder.cpp(55,60): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\src\ContourBuilder.cpp(55,60): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token '(' following 'expression' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C2760: syntax error: '<' was unexpected here; expected 'statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C2760: syntax error: ')' was unexpected here; expected 'expression' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C2760: syntax error: ')' was unexpected here; expected ';' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token ')' following 'expression-statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token ')' following 'statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token ')' following 'selection-statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token ')' following 'statement-seq' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50):
+      missing one of:  '}' ?
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C2760: syntax error: ')' was unexpected here; expected '}' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(63,50): error C3878: syntax error: unexpected token ')' following 'compound-statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.inl(68,22): error C2065: 'VectorMagnitude': undeclared identifier [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\ext\quaternion_exponential.hpp(51,26):
+      This diagnostic occurred in the compiler generated function 'glm::qua<T,Q> glm::pow(const glm::qua<T,Q> &,T)'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(34,18): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(34,18): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(34,18): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(34,18): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(34,18): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(42,18): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(42,18): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(42,18): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(42,18): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(42,18): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(50,18): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(50,18): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(50,18): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(50,18): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(50,18): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(58,18): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(58,18): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(58,18): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(58,18): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.hpp(58,18): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(4,23): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(4,23): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(4,23): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(4,23): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(4,23): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(5,2): error C2143: syntax error: missing ';' before '{' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(5,2): error C2447: '{': missing function header (old-style formal list?) [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(10,23): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(10,23): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(10,23): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(10,23): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(10,23): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(11,2): error C2143: syntax error: missing ';' before '{' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(11,2): error C2447: '{': missing function header (old-style formal list?) [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(16,23): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(16,23): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(16,23): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(16,23): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(16,23): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(17,2): error C2143: syntax error: missing ';' before '{' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(17,2): error C2447: '{': missing function header (old-style formal list?) [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(22,23): error C2988: unrecognizable template declaration/definition [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(22,23): error C2059: syntax error: '<parameter-list>' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(22,23): error C2146: syntax error: missing ')' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(22,23): error C2146: syntax error: missing ';' before identifier 'b' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(22,23): error C2059: syntax error: ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(23,2): error C2143: syntax error: missing ';' before '{' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\ext\scalar_common.inl(23,2): error C2447: '{': missing function header (old-style formal list?) [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+      C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73):
+      the template instantiation context (the oldest one first) is
+          C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(15,9):
+          while compiling class template partial specialization 'glm::detail::compute_compNormalize<L,T,floatType,Q,true,true>'
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73): error C2760: syntax error: '(' was unexpected here; expected ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73): error C2760: syntax error: ')' was unexpected here; expected 'expression' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73): error C2760: syntax error: ')' was unexpected here; expected ';' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(19,73): error C3878: syntax error: unexpected token ')' following 'expression-statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C2589: '(': illegal token on right side of '::' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C2760: syntax error: '(' was unexpected here; expected ')' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C2760: syntax error: ')' was unexpected here; expected 'expression' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C2760: syntax error: ')' was unexpected here; expected ';' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C3878: syntax error: unexpected token ')' following 'expression-statement' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  
+C:\VulkanSDK\1.4.321.1\include\glm\gtx\component_wise.inl(20,73): error C1003: error count exceeds 100; stopping compilation [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\SVO.vcxproj]
+  (compiling source file '../../../libraries/SVO/src/SVOBuilder.cpp')
+  

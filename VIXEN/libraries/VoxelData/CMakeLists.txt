@@ -70,3 +70,8 @@ install(DIRECTORY include/
     DESTINATION include
     FILES_MATCHING PATTERN "*.h"
 )
+
+# Tests
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

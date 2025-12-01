@@ -1,0 +1,404 @@
+MSBuild version 18.0.5+e22287bf1 for .NET Framework
+
+  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\glm.lib
+  VoxelComponents.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelComponents.lib
+  GaiaVoxelWorld.cpp
+  VoxelInjectionQueue.cpp
+  VoxelInjector.cpp
+  EntityBrickView.cpp
+  GaiaVoxelWorld.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\GaiaVoxelWorld.lib
+  VoxelData.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelData.lib
+  tbb.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\msvc_19.50_cxx_64_md_debug\tbb12_debug.dll
+  SVO.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\SVO.lib
+  gtest.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest.lib
+  gtest_main.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\gtest_main.lib
+  Building Custom Rule C:/cpp/VBVS--VIXEN/VIXEN/libraries/SVO/tests/CMakeLists.txt
+  test_octree_queries.cpp
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(435,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(435,5): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(435,5):
+      while trying to match the argument list '(const char [15], const char [14], const char [6], T, float)'
+          with
+          [
+              T=float
+          ]
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(436,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(436,5): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(436,5):
+      while trying to match the argument list '(const char [15], const char [14], const char [6], T, float)'
+          with
+          [
+              T=float
+          ]
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(437,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(437,5): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(437,5):
+      while trying to match the argument list '(const char [15], const char [14], const char [6], T, float)'
+          with
+          [
+              T=float
+          ]
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(440,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(440,5): error C2672: 'testing::internal::CmpHelperGE': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1463,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(440,5):
+          'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(440,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(441,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(441,5): error C2672: 'testing::internal::CmpHelperGE': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1463,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(441,5):
+          'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(441,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(442,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(442,5): error C2672: 'testing::internal::CmpHelperGE': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1463,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(442,5):
+          'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(442,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(614,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(614,5): error C2672: 'testing::internal::CmpHelperGE': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1463,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(614,5):
+          'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(614,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(615,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(615,5): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(615,5):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(615,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(868,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(868,5): error C2672: 'testing::internal::CmpHelperGE': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1463,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(868,5):
+          'testing::AssertionResult testing::internal::CmpHelperGE(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(868,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(869,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(869,5): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(869,5):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(869,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(923,43): error C2512: 'SVO::LaineKarrasOctree::LaineKarrasOctree': no appropriate default constructor available [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(923,43):
+      while trying to match the argument list '()'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1196,47): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1196,73): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1196,99): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1203,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1204,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1205,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1205,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1206,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1206,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1207,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1207,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1223,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1223,5): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1223,5):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1223,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1239,59): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1240,22): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1240,48): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1243,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1243,5): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1243,5):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1243,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1246,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1247,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1248,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1248,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1249,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1249,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1250,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1250,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1263,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1264,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1284,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1284,5): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1284,5):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1284,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1287,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1288,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1289,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1289,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1289,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1290,9): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1290,9):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1290,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1291,9): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1291,9):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1291,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1307,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1308,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1309,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1309,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1309,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1326,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1326,5): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1326,5):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1326,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1329,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1330,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1331,9): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1331,9):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1331,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1332,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1332,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1332,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1333,9): error C2672: 'testing::internal::CmpHelperLT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1461,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1333,9):
+          'testing::AssertionResult testing::internal::CmpHelperLT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1333,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1349,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1350,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1351,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1351,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1351,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1368,5): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1368,5): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1368,5):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1368,5): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1371,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1372,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1373,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1373,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1374,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1374,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1375,9): error C2660: 'testing::internal::DoubleNearPredFormat': function does not take 5 arguments [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1592,28):
+      see declaration of 'testing::internal::DoubleNearPredFormat'
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1375,9):
+      while trying to match the argument list '(const char [19], const char [5], const char [5], float, float)'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1392,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1393,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1394,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1394,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1394,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1407,51): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1408,9): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1409,9): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1409,9):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1409,9): error C2737: 'gtest_ar': const object must be initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1445,55): error C2039: 'position': is not a member of 'SVO::ISVOStructure::RayHit' [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\include\ISVOStructure.h(96,12):
+      see declaration of 'SVO::ISVOStructure::RayHit'
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1446,13): error C3536: 'voxelData': cannot be used before it is initialized [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1447,13): error C2672: 'testing::internal::CmpHelperGT': no matching overloaded function found [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
+      C:\cpp\VBVS--VIXEN\VIXEN\build\_deps\googletest-src\googletest\include\gtest\gtest.h(1465,1):
+      could be 'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)'
+          C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1447,13):
+          'testing::AssertionResult testing::internal::CmpHelperGT(const char *,const char *,const T1 &,const T2 &)': expects 4 arguments - 3 provided
+  
+C:\cpp\VBVS--VIXEN\VIXEN\libraries\SVO\tests\test_octree_queries.cpp(1447,13): error C1003: error count exceeds 100; stopping compilation [C:\cpp\VBVS--VIXEN\VIXEN\build\libraries\SVO\tests\test_octree_queries.vcxproj]
