@@ -164,6 +164,7 @@ private:
     uint32_t logFrequency_ = 60;  // Log every 60 frames by default
     uint32_t frameCounter_ = 0;
     bool printToTerminal_ = true;
+    bool hasRecordedTimestamps_ = false;  // Track if timestamps have been written to query pool
 
     void UpdateRollingStats();
 };

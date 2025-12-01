@@ -171,7 +171,11 @@ bool GPUTimestampQuery::ReadResults() {
     resultsValid_ = false;
 
     // Read timestamp results
+    // Note: We use VK_QUERY_RESULT_WAIT_BIT to ensure results are ready.
+    // Caller (GPUPerformanceLogger::CollectResults) must ensure this is only
+    // called after the command buffer has been submitted and fence waited.
     if (timestampPool_ != VK_NULL_HANDLE) {
+        // First check if results are available without blocking
         VkResult result = vkGetQueryPoolResults(
             device_->device,
             timestampPool_,
@@ -179,10 +183,14 @@ bool GPUTimestampQuery::ReadResults() {
             timestampResults_.size() * sizeof(uint64_t),
             timestampResults_.data(),
             sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT
+            VK_QUERY_RESULT_64_BIT  // No WAIT_BIT - return immediately if not ready
         );
 
-        if (result != VK_SUCCESS && result != VK_NOT_READY) {
+        if (result == VK_NOT_READY) {
+            // Results not ready yet - try again next frame
+            return false;
+        }
+        if (result != VK_SUCCESS) {
             return false;
         }
     }
@@ -196,10 +204,13 @@ bool GPUTimestampQuery::ReadResults() {
             pipelineStatsResults_.size() * sizeof(uint64_t),
             pipelineStatsResults_.data(),
             sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT
+            VK_QUERY_RESULT_64_BIT  // No WAIT_BIT
         );
 
-        if (result != VK_SUCCESS && result != VK_NOT_READY) {
+        if (result == VK_NOT_READY) {
+            return false;
+        }
+        if (result != VK_SUCCESS) {
             return false;
         }
     }

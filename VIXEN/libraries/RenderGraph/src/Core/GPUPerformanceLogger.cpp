@@ -8,7 +8,9 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice
     , rollingWindowSize_(rollingWindowSize)
 {
     if (device) {
-        query_ = std::make_unique<GPUTimestampQuery>(device, 4, true);
+        // Disable pipeline statistics - requires pipelineStatisticsQuery feature which is not enabled
+        // Timestamp queries work without additional device features
+        query_ = std::make_unique<GPUTimestampQuery>(device, 4, false);
 
         if (query_->IsTimestampSupported()) {
             Info("GPU timestamp queries enabled (period: " +
@@ -55,6 +57,7 @@ void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t
         }
 
         query_->WriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
+        hasRecordedTimestamps_ = true;  // Mark that we've recorded timestamps for collection
     }
 }
 
@@ -64,6 +67,11 @@ void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t
 
 void GPUPerformanceLogger::CollectResults() {
     if (!query_ || !query_->IsTimestampSupported()) {
+        return;
+    }
+
+    // Skip collection if we haven't recorded any timestamps yet (first frame)
+    if (!hasRecordedTimestamps_) {
         return;
     }
 
