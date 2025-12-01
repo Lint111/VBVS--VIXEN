@@ -20,9 +20,18 @@ namespace SVO {
  *   - valid_mask:      8 bits - Which child slots contain voxels
  *   - leaf_mask:       8 bits - Which valid children are leaves
  *
- * Part 2 (contour):
- *   - contour_pointer: 24 bits - Points to contour data
- *   - contour_mask:     8 bits - Which children have contours
+ * Part 2 (context-dependent interpretation):
+ *   For INTERNAL nodes (contour mode):
+ *     - contour_pointer: 24 bits - Points to contour data
+ *     - contour_mask:     8 bits - Which children have contours
+ *
+ *   For LEAF nodes at brick level (brick mode):
+ *     - brick_index:     24 bits - Index into sparse brick array
+ *     - brick_flags:      8 bits - Reserved for future use (LOD, compression)
+ *
+ * The interpretation depends on context:
+ * - Contours approximate mesh surfaces (mesh→voxel conversion)
+ * - Bricks store dense voxel data (native voxel content)
  */
 struct ChildDescriptor {
     // First 32 bits - hierarchy data
@@ -31,11 +40,18 @@ struct ChildDescriptor {
     uint32_t validMask     : 8;   // Bit per child: 1 = slot contains voxel
     uint32_t leafMask      : 8;   // Bit per child: 1 = voxel is leaf
 
-    // Second 32 bits - contour data
-    uint32_t contourPointer : 24; // Offset to contour values
-    uint32_t contourMask    : 8;  // Bit per child: 1 = has contour
+    // Second 32 bits - contour/brick data (context-dependent)
+    uint32_t contourPointer : 24; // Contour mode: offset to contour values
+                                  // Brick mode: index into sparse brick array
+    uint32_t contourMask    : 8;  // Contour mode: which children have contours
+                                  // Brick mode: flags (reserved)
 
-    // Helper methods
+    // Sentinel value for "no brick" (24-bit max)
+    static constexpr uint32_t INVALID_BRICK_INDEX = 0xFFFFFFu;
+
+    // ========================================================================
+    // Hierarchy helpers (always valid)
+    // ========================================================================
     bool hasChild(int childIdx) const {
         return (validMask & (1 << childIdx)) != 0;
     }
@@ -44,12 +60,57 @@ struct ChildDescriptor {
         return (leafMask & (1 << childIdx)) != 0;
     }
 
+    int getChildCount() const {
+        return std::popcount(static_cast<uint8_t>(validMask & ~leafMask));
+    }
+
+    int getLeafCount() const {
+        return std::popcount(static_cast<uint8_t>(validMask & leafMask));
+    }
+
+    // ========================================================================
+    // Contour mode helpers (for mesh voxelization)
+    // ========================================================================
     bool hasContour(int childIdx) const {
         return (contourMask & (1 << childIdx)) != 0;
     }
 
-    int getChildCount() const {
-        return std::popcount(static_cast<uint8_t>(validMask & ~leafMask));
+    uint32_t getContourPointer() const {
+        return contourPointer;
+    }
+
+    uint8_t getContourMask() const {
+        return static_cast<uint8_t>(contourMask);
+    }
+
+    void setContour(uint32_t pointer, uint8_t mask) {
+        contourPointer = pointer & 0xFFFFFFu;
+        contourMask = mask;
+    }
+
+    // ========================================================================
+    // Brick mode helpers (for voxel data - leaf nodes at brick level)
+    // ========================================================================
+    uint32_t getBrickIndex() const {
+        return contourPointer;  // Same field, different interpretation
+    }
+
+    uint8_t getBrickFlags() const {
+        return static_cast<uint8_t>(contourMask);  // Same field
+    }
+
+    bool hasBrick() const {
+        return contourPointer != INVALID_BRICK_INDEX;
+    }
+
+    void setBrickIndex(uint32_t index, uint8_t flags = 0) {
+        contourPointer = index & 0xFFFFFFu;
+        contourMask = flags;
+    }
+
+    void clearBrick() {
+        contourPointer = INVALID_BRICK_INDEX;
+        contourMask = 0;
     }
 };
 

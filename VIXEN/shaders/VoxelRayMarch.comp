@@ -1,4 +1,8 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+
+// Include shared SVO data structures (must be before buffer declarations that use them)
+#include "SVOTypes.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -19,22 +23,15 @@ layout(std430, binding = 2) readonly buffer BrickBuffer {
     uint brickData[];
 };
 
-// Material buffer
-struct Material {
-    vec3 albedo;
-    float metalness;
-    float roughness;
-    float emissive;
-    vec2 padding;
-};
-
+// Material buffer (Material struct defined in SVOTypes.glsl)
 layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
-// Brick base index buffer - maps node index to sparse brick array base
-// For nodes at brickESVOScale with leaves, stores starting index into brickData
-// 0xFFFFFFFF = no bricks at this node
+// Brick base index buffer - maps brick grid position to sparse brick array index
+// TODO: Replace with descriptor-based lookup (getBrickIndex from leaf descriptor)
+// For now, this dense grid provides the position→brick mapping
+// 0xFFFFFFFF = no brick at this position
 layout(std430, binding = 6) readonly buffer BrickBaseIndexBuffer {
     uint brickBaseIndex[];
 };
@@ -400,81 +397,14 @@ void endRayTrace(bool hit) {
 }
 
 // ============================================================================
-// ESVO DESCRIPTOR HELPERS (Matching SVOTypes.h ChildDescriptor)
+// ESVO BUFFER ACCESS
 // ============================================================================
-// C++ ChildDescriptor layout:
-//   First 32 bits:
-//     bits 0-14:  childPointer (15 bits) - offset to first child
-//     bit 15:     farBit (1 bit) - indirect reference flag
-//     bits 16-23: validMask (8 bits) - which children exist
-//     bits 24-31: leafMask (8 bits) - which children are leaves
-//   Second 32 bits:
-//     bits 0-23:  contourPointer (24 bits)
-//     bits 24-31: contourMask (8 bits)
+// Descriptor helpers (getValidMask, getLeafMask, getChildPointer, getBrickIndex, etc.)
+// and octant mirroring helpers (mirroredToLocalOctant, localToMirroredOctant, etc.)
+// are defined in SVOTypes.glsl
 
 uvec2 fetchESVONode(uint nodeIndex) {
     return esvoNodes[nodeIndex];
-}
-
-uint getValidMask(uvec2 descriptor) {
-    return (descriptor.x >> 16) & 0xFFu;
-}
-
-uint getLeafMask(uvec2 descriptor) {
-    return (descriptor.x >> 24) & 0xFFu;
-}
-
-uint getChildPointer(uvec2 descriptor) {
-    return descriptor.x & 0x7FFFu;
-}
-
-bool childExists(uint validMask, int childIndex) {
-    return ((validMask >> childIndex) & 1u) != 0u;
-}
-
-bool childIsLeaf(uint leafMask, int childIndex) {
-    return ((leafMask >> childIndex) & 1u) != 0u;
-}
-
-// ============================================================================
-// OCTANT MIRRORING HELPERS (Matching SVOTypes.h mirrorMask, mirroredToLocalOctant)
-// ============================================================================
-
-// Convert mirrored-space octant index to local-space (descriptor storage order)
-// Formula: localIdx = mirroredIdx ^ (~octant_mask & 7)
-// octant_mask bit=1 means NOT mirrored, bit=0 means IS mirrored
-int mirroredToLocalOctant(int mirroredIdx, int octant_mask) {
-    return mirroredIdx ^ ((~octant_mask) & 7);
-}
-
-int mirroredToWorldOctant(int mirroredIdx, int octant_mask) {
-    return mirroredIdx ^ octant_mask;
-}
-
-// Convert local-space octant index to mirrored-space
-int localToMirroredOctant(int localIdx, int octant_mask) {
-    return localIdx ^ ((~octant_mask) & 7);
-}
-
-// ============================================================================
-// CHILD COUNTING HELPERS
-// ============================================================================
-
-// Count INTERNAL (non-leaf) children before childIndex in packed array
-// Only count children that EXIST (validMask bit set) AND are NOT leaves (leafMask bit clear)
-uint countInternalChildrenBefore(uint validMask, uint leafMask, int childIndex) {
-    if (childIndex <= 0) return 0u;
-    uint mask = (1u << childIndex) - 1u;
-    uint internalMask = validMask & ~leafMask;
-    return bitCount(internalMask & mask);
-}
-
-// Count LEAF children before childIndex (for leaf brick lookup)
-uint countLeavesBefore(uint validMask, uint leafMask, int childIndex) {
-    if (childIndex <= 0) return 0u;
-    uint mask = (1u << childIndex) - 1u;
-    uint leafChildren = validMask & leafMask;
-    return bitCount(leafChildren & mask);
 }
 
 // ============================================================================
@@ -1179,10 +1109,7 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
 // LEAF HIT HANDLING (Matching handleLeafHit) - SPARSE BRICK ARCHITECTURE
 // ============================================================================
 // Uses LOCAL POSITION-BASED lookup via brickBaseIndex buffer (dense grid).
-// Key = bx + by*bricksPerAxis + bz*bricksPerAxis² -> brickViewIndex
-//
-// This is POSITION-BASED (not topology-based) so it's VIEW-INDEPENDENT.
-// The brick grid coordinates are computed from the ESVO octant position.
+// This is VIEW-INDEPENDENT: we unmirror the ESVO position to get true world coords.
 
 bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridSize,
@@ -1191,50 +1118,30 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
     // ============================================================================
-    // STEP 1: Convert mirrored octant index to local-space for descriptor lookup
+    // STEP 1: Compute world-space hit point from ray equation
     // ============================================================================
-    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+    // Note: checkChildValidity already verified this is a valid leaf.
+    // We skip re-checking here and just compute the brick lookup.
+    // This is VIEW-INDEPENDENT because t_min is the parametric distance along the ray
+    // to the octant entry point. The actual world position doesn't depend on octant_mask.
+    vec3 hitPointWorld = rayOrigin + rayDir * (state.t_min + EPSILON);
+
+    // Convert to local grid coordinates [0, gridSize]
+    vec3 hitPosLocal = hitPointWorld - gridMin;
+    hitPosLocal = clamp(hitPosLocal, vec3(0.001), gridSize - vec3(0.001));
 
     // ============================================================================
-    // STEP 2: Verify this child exists and is a leaf
+    // STEP 4: Compute brick grid coordinates from world hit position
     // ============================================================================
-    if (!childExists(validMask, localChildIdx) || !childIsLeaf(leafMask, localChildIdx)) {
-        return false;  // No brick at this octant
-    }
-
-    // ============================================================================
-    // STEP 3: Compute LOCAL octant bounds (view-independent)
-    // ============================================================================
-    // Convert ESVO mirrored [1,2] position to LOCAL [0,1] space.
-    // This gives us the actual spatial position of the octant, independent of ray direction.
-
-    vec3 localMin, localMax;
-    for (int axis = 0; axis < 3; axis++) {
-        int bit = 1 << axis;
-        if ((coef.octant_mask & bit) != 0) {
-            // Non-mirrored axis: position is direct
-            localMin[axis] = state.pos[axis];
-            localMax[axis] = state.pos[axis] + state.scale_exp2;
-        } else {
-            // Mirrored axis: position needs reflection (3.0 - pos)
-            localMax[axis] = 3.0 - state.pos[axis];
-            localMin[axis] = 3.0 - state.pos[axis] - state.scale_exp2;
-        }
-    }
-    // Convert from [1,2] space to [0,1] normalized local space
-    vec3 octantMin = clamp(localMin - vec3(1.0), vec3(0.0), vec3(1.0));
-    vec3 octantMax = clamp(localMax - vec3(1.0), vec3(0.0), vec3(1.0));
-
-    // ============================================================================
-    // STEP 4: Compute brick grid coordinates from LOCAL position
-    // ============================================================================
-    // Use the CENTER of the octant to determine brick coordinates.
-    // This ensures we get the correct brick regardless of octant size.
+    int BRICK_SIZE = octreeConfig.brickSize;
     int bricksPerAxis = octreeConfig.bricksPerAxis;
 
-    vec3 octantCenter = (octantMin + octantMax) * 0.5;
-    ivec3 brickCoord = ivec3(floor(octantCenter * float(bricksPerAxis)));
+    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
     brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+
+    // Compute brick bounds in world space for DDA
+    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE);
+    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE));
 
     // Linearize: bx + by*N + bz*N*N (matches CPU VoxelGridNode)
     uint linearIdx = uint(brickCoord.x) +
@@ -1246,20 +1153,9 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
         return false;  // No brick at this position
     }
 
-    // ============================================================================
-    // STEP 5: Compute brick world-space bounds for DDA from ESVO octant
-    // ============================================================================
-    // octantMin/octantMax were computed in STEP 3 from the ESVO position.
-    // Convert to world space for DDA traversal.
-
-    vec3 brickMinWorld = gridMin + octantMin * gridSize;
-    vec3 brickMaxWorld = gridMin + octantMax * gridSize;
-
-    int BRICK_SIZE = octreeConfig.brickSize;
-
 #if DEBUG_LOCAL_NORM
-    // Show octant bounds in normalized space
-    hitColor = octantMin;
+    // Show local hit position normalized to [0,1]
+    hitColor = hitPosLocal / gridSize;
     hitNormal = vec3(0.0, 1.0, 0.0);
     hitT = state.t_min;
     return true;
@@ -1316,7 +1212,7 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
 #endif
 
     // ============================================================================
-    // STEP 6: DDA through brick voxels using sparse brick index
+    // STEP 7: DDA through brick voxels using sparse brick index
     // ============================================================================
     uint axisMask;
     if (marchBrick(rayOrigin, rayDir, 0.0, brickMinWorld, brickMaxWorld, brickIndex,

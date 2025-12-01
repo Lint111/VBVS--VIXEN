@@ -1,8 +1,69 @@
 # Active Context
 
-**Last Updated**: November 30, 2025 (Session 8H)
+**Last Updated**: December 1, 2025 (Session 8I)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **Bug #9 FIXED** | ESVO Scale + Brick Occupancy Check
+**Status**: 🔧 **DESIGN DECISION** | Sparse Brick Lookup Architecture
+
+---
+
+## Session 8I Progress (Dec 1, 2025) - SPARSE BRICK ARCHITECTURE DESIGN
+
+### Problem Statement
+
+Current `handleLeafHit()` uses position-based brick lookup via `brickBaseIndex[]` (dense grid). This assumes all brick slots exist, but ESVO is **sparse** - we need to map ESVO leaf nodes directly to their brick indices.
+
+### Design Decision: Specialized Descriptor Types
+
+**Conclusion**: Use context-based descriptor interpretation. The 64-bit `ChildDescriptor` stays unchanged, but the **second 32 bits are interpreted differently** based on object type:
+
+| Use Case | Leaf Interpretation | Second 32 bits |
+|----------|---------------------|----------------|
+| **Voxel data** (native) | `BrickDescriptor` | `brickIndex` (24 bits) + flags |
+| **Voxelized mesh** | `ContourDescriptor` | `contourPointer` (24 bits) + `contourMask` |
+
+**Rationale**:
+- Contours approximate mesh surfaces (for mesh→voxel conversion)
+- Bricks store dense voxel data (for native voxel content)
+- Different rendering modes don't need both simultaneously
+- Zero memory overhead - reuses existing 64-bit structure
+
+### Implementation Plan
+
+1. **Modify `ChildDescriptor` interpretation** (context-based):
+   ```cpp
+   // For LEAF nodes, second 32 bits can be:
+   // - BrickDescriptor: brickIndex(24) + flags(8)
+   // - ContourDescriptor: contourPointer(24) + contourMask(8)
+   ```
+
+2. **During tree compression** (`LaineKarrasOctree::rebuild()`):
+   - For leaf nodes at brick level, store `brickIndex` in `contourPointer` field
+   - Bricks are stored sparsely; index comes from compression order
+
+3. **Shader lookup** (`handleLeafHit()`):
+   ```glsl
+   uint brickIndex = getContourPointer(descriptor);  // Reused field
+   if (brickIndex == 0xFFFFFF) return false;  // No brick
+   // DDA through brickData[brickIndex * 512]
+   ```
+
+4. **Remove `brickBaseIndex[]` buffer** - no longer needed
+
+### Why Not Other Approaches?
+
+| Approach | Rejected Because |
+|----------|------------------|
+| Add 32-bit `brickIndex` field | +50% memory, breaks 64-bit alignment |
+| 8 indices per parent | 32 bytes/node, wastes space for sparse data |
+| `contourPointer + popcount` | Requires brick reordering during compression |
+| Separate buffer per type | Extra SSBO bindings, complexity |
+
+### Files to Modify
+
+- [ ] `SVOTypes.h` - Add brick interpretation helpers
+- [ ] `LaineKarrasOctree.cpp` - Store brickIndex in contourPointer during compression
+- [ ] `VoxelGridNode.cpp` - Update `UploadESVOBuffers()` to use new layout
+- [ ] `VoxelRayMarch.comp` - Update `handleLeafHit()` to read brickIndex from descriptor
 
 ---
 
