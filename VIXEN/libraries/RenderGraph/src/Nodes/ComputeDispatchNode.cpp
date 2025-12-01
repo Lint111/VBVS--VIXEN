@@ -2,6 +2,7 @@
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 #include "VulkanDevice.h"
 #include "Core/ComputePerformanceLogger.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "VulkanSwapChain.h"  // For SwapChainPublicVariables
 #include "ShaderDataBundle.h"
 #include "Debug/IDebugCapture.h"  // For debug capture passthrough
@@ -105,6 +106,22 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers successfully");
+
+    // Create GPU performance logger with timestamp queries and pipeline stats
+    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice);
+    gpuPerfLogger_->SetEnabled(true);
+    gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
+    gpuPerfLogger_->SetPrintToTerminal(true);
+
+    if (nodeLogger) {
+        nodeLogger->AddChild(gpuPerfLogger_);
+    }
+
+    if (gpuPerfLogger_->IsTimingSupported()) {
+        NODE_LOG_INFO("[ComputeDispatchNode] GPU performance timing enabled");
+    } else {
+        NODE_LOG_WARNING("[ComputeDispatchNode] GPU timing not supported on this device");
+    }
 }
 
 // ============================================================================
@@ -134,6 +151,11 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);
+
+    // Collect GPU performance results from previous frame (after fence wait)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->CollectResults();
+    }
 
     // Guard against invalid image index
     if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers.size()) {
@@ -257,12 +279,27 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     VkImage swapchainImage = swapchainInfo->colorBuffers[imageIndex].image;
     VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
 
+    // Begin GPU timing frame (reset queries)
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->BeginFrame(cmdBuffer);
+    }
+
     TransitionImageToGeneral(cmdBuffer, swapchainImage);
     BindComputePipeline(cmdBuffer, pipeline, pipelineLayout, descriptorSet);
     SetPushConstants(ctx, cmdBuffer, pipelineLayout, pushConstantData);
 
+    // Record GPU timestamps around dispatch
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchStart(cmdBuffer);
+    }
+
     // Dispatch compute shader
     vkCmdDispatch(cmdBuffer, dispatchX, dispatchY, dispatchZ);
+
+    // End GPU timing
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+    }
 
     TransitionImageToPresent(cmdBuffer, swapchainImage);
 
@@ -418,6 +455,7 @@ void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
     // - Parent (nodeLogger) keeps it alive until log extraction
     // - No manual RemoveChild needed
     perfLogger_.reset();
+    gpuPerfLogger_.reset();
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
         // Free command buffers

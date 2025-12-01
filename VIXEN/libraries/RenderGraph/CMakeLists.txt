@@ -78,6 +78,7 @@ set(RENDERGRAPH_CORE_HEADERS
     include/Core/ComputePerformanceLogger.h
     include/Core/DeferredDestruction.h
     include/Core/FieldExtractor.h
+    include/Core/GPUPerformanceLogger.h
     include/Core/GraphLifecycleHooks.h
     include/Core/GraphTopology.h
     include/Core/IGraphCompilable.h
@@ -109,6 +110,7 @@ set(RENDERGRAPH_DATA_CORE_SOURCES
 set(RENDERGRAPH_CORE_SOURCES
     src/Core/GraphLifecycleHooks.cpp
     src/Core/GraphTopology.cpp
+    src/Core/GPUPerformanceLogger.cpp
     src/Core/LoopManager.cpp
     src/Core/NodeInstance.cpp
     src/Core/NodeType.cpp

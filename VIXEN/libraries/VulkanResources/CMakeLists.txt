@@ -15,6 +15,7 @@ set(VULKANRESOURCES_SOURCES
     src/VulkanLayerAndExtension.cpp
     src/VulkanSwapChain.cpp
     src/CommandBufferUtility.cpp
+    src/GPUTimestampQuery.cpp
     src/error/VulkanError.cpp
     src/Time/EngineTime.cpp
     src/TextureHandling/Loading/GLITextureLoader.cpp
@@ -28,6 +29,7 @@ set(VULKANRESOURCES_HEADERS
     include/VulkanLayerAndExtension.h
     include/VulkanSwapChain.h
     include/CommandBufferUtility.h
+    include/GPUTimestampQuery.h
     include/VulkanGlobalNames.h
     include/TextureHandling/Loading/TextureLoader.h
     include/TextureHandling/Loading/GLITextureLoader.h

@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Core/StatefulContainer.h"
+#include "Core/GPUPerformanceLogger.h"
 #include "Data/Nodes/ComputeDispatchNodeConfig.h"
 
 namespace Vixen::RenderGraph {
@@ -88,6 +89,9 @@ private:
 
     // Performance logging (disabled by default, enable as needed)
     std::shared_ptr<class ComputePerformanceLogger> perfLogger_;  // Shared ownership for hierarchy
+
+    // GPU performance metrics (timestamp queries + pipeline stats)
+    std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
 };
 
 } // namespace Vixen::RenderGraph
