@@ -204,6 +204,18 @@ public:
         std::vector<uint8_t> hierarchyBuffer;    // Octree structure
         std::vector<uint8_t> attributeBuffer;    // Colors, normals, etc.
         std::vector<uint8_t> auxBuffer;          // Contours, metadata, etc.
+
+        // ====================================================================
+        // DXT Compressed Buffers (Week 3)
+        // ====================================================================
+        // For GPU binding 7 (CompressedColorBuffer) and 8 (CompressedNormalBuffer)
+        //
+        // Layout: 32 DXT blocks per 8x8x8 brick
+        //   Color:  uvec2 (8 bytes) per block = 256 bytes/brick
+        //   Normal: uvec4 (16 bytes) per block = 512 bytes/brick
+        // ====================================================================
+        std::vector<uint8_t> compressedColorBuffer;   // Binding 7: DXT1 color blocks
+        std::vector<uint8_t> compressedNormalBuffer;  // Binding 8: DXT normal blocks
     };
     virtual GPUBuffers getGPUBuffers() const = 0;
 

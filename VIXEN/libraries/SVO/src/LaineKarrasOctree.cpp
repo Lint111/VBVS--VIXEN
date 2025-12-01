@@ -1598,10 +1598,73 @@ ISVOStructure::GPUBuffers LaineKarrasOctree::getGPUBuffers() const {
         return buffers;
     }
 
-    // TODO: Pack data into GPU-friendly format
-    // For now, return empty buffers
+    // TODO: Pack hierarchyBuffer, attributeBuffer, auxBuffer
+
+    // Pack compressed color buffer (binding 7)
+    if (!m_octree->root->compressedColors.empty()) {
+        const size_t colorBytes = m_octree->root->compressedColors.size() * sizeof(uint64_t);
+        buffers.compressedColorBuffer.resize(colorBytes);
+        std::memcpy(buffers.compressedColorBuffer.data(),
+                    m_octree->root->compressedColors.data(),
+                    colorBytes);
+    }
+
+    // Pack compressed normal buffer (binding 8)
+    if (!m_octree->root->compressedNormals.empty()) {
+        const size_t normalBytes = m_octree->root->compressedNormals.size() *
+                                   sizeof(OctreeBlock::CompressedNormalBlock);
+        buffers.compressedNormalBuffer.resize(normalBytes);
+        std::memcpy(buffers.compressedNormalBuffer.data(),
+                    m_octree->root->compressedNormals.data(),
+                    normalBytes);
+    }
 
     return buffers;
+}
+
+// ============================================================================
+// DXT Compression Accessors (Week 3)
+// ============================================================================
+
+bool LaineKarrasOctree::hasCompressedData() const {
+    return m_octree && m_octree->root &&
+           !m_octree->root->compressedColors.empty() &&
+           !m_octree->root->compressedNormals.empty();
+}
+
+const uint64_t* LaineKarrasOctree::getCompressedColorData() const {
+    if (!hasCompressedData()) {
+        return nullptr;
+    }
+    return m_octree->root->compressedColors.data();
+}
+
+size_t LaineKarrasOctree::getCompressedColorSize() const {
+    if (!hasCompressedData()) {
+        return 0;
+    }
+    return m_octree->root->compressedColors.size() * sizeof(uint64_t);
+}
+
+const void* LaineKarrasOctree::getCompressedNormalData() const {
+    if (!hasCompressedData()) {
+        return nullptr;
+    }
+    return m_octree->root->compressedNormals.data();
+}
+
+size_t LaineKarrasOctree::getCompressedNormalSize() const {
+    if (!hasCompressedData()) {
+        return 0;
+    }
+    return m_octree->root->compressedNormals.size() * sizeof(OctreeBlock::CompressedNormalBlock);
+}
+
+size_t LaineKarrasOctree::getCompressedBrickCount() const {
+    if (!m_octree || !m_octree->root) {
+        return 0;
+    }
+    return m_octree->root->brickViews.size();
 }
 
 std::string LaineKarrasOctree::getGPUTraversalShader() const {
@@ -2463,6 +2526,99 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
     m_octree->root->leafToBrickView = std::move(leafToBrickView);
     m_octree->root->brickGridToBrickView = std::move(brickGridToBrickView);
     m_octree->totalVoxels = totalVoxels;
+
+    // ========================================================================
+    // 8. PHASE 4: DXT Compression (Week 3)
+    // ========================================================================
+    // Compress brick colors and normals for GPU-efficient storage.
+    // Layout: 32 DXT blocks per 8x8x8 brick (16 voxels per block)
+    //
+    // Block ordering within brick: X-major, then Y, then Z
+    //   Block 0: voxels (0-1, 0-1, 0-3)
+    //   Block 1: voxels (2-3, 0-1, 0-3)
+    //   ... etc.
+    //
+    // This matches the voxelLinearIdx >> 4 formula in the shader.
+    // ========================================================================
+    {
+        const size_t numBricks = m_octree->root->brickViews.size();
+        const size_t blocksPerBrick = 32;  // 512 voxels / 16 per block
+
+        // Allocate compressed buffers
+        m_octree->root->compressedColors.resize(numBricks * blocksPerBrick);
+        m_octree->root->compressedNormals.resize(numBricks * blocksPerBrick);
+
+        ::VoxelData::DXT1ColorCompressor colorCompressor;
+        ::VoxelData::DXTNormalCompressor normalCompressor;
+
+        std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks..." << std::endl;
+
+        for (size_t brickIdx = 0; brickIdx < numBricks; ++brickIdx) {
+            const auto& brickView = m_octree->root->brickViews[brickIdx];
+
+            // Process each DXT block (16 voxels per block)
+            for (int blockIdx = 0; blockIdx < static_cast<int>(blocksPerBrick); ++blockIdx) {
+                std::array<glm::vec3, 16> blockColors;
+                std::array<glm::vec3, 16> blockNormals;
+                size_t validCount = 0;
+                std::array<int32_t, 16> validIndices;
+
+                // Gather voxels for this block
+                const int baseVoxelIdx = blockIdx * 16;
+                for (int texelIdx = 0; texelIdx < 16; ++texelIdx) {
+                    int voxelLinearIdx = baseVoxelIdx + texelIdx;
+
+                    // Convert linear index to 3D coordinates (X-major, then Y, then Z)
+                    // voxelLinearIdx = x + y*8 + z*64
+                    int x = voxelLinearIdx & 7;
+                    int y = (voxelLinearIdx >> 3) & 7;
+                    int z = (voxelLinearIdx >> 6) & 7;
+
+                    // Query entity at this position
+                    auto entity = brickView.getEntity(x, y, z);
+                    if (entity == gaia::ecs::Entity()) {
+                        // Empty voxel - use default values
+                        blockColors[texelIdx] = glm::vec3(0.0f);
+                        blockNormals[texelIdx] = glm::vec3(0.0f, 1.0f, 0.0f);
+                        continue;
+                    }
+
+                    // Get color from entity (default to gray if missing)
+                    auto colorOpt = brickView.getComponentValue<::GaiaVoxel::Color>(voxelLinearIdx);
+                    blockColors[texelIdx] = colorOpt.value_or(glm::vec3(0.5f));
+
+                    // Get normal from entity (default to up if missing)
+                    auto normalOpt = brickView.getComponentValue<::GaiaVoxel::Normal>(voxelLinearIdx);
+                    blockNormals[texelIdx] = normalOpt.value_or(glm::vec3(0.0f, 1.0f, 0.0f));
+
+                    validIndices[validCount] = texelIdx;
+                    validCount++;
+                }
+
+                // Compress block
+                size_t bufferIdx = brickIdx * blocksPerBrick + static_cast<size_t>(blockIdx);
+
+                if (validCount > 0) {
+                    // Compress with all 16 texels (including defaults for empty voxels)
+                    m_octree->root->compressedColors[bufferIdx] =
+                        colorCompressor.encodeBlockTyped(blockColors.data(), 16, nullptr);
+
+                    auto normalBlock = normalCompressor.encodeBlockTyped(blockNormals.data(), 16, nullptr);
+                    m_octree->root->compressedNormals[bufferIdx] = {normalBlock.blockA, normalBlock.blockB};
+                } else {
+                    // All empty - store zeros
+                    m_octree->root->compressedColors[bufferIdx] = 0;
+                    m_octree->root->compressedNormals[bufferIdx] = {0, 0};
+                }
+            }
+        }
+
+        size_t colorBytes = numBricks * blocksPerBrick * sizeof(uint64_t);
+        size_t normalBytes = numBricks * blocksPerBrick * sizeof(OctreeBlock::CompressedNormalBlock);
+        std::cout << "[LaineKarrasOctree] Compression complete: "
+                  << colorBytes << " bytes colors, "
+                  << normalBytes << " bytes normals" << std::endl;
+    }
 
     // Lock automatically released when lock goes out of scope
 }
