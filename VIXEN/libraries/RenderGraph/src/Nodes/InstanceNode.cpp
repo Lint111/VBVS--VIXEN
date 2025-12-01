@@ -4,9 +4,14 @@
 #include <iostream>
 #include <stdexcept>
 
-// External global lists from main.cpp
-extern std::vector<const char*> instanceExtensionNames;
-extern std::vector<const char*> layerNames;
+// Include central header that provides inline/selectany globals so this TU
+// does not require or create a strong definition. Use the public include
+// provided by the `VulkanResources` target so consumers can `#include
+// <VulkanGlobalNames.h>` directly.
+#include <VulkanGlobalNames.h>
+
+// NOTE: globals `instanceExtensionNames` and `layerNames` are provided
+// as inline/selectany variables by `VulkanGlobalNames.h`.
 
 namespace Vixen::RenderGraph {
 

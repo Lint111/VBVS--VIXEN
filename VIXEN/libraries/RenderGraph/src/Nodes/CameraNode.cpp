@@ -96,14 +96,15 @@ void CameraNode::CompileImpl(TypedCompileContext& ctx) {
     glm::mat4 view = glm::lookAt(cameraPosition, target, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Fill initial camera data
+    // MUST match shader PushConstants layout in VoxelRayMarch.comp!
     currentCameraData.cameraPos = cameraPosition;
-    currentCameraData.fov = glm::radians(fov);
+    currentCameraData.time = 0.0f;  // Will be updated per-frame
     currentCameraData.cameraDir = forward;
-    currentCameraData.aspect = aspectRatio;
+    currentCameraData.fov = fov;    // Degrees (shader converts to radians)
     currentCameraData.cameraUp = up;
-    currentCameraData.lodBias = 1.0f;
+    currentCameraData.aspect = aspectRatio;
     currentCameraData.cameraRight = right;
-    currentCameraData.gridResolution = gridResolution;
+    currentCameraData.debugMode = 0;  // Normal rendering mode
     currentCameraData.invProjection = glm::inverse(projection);
     currentCameraData.invView = glm::inverse(view);
 
@@ -186,14 +187,15 @@ void CameraNode::UpdateCameraData(float aspectRatio) {
     glm::mat4 view = glm::lookAt(cameraPosition, orbitCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Update camera data struct
+    // MUST match shader PushConstants layout in VoxelRayMarch.comp!
     currentCameraData.cameraPos = cameraPosition;
-    currentCameraData.fov = glm::radians(fov);
+    currentCameraData.time += 1.0f / 60.0f;  // Increment time (approximate)
     currentCameraData.cameraDir = forward;
-    currentCameraData.aspect = aspectRatio;
+    currentCameraData.fov = fov;    // Degrees (shader converts to radians)
     currentCameraData.cameraUp = up;
-    currentCameraData.lodBias = 1.0f;
+    currentCameraData.aspect = aspectRatio;
     currentCameraData.cameraRight = right;
-    currentCameraData.gridResolution = gridResolution;
+    // debugMode is set via input (not updated here)
     currentCameraData.invProjection = glm::inverse(projection);
     currentCameraData.invView = glm::inverse(view);
 

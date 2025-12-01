@@ -16,9 +16,10 @@
 
 using namespace Vixen::RenderGraph;
 
-// Define globals required by DeviceNode
-std::vector<const char*> deviceExtensionNames;
-std::vector<const char*> layerNames;
+// Use the central header for inline/selectany globals to avoid duplicate
+// strong definitions across TUs. Rely on CMake to expose the include path
+// so we can include by name rather than by relative path.
+#include <VulkanGlobalNames.h>
 
 class CommandPoolNodeTest : public ::testing::Test {};
 

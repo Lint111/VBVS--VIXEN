@@ -19,11 +19,34 @@ add_executable(test_device_node
     Nodes/test_device_node.cpp
 )
 
-# Link against library target - includes propagate automatically
-target_link_libraries(test_device_node PRIVATE
+# Common libraries for RenderGraph tests. Start with GoogleTest and RenderGraph
+set(RENDERGRAPH_TEST_COMMON_LIBS
     GTest::gtest_main
     RenderGraph
 )
+
+# Optionally append other known dependencies if their targets exist in the build
+if(TARGET VulkanResources)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS VulkanResources)
+endif()
+if(TARGET GaiaVoxelWorld)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS GaiaVoxelWorld)
+endif()
+if(TARGET Logger)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS Logger)
+endif()
+if(TARGET EventBus)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS EventBus)
+endif()
+if(TARGET ResourceManagement)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS ResourceManagement)
+endif()
+if(TARGET ShaderManagement)
+    list(APPEND RENDERGRAPH_TEST_COMMON_LIBS ShaderManagement)
+endif()
+
+# Link against library target and explicit dependencies
+target_link_libraries(test_device_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 
 
 # Visual Studio solution folder organization
@@ -37,11 +60,7 @@ add_executable(test_window_node
     Nodes/test_window_node.cpp
 )
 
-# Link against library target - includes propagate automatically
-target_link_libraries(test_window_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-)
+target_link_libraries(test_window_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 
 
 # Visual Studio solution folder organization
@@ -55,11 +74,7 @@ add_executable(test_command_pool_node
     Nodes/test_command_pool_node.cpp
 )
 
-# Link against library target - includes propagate automatically
-target_link_libraries(test_command_pool_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-)
+target_link_libraries(test_command_pool_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 
 
 # Visual Studio solution folder organization
@@ -73,11 +88,7 @@ add_executable(test_swap_chain_node
     Nodes/test_swap_chain_node.cpp
 )
 
-# Link against library target - includes propagate automatically
-target_link_libraries(test_swap_chain_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-)
+target_link_libraries(test_swap_chain_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 
 
 # Visual Studio solution folder organization
@@ -91,11 +102,7 @@ add_executable(test_frame_sync_node
     Nodes/test_frame_sync_node.cpp
 )
 
-# Link against library target - includes propagate automatically
-target_link_libraries(test_frame_sync_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-)
+target_link_libraries(test_frame_sync_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS})
 
 
 # Visual Studio solution folder organization
@@ -109,13 +116,7 @@ add_executable(test_push_constant_gatherer_node
     Nodes/test_push_constant_gatherer_node.cpp
 )
 
-# Link against library targets - includes and test fixtures propagate automatically
-# ShaderManagementTestFixtures exposes test fixture headers for cross-library testing
-target_link_libraries(test_push_constant_gatherer_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-    ShaderManagementTestFixtures
-)
+target_link_libraries(test_push_constant_gatherer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
 
 
 # Visual Studio solution folder organization
@@ -129,13 +130,7 @@ add_executable(test_descriptor_resource_gatherer_node
     Nodes/test_descriptor_resource_gatherer_node.cpp
 )
 
-# Link against library targets - includes and test fixtures propagate automatically
-# ShaderManagementTestFixtures exposes test fixture headers for cross-library testing
-target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE
-    GTest::gtest_main
-    RenderGraph
-    ShaderManagementTestFixtures
-)
+target_link_libraries(test_descriptor_resource_gatherer_node PRIVATE ${RENDERGRAPH_TEST_COMMON_LIBS} ShaderManagementTestFixtures)
 
 
 # Visual Studio solution folder organization

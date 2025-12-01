@@ -1,8 +1,57 @@
 # Active Context
 
-**Last Updated**: December 1, 2025 (Session 8J)
+**Last Updated**: December 1, 2025 (Sessions 8I-8L)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **IMPLEMENTED** | Sparse Brick Architecture Complete
+**Status**: ✅ **IMPLEMENTED** | Cornell Box Rendering with Camera Perspective
+
+## Recent Commits (Last 10)
+
+| Commit | Description |
+|--------|-------------|
+| 3dc5ec6 | Camera/perspective fix - orbit controls for 10³ world |
+| 516ec13 | Coordinate transformations and shader optimizations |
+| 1cbedd7 | **Cornell box Rendered Correctly** |
+| 1e3599c | Brick origin calculation and node size handling |
+| 09068b3 | Brick handling and hit detection accuracy |
+| d0671e1 | Remove brickBaseIndex buffer (sparse architecture) |
+| 0b68de3 | ShaderBundleBuilder preprocessor support |
+| a17da07 | Sparse brick architecture implementation |
+| 5f03e79 | ChildDescriptor context-dependent interpretation |
+| 44852b1 | Brick grid lookup for dense architecture |
+
+---
+
+## Session 8I Progress (Dec 1, 2025) - SHADER INFRASTRUCTURE IMPROVEMENTS
+
+**Changes Made**:
+
+1. **ShaderBundleBuilder.h/.cpp** - Enhanced preprocessor support:
+   - Added `AddIncludePath()` for shader include directories
+   - Added `AddPreprocessorDefine()` for compile-time defines
+   - Integrated with shaderc for proper `#include` resolution
+
+2. **SVOTypes.glsl** - New shared GLSL data structures (174 lines):
+   - `ChildDescriptor` struct matching C++ layout
+   - Bit-field accessor functions: `getChildPointer()`, `getValidMask()`, `getLeafMask()`
+   - Brick/contour handling: `getBrickIndex()`, `setBrickIndex()`
+   - Context-dependent interpretation helpers
+
+3. **SVOTypes.h** - C++ ChildDescriptor enhancements:
+   - Added `getBrickIndex()`, `setBrickIndex()` for leaf descriptors
+   - Added `getContourPointer()` for contour nodes
+   - Documented context-dependent interpretation (internal vs leaf vs contour)
+
+4. **VoxelRayMarch.comp** - Refactored to use shared types:
+   - Removed duplicated struct definitions
+   - Added `#include "SVOTypes.glsl"`
+   - Simplified code by ~150 lines
+
+**Files Modified**:
+- `libraries/ShaderManagement/include/ShaderBundleBuilder.h`
+- `libraries/ShaderManagement/src/ShaderBundleBuilder.cpp`
+- `shaders/SVOTypes.glsl` (NEW)
+- `libraries/SVO/include/SVOTypes.h`
+- `shaders/VoxelRayMarch.comp`
 
 ---
 
@@ -88,6 +137,72 @@ Achieved solid, artifact-free rendering of the Cornell Box by resolving multiple
 - ✅ **Solid Geometry**: No gaps, holes, or missing walls.
 - ✅ **Correct Depth**: Far walls render correctly.
 - ✅ **Stable Traversal**: No misses at grazing angles.
+
+### Session 8L Progress (Dec 1, 2025) - CAMERA/PERSPECTIVE FIX
+
+**Summary**: Fixed critical bugs preventing proper camera perspective and distance rendering.
+
+#### Bug #1: Push Constant Layout Mismatch (ROOT CAUSE)
+
+C++ `CameraData` struct had fields in WRONG ORDER vs shader's `PushConstants`:
+
+| Offset | Shader Expected | C++ Was Sending |
+|--------|----------------|-----------------|
+| 12 | `time` | `fov` |
+| 28 | `fov` | `aspect` |
+| 44 | `aspect` | `lodBias` |
+| 60 | `debugMode` | `gridResolution` |
+
+Shader received garbage for `fov` and `aspect`, breaking perspective ray generation.
+
+**Fix**: Reordered `CameraData` struct fields to match shader layout.
+
+#### Bug #2: Entry Point Coordinate Mismatch
+
+`gridT.x` (AABB intersection) computed in LOCAL space but applied to WORLD-space ray direction.
+
+**Fix**: Compute entry point in local space, transform back to world:
+```glsl
+vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
+rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+```
+
+#### Bug #3: Hit Position Scaling Mismatch
+
+`hitPosWorld = rayStartWorld + rayDir * tHit` mixed normalized world `rayDir` with `t` values from scaled local direction.
+
+**Fix**: Compute hit position in ESVO [1,2] space:
+```glsl
+vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
+```
+
+#### Bug #4: tBias Units Mismatch
+
+`tBias = gridT.x` was in local units but used for world-space distance.
+
+**Fix**: Compute actual world-space distance:
+```glsl
+tEntryWorld = length(rayStartWorld - rayOrigin);
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `libraries/RenderGraph/include/Data/CameraData.h` | Fixed field order to match shader |
+| `libraries/RenderGraph/src/Nodes/CameraNode.cpp` | Updated to use new field names |
+| `libraries/RenderGraph/include/Nodes/CameraNode.h` | Adjusted orbit center/distance for 10^3 world |
+| `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` | Changed to 10x10x10 world size |
+| `shaders/VoxelRayMarch.comp` | Fixed coordinate transformations (lines ~1270-1274, ~1446-1451) |
+| `libraries/VulkanResources/include/VulkanGlobalNames.h` | Added instanceExtensionNames to global options |
+
+#### Result
+
+Camera perspective now works correctly:
+- Moving camera changes rendered view size
+- Zoom works properly
+- Orbiting shows correct 3D perspective changes
 
 ---
 
@@ -300,7 +415,7 @@ Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunte
 **Current State**:
 - ✅ Cornell Box renders with correct colors (red, green, yellow, white walls)
 - ✅ Camera controls work smoothly
-- ⚠️ Minor artifacts may remain at brick boundaries (needs verification)
+- ✅ No boundary artifacts (fixed in Session 8K/8L)
 
 **Next**:
 - [ ] Final visual verification
