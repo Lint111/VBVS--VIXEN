@@ -36,7 +36,7 @@
 #include "Nodes/CameraNode.h"  // Ray marching: Camera data
 #include "Nodes/VoxelGridNode.h"  // Ray marching: 3D voxel texture
 #include "Nodes/InputNode.h"  // Input polling and event publishing
-#include <ShaderBundleBuilder.h>  // Phase G: Shader builder API
+#include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 
@@ -672,14 +672,22 @@ void VulkanGraphApplication::BuildRenderGraph() {
             throw std::runtime_error("VoxelRayMarch.comp not found - check shader search paths");
         }
 
+        // Configure builder with include paths for #include directive support
+        // AddIncludePath() automatically creates internal preprocessor
         builder.SetProgramName("VoxelRayMarch")
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] Configured VoxelRayMarch compute shader from: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Builder has " + std::to_string(builder.GetStageCount()) + " stages");
         }
 
         return builder;

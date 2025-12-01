@@ -49,6 +49,7 @@ public:
         std::string source;                 // GLSL source code
         std::string entryPoint = "main";
         CompilationOptions options;
+        std::filesystem::path sourcePath;   // Original file path (for #include resolution)
 
         // Preprocessing options (applied if preprocessor is enabled)
         std::unordered_map<std::string, std::string> defines;
@@ -92,6 +93,15 @@ public:
     };
 
     ShaderBundleBuilder();
+    ~ShaderBundleBuilder();
+
+    // Non-copyable (owns raw pointers)
+    ShaderBundleBuilder(const ShaderBundleBuilder&) = delete;
+    ShaderBundleBuilder& operator=(const ShaderBundleBuilder&) = delete;
+
+    // Movable with proper ownership transfer
+    ShaderBundleBuilder(ShaderBundleBuilder&& other) noexcept;
+    ShaderBundleBuilder& operator=(ShaderBundleBuilder&& other) noexcept;
 
     // ===== Configuration Methods =====
 
@@ -151,6 +161,17 @@ public:
      * @brief Enable preprocessing with custom preprocessor
      */
     ShaderBundleBuilder& EnablePreprocessing(ShaderPreprocessor* preprocessor);
+
+    /**
+     * @brief Add an include search path for #include directives
+     *
+     * Automatically creates an internal preprocessor if one isn't already set.
+     * Multiple include paths can be added by calling this method multiple times.
+     *
+     * @param path Directory to search for included files
+     * @return Reference to this builder
+     */
+    ShaderBundleBuilder& AddIncludePath(const std::filesystem::path& path);
 
     /**
      * @brief Enable caching with custom cache manager
@@ -252,6 +273,7 @@ private:
 
     // Optional components
     ShaderPreprocessor* preprocessor_ = nullptr;
+    bool ownsPreprocessor_ = false;
     ShaderCacheManager* cacheManager_ = nullptr;
     ShaderCompiler* compiler_ = nullptr;
     bool ownsCompiler_ = false;

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 
 namespace ShaderManagement {
 
@@ -120,6 +121,76 @@ ShaderBundleBuilder::ShaderBundleBuilder()
 {
 }
 
+ShaderBundleBuilder::~ShaderBundleBuilder() {
+    // Clean up owned resources
+    if (ownsPreprocessor_ && preprocessor_) {
+        delete preprocessor_;
+        preprocessor_ = nullptr;
+    }
+    if (ownsCompiler_ && compiler_) {
+        delete compiler_;
+        compiler_ = nullptr;
+    }
+}
+
+ShaderBundleBuilder::ShaderBundleBuilder(ShaderBundleBuilder&& other) noexcept
+    : programName_(std::move(other.programName_))
+    , pipelineType_(other.pipelineType_)
+    , uuid_(std::move(other.uuid_))
+    , stages_(std::move(other.stages_))
+    , validatePipeline_(other.validatePipeline_)
+    , generateSdi_(other.generateSdi_)
+    , preprocessor_(other.preprocessor_)
+    , ownsPreprocessor_(other.ownsPreprocessor_)
+    , cacheManager_(other.cacheManager_)
+    , compiler_(other.compiler_)
+    , ownsCompiler_(other.ownsCompiler_)
+    , sdiConfig_(std::move(other.sdiConfig_))
+    , registryManager_(other.registryManager_)
+    , registryAlias_(std::move(other.registryAlias_))
+{
+    // Transfer ownership - null out source's owned pointers
+    other.preprocessor_ = nullptr;
+    other.ownsPreprocessor_ = false;
+    other.compiler_ = nullptr;
+    other.ownsCompiler_ = false;
+}
+
+ShaderBundleBuilder& ShaderBundleBuilder::operator=(ShaderBundleBuilder&& other) noexcept {
+    if (this != &other) {
+        // Clean up our owned resources first
+        if (ownsPreprocessor_ && preprocessor_) {
+            delete preprocessor_;
+        }
+        if (ownsCompiler_ && compiler_) {
+            delete compiler_;
+        }
+
+        // Move data
+        programName_ = std::move(other.programName_);
+        pipelineType_ = other.pipelineType_;
+        uuid_ = std::move(other.uuid_);
+        stages_ = std::move(other.stages_);
+        validatePipeline_ = other.validatePipeline_;
+        generateSdi_ = other.generateSdi_;
+        preprocessor_ = other.preprocessor_;
+        ownsPreprocessor_ = other.ownsPreprocessor_;
+        cacheManager_ = other.cacheManager_;
+        compiler_ = other.compiler_;
+        ownsCompiler_ = other.ownsCompiler_;
+        sdiConfig_ = std::move(other.sdiConfig_);
+        registryManager_ = other.registryManager_;
+        registryAlias_ = std::move(other.registryAlias_);
+
+        // Transfer ownership
+        other.preprocessor_ = nullptr;
+        other.ownsPreprocessor_ = false;
+        other.compiler_ = nullptr;
+        other.ownsCompiler_ = false;
+    }
+    return *this;
+}
+
 ShaderBundleBuilder& ShaderBundleBuilder::SetProgramName(const std::string& name) {
     programName_ = name;
     return *this;
@@ -213,7 +284,16 @@ ShaderBundleBuilder& ShaderBundleBuilder::AddStageFromFile(
     }
     file.close();
 
-    return AddStage(stage, source, entryPoint, options);
+    // Store stage with source path for #include resolution
+    StageSource stageSource{
+        .stage = stage,
+        .source = source,
+        .entryPoint = entryPoint,
+        .options = options,
+        .sourcePath = sourcePath
+    };
+    stages_.push_back(stageSource);
+    return *this;
 }
 
 ShaderBundleBuilder& ShaderBundleBuilder::AddStageFromSpirv(
@@ -246,7 +326,22 @@ ShaderBundleBuilder& ShaderBundleBuilder::SetStageDefines(
 }
 
 ShaderBundleBuilder& ShaderBundleBuilder::EnablePreprocessing(ShaderPreprocessor* preprocessor) {
+    // Clean up existing owned preprocessor if any
+    if (ownsPreprocessor_ && preprocessor_) {
+        delete preprocessor_;
+    }
     preprocessor_ = preprocessor;
+    ownsPreprocessor_ = false;  // External preprocessor - caller owns it
+    return *this;
+}
+
+ShaderBundleBuilder& ShaderBundleBuilder::AddIncludePath(const std::filesystem::path& path) {
+    // Create internal preprocessor on first include path if not already set
+    if (!preprocessor_) {
+        preprocessor_ = new ShaderPreprocessor();
+        ownsPreprocessor_ = true;
+    }
+    preprocessor_->AddIncludePath(path);
     return *this;
 }
 
@@ -351,9 +446,18 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
         // Preprocess if enabled
         std::string sourceToCompile = stageSource.source;
+        std::cerr << "[ShaderBundleBuilder] Preprocessor check: preprocessor_=" << (preprocessor_ != nullptr)
+                  << ", source.empty=" << stageSource.source.empty()
+                  << ", sourcePath=" << stageSource.sourcePath.string() << std::endl << std::flush;
+        ShaderLogger::LogDebug("Preprocessor check: preprocessor_=" + std::to_string(preprocessor_ != nullptr) +
+                              ", source.empty=" + std::to_string(stageSource.source.empty()) +
+                              ", sourcePath=" + stageSource.sourcePath.string(), "Builder");
         if (preprocessor_ && !stageSource.source.empty()) {
+            std::cerr << "[ShaderBundleBuilder] Preprocessing with " << preprocessor_->GetIncludePaths().size() << " include paths" << std::endl << std::flush;
+            ShaderLogger::LogInfo("Preprocessing shader source with " +
+                                  std::to_string(preprocessor_->GetIncludePaths().size()) + " include paths", "Builder");
             auto preprocessStart = std::chrono::steady_clock::now();
-            auto preprocessed = preprocessor_->Preprocess(stageSource.source, stageSource.defines);
+            auto preprocessed = preprocessor_->Preprocess(stageSource.source, stageSource.defines, stageSource.sourcePath);
             auto preprocessEnd = std::chrono::steady_clock::now();
             result.preprocessTime += std::chrono::duration_cast<std::chrono::milliseconds>(
                 preprocessEnd - preprocessStart);
