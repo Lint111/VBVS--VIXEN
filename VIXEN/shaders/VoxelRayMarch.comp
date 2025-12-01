@@ -28,13 +28,9 @@ layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
-// Brick base index buffer - maps brick grid position to sparse brick array index
-// TODO: Replace with descriptor-based lookup (getBrickIndex from leaf descriptor)
-// For now, this dense grid provides the position→brick mapping
-// 0xFFFFFFFF = no brick at this position
-layout(std430, binding = 6) readonly buffer BrickBaseIndexBuffer {
-    uint brickBaseIndex[];
-};
+// NOTE: brickBaseIndex buffer (binding 6) has been REMOVED
+// Brick indices are now read directly from leaf descriptors via getBrickIndex()
+// This eliminates the need for a separate position→brick mapping buffer
 
 // ============================================================================
 // OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
@@ -1106,10 +1102,10 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
 }
 
 // ============================================================================
-// LEAF HIT HANDLING (Matching handleLeafHit) - SPARSE BRICK ARCHITECTURE
+// LEAF HIT HANDLING - DESCRIPTOR-BASED SPARSE BRICK LOOKUP
 // ============================================================================
-// Uses LOCAL POSITION-BASED lookup via brickBaseIndex buffer (dense grid).
-// This is VIEW-INDEPENDENT: we unmirror the ESVO position to get true world coords.
+// Reads brickIndex directly from the leaf descriptor's contourPointer field.
+// No external buffer lookup needed - the index is embedded in the ESVO hierarchy.
 
 bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridSize,
@@ -1118,40 +1114,48 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
 
     // ============================================================================
-    // STEP 1: Compute world-space hit point from ray equation
+    // STEP 1: Compute leaf descriptor index and read brickIndex
     // ============================================================================
-    // Note: checkChildValidity already verified this is a valid leaf.
-    // We skip re-checking here and just compute the brick lookup.
-    // This is VIEW-INDEPENDENT because t_min is the parametric distance along the ray
-    // to the octant entry point. The actual world position doesn't depend on octant_mask.
-    vec3 hitPointWorld = rayOrigin + rayDir * (state.t_min + EPSILON);
+    // Leaf descriptors are stored contiguously after non-leaf children.
+    // Layout: [parent] -> [non-leaf 0] [non-leaf 1] ... [leaf 0] [leaf 1] ...
+    //
+    // The brickIndex is stored directly in the leaf descriptor's contourPointer field
+    // (24 bits) via setBrickIndex() during tree construction.
 
-    // Convert to local grid coordinates [0, gridSize]
+    // Convert mirrored-space idx to local-space for descriptor lookup
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+
+    // Get parent's childPointer and compute leaf descriptor index
+    uint childPointer = getChildPointer(parentDescriptor);
+    uint totalInternalChildren = bitCount(validMask & ~leafMask);
+    uint leafsBefore = countLeavesBefore(validMask, leafMask, localChildIdx);
+    uint leafDescriptorIndex = childPointer + totalInternalChildren + leafsBefore;
+
+    // Fetch the leaf descriptor and read brickIndex directly
+    uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);
+    uint brickIndex = getBrickIndex(leafDescriptor);
+
+    if (brickIndex == SVO_INVALID_INDEX) {
+        return false;  // No brick data for this leaf
+    }
+
+    // ============================================================================
+    // STEP 3: Compute brick bounds from ESVO position for DDA
+    // ============================================================================
+    // Use the ray hit position to determine brick world bounds
+    vec3 hitPointWorld = rayOrigin + rayDir * (state.t_min + EPSILON);
     vec3 hitPosLocal = hitPointWorld - gridMin;
     hitPosLocal = clamp(hitPosLocal, vec3(0.001), gridSize - vec3(0.001));
 
-    // ============================================================================
-    // STEP 4: Compute brick grid coordinates from world hit position
-    // ============================================================================
-    int BRICK_SIZE = octreeConfig.brickSize;
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
     int bricksPerAxis = octreeConfig.bricksPerAxis;
 
-    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE)));
+    ivec3 brickCoord = ivec3(floor(hitPosLocal / float(BRICK_SIZE_VAL)));
     brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
 
     // Compute brick bounds in world space for DDA
-    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE);
-    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE));
-
-    // Linearize: bx + by*N + bz*N*N (matches CPU VoxelGridNode)
-    uint linearIdx = uint(brickCoord.x) +
-                     uint(brickCoord.y) * uint(bricksPerAxis) +
-                     uint(brickCoord.z) * uint(bricksPerAxis) * uint(bricksPerAxis);
-
-    uint brickIndex = brickBaseIndex[linearIdx];
-    if (brickIndex == 0xFFFFFFFFu) {
-        return false;  // No brick at this position
-    }
+    vec3 brickMinWorld = gridMin + vec3(brickCoord) * float(BRICK_SIZE_VAL);
+    vec3 brickMaxWorld = brickMinWorld + vec3(float(BRICK_SIZE_VAL));
 
 #if DEBUG_LOCAL_NORM
     // Show local hit position normalized to [0,1]

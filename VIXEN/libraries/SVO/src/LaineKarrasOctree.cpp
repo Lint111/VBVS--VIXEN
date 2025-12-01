@@ -2235,13 +2235,14 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         brickGridToBrickView[gridKey] = brickViewIndex;
 
         // Create brick descriptor (all children are leaf voxels)
+        // SPARSE BRICK ARCHITECTURE: Store brickIndex directly in descriptor
+        // The brickViewIndex becomes the sparse brick array index
         ChildDescriptor desc{};
         desc.validMask = 0xFF;  // All 8 octants populated (simplified)
         desc.leafMask = 0xFF;   // All children are leaves (voxel level)
-        desc.childPointer = brickViewIndex;  // Points to brick view in original array
+        desc.childPointer = 0;  // Not used for brick descriptors (no children)
         desc.farBit = 0;
-        desc.contourPointer = 0;
-        desc.contourMask = 0;
+        desc.setBrickIndex(brickViewIndex);  // Store sparse brick index in contourPointer field
 
         tempDescriptors.push_back(desc);
 
@@ -2407,19 +2408,25 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
                 uint32_t childOldIndex = it->second[octant];
                 if (childOldIndex == UINT32_MAX) continue;
 
-                // Check if this child is a leaf (brick)
+                // SPARSE BRICK ARCHITECTURE: All valid children go into finalDescriptors
+                // Leaf children (bricks) have their brickIndex stored in contourPointer field
+                // Non-leaf children continue BFS traversal
                 if (desc.leafMask & (1 << octant)) {
-                    // Leaf child: map (newParentIndex, octant) → brickViewIndex
-                    // Brick descriptor index == brick view index (1:1 from Phase 2)
+                    // Leaf child (brick descriptor) - add to hierarchy
+                    // The descriptor already has brickIndex set via setBrickIndex()
+                    leafChildren.push_back(childOldIndex);
+
+                    // Also maintain legacy leafToBrickView mapping for CPU ray casting
                     uint64_t key = (static_cast<uint64_t>(current.newIndex) << 3) | static_cast<uint64_t>(octant);
-                    leafToBrickView[key] = childOldIndex;  // childOldIndex is the brick view index
+                    leafToBrickView[key] = tempDescriptors[childOldIndex].getBrickIndex();
                 } else {
-                    // Non-leaf child: will be added to finalDescriptors
+                    // Non-leaf child: will be added to finalDescriptors and continue BFS
                     nonLeafChildren.push_back(childOldIndex);
                 }
             }
 
-            // Add ALL children (both leaf and non-leaf) contiguously
+            // Add ALL children (both non-leaf and leaf) contiguously
+            // Non-leaf first, then leaf - matches ESVO paper's child ordering
             std::vector<uint32_t> allChildren = nonLeafChildren;
             allChildren.insert(allChildren.end(), leafChildren.begin(), leafChildren.end());
 

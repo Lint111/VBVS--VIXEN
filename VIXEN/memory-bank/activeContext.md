@@ -1,69 +1,63 @@
 # Active Context
 
-**Last Updated**: December 1, 2025 (Session 8I)
+**Last Updated**: December 1, 2025 (Session 8J)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: 🔧 **DESIGN DECISION** | Sparse Brick Lookup Architecture
+**Status**: ✅ **IMPLEMENTED** | Sparse Brick Architecture Complete
 
 ---
 
-## Session 8I Progress (Dec 1, 2025) - SPARSE BRICK ARCHITECTURE DESIGN
+## Session 8J Progress (Dec 1, 2025) - SPARSE BRICK ARCHITECTURE IMPLEMENTED
 
-### Problem Statement
+### Summary
 
-Current `handleLeafHit()` uses position-based brick lookup via `brickBaseIndex[]` (dense grid). This assumes all brick slots exist, but ESVO is **sparse** - we need to map ESVO leaf nodes directly to their brick indices.
+Completed the sparse brick architecture implementation. Brick indices are now stored directly in leaf descriptors, eliminating the need for the `brickBaseIndex[]` buffer.
 
-### Design Decision: Specialized Descriptor Types
+### Changes Made
 
-**Conclusion**: Use context-based descriptor interpretation. The 64-bit `ChildDescriptor` stays unchanged, but the **second 32 bits are interpreted differently** based on object type:
+1. **LaineKarrasOctree.cpp** - Store brickIndex in leaf descriptors:
+   - Modified brick descriptor creation to use `setBrickIndex(brickViewIndex)`
+   - BFS reordering now includes leaf children in `finalDescriptors`
+   - Leaf descriptors are placed after non-leaf children (layout: non-leaf → leaf)
 
-| Use Case | Leaf Interpretation | Second 32 bits |
-|----------|---------------------|----------------|
-| **Voxel data** (native) | `BrickDescriptor` | `brickIndex` (24 bits) + flags |
-| **Voxelized mesh** | `ContourDescriptor` | `contourPointer` (24 bits) + `contourMask` |
+2. **VoxelGridNode.cpp** - Simplified buffer upload:
+   - Removed dense `brickGridLookup` table construction
+   - `brickBaseIndex[]` buffer replaced with minimal placeholder
+   - Sparse brick data uploaded in brickViews order (unchanged)
 
-**Rationale**:
-- Contours approximate mesh surfaces (for mesh→voxel conversion)
-- Bricks store dense voxel data (for native voxel content)
-- Different rendering modes don't need both simultaneously
-- Zero memory overhead - reuses existing 64-bit structure
+3. **VoxelRayMarch.comp** - Descriptor-based brick lookup:
+   - `handleLeafHit()` now fetches leaf descriptor and reads `brickIndex` directly
+   - Removed `brickBaseIndex[]` buffer declaration
+   - Index calculation: `childPointer + totalInternalChildren + leafsBefore`
 
-### Implementation Plan
+### Architecture Diagram
 
-1. **Modify `ChildDescriptor` interpretation** (context-based):
-   ```cpp
-   // For LEAF nodes, second 32 bits can be:
-   // - BrickDescriptor: brickIndex(24) + flags(8)
-   // - ContourDescriptor: contourPointer(24) + contourMask(8)
-   ```
+```
+Before (Position-Based):
+  ESVO traversal → position → brickBaseIndex[linearIdx] → brickData[index * 512]
 
-2. **During tree compression** (`LaineKarrasOctree::rebuild()`):
-   - For leaf nodes at brick level, store `brickIndex` in `contourPointer` field
-   - Bricks are stored sparsely; index comes from compression order
+After (Descriptor-Based):
+  ESVO traversal → fetch leafDescriptor → getBrickIndex(leafDesc) → brickData[index * 512]
+```
 
-3. **Shader lookup** (`handleLeafHit()`):
-   ```glsl
-   uint brickIndex = getContourPointer(descriptor);  // Reused field
-   if (brickIndex == 0xFFFFFF) return false;  // No brick
-   // DDA through brickData[brickIndex * 512]
-   ```
+### Benefits
 
-4. **Remove `brickBaseIndex[]` buffer** - no longer needed
+- **Memory**: Eliminated N³ dense lookup table (16³ = 4K entries → 1 placeholder)
+- **Simplicity**: Single code path, no position computation
+- **ESVO-native**: Matches paper's sparse representation
 
-### Why Not Other Approaches?
+### Files Modified
 
-| Approach | Rejected Because |
-|----------|------------------|
-| Add 32-bit `brickIndex` field | +50% memory, breaks 64-bit alignment |
-| 8 indices per parent | 32 bytes/node, wastes space for sparse data |
-| `contourPointer + popcount` | Requires brick reordering during compression |
-| Separate buffer per type | Extra SSBO bindings, complexity |
+- [x] `shaders/SVOTypes.glsl` - Shared GLSL data structures
+- [x] `shaders/VoxelRayMarch.comp` - Descriptor-based `handleLeafHit()`
+- [x] `libraries/SVO/include/SVOTypes.h` - `getBrickIndex()`, `setBrickIndex()` helpers
+- [x] `libraries/SVO/src/LaineKarrasOctree.cpp` - Store brickIndex during compression
+- [x] `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` - Simplified buffer upload
 
-### Files to Modify
+### Test Results
 
-- [ ] `SVOTypes.h` - Add brick interpretation helpers
-- [ ] `LaineKarrasOctree.cpp` - Store brickIndex in contourPointer during compression
-- [ ] `VoxelGridNode.cpp` - Update `UploadESVOBuffers()` to use new layout
-- [ ] `VoxelRayMarch.comp` - Update `handleLeafHit()` to read brickIndex from descriptor
+- **SVO octree tests**: 47/47 pass ✅
+- **Ray casting tests**: 9/11 pass (2 pre-existing failures)
+- **Shader compilation**: ✅ glslangValidator passes
 
 ---
 

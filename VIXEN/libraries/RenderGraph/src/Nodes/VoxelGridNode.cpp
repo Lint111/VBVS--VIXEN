@@ -1133,63 +1133,19 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
               << (sparseBrickData.size() * sizeof(uint32_t)) << " bytes" << std::endl;
 
     // ============================================================================
-    // Step 2: Build DENSE brick grid lookup: brickGridLookup[bx + by*N + bz*N*N] -> brickViewIndex
+    // Step 2: DEPRECATED - brickBaseIndex buffer no longer needed
     // ============================================================================
-    // UNIFIED APPROACH: Use local brick grid coordinates for lookup.
-    // This is position-based (not topology-based) so it's view-independent.
+    // SPARSE BRICK ARCHITECTURE: Brick indices are now stored directly in leaf
+    // descriptors via setBrickIndex(). The shader reads getBrickIndex(leafDescriptor)
+    // instead of looking up brickBaseIndex[linearIdx].
     //
-    // Key: linearized brick coordinate (bx + by*bricksPerAxis + bz*bricksPerAxis²)
-    // Value: brickViewIndex (sparse index into brick data), or 0xFFFFFFFF if empty
-    //
-    // GPU shader computes brick coords from ESVO octant position in [0,1] local space.
+    // We still create a minimal placeholder buffer for binding compatibility,
+    // but it's not actually used by the shader anymore.
 
-    size_t brickGridLookupSize = static_cast<size_t>(bricksPerAxis) * bricksPerAxis * bricksPerAxis;
-    std::vector<uint32_t> brickGridLookup(brickGridLookupSize, 0xFFFFFFFFu);
+    std::vector<uint32_t> brickBaseIndex(1, 0xFFFFFFFFu);  // Minimal placeholder
 
-    size_t populatedBricks = 0;
-
-    // Populate from brickGridToBrickView mapping (created in LaineKarrasOctree::rebuild)
-    for (const auto& [gridKey, brickViewIdx] : rootBlock.brickGridToBrickView) {
-        if (brickViewIdx >= brickViews.size()) continue;
-
-        // Decode grid key: bx | (by << 10) | (bz << 20)
-        uint32_t bx = gridKey & 0x3FF;
-        uint32_t by = (gridKey >> 10) & 0x3FF;
-        uint32_t bz = (gridKey >> 20) & 0x3FF;
-
-        if (bx >= static_cast<uint32_t>(bricksPerAxis) ||
-            by >= static_cast<uint32_t>(bricksPerAxis) ||
-            bz >= static_cast<uint32_t>(bricksPerAxis)) {
-            continue;  // Out of bounds
-        }
-
-        // Linearize: bx + by*N + bz*N*N
-        size_t linearIdx = bx + by * bricksPerAxis + bz * bricksPerAxis * bricksPerAxis;
-        if (linearIdx < brickGridLookup.size()) {
-            brickGridLookup[linearIdx] = brickViewIdx;
-            populatedBricks++;
-        }
-    }
-
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Built brickGridLookup table: "
-              << brickGridLookupSize << " entries (dense), "
-              << populatedBricks << " populated bricks" << std::endl;
-
-    // Debug: Print first few valid entries
-    std::cout << "[VoxelGridNode::UploadESVOBuffers] Sample brickGridLookup entries:" << std::endl;
-    int printed = 0;
-    for (size_t i = 0; i < brickGridLookup.size() && printed < 10; ++i) {
-        if (brickGridLookup[i] != 0xFFFFFFFFu) {
-            uint32_t bz = static_cast<uint32_t>(i / (bricksPerAxis * bricksPerAxis));
-            uint32_t by = static_cast<uint32_t>((i / bricksPerAxis) % bricksPerAxis);
-            uint32_t bx = static_cast<uint32_t>(i % bricksPerAxis);
-            std::cout << "  [brick(" << bx << "," << by << "," << bz << ")] -> sparse index " << brickGridLookup[i] << std::endl;
-            printed++;
-        }
-    }
-
-    // Use brickGridLookup as the base index buffer
-    std::vector<uint32_t>& brickBaseIndex = brickGridLookup;
+    std::cout << "[VoxelGridNode::UploadESVOBuffers] SPARSE BRICK ARCHITECTURE: "
+              << "brickIndex now embedded in leaf descriptors (brickBaseIndex buffer deprecated)" << std::endl;
 
     VkDeviceSize bricksBufferSize = sparseBrickData.size() * sizeof(uint32_t);
     if (bricksBufferSize == 0) {
