@@ -48,8 +48,18 @@ struct OctreeConfig {
 
     float gridMaxX, gridMaxY, gridMaxZ;
     float _padding3;            // Pad vec3 to vec4
+
+    // Coordinate Transformations
+    glm::mat4 localToWorld;     // Transform from Grid Local [0,1] to World Space, std140 layout requires 16-byte alignment
+    glm::mat4 worldToLocal;     // Transform from World Space to Grid Local [0,1] , std140 layout requires 16-byte alignment
+
+    // Padding to reach 256 bytes (std140 alignment)
+    // Current size: 16 + 16 + 16 + 16 + 64 + 64 = 192 bytes
+    // Needed: 256 - 192 = 64 bytes
+    float _padding4[16];
 };
-static_assert(sizeof(OctreeConfig) == 64, "OctreeConfig must be 64 bytes for std140 alignment");
+
+static_assert(sizeof(OctreeConfig) == 256, "OctreeConfig must be 256 bytes for std140 alignment");
 
 // ============================================================================
 // NODE TYPE FACTORY
@@ -273,6 +283,23 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         config.gridMaxX = static_cast<float>(resolution);
         config.gridMaxY = static_cast<float>(resolution);
         config.gridMaxZ = static_cast<float>(resolution);
+
+        // Compute Transformation Matrices
+        // Define the grid's transform in world space
+        // For now, we place the grid at origin with scale = resolution (matching previous behavior)
+        // Local Space is defined as [0, 1] unit cube
+        glm::vec3 gridScale(static_cast<float>(resolution));
+        glm::vec3 gridTranslation(0.0f);
+        glm::vec3 gridRotation(0.0f); // Euler angles if needed
+
+        // Model Matrix: Local [0,1] -> World
+        // Scale by resolution to match the grid size
+        glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), gridScale);
+        glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), gridTranslation);
+        // Rotation would go here
+        
+        config.localToWorld = translateMat * scaleMat;
+        config.worldToLocal = glm::inverse(config.localToWorld);
 
         std::cout << "[VoxelGridNode] OctreeConfig: esvoMaxScale=" << config.esvoMaxScale
                   << ", userMaxLevels=" << config.userMaxLevels

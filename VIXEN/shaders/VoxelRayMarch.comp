@@ -55,6 +55,13 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 
     vec3 gridMax;
     float _padding3;        // Pad vec3 to vec4
+
+    // Coordinate Transformations
+    mat4 localToWorld;      // Transform from Grid Local [0,1] to World Space
+    mat4 worldToLocal;      // Transform from World Space to Grid Local [0,1]
+
+    // Padding to match C++ struct size (256 bytes)
+    float _padding4[16];
 } octreeConfig;
 
 // NOTE: Ray trace buffer is declared after TraceStep/RayTraceHeader structs (see below)
@@ -66,7 +73,30 @@ layout(std140, binding = 5) uniform OctreeConfigUBO {
 // ESVO uses fixed 23-bit mantissa precision for float bit manipulation tricks
 // This is INDEPENDENT of user's octree depth - it's how ESVO normalizes [1,2] space
 // NOTE: esvoMaxScale is now in octreeConfig UBO (always 22)
-const int ESVO_MAX_SCALE = 22;  // Kept as const for IEEE 754 bit manipulation
+// const int ESVO_MAX_SCALE = 22;  // REMOVED: Use octreeConfig.esvoMaxScale
+
+// ============================================================================
+// COORDINATE TRANSFORMATIONS
+// ============================================================================
+
+// Transform World Space Position to ESVO Normalized Space [1, 2]
+// 1. World -> Local [0, 1] using worldToLocal matrix
+// 2. Local [0, 1] -> ESVO [1, 2] by adding 1.0
+vec3 worldToNormalized(vec3 worldPos) {
+    vec4 localPos = octreeConfig.worldToLocal * vec4(worldPos, 1.0);
+    // Perspective divide if needed (usually w=1 for affine)
+    vec3 p = localPos.xyz / localPos.w;
+    return p + 1.0;
+}
+
+// Transform ESVO Normalized Space Position [1, 2] to World Space
+// 1. ESVO [1, 2] -> Local [0, 1] by subtracting 1.0
+// 2. Local [0, 1] -> World using localToWorld matrix
+vec3 normalizedToWorld(vec3 normPos) {
+    vec3 localPos = normPos - 1.0;
+    vec4 worldPos = octreeConfig.localToWorld * vec4(localPos, 1.0);
+    return worldPos.xyz / worldPos.w;
+}
 
 // User-defined octree parameters are now from octreeConfig UBO:
 // - octreeConfig.userMaxLevels (was USER_MAX_LEVELS)
@@ -78,7 +108,7 @@ const int ESVO_MAX_SCALE = 22;  // Kept as const for IEEE 754 bit manipulation
 // - octreeConfig.gridMin/gridMax
 
 // Fixed constants (not configuration-dependent)
-const int STACK_SIZE = 23;      // Must cover full ESVO range
+const int STACK_SIZE = 23;      // Must cover full ESVO range (octreeConfig.esvoMaxScale + 1)
 const int MAX_ITERS = 512;
 const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
 const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
@@ -460,24 +490,43 @@ vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) 
 // RAY COEFFICIENT INITIALIZATION (Matching initializeRayCoefficients)
 // ============================================================================
 
-RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld, vec3 gridMin, vec3 gridSize) {
+RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld) {
     RayCoefficients coef;
     coef.rayDir = rayDir;
 
-    vec3 invGridSize = 1.0 / gridSize;
-
     // Transform to octree space [1,2] - ESVO standard space
-    vec3 p = ((rayStartWorld - gridMin) * invGridSize) + 1.0;
+    vec3 p = worldToNormalized(rayStartWorld);
     coef.normOrigin = p;  // Store for position-based octant selection
 
-    // Use world-space ray direction (matching CPU implementation exactly)
-    // The ESVO algorithm uses normalized [1,2] positions with world-space direction
-    // This works because: for unit-length direction, t in [0,1] traverses [1,2] cube
-    // (position spans 1 unit in normalized space, direction magnitude ~1)
-    vec3 d = rayDir;
+    // Transform Ray Direction to Local Space
+    // ESVO traversal happens in [1, 2] space, which is axis-aligned.
+    // If the grid is rotated in world space, the ray direction in local space changes.
+    // We must use the local direction for traversal logic.
+    vec3 d = mat3(octreeConfig.worldToLocal) * rayDir;
+    // Normalize d? No, if we want t to be in local units, we keep the scale?
+    // If worldToLocal includes scaling (e.g. 1/128), then d will be small.
+    // ESVO expects d to be roughly unit length relative to the [1,2] box?
+    // Actually, ESVO math `tx_coef = 1.0 / -abs(d.x)` implies `t` scales with `d`.
+    // If we use `d` as is, `t` will be in units of `1/length(d)`.
+    // Let's normalize `d` so `t` is in Local Units (where the box is size 1).
+    // Wait, if we normalize `d`, then `t` is distance in Local Space.
+    // If we don't, `t` is distance in World Space? No.
+    // Let's normalize `d` to keep the math standard.
+    // BUT we need to be careful about `t` scaling when converting back to world.
+    
+    // Let's try NOT normalizing first, to see if `t` naturally comes out in world units?
+    // If `p` is in [1,2] (scaled by 1/gridSize), and `d` is scaled by 1/gridSize...
+    // Then `p + t*d` works if `t` is in World Units.
+    // Example: p = worldPos/128. d = worldDir/128.
+    // p_new = (worldPos + t*worldDir)/128 = p + t*d.
+    // So if we apply the full transform to `d`, `t` remains in World Units!
+    // This is perfect because we want `hitT` to be in World Units for depth buffer.
+    
+    // Apply full worldToLocal transform (linear part) to direction
+    d = mat3(octreeConfig.worldToLocal) * rayDir;
 
     // Avoid division by zero
-    float epsilon_esvo = exp2(-float(ESVO_MAX_SCALE));
+    float epsilon_esvo = exp2(-float(octreeConfig.esvoMaxScale));
     float sx = d.x >= 0.0 ? 1.0 : -1.0;
     float sy = d.y >= 0.0 ? 1.0 : -1.0;
     float sz = d.z >= 0.0 ? 1.0 : -1.0;
@@ -543,8 +592,8 @@ TraversalState initTraversalState(RayCoefficients coef, inout StackEntry stack[S
 
     // Initialize traversal at root - use ESVO scale system
     state.parentPtr = 0u;
-    state.scale = ESVO_MAX_SCALE;  // Start at root (scale 22)
-    state.scale_exp2 = 0.5;  // exp2(scale - ESVO_MAX_SCALE - 1) = exp2(-1) = 0.5
+    state.scale = octreeConfig.esvoMaxScale;  // Start at root (scale 22)
+    state.scale_exp2 = 0.5;  // exp2(scale - octreeConfig.esvoMaxScale - 1) = exp2(-1) = 0.5
     state.pos = vec3(1.0);
 
     // Initialize stack with root at all scales
@@ -772,7 +821,7 @@ int executeAdvancePhase(inout TraversalState state, RayCoefficients coef, out in
 int executePopPhase(inout TraversalState state, RayCoefficients coef,
                     inout StackEntry stack[STACK_SIZE], int step_mask) {
     // For root scale (ESVO_MAX_SCALE), check for octree exit
-    if (state.scale >= ESVO_MAX_SCALE) {
+    if (state.scale >= octreeConfig.esvoMaxScale) {
         if (state.t_min > state.t_max ||
             state.pos.x < 1.0 || state.pos.x >= 2.0 ||
             state.pos.y < 1.0 || state.pos.y >= 2.0 ||
@@ -805,11 +854,11 @@ int executePopPhase(inout TraversalState state, RayCoefficients coef,
 
     // scale_exp2 = exp2(scale - CAST_STACK_DEPTH) = 2^(scale - 23)
     // NVIDIA: scale_exp2 = __int_as_float((scale - CAST_STACK_DEPTH + 127) << 23)
-    state.scale_exp2 = uintBitsToFloat(uint(state.scale - ESVO_MAX_SCALE - 1 + 127) << 23u);
+    state.scale_exp2 = uintBitsToFloat(uint(state.scale - octreeConfig.esvoMaxScale - 1 + 127) << 23u);
 
     // Validate scale range using UBO values
     int minESVOScale = octreeConfig.minESVOScale;
-    if (state.scale < minESVOScale || state.scale > ESVO_MAX_SCALE) {
+    if (state.scale < minESVOScale || state.scale > octreeConfig.esvoMaxScale) {
         return 1;  // EXIT_OCTREE
     }
 
@@ -1161,7 +1210,7 @@ bool marchBrick(vec3 rayOrigin, vec3 rayDir, float startT,
 // Brick selection is driven purely by ESVO topology (state.idx + masks).
 
 bool handleLeafHit(TraversalState state, RayCoefficients coef,
-                   vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridSize, float tBias,
+                   vec3 rayStartWorld, vec3 rayDir, float tBias,
                    uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
                    inout StackEntry stack[STACK_SIZE],
                    out vec3 hitColor, out vec3 hitNormal, out float hitT) {
@@ -1200,13 +1249,27 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // This ensures consistency with the traversal logic and avoids grid snapping issues.
 
     // 1. Compute World Hit Position
-    float tWorldEntry = state.t_min * gridSize.x;
-    vec3 hitPosWorld = rayStartWorld + rayDir * tWorldEntry;
+    // NOTE: state.t_min is in normalized units.
+    // If we used normalized direction, t is in local units.
+    // If we used world direction transformed by matrix, t is in world units?
+    // Let's re-verify initRayCoefficients logic.
+    // d = worldToLocal * rayDir.
+    // p = worldToLocal * rayOrigin + 1.0.
+    // Ray: p + t*d.
+    // If d is NOT normalized, then t is the same scalar as in world space?
+    // World: P_w + t * D_w
+    // Local: M * (P_w + t * D_w) = M*P_w + t * (M*D_w) = P_l + t * D_l
+    // Yes! If we use the linear transform on D_w to get D_l, then 't' is preserved.
+    // So state.t_min is in WORLD units (assuming D_w was unit length).
+    // Wait, D_w is unit length. D_l might not be (if scaled).
+    // So t represents distance along the ray in whatever units D_w was defined.
+    // Since D_w is normalized, t is World Distance.
+    
+    float tHit = state.t_min;
+    vec3 hitPosWorld = rayStartWorld + rayDir * tHit;
     
     // 2. Convert to Normalized [1,2] Space
-    vec3 hitPosGrid = hitPosWorld - gridMin;
-    vec3 hitPos01 = hitPosGrid / gridSize;
-    vec3 hitPos12 = hitPos01 + vec3(1.0);
+    vec3 hitPos12 = worldToNormalized(hitPosWorld);
     
     // 3. Convert to Mirrored Space (matching ESVO traversal)
     vec3 hitPosMirrored = hitPos12;
@@ -1253,7 +1316,7 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // Visualize local position inside voxel
     hitColor = posInBrick / float(BRICK_SIZE_VAL);
     hitNormal = vec3(0.0, 1.0, 0.0);
-    hitT = tBias + tWorldEntry;
+    hitT = tBias + tHit;
     return true;
 #endif
 
@@ -1318,21 +1381,23 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
         // Note: rayDir is in world space, but here we use it in brick-local voxel space.
         // Since the space is just a scaled version of world space (axis-aligned),
         // the t value returned will be in "voxel units".
-        vec2 tIntersect = rayAABBIntersection(posInBrick, rayDir, voxelMin, voxelMax);
+        
+        // FIX: We need to pass `rayDirLocal` or recompute it.
+        vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+        
+        vec2 tIntersect = rayAABBIntersection(posInBrick, rayDirLocal, voxelMin, voxelMax);
         
         // tIntersect.x is the entry distance in voxel units.
         // If we started inside the voxel, tIntersect.x might be negative, so clamp to 0.
         float tVoxel = max(0.0, tIntersect.x);
 
         // Convert voxel distance to world distance
-        // Use the actual node size (LOD-aware) instead of fixed bricksPerAxis
-        vec3 nodeSizeGrid = vec3(state.scale_exp2) * gridSize;
-        float voxelSizeWorld = nodeSizeGrid.x / float(BRICK_SIZE_VAL);
-        
-        float tWorld = tVoxel * voxelSizeWorld;
+        // tWorld = (tVoxel / 8.0) * state.scale_exp2;
+        // (Assuming D_local is scaled D_w, so t is preserved across Local<->World)
+        float tWorld = (tVoxel / 8.0) * state.scale_exp2;
         
         // Final hitT = Distance to RayStart + Distance to Brick Entry + Distance in Brick
-        hitT = tBias + tWorldEntry + tWorld;
+        hitT = tBias + tHit + tWorld;
         return true;
     }
 
@@ -1353,7 +1418,12 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
     debugInfo.iterationCount = 0u;
 
     // World-space AABB test
-    vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    // Transform Ray to Local Space for AABB test
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    
+    // Test against Unit Cube [0, 1] (Local Space)
+    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
     if (gridT.y < 0.0) {
         debugInfo.exitCode = DEBUG_EXIT_INVALID_SPAN;
         debugInfo.tMin = gridT.x;
@@ -1361,22 +1431,29 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         return false;
     }
 
-    vec3 gridSize = gridMax - gridMin;
-
     // Detect if ray starts inside the volume
     // gridT.x < 0 means the ray origin is inside the AABB (entry point is behind us)
     bool rayStartsInside = (gridT.x < 0.0);
 
     // For exterior rays, move to entry point; for interior, use origin
+    // CRITICAL: gridT is computed in LOCAL space (using rayDirLocal which is scaled by 1/gridSize).
+    // To get the world-space entry point, we must compute entry in local space, then transform back.
     vec3 rayStartWorld;
+    float tEntryWorld = 0.0;  // World-space distance from rayOrigin to rayStartWorld
     if (rayStartsInside) {
         rayStartWorld = rayOrigin;  // Already inside, start from current position
+        tEntryWorld = 0.0;
     } else {
-        rayStartWorld = rayOrigin + rayDir * (gridT.x + EPSILON);  // Move to entry point
+        // Compute entry point in LOCAL space, then transform to WORLD space
+        vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
+        rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+        // Compute world-space distance (since rayDir is unit-length, this is the t parameter)
+        tEntryWorld = length(rayStartWorld - rayOrigin);
     }
 
-    // Initialize ray coefficients
-    RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld, gridMin, gridSize);
+    // Initialize Ray Coefficients
+    // This now handles World -> Local -> ESVO transformation using matrices
+    RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld);
     debugInfo.octantMask = uint(coef.octant_mask);
 
     // Initialize traversal stack and state
@@ -1399,9 +1476,9 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         return false;
     }
 
-    // Main traversal loop - exit when scale exceeds root (ESVO_MAX_SCALE)
+    // Main traversal loop - exit when scale exceeds root (octreeConfig.esvoMaxScale)
     int iter = 0;
-    for (; iter < MAX_ITERS && state.scale <= ESVO_MAX_SCALE; ++iter) {
+    for (; iter < MAX_ITERS && state.scale <= octreeConfig.esvoMaxScale; ++iter) {
 
         // Fetch current parent node
         uvec2 parent_descriptor = fetchESVONode(state.parentPtr);
@@ -1423,9 +1500,9 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
 
                 // Try to hit voxels in this brick using sparse brick architecture
                 // Pass parent descriptor info and stack for topological brick lookup
-                // Pass rayStartWorld and tBias (distance to rayStartWorld) for accurate hitT
-                float tBias = max(0.0, gridT.x);
-                if (handleLeafHit(state, coef, rayStartWorld, rayDir, gridMin, gridSize, tBias,
+                // Pass rayStartWorld and tBias (world-space distance to rayStartWorld) for accurate hitT
+                float tBias = tEntryWorld;  // Already computed in world units
+                if (handleLeafHit(state, coef, rayStartWorld, rayDir, tBias,
                                   parent_descriptor, validMask, leafMask, state.parentPtr,
                                   stack, hitColor, hitNormal, hitT)) {
                     // Record HIT trace
@@ -1478,7 +1555,7 @@ bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         // When we ADVANCE to a sibling, we must reset state.t_max to the PARENT's limit,
         // otherwise the new sibling is clipped against the previous sibling's bounds (causing misses).
         if (advanceResult == 0) {
-             if (state.scale < ESVO_MAX_SCALE) {
+             if (state.scale < octreeConfig.esvoMaxScale) {
                  state.t_max = stack[state.scale + 1].t_max;
              }
         }
@@ -1553,7 +1630,7 @@ void main() {
     debugSample.exitCode = DEBUG_EXIT_NONE;
     debugSample.lastStepMask = 0u;
     debugSample.iterationCount = 0u;
-    debugSample.scale = ESVO_MAX_SCALE;
+    debugSample.scale = octreeConfig.esvoMaxScale;
     debugSample.stateIdx = 0u;
     debugSample.tMin = 0.0;
     debugSample.tMax = 0.0;
@@ -1561,11 +1638,13 @@ void main() {
     debugSample.posMirrored = vec3(0.0);
     debugSample.localNorm = vec3(0.0);
 
-    // Grid bounds for octree
-    vec3 gridMin = vec3(0.0, 0.0, 0.0);
-    vec3 gridMax = vec3(128.0, 128.0, 128.0);
+    // Grid bounds for octree - use UBO values
+    vec3 gridMin = octreeConfig.gridMin;
+    vec3 gridMax = octreeConfig.gridMax;
 
     // Compute octant_mask for debug purposes
+    // NOTE: This should use LOCAL ray direction if we want to debug traversal
+    // But for now, we keep it simple.
     int debugMask = 7;
     if (rayDir.x > 0.0) debugMask ^= 1;
     if (rayDir.y > 0.0) debugMask ^= 2;
@@ -1609,17 +1688,31 @@ void main() {
 #if DEBUG_BYPASS_ESVO
     // COMPLETELY bypass ESVO - just do raw ray-grid intersection
     // This tests if the brick data buffer is correct, independent of ESVO traversal
-    vec2 rawGridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    // Transform Ray to Local Space for AABB test
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    
+    vec2 rawGridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
     if (rawGridT.y >= 0.0 && rawGridT.x < rawGridT.y) {
-        float rawT = max(rawGridT.x, 0.0) + 0.01;  // Small offset into grid
-        vec3 rawHitWorld = rayOrigin + rayDir * rawT;
-        vec3 rawHitLocal = rawHitWorld - gridMin;
-        rawHitLocal = clamp(rawHitLocal, vec3(0.0), gridMax - gridMin - vec3(0.001));
+        float rawT = max(rawGridT.x, 0.0) + 0.0001;  // Small offset into grid
+        // rawT is in World Units if rayDirLocal is scaled D_w.
+        // Wait, rayAABBIntersection uses rayDirLocal.
+        // If rayDirLocal is scaled, t is scaled inversely?
+        // No, P + t*D.
+        // If D is small, t must be large to cover distance.
+        // If D_local = D_world / 128.
+        // Then to cover 1 unit in Local (128 in World), t must be 128.
+        // So t is in World Units.
+        
+        vec3 rawHitLocal = rayOriginLocal + rayDirLocal * rawT;
+        // rawHitLocal should be in [0, 1].
+        rawHitLocal = clamp(rawHitLocal, vec3(0.0), vec3(1.0) - vec3(0.00001));
 
         // Compute brick from raw position
+        // Local [0, 1] -> Brick Coords [0, bricksPerAxis]
         int BRICK_SIZE = octreeConfig.brickSize;
         int bricksPerAxis = octreeConfig.bricksPerAxis;
-        ivec3 rawBrickCoord = ivec3(floor(rawHitLocal / float(BRICK_SIZE)));
+        ivec3 rawBrickCoord = ivec3(floor(rawHitLocal * float(bricksPerAxis)));
         rawBrickCoord = clamp(rawBrickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
 
         uint rawBrickIndex = uint(rawBrickCoord.z * bricksPerAxis * bricksPerAxis +
@@ -1652,14 +1745,25 @@ void main() {
     return;
 #endif
 
-    vec2 gridT = rayAABBIntersection(rayOrigin, rayDir, gridMin, gridMax);
+    // World-space AABB test
+    // TODO: Replace with OBB test using matrices?
+    // For now, we assume gridMin/Max are still valid AABB in world space
+    // OR we transform the ray to local space and test against [0,1] cube
+    
+    // Transform Ray to Local Space for AABB test
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    
+    // Test against Unit Cube [0, 1] (Local Space)
+    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
 
     if (gridT.y >= 0.0) {
         // Ray hits bounding box - try traversal with debug
         vec3 hitColor, hitNormal;
 
         // Attempt ESVO traversal
-        bool hit = traverseOctree(rayOrigin, rayDir, gridMin, gridMax,
+        // Pass dummy gridMin/Max since we use matrices now
+        bool hit = traverseOctree(rayOrigin, rayDir, vec3(0.0), vec3(1.0),
                                   hitColor, hitNormal, hitT, debugSample);
 
         if (hit) {
@@ -1693,7 +1797,7 @@ void main() {
             case DEBUG_MODE_DEPTH:
                 // Visualize scale/depth (blue=root, red=leaf)
                 {
-                    float normalizedScale = float(debugSample.scale - 16) / float(ESVO_MAX_SCALE - 16);
+                    float normalizedScale = float(debugSample.scale - 16) / float(octreeConfig.esvoMaxScale - 16);
                     color = mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), normalizedScale);
                 }
                 break;

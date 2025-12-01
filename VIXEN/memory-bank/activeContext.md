@@ -59,6 +59,36 @@ After (Descriptor-Based):
 - **Ray casting tests**: 9/11 pass (2 pre-existing failures)
 - **Shader compilation**: ✅ glslangValidator passes
 
+### Session 8K Progress (Dec 1, 2025) - RAY TRAVERSAL STABILIZATION
+
+**Critical Shader Fixes**:
+Achieved solid, artifact-free rendering of the Cornell Box by resolving multiple traversal logic errors in `VoxelRayMarch.comp`.
+
+1. **Fix: Screen Door Gaps**
+   - **Issue**: "Nudge" logic (`+0.001`) inside `handleLeafHit` shrank brick volumes, creating gaps.
+   - **Fix**: Removed nudge, relied on `clamp(pos, 0.0, 8.0)` to handle boundary precision.
+
+2. **Fix: Grazing Angle Misses (State Corruption)**
+   - **Issue**: When ADVANCING to a sibling, `state.t_max` was not restored to the parent's limit, causing the new sibling to be clipped against the *previous* sibling's bounds.
+   - **Fix**: Restore `state.t_max = stack[state.scale + 1].t_max` when `advanceResult == 0`.
+
+3. **Fix: Disappearing Geometry (Stack Optimization)**
+   - **Issue**: The ESVO stack optimization (`tc_max < state.h`) prevented pushing parent state in some cases, leaving garbage data for the sibling restoration fix above.
+   - **Fix**: Removed optimization; **always** push to stack in `executePushPhase`.
+
+4. **Fix: Far-Field Clipping**
+   - **Issue**: `state.t_max` was clamped to 1.0 in `initTraversalState`, cutting off geometry beyond normalized distance 1.0 (diagonals).
+   - **Fix**: Removed `min(state.t_max, 1.0)` clamp.
+
+5. **Fix: Scrambled Walls**
+   - **Issue**: Forcing `isLeaf = true` at scale 20 caused internal nodes to be interpreted as bricks.
+   - **Fix**: Reverted forced leaf status.
+
+**Current Status**:
+- ✅ **Solid Geometry**: No gaps, holes, or missing walls.
+- ✅ **Correct Depth**: Far walls render correctly.
+- ✅ **Stable Traversal**: No misses at grazing angles.
+
 ---
 
 ## Phase H Summary - COMPLETE ✅
