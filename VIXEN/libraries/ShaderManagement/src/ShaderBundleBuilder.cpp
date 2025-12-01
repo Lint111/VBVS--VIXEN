@@ -7,7 +7,6 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 
 namespace ShaderManagement {
 
@@ -446,14 +445,7 @@ ShaderBundleBuilder::BuildResult ShaderBundleBuilder::Build() {
 
         // Preprocess if enabled
         std::string sourceToCompile = stageSource.source;
-        std::cerr << "[ShaderBundleBuilder] Preprocessor check: preprocessor_=" << (preprocessor_ != nullptr)
-                  << ", source.empty=" << stageSource.source.empty()
-                  << ", sourcePath=" << stageSource.sourcePath.string() << std::endl << std::flush;
-        ShaderLogger::LogDebug("Preprocessor check: preprocessor_=" + std::to_string(preprocessor_ != nullptr) +
-                              ", source.empty=" + std::to_string(stageSource.source.empty()) +
-                              ", sourcePath=" + stageSource.sourcePath.string(), "Builder");
         if (preprocessor_ && !stageSource.source.empty()) {
-            std::cerr << "[ShaderBundleBuilder] Preprocessing with " << preprocessor_->GetIncludePaths().size() << " include paths" << std::endl << std::flush;
             ShaderLogger::LogInfo("Preprocessing shader source with " +
                                   std::to_string(preprocessor_->GetIncludePaths().size()) + " include paths", "Builder");
             auto preprocessStart = std::chrono::steady_clock::now();

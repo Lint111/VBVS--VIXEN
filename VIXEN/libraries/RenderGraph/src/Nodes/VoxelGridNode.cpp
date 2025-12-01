@@ -1456,7 +1456,7 @@ void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid
 
     NODE_LOG_INFO("Uploaded ESVO buffers to GPU (sparse brick architecture)");
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
-              << brickViews.size() << ", grid lookup entries: " << brickGridLookupSize << std::endl;
+              << brickViews.size() << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

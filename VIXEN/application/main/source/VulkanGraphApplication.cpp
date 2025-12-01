@@ -687,7 +687,6 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         if (mainLogger && mainLogger->IsEnabled()) {
             mainLogger->Info("[BuildRenderGraph] Configured VoxelRayMarch compute shader from: " + compPath.string());
-            mainLogger->Info("[BuildRenderGraph] Builder has " + std::to_string(builder.GetStageCount()) + " stages");
         }
 
         return builder;
@@ -1136,10 +1135,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
                           SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 6: brickBaseIndex (SSBO) - per-node sparse brick base index
-    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER,
-                          descriptorGatherer, 6,  // Binding 6 (hardcoded until SDI regenerated)
-                          SlotRole::Dependency | SlotRole::Execute);
+    // NOTE: brickBaseIndex buffer (binding 6) REMOVED - sparse brick architecture
+    // stores brick indices directly in leaf descriptors instead of separate buffer
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings

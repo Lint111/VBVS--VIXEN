@@ -177,10 +177,12 @@ void AsyncShaderBundleBuilder::SubmitBuildInternal(
     uint32_t targetQueue = nextQueueIndex_.fetch_add(1, std::memory_order_relaxed) % workerThreadCount_;
 
     // Submit work to selected thread's queue
+    // Use shared_ptr to make the lambda copyable (required by std::function)
+    auto builderPtr = std::make_shared<ShaderBundleBuilder>(std::move(builder));
     {
         std::lock_guard<std::mutex> lock(perThreadQueues_[targetQueue]->mutex);
-        perThreadQueues_[targetQueue]->tasks.push([this, builder = std::move(builder), sender, handle]() mutable {
-            ExecuteBuild(std::move(builder), sender);
+        perThreadQueues_[targetQueue]->tasks.push([this, builderPtr, sender, handle]() mutable {
+            ExecuteBuild(std::move(*builderPtr), sender);
             handle->completed = true;
         });
     }
