@@ -1,8 +1,5 @@
 #include "VulkanApplicationBase.h"
-
-extern std::vector<const char*> instanceExtensionNames;
-extern std::vector<const char*> layerNames;
-extern std::vector<const char*> deviceExtensionNames;
+#include "VulkanGlobalNames.h"
 
 VulkanApplicationBase::VulkanApplicationBase() 
     : debugFlag(true), isPrepared(false) {

@@ -1,8 +1,8 @@
 # Active Context
 
-**Last Updated**: December 1, 2025 (Sessions 8I-8L)
+**Last Updated**: December 1, 2025 (Sessions 8I-8M)
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: ✅ **IMPLEMENTED** | Cornell Box Rendering with Camera Perspective
+**Status**: ✅ **IMPLEMENTED** | Cornell Box Rendering with GPU Performance Logging
 
 ## Recent Commits (Last 10)
 
@@ -18,6 +18,64 @@
 | a17da07 | Sparse brick architecture implementation |
 | 5f03e79 | ChildDescriptor context-dependent interpretation |
 | 44852b1 | Brick grid lookup for dense architecture |
+
+---
+
+## Session 8M Progress (Dec 1, 2025) - GPU PERFORMANCE LOGGING INFRASTRUCTURE
+
+**Summary**: Implemented GPU timestamp queries and pipeline statistics to benchmark ray tracing performance (Mrays/sec).
+
+### New Components
+
+1. **GPUTimestampQuery** (`libraries/VulkanResources/`)
+   - VkQueryPool wrapper for GPU timestamp queries
+   - Pipeline statistics support (compute shader invocations)
+   - `CalculateMraysPerSec()` helper for throughput calculation
+   - Nanosecond-precision timing via `timestampPeriod` calibration
+
+2. **GPUPerformanceLogger** (`libraries/RenderGraph/Core/`)
+   - Extends Logger with GPU-specific metrics
+   - Rolling 60-frame statistics (avg, min, max dispatch time)
+   - Auto-logs every 120 frames to terminal
+   - Output format: `[GPU Perf] Dispatch: X.XX ms avg | Mrays/s: XXX avg | Resolution: WxH`
+
+3. **ComputeDispatchNode Integration**
+   - `BeginFrame()` resets query pools
+   - `RecordDispatchStart/End()` wraps `vkCmdDispatch`
+   - `CollectResults()` after fence wait reads GPU timing
+
+### Bug Fix: Global Variable Linking
+
+Fixed `LNK2005` multiply-defined symbol errors for `deviceExtensionNames`, `layerNames`, `instanceExtensionNames`:
+
+| Issue | Fix |
+|-------|-----|
+| `__declspec(selectany)` doesn't work with `std::vector` | Use C++17 `inline` variables |
+| main.cpp defined variables directly | Use static lambda initialization instead |
+| Other files used `extern` | Include `VulkanGlobalNames.h` header |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `libraries/VulkanResources/include/GPUTimestampQuery.h` | NEW: Query pool wrapper |
+| `libraries/VulkanResources/src/GPUTimestampQuery.cpp` | NEW: Implementation |
+| `libraries/RenderGraph/include/Core/GPUPerformanceLogger.h` | NEW: Logger extension |
+| `libraries/RenderGraph/src/Core/GPUPerformanceLogger.cpp` | NEW: Rolling stats |
+| `libraries/RenderGraph/include/Nodes/ComputeDispatchNode.h` | Added gpuPerfLogger_ |
+| `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp` | GPU timing integration |
+| `libraries/VulkanResources/include/VulkanGlobalNames.h` | Fixed: C++17 inline |
+| `application/main/source/main.cpp` | Fixed: Lambda init |
+| `application/main/source/VulkanApplicationBase.cpp` | Fixed: Include header |
+| `application/main/source/VulkanGraphApplication.cpp` | Fixed: Include header |
+| `libraries/VulkanResources/CMakeLists.txt` | Added new source files |
+| `libraries/RenderGraph/CMakeLists.txt` | Added new source files |
+
+### Build Status
+
+- ✅ VIXEN.exe builds successfully
+- ✅ GPU timestamp queries ready
+- ⏳ Awaiting runtime test for Mrays/sec benchmark
 
 ---
 
@@ -499,7 +557,8 @@ Fixed 6 critical bugs in `VoxelRayMarch.comp` shader through iterative bug-hunte
 - [x] Debug capture system integrated (Session 8G) ✅
 - [x] Per-ray traversal trace capture with JSON export ✅
 - [x] Debug visualization modes (keys 0-9) working ✅
-- [ ] Benchmark GPU performance (target >200 Mrays/sec)
+- [x] GPU performance logging infrastructure (Session 8M)
+- [ ] Run benchmark and record Mrays/sec (target >200 Mrays/sec)
 
 ### Week 3: DXT Compression
 - [ ] Study ESVO DXT implementation

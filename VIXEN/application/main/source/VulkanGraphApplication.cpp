@@ -39,10 +39,7 @@
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
-
-extern std::vector<const char*> instanceExtensionNames;
-extern std::vector<const char*> layerNames;
-extern std::vector<const char*> deviceExtensionNames;
+#include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 
 std::unique_ptr<VulkanGraphApplication> VulkanGraphApplication::instance;
 std::once_flag VulkanGraphApplication::onlyOnce;

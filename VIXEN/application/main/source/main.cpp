@@ -1,28 +1,34 @@
 #include "Headers.h"
 #include "VulkanApplicationBase.h"
 #include "VulkanGraphApplication.h"
+#include "VulkanGlobalNames.h"
 
-std::vector<const char*> deviceExtensionNames = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,  // Optional: enables live resize scaling
-    VK_KHR_MAINTENANCE_6_EXTENSION_NAME,  // Required for VK_EXT_swapchain_maintenance1
-};
+// Initialize global Vulkan extension/layer lists (defined inline in VulkanGlobalNames.h)
+static bool initGlobalNames = []() {
+    deviceExtensionNames = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,  // Optional: enables live resize scaling
+        VK_KHR_MAINTENANCE_6_EXTENSION_NAME,  // Required for VK_EXT_swapchain_maintenance1
+    };
 
-std::vector<const char*> instanceExtensionNames = {
-    VK_KHR_SURFACE_EXTENSION_NAME,
-    VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, // Dependency for VK_EXT_swapchain_maintenance1
-    VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, // For querying surface capabilities
-    VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+    instanceExtensionNames = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+        VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME, // Dependency for VK_EXT_swapchain_maintenance1
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME, // For querying surface capabilities
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 #ifdef _DEBUG
-    , VK_EXT_DEBUG_REPORT_EXTENSION_NAME  // Debug extension for validation callbacks
+        , VK_EXT_DEBUG_REPORT_EXTENSION_NAME  // Debug extension for validation callbacks
 #endif
-};
+    };
 
-std::vector<const char*> layerNames = {
+    layerNames = {
 #ifdef _DEBUG
-    "VK_LAYER_KHRONOS_validation"  // Only enable validation in debug builds
+        "VK_LAYER_KHRONOS_validation"  // Only enable validation in debug builds
 #endif
-};
+    };
+
+    return true;
+}();
 
 int main(int argc, char** argv) {
     std::cout << "[main] Starting VulkanGraphApplication..." << std::endl;
