@@ -108,8 +108,9 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers successfully");
 
     // Create GPU performance logger with per-frame query pools
-    // imageCount is typically 2-3 for double/triple buffering
-    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, imageCount);
+    // Use MAX_FRAMES_IN_FLIGHT (4) to match FrameSyncNode's currentFrameIndex range
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 4;  // Must match FrameSyncNodeConfig
+    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, MAX_FRAMES_IN_FLIGHT);
     gpuPerfLogger_->SetEnabled(true);
     gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
     gpuPerfLogger_->SetPrintToTerminal(true);

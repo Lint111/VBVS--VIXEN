@@ -130,6 +130,39 @@ cmake --build build --config Release
    - Features: rebuild() API, castRay(), ChildDescriptor hierarchy
    - Dependencies: GaiaVoxelWorld, VoxelComponents
 
+### GPU Performance Infrastructure (Week 2 - December 2025)
+
+4. **GPUTimestampQuery** (`libraries/VulkanResources/`)
+   - Purpose: VkQueryPool wrapper for GPU timestamp queries
+   - Key files:
+     - `include/GPUTimestampQuery.h` - Class interface
+     - `src/GPUTimestampQuery.cpp` - Implementation
+   - Features:
+     - Timestamp and pipeline statistics query pools
+     - `GetElapsedMs()` for GPU timing measurement
+     - `CalculateMraysPerSec()` throughput calculation
+     - Automatic `timestampPeriod` calibration from device limits
+   - Dependencies: VulkanResources
+
+5. **GPUPerformanceLogger** (`libraries/RenderGraph/Core/`)
+   - Purpose: Rolling statistics for GPU performance metrics
+   - Key files:
+     - `include/Core/GPUPerformanceLogger.h` - Class interface
+     - `src/Core/GPUPerformanceLogger.cpp` - Implementation
+   - Features:
+     - 60-frame rolling window for dispatch times and Mrays/sec
+     - Auto-logging every 120 frames
+     - Min/max/average statistics
+   - Dependencies: Logger
+
+6. **SVOTypes.glsl** (`shaders/`)
+   - Purpose: Shared GLSL data structures for ESVO traversal
+   - Features:
+     - ChildDescriptor struct matching C++ layout
+     - Bit-field accessors: `getChildPointer()`, `getValidMask()`, `getLeafMask()`
+     - `getBrickIndex()`, `setBrickIndex()` for leaf descriptors
+   - Used by: VoxelRayMarch.comp
+
 ### Library Linking
 ```cmake
 # Debug builds: link *d.lib versions

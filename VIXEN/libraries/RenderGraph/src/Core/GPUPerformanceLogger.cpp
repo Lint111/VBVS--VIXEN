@@ -63,7 +63,7 @@ void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
 
     // Read results for this frame (timestamps were written in previous submission)
     if (!query_->ReadResults(frameIndex)) {
-        return;  // No results ready yet
+        return;  // No results ready yet (first few frames, or query unavailable)
     }
 
     // Get dispatch dimensions for this frame

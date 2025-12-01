@@ -1407,6 +1407,112 @@ Each addition follows the established pattern:
 
 ---
 
+## GPU Performance Logging Pattern (December 2025 - Week 2)
+
+### 25. GPU Timestamp Query Pattern
+**Classes**: `GPUTimestampQuery`, `GPUPerformanceLogger`, `ComputeDispatchNode`
+
+**Implementation**:
+```cpp
+// GPUTimestampQuery - VkQueryPool wrapper
+class GPUTimestampQuery {
+    VkQueryPool timestampPool_;
+    VkQueryPool pipelineStatsPool_;
+    float timestampPeriod_;  // Nanoseconds per tick
+    uint32_t maxTimestamps_ = 4;
+
+public:
+    void Create(VkDevice device, VkPhysicalDevice physicalDevice);
+    void ResetQueries(VkCommandBuffer cmd);
+    void WriteTimestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage, uint32_t query);
+
+    // After fence wait, read GPU timing
+    std::optional<double> GetElapsedMs(VkDevice device, uint32_t startQuery, uint32_t endQuery);
+
+    // Calculate throughput
+    double CalculateMraysPerSec(double elapsedMs, uint32_t width, uint32_t height) {
+        double rays = width * height;
+        return (rays / 1'000'000.0) / (elapsedMs / 1000.0);
+    }
+};
+
+// GPUPerformanceLogger - Rolling statistics
+class GPUPerformanceLogger : public Logger {
+    std::array<double, 60> dispatchTimes_;  // Rolling window
+    std::array<double, 60> mraysPerSec_;
+    size_t sampleIndex_ = 0;
+    size_t sampleCount_ = 0;
+
+public:
+    void RecordFrame(double dispatchMs, double mrays);
+
+    // Auto-log every 120 frames
+    void MaybeLog(uint32_t frameNumber, uint32_t width, uint32_t height) {
+        if (frameNumber % 120 == 0) {
+            LogStats(width, height);
+        }
+    }
+
+    void LogStats(uint32_t width, uint32_t height) {
+        // Output: "[GPU Perf] Dispatch: X.XX ms avg | Mrays/s: XXX avg | Resolution: WxH"
+    }
+};
+
+// Integration in ComputeDispatchNode
+class ComputeDispatchNode {
+    GPUTimestampQuery gpuQuery_;
+    GPUPerformanceLogger gpuPerfLogger_;
+
+    void ExecuteImpl(Context& ctx) override {
+        // Reset queries at frame start
+        gpuQuery_.ResetQueries(cmd);
+
+        // Record start timestamp
+        gpuQuery_.WriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+
+        vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
+
+        // Record end timestamp
+        gpuQuery_.WriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
+
+        // After fence wait (separate call)
+        CollectTimingResults();
+    }
+
+    void CollectTimingResults() {
+        auto elapsedMs = gpuQuery_.GetElapsedMs(device, 0, 1);
+        if (elapsedMs) {
+            double mrays = gpuQuery_.CalculateMraysPerSec(*elapsedMs, width, height);
+            gpuPerfLogger_.RecordFrame(*elapsedMs, mrays);
+            gpuPerfLogger_.MaybeLog(frameNumber, width, height);
+        }
+    }
+};
+```
+
+**Key Implementation Details**:
+1. **Query Pool Sizing**: Request only the number of queries actually written (avoid VK_NOT_READY)
+2. **Timestamp Period**: Use `VkPhysicalDeviceLimits::timestampPeriod` for nanosecond conversion
+3. **Rolling Statistics**: 60-frame window provides stable averages
+4. **Auto-Logging**: Every 120 frames prevents console spam
+
+**Bug Fix (VK_NOT_READY)**:
+```cpp
+// WRONG: Request 4 queries when only 2 written
+vkGetQueryPoolResults(device, pool, 0, 4, ...);  // VK_NOT_READY
+
+// CORRECT: Request only written queries
+uint32_t queriesToRead = 2;  // startQuery + endQuery
+vkGetQueryPoolResults(device, pool, 0, queriesToRead, ...);
+```
+
+**Location**:
+- `libraries/VulkanResources/include/GPUTimestampQuery.h`
+- `libraries/RenderGraph/include/Core/GPUPerformanceLogger.h`
+- `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp`
+
+---
+
 ## Voxel Infrastructure Patterns (November 26, 2025 - Phase H.2)
 
 ### 19. Entity-Based Voxel Storage Pattern

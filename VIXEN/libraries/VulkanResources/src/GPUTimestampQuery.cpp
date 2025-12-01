@@ -2,6 +2,7 @@
 #include "VulkanDevice.h"
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 
 namespace Vixen::Vulkan::Resources {
 
@@ -119,7 +120,10 @@ void GPUTimestampQuery::ResetQueries(VkCommandBuffer cmdBuffer, uint32_t frameIn
     if (frame.timestampPool != VK_NULL_HANDLE) {
         vkCmdResetQueryPool(cmdBuffer, frame.timestampPool, 0, maxTimestamps_);
         frame.resultsValid = false;
-        frame.hasBeenWritten = false;
+        // NOTE: Don't reset hasBeenWritten here - it tracks if timestamps
+        // were written in the PREVIOUS frame's command buffer for this slot.
+        // WriteTimestamp will set it true, and we'll read those results
+        // after the fence for this slot is waited on.
     }
 }
 
@@ -157,16 +161,17 @@ bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
         return false;
     }
 
-    // Don't use WAIT_BIT - return immediately if results aren't ready
-    // This avoids blocking if the command buffer hasn't been submitted yet
+    // Only read queries that were actually written (2: start and end timestamp)
+    // We allocate maxTimestamps_ for flexibility, but only use 2 currently
+    const uint32_t queriesToRead = 2;
     VkResult result = vkGetQueryPoolResults(
         device_->device,
         frame.timestampPool,
-        0, maxTimestamps_,
-        frame.results.size() * sizeof(uint64_t),
+        0, queriesToRead,
+        queriesToRead * sizeof(uint64_t),
         frame.results.data(),
         sizeof(uint64_t),
-        VK_QUERY_RESULT_64_BIT  // No WAIT_BIT
+        VK_QUERY_RESULT_64_BIT  // No WAIT_BIT - return immediately if not ready
     );
 
     if (result == VK_SUCCESS) {
@@ -174,7 +179,6 @@ bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
         return true;
     }
 
-    // VK_NOT_READY is expected if GPU hasn't finished yet
     return false;
 }
 
