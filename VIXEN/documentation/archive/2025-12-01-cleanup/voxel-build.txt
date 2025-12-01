@@ -1,4 +1,0 @@
-﻿MSBuild version 18.0.5+e22287bf1 for .NET Framework
-
-  glm.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\glm.lib
-  VoxelComponents.vcxproj -> C:\cpp\VBVS--VIXEN\VIXEN\build\lib\Debug\VoxelComponents.lib
