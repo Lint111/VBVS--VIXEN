@@ -286,20 +286,24 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
         // Compute Transformation Matrices
         // Define the grid's transform in world space
-        // For now, we place the grid at origin with scale = resolution (matching previous behavior)
+        // TEST: Use fixed 10x10x10 world size instead of resolution-based
+        // This makes the grid smaller in world space for easier camera navigation
         // Local Space is defined as [0, 1] unit cube
-        glm::vec3 gridScale(static_cast<float>(resolution));
+        constexpr float WORLD_GRID_SIZE = 10.0f;  // World units per axis
+        glm::vec3 gridScale(WORLD_GRID_SIZE);
         glm::vec3 gridTranslation(0.0f);
         glm::vec3 gridRotation(0.0f); // Euler angles if needed
 
         // Model Matrix: Local [0,1] -> World
-        // Scale by resolution to match the grid size
+        // Scale to fixed world size (not resolution-based)
         glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), gridScale);
         glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), gridTranslation);
         // Rotation would go here
-        
+
         config.localToWorld = translateMat * scaleMat;
         config.worldToLocal = glm::inverse(config.localToWorld);
+
+        std::cout << "[VoxelGridNode] World grid size: " << WORLD_GRID_SIZE << "^3 units" << std::endl;
 
         std::cout << "[VoxelGridNode] OctreeConfig: esvoMaxScale=" << config.esvoMaxScale
                   << ", userMaxLevels=" << config.userMaxLevels

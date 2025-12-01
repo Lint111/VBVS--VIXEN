@@ -1245,31 +1245,26 @@ bool handleLeafHit(TraversalState state, RayCoefficients coef,
     // ========================================================================
     // STEP 3: Compute brick-local position from Ray Intersection
     // ========================================================================
-    // We compute the position relative to the current ESVO node (state.pos).
-    // This ensures consistency with the traversal logic and avoids grid snapping issues.
+    // Compute brick entry position in ESVO [1,2] space directly from t_min.
+    //
+    // CRITICAL: t values from ESVO traversal are computed using the SCALED direction:
+    //   d_local = mat3(worldToLocal) * rayDir
+    // where rayDir is unit-length. So d_local has magnitude ~1/gridSize.
+    //
+    // The position equation is: p + t * d_local (in [1,2] space)
+    // This is NOT the same as: rayStartWorld + t * rayDir (world space)
+    // because rayDir is normalized but d_local is scaled.
+    //
+    // Therefore, we compute hit position in [1,2] space directly using the
+    // same scaled direction that was used for ESVO coefficient computation.
 
-    // 1. Compute World Hit Position
-    // NOTE: state.t_min is in normalized units.
-    // If we used normalized direction, t is in local units.
-    // If we used world direction transformed by matrix, t is in world units?
-    // Let's re-verify initRayCoefficients logic.
-    // d = worldToLocal * rayDir.
-    // p = worldToLocal * rayOrigin + 1.0.
-    // Ray: p + t*d.
-    // If d is NOT normalized, then t is the same scalar as in world space?
-    // World: P_w + t * D_w
-    // Local: M * (P_w + t * D_w) = M*P_w + t * (M*D_w) = P_l + t * D_l
-    // Yes! If we use the linear transform on D_w to get D_l, then 't' is preserved.
-    // So state.t_min is in WORLD units (assuming D_w was unit length).
-    // Wait, D_w is unit length. D_l might not be (if scaled).
-    // So t represents distance along the ray in whatever units D_w was defined.
-    // Since D_w is normalized, t is World Distance.
-    
     float tHit = state.t_min;
-    vec3 hitPosWorld = rayStartWorld + rayDir * tHit;
-    
-    // 2. Convert to Normalized [1,2] Space
-    vec3 hitPos12 = worldToNormalized(hitPosWorld);
+
+    // Compute hit position in ESVO [1,2] space directly
+    // The ESVO traversal uses scaled direction d = mat3(worldToLocal) * rayDir
+    // Position in [1,2] space: p + t*d where p = worldToNormalized(rayStartWorld)
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
     
     // 3. Convert to Mirrored Space (matching ESVO traversal)
     vec3 hitPosMirrored = hitPos12;

@@ -15,3 +15,4 @@
 
 VIXEN_SELECTANY std::vector<const char*> deviceExtensionNames;
 VIXEN_SELECTANY std::vector<const char*> layerNames;
+VIXEN_SELECTANY std::vector<const char*> instanceExtensionNames;

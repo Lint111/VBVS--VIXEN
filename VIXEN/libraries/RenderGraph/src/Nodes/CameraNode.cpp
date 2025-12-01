@@ -259,9 +259,9 @@ void CameraNode::ApplyMovement(float deltaTime) {
     // Q/E: Move orbit center up/down (Y axis)
 
     // W/S controls zoom (orbit distance)
-    float zoomSpeed = 700.0f;  // Increased for faster zoom
+    float zoomSpeed = 50.0f;  // Scaled for 10^3 world
     orbitDistance -= movementDelta.z * zoomSpeed * deltaTime;  // W zooms in, S zooms out
-    orbitDistance = glm::clamp(orbitDistance, 1.0f, 3000.0f);  // Allow closer and farther
+    orbitDistance = glm::clamp(orbitDistance, 1.0f, 200.0f);  // Scaled for 10^3 world
 
     // A/D and Q/E move the orbit center
     glm::vec3 moveVector(0.0f);
