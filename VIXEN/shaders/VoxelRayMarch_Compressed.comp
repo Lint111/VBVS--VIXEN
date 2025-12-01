@@ -1,0 +1,1079 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+// ============================================================================
+// VoxelRayMarch_Compressed.comp - DXT Compressed Voxel Ray Marching
+// ============================================================================
+// This shader is a variant of VoxelRayMarch.comp that reads voxel attributes
+// (color, normal) from DXT-compressed brick buffers instead of uncompressed
+// material-based lookup.
+//
+// Key differences from VoxelRayMarch.comp:
+// 1. Compressed color buffer (binding 7): DXT1 blocks, 8 bytes per 16 voxels
+// 2. Compressed normal buffer (binding 8): DXT normal blocks, 16 bytes per 16 voxels
+// 3. Decode functions from Compression.glsl replace material palette lookup
+// 4. Occupancy still from brickData[] (binding 2) for hit testing
+//
+// Compression layout per brick (8x8x8 = 512 voxels = 32 DXT blocks):
+//   Color:  32 blocks * 8 bytes  = 256 bytes (was 1536 bytes @ 3 floats/voxel)
+//   Normal: 32 blocks * 16 bytes = 512 bytes (was 1536 bytes @ 3 floats/voxel)
+//   Total:  768 bytes per brick (was 3072 bytes) = 4:1 compression
+// ============================================================================
+
+// Include shared SVO data structures (must be before buffer declarations that use them)
+#include "SVOTypes.glsl"
+
+// Include DXT decompression utilities
+#include "Compression.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// ============================================================================
+// BUFFER BINDINGS
+// ============================================================================
+
+// Output image (uses shaderStorageImageWriteWithoutFormat feature)
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+// ESVO octree buffer (uvec2 per node - 64 bits)
+layout(std430, binding = 1) readonly buffer ESVOBuffer {
+    uvec2 esvoNodes[];
+};
+
+// Brick occupancy buffer (8x8x8 voxels per brick, 1 uint per voxel)
+// Used for hit testing - non-zero means solid
+layout(std430, binding = 2) readonly buffer BrickBuffer {
+    uint brickData[];
+};
+
+// Material buffer (Material struct defined in SVOTypes.glsl)
+// Kept for compatibility but not used in compressed mode
+layout(std430, binding = 3) readonly buffer MaterialBuffer {
+    Material materials[];
+};
+
+// ============================================================================
+// COMPRESSED ATTRIBUTE BUFFERS (NEW)
+// ============================================================================
+
+// DXT1 compressed colors - 32 blocks per brick, 8 bytes (uvec2) per block
+// Block layout: 2 RGB565 reference colors + 16x2-bit indices
+layout(std430, binding = 7) readonly buffer CompressedColorBuffer {
+    uvec2 compressedColors[];  // [brickIndex * 32 + blockIndex]
+};
+
+// DXT compressed normals - 32 blocks per brick, 16 bytes (uvec4) per block
+// Block layout: base normal + UV axes + 16x2-bit indices per axis
+layout(std430, binding = 8) readonly buffer CompressedNormalBuffer {
+    uvec4 compressedNormals[];  // [brickIndex * 32 + blockIndex]
+};
+
+// ============================================================================
+// OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
+// ============================================================================
+// Must match OctreeConfig struct in VoxelGridNode.cpp (std140 layout)
+layout(std140, binding = 5) uniform OctreeConfigUBO {
+    // ESVO scale parameters
+    int esvoMaxScale;       // Always 22 (ESVO normalized space)
+    int userMaxLevels;      // log2(resolution) = 7 for 128^3
+    int brickDepthLevels;   // 3 for 8^3 bricks
+    int brickSize;          // 8 (voxels per brick axis)
+
+    // Derived scale values
+    int minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
+    int brickESVOScale;     // Scale at which nodes are brick parents = 20
+    int bricksPerAxis;      // resolution / brickSize = 16
+    int _padding1;          // Pad to 16-byte alignment
+
+    // Grid bounds (in world units)
+    vec3 gridMin;
+    float _padding2;        // Pad vec3 to vec4
+
+    vec3 gridMax;
+    float _padding3;        // Pad vec3 to vec4
+
+    // Coordinate Transformations
+    mat4 localToWorld;      // Transform from Grid Local [0,1] to World Space
+    mat4 worldToLocal;      // Transform from World Space to Grid Local [0,1]
+
+    // Padding to match C++ struct size (256 bytes)
+    float _padding4[16];
+} octreeConfig;
+
+// ============================================================================
+// COMPRESSED BUFFER ACCESS FUNCTIONS
+// ============================================================================
+
+// Load DXT1 color block for a voxel within a brick
+uvec2 loadColorBlock(uint brickIndex, int voxelLinearIdx) {
+    int blockIdx = voxelLinearIdx >> 4;  // Divide by 16 (voxels per block)
+    return compressedColors[brickIndex * 32u + uint(blockIdx)];
+}
+
+// Load DXT normal blocks for a voxel within a brick
+void loadNormalBlocks(uint brickIndex, int voxelLinearIdx, out uvec2 blockA, out uvec2 blockB) {
+    int blockIdx = voxelLinearIdx >> 4;  // Divide by 16 (voxels per block)
+    uvec4 packed = compressedNormals[brickIndex * 32u + uint(blockIdx)];
+    blockA = packed.xy;
+    blockB = packed.zw;
+}
+
+// Decode voxel color from compressed buffer
+vec3 getCompressedVoxelColor(uint brickIndex, int voxelLinearIdx) {
+    uvec2 block = loadColorBlock(brickIndex, voxelLinearIdx);
+    int texelIdx = voxelLinearIdx & 15;  // Mod 16 (position within block)
+    return decodeDXT1Color(block, texelIdx);
+}
+
+// Decode voxel normal from compressed buffer
+vec3 getCompressedVoxelNormal(uint brickIndex, int voxelLinearIdx) {
+    uvec2 blockA, blockB;
+    loadNormalBlocks(brickIndex, voxelLinearIdx, blockA, blockB);
+    int texelIdx = voxelLinearIdx & 15;  // Mod 16 (position within block)
+    return normalize(decodeDXTNormal(blockA, blockB, texelIdx));
+}
+
+// ============================================================================
+// CONSTANTS - NOW MOSTLY FROM UBO (octreeConfig)
+// ============================================================================
+
+const int STACK_SIZE = 23;      // Must cover full ESVO range (octreeConfig.esvoMaxScale + 1)
+const int MAX_ITERS = 512;
+const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
+const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
+
+// Debug flags (disabled by default for compressed variant)
+#define DEBUG_OCTANT_MASK 0
+#define DEBUG_ISOLATE_OCTANT 0
+#define DEBUG_ONLY_OCTANT 0
+#define DEBUG_FORCE_OCTANT_ZERO 0
+#define DEBUG_LOCAL_NORM 0
+#define DEBUG_BRICK_COORD 0
+#define DEBUG_FIRST_VOXEL 0
+#define DEBUG_RAY_BRICK_LOOKUP 0
+#define DEBUG_BYPASS_ESVO 0
+#define DEBUG_AXIS_PARALLEL 0
+
+// Per-ray trace recording disabled for compressed variant
+#define DEBUG_GRID_SPACING 64
+#define MAX_TRACE_STEPS 64
+
+const uint TRACE_STEP_PUSH = 0u;
+const uint TRACE_STEP_ADVANCE = 1u;
+const uint TRACE_STEP_POP = 2u;
+const uint TRACE_STEP_BRICK_ENTER = 3u;
+const uint TRACE_STEP_BRICK_DDA = 4u;
+const uint TRACE_STEP_BRICK_EXIT = 5u;
+const uint TRACE_STEP_HIT = 6u;
+const uint TRACE_STEP_MISS = 7u;
+
+struct TraceStep {
+    uint stepType;
+    uint nodeIndex;
+    int scale;
+    uint octantMask;
+    vec3 position;
+    float tMin;
+    float tMax;
+    uint childDescLow;
+    uint childDescHigh;
+    uint _padding;
+};
+
+struct RayTraceHeader {
+    uvec2 pixel;
+    uint stepCount;
+    uint flags;
+};
+
+// Trace buffer at binding 4 (disabled for compressed variant)
+layout(std430, binding = 4) buffer RayTraceBuffer {
+    uint traceWriteIndex;
+    uint traceCapacity;
+    uint _padding[2];
+    uint traceData[];
+};
+
+// Debug visualization state (local struct)
+struct DebugRaySample {
+    uvec2 pixel;
+    uint octantMask;
+    uint hitFlag;
+    uint exitCode;
+    uint lastStepMask;
+    uint iterationCount;
+    int scale;
+    uint stateIdx;
+    float tMin;
+    float tMax;
+    float scaleExp2;
+    vec3 posMirrored;
+    vec3 localNorm;
+    vec3 rayDir;
+};
+
+const uint DEBUG_EXIT_NONE = 0u;
+const uint DEBUG_EXIT_HIT = 1u;
+const uint DEBUG_EXIT_NO_HIT = 2u;
+const uint DEBUG_EXIT_STACK = 3u;
+const uint DEBUG_EXIT_INVALID_SPAN = 4u;
+
+// ============================================================================
+// COORDINATE TRANSFORMATIONS
+// ============================================================================
+
+vec3 worldToNormalized(vec3 worldPos) {
+    vec4 localPos = octreeConfig.worldToLocal * vec4(worldPos, 1.0);
+    vec3 p = localPos.xyz / localPos.w;
+    return p + 1.0;
+}
+
+vec3 normalizedToWorld(vec3 normPos) {
+    vec3 localPos = normPos - 1.0;
+    vec4 worldPos = octreeConfig.localToWorld * vec4(localPos, 1.0);
+    return worldPos.xyz / worldPos.w;
+}
+
+int userToESVOScale(int userScale) {
+    return octreeConfig.esvoMaxScale - (octreeConfig.userMaxLevels - 1 - userScale);
+}
+
+int esvoToUserScale(int esvoScale) {
+    return esvoScale - (octreeConfig.esvoMaxScale - octreeConfig.userMaxLevels + 1);
+}
+
+int getBrickESVOScale() {
+    return octreeConfig.brickESVOScale;
+}
+
+// ============================================================================
+// PUSH CONSTANTS (Camera)
+// ============================================================================
+
+#define DEBUG_MODE_NORMAL 0
+#define DEBUG_MODE_OCTANT 1
+#define DEBUG_MODE_DEPTH 2
+#define DEBUG_MODE_ITERATIONS 3
+#define DEBUG_MODE_T_SPAN 4
+#define DEBUG_MODE_NORMALS 5
+#define DEBUG_MODE_POSITION 6
+#define DEBUG_MODE_BRICKS 7
+#define DEBUG_MODE_MATERIALS 8
+
+layout(push_constant) uniform PushConstants {
+    vec3 cameraPos;
+    float time;
+    vec3 cameraDir;
+    float fov;
+    vec3 cameraUp;
+    float aspect;
+    vec3 cameraRight;
+    int debugMode;
+} pc;
+
+// ============================================================================
+// DATA STRUCTURES (Matching C++ LaineKarrasOctree.h)
+// ============================================================================
+
+struct RayCoefficients {
+    float tx_coef, ty_coef, tz_coef;
+    float tx_bias, ty_bias, tz_bias;
+    int octant_mask;
+    vec3 rayDir;
+    vec3 normOrigin;
+};
+
+struct StackEntry {
+    uint parentPtr;
+    float t_max;
+};
+
+struct TraversalState {
+    uint parentPtr;
+    int idx;
+    int scale;
+    float scale_exp2;
+    vec3 pos;
+    float t_min, t_max;
+    float h;
+};
+
+// ============================================================================
+// COORDINATE & MIRRORING HELPERS
+// ============================================================================
+
+vec3 esvoToGrid01(vec3 esvoPos) {
+    return esvoPos - vec3(1.0);
+}
+
+vec3 grid01ToEsvo(vec3 grid01) {
+    return grid01 + vec3(1.0);
+}
+
+vec3 gridToWorld(vec3 gridPos, vec3 gridMin, vec3 gridMax, float resolution) {
+    vec3 gridSize = gridMax - gridMin;
+    return gridMin + (gridPos / resolution) * gridSize;
+}
+
+vec3 voxelLocalToBrick(vec3 voxelLocal01, int brickSizeVal) {
+    return voxelLocal01 * float(brickSizeVal);
+}
+
+vec3 brickLocalToGrid(vec3 brickLocal, ivec3 brickCoord, int brickSizeVal) {
+    return (vec3(brickCoord) * float(brickSizeVal)) + brickLocal;
+}
+
+vec3 unmirrorToLocalSpace(vec3 mirroredPos, float octantSize, int octantMask) {
+    vec3 localPos = mirroredPos;
+    if ((octantMask & 1) == 0) localPos.x = 3.0 - octantSize - localPos.x;
+    if ((octantMask & 2) == 0) localPos.y = 3.0 - octantSize - localPos.y;
+    if ((octantMask & 4) == 0) localPos.z = 3.0 - octantSize - localPos.z;
+    return localPos;
+}
+
+vec3 computeLocalNorm(vec3 mirroredPos, float octantSize, int octantMask) {
+    vec3 localPos = unmirrorToLocalSpace(mirroredPos, octantSize, octantMask);
+    return clamp(localPos - vec3(1.0), vec3(0.0), vec3(1.0));
+}
+
+void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout DebugRaySample info) {
+    info.scale = state.scale;
+    info.stateIdx = uint(max(state.idx, 0));
+    info.tMin = state.t_min;
+    info.tMax = state.t_max;
+    info.scaleExp2 = state.scale_exp2;
+    info.posMirrored = state.pos;
+    info.localNorm = computeLocalNorm(state.pos, state.scale_exp2, coef.octant_mask);
+}
+
+// ============================================================================
+// TRACE RECORDING (Stub implementation for compressed variant)
+// ============================================================================
+
+bool shouldCaptureDebug(ivec2 pixelCoords) {
+    return false;  // Disabled for compressed variant
+}
+
+const uint TRACE_HEADER_SIZE = 16;
+const uint TRACE_STEP_SIZE = 48;
+const uint TRACE_RAY_SIZE = TRACE_HEADER_SIZE + (MAX_TRACE_STEPS * TRACE_STEP_SIZE);
+
+uint g_traceRaySlot = 0xFFFFFFFF;
+uint g_traceStepCount = 0;
+
+bool beginRayTrace(ivec2 pixelCoords) { return false; }
+
+void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
+                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {}
+
+void endRayTrace(bool hit) {}
+
+// ============================================================================
+// ESVO BUFFER ACCESS
+// ============================================================================
+
+uvec2 fetchESVONode(uint nodeIndex) {
+    return esvoNodes[nodeIndex];
+}
+
+// ============================================================================
+// RAY HELPERS
+// ============================================================================
+
+vec3 getRayDir(vec2 uv) {
+    float tanHalfFov = tan(radians(pc.fov * 0.5));
+    vec2 ndc = uv * 2.0 - 1.0;
+    vec3 rayDir = pc.cameraDir +
+                  pc.cameraRight * ndc.x * tanHalfFov * pc.aspect +
+                  pc.cameraUp * ndc.y * tanHalfFov;
+    return normalize(rayDir);
+}
+
+vec2 rayAABBIntersection(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+    vec3 invDir = 1.0 / rayDir;
+    vec3 t0 = (boxMin - rayOrigin) * invDir;
+    vec3 t1 = (boxMax - rayOrigin) * invDir;
+    vec3 tMin = min(t0, t1);
+    vec3 tMax = max(t0, t1);
+    float tNear = max(max(tMin.x, tMin.y), tMin.z);
+    float tFar = min(min(tMax.x, tMax.y), tMax.z);
+    return vec2(tNear, tFar);
+}
+
+// ============================================================================
+// RAY COEFFICIENT INITIALIZATION
+// ============================================================================
+
+RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld) {
+    RayCoefficients coef;
+    coef.rayDir = rayDir;
+
+    vec3 p = worldToNormalized(rayStartWorld);
+    coef.normOrigin = p;
+
+    vec3 d = mat3(octreeConfig.worldToLocal) * rayDir;
+
+    float epsilon_esvo = exp2(-float(octreeConfig.esvoMaxScale));
+    float sx = d.x >= 0.0 ? 1.0 : -1.0;
+    float sy = d.y >= 0.0 ? 1.0 : -1.0;
+    float sz = d.z >= 0.0 ? 1.0 : -1.0;
+    if (abs(d.x) < epsilon_esvo) d.x = sx * epsilon_esvo;
+    if (abs(d.y) < epsilon_esvo) d.y = sy * epsilon_esvo;
+    if (abs(d.z) < epsilon_esvo) d.z = sz * epsilon_esvo;
+
+    coef.tx_coef = 1.0 / -abs(d.x);
+    coef.ty_coef = 1.0 / -abs(d.y);
+    coef.tz_coef = 1.0 / -abs(d.z);
+    coef.tx_bias = coef.tx_coef * p.x;
+    coef.ty_bias = coef.ty_coef * p.y;
+    coef.tz_bias = coef.tz_coef * p.z;
+
+    coef.octant_mask = 7;
+    if (d.x > 0.0) { coef.octant_mask ^= 1; coef.tx_bias = 3.0 * coef.tx_coef - coef.tx_bias; }
+    if (d.y > 0.0) { coef.octant_mask ^= 2; coef.ty_bias = 3.0 * coef.ty_coef - coef.ty_bias; }
+    if (d.z > 0.0) { coef.octant_mask ^= 4; coef.tz_bias = 3.0 * coef.tz_coef - coef.tz_bias; }
+
+    return coef;
+}
+
+// ============================================================================
+// TRAVERSAL STATE INITIALIZATION
+// ============================================================================
+
+TraversalState initTraversalState(RayCoefficients coef, inout StackEntry stack[STACK_SIZE], bool rayStartsInside) {
+    TraversalState state;
+
+    if (rayStartsInside) {
+        state.t_min = 0.0;
+        state.t_max = min(min(coef.tx_coef - coef.tx_bias,
+                             coef.ty_coef - coef.ty_bias),
+                         coef.tz_coef - coef.tz_bias);
+    } else {
+        state.t_min = max(max(2.0 * coef.tx_coef - coef.tx_bias,
+                             2.0 * coef.ty_coef - coef.ty_bias),
+                         2.0 * coef.tz_coef - coef.tz_bias);
+        state.t_max = min(min(coef.tx_coef - coef.tx_bias,
+                             coef.ty_coef - coef.ty_bias),
+                         coef.tz_coef - coef.tz_bias);
+    }
+
+    state.h = state.t_max;
+    state.t_min = max(state.t_min, 0.0);
+
+    state.parentPtr = 0u;
+    state.scale = octreeConfig.esvoMaxScale;
+    state.scale_exp2 = 0.5;
+    state.pos = vec3(1.0);
+
+    for (int s = 0; s < STACK_SIZE; s++) {
+        stack[s].parentPtr = 0u;
+        stack[s].t_max = state.t_max;
+    }
+
+    state.idx = 0;
+    const float boundary_epsilon = 1e-4;
+    bool usePositionBased = (state.t_min < boundary_epsilon);
+
+    vec3 mirroredOrigin;
+    mirroredOrigin.x = ((coef.octant_mask & 1) != 0) ? coef.normOrigin.x : (3.0 - coef.normOrigin.x);
+    mirroredOrigin.y = ((coef.octant_mask & 2) != 0) ? coef.normOrigin.y : (3.0 - coef.normOrigin.y);
+    mirroredOrigin.z = ((coef.octant_mask & 4) != 0) ? coef.normOrigin.z : (3.0 - coef.normOrigin.z);
+
+    if (abs(coef.rayDir.x) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.x >= 1.5) { state.idx |= 1; state.pos.x = 1.5; }
+    } else {
+        if (1.5 * coef.tx_coef - coef.tx_bias > state.t_min) { state.idx ^= 1; state.pos.x = 1.5; }
+    }
+
+    if (abs(coef.rayDir.y) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.y >= 1.5) { state.idx |= 2; state.pos.y = 1.5; }
+    } else {
+        if (1.5 * coef.ty_coef - coef.ty_bias > state.t_min) { state.idx ^= 2; state.pos.y = 1.5; }
+    }
+
+    if (abs(coef.rayDir.z) < DIR_EPSILON || usePositionBased) {
+        if (mirroredOrigin.z >= 1.5) { state.idx |= 4; state.pos.z = 1.5; }
+    } else {
+        if (1.5 * coef.tz_coef - coef.tz_bias > state.t_min) { state.idx ^= 4; state.pos.z = 1.5; }
+    }
+
+    return state;
+}
+
+// ============================================================================
+// VOXEL CORNER COMPUTATION
+// ============================================================================
+
+void computeVoxelCorners(vec3 pos, RayCoefficients coef,
+                         out float tx_corner, out float ty_corner, out float tz_corner) {
+    tx_corner = pos.x * coef.tx_coef - coef.tx_bias;
+    ty_corner = pos.y * coef.ty_coef - coef.ty_bias;
+    tz_corner = pos.z * coef.tz_coef - coef.tz_bias;
+}
+
+float computeCorrectedTcMax(float tx_corner, float ty_corner, float tz_corner,
+                            vec3 rayDir, float t_max) {
+    const float corner_threshold = 1000.0;
+
+    bool useXCorner = (abs(rayDir.x) >= DIR_EPSILON);
+    bool useYCorner = (abs(rayDir.y) >= DIR_EPSILON);
+    bool useZCorner = (abs(rayDir.z) >= DIR_EPSILON);
+
+    float tx_valid = (useXCorner && abs(tx_corner) < corner_threshold) ? tx_corner : t_max;
+    float ty_valid = (useYCorner && abs(ty_corner) < corner_threshold) ? ty_corner : t_max;
+    float tz_valid = (useZCorner && abs(tz_corner) < corner_threshold) ? tz_corner : t_max;
+
+    return min(min(tx_valid, ty_valid), tz_valid);
+}
+
+// ============================================================================
+// CHILD VALIDITY CHECK
+// ============================================================================
+
+bool checkChildValidity(TraversalState state, RayCoefficients coef,
+                        uint validMask, uint leafMask,
+                        out bool isLeaf, out float tv_max,
+                        out float tx_center, out float ty_center, out float tz_center) {
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+
+    bool child_valid = childExists(validMask, localChildIdx);
+    isLeaf = childIsLeaf(leafMask, localChildIdx);
+
+    if (!child_valid || state.t_min > state.t_max + EPSILON) {
+        return false;
+    }
+
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+
+    float tc_max = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+    tv_max = min(state.t_max, tc_max);
+
+    float halfScale = state.scale_exp2 * 0.5;
+    tx_center = halfScale * coef.tx_coef + tx_corner;
+    ty_center = halfScale * coef.ty_coef + ty_corner;
+    tz_center = halfScale * coef.tz_coef + tz_corner;
+
+    return state.t_min <= tv_max + EPSILON;
+}
+
+// ============================================================================
+// PUSH PHASE
+// ============================================================================
+
+void executePushPhase(inout TraversalState state, RayCoefficients coef,
+                      inout StackEntry stack[STACK_SIZE],
+                      uint validMask, uint leafMask, uint childPointer,
+                      float tv_max, float tx_center, float ty_center, float tz_center) {
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+    float tc_max = min(min(tx_corner, ty_corner), tz_corner);
+
+    if (state.scale >= 0 && state.scale < STACK_SIZE) {
+        stack[state.scale].parentPtr = state.parentPtr;
+        stack[state.scale].t_max = state.t_max;
+    }
+    state.h = tc_max;
+
+    int worldIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+
+    uint nonLeafMask = validMask & ~leafMask;
+    uint mask_before_child = (1u << worldIdx) - 1u;
+    uint childLocalIndex = bitCount(nonLeafMask & mask_before_child);
+
+    state.parentPtr = childPointer + childLocalIndex;
+
+    state.idx = 0;
+    state.scale--;
+    float halfScale = state.scale_exp2 * 0.5;
+    state.scale_exp2 = halfScale;
+
+    if (tx_center > state.t_min) { state.idx ^= 1; state.pos.x += state.scale_exp2; }
+    if (ty_center > state.t_min) { state.idx ^= 2; state.pos.y += state.scale_exp2; }
+    if (tz_center > state.t_min) { state.idx ^= 4; state.pos.z += state.scale_exp2; }
+
+    state.t_max = tv_max;
+}
+
+// ============================================================================
+// ADVANCE PHASE
+// ============================================================================
+
+int executeAdvancePhase(inout TraversalState state, RayCoefficients coef, out int step_mask) {
+    float tx_corner, ty_corner, tz_corner;
+    computeVoxelCorners(state.pos, coef, tx_corner, ty_corner, tz_corner);
+
+    bool canStepX = (abs(coef.rayDir.x) >= DIR_EPSILON);
+    bool canStepY = (abs(coef.rayDir.y) >= DIR_EPSILON);
+    bool canStepZ = (abs(coef.rayDir.z) >= DIR_EPSILON);
+
+    float tc_max = computeCorrectedTcMax(tx_corner, ty_corner, tz_corner, coef.rayDir, state.t_max);
+
+    if (tc_max >= 1e10) {
+        float fallbackX = canStepX ? tx_corner : -1e10;
+        float fallbackY = canStepY ? ty_corner : -1e10;
+        float fallbackZ = canStepZ ? tz_corner : -1e10;
+        tc_max = max(max(fallbackX, fallbackY), fallbackZ);
+    }
+
+    step_mask = 0;
+    const float step_epsilon = 1e-6;
+    if (canStepX && tx_corner <= tc_max + step_epsilon) step_mask |= 1;
+    if (canStepY && ty_corner <= tc_max + step_epsilon) step_mask |= 2;
+    if (canStepZ && tz_corner <= tc_max + step_epsilon) step_mask |= 4;
+
+    if (step_mask == 0) {
+        if (canStepX && !canStepY && !canStepZ) step_mask = 1;
+        else if (!canStepX && canStepY && !canStepZ) step_mask = 2;
+        else if (!canStepX && !canStepY && canStepZ) step_mask = 4;
+        else step_mask = 1;
+    }
+
+    state.pos.x -= state.scale_exp2 * float((step_mask >> 0) & 1);
+    state.pos.y -= state.scale_exp2 * float((step_mask >> 1) & 1);
+    state.pos.z -= state.scale_exp2 * float((step_mask >> 2) & 1);
+
+    state.t_min = tc_max;
+    state.idx ^= step_mask;
+
+    if ((state.idx & step_mask) != 0) {
+        return 0;
+    }
+
+    return 1;
+}
+
+// ============================================================================
+// POP PHASE
+// ============================================================================
+
+bool executePopPhase(inout TraversalState state, RayCoefficients coef,
+                     inout StackEntry stack[STACK_SIZE]) {
+    const int ESVO_MIN_SCALE = octreeConfig.minESVOScale;
+
+    uint differing_bits = 0u;
+    if (state.scale < octreeConfig.esvoMaxScale) {
+        float scale_exp2_current = exp2(float(state.scale - octreeConfig.esvoMaxScale));
+        differing_bits = uint(floor(state.pos.x * (1.0 / scale_exp2_current))) ^
+                        uint(floor((state.pos.x + state.scale_exp2) * (1.0 / scale_exp2_current)));
+        differing_bits |= uint(floor(state.pos.y * (1.0 / scale_exp2_current))) ^
+                         uint(floor((state.pos.y + state.scale_exp2) * (1.0 / scale_exp2_current)));
+        differing_bits |= uint(floor(state.pos.z * (1.0 / scale_exp2_current))) ^
+                         uint(floor((state.pos.z + state.scale_exp2) * (1.0 / scale_exp2_current)));
+    }
+
+    int new_scale = (differing_bits != 0u)
+        ? min(findMSB(differing_bits) + state.scale, octreeConfig.esvoMaxScale)
+        : octreeConfig.esvoMaxScale;
+
+    if (state.scale >= octreeConfig.esvoMaxScale || state.t_min > state.t_max) {
+        return false;
+    }
+
+    new_scale = max(new_scale, state.scale + 1);
+
+    state.scale = new_scale;
+    state.scale_exp2 = exp2(float(new_scale - octreeConfig.esvoMaxScale));
+
+    state.parentPtr = stack[new_scale].parentPtr;
+    state.t_max = stack[new_scale].t_max;
+
+    float posX_rounded = floor(state.pos.x / state.scale_exp2) * state.scale_exp2;
+    float posY_rounded = floor(state.pos.y / state.scale_exp2) * state.scale_exp2;
+    float posZ_rounded = floor(state.pos.z / state.scale_exp2) * state.scale_exp2;
+    state.pos = vec3(posX_rounded, posY_rounded, posZ_rounded);
+
+    int shx = int(state.pos.x / state.scale_exp2) & 1;
+    int shy = int(state.pos.y / state.scale_exp2) & 1;
+    int shz = int(state.pos.z / state.scale_exp2) & 1;
+    state.idx = shx | (shy << 1) | (shz << 2);
+
+    state.h = 0.0;
+
+    return state.t_min <= state.t_max;
+}
+
+// ============================================================================
+// COMPRESSED BRICK DDA - Uses DXT decompression for color/normal
+// ============================================================================
+
+bool marchBrickCompressed(vec3 rayOrigin, vec3 rayDir, float startT,
+                          vec3 brickMin, vec3 brickMax, uint brickIndex,
+                          out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
+
+    vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
+    if (brickT.y < 0.0) {
+        return false;
+    }
+
+    float t = max(brickT.x, startT);
+    if (t > brickT.y) return false;
+
+    vec3 brickSize = brickMax - brickMin;
+    vec3 voxelSize = brickSize / 8.0;
+
+    vec3 pos = rayOrigin + rayDir * (t + EPSILON);
+
+    vec3 invDir;
+    invDir.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / rayDir.x : (rayDir.x >= 0.0 ? 1e20 : -1e20);
+    invDir.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / rayDir.y : (rayDir.y >= 0.0 ? 1e20 : -1e20);
+    invDir.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / rayDir.z : (rayDir.z >= 0.0 ? 1e20 : -1e20);
+
+    ivec3 step = ivec3(sign(rayDir));
+    vec3 deltaDist = abs(voxelSize * invDir);
+
+    vec3 localPos = (pos - brickMin) / voxelSize;
+
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
+            localPos[axis] = clamp(localPos[axis], EPSILON, 8.0 - EPSILON);
+        }
+    }
+
+    ivec3 currentVoxel = ivec3(floor(localPos));
+    currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
+
+    vec3 tMax;
+    for (int axis = 0; axis < 3; axis++) {
+        if (abs(rayDir[axis]) < DIR_EPSILON) {
+            tMax[axis] = 1e20;
+        } else if (rayDir[axis] > 0.0) {
+            float nextBoundaryWorld = brickMin[axis] + float(currentVoxel[axis] + 1) * voxelSize[axis];
+            float distToNextBoundary = nextBoundaryWorld - pos[axis];
+            tMax[axis] = t + distToNextBoundary / rayDir[axis];
+        } else {
+            float nextBoundaryWorld = brickMin[axis] + float(currentVoxel[axis]) * voxelSize[axis];
+            float distToNextBoundary = pos[axis] - nextBoundaryWorld;
+            tMax[axis] = t + distToNextBoundary / abs(rayDir[axis]);
+        }
+    }
+
+    axisMask = 0u;
+    const int MAX_STEPS = 64;
+    for (int i = 0; i < MAX_STEPS; i++) {
+        if (any(lessThan(currentVoxel, ivec3(0))) || any(greaterThanEqual(currentVoxel, ivec3(8)))) {
+            break;
+        }
+
+        // Sample brick occupancy (linear index: z*64 + y*8 + x)
+        int voxelLinearIdx = currentVoxel.z * 64 + currentVoxel.y * 8 + currentVoxel.x;
+        uint voxelData = brickData[brickIndex * 512u + uint(voxelLinearIdx)];
+
+        if (voxelData != 0u) {
+            // Hit! Decode color and normal from compressed buffers
+            hitColor = getCompressedVoxelColor(brickIndex, voxelLinearIdx);
+            hitNormal = getCompressedVoxelNormal(brickIndex, voxelLinearIdx);
+
+            // Adjust normal based on entry axis (flip to face ray)
+            if (i == 0) {
+                // First iteration: use ray direction for normal
+                vec3 absRayDir = abs(rayDir);
+                if (absRayDir.x > absRayDir.y && absRayDir.x > absRayDir.z) {
+                    hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
+                } else if (absRayDir.y > absRayDir.z) {
+                    hitNormal = vec3(0.0, -sign(rayDir.y), 0.0);
+                } else {
+                    hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
+                }
+            } else {
+                // Subsequent iterations: use DDA axis mask
+                vec3 ddaNormal = vec3(0.0);
+                if (axisMask == 1u) ddaNormal.x = -float(step.x);
+                else if (axisMask == 2u) ddaNormal.y = -float(step.y);
+                else ddaNormal.z = -float(step.z);
+                // Blend DDA normal with compressed normal
+                hitNormal = normalize(hitNormal + ddaNormal * 0.5);
+            }
+
+            return true;
+        }
+
+        // DDA step
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            currentVoxel.x += step.x;
+            tMax.x += deltaDist.x;
+            axisMask = 1u;
+        } else if (tMax.y < tMax.z) {
+            currentVoxel.y += step.y;
+            tMax.y += deltaDist.y;
+            axisMask = 2u;
+        } else {
+            currentVoxel.z += step.z;
+            tMax.z += deltaDist.z;
+            axisMask = 4u;
+        }
+    }
+
+    return false;
+}
+
+// ============================================================================
+// LEAF HIT HANDLING - COMPRESSED VERSION
+// ============================================================================
+
+bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
+                             vec3 rayStartWorld, vec3 rayDir, float tBias,
+                             uvec2 parentDescriptor, uint validMask, uint leafMask, uint parentNodeIndex,
+                             inout StackEntry stack[STACK_SIZE],
+                             out vec3 hitColor, out vec3 hitNormal, out float hitT) {
+
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
+
+    int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
+    if (localChildIdx < 0 || localChildIdx > 7) {
+        return false;
+    }
+
+    uint childPointer = getChildPointer(parentDescriptor);
+    uint totalInternalChildren = bitCount(validMask & ~leafMask);
+    uint leafsBefore = countLeavesBefore(validMask, leafMask, localChildIdx);
+    uint leafDescriptorIndex = childPointer + totalInternalChildren + leafsBefore;
+
+    uvec2 leafDescriptor = fetchESVONode(leafDescriptorIndex);
+    uint brickIndex = getBrickIndex(leafDescriptor);
+    if (brickIndex == SVO_INVALID_INDEX) {
+        return false;
+    }
+
+    float tHit = state.t_min;
+
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+    vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
+
+    vec3 hitPos01 = esvoToGrid01(hitPos12);
+    hitPos01 = clamp(hitPos01, vec3(0.0), vec3(1.0) - vec3(1e-5));
+
+    int bricksPerAxis = octreeConfig.bricksPerAxis;
+    ivec3 brickCoord = ivec3(floor(hitPos01 * float(bricksPerAxis)));
+    brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+
+    vec3 gridSize = octreeConfig.gridMax - octreeConfig.gridMin;
+    float brickWorldSize = gridSize.x / float(bricksPerAxis);
+
+    vec3 brickMinWorld = octreeConfig.gridMin + vec3(brickCoord) * brickWorldSize;
+    vec3 brickMaxWorld = brickMinWorld + vec3(brickWorldSize);
+
+    uint axisMask;
+    bool ddaHit = marchBrickCompressed(rayStartWorld, rayDir, 0.0,
+                                       brickMinWorld, brickMaxWorld, brickIndex,
+                                       hitColor, hitNormal, axisMask);
+
+    if (ddaHit) {
+        hitT = tHit + tBias;
+        return true;
+    }
+
+    return false;
+}
+
+// ============================================================================
+// OCTREE TRAVERSAL
+// ============================================================================
+
+bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
+                    out vec3 hitColor, out vec3 hitNormal, out float hitT,
+                    inout DebugRaySample debugSample) {
+
+    RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld);
+    debugSample.octantMask = uint(coef.octant_mask);
+
+    StackEntry stack[STACK_SIZE];
+    bool rayStartsInside = all(greaterThanEqual(coef.normOrigin, vec3(1.0))) &&
+                           all(lessThanEqual(coef.normOrigin, vec3(2.0)));
+    TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+
+    float tBias = 0.0;
+
+    for (int iter = 0; iter < MAX_ITERS; iter++) {
+        debugSample.iterationCount = uint(iter);
+
+        if (state.t_min > state.t_max + EPSILON) {
+            debugSample.exitCode = DEBUG_EXIT_INVALID_SPAN;
+            break;
+        }
+
+        uvec2 parentDescriptor = fetchESVONode(state.parentPtr);
+        uint validMask = getValidMask(parentDescriptor);
+        uint leafMask = getLeafMask(parentDescriptor);
+        uint childPointer = getChildPointer(parentDescriptor);
+
+        bool isLeaf;
+        float tv_max, tx_center, ty_center, tz_center;
+        bool childValid = checkChildValidity(state, coef, validMask, leafMask,
+                                            isLeaf, tv_max, tx_center, ty_center, tz_center);
+
+        if (childValid && isLeaf) {
+            bool leafHit = handleLeafHitCompressed(state, coef, rayStartWorld, rayDir, tBias,
+                                                   parentDescriptor, validMask, leafMask,
+                                                   state.parentPtr, stack, hitColor, hitNormal, hitT);
+            if (leafHit) {
+                debugSample.hitFlag = 1u;
+                debugSample.exitCode = DEBUG_EXIT_HIT;
+                snapshotTraversalState(state, coef, debugSample);
+                return true;
+            }
+        }
+
+        if (childValid && !isLeaf) {
+            executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
+                           tv_max, tx_center, ty_center, tz_center);
+            continue;
+        }
+
+        int step_mask;
+        int advanceResult = executeAdvancePhase(state, coef, step_mask);
+        debugSample.lastStepMask = uint(step_mask);
+
+        if (advanceResult == 0) {
+            continue;
+        }
+
+        if (!executePopPhase(state, coef, stack)) {
+            debugSample.exitCode = DEBUG_EXIT_STACK;
+            break;
+        }
+    }
+
+    debugSample.hitFlag = 0u;
+    if (debugSample.exitCode == DEBUG_EXIT_NONE) {
+        debugSample.exitCode = DEBUG_EXIT_NO_HIT;
+    }
+    snapshotTraversalState(state, coef, debugSample);
+    return false;
+}
+
+// ============================================================================
+// SIMPLE LIGHTING
+// ============================================================================
+
+vec3 computeLighting(vec3 color, vec3 normal, vec3 rayDir) {
+    vec3 lightDir = normalize(vec3(1.0, 1.0, -1.0));
+    float ambient = 0.3;
+    float diffuse = max(dot(normal, lightDir), 0.0) * 0.7;
+    return color * (ambient + diffuse);
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
+void main() {
+    ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageSize = imageSize(outputImage);
+
+    if (pixelCoords.x >= imageSize.x || pixelCoords.y >= imageSize.y) {
+        return;
+    }
+
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
+    vec3 rayOrigin = pc.cameraPos;
+    vec3 rayDir = getRayDir(uv);
+
+    vec3 color = vec3(0.0);
+    float hitT = 0.0;
+    DebugRaySample debugSample;
+    debugSample.pixel = uvec2(pixelCoords);
+    debugSample.rayDir = rayDir;
+    debugSample.octantMask = 0u;
+    debugSample.hitFlag = 0u;
+    debugSample.exitCode = DEBUG_EXIT_NONE;
+    debugSample.lastStepMask = 0u;
+    debugSample.iterationCount = 0u;
+    debugSample.scale = octreeConfig.esvoMaxScale;
+    debugSample.stateIdx = 0u;
+    debugSample.tMin = 0.0;
+    debugSample.tMax = 0.0;
+    debugSample.scaleExp2 = 0.0;
+    debugSample.posMirrored = vec3(0.0);
+    debugSample.localNorm = vec3(0.0);
+
+    vec3 gridMin = octreeConfig.gridMin;
+    vec3 gridMax = octreeConfig.gridMax;
+
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+
+    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
+
+    if (gridT.y >= 0.0) {
+        vec3 hitColor, hitNormal;
+
+        bool hit = traverseOctree(rayOrigin, rayDir, vec3(0.0), vec3(1.0),
+                                  hitColor, hitNormal, hitT, debugSample);
+
+        if (hit) {
+            color = computeLighting(hitColor, hitNormal, rayDir);
+        } else {
+            color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
+        }
+    } else {
+        color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
+    }
+
+    // Debug visualization modes
+    if (pc.debugMode > 0) {
+        switch (pc.debugMode) {
+            case DEBUG_MODE_OCTANT:
+                color = vec3(
+                    float(debugSample.octantMask & 1u),
+                    float((debugSample.octantMask >> 1u) & 1u),
+                    float((debugSample.octantMask >> 2u) & 1u)
+                );
+                break;
+
+            case DEBUG_MODE_DEPTH:
+                {
+                    float normalizedScale = float(debugSample.scale - 16) / float(octreeConfig.esvoMaxScale - 16);
+                    color = mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), normalizedScale);
+                }
+                break;
+
+            case DEBUG_MODE_ITERATIONS:
+                {
+                    float normalizedIter = float(debugSample.iterationCount) / 100.0;
+                    normalizedIter = clamp(normalizedIter, 0.0, 1.0);
+                    color = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), normalizedIter);
+                }
+                break;
+
+            case DEBUG_MODE_T_SPAN:
+                {
+                    float t = clamp(debugSample.tMin, 0.0, 2.0) / 2.0;
+                    color = vec3(t, 1.0 - t, 0.5);
+                }
+                break;
+
+            case DEBUG_MODE_NORMALS:
+                if (debugSample.hitFlag != 0u) {
+                    color = debugSample.localNorm * 0.5 + 0.5;
+                }
+                break;
+
+            case DEBUG_MODE_POSITION:
+                color = fract(debugSample.posMirrored);
+                break;
+
+            case DEBUG_MODE_BRICKS:
+                {
+                    vec3 brickPos = fract(debugSample.posMirrored * 16.0);
+                    float edge = min(min(brickPos.x, brickPos.y), brickPos.z);
+                    edge = min(edge, min(1.0 - brickPos.x, min(1.0 - brickPos.y, 1.0 - brickPos.z)));
+                    color = (edge < 0.05) ? vec3(1.0, 1.0, 0.0) : color;
+                }
+                break;
+
+            case DEBUG_MODE_MATERIALS:
+                {
+                    uint idx = debugSample.stateIdx;
+                    color = vec3(
+                        float(idx & 0xFFu) / 255.0,
+                        float((idx >> 8u) & 0xFFu) / 255.0,
+                        float((idx >> 16u) & 0xFFu) / 255.0
+                    );
+                }
+                break;
+        }
+    }
+
+    imageStore(outputImage, pixelCoords, vec4(color, 1.0));
+}

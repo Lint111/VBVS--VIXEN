@@ -8,7 +8,7 @@
 
 ## Current Focus: Week 3 DXT Compression
 
-Generic block compression framework complete in VoxelData. GLSL decompression utilities next.
+Shader integration complete. VoxelRayMarch_Compressed.comp ready for A/B testing.
 
 ### Week 3 Session Summary (Dec 2, 2025)
 
@@ -18,7 +18,11 @@ Generic block compression framework complete in VoxelData. GLSL decompression ut
 - Implemented `DXT1ColorCompressor` (16 vec3 → 64-bit, 24:1 ratio)
 - Implemented `DXTNormalCompressor` (16 vec3 → 128-bit, 12:1 ratio)
 - Created test suite with 12 passing tests
-- GLSL decode functions ready for shader integration
+- Created `shaders/Compression.glsl` with GLSL decompression utilities
+- Created `shaders/VoxelRayMarch_Compressed.comp` shader variant
+  - New buffer bindings: CompressedColorBuffer (7), CompressedNormalBuffer (8)
+  - DXT decode integrated into brick DDA loop
+  - Shader compiles successfully (SPIR-V verified)
 
 **New Files:**
 | File | Description |
@@ -28,7 +32,8 @@ Generic block compression framework complete in VoxelData. GLSL decompression ut
 | `libraries/VoxelData/src/Compression/BlockCompressor.cpp` | Base implementation |
 | `libraries/VoxelData/src/Compression/DXT1Compressor.cpp` | DXT encode/decode |
 | `libraries/VoxelData/tests/test_block_compressor.cpp` | 12 unit tests |
-| `Shaders/Compression.glsl` | GLSL decompression utilities |
+| `shaders/Compression.glsl` | GLSL decompression utilities |
+| `shaders/VoxelRayMarch_Compressed.comp` | Compressed variant of raymarcher |
 
 ### Compression Ratios Achieved
 
@@ -47,11 +52,12 @@ Generic block compression framework complete in VoxelData. GLSL decompression ut
 - [x] Implement CPU DXT1/BC1 encoder for color bricks
 - [x] Implement CPU DXT normal encoder
 - [x] Create unit tests (12 passing)
-- [ ] Create GLSL decompression utilities file
-- [ ] Integrate into VoxelRayMarch.comp
-- [ ] Integrate into LaineKarrasOctree (compress on build)
+- [x] Create GLSL decompression utilities file (`shaders/Compression.glsl`)
+- [x] Create VoxelRayMarch_Compressed.comp shader variant
+- [ ] Integrate into LaineKarrasOctree (compress on build, upload compressed buffers)
+- [ ] CPU-side: Create compressed buffer upload to GPU (bindings 7, 8)
 - [ ] Benchmark memory reduction (target: 16x)
-- [ ] Benchmark performance impact
+- [ ] Benchmark performance impact (A/B test compressed vs uncompressed)
 
 ### Week 4: Polish
 - [ ] Normal calculation from voxel faces
@@ -135,10 +141,11 @@ These edge cases are documented and accepted:
 ## Session Metrics
 
 ### Current Session (Week 3 - Dec 2, 2025)
-- **Focus**: Generic block compression framework
-- **Duration**: ~3 hours
+- **Focus**: Generic block compression framework + Documentation cleanup
+- **Duration**: ~4 hours
 - **Lines Added**: ~800 (framework + tests)
 - **Tests**: 12 passing
+- **Docs Cleaned**: 32 files archived, 10 docs updated/created
 
 ### Cumulative Week 2 Stats
 - **Sessions**: 8A-8M (13 sessions)
