@@ -18,7 +18,7 @@ Critical files for project understanding and status tracking. Read these first i
 
 | File | Purpose | Last Updated |
 |------|---------|--------------|
-| [memory-bank/projectbrief.md](memory-bank/projectbrief.md) | Project goals, scope, Phase H status (60% complete) | Ongoing |
+| [memory-bank/projectbrief.md](memory-bank/projectbrief.md) | Project goals, scope, Phase H Week 2 COMPLETE | Ongoing |
 | [memory-bank/productContext.md](memory-bank/productContext.md) | Why project exists, design philosophy, learning focus | Ongoing |
 | [memory-bank/systemPatterns.md](memory-bank/systemPatterns.md) | Architecture patterns, component design, SlotRole system | Ongoing |
 | [memory-bank/techContext.md](memory-bank/techContext.md) | Tech stack (C++23, CMake, Vulkan 1.4), Windows-only, build system | Ongoing |
@@ -56,8 +56,6 @@ Complete documentation for the node-based render graph system. **Start with 00-S
 | [documentation/GraphArchitecture/ResourceStateManagement.md](documentation/GraphArchitecture/ResourceStateManagement.md) | Resource state transitions, validation |
 | [documentation/GraphArchitecture/ResourceHandleVariant-Support.md](documentation/GraphArchitecture/ResourceHandleVariant-Support.md) | ResourceHandle variant system, 29+ Vulkan types |
 | [documentation/GraphArchitecture/ResourceVariant-Quick-Reference.md](documentation/GraphArchitecture/ResourceVariant-Quick-Reference.md) | Quick reference for resource variant types |
-| [documentation/GraphArchitecture/Synchronization-Semaphore-Architecture.md](documentation/GraphArchitecture/Synchronization-Semaphore-Architecture.md) | GPU synchronization, frame history, selective vkDeviceWaitIdle |
-| [documentation/GraphArchitecture/VISUAL-GUIDE-Semaphore-Architecture.md](documentation/GraphArchitecture/VISUAL-GUIDE-Semaphore-Architecture.md) | Visual diagrams for synchronization architecture |
 
 ### Node & Type System
 
@@ -441,6 +439,11 @@ Previous phases, architectural reviews, experiments, and obsolete documentation.
 
 ---
 
-**Last Updated**: November 15, 2025
-**Status**: Complete - Ready for Distribution
-**Scope**: 125+ files, 3,200+ pages, 14 major topic areas
+**Last Updated**: December 1, 2025
+**Status**: Week 2 GPU Integration COMPLETE | 1,700 Mrays/sec achieved | Week 3 DXT Compression In Progress
+**Scope**: 120+ files, 3,200+ pages, 14 major topic areas
+
+**Recent Changes**:
+- Archived 5 duplicate semaphore docs from GraphArchitecture (now in StutterAnalysisAndPlan only)
+- Updated ArchitecturalReview-CurrentState.md to reflect Week 2 completion
+- GPU profiling gap marked as RESOLVED

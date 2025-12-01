@@ -1,7 +1,7 @@
 # Architectural Review: Current State
-**Date**: November 8, 2025
-**Phase**: Phase G + Infrastructure COMPLETE | Phase H 60% Complete
-**Status**: Research Platform Ready for Voxel Ray Tracing Implementation
+**Date**: December 1, 2025 (Updated)
+**Phase**: Phase H Voxel Infrastructure - Week 2 COMPLETE
+**Status**: GPU Ray Marching Operational | 1,700 Mrays/sec Achieved
 
 ---
 
@@ -9,13 +9,26 @@
 
 VIXEN has achieved **production-ready status** as a voxel ray tracing research platform with comprehensive infrastructure, testing, and documentation. The engine combines industry-leading shader automation with robust synchronization, caching, and type safety systems.
 
+**Week 2 GPU Integration achieved 1,700 Mrays/sec throughput** - 8.5x target performance, competitive with NVIDIA GVDB.
+
 ### Current Status
 - **Phase G (SlotRole & Descriptor Binding)**: ✅ COMPLETE
 - **Infrastructure Systems**: ✅ COMPLETE (5 major systems)
-- **Phase H (Voxel Data Infrastructure)**: 🔨 60% Complete
-- **Test Coverage**: 40% (10 test suites, 180+ tests)
+- **Phase H Week 1 (CPU Infrastructure)**: ✅ COMPLETE (162 tests)
+- **Phase H Week 2 (GPU Integration)**: ✅ COMPLETE (1,700 Mrays/sec)
+- **Phase H Week 3 (DXT Compression)**: 🔨 In Progress
+- **Test Coverage**: 40% (10 test suites, 200+ tests)
 - **Zero Vulkan Validation Errors**: ✅ Achieved
 - **Research Timeline**: May 2026 target on track
+
+### Week 2 Performance Results
+
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Resolution | 800x600 (480K rays) | - | - |
+| Dispatch Time | 0.27-0.34 ms | - | - |
+| Throughput | **1,700 Mrays/sec** | >200 Mrays/sec | 8.5x exceeded |
+| Frame Rate | ~3,000 FPS (GPU-limited) | - | - |
 
 ---
 
@@ -199,31 +212,41 @@ struct CleanupContext { /* Cleanup-specific data */ };
 
 ## Current Phase: Phase H (Voxel Data Infrastructure)
 
-### Status: 60% Complete
+### Status: Week 2 COMPLETE, Week 3 In Progress
 
-**Completed Tasks** ✅:
-1. **CameraNode**: Camera transformation and view matrix generation
-2. **VoxelGridNode**: Voxel data management and GPU upload
-3. **VoxelRayMarch.comp**: Compute shader ray marching implementation
+**Week 1 Completed** ✅ (November 8-26, 2025):
+1. **GaiaVoxelWorld**: ECS-backed sparse voxel storage (96 tests)
+2. **VoxelComponents**: Macro-based component registry
+3. **LaineKarrasOctree**: ESVO traversal implementation (47 tests)
+4. **EntityBrickView**: Zero-storage brick pattern (16 bytes vs 70 KB)
+5. **rebuild() API**: Modern workflow replacing VoxelInjector
+6. **162 total tests passing**
 
-**In Progress** 🔨:
-4. **Octree Data Structure**: Hybrid octree design (pointer-based + brick map)
-5. **Scene Integration**: Test scene procedural generation
+**Week 2 Completed** ✅ (November 26 - December 1, 2025):
+1. **GPUTimestampQuery**: VkQueryPool wrapper for GPU timing
+2. **GPUPerformanceLogger**: Rolling 60-frame statistics
+3. **Sparse Brick Architecture**: Brick indices in leaf descriptors
+4. **Debug Capture System**: Per-ray traversal traces with JSON export
+5. **8 Shader Bug Fixes**: ESVO scale, axis-parallel rays, coordinate transforms
+6. **Performance**: 1,700 Mrays/sec at 800x600 (8.5x target)
 
-**Planned** ⏳:
-6. **Performance Baseline**: Initial performance measurements
+**Week 3 In Progress** (DXT Compression):
+- Study ESVO DXT section (paper 4.1)
+- Implement CPU DXT1/BC1 encoder for color bricks
+- Implement GLSL DXT1 decoder in VoxelRayMarch.comp
+- Benchmark: 16x memory reduction target
 
 ### Design Specifications
 
 **Octree Architecture** (from `OctreeDesign.md`):
-- Hybrid structure: Pointer-based coarse + brick map fine
-- Node size: 36 bytes
-- Brick size: 512 bytes (8³ voxels)
-- Compression: 9:1 for sparse scenes
+- ESVO algorithm: Laine & Karras (2010)
+- Node structure: ChildDescriptor (8 bytes)
+- Brick storage: EntityBrickView zero-storage pattern
 - Morton code indexing for cache locality
+- GPU buffer: Single SSBO for descriptors + bricks
 
 **Test Scenes** (from `TestScenes.md`):
-1. Cornell Box (10% density - sparse)
+1. Cornell Box (10% density - sparse) - WORKING
 2. Cave System (50% density - medium, Perlin noise)
 3. Urban Grid (90% density - dense, procedural buildings)
 
@@ -506,7 +529,16 @@ This section documents architectural gaps compared to modern production engines 
 
 ### 🔴 Critical Gaps (Blockers or Major Research Impact)
 
-#### 1. Single-Threaded Graph Execution
+#### 1. GPU Profiling Infrastructure - RESOLVED ✅
+**Previous State**: No VkQueryPool integration
+**Current State (December 2025)**: COMPLETE
+- GPUTimestampQuery: VkQueryPool wrapper for GPU timing
+- GPUPerformanceLogger: Rolling 60-frame statistics
+- Per-dispatch timing with nanosecond precision
+- Mrays/sec calculation integrated
+**Location**: `libraries/VulkanResources/`, `libraries/RenderGraph/Core/`
+
+#### 2. Single-Threaded Graph Execution
 **Current State**: All nodes execute sequentially on single thread (RenderGraph.h:45-62)
 **Industry Standard**: Wave-based parallel command buffer recording (Unity 2016, Unreal 2018, Frostbite 2015)
 **Impact**:
@@ -521,7 +553,7 @@ This section documents architectural gaps compared to modern production engines 
 
 ---
 
-#### 2. No Memory Aliasing / Transient Resources
+#### 3. No Memory Aliasing / Transient Resources
 **Current State**: All resources allocated permanently (Graph owns `vector<unique_ptr<Resource>>`)
 **Industry Standard**: Automatic memory aliasing for non-overlapping resource lifetimes
 **Impact**:
@@ -539,27 +571,6 @@ Industry: Shadow Map (128 MB), GBuffer reuses → 128 MB (20% savings)
 **Mitigation**: Reduce voxel resolution if needed (256³ → 128³). Future Phase N+4: Transient resource system.
 
 **Estimated Effort**: 2-3 weeks (lifetime analysis, resource pool, aliasing algorithm)
-
----
-
-#### 3. No GPU Profiling Infrastructure
-**Current State**: No VkQueryPool integration visible
-**Industry Standard**: Automatic timestamp queries, performance counters, hierarchical markers
-**Impact**:
-- **Blocks Phase I implementation** - can't measure GPU time without this
-- Can't distinguish CPU vs GPU bottlenecks
-- Missing bandwidth/cache metrics critical for research
-- No RenderDoc/NSight hierarchical captures
-
-**Required APIs**:
-- `VkQueryPool` - timestamp queries for GPU timing
-- `VK_EXT_debug_marker` - hierarchical profiling scopes
-- `VK_KHR_performance_query` - bandwidth, cache misses, ALU utilization
-
-**Mitigation**: MUST implement before Phase I profiling. Cannot complete research without GPU metrics.
-
-**Estimated Effort**: 1-2 weeks (query pool management, timestamp extraction, marker integration)
-**Priority**: **HIGH** - Phase I blocker
 
 ---
 

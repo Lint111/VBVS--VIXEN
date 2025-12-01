@@ -7,6 +7,8 @@ set(VOXELDATA_SOURCES
     src/AttributeStorage.cpp
     src/BrickView.cpp
     src/DynamicVoxelStruct.cpp
+    src/Compression/BlockCompressor.cpp
+    src/Compression/DXT1Compressor.cpp
 )
 
 # Library headers
@@ -19,6 +21,8 @@ set(VOXELDATA_HEADERS
     include/VoxelConfig.h
     include/StandardVoxelConfigs.h
     include/DynamicVoxelStruct.h
+    include/Compression/BlockCompressor.h
+    include/Compression/DXT1Compressor.h
 )
 
 # Create static library

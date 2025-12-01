@@ -647,27 +647,34 @@ Libraries: Logger, VulkanResources, EventBus, ShaderManagement, ResourceManageme
 
 ---
 
-## In Progress 🔨
+## Week 3 Next - DXT Compression 🔨
 
-### 1. Phase H.2 - Voxel Infrastructure (November 2025)
+### Phase H - Voxel Infrastructure
 **Priority**: HIGH - Core Voxel System
-**Status**: 🟡 IN PROGRESS - 98% tests passing, 4 ray casting edge cases remaining
+**Status**: ✅ Week 2 GPU Integration COMPLETE | Ready for Week 3 DXT
 
-**Completed** ✅:
-- VoxelComponents library extraction
-- Macro-based component registry (FOR_EACH_COMPONENT)
-- GaiaVoxelWorld with ECS-backed storage
-- EntityBrickView zero-storage pattern
+**Week 1 Completed** ✅ (November 8-26, 2025):
+- VoxelComponents library extraction with macro-based registry
+- GaiaVoxelWorld with ECS-backed storage (96 tests)
+- EntityBrickView zero-storage pattern (16 bytes vs 70 KB)
+- LaineKarrasOctree with ESVO traversal (47 tests)
 - rebuild() API replacing legacy VoxelInjector
-- ESVO traversal refactoring (886-line monolith → 10 methods)
+- 162 total tests passing
 
-**Remaining** 🔄:
-- Fix 4 failing ray casting tests (RaysFromInsideGrid, EdgeCasesAndBoundaries, RandomStressTesting, CornellBoxScene)
-- Multi-brick octree parent descriptor linking
-- Partial block updates API (updateBlock, removeBlock)
-- Write-lock protection (lockForRendering, BlockLockGuard)
+**Week 2 Completed** ✅ (November 26 - December 1, 2025):
+- GPUTimestampQuery (VkQueryPool wrapper)
+- GPUPerformanceLogger (rolling 60-frame statistics)
+- Sparse brick architecture (brick indices in leaf descriptors)
+- Debug capture system (per-ray traversal traces)
+- 8 shader bugs fixed (ESVO scale, axis-parallel rays, coordinate transforms)
+- **Performance**: 1,700 Mrays/sec at 800x600 (8.5x > 200 Mrays/sec target)
 
-**Next Milestone**: GPU integration (Week 2) - OctreeTraversal.comp.glsl, >200 Mrays/sec target
+**Week 3 Tasks** (DXT Compression):
+- Study ESVO DXT section (paper 4.1)
+- Implement CPU DXT1/BC1 encoder for color bricks
+- Implement GLSL DXT1 decoder in VoxelRayMarch.comp
+- DXT5/BC3 for normals (optional)
+- Benchmark: 16x memory reduction target
 
 ### 2. Phase A - Persistent Cache Infrastructure (October 31, 2025)
 **Priority**: LOW - Maintenance

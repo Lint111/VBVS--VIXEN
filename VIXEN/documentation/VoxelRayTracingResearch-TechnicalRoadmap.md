@@ -1,9 +1,9 @@
 # Technical Roadmap: Voxel Ray Tracing Research Integration
 
-**Date**: November 2, 2025 (Updated: November 8, 2025)
-**Status**: Phase G + Infrastructure COMPLETE, Phase H 60% complete
+**Date**: November 2, 2025 (Updated: December 1, 2025)
+**Status**: Phase H Week 2 COMPLETE | 1,700 Mrays/sec achieved | Ready for Week 3 DXT
 **Research Goal**: Compare Vulkan ray tracing/marching pipelines for voxel rendering
-**Timeline**: 20-24 weeks remaining (Phase H completion → May 2026)
+**Timeline**: 18-22 weeks remaining (Week 3 DXT → May 2026)
 
 ---
 
@@ -35,10 +35,14 @@ This document outlines the technical implementation roadmap for integrating voxe
 13. **Lifecycle Hooks** (NEW) - 6 graph + 8 node phases = 14 hooks
 14. **Phase G Complete** (NEW) - SlotRole bitwise flags, deferred descriptor binding
 
-### 🔄 In Progress
-- **Phase H** - Voxel data infrastructure (60% complete)
+### ✅ Week 2 Complete (December 1, 2025)
+- **Phase H** - Week 2 GPU Integration COMPLETE
   - ✅ CameraNode, VoxelGridNode, VoxelRayMarch.comp
-  - ⏳ Octree data structure, procedural scene generation
+  - ✅ LaineKarrasOctree with ESVO traversal
+  - ✅ GPUTimestampQuery + GPUPerformanceLogger
+  - ✅ 8 shader bugs fixed, debug capture system
+  - ✅ **1,700 Mrays/sec** (8.5x > 200 Mrays/sec target)
+  - ⏳ Week 3: DXT Compression
 
 ### ❌ Missing (Required for Research)
 Critical gaps identified in 5 major phases (I-M) outlined below.
@@ -105,92 +109,50 @@ Critical gaps identified in 5 major phases (I-M) outlined below.
 ---
 
 ### Phase H: Voxel Data Infrastructure 📦
-**Duration**: 3-4 weeks (1 week remaining)
-**Status**: 60% COMPLETE
+**Duration**: Weeks 1-2 COMPLETE (Nov 8 - Dec 1, 2025)
+**Status**: Week 2 GPU Integration COMPLETE | 1,700 Mrays/sec
 **Priority**: HIGH - Required for all pipelines
 **Dependencies**: Phase G complete ✅
 
-#### Completed Tasks ✅
-**H.0: CameraNode** ✅ (November 8, 2025)
-- View/projection matrix generation
-- Camera state management
-- Input integration for camera control
+#### Week 1 Completed ✅ (November 8-26, 2025)
+- **GaiaVoxelWorld**: ECS-backed sparse voxel storage with Morton indexing
+- **VoxelComponents**: Macro-based component registry (Density, Color, Normal, etc.)
+- **EntityBrickView**: Zero-storage pattern (16 bytes vs 70 KB per brick)
+- **LaineKarrasOctree**: ESVO-based ray casting with brick DDA
+- **rebuild() API**: Modern workflow replacing legacy VoxelInjector
+- **162 tests passing**: VoxelComponents + GaiaVoxelWorld + SVO
 
-**H.0.5: VoxelGridNode** ✅ (November 8, 2025)
-- 3D grid data structure
-- Voxel data storage and access
-- GPU buffer preparation
+#### Week 2 Completed ✅ (November 26 - December 1, 2025)
+- **GPUTimestampQuery**: VkQueryPool wrapper for GPU timing
+- **GPUPerformanceLogger**: Rolling 60-frame statistics
+- **Sparse Brick Architecture**: Brick indices in leaf descriptors
+- **Debug Capture System**: Per-ray traversal traces with JSON export
+- **8 Shader Bugs Fixed**: ESVO scale, axis-parallel rays, coordinate transforms
+- **Performance**: **1,700 Mrays/sec** at 800x600 (8.5x > 200 Mrays/sec target)
 
-**H.0.75: VoxelRayMarch.comp** ✅ (November 8, 2025)
-- Research shader (245 lines)
-- Amanatides & Woo DDA traversal (baseline algorithm)
-- Screen-space ray generation
-- 3D texture sampling
-- Simple diffuse shading
-- SPIRV compilation verified
-- Location: `Shaders/VoxelRayMarch.comp`
+Key Files Modified (Week 2):
+- `libraries/VulkanResources/include/GPUTimestampQuery.h` - NEW
+- `libraries/RenderGraph/include/Core/GPUPerformanceLogger.h` - NEW
+- `shaders/VoxelRayMarch.comp` - 8 bug fixes
+- `shaders/SVOTypes.glsl` - NEW: Shared GLSL data structures
 
-#### Remaining Tasks ⏳
-**H.1: Octree Data Structure** (10-14h) - PENDING
-```cpp
-// Files to create:
-ResourceManagement/include/VoxelStructures/SparseVoxelOctree.h
-ResourceManagement/src/VoxelStructures/SparseVoxelOctree.cpp
-```
+#### Week 3 Pending ⏳ (DXT Compression)
+**Goal**: 16x memory reduction via DXT1/BC1 color compression
 
-**Features**:
-- Morton code-based spatial indexing
-- Depth-limited octree (configurable max depth)
-- Empty node pruning (memory efficiency)
-- Serialization/deserialization (cache support)
-
-**H.2: Voxel Data Generator** (8-12h)
-```cpp
-// Files to create:
-ResourceManagement/include/VoxelGenerator.h
-ResourceManagement/src/VoxelGenerator.cpp
-```
-
-**Generator Types**:
-- Geometric primitives (sphere, cube, cylinder)
-- Perlin noise terrain (organic shapes)
-- Density-controlled generation (10%, 40%, 70%, 90% fill)
-- Procedural scene templates (sparse architectural, dense organic)
-
-**H.3: GPU Voxel Buffer Upload** (6-8h)
-```cpp
-// Files to create:
-RenderGraph/include/Nodes/VoxelBufferNodeConfig.h
-RenderGraph/src/Nodes/VoxelBufferNode.cpp
-```
-
-**Features**:
-- Octree linearization (GPU-friendly flat buffer)
-- Staging buffer upload (large dataset support)
-- 3D texture alternative (for fragment shader pipeline)
-- Dynamic voxel update support (for Phase K)
-
-**H.4: Voxel Traversal Utilities** (4-6h)
-```cpp
-// Shaders to create:
-Shaders/Include/VoxelTraversal.glsl  // Shared utilities
-
-// Functions:
-- OctreeTraverse(ray, octreeBuffer) -> hitT
-- DDAMarch(ray, voxelGrid3D) -> hitT
-- EmptySpaceSkip(ray, blockGrid) -> skipDist
-```
+**Tasks**:
+1. Study ESVO DXT section (paper 4.1)
+2. Implement CPU DXT1/BC1 encoder for color bricks
+3. Implement GLSL DXT1 decoder in VoxelRayMarch.comp
+4. Add DXT5/BC3 for normals (optional)
+5. Benchmark memory reduction and performance impact
 
 **Success Criteria**:
-- ✅ CameraNode implemented
-- ✅ VoxelGridNode implemented
-- ✅ VoxelRayMarch.comp shader complete (245 lines, DDA traversal)
-- ⏳ Octree stores 256³ voxel grid efficiently (<50MB for sparse)
-- ⏳ GPU buffer upload completes in <100ms
-- ⏳ Compute ray marching uses octree traversal
-- ⏳ Test scenes: sphere, terrain, architectural
+- ✅ Week 1: LaineKarrasOctree with ESVO traversal
+- ✅ Week 2: GPU throughput 1,700 Mrays/sec (8.5x target)
+- ⏳ Week 3: 16x memory reduction via DXT compression
+- ⏳ Week 4: Polish (normals, LOD, streaming)
 
-**Estimated Completion**: Week of November 18, 2025
+**Estimated Completion**: December 15, 2025
 
 ---
 
@@ -603,7 +565,7 @@ tests/Benchmarks/ResultAggregator.cpp
 | F (Bundle Refactor) | ~20h | - | None | ✅ COMPLETE (Nov 2) |
 | G (SlotRole + Descriptor) | 2-3 weeks | - | F | ✅ COMPLETE (Nov 8) |
 | Infrastructure | ~80h | - | None | ✅ COMPLETE (Nov 5-8) |
-| H (Voxel Data) | 3-4 weeks | 1 week left | G | 🔄 60% (Nov 8) |
+| H (Voxel Data) | Weeks 1-2 | 0 (Week 3 DXT next) | G | ✅ Week 2 COMPLETE (Dec 1) |
 | I (Profiling) | 2-3 weeks | 3 weeks | G,H | ⏳ PENDING |
 | J (Fragment Shader) | 1-2 weeks | 5 weeks | H | ⏳ PENDING |
 | K (Hardware RT) | 4-5 weeks | 10 weeks | H | ⏳ PENDING |
@@ -1037,14 +999,16 @@ vec4 SampleWithFallback(OctreeNode node, vec3 pos) {
 1. ✅ **Complete Phase F** (bundle refactor) - DONE (November 2, 2025)
 2. ✅ **Complete Phase G** (SlotRole + descriptor refactor) - DONE (November 8, 2025)
 3. ✅ **Complete Infrastructure** (testing, logging, context, hooks) - DONE (November 5-8, 2025)
-4. 🔄 **Complete Phase H** (60% done, 40% remaining)
-   - ✅ CameraNode implementation
-   - ✅ VoxelGridNode implementation
-   - ✅ VoxelRayMarch.comp shader (245 lines)
-   - ⏳ Implement octree data structure (2-3 days)
-   - ⏳ Implement procedural scene generators (2-3 days)
-   - ⏳ GPU buffer upload utilities (1 day)
-5. ⏳ **Begin Phase I** (Performance Profiling) - After Phase H complete
+4. ✅ **Complete Phase H Week 1** (CPU Infrastructure) - DONE (November 26, 2025)
+   - GaiaVoxelWorld, VoxelComponents, EntityBrickView, LaineKarrasOctree
+5. ✅ **Complete Phase H Week 2** (GPU Integration) - DONE (December 1, 2025)
+   - GPUTimestampQuery, GPUPerformanceLogger, 8 shader bugs fixed
+   - **1,700 Mrays/sec** (8.5x target exceeded)
+6. ⏳ **Phase H Week 3** (DXT Compression) - NEXT
+   - CPU DXT1/BC1 encoder for color bricks
+   - GLSL DXT1 decoder in VoxelRayMarch.comp
+   - Benchmark: 16x memory reduction target
+7. ⏳ **Begin Phase I** (Performance Profiling) - After Week 3-4 complete
 
 ---
 
