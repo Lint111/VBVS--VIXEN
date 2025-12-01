@@ -1,53 +1,55 @@
 # Active Context
 
-**Last Updated**: December 1, 2025
+**Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 2 GPU Integration COMPLETE | Ready for Week 3 DXT Compression
+**Status**: Week 3 DXT Compression IN PROGRESS | Compression Framework Complete
 
 ---
 
-## Current Focus: Week 3 Preparation
+## Current Focus: Week 3 DXT Compression
 
-Week 2 GPU Integration is complete with excellent results. Ready to begin Week 3: DXT Compression.
+Generic block compression framework complete in VoxelData. GLSL decompression utilities next.
 
-### Week 2 Achievements Summary
+### Week 3 Session Summary (Dec 2, 2025)
 
-| Metric | Result | Target | Status |
-|--------|--------|--------|--------|
-| GPU Throughput | 1,400-1,750 Mrays/sec | >200 Mrays/sec | 8.5x exceeded |
-| Shader Bugs Fixed | 8/8 | - | Complete |
-| Cornell Box Rendering | Working | Working | Complete |
-| Debug Capture System | Working | - | Complete |
-| GPU Performance Logging | Working | - | Complete |
+**Completed:**
+- Studied ESVO DXT implementation (Util.cpp, AttribLookup.inl)
+- Designed generic `BlockCompressor` framework in VoxelData library
+- Implemented `DXT1ColorCompressor` (16 vec3 → 64-bit, 24:1 ratio)
+- Implemented `DXTNormalCompressor` (16 vec3 → 128-bit, 12:1 ratio)
+- Created test suite with 12 passing tests
+- GLSL decode functions ready for shader integration
 
-### Immediate Next Steps (Priority Order)
+**New Files:**
+| File | Description |
+|------|-------------|
+| `libraries/VoxelData/include/Compression/BlockCompressor.h` | Generic compression interface |
+| `libraries/VoxelData/include/Compression/DXT1Compressor.h` | DXT1/normal compressor headers |
+| `libraries/VoxelData/src/Compression/BlockCompressor.cpp` | Base implementation |
+| `libraries/VoxelData/src/Compression/DXT1Compressor.cpp` | DXT encode/decode |
+| `libraries/VoxelData/tests/test_block_compressor.cpp` | 12 unit tests |
+| `Shaders/Compression.glsl` | GLSL decompression utilities |
 
-1. **Study ESVO DXT Implementation** - Review paper's DXT1/BC1 color and DXT5/BC3 normal encoding
-2. **CPU DXT Encoding** - Implement BC1 color block compression in `LaineKarrasOctree`
-3. **GLSL DXT Decoding** - Add BC1 decode functions to `VoxelRayMarch.comp`
-4. **Memory Validation** - Verify 16x memory reduction for brick data
+### Compression Ratios Achieved
 
----
-
-## Week 3 Tasks: DXT Compression
-
-| Task | Priority | Estimated |
-|------|----------|-----------|
-| Study ESVO DXT section (paper 4.1) | HIGH | 2 hours |
-| Implement CPU DXT1 encoder | HIGH | 1 day |
-| Implement GLSL DXT1 decoder | HIGH | 0.5 days |
-| Add DXT5 for normals (optional) | MEDIUM | 0.5 days |
-| Benchmark memory/performance | HIGH | 0.5 days |
+| Compressor | Input | Output | Ratio |
+|------------|-------|--------|-------|
+| DXT1Color | 16 × vec3 (192 bytes) | 8 bytes | 24:1 |
+| DXTNormal | 16 × vec3 (192 bytes) | 16 bytes | 12:1 |
 
 ---
 
 ## Todo List (Active Tasks)
 
 ### Week 3: DXT Compression (Current)
-- [ ] Study ESVO DXT section (paper 4.1)
-- [ ] Implement CPU DXT1/BC1 encoder for color bricks
-- [ ] Implement GLSL DXT1 decoder in `VoxelRayMarch.comp`
-- [ ] Add DXT5/BC3 for normals (optional)
+- [x] Study ESVO DXT section (paper 4.1)
+- [x] Design generic BlockCompressor framework
+- [x] Implement CPU DXT1/BC1 encoder for color bricks
+- [x] Implement CPU DXT normal encoder
+- [x] Create unit tests (12 passing)
+- [ ] Create GLSL decompression utilities file
+- [ ] Integrate into VoxelRayMarch.comp
+- [ ] Integrate into LaineKarrasOctree (compress on build)
 - [ ] Benchmark memory reduction (target: 16x)
 - [ ] Benchmark performance impact
 
@@ -60,6 +62,18 @@ Week 2 GPU Integration is complete with excellent results. Ready to begin Week 3
 - [ ] Multi-threaded CPU ray casting
 - [ ] SIMD ray packets (AVX2)
 - [ ] Memory profiling/validation
+
+---
+
+## Week 2 Achievements (Reference)
+
+| Metric | Result | Target | Status |
+|--------|--------|--------|--------|
+| GPU Throughput | 1,400-1,750 Mrays/sec | >200 Mrays/sec | 8.5x exceeded |
+| Shader Bugs Fixed | 8/8 | - | Complete |
+| Cornell Box Rendering | Working | Working | Complete |
+| Debug Capture System | Working | - | Complete |
+| GPU Performance Logging | Working | - | Complete |
 
 ---
 
@@ -82,6 +96,15 @@ Week 2 GPU Integration is complete with excellent results. Ready to begin Week 3
 | RayHit | 40 bytes | entity + hitPoint + t values |
 | EntityBrickView | 16 bytes | zero-storage view |
 | ChildDescriptor | 8 bytes | ESVO traversal node |
+| DXT1ColorBlock | 8 bytes | 16 colors compressed |
+| DXTNormalBlock | 16 bytes | 16 normals compressed |
+
+### DXT Block Format (Color)
+```
+bits[31:0]  = Two RGB-565 reference colors
+bits[63:32] = 16 × 2-bit interpolation indices
+Interpolation: ref0, ref1, 2/3*ref0+1/3*ref1, 1/3*ref0+2/3*ref1
+```
 
 ---
 
@@ -92,6 +115,7 @@ These edge cases are documented and accepted:
 1. **Single-brick octrees**: Fallback code path for `bricksPerAxis=1`
 2. **Axis-parallel rays**: Require `computeCorrectedTcMax()` filtering
 3. **Brick boundaries**: Handled by descriptor-based lookup (not position-based)
+4. **DXT lossy compression**: Colors may shift slightly (acceptable for voxels)
 
 ---
 
@@ -100,6 +124,7 @@ These edge cases are documented and accepted:
 ### ESVO Implementation Paths
 - Paper: `C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\`
 - Key files: `trunk/src/octree/Octree.cpp` (castRay), `trunk/src/octree/build/Builder.cpp`
+- DXT: `trunk/src/octree/Util.cpp` (encode/decode), `trunk/src/octree/cuda/AttribLookup.inl` (GPU decode)
 
 ### Papers
 - Laine & Karras (2010): "Efficient Sparse Voxel Octrees"
@@ -109,11 +134,11 @@ These edge cases are documented and accepted:
 
 ## Session Metrics
 
-### Most Recent Session (8M - Dec 1, 2025)
-- **Focus**: GPU performance logging infrastructure
-- **Duration**: ~4 hours
-- **Lines Added**: ~400 (GPUTimestampQuery, GPUPerformanceLogger)
-- **Bugs Fixed**: VK_NOT_READY query count mismatch
+### Current Session (Week 3 - Dec 2, 2025)
+- **Focus**: Generic block compression framework
+- **Duration**: ~3 hours
+- **Lines Added**: ~800 (framework + tests)
+- **Tests**: 12 passing
 
 ### Cumulative Week 2 Stats
 - **Sessions**: 8A-8M (13 sessions)

@@ -6,26 +6,11 @@
 
 ## Overview
 
-This document describes the integration of NVIDIA's ESVO algorithm into the VIXEN voxel ray marching system, replacing the current Revelles parametric traversal.
+This document describes NVIDIA's ESVO (Efficient Sparse Voxel Octree) algorithm as implemented in the VIXEN voxel ray marching system. ESVO is the primary and only traversal algorithm used.
 
-## Algorithm Comparison
+## Algorithm Overview
 
-### Current: Revelles Parametric Traversal
-
-**Strengths**:
-- ✅ Well-documented academic algorithm
-- ✅ Handles arbitrary octree structures
-- ✅ Predictable stack depth (32 levels)
-
-**Weaknesses**:
-- ❌ Explicit stack requires dynamic indexing (slow on GPU)
-- ❌ No built-in LOD support
-- ❌ Traverses all intermediate nodes (inefficient for sparse data)
-- ❌ ~40% slower than ESVO in benchmarks
-
-**Location**: [VoxelRayMarch.comp:314-436](VoxelRayMarch.comp:314-436)
-
-### Proposed: NVIDIA ESVO
+### NVIDIA ESVO (Current Implementation)
 
 **Strengths**:
 - ✅ **Production-proven** (NVIDIA Optix, Brigade Engine)
@@ -140,26 +125,9 @@ if (tc_max * raySizeCoef + raySizeBias >= scale_exp2) {
 
 **Benefit**: Automatic LOD without mipmap management.
 
-## Data Structure Migration
+## Data Structure
 
-### Current Node Format (40 bytes)
-
-```cpp
-struct OctreeNode {
-    uint32_t childOffsets[8];  // 32 bytes - individual child pointers
-    uint8_t childMask;          // 1 byte - existence flags
-    uint8_t leafMask;           // 1 byte - leaf flags
-    uint16_t padding;           // 2 bytes
-    uint32_t brickOffset;       // 4 bytes - brick pointer
-};  // Total: 40 bytes per node
-```
-
-**Problems**:
-- ❌ 32 bytes wasted on individual child offsets (ESVO uses single base offset)
-- ❌ No support for far pointers (limits octree size to ~64K nodes)
-- ❌ No non-leaf mask (can't distinguish internal nodes from leaves)
-
-### ESVO Node Format (8 bytes)
+### ESVO Node Format (8 bytes) - ChildDescriptor
 
 ```cpp
 struct ESVONode {
@@ -179,244 +147,97 @@ struct ESVONode {
 ```
 
 **Benefits**:
-- ✅ **5× memory reduction** (40 → 8 bytes)
-- ✅ **Far pointers** enable unlimited octree depth
-- ✅ **Non-leaf mask** enables internal brick storage (GigaVoxels mipmaps)
+- **8 bytes per node** (compact memory)
+- **Far pointers** enable unlimited octree depth
+- **Leaf mask** distinguishes internal nodes from voxel data
 
-### Migration Strategy
+### Implementation Details
 
-**Phase H.4.6: Dual-Format Support** (2-3 days)
-
-1. **Add ESVO node builder** to [VoxelOctree.cpp](../../RenderGraph/src/Data/VoxelOctree.cpp)
-   ```cpp
-   class SparseVoxelOctree {
-       enum class NodeFormat { Legacy, ESVO };
-
-       void BuildFromGrid(const uint8_t* voxels, uint32_t resolution,
-                          NodeFormat format = NodeFormat::ESVO);
-   };
-   ```
-
-2. **Convert child pointers to base offset**
-   ```cpp
-   // Legacy: childOffsets[8] = {100, 108, 116, ...}
-   // ESVO: child_base = 100, offsets = [0, 1, 2, ...]
-   uint32_t childBase = AllocateNodeBlock(8);
-   for (int i = 0; i < 8; ++i) {
-       if (hasChild(i)) {
-           nodes[childBase + i] = BuildChildNode(...);
-       }
-   }
-   ```
-
-3. **Pack child_mask + non_leaf_mask**
-   ```cpp
-   uint32_t descriptor0 = 0;
-
-   // Child existence (8 bits, bit 15-8)
-   for (int i = 0; i < 8; ++i) {
-       if (hasChild(i)) descriptor0 |= (1u << (15 - i));
-   }
-
-   // Non-leaf flags (7 bits, bit 7-1)
-   for (int i = 0; i < 8; ++i) {
-       if (hasChild(i) && !isLeaf(i)) {
-           descriptor0 |= (1u << (7 - i));
-       }
-   }
-
-   // Child offset (15 bits, bits 31-17)
-   descriptor0 |= (childBase & 0x7FFF) << 17;
-   ```
-
-4. **Update shader bindings**
-   ```glsl
-   // Old: 40 bytes per node (10 uints)
-   layout(std430, set = 0, binding = 2) readonly buffer OctreeNodes {
-       uint data[];  // nodeIndex * 10
-   } octreeNodes;
-
-   // New: 8 bytes per node (2 uints)
-   layout(std430, set = 0, binding = 2) readonly buffer OctreeNodes {
-       uint data[];  // nodeIndex * 2
-   } octreeNodes;
-   ```
-
-**Testing**: Keep legacy format for validation, compare outputs bit-for-bit.
-
-## Integration Steps
-
-### Step 1: Add ESVO Header to Shader
-
-**File**: [VoxelRayMarch.comp](../../Shaders/VoxelRayMarch.comp)
-
-```glsl
-// Add after line 15
-#include "OctreeTraversal-ESVO.glsl"
-```
-
-### Step 2: Replace `traverseOctree()` Call
-
-**Before** ([VoxelRayMarch.comp:585-596](VoxelRayMarch.comp:585-596)):
-```glsl
-if (traverseOctree(0u, max(t0.x, 0.0), max(t0.y, 0.0), max(t0.z, 0.0),
-                   t1.x, t1.y, t1.z,
-                   vec3(0.0), vec3(1.0), octantMask,
-                   rayOrigin, rayDir, gridMin, gridMax,
-                   hitColor, hitNormal, hitT)) {
-    return vec4(shadeVoxel(hitNormal, hitColor), 1.0);
-}
-```
-
-**After**:
-```glsl
-// Compute LOD parameters
-float raySizeCoef = 1.0;  // Base LOD (1.0 = finest, 2.0 = coarser)
-float raySizeBias = 0.0;  // No bias along ray (can increase for DOF effects)
-
-HitResult hit = castRayESVO(rayOrigin, rayDir, gridMin, gridMax, raySizeCoef, raySizeBias);
-
-if (hit.hit) {
-    // Fetch brick and march (use hit.parentPtr, hit.childIdx)
-    uint brickOffset = getBrickOffset(hit.parentPtr);
-
-    // Existing brick DDA code (lines 444-545)
-    if (marchBrick(rayOrigin, rayDir, hit.t, gridMin + hit.pos * (gridMax - gridMin),
-                   brickOffset, hitColor, hitNormal)) {
-        return vec4(shadeVoxel(hitNormal, hitColor), 1.0);
-    }
-}
-```
-
-### Step 3: Add LOD Controls
-
-**Uniform buffer** ([VoxelRayMarch.comp:32-37](VoxelRayMarch.comp:32-37)):
-```glsl
-layout(set = 0, binding = 1) uniform CameraData {
-    mat4 invProjection;
-    mat4 invView;
-    vec3 cameraPos;
-    uint gridResolution;
-    float lodBias;  // NEW: User-adjustable LOD (0.5 = finer, 2.0 = coarser)
-} camera;
-```
-
-**Compute LOD from distance**:
-```glsl
-float distToCamera = length(rayOrigin - camera.cameraPos);
-float raySizeCoef = camera.lodBias * (1.0 + distToCamera * 0.01);  // Increase LOD with distance
-```
-
-### Step 4: Brick Integration (Hybrid ESVO + Bricks)
-
-**Key insight**: ESVO finds **which voxel** to hit, brick DDA finds **where inside voxel**.
-
-```glsl
-HitResult hit = castRayESVO(...);
-
-if (hit.hit) {
-    // Hit.pos is in [0,1] octree space
-    // Hit.scale tells us voxel size: 2^(scale - 23)
-
-    // Option A: Treat ESVO hit as final (if scale >= brick threshold)
-    if (hit.scale >= BRICK_SCALE_THRESHOLD) {
-        // Direct hit - no brick needed
-        uint voxelMaterial = getSingleVoxel(hit.parentPtr, hit.childIdx);
-        Material mat = getMaterial(voxelMaterial);
-        hitColor = mat.albedo;
-        return vec4(shadeVoxel(hitNormal, hitColor), 1.0);
-    }
-
-    // Option B: Descend into brick for sub-voxel detail
-    else {
-        uint brickOffset = getBrickOffset(hit.parentPtr);
-        vec3 brickMin = gridMin + hit.pos * (gridMax - gridMin);
-        vec3 brickMax = brickMin + vec3(2.0 ^ (hit.scale - 23));
-
-        // March brick with DDA (existing code)
-        if (marchBrick(rayOrigin, rayDir, hit.t, brickMin, brickMax,
-                       brickOffset, hitColor, hitNormal)) {
-            return vec4(hitColor, 1.0);
-        }
-    }
-}
-```
-
-## Performance Predictions
-
-### Theoretical Speedup
-
-Based on NVIDIA benchmarks (Laine & Karras 2010) and GigaVoxels papers:
-
-| Scene Type | Current (Revelles) | ESVO | Speedup |
-|------------|-------------------|------|---------|
-| **Cornell Box** (10% density) | 16 ms | **4-5 ms** | **3.2-4×** |
-| **Cave System** (50% density) | 32 ms | **10-12 ms** | **2.7-3.2×** |
-| **Urban Grid** (90% density) | 64 ms | **18-22 ms** | **2.9-3.5×** |
-
-**Key factors**:
-1. **Empty-space skipping**: ESVO advances by full voxel size when empty (not single steps)
-2. **No stack overhead**: Implicit stack = zero dynamic indexing stalls
-3. **LOD termination**: Stops at appropriate detail (don't over-sample distant voxels)
-
-### Memory Bandwidth
-
-**Current**: 40 bytes/node × 8 children = 320 bytes per descent level
-**ESVO**: 8 bytes/node × 1 fetch = 8 bytes per descent level (only fetch accessed nodes)
-
-**Bandwidth reduction**: **40×** (most of traversal doesn't fetch all 8 children)
-
-### Occupancy
-
-**Current stack size**: 32 levels × 48 bytes = 1536 bytes/thread
-**ESVO stack size**: 23 levels × 8 bytes = 184 bytes/thread
-
-**Register pressure reduction**: **8.4×** → better warp occupancy
-
-## Validation Strategy
-
-### Step 1: Side-by-Side Comparison
-
-```glsl
-// Compile two shader variants
-#define USE_ESVO 0  // Toggle between algorithms
-
-#if USE_ESVO
-    HitResult hit = castRayESVO(...);
-#else
-    bool hit = traverseOctree(...);  // Current Revelles
-#endif
-```
-
-**Test scenes**: Cornell Box, procedural grid, all-solid cube
-
-**Validation**: Same output for both algorithms (pixel-perfect match)
-
-### Step 2: Performance Profiling
+The ChildDescriptor format is defined in `SVOTypes.glsl` and `libraries/SVO/include/SVO/SVOTypes.h`:
 
 ```cpp
-// CPU-side timing (VoxelRayMarchNode)
-auto start = std::chrono::high_resolution_clock::now();
-vkQueueSubmit(...);
-vkQueueWaitIdle(...);
-auto end = std::chrono::high_resolution_clock::now();
-
-float ms = std::chrono::duration<float, std::milli>(end - start).count();
-std::cout << "Ray march time: " << ms << " ms\n";
+// C++ side (SVOTypes.h)
+struct ChildDescriptor {
+    uint32_t validMask : 8;     // Which children exist (0-7)
+    uint32_t leafMask : 8;      // Which children are leaves
+    uint32_t childPointer : 15; // Base pointer to children
+    uint32_t farBit : 1;        // Use far pointer table
+    uint32_t brickIndex;        // For leaves: index into brick buffer
+};
 ```
 
-**Expected**: 2-4× faster with ESVO
-
-### Step 3: Visual Debugging
-
-**LOD visualization**:
 ```glsl
-// Color by scale (debug mode)
-vec3 debugColor = vec3(float(hit.scale) / 23.0, 0.0, 0.0);
-return vec4(debugColor, 1.0);
+// GLSL side (SVOTypes.glsl)
+uint getValidMask(uvec2 desc) { return desc.x & 0xFFu; }
+uint getLeafMask(uvec2 desc) { return (desc.x >> 8) & 0xFFu; }
+uint getChildPointer(uvec2 desc) { return (desc.x >> 16) & 0x7FFFu; }
+bool getFarBit(uvec2 desc) { return (desc.x & 0x80000000u) != 0u; }
+uint getBrickIndex(uvec2 desc) { return desc.y; }
 ```
 
-**Expected**: Smooth gradient from red (fine) to black (coarse) with distance
+## Current Integration
+
+### Shader Structure
+
+The ESVO traversal is implemented directly in `VoxelRayMarch.comp`:
+
+1. **SVOTypes.glsl** - Shared type definitions for ChildDescriptor format
+2. **VoxelRayMarch.comp** - Main compute shader with ESVO traversal
+
+### Key Functions
+
+```glsl
+// Ray coefficient initialization (handles octant mirroring)
+RayCoefficients initRayCoefficients(vec3 rayDir, vec3 rayStartWorld);
+
+// Main traversal function (ESVO algorithm)
+bool traverseOctree(RayCoefficients coef, inout DebugRaySample debug,
+                    out vec3 hitColor, out vec3 hitNormal, out float hitT);
+
+// Brick DDA for sub-voxel precision after ESVO hits a leaf
+bool handleLeafHit(TraversalState state, RayCoefficients coef,
+                   inout DebugRaySample debug,
+                   out vec3 hitColor, out vec3 hitNormal, out float hitT);
+```
+
+### Coordinate Space
+
+ESVO operates in normalized [1,2]^3 space:
+- World coordinates transformed via `octreeConfig.worldToLocal`
+- Local [0,1] offset to ESVO [1,2] by adding 1.0
+- Octant mirroring via XOR mask for ray direction independence
+
+## Performance
+
+### Measured Results (Week 2 Benchmark)
+
+| Scene | Resolution | Performance |
+|-------|------------|-------------|
+| Cornell Box | 128^3 | **1,700 Mrays/sec** |
+| Procedural Grid | 128^3 | ~1,500 Mrays/sec |
+
+**Key factors**:
+1. **Empty-space skipping**: ESVO advances by full voxel size when empty
+2. **Implicit stack**: 23 levels x 8 bytes = 184 bytes/thread (low register pressure)
+3. **LOD termination**: Stops at appropriate detail level
+
+### Memory Efficiency
+
+- **8 bytes per node** (ChildDescriptor format)
+- **Single fetch per descent** (only accessed nodes read)
+- **Brick data** stored separately for leaf voxel detail
+
+### Debug Visualization
+
+The shader supports multiple debug modes via `pc.debugMode` push constant:
+- Mode 1: Octant mask (XYZ = RGB)
+- Mode 2: Traversal depth/scale
+- Mode 3: Iteration count (heat map)
+- Mode 4: T-span visualization
+- Mode 5: Hit normals
+- Mode 6: World position
+- Mode 7: Brick boundaries
+- Mode 8: Material IDs
 
 ## Future Extensions
 
@@ -492,15 +313,13 @@ HitResult hit = castRayESVO(..., adaptiveLOD, 0.0);
 - **Octree builder**: [VoxelOctree.cpp](../../RenderGraph/src/Data/VoxelOctree.cpp)
 - **Integration guide**: This document
 
-## Conclusion
+## Status
 
-ESVO provides **3-5× speedup** over current Revelles traversal with **8.4× less memory**. Migration requires:
+ESVO is fully integrated and operational:
 
-1. ✅ GLSL port (completed - [OctreeTraversal-ESVO.glsl](../../Shaders/OctreeTraversal-ESVO.glsl))
-2. ⏳ Node format conversion (Phase H.4.6 - 2-3 days)
-3. ⏳ Shader integration (Phase H.4.7 - 1 day)
-4. ⏳ Validation testing (Phase H.4.8 - 1 day)
+- **VoxelRayMarch.comp**: ESVO traversal with brick DDA
+- **SVOTypes.glsl**: Shared ChildDescriptor format
+- **VoxelGridNode**: GPU buffer management and dispatch
+- **GPUPerformanceLogger**: Timing and Mrays/sec metrics
 
-**Total**: 4-5 days for full ESVO integration (fits Phase H timeline).
-
-**Recommendation**: Proceed with ESVO as primary traversal algorithm. Keep Revelles as reference for validation.
+See [VoxelRayMarch-Integration-Guide.md](../Shaders/VoxelRayMarch-Integration-Guide.md) for descriptor binding details.

@@ -214,6 +214,17 @@ Research papers, optimization techniques, bibliography.
 | [documentation/Profiling/PerformanceProfilerDesign.md](documentation/Profiling/PerformanceProfilerDesign.md) | Performance profiler design for benchmarking |
 | [documentation/ResearchPhases-ParallelTrack.md](documentation/ResearchPhases-ParallelTrack.md) | Research phases for voxel ray tracing analysis |
 
+## Library Documentation
+
+Library-specific READMEs and implementation guides.
+
+| File | Purpose |
+|------|---------|
+| [libraries/SVO/README.md](libraries/SVO/README.md) | SVO library: Laine-Karras octree, voxel injection, 217 tests |
+| [libraries/VulkanResources/README.md](libraries/VulkanResources/README.md) | Vulkan wrappers: device, swapchain, GPU timing |
+| [libraries/RenderGraph/README.md](libraries/RenderGraph/README.md) | RenderGraph: node system, typed slots, graph execution |
+| [documentation/VulkanResources/GPUPerformanceSystem.md](documentation/VulkanResources/GPUPerformanceSystem.md) | GPU timestamp queries, Mrays/sec measurement |
+
 ## Historical Archive
 
 Previous phases, architectural reviews, experiments, and obsolete documentation.

@@ -284,7 +284,7 @@ Reference implementation: New BSD License (NVIDIA)
 
 - [x] Core data structures
 - [x] Abstract interface for extensibility
-- [x] Laine-Karras 64-bit child descriptors
+- [x] Laine-Karras 64-bit child descriptors (ChildDescriptor format)
 - [x] 32-bit contour encoding/decoding
 - [x] Voxel injection interface
   - [x] Sparse voxel input
@@ -293,25 +293,37 @@ Reference implementation: New BSD License (NVIDIA)
   - [x] Lambda-based samplers
   - [x] Common samplers (Noise, SDF, Heightmap)
   - [x] Scene merging
-- [ ] Builder implementation
-  - [ ] Top-down subdivision
-  - [ ] Greedy contour construction
-  - [ ] Attribute integration
-  - [ ] Multi-threading (TBB)
-  - [ ] Voxel injection implementation
-- [ ] Ray caster (CPU + GPU)
+- [x] Builder implementation
+  - [x] Top-down subdivision
+  - [x] Brick-based hierarchy construction
+  - [x] Attribute integration
+- [x] Ray caster (CPU + GPU)
+  - [x] ESVO traversal algorithm (GPU)
+  - [x] Brick DDA for sub-voxel precision
+  - [x] CPU ray casting for validation
+- [x] Unit tests (217 test cases across 13 test files)
+  - [x] test_svo_types.cpp - Core data structures
+  - [x] test_svo_builder.cpp - Hierarchy construction
+  - [x] test_brick_view.cpp - Brick data access
+  - [x] test_brick_traversal.cpp - DDA traversal
+  - [x] test_ray_casting_comprehensive.cpp - Full ray casting
+  - [x] test_octree_queries.cpp - Tree queries
+  - [x] test_cornell_box.cpp - Scene validation
 - [ ] Serialization (.oct file format)
 - [ ] Compression variants (DAG, SVDAG)
-- [ ] Unit tests
 - [x] Examples (voxel injection demos)
+
+## Performance
+
+Week 2 benchmark results:
+- **1,700 Mrays/sec** on Cornell Box (128^3)
+- GPU timing via GPUPerformanceLogger
 
 ## Next Steps
 
-1. ✅ **Phase 1**: Data structures & interface (DONE)
-2. ✅ **Phase 1.5**: Voxel injection API (DONE)
-3. ⏳ **Phase 2**: CPU builder implementation
-   - Implement mesh-based builder
-   - Implement voxel injection builder
-4. ⏳ **Phase 3**: GLSL ray caster (translate from CUDA)
-5. ⏳ **Phase 4**: Serialization & file I/O
-6. ⏳ **Phase 5**: Integration with VIXEN renderer
+1. **Phase 1**: Data structures & interface (COMPLETE)
+2. **Phase 1.5**: Voxel injection API (COMPLETE)
+3. **Phase 2**: CPU builder implementation (COMPLETE)
+4. **Phase 3**: GLSL ray caster (COMPLETE - ESVO traversal)
+5. **Phase 4**: Serialization & file I/O (PENDING)
+6. **Phase 5**: Integration with VIXEN renderer (COMPLETE)

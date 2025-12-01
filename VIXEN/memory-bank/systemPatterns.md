@@ -1637,3 +1637,20 @@ float t = max(max(brickT.x, startT), 0.0);
 **Purpose**: Keep CPU (C++) and GPU (GLSL) implementations in sync
 
 **Location**: `shaders/VoxelRayMarch.comp`, `shaders/OctreeTraversal-ESVO.glsl`
+
+---
+
+## Week 2 GPU Integration Summary (December 2025)
+
+**Achievement**: 1,700 Mrays/sec (8.5x target of 200 Mrays/sec)
+
+### Key Components Added
+1. **GPUTimestampQuery** - Per-frame query pool management
+2. **GPUPerformanceLogger** - Rolling statistics with 60-frame window
+3. **Debug Capture System** - Frame-by-frame GPU debugging
+4. **Cornell Box Scene** - Reference test scene for validation
+
+### Documentation
+- `documentation/VulkanResources/GPUPerformanceSystem.md` - Complete API reference
+- `libraries/VulkanResources/README.md` - Library overview
+- `libraries/RenderGraph/README.md` - Node system overview
