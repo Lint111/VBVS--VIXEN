@@ -5,9 +5,8 @@
 
 using namespace Vixen::RenderGraph;
 
-// Define globals required by DeviceNode
-std::vector<const char*> deviceExtensionNames;
-std::vector<const char*> layerNames;
+// Use centralized Vulkan global names to avoid duplicate strong symbols
+#include <VulkanGlobalNames.h>
 
 // Small test helper: expose protected setters via a derived test instance
 class TestNodeInstance : public NodeInstance {

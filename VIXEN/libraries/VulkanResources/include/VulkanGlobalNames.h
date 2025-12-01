@@ -2,17 +2,10 @@
 
 #include <vector>
 
-// Provide weak (selectany) definitions for test-friendly global Vulkan option lists.
-// Using __declspec(selectany) allows test TUs to provide their own definitions
-// without causing multiple-definition LINK errors on MSVC.
+// Provide weak definitions for global Vulkan option lists.
+// Using C++17 inline variables ensures single definition across translation units.
+// Note: __declspec(selectany) doesn't work with non-trivial types like std::vector.
 
-#ifdef _MSC_VER
-#define VIXEN_SELECTANY __declspec(selectany)
-#else
-// On non-MSVC compilers, map to inline variables (C++17) as an alternative.
-#define VIXEN_SELECTANY inline
-#endif
-
-VIXEN_SELECTANY std::vector<const char*> deviceExtensionNames;
-VIXEN_SELECTANY std::vector<const char*> layerNames;
-VIXEN_SELECTANY std::vector<const char*> instanceExtensionNames;
+inline std::vector<const char*> deviceExtensionNames;
+inline std::vector<const char*> layerNames;
+inline std::vector<const char*> instanceExtensionNames;

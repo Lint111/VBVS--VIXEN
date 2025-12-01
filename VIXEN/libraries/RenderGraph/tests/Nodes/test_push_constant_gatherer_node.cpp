@@ -43,9 +43,8 @@
 #include <vector>
 #include <cstring>
 
-// Define globals required by DeviceNode (used transitively by RenderGraph)
-std::vector<const char*> deviceExtensionNames;
-std::vector<const char*> layerNames;
+// Use centralized Vulkan global names to avoid duplicate strong symbols
+#include <VulkanGlobalNames.h>
 
 namespace VRG = Vixen::RenderGraph;  // Alias to avoid namespace collision
 using namespace RenderGraph::TestMocks;

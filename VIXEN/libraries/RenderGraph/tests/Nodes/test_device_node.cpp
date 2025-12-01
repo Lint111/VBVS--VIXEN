@@ -29,8 +29,8 @@
 #include <memory>
 
 // Define globals required by DeviceNode
-std::vector<const char*> deviceExtensionNames;
-std::vector<const char*> layerNames;
+// Use centralized Vulkan global names to avoid duplicate strong symbols
+#include <VulkanGlobalNames.h>
 
 using namespace Vixen::RenderGraph;
 
