@@ -63,6 +63,32 @@ struct OctreeBlock {
     // Material ID 0 = empty, 1+ = solid material index
     std::vector<uint32_t> brickMaterialData;
 
+    // ========================================================================
+    // DXT Compressed Brick Attributes (Week 3 - GPU-ready compression)
+    // ========================================================================
+    // Layout: 32 DXT blocks per 8x8x8 brick (16 voxels per block)
+    //
+    // Color: DXT1 blocks - 8 bytes (uvec2) per block = 256 bytes/brick
+    //   Format: bits[31:0] = two RGB565 refs, bits[63:32] = 16x2-bit indices
+    //
+    // Normal: DXT blocks - 16 bytes (uvec4) per block = 512 bytes/brick
+    //   Format: blockA(base + U bits), blockB(UV axes + V bits)
+    //
+    // Total: 768 bytes/brick vs 3072 uncompressed (4:1 ratio)
+    // ========================================================================
+
+    // DXT1 compressed colors: 32 blocks per brick, stored as uint64_t
+    // GPU access: compressedColors[brickIndex * 32 + blockIndex]
+    std::vector<uint64_t> compressedColors;
+
+    // DXT compressed normals: 32 blocks per brick, stored as two uint64_t per block
+    // GPU access: compressedNormals[brickIndex * 32 + blockIndex] -> uvec4
+    struct CompressedNormalBlock {
+        uint64_t blockA;  // Base normal + U lerp bits
+        uint64_t blockB;  // UV axes + V lerp bits
+    };
+    std::vector<CompressedNormalBlock> compressedNormals;
+
     // Helper to look up brick view for a leaf hit
     // Returns nullptr if no brick at this (parent, octant) pair
     const ::GaiaVoxel::EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {

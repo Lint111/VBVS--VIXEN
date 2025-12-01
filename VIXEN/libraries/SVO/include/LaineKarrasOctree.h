@@ -152,6 +152,45 @@ public:
     void unlockAfterRendering();
 
     // ========================================================================
+    // DXT Compression API (Week 3)
+    // ========================================================================
+
+    /**
+     * Check if compressed buffers are available.
+     * Returns true if rebuild() has been called with compression enabled.
+     */
+    [[nodiscard]] bool hasCompressedData() const;
+
+    /**
+     * Get pointer to compressed color buffer for GPU upload.
+     * Layout: 32 DXT1 blocks (8 bytes each) per brick = 256 bytes/brick
+     * @return Pointer to buffer, or nullptr if no compressed data
+     */
+    [[nodiscard]] const uint64_t* getCompressedColorData() const;
+
+    /**
+     * Get compressed color buffer size in bytes.
+     */
+    [[nodiscard]] size_t getCompressedColorSize() const;
+
+    /**
+     * Get pointer to compressed normal buffer for GPU upload.
+     * Layout: 32 DXT blocks (16 bytes each) per brick = 512 bytes/brick
+     * @return Pointer to buffer, or nullptr if no compressed data
+     */
+    [[nodiscard]] const void* getCompressedNormalData() const;
+
+    /**
+     * Get compressed normal buffer size in bytes.
+     */
+    [[nodiscard]] size_t getCompressedNormalSize() const;
+
+    /**
+     * Get number of bricks with compressed data.
+     */
+    [[nodiscard]] size_t getCompressedBrickCount() const;
+
+    // ========================================================================
     // Public Type Definitions for Traversal
     // ========================================================================
     // These types are exposed publicly so helper functions in the .cpp can use them.

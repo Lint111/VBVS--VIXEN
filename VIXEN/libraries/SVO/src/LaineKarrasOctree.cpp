@@ -2,12 +2,14 @@
 #include "LaineKarrasOctree.h"
 #include "VoxelComponents.h"  // For GaiaVoxel components
 #include "ComponentData.h"
+#include "Compression/DXT1Compressor.h"  // Week 3: DXT compression
 #include <sstream>
 #include <algorithm>
 #include <limits>
 #include <cmath>
 #include <queue>
 #include <unordered_map>
+#include <array>
 
 namespace SVO {
 
