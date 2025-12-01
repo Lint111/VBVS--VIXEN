@@ -107,8 +107,9 @@ void ComputeDispatchNode::CompileImpl(TypedCompileContext& ctx) {
 
     NODE_LOG_INFO("[ComputeDispatchNode::CompileImpl] Allocated " + std::to_string(imageCount) + " command buffers successfully");
 
-    // Create GPU performance logger with timestamp queries and pipeline stats
-    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice);
+    // Create GPU performance logger with per-frame query pools
+    // imageCount is typically 2-3 for double/triple buffering
+    gpuPerfLogger_ = std::make_shared<GPUPerformanceLogger>(instanceName, vulkanDevice, imageCount);
     gpuPerfLogger_->SetEnabled(true);
     gpuPerfLogger_->SetLogFrequency(120);  // Log every 120 frames (~2 seconds at 60fps)
     gpuPerfLogger_->SetPrintToTerminal(true);
@@ -152,9 +153,10 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Phase 0.4: Reset fence before submitting (fence was already waited on by FrameSyncNode)
     vkResetFences(vulkanDevice->device, 1, &inFlightFence);
 
-    // Collect GPU performance results from previous frame (after fence wait)
+    // Collect GPU performance results for this frame-in-flight (after fence wait)
+    // The fence for this frame index was waited on, so previous frame's results are ready
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->CollectResults();
+        gpuPerfLogger_->CollectResults(currentFrameIndex);
     }
 
     // Guard against invalid image index
@@ -196,7 +198,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Always re-record to update push constants (they change every frame)
     // TODO: Optimize using secondary command buffers or dynamic state
     VkCommandBuffer cmdBuffer = commandBuffers.GetValue(imageIndex);
-    RecordComputeCommands(ctx, cmdBuffer, imageIndex, &pushConstants);
+    RecordComputeCommands(ctx, cmdBuffer, imageIndex, currentFrameIndex, &pushConstants);
     commandBuffers.MarkReady(imageIndex);
 
     // Submit command buffer to compute queue
@@ -242,7 +244,7 @@ void ComputeDispatchNode::ExecuteImpl(TypedExecuteContext& ctx) {
 // RECORD COMPUTE COMMANDS
 // ============================================================================
 
-void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, const void* pushConstantData) {
+void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cmdBuffer, uint32_t imageIndex, uint32_t frameIndex, const void* pushConstantData) {
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -279,9 +281,9 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
     VkImage swapchainImage = swapchainInfo->colorBuffers[imageIndex].image;
     VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
 
-    // Begin GPU timing frame (reset queries)
+    // Begin GPU timing frame (reset queries for this frame)
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->BeginFrame(cmdBuffer);
+        gpuPerfLogger_->BeginFrame(cmdBuffer, frameIndex);
     }
 
     TransitionImageToGeneral(cmdBuffer, swapchainImage);
@@ -290,7 +292,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     // Record GPU timestamps around dispatch
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->RecordDispatchStart(cmdBuffer);
+        gpuPerfLogger_->RecordDispatchStart(cmdBuffer, frameIndex);
     }
 
     // Dispatch compute shader
@@ -298,7 +300,7 @@ void ComputeDispatchNode::RecordComputeCommands(Context& ctx, VkCommandBuffer cm
 
     // End GPU timing
     if (gpuPerfLogger_) {
-        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, swapchainInfo->Extent.width, swapchainInfo->Extent.height);
+        gpuPerfLogger_->RecordDispatchEnd(cmdBuffer, frameIndex, swapchainInfo->Extent.width, swapchainInfo->Extent.height);
     }
 
     TransitionImageToPresent(cmdBuffer, swapchainImage);

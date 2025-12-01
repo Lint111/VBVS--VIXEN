@@ -3,59 +3,45 @@
 #include "Headers.h"
 #include <vector>
 #include <string>
-#include <unordered_map>
 
 namespace Vixen::Vulkan::Resources {
 
 class VulkanDevice;
 
 /**
- * @brief GPU timestamp and pipeline statistics query manager
+ * @brief GPU timestamp query manager with per-frame query pools
  *
- * Provides accurate GPU-side timing measurements for compute/graphics operations.
- * Supports both timestamp queries (nanosecond precision) and pipeline statistics.
+ * Supports multiple frames-in-flight by maintaining separate query pools for each frame.
+ * This allows reading results from frame N-1 while recording queries for frame N.
  *
  * Usage:
  * @code
- * GPUTimestampQuery query(device, 4, true);  // 4 timestamps, with pipeline stats
+ * GPUTimestampQuery query(device, 3, 4);  // 3 frames-in-flight, 4 timestamps each
  *
- * // In command buffer recording:
- * query.ResetQueries(cmdBuffer);
- * query.WriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);  // Start
- * query.BeginPipelineStats(cmdBuffer);
- * vkCmdDispatch(cmdBuffer, ...);
- * query.EndPipelineStats(cmdBuffer);
- * query.WriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);  // End
+ * // Each frame:
+ * uint32_t frameIdx = currentFrameIndex % framesInFlight;
  *
- * // After queue submission + fence wait:
- * query.ReadResults();
- * float dispatchMs = query.GetElapsedMs(0, 1);
- * uint64_t invocations = query.GetStatistic(PipelineStatistic::ComputeShaderInvocations);
+ * // Read previous frame's results (after fence wait)
+ * if (query.ReadResults(frameIdx)) {
+ *     float ms = query.GetElapsedMs(frameIdx, 0, 1);
+ * }
+ *
+ * // Record new queries
+ * query.ResetQueries(cmdBuffer, frameIdx);
+ * query.WriteTimestamp(cmdBuffer, frameIdx, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+ * vkCmdDispatch(...);
+ * query.WriteTimestamp(cmdBuffer, frameIdx, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
  * @endcode
  */
 class GPUTimestampQuery {
 public:
     /**
-     * @brief Pipeline statistics that can be queried
-     */
-    enum class PipelineStatistic : uint32_t {
-        InputAssemblyVertices = 0,
-        InputAssemblyPrimitives = 1,
-        VertexShaderInvocations = 2,
-        ClippingInvocations = 3,
-        ClippingPrimitives = 4,
-        FragmentShaderInvocations = 5,
-        ComputeShaderInvocations = 6,
-        Count = 7
-    };
-
-    /**
-     * @brief Construct GPU query manager
+     * @brief Construct GPU query manager with per-frame pools
      * @param device Vulkan device (must outlive this object)
-     * @param maxTimestamps Maximum number of timestamp queries (default 8)
-     * @param enablePipelineStats Enable pipeline statistics queries
+     * @param framesInFlight Number of frames-in-flight (typically 2-3)
+     * @param maxTimestamps Maximum timestamps per frame (default 4)
      */
-    GPUTimestampQuery(VulkanDevice* device, uint32_t maxTimestamps = 8, bool enablePipelineStats = true);
+    GPUTimestampQuery(VulkanDevice* device, uint32_t framesInFlight, uint32_t maxTimestamps = 4);
     ~GPUTimestampQuery();
 
     // Non-copyable, movable
@@ -65,120 +51,89 @@ public:
     GPUTimestampQuery& operator=(GPUTimestampQuery&&) noexcept;
 
     /**
-     * @brief Check if timestamp queries are supported on this device
+     * @brief Check if timestamp queries are supported
      */
     bool IsTimestampSupported() const { return timestampSupported_; }
 
     /**
-     * @brief Check if pipeline statistics are enabled and supported
-     */
-    bool IsPipelineStatsEnabled() const { return pipelineStatsEnabled_; }
-
-    /**
-     * @brief Get the timestamp period in nanoseconds per tick
+     * @brief Get timestamp period in nanoseconds per tick
      */
     float GetTimestampPeriod() const { return timestampPeriod_; }
 
+    /**
+     * @brief Get number of frames-in-flight
+     */
+    uint32_t GetFrameCount() const { return framesInFlight_; }
+
     // ========================================================================
-    // COMMAND BUFFER RECORDING
+    // COMMAND BUFFER RECORDING (per-frame)
     // ========================================================================
 
     /**
-     * @brief Reset query pools before use (must be called outside render pass)
+     * @brief Reset queries for a specific frame (call at start of frame)
      * @param cmdBuffer Command buffer to record reset into
+     * @param frameIndex Frame-in-flight index (0 to framesInFlight-1)
      */
-    void ResetQueries(VkCommandBuffer cmdBuffer);
+    void ResetQueries(VkCommandBuffer cmdBuffer, uint32_t frameIndex);
 
     /**
-     * @brief Write a timestamp at the specified pipeline stage
+     * @brief Write timestamp for a specific frame
      * @param cmdBuffer Command buffer to record into
+     * @param frameIndex Frame-in-flight index
      * @param pipelineStage Pipeline stage to write timestamp at
-     * @param queryIndex Index of the timestamp query (0 to maxTimestamps-1)
+     * @param queryIndex Query index within the frame (0 to maxTimestamps-1)
      */
-    void WriteTimestamp(VkCommandBuffer cmdBuffer, VkPipelineStageFlagBits pipelineStage, uint32_t queryIndex);
-
-    /**
-     * @brief Begin pipeline statistics query
-     * @param cmdBuffer Command buffer to record into
-     */
-    void BeginPipelineStats(VkCommandBuffer cmdBuffer);
-
-    /**
-     * @brief End pipeline statistics query
-     * @param cmdBuffer Command buffer to record into
-     */
-    void EndPipelineStats(VkCommandBuffer cmdBuffer);
+    void WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
+                        VkPipelineStageFlagBits pipelineStage, uint32_t queryIndex);
 
     // ========================================================================
-    // RESULT RETRIEVAL (after queue submission + fence wait)
+    // RESULT RETRIEVAL (per-frame, after fence wait)
     // ========================================================================
 
     /**
-     * @brief Read all query results from GPU
-     * @return true if results are available, false if not ready
+     * @brief Read results for a specific frame
+     * @param frameIndex Frame-in-flight index to read from
+     * @return true if results are valid
      */
-    bool ReadResults();
+    bool ReadResults(uint32_t frameIndex);
 
     /**
-     * @brief Get raw timestamp value at index
-     * @param queryIndex Timestamp query index
-     * @return Timestamp in GPU ticks (0 if invalid)
+     * @brief Get elapsed time in milliseconds for a frame
+     * @param frameIndex Frame-in-flight index
+     * @param startQuery Start query index
+     * @param endQuery End query index
      */
-    uint64_t GetTimestamp(uint32_t queryIndex) const;
+    float GetElapsedMs(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery) const;
 
     /**
-     * @brief Get elapsed time between two timestamps in milliseconds
-     * @param startIndex Start timestamp query index
-     * @param endIndex End timestamp query index
-     * @return Elapsed time in milliseconds
+     * @brief Get elapsed time in nanoseconds for a frame
      */
-    float GetElapsedMs(uint32_t startIndex, uint32_t endIndex) const;
+    uint64_t GetElapsedNs(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery) const;
 
     /**
-     * @brief Get elapsed time between two timestamps in nanoseconds
-     * @param startIndex Start timestamp query index
-     * @param endIndex End timestamp query index
-     * @return Elapsed time in nanoseconds
+     * @brief Calculate Mrays/sec
      */
-    uint64_t GetElapsedNs(uint32_t startIndex, uint32_t endIndex) const;
-
-    /**
-     * @brief Get pipeline statistic value
-     * @param stat Statistic to retrieve
-     * @return Statistic value (0 if not available)
-     */
-    uint64_t GetStatistic(PipelineStatistic stat) const;
-
-    /**
-     * @brief Calculate Mrays/sec given dispatch dimensions
-     * @param startIndex Start timestamp query index
-     * @param endIndex End timestamp query index
-     * @param width Dispatch width in pixels
-     * @param height Dispatch height in pixels
-     * @return Mrays/sec (millions of rays per second)
-     */
-    float CalculateMraysPerSec(uint32_t startIndex, uint32_t endIndex, uint32_t width, uint32_t height) const;
+    float CalculateMraysPerSec(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery,
+                                uint32_t width, uint32_t height) const;
 
 private:
+    struct PerFrameData {
+        VkQueryPool timestampPool = VK_NULL_HANDLE;
+        std::vector<uint64_t> results;
+        bool resultsValid = false;
+        bool hasBeenWritten = false;  // Track if timestamps were written this frame
+    };
+
     void CreateQueryPools();
     void DestroyQueryPools();
 
     VulkanDevice* device_ = nullptr;
-
-    // Timestamp queries
-    VkQueryPool timestampPool_ = VK_NULL_HANDLE;
-    uint32_t maxTimestamps_ = 8;
+    uint32_t framesInFlight_ = 0;
+    uint32_t maxTimestamps_ = 4;
     bool timestampSupported_ = false;
-    float timestampPeriod_ = 0.0f;  // nanoseconds per tick
-    std::vector<uint64_t> timestampResults_;
+    float timestampPeriod_ = 0.0f;
 
-    // Pipeline statistics
-    VkQueryPool pipelineStatsPool_ = VK_NULL_HANDLE;
-    bool pipelineStatsEnabled_ = false;
-    std::vector<uint64_t> pipelineStatsResults_;
-
-    // State tracking
-    bool resultsValid_ = false;
+    std::vector<PerFrameData> frameData_;
 };
 
 } // namespace Vixen::Vulkan::Resources

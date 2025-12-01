@@ -5,20 +5,24 @@
 
 namespace Vixen::Vulkan::Resources {
 
-GPUTimestampQuery::GPUTimestampQuery(VulkanDevice* device, uint32_t maxTimestamps, bool enablePipelineStats)
+GPUTimestampQuery::GPUTimestampQuery(VulkanDevice* device, uint32_t framesInFlight, uint32_t maxTimestamps)
     : device_(device)
+    , framesInFlight_(framesInFlight)
     , maxTimestamps_(maxTimestamps)
-    , pipelineStatsEnabled_(enablePipelineStats)
 {
     if (!device_ || device_->device == VK_NULL_HANDLE) {
         throw std::runtime_error("[GPUTimestampQuery] Invalid Vulkan device");
+    }
+
+    if (framesInFlight_ == 0) {
+        throw std::runtime_error("[GPUTimestampQuery] framesInFlight must be > 0");
     }
 
     // Check timestamp support
     timestampPeriod_ = device_->gpuProperties.limits.timestampPeriod;
     timestampSupported_ = (timestampPeriod_ > 0.0f);
 
-    // Check if compute queue supports timestamps
+    // Check if queue supports timestamps
     if (timestampSupported_) {
         uint32_t queueFamily = device_->graphicsQueueIndex;
         if (queueFamily < device_->queueFamilyProperties.size()) {
@@ -27,11 +31,15 @@ GPUTimestampQuery::GPUTimestampQuery(VulkanDevice* device, uint32_t maxTimestamp
         }
     }
 
-    // Allocate result storage
-    timestampResults_.resize(maxTimestamps_, 0);
-    pipelineStatsResults_.resize(static_cast<size_t>(PipelineStatistic::Count), 0);
+    // Initialize per-frame data
+    frameData_.resize(framesInFlight_);
+    for (auto& frame : frameData_) {
+        frame.results.resize(maxTimestamps_, 0);
+    }
 
-    CreateQueryPools();
+    if (timestampSupported_) {
+        CreateQueryPools();
+    }
 }
 
 GPUTimestampQuery::~GPUTimestampQuery() {
@@ -40,89 +48,60 @@ GPUTimestampQuery::~GPUTimestampQuery() {
 
 GPUTimestampQuery::GPUTimestampQuery(GPUTimestampQuery&& other) noexcept
     : device_(other.device_)
-    , timestampPool_(other.timestampPool_)
+    , framesInFlight_(other.framesInFlight_)
     , maxTimestamps_(other.maxTimestamps_)
     , timestampSupported_(other.timestampSupported_)
     , timestampPeriod_(other.timestampPeriod_)
-    , timestampResults_(std::move(other.timestampResults_))
-    , pipelineStatsPool_(other.pipelineStatsPool_)
-    , pipelineStatsEnabled_(other.pipelineStatsEnabled_)
-    , pipelineStatsResults_(std::move(other.pipelineStatsResults_))
-    , resultsValid_(other.resultsValid_)
+    , frameData_(std::move(other.frameData_))
 {
     other.device_ = nullptr;
-    other.timestampPool_ = VK_NULL_HANDLE;
-    other.pipelineStatsPool_ = VK_NULL_HANDLE;
+    other.frameData_.clear();
 }
 
 GPUTimestampQuery& GPUTimestampQuery::operator=(GPUTimestampQuery&& other) noexcept {
     if (this != &other) {
         DestroyQueryPools();
         device_ = other.device_;
-        timestampPool_ = other.timestampPool_;
+        framesInFlight_ = other.framesInFlight_;
         maxTimestamps_ = other.maxTimestamps_;
         timestampSupported_ = other.timestampSupported_;
         timestampPeriod_ = other.timestampPeriod_;
-        timestampResults_ = std::move(other.timestampResults_);
-        pipelineStatsPool_ = other.pipelineStatsPool_;
-        pipelineStatsEnabled_ = other.pipelineStatsEnabled_;
-        pipelineStatsResults_ = std::move(other.pipelineStatsResults_);
-        resultsValid_ = other.resultsValid_;
+        frameData_ = std::move(other.frameData_);
 
         other.device_ = nullptr;
-        other.timestampPool_ = VK_NULL_HANDLE;
-        other.pipelineStatsPool_ = VK_NULL_HANDLE;
+        other.frameData_.clear();
     }
     return *this;
 }
 
 void GPUTimestampQuery::CreateQueryPools() {
-    // Create timestamp query pool
-    if (timestampSupported_ && maxTimestamps_ > 0) {
+    if (!timestampSupported_ || maxTimestamps_ == 0) {
+        return;
+    }
+
+    for (auto& frame : frameData_) {
         VkQueryPoolCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
         createInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
         createInfo.queryCount = maxTimestamps_;
 
-        VkResult result = vkCreateQueryPool(device_->device, &createInfo, nullptr, &timestampPool_);
+        VkResult result = vkCreateQueryPool(device_->device, &createInfo, nullptr, &frame.timestampPool);
         if (result != VK_SUCCESS) {
+            // Cleanup already created pools
+            DestroyQueryPools();
             timestampSupported_ = false;
-            timestampPool_ = VK_NULL_HANDLE;
-        }
-    }
-
-    // Create pipeline statistics query pool
-    if (pipelineStatsEnabled_) {
-        VkQueryPoolCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-        createInfo.queryType = VK_QUERY_TYPE_PIPELINE_STATISTICS;
-        createInfo.queryCount = 1;
-        createInfo.pipelineStatistics =
-            VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT |
-            VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
-
-        VkResult result = vkCreateQueryPool(device_->device, &createInfo, nullptr, &pipelineStatsPool_);
-        if (result != VK_SUCCESS) {
-            pipelineStatsEnabled_ = false;
-            pipelineStatsPool_ = VK_NULL_HANDLE;
+            return;
         }
     }
 }
 
 void GPUTimestampQuery::DestroyQueryPools() {
     if (device_ && device_->device != VK_NULL_HANDLE) {
-        if (timestampPool_ != VK_NULL_HANDLE) {
-            vkDestroyQueryPool(device_->device, timestampPool_, nullptr);
-            timestampPool_ = VK_NULL_HANDLE;
-        }
-        if (pipelineStatsPool_ != VK_NULL_HANDLE) {
-            vkDestroyQueryPool(device_->device, pipelineStatsPool_, nullptr);
-            pipelineStatsPool_ = VK_NULL_HANDLE;
+        for (auto& frame : frameData_) {
+            if (frame.timestampPool != VK_NULL_HANDLE) {
+                vkDestroyQueryPool(device_->device, frame.timestampPool, nullptr);
+                frame.timestampPool = VK_NULL_HANDLE;
+            }
         }
     }
 }
@@ -131,112 +110,90 @@ void GPUTimestampQuery::DestroyQueryPools() {
 // COMMAND BUFFER RECORDING
 // ============================================================================
 
-void GPUTimestampQuery::ResetQueries(VkCommandBuffer cmdBuffer) {
-    resultsValid_ = false;
-
-    if (timestampPool_ != VK_NULL_HANDLE) {
-        vkCmdResetQueryPool(cmdBuffer, timestampPool_, 0, maxTimestamps_);
+void GPUTimestampQuery::ResetQueries(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_) {
+        return;
     }
-    if (pipelineStatsPool_ != VK_NULL_HANDLE) {
-        vkCmdResetQueryPool(cmdBuffer, pipelineStatsPool_, 0, 1);
+
+    auto& frame = frameData_[frameIndex];
+    if (frame.timestampPool != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(cmdBuffer, frame.timestampPool, 0, maxTimestamps_);
+        frame.resultsValid = false;
+        frame.hasBeenWritten = false;
     }
 }
 
-void GPUTimestampQuery::WriteTimestamp(VkCommandBuffer cmdBuffer, VkPipelineStageFlagBits pipelineStage, uint32_t queryIndex) {
-    if (timestampPool_ == VK_NULL_HANDLE || queryIndex >= maxTimestamps_) {
+void GPUTimestampQuery::WriteTimestamp(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
+                                        VkPipelineStageFlagBits pipelineStage, uint32_t queryIndex) {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_ || queryIndex >= maxTimestamps_) {
         return;
     }
-    vkCmdWriteTimestamp(cmdBuffer, pipelineStage, timestampPool_, queryIndex);
-}
 
-void GPUTimestampQuery::BeginPipelineStats(VkCommandBuffer cmdBuffer) {
-    if (pipelineStatsPool_ == VK_NULL_HANDLE) {
-        return;
+    auto& frame = frameData_[frameIndex];
+    if (frame.timestampPool != VK_NULL_HANDLE) {
+        vkCmdWriteTimestamp(cmdBuffer, pipelineStage, frame.timestampPool, queryIndex);
+        frame.hasBeenWritten = true;
     }
-    vkCmdBeginQuery(cmdBuffer, pipelineStatsPool_, 0, 0);
-}
-
-void GPUTimestampQuery::EndPipelineStats(VkCommandBuffer cmdBuffer) {
-    if (pipelineStatsPool_ == VK_NULL_HANDLE) {
-        return;
-    }
-    vkCmdEndQuery(cmdBuffer, pipelineStatsPool_, 0);
 }
 
 // ============================================================================
 // RESULT RETRIEVAL
 // ============================================================================
 
-bool GPUTimestampQuery::ReadResults() {
-    resultsValid_ = false;
-
-    // Read timestamp results
-    // Note: We use VK_QUERY_RESULT_WAIT_BIT to ensure results are ready.
-    // Caller (GPUPerformanceLogger::CollectResults) must ensure this is only
-    // called after the command buffer has been submitted and fence waited.
-    if (timestampPool_ != VK_NULL_HANDLE) {
-        // First check if results are available without blocking
-        VkResult result = vkGetQueryPoolResults(
-            device_->device,
-            timestampPool_,
-            0, maxTimestamps_,
-            timestampResults_.size() * sizeof(uint64_t),
-            timestampResults_.data(),
-            sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT  // No WAIT_BIT - return immediately if not ready
-        );
-
-        if (result == VK_NOT_READY) {
-            // Results not ready yet - try again next frame
-            return false;
-        }
-        if (result != VK_SUCCESS) {
-            return false;
-        }
+bool GPUTimestampQuery::ReadResults(uint32_t frameIndex) {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_) {
+        return false;
     }
 
-    // Read pipeline statistics results
-    if (pipelineStatsPool_ != VK_NULL_HANDLE) {
-        VkResult result = vkGetQueryPoolResults(
-            device_->device,
-            pipelineStatsPool_,
-            0, 1,
-            pipelineStatsResults_.size() * sizeof(uint64_t),
-            pipelineStatsResults_.data(),
-            sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT  // No WAIT_BIT
-        );
+    auto& frame = frameData_[frameIndex];
+    frame.resultsValid = false;
 
-        if (result == VK_NOT_READY) {
-            return false;
-        }
-        if (result != VK_SUCCESS) {
-            return false;
-        }
+    // Only read if timestamps were actually written
+    if (!frame.hasBeenWritten) {
+        return false;
     }
 
-    resultsValid_ = true;
-    return true;
-}
-
-uint64_t GPUTimestampQuery::GetTimestamp(uint32_t queryIndex) const {
-    if (!resultsValid_ || queryIndex >= maxTimestamps_) {
-        return 0;
+    if (frame.timestampPool == VK_NULL_HANDLE) {
+        return false;
     }
-    return timestampResults_[queryIndex];
+
+    // Don't use WAIT_BIT - return immediately if results aren't ready
+    // This avoids blocking if the command buffer hasn't been submitted yet
+    VkResult result = vkGetQueryPoolResults(
+        device_->device,
+        frame.timestampPool,
+        0, maxTimestamps_,
+        frame.results.size() * sizeof(uint64_t),
+        frame.results.data(),
+        sizeof(uint64_t),
+        VK_QUERY_RESULT_64_BIT  // No WAIT_BIT
+    );
+
+    if (result == VK_SUCCESS) {
+        frame.resultsValid = true;
+        return true;
+    }
+
+    // VK_NOT_READY is expected if GPU hasn't finished yet
+    return false;
 }
 
-float GPUTimestampQuery::GetElapsedMs(uint32_t startIndex, uint32_t endIndex) const {
-    return static_cast<float>(GetElapsedNs(startIndex, endIndex)) / 1000000.0f;
+float GPUTimestampQuery::GetElapsedMs(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery) const {
+    return static_cast<float>(GetElapsedNs(frameIndex, startQuery, endQuery)) / 1000000.0f;
 }
 
-uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t startIndex, uint32_t endIndex) const {
-    if (!resultsValid_ || startIndex >= maxTimestamps_ || endIndex >= maxTimestamps_) {
+uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery) const {
+    if (!timestampSupported_ || frameIndex >= framesInFlight_) {
         return 0;
     }
 
-    uint64_t startTs = timestampResults_[startIndex];
-    uint64_t endTs = timestampResults_[endIndex];
+    const auto& frame = frameData_[frameIndex];
+    if (!frame.resultsValid || startQuery >= maxTimestamps_ || endQuery >= maxTimestamps_) {
+        return 0;
+    }
+
+    uint64_t startTs = frame.results[startQuery];
+    uint64_t endTs = frame.results[endQuery];
 
     if (endTs <= startTs) {
         return 0;  // Handle wraparound or invalid data
@@ -246,29 +203,16 @@ uint64_t GPUTimestampQuery::GetElapsedNs(uint32_t startIndex, uint32_t endIndex)
     return static_cast<uint64_t>(static_cast<double>(deltaTicks) * static_cast<double>(timestampPeriod_));
 }
 
-uint64_t GPUTimestampQuery::GetStatistic(PipelineStatistic stat) const {
-    if (!resultsValid_ || !pipelineStatsEnabled_) {
-        return 0;
-    }
-
-    uint32_t index = static_cast<uint32_t>(stat);
-    if (index >= pipelineStatsResults_.size()) {
-        return 0;
-    }
-    return pipelineStatsResults_[index];
-}
-
-float GPUTimestampQuery::CalculateMraysPerSec(uint32_t startIndex, uint32_t endIndex, uint32_t width, uint32_t height) const {
-    float elapsedMs = GetElapsedMs(startIndex, endIndex);
+float GPUTimestampQuery::CalculateMraysPerSec(uint32_t frameIndex, uint32_t startQuery, uint32_t endQuery,
+                                              uint32_t width, uint32_t height) const {
+    float elapsedMs = GetElapsedMs(frameIndex, startQuery, endQuery);
     if (elapsedMs <= 0.0f) {
         return 0.0f;
     }
 
     uint64_t totalRays = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
-    // rays/ms * 1000 = rays/sec, then / 1,000,000 = Mrays/sec
-    // Simplified: rays / (ms * 1000) = Mrays/sec
     float raysPerMs = static_cast<float>(totalRays) / elapsedMs;
-    return raysPerMs / 1000.0f;  // rays/ms / 1000 = Mrays/sec (rays/ms = 1000 rays/sec)
+    return raysPerMs / 1000.0f;  // rays/ms / 1000 = Mrays/sec
 }
 
 } // namespace Vixen::Vulkan::Resources

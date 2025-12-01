@@ -3,24 +3,21 @@
 
 namespace Vixen::RenderGraph {
 
-GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice* device, size_t rollingWindowSize)
+GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice* device,
+                                           uint32_t framesInFlight, size_t rollingWindowSize)
     : Logger(name + "_GPUPerf", true)
     , rollingWindowSize_(rollingWindowSize)
 {
-    if (device) {
-        // Disable pipeline statistics - requires pipelineStatisticsQuery feature which is not enabled
-        // Timestamp queries work without additional device features
-        query_ = std::make_unique<GPUTimestampQuery>(device, 4, false);
+    if (device && framesInFlight > 0) {
+        query_ = std::make_unique<GPUTimestampQuery>(device, framesInFlight, 4);
+        frameDispatchInfo_.resize(framesInFlight);
 
         if (query_->IsTimestampSupported()) {
             Info("GPU timestamp queries enabled (period: " +
-                 std::to_string(query_->GetTimestampPeriod()) + " ns/tick)");
+                 std::to_string(query_->GetTimestampPeriod()) + " ns/tick, " +
+                 std::to_string(framesInFlight) + " frames-in-flight)");
         } else {
             Warning("GPU timestamp queries NOT supported on this device");
-        }
-
-        if (query_->IsPipelineStatsEnabled()) {
-            Info("Pipeline statistics queries enabled");
         }
     } else {
         Warning("No Vulkan device provided - GPU timing disabled");
@@ -31,33 +28,27 @@ GPUPerformanceLogger::GPUPerformanceLogger(const std::string& name, VulkanDevice
 // COMMAND BUFFER RECORDING
 // ============================================================================
 
-void GPUPerformanceLogger::BeginFrame(VkCommandBuffer cmdBuffer) {
+void GPUPerformanceLogger::BeginFrame(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
     if (query_) {
-        query_->ResetQueries(cmdBuffer);
+        query_->ResetQueries(cmdBuffer, frameIndex);
     }
 }
 
-void GPUPerformanceLogger::RecordDispatchStart(VkCommandBuffer cmdBuffer) {
+void GPUPerformanceLogger::RecordDispatchStart(VkCommandBuffer cmdBuffer, uint32_t frameIndex) {
     if (query_ && query_->IsTimestampSupported()) {
-        query_->WriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
-
-        if (query_->IsPipelineStatsEnabled()) {
-            query_->BeginPipelineStats(cmdBuffer);
-        }
+        query_->WriteTimestamp(cmdBuffer, frameIndex, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     }
 }
 
-void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t dispatchWidth, uint32_t dispatchHeight) {
-    currentWidth_ = dispatchWidth;
-    currentHeight_ = dispatchHeight;
+void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t frameIndex,
+                                              uint32_t dispatchWidth, uint32_t dispatchHeight) {
+    if (frameIndex < frameDispatchInfo_.size()) {
+        frameDispatchInfo_[frameIndex].width = dispatchWidth;
+        frameDispatchInfo_[frameIndex].height = dispatchHeight;
+    }
 
     if (query_ && query_->IsTimestampSupported()) {
-        if (query_->IsPipelineStatsEnabled()) {
-            query_->EndPipelineStats(cmdBuffer);
-        }
-
-        query_->WriteTimestamp(cmdBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
-        hasRecordedTimestamps_ = true;  // Mark that we've recorded timestamps for collection
+        query_->WriteTimestamp(cmdBuffer, frameIndex, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
     }
 }
 
@@ -65,28 +56,26 @@ void GPUPerformanceLogger::RecordDispatchEnd(VkCommandBuffer cmdBuffer, uint32_t
 // RESULT COLLECTION
 // ============================================================================
 
-void GPUPerformanceLogger::CollectResults() {
+void GPUPerformanceLogger::CollectResults(uint32_t frameIndex) {
     if (!query_ || !query_->IsTimestampSupported()) {
         return;
     }
 
-    // Skip collection if we haven't recorded any timestamps yet (first frame)
-    if (!hasRecordedTimestamps_) {
-        return;
+    // Read results for this frame (timestamps were written in previous submission)
+    if (!query_->ReadResults(frameIndex)) {
+        return;  // No results ready yet
     }
 
-    if (!query_->ReadResults()) {
-        return;
+    // Get dispatch dimensions for this frame
+    uint32_t width = 0, height = 0;
+    if (frameIndex < frameDispatchInfo_.size()) {
+        width = frameDispatchInfo_[frameIndex].width;
+        height = frameDispatchInfo_[frameIndex].height;
     }
 
     // Calculate timing
-    lastDispatchMs_ = query_->GetElapsedMs(0, 1);
-    lastMraysPerSec_ = query_->CalculateMraysPerSec(0, 1, currentWidth_, currentHeight_);
-
-    // Get pipeline statistics
-    if (query_->IsPipelineStatsEnabled()) {
-        lastComputeInvocations_ = query_->GetStatistic(GPUTimestampQuery::PipelineStatistic::ComputeShaderInvocations);
-    }
+    lastDispatchMs_ = query_->GetElapsedMs(frameIndex, 0, 1);
+    lastMraysPerSec_ = query_->CalculateMraysPerSec(frameIndex, 0, 1, width, height);
 
     // Update rolling statistics
     UpdateRollingStats();
@@ -108,11 +97,9 @@ void GPUPerformanceLogger::CollectResults() {
 // ============================================================================
 
 void GPUPerformanceLogger::UpdateRollingStats() {
-    // Add to history
     dispatchMsHistory_.push_back(lastDispatchMs_);
     mraysHistory_.push_back(lastMraysPerSec_);
 
-    // Trim to window size
     while (dispatchMsHistory_.size() > rollingWindowSize_) {
         dispatchMsHistory_.pop_front();
     }
@@ -151,11 +138,9 @@ std::string GPUPerformanceLogger::GetPerformanceSummary() const {
         << "(min " << GetMinDispatchMs() << ", max " << GetMaxDispatchMs() << ") | "
         << "Mrays/s: " << GetAverageMraysPerSec() << " avg";
 
-    if (lastComputeInvocations_ > 0) {
-        oss << " | Invocations: " << lastComputeInvocations_;
+    if (!frameDispatchInfo_.empty()) {
+        oss << " | Resolution: " << frameDispatchInfo_[0].width << "x" << frameDispatchInfo_[0].height;
     }
-
-    oss << " | Resolution: " << currentWidth_ << "x" << currentHeight_;
 
     return oss.str();
 }
