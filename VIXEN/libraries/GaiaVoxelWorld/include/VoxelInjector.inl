@@ -4,7 +4,7 @@
 #include "GaiaVoxelWorld.h"
 #include <iostream>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 // ============================================================================
 // Template Method Implementations
@@ -94,4 +94,4 @@ void VoxelInjector::compactOctree(SVOType& svo) {
     std::cout << "[VoxelInjector] Compacting octree (placeholder - implement in Phase 3)\n";
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

@@ -253,8 +253,9 @@ uint32_t BrickView::getAt3D<uint32_t>(const std::string& attrName, int x, int y,
 
 // Include DynamicVoxelStruct.h AFTER template specializations to avoid early instantiation
 #include "DynamicVoxelStruct.h"
+#include "VoxelDataTypes.h"
 
-namespace VoxelData {
+namespace Vixen::VoxelData {
 
 // ============================================================================
 // High-Level Integration with DynamicVoxelScalar/Arrays

@@ -9,6 +9,8 @@
 #include <string>
 #include <unordered_map>
 
+using namespace Vixen::GaiaVoxel;
+
 namespace Vixen::SVO {
 
 /**
@@ -48,7 +50,7 @@ struct OctreeBlock {
 
     // Entity-based brick views (Phase 3 - zero-copy ECS access)
     // Each view queries entities via MortonKey on-demand
-    std::vector<::GaiaVoxel::EntityBrickView> brickViews;
+    std::vector<EntityBrickView> brickViews;
 
     // Mapping from (parentDescriptorIndex << 3 | octant) to brickView index
     // This maps leaf children to their brick views during ESVO traversal
@@ -91,7 +93,7 @@ struct OctreeBlock {
 
     // Helper to look up brick view for a leaf hit
     // Returns nullptr if no brick at this (parent, octant) pair
-    const ::GaiaVoxel::EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {
+    const EntityBrickView* getBrickView(size_t parentDescriptorIndex, int octant) const {
         uint64_t key = (static_cast<uint64_t>(parentDescriptorIndex) << 3) | static_cast<uint64_t>(octant);
         auto it = leafToBrickView.find(key);
         if (it != leafToBrickView.end() && it->second < brickViews.size()) {
@@ -102,7 +104,7 @@ struct OctreeBlock {
 
     // Helper to look up brick view by grid coordinates (bypasses octant issues)
     // This is the preferred lookup method for multi-brick grids
-    const ::GaiaVoxel::EntityBrickView* getBrickViewByGrid(int brickX, int brickY, int brickZ) const {
+    const EntityBrickView* getBrickViewByGrid(int brickX, int brickY, int brickZ) const {
         uint32_t key = static_cast<uint32_t>(brickX) |
                        (static_cast<uint32_t>(brickY) << 10) |
                        (static_cast<uint32_t>(brickZ) << 20);

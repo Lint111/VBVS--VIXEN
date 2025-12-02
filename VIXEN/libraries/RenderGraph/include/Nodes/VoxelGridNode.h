@@ -18,7 +18,7 @@ namespace VIXEN::RenderGraph {
     class SparseVoxelOctree;
 }
 
-namespace SVO {
+namespace Vixen::SVO {
     struct Octree;
 }
 
@@ -74,7 +74,7 @@ private:
     void UploadOctreeBuffers(const VIXEN::RenderGraph::SparseVoxelOctree& octree);
 
     // New ESVO buffer upload (SVO::Octree structure + direct grid access)
-    void UploadESVOBuffers(const SVO::Octree& octree, const VIXEN::RenderGraph::VoxelGrid& grid);
+    void UploadESVOBuffers(const Vixen::SVO::Octree& octree, const VIXEN::RenderGraph::VoxelGrid& grid);
 
     // Buffer creation steps (extracted from UploadOctreeBuffers)
     void CreateOctreeNodesBuffer(VkDeviceSize size, const void* nodeData);

@@ -1250,7 +1250,7 @@ void VoxelGridNode::UploadOctreeBuffers(const SparseVoxelOctree& octree) {
     NODE_LOG_INFO("Uploaded octree buffers to GPU");
 }
 
-void VoxelGridNode::UploadESVOBuffers(const SVO::Octree& octree, const VoxelGrid& grid) {
+void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const VoxelGrid& grid) {
     if (!octree.root) {
         throw std::runtime_error("[VoxelGridNode] ESVO octree has no root block");
     }
