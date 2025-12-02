@@ -8,6 +8,8 @@
 #include <sstream>
 #include <iomanip>
 
+namespace Vixen::Log {
+
 enum class LogLevel {
     LOG_DEBUG,
     LOG_INFO,
@@ -64,3 +66,9 @@ protected:
     std::string LogLevelToString(LogLevel level) const;
     std::string GetIndent(int level) const;
 };
+
+} // namespace Vixen::Log
+
+// Backward compatibility: expose commonly-used types at global scope
+using Vixen::Log::Logger;
+using Vixen::Log::LogLevel;

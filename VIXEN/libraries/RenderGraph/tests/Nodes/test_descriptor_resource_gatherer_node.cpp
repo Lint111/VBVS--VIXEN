@@ -22,11 +22,11 @@
 #include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 
 // Render graph components
-#include "../../include/Nodes/DescriptorResourceGathererNode.h"
-#include "../../include/Data/Nodes/DescriptorResourceGathererNodeConfig.h"
-#include "../../include/Core/NodeTypeRegistry.h"
-#include "../../include/Core/RenderGraph.h"
-#include "../../include/Data/Core/CompileTimeResourceSystem.h"
+#include <RenderGraph/Nodes/DescriptorResourceGathererNode.h>
+#include <RenderGraph/Data/Nodes/DescriptorResourceGathererNodeConfig.h>
+#include <RenderGraph/Core/NodeTypeRegistry.h>
+#include <RenderGraph/Core/RenderGraph.h>
+#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
 
 // Shader management
 #include "ShaderDataBundle.h"

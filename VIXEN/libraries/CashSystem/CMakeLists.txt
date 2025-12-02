@@ -50,6 +50,17 @@ endif()
 target_link_libraries(CashSystem PRIVATE ProjectHash)
 
 # ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(CashSystem PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h"
+    )
+    message(STATUS "CashSystem: Precompiled headers enabled")
+endif()
+
+# ============================================================================
 # Tests
 # ============================================================================
 

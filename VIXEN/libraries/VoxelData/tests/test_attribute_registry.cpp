@@ -52,7 +52,7 @@ TEST_F(AttributeRegistryTest, AllocateBrick) {
 
     // Get brick view and verify it works
     BrickView brick = registry->getBrick(brickID);
-    EXPECT_TRUE(brick.isValid());
+    EXPECT_EQ(brick.getVoxelCount(), 512);  // Valid brick has 512 voxels
 }
 
 TEST_F(AttributeRegistryTest, FreeBrick) {

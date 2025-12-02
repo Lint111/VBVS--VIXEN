@@ -3,6 +3,8 @@
 #include "Logger.h"
 #include <chrono>
 
+namespace Vixen::Log {
+
 class FrameRateLogger : public Logger {
 public:
     explicit FrameRateLogger(const std::string& name, bool enabled = true);
@@ -32,3 +34,8 @@ private:
 
     bool isFirstFrame;
 };
+
+} // namespace Vixen::Log
+
+// Backward compatibility: expose at global scope
+using Vixen::Log::FrameRateLogger;

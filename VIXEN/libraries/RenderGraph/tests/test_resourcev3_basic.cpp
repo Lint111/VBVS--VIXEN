@@ -4,7 +4,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "../include/Data/Core/CompileTimeResourceSystem.h"
+#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
 
 using namespace Vixen::RenderGraph;
 

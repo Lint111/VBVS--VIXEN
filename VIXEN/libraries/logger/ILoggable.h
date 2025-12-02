@@ -4,6 +4,8 @@
 #include <string>
 #include "Logger.h"
 
+namespace Vixen::Log {
+
 /**
  * @brief Interface for graph subsystems that support logging
  *
@@ -89,3 +91,8 @@ protected:
 private:
     std::shared_ptr<Logger> logger;  // Shared ownership for lifecycle management
 };
+
+} // namespace Vixen::Log
+
+// Backward compatibility: expose at global scope
+using Vixen::Log::ILoggable;

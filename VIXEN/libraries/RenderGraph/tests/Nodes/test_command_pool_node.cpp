@@ -11,8 +11,8 @@
  */
 
 #include <gtest/gtest.h>
-#include "../../include/Nodes/CommandPoolNode.h"
-#include "../../include/Data/Nodes/CommandPoolNodeConfig.h"
+#include <RenderGraph/Nodes/CommandPoolNode.h>
+#include <RenderGraph/Data/Nodes/CommandPoolNodeConfig.h>
 
 using namespace Vixen::RenderGraph;
 

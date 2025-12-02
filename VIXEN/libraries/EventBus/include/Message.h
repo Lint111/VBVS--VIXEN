@@ -430,4 +430,4 @@ struct DeviceMetadataEvent : public BaseEventMessage {
     }
 };
 
-} // namespace EventBus
+} // namespace Vixen::EventBus

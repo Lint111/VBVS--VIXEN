@@ -20,7 +20,7 @@
 
 #include "ResourceTypes.h"
 #include "ResourceTypeTraits.h"  // Include for StripContainer
-#include "../VariantDescriptors.h"
+#include <RenderGraph/Data/VariantDescriptors.h>
 #include <variant>
 #include <type_traits>
 #include <cstdint>

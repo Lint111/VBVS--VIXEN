@@ -48,6 +48,17 @@ else()
     target_compile_options(GaiaVoxelWorld PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(GaiaVoxelWorld PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h"
+    )
+    message(STATUS "GaiaVoxelWorld: Precompiled headers enabled")
+endif()
+
 # Export target
 add_library(GaiaVoxelWorld::GaiaVoxelWorld ALIAS GaiaVoxelWorld)
 

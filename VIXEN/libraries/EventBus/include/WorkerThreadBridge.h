@@ -212,4 +212,4 @@ private:
     std::condition_variable workCV;
 };
 
-} // namespace EventBus
+} // namespace Vixen::EventBus

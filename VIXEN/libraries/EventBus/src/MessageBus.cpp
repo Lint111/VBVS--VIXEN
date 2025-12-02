@@ -278,4 +278,4 @@ void MessageBus::SetLoggingEnabled(bool enabled) {
     }
 }
 
-} // namespace EventBus
+} // namespace Vixen::EventBus

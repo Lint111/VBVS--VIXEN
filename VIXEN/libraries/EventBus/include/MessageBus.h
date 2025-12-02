@@ -228,4 +228,4 @@ private:
     bool loggingEnabled = false;
 };
 
-} // namespace EventBus
+} // namespace Vixen::EventBus

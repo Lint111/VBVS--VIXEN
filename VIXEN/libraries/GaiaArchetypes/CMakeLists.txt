@@ -46,6 +46,17 @@ else()
     target_compile_options(GaiaArchetypes PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(GaiaArchetypes PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h"
+    )
+    message(STATUS "GaiaArchetypes: Precompiled headers enabled")
+endif()
+
 # Export target
 add_library(GaiaArchetypes::GaiaArchetypes ALIAS GaiaArchetypes)
 

@@ -38,6 +38,17 @@ find_package(Threads REQUIRED)
 target_link_libraries(EventBus PUBLIC Threads::Threads)
 
 # ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(EventBus PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h"
+    )
+    message(STATUS "EventBus: Precompiled headers enabled")
+endif()
+
+# ============================================================================
 # IDE Support - Group files
 # ============================================================================
 

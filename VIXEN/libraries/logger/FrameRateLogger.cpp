@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <limits>
 
+namespace Vixen::Log {
+
 FrameRateLogger::FrameRateLogger(const std::string& name, bool enabled)
     : Logger(name, enabled),
       currentFPS(0.0),
@@ -96,3 +98,5 @@ void FrameRateLogger::ResetStats()
     isFirstFrame = true;
     Clear();
 }
+
+} // namespace Vixen::Log

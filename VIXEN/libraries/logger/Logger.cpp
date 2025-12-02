@@ -1,6 +1,8 @@
 #include "Logger.h"
 #include <iostream>
 
+namespace Vixen::Log {
+
 Logger::Logger(const std::string& name, bool enabled)
     : name(name), enabled(enabled)
 {
@@ -160,3 +162,5 @@ std::string Logger::GetIndent(int level) const
 {
     return std::string(level * 2, ' ');
 }
+
+} // namespace Vixen::Log

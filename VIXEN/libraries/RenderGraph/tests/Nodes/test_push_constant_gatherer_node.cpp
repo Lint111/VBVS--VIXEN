@@ -33,11 +33,11 @@
 
 #include <gtest/gtest.h>
 #include "../TestMocks.h"  // Centralized test mocks
-#include "../../include/Nodes/PushConstantGathererNode.h"
-#include "../../include/Data/Nodes/PushConstantGathererNodeConfig.h"
-#include "../../include/Core/NodeTypeRegistry.h"
-#include "../../include/Core/RenderGraph.h"
-#include "../../include/Data/Core/CompileTimeResourceSystem.h"
+#include <RenderGraph/Nodes/PushConstantGathererNode.h>
+#include <RenderGraph/Data/Nodes/PushConstantGathererNodeConfig.h>
+#include <RenderGraph/Core/NodeTypeRegistry.h>
+#include <RenderGraph/Core/RenderGraph.h>
+#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
 #include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 #include <memory>
 #include <vector>

@@ -4,7 +4,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "../include/Data/Core/ZeroOverheadTypeSystem.h"
+#include <RenderGraph/Data/Core/ZeroOverheadTypeSystem.h>
 #include <chrono>
 
 using namespace Vixen::RenderGraph;
@@ -90,8 +90,8 @@ TEST(ZeroOverheadTest, ReferenceStorageVsRawPointer) {
     // VERIFICATION
     // ========================================================================
     std::cout << "\nReference Storage Performance:\n";
-    std::cout << "  Raw pointer:        " << rawTime << " ¼s\n";
-    std::cout << "  ZeroOverheadResource: " << resourceTime << " ¼s\n";
+    std::cout << "  Raw pointer:        " << rawTime << " ï¿½s\n";
+    std::cout << "  ZeroOverheadResource: " << resourceTime << " ï¿½s\n";
     std::cout << "  Overhead:           " << ((resourceTime - rawTime) * 100 / rawTime) << "%\n";
 
     // Should be within 5% of raw pointer performance
@@ -136,8 +136,8 @@ TEST(ZeroOverheadTest, PointerStorageVsRawPointer) {
     // VERIFICATION
     // ========================================================================
     std::cout << "\nPointer Storage Performance:\n";
-    std::cout << "  Raw pointer:        " << rawTime << " ¼s\n";
-    std::cout << "  ZeroOverheadResource: " << resourceTime << " ¼s\n";
+    std::cout << "  Raw pointer:        " << rawTime << " ï¿½s\n";
+    std::cout << "  ZeroOverheadResource: " << resourceTime << " ï¿½s\n";
     std::cout << "  Overhead:           " << ((resourceTime - rawTime) * 100 / rawTime) << "%\n";
 
     EXPECT_LT(resourceTime, rawTime * 1.05);
@@ -222,8 +222,8 @@ TEST(ZeroOverheadTest, NoHeapAllocation) {
     ZeroOverheadResource resource;
 
     // These operations should NOT allocate heap memory
-    resource.SetHandle(camera);     // Reference ’ just store pointer
-    resource.SetHandle(&camera);    // Pointer ’ just store pointer
+    resource.SetHandle(camera);     // Reference ï¿½ just store pointer
+    resource.SetHandle(&camera);    // Pointer ï¿½ just store pointer
 
     // Can't directly test heap allocation without instrumentation,
     // but the code is designed for zero-allocation in these cases

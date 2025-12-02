@@ -51,6 +51,17 @@ else()
     target_compile_options(VoxelData PRIVATE -Wall -Wextra -pedantic)
 endif()
 
+# ============================================================================
+# Precompiled Headers
+# ============================================================================
+
+if(USE_PRECOMPILED_HEADERS)
+    target_precompile_headers(VoxelData PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/pch.h"
+    )
+    message(STATUS "VoxelData: Precompiled headers enabled")
+endif()
+
 # Export for use by other libraries
 set_target_properties(VoxelData PROPERTIES
     VERSION ${PROJECT_VERSION}
