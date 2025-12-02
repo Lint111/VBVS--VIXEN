@@ -11,8 +11,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Nodes/WindowNode.h>
-#include <RenderGraph/Data/Nodes/WindowNodeConfig.h>
+#include <Nodes/WindowNode.h>
+#include <Data/Nodes/WindowNodeConfig.h>
 
 using namespace Vixen::RenderGraph;
 

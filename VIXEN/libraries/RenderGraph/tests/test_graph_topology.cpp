@@ -13,9 +13,9 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Core/RenderGraph.h>
-#include <RenderGraph/Core/GraphTopology.h>
-#include <RenderGraph/Core/NodeType.h>
+#include <Core/RenderGraph.h>
+#include <Core/GraphTopology.h>
+#include <Core/NodeType.h>
 #include <algorithm>
 
 // Use the centralized Vulkan globals (inline/selectany) to avoid

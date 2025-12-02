@@ -18,15 +18,15 @@
 #include <vector>
 
 // Test utilities
-#include "../TestMocks.h"  // Centralized test mocks
+#include <RenderGraph/tests/TestMocks.h>  // Centralized test mocks (use project-root include path)
 #include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 
 // Render graph components
-#include <RenderGraph/Nodes/DescriptorResourceGathererNode.h>
-#include <RenderGraph/Data/Nodes/DescriptorResourceGathererNodeConfig.h>
-#include <RenderGraph/Core/NodeTypeRegistry.h>
-#include <RenderGraph/Core/RenderGraph.h>
-#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
+#include <Nodes/DescriptorResourceGathererNode.h>
+#include <Data/Nodes/DescriptorResourceGathererNodeConfig.h>
+#include <Core/NodeTypeRegistry.h>
+#include <Core/RenderGraph.h>
+#include <Data/Core/CompileTimeResourceSystem.h>
 
 // Shader management
 #include "ShaderDataBundle.h"

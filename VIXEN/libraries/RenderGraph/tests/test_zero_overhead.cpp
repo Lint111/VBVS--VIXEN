@@ -4,7 +4,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Data/Core/ZeroOverheadTypeSystem.h>
+#include <Data/Core/ZeroOverheadTypeSystem.h>
 #include <chrono>
 
 using namespace Vixen::RenderGraph;

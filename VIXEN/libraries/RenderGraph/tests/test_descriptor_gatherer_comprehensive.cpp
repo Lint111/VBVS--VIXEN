@@ -19,9 +19,9 @@
 #include <generated/sdi/VoxelRayMarchNames.h>
 
 // Render graph components
-#include <RenderGraph/Nodes/DescriptorResourceGathererNode.h>
-#include <RenderGraph/Core/RenderGraph.h>
-#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
+#include <Nodes/DescriptorResourceGathererNode.h>
+#include <Core/RenderGraph.h>
+#include <Data/Core/CompileTimeResourceSystem.h>
 
 // Shader management
 #include "ShaderDataBundle.h"
