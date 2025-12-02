@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "BrickView.h"
 #include "AttributeRegistry.h"
 #include "AttributeStorage.h"

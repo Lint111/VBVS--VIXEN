@@ -3,6 +3,7 @@
  * @brief Example demonstrating DynamicVoxelStruct initialization from VoxelConfig
  */
 
+#include "pch.h"
 #include "DynamicVoxelStruct.h"
 #include "StandardVoxelConfigs.h"
 #include "AttributeRegistry.h"

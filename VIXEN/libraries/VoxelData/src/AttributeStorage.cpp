@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "AttributeStorage.h"
 #include <stdexcept>
 #include <cstring>

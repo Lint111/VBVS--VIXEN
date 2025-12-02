@@ -1,3 +1,5 @@
+#include "pch.h"
+
 /**
  * @file VoxelConfigExample.cpp
  * @brief Comprehensive examples of the VoxelConfig system

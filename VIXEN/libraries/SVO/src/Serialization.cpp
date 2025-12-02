@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "LaineKarrasOctree.h"
 #include "SVOBuilder.h"
 #include <fstream>

@@ -3,6 +3,7 @@
  * Use cases: procedural generation, terrain, noise, SDFs, etc.
  */
 
+#include "pch.h"
 #include <VoxelInjection.h>
 #include <LaineKarrasOctree.h>
 #include <iostream>

@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "Compression/BlockCompressor.h"
 #include <cstring>
 

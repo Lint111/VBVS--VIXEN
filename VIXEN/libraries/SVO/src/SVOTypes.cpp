@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "SVOTypes.h"
 #include <cmath>
 #include <algorithm>

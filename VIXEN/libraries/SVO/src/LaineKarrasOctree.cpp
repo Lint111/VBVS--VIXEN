@@ -1,4 +1,5 @@
 #define NOMINMAX
+#include "pch.h"
 #include "LaineKarrasOctree.h"
 #include "VoxelComponents.h"  // For GaiaVoxel components
 #include "ComponentData.h"

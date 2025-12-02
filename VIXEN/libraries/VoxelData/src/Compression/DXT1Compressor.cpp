@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "Compression/DXT1Compressor.h"
 #include <algorithm>
 #include <cmath>

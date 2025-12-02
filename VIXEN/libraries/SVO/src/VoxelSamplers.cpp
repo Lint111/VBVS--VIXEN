@@ -1,3 +1,4 @@
+#include "pch.h"
 //#define NOMINMAX  // Prevent Windows min/max macros from polluting namespace
 //#include <cmath>
 //#include <algorithm>
