@@ -244,12 +244,66 @@ public:
     EntityID getEntityByMorton(const Vixen::Core::MortonCode64& morton) const;
 
     // ========================================================================
-    // Bulk Brick Loading (512x More Efficient)
+    // Bulk Brick Loading (Zero-Copy API)
+    // ========================================================================
+
+    /**
+     * Zero-copy bulk load entities into caller-provided buffer.
+     * Materializes data only when caller needs it (e.g., GPU upload).
+     *
+     * ZERO-COPY DESIGN:
+     * - Caller owns buffer (stack or heap allocation)
+     * - No intermediate copies during traversal
+     * - Data materialized only at GPU upload boundary
+     *
+     * @param brickBaseMorton Morton code of brick's minimum corner
+     * @param outEntities Caller-provided buffer (must be brickSize^3 elements)
+     * @param outCount Returns count of valid (non-empty) voxels
+     * @param brickSize Brick side length (default 8 for 8x8x8)
+     */
+    void getBrickEntitiesInto(
+        const Vixen::Core::MortonCode64& brickBaseMorton,
+        std::span<EntityID> outEntities,
+        uint32_t& outCount,
+        uint32_t brickSize = 8) const;
+
+    /**
+     * Zero-copy bulk load by world position.
+     * Convenience wrapper that computes Morton base from world position.
+     *
+     * @param brickWorldMin World position of brick's minimum corner
+     * @param outEntities Caller-provided buffer (must be brickSize^3 elements)
+     * @param outCount Returns count of valid (non-empty) voxels
+     * @param brickSize Brick side length (default 8 for 8x8x8)
+     */
+    void getBrickEntitiesByWorldPosInto(
+        const glm::ivec3& brickWorldMin,
+        std::span<EntityID> outEntities,
+        uint32_t& outCount,
+        uint32_t brickSize = 8) const;
+
+    /**
+     * Count entities in brick without materializing data.
+     * Fastest check for isEmpty() - no buffer allocation needed.
+     *
+     * @param brickBaseMorton Morton code of brick's minimum corner
+     * @param brickSize Brick side length (default 8 for 8x8x8)
+     * @return Count of valid (non-empty) voxels in brick
+     */
+    [[nodiscard]] uint32_t countBrickEntities(
+        const Vixen::Core::MortonCode64& brickBaseMorton,
+        uint32_t brickSize = 8) const;
+
+    // ========================================================================
+    // Legacy API (Deprecated - Returns by Value)
     // ========================================================================
 
     /**
      * Result of bulk brick entity lookup.
      * Contains entities for all 512 voxels in an 8x8x8 brick.
+     *
+     * @deprecated Use getBrickEntitiesInto() for zero-copy access.
+     *             This struct materializes 512 entities on every call.
      */
     struct BrickEntities {
         static constexpr size_t BRICK_SIZE = 8;
@@ -269,26 +323,28 @@ public:
     };
 
     /**
-     * Bulk load all entities in a brick (512x more efficient than individual lookups).
+     * Bulk load all entities in a brick.
      *
-     * PERFORMANCE:
-     * - OLD: 512 individual getEntity(x,y,z) calls with hash lookups
-     * - NEW: 1 getBrickEntities() call with optimized iteration
+     * @deprecated Use getBrickEntitiesInto() for zero-copy access.
+     *             This method copies 512 entity IDs per call.
      *
      * @param brickBaseMorton Morton code of brick's minimum corner
      * @param brickSize Brick side length (default 8 for 8x8x8)
-     * @return BrickEntities with all 512 entity references
+     * @return BrickEntities with all 512 entity references (COPIES DATA)
      */
+    [[deprecated("Use getBrickEntitiesInto() for zero-copy access")]]
     BrickEntities getBrickEntities(const Vixen::Core::MortonCode64& brickBaseMorton, uint32_t brickSize = 8) const;
 
     /**
      * Bulk load entities by brick world position.
-     * Convenience wrapper that computes Morton base from world position.
+     *
+     * @deprecated Use getBrickEntitiesByWorldPosInto() for zero-copy access.
      *
      * @param brickWorldMin World position of brick's minimum corner
      * @param brickSize Brick side length (default 8 for 8x8x8)
-     * @return BrickEntities with all 512 entity references
+     * @return BrickEntities with all 512 entity references (COPIES DATA)
      */
+    [[deprecated("Use getBrickEntitiesByWorldPosInto() for zero-copy access")]]
     BrickEntities getBrickEntitiesByWorldPos(const glm::ivec3& brickWorldMin, uint32_t brickSize = 8) const;
 
     // ========================================================================

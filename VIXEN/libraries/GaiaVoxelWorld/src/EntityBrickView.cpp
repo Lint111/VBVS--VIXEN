@@ -238,16 +238,14 @@ bool EntityBrickView::isEmpty() const {
     }
 
     // For query-based modes (WorldSpace, IntegerGrid, LocalGrid):
-    // Use Morton lookup via GaiaVoxelWorld - check if brick has any entities
-    // Optimization: Use bulk API if available
-    if (m_queryMode == QueryMode::LocalGrid) {
-    
-        // Fast path: Use getBrickEntities() bulk API to check count
-        auto brickEntities = m_world.getBrickEntities(m_brickMortonBase, m_brickSize);
-        return brickEntities.count == 0;  // Zero entities = empty brick
+    // Use zero-copy countBrickEntities() - no buffer allocation needed
+    if (m_queryMode == QueryMode::LocalGrid || m_queryMode == QueryMode::IntegerGrid) {
+        // ZERO-COPY: countBrickEntities() counts without materializing entity array
+        uint32_t count = m_world.countBrickEntities(m_brickMortonBase, static_cast<uint32_t>(m_brickSize));
+        return count == 0;  // Zero entities = empty brick
     }
 
-    // Fallback: Iterate through all voxel positions
+    // Fallback for WorldSpace mode: Iterate through all voxel positions
     const int brickSizeInt = static_cast<int>(m_brickSize);
     for (int z = 0; z < brickSizeInt; ++z) {
         for (int y = 0; y < brickSizeInt; ++y) {

@@ -24,7 +24,17 @@ add_library(SVO STATIC
     src/SVOBuilder.cpp
     src/ContourBuilder.cpp
     src/AttributeIntegrator.cpp
+
+    # LaineKarrasOctree subsystem (Phase A.3 split)
+    # - LaineKarrasOctree.cpp: Facade/coordinator, ISVOStructure interface
+    # - SVOTraversal.cpp: ESVO ray casting algorithm (Laine & Karras 2010)
+    # - SVOBrickDDA.cpp: Brick-level DDA traversal (Amanatides & Woo 1987)
+    # - SVORebuild.cpp: Entity-based octree construction with Morton sorting
     src/LaineKarrasOctree.cpp
+    src/SVOTraversal.cpp
+    src/SVOBrickDDA.cpp
+    src/SVORebuild.cpp
+
     # src/LaineKarrasBuilder.cpp  # TODO: Requires ISVOBuilder::InputGeometry and BuildConfig definitions
     # VoxelInjection.cpp DEPRECATED - removed in favor of rebuild() API
     src/VoxelSamplers.cpp

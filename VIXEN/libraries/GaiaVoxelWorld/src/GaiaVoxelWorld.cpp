@@ -410,19 +410,21 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMorton(const MortonCode64& m
 }
 
 // ============================================================================
-// Bulk Brick Loading (512x More Efficient)
+// Bulk Brick Loading (Zero-Copy API)
 // ============================================================================
 
-GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntities(
+void GaiaVoxelWorld::getBrickEntitiesInto(
     const MortonCode64& brickBaseMorton,
+    std::span<EntityID> outEntities,
+    uint32_t& outCount,
     uint32_t brickSize) const {
 
-    BrickEntities result;
-    result.count = 0;
+    outCount = 0;
+    const size_t volume = static_cast<size_t>(brickSize) * brickSize * brickSize;
 
     // Initialize all entities to invalid
-    for (auto& entity : result.entities) {
-        entity = EntityID{};
+    for (size_t i = 0; i < volume && i < outEntities.size(); ++i) {
+        outEntities[i] = EntityID{};
     }
 
     // Iterate all voxels in brick (brickSize^3)
@@ -437,13 +439,66 @@ GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntities(
                 auto it = m_impl->mortonIndex.find(voxelMorton.code);
                 if (it != m_impl->mortonIndex.end()) {
                     size_t linearIndex = z * brickSize * brickSize + y * brickSize + x;
-                    result.entities[linearIndex] = it->second;
-                    result.count++;
+                    if (linearIndex < outEntities.size()) {
+                        outEntities[linearIndex] = it->second;
+                        outCount++;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void GaiaVoxelWorld::getBrickEntitiesByWorldPosInto(
+    const glm::ivec3& brickWorldMin,
+    std::span<EntityID> outEntities,
+    uint32_t& outCount,
+    uint32_t brickSize) const {
+
+    // Compute Morton base from world position
+    MortonCode64 brickBaseMorton = MortonCode64::fromWorldPos(brickWorldMin);
+    getBrickEntitiesInto(brickBaseMorton, outEntities, outCount, brickSize);
+}
+
+uint32_t GaiaVoxelWorld::countBrickEntities(
+    const MortonCode64& brickBaseMorton,
+    uint32_t brickSize) const {
+
+    uint32_t count = 0;
+
+    // Iterate all voxels in brick (brickSize^3) - count only, no buffer write
+    for (uint32_t z = 0; z < brickSize; ++z) {
+        for (uint32_t y = 0; y < brickSize; ++y) {
+            for (uint32_t x = 0; x < brickSize; ++x) {
+                MortonCode64 voxelMorton = brickBaseMorton.addLocalOffset(x, y, z);
+
+                // O(1) lookup in Morton index
+                if (m_impl->mortonIndex.contains(voxelMorton.code)) {
+                    count++;
                 }
             }
         }
     }
 
+    return count;
+}
+
+// ============================================================================
+// Legacy API (Deprecated - Implemented via Zero-Copy API)
+// ============================================================================
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4996)  // Disable deprecation warning for implementation
+#endif
+
+GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntities(
+    const MortonCode64& brickBaseMorton,
+    uint32_t brickSize) const {
+
+    BrickEntities result;
+    // Delegate to zero-copy API
+    getBrickEntitiesInto(brickBaseMorton, result.entities, result.count, brickSize);
     return result;
 }
 
@@ -455,6 +510,10 @@ GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntitiesByWorldPos(
     MortonCode64 brickBaseMorton = MortonCode64::fromWorldPos(brickWorldMin);
     return getBrickEntities(brickBaseMorton, brickSize);
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // ============================================================================
 // Batch Operations
