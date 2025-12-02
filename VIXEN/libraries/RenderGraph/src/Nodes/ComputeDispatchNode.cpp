@@ -453,12 +453,12 @@ void ComputeDispatchNode::TransitionImageToPresent(VkCommandBuffer cmdBuffer, Vk
 void ComputeDispatchNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[ComputeDispatchNode::CleanupImpl] Cleaning up resources");
 
-    // shared_ptr handles cleanup automatically:
-    // - Node drops reference when perfLogger_ destroyed
-    // - Parent (nodeLogger) keeps it alive until log extraction
-    // - No manual RemoveChild needed
-    perfLogger_.reset();
-    gpuPerfLogger_.reset();
+    // Release GPU resources (QueryPools) while device is still valid.
+    // Logger objects stay alive for parent log extraction, but their
+    // VkQueryPool handles must be destroyed before VkDevice cleanup.
+    if (gpuPerfLogger_) {
+        gpuPerfLogger_->ReleaseGPUResources();
+    }
 
     if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
         // Free command buffers

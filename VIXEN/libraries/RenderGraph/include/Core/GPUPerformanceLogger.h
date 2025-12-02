@@ -131,6 +131,15 @@ public:
     void SetPrintToTerminal(bool enable) { printToTerminal_ = enable; }
     bool IsTimingSupported() const { return query_ && query_->IsTimestampSupported(); }
 
+    /**
+     * @brief Release GPU resources (QueryPools) while device is still valid.
+     *
+     * Call this during cleanup phase BEFORE the VkDevice is destroyed.
+     * The logger object remains valid for log extraction, but GPU timing
+     * will no longer function after this call.
+     */
+    void ReleaseGPUResources() { query_.reset(); }
+
 private:
     std::unique_ptr<GPUTimestampQuery> query_;
 

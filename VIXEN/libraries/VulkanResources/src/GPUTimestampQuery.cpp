@@ -97,7 +97,20 @@ void GPUTimestampQuery::CreateQueryPools() {
 }
 
 void GPUTimestampQuery::DestroyQueryPools() {
-    if (device_ && device_->device != VK_NULL_HANDLE) {
+    // Safety check: If device_ is null, we cannot destroy query pools.
+    // This can happen if the object was moved from, or if cleanup is called
+    // after the parent VulkanDevice was destroyed (use-after-free scenario).
+    // In the latter case, we must NOT dereference device_ at all.
+    if (!device_) {
+        // Clear handles to prevent double-destruction attempts
+        for (auto& frame : frameData_) {
+            frame.timestampPool = VK_NULL_HANDLE;
+        }
+        return;
+    }
+
+    // Validate device handle before attempting destruction
+    if (device_->device != VK_NULL_HANDLE) {
         for (auto& frame : frameData_) {
             if (frame.timestampPool != VK_NULL_HANDLE) {
                 vkDestroyQueryPool(device_->device, frame.timestampPool, nullptr);
@@ -105,6 +118,9 @@ void GPUTimestampQuery::DestroyQueryPools() {
             }
         }
     }
+
+    // Clear device pointer to prevent any further use after destruction
+    device_ = nullptr;
 }
 
 // ============================================================================

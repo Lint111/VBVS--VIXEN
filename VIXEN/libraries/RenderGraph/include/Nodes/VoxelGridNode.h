@@ -5,6 +5,7 @@
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/VoxelGridNodeConfig.h"
 #include "Debug/DebugCaptureResource.h"
+#include "Core/GPUPerformanceLogger.h"
 #include <memory>
 #include <vector>
 
@@ -122,6 +123,9 @@ private:
     // Parameters
     uint32_t resolution = 128;
     std::string sceneType = "test";
+
+    // Memory tracking for benchmarking (Week 3)
+    std::shared_ptr<GPUPerformanceLogger> memoryLogger_;
 };
 
 } // namespace Vixen::RenderGraph

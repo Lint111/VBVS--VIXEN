@@ -2,13 +2,36 @@
 
 **Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 3 DXT Compression IN PROGRESS | GPU Buffer Upload Next
+**Status**: Week 3 DXT Compression COMPLETE | Memory Benchmarking Ready
 
 ---
 
 ## Current Focus: Week 3 DXT Compression
 
-CPU-side compression complete. Next: Upload compressed buffers to GPU bindings 7 & 8.
+GPU buffer upload integrated. Memory tracking enabled for benchmarking.
+
+### Week 3 Session 4 Summary (Dec 2, 2025)
+
+**Completed This Session:**
+- Integrated memory registration in VoxelGridNode for GPU buffer tracking
+- Added GPUPerformanceLogger to track all voxel buffer allocations
+- Memory tracking reports buffer breakdown on compile
+- Compressed buffers (bindings 7, 8) now tracked alongside uncompressed bricks
+- Full build successful - VIXEN.exe ready for runtime benchmarking
+
+**Modified Files:**
+| File | Line Numbers | Changes |
+|------|--------------|---------|
+| `libraries/RenderGraph/include/Nodes/VoxelGridNode.h` | 8, 127-128 | Added GPUPerformanceLogger include and member |
+| `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` | 120-125, 394-416, 433-436, 480-483, 555-558, 600-603, 646-655 | Memory logger creation and buffer registrations |
+
+**Memory Tracking Integration:**
+- `OctreeNodes` - ESVO traversal structure
+- `OctreeBricks (uncompressed)` - 4 bytes per voxel (512 per brick)
+- `Materials` - Material palette
+- `BrickBaseIndex` - Sparse indexing (deprecated, minimal)
+- `CompressedColors (DXT1)` - 8 bytes per block = 256 bytes/brick
+- `CompressedNormals (DXT)` - 16 bytes per block = 512 bytes/brick
 
 ### Week 3 Session 3 Summary (Dec 2, 2025)
 
@@ -92,9 +115,10 @@ CPU-side compression complete. Next: Upload compressed buffers to GPU bindings 7
 - [x] Integrate into LaineKarrasOctree (compress on build)
 - [x] Add accessor methods (getCompressedColorData, etc.)
 - [x] Update GPUBuffers struct with compressed buffer fields
-- [ ] GPU-side: Upload compressed buffers to bindings 7, 8 in VoxelGridNode
-- [ ] Benchmark memory reduction (target: 4x per attribute)
-- [ ] Benchmark performance impact (A/B test compressed vs uncompressed)
+- [x] GPU-side: Upload compressed buffers to bindings 7, 8 in VoxelGridNode
+- [x] Add memory tracking for GPU buffer benchmarking
+- [ ] Run runtime benchmarking (A/B test compressed vs uncompressed)
+- [ ] Document memory reduction results
 
 ### Week 4: Polish
 - [ ] Normal calculation from voxel faces

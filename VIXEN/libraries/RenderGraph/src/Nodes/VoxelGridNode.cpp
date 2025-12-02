@@ -117,6 +117,14 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[VoxelGridNode] COMMAND_POOL is null");
     }
 
+    // Create memory tracking logger for Week 3 benchmarking
+    memoryLogger_ = std::make_shared<GPUPerformanceLogger>("VoxelGrid_Memory", vulkanDevice, 1);
+    memoryLogger_->SetEnabled(true);
+    memoryLogger_->SetTerminalOutput(true);
+    if (nodeLogger) {
+        nodeLogger->AddChild(memoryLogger_);
+    }
+
     // Generate procedural voxel scene
     std::cout << "[VoxelGridNode] Generating voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
     VoxelGrid grid(resolution);
@@ -384,16 +392,28 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         };
 
         // Upload compressed color buffer (binding 7)
+        VkDeviceSize colorCompressedSize = octree.getCompressedColorSize();
         createAndUploadBuffer(compressedColorBuffer, compressedColorMemory,
                              octree.getCompressedColorData(),
-                             octree.getCompressedColorSize(),
+                             colorCompressedSize,
                              "compressedColorBuffer");
 
         // Upload compressed normal buffer (binding 8)
+        VkDeviceSize normalCompressedSize = octree.getCompressedNormalSize();
         createAndUploadBuffer(compressedNormalBuffer, compressedNormalMemory,
                              octree.getCompressedNormalData(),
-                             octree.getCompressedNormalSize(),
+                             normalCompressedSize,
                              "compressedNormalBuffer");
+
+        // Register compressed buffers for memory tracking (Week 3 benchmarking)
+        if (memoryLogger_) {
+            if (colorCompressedSize > 0) {
+                memoryLogger_->RegisterBufferAllocation("CompressedColors (DXT1)", colorCompressedSize);
+            }
+            if (normalCompressedSize > 0) {
+                memoryLogger_->RegisterBufferAllocation("CompressedNormals (DXT)", normalCompressedSize);
+            }
+        }
 
         std::cout << "[VoxelGridNode] DXT compressed buffers uploaded ("
                   << octree.getCompressedBrickCount() << " bricks)" << std::endl;
@@ -622,6 +642,18 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTS SET !!!!" << std::endl;
 
     NODE_LOG_INFO("Uploaded octree buffers successfully");
+
+    // Print memory summary for Week 3 benchmarking
+    if (memoryLogger_) {
+        std::cout << "\n";
+        std::cout << "========================================" << std::endl;
+        std::cout << "[VoxelGridNode] GPU MEMORY SUMMARY" << std::endl;
+        std::cout << "========================================" << std::endl;
+        std::cout << memoryLogger_->GetMemorySummary() << std::endl;
+        std::cout << "Total GPU Memory: " << memoryLogger_->GetTotalTrackedMemoryMB() << " MB" << std::endl;
+        std::cout << "========================================\n" << std::endl;
+    }
+
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
 }
 
@@ -763,6 +795,14 @@ void VoxelGridNode::LogCleanupProgress(const std::string& stage) {
 
 void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Destroying octree buffers");
+
+    // CRITICAL: Release GPU resources (QueryPools) BEFORE device operations.
+    // The logger object stays alive for parent log extraction, but its
+    // VkQueryPool handles must be destroyed while VkDevice is still valid.
+    if (memoryLogger_) {
+        memoryLogger_->ReleaseGPUResources();
+    }
+    LogCleanupProgress("memoryLogger GPU resources released");
 
     if (!vulkanDevice) {
         NODE_LOG_DEBUG("[VoxelGridNode::CleanupImpl] Device unavailable, skipping cleanup");
@@ -1423,6 +1463,11 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
     }
     vkBindBufferMemory(vulkanDevice->device, octreeNodesBuffer, octreeNodesMemory, 0);
 
+    // Register nodes buffer for memory tracking
+    if (memoryLogger_) {
+        memoryLogger_->RegisterBufferAllocation("OctreeNodes", nodesBufferSize);
+    }
+
     // ============================================================================
     // CREATE BRICKS BUFFER
     // ============================================================================
@@ -1464,6 +1509,11 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
         throw std::runtime_error("[VoxelGridNode] Failed to allocate ESVO bricks memory: " + std::to_string(result));
     }
     vkBindBufferMemory(vulkanDevice->device, octreeBricksBuffer, octreeBricksMemory, 0);
+
+    // Register bricks buffer for memory tracking (uncompressed - 4 bytes per voxel)
+    if (memoryLogger_) {
+        memoryLogger_->RegisterBufferAllocation("OctreeBricks (uncompressed)", actualBricksBufferSize);
+    }
 
     // ============================================================================
     // CREATE MATERIALS BUFFER (same as legacy - material palette)
@@ -1535,6 +1585,11 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
     }
     vkBindBufferMemory(vulkanDevice->device, octreeMaterialsBuffer, octreeMaterialsMemory, 0);
 
+    // Register materials buffer for memory tracking
+    if (memoryLogger_) {
+        memoryLogger_->RegisterBufferAllocation("Materials", materialsBufferSize);
+    }
+
     // ============================================================================
     // CREATE BRICK BASE INDEX BUFFER (binding 6)
     // ============================================================================
@@ -1574,6 +1629,11 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
         throw std::runtime_error("[VoxelGridNode] Failed to allocate brick base index memory: " + std::to_string(result));
     }
     vkBindBufferMemory(vulkanDevice->device, brickBaseIndexBuffer, brickBaseIndexMemory, 0);
+
+    // Register base index buffer for memory tracking
+    if (memoryLogger_) {
+        memoryLogger_->RegisterBufferAllocation("BrickBaseIndex", baseIndexBufferSize);
+    }
 
     // ============================================================================
     // UPLOAD DATA VIA STAGING BUFFERS
