@@ -103,16 +103,12 @@ private:
     VkBuffer octreeConfigBuffer = VK_NULL_HANDLE;
     VkDeviceMemory octreeConfigMemory = VK_NULL_HANDLE;
 
-    // Brick base index buffer - per-node mapping to sparse brick array (binding 6)
-    VkBuffer brickBaseIndexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory brickBaseIndexMemory = VK_NULL_HANDLE;
-
-    // DXT compressed color buffer (shader binding 7)
+    // DXT compressed color buffer (shader binding 6)
     // 32 DXT1 blocks per brick, 8 bytes (uvec2) per block = 256 bytes/brick
     VkBuffer compressedColorBuffer = VK_NULL_HANDLE;
     VkDeviceMemory compressedColorMemory = VK_NULL_HANDLE;
 
-    // DXT compressed normal buffer (shader binding 8)
+    // DXT compressed normal buffer (shader binding 7)
     // 32 DXT blocks per brick, 16 bytes (uvec4) per block = 512 bytes/brick
     VkBuffer compressedNormalBuffer = VK_NULL_HANDLE;
     VkDeviceMemory compressedNormalMemory = VK_NULL_HANDLE;

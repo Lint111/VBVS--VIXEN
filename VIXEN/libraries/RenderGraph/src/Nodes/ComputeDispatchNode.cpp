@@ -45,7 +45,8 @@ void ComputeDispatchNode::SetupImpl(TypedSetupContext& ctx) {
 
     // Create specialized performance logger (disabled by default)
     perfLogger_ = std::make_shared<ComputePerformanceLogger>(instanceName);
-    perfLogger_->SetEnabled(false);  // Enable manually when needed for debugging
+    perfLogger_->SetEnabled(true);  // Enable manually when needed for debugging
+    perfLogger_->SetTerminalOutput(true);  // Print to terminal
 
     // Register to node logger hierarchy for shared ownership
     if (nodeLogger) {

@@ -2,17 +2,10 @@
 #extension GL_GOOGLE_include_directive : require
 
 // ============================================================================
-// VoxelRayMarch_Compressed.comp - DXT Compressed Voxel Ray Marching
+// VoxelRayMarch_Compressed.comp - DXT Compressed Voxel Ray Marching (Benchmark)
 // ============================================================================
-// This shader is a variant of VoxelRayMarch.comp that reads voxel attributes
-// (color, normal) from DXT-compressed brick buffers instead of uncompressed
-// material-based lookup.
-//
-// Key differences from VoxelRayMarch.comp:
-// 1. Compressed color buffer (binding 7): DXT1 blocks, 8 bytes per 16 voxels
-// 2. Compressed normal buffer (binding 8): DXT normal blocks, 16 bytes per 16 voxels
-// 3. Decode functions from Compression.glsl replace material palette lookup
-// 4. Occupancy still from brickData[] (binding 2) for hit testing
+// Reads voxel color/normal from DXT-compressed brick buffers.
+// Minimal version for A/B performance comparison with uncompressed variant.
 //
 // Compression layout per brick (8x8x8 = 512 voxels = 32 DXT blocks):
 //   Color:  32 blocks * 8 bytes  = 256 bytes (was 1536 bytes @ 3 floats/voxel)
@@ -20,10 +13,7 @@
 //   Total:  768 bytes per brick (was 3072 bytes) = 4:1 compression
 // ============================================================================
 
-// Include shared SVO data structures (must be before buffer declarations that use them)
 #include "SVOTypes.glsl"
-
-// Include DXT decompression utilities
 #include "Compression.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -32,63 +22,37 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // BUFFER BINDINGS
 // ============================================================================
 
-// Output image (uses shaderStorageImageWriteWithoutFormat feature)
 layout(binding = 0) uniform writeonly image2D outputImage;
 
-// ESVO octree buffer (uvec2 per node - 64 bits)
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
 };
 
-// Brick occupancy buffer (8x8x8 voxels per brick, 1 uint per voxel)
-// Used for hit testing - non-zero means solid
 layout(std430, binding = 2) readonly buffer BrickBuffer {
     uint brickData[];
 };
 
-// Material buffer (Material struct defined in SVOTypes.glsl)
-// Kept for compatibility but not used in compressed mode
-layout(std430, binding = 3) readonly buffer MaterialBuffer {
-    Material materials[];
-};
-
-// ============================================================================
-// COMPRESSED ATTRIBUTE BUFFERS (NEW)
-// ============================================================================
-
 // DXT1 compressed colors - 32 blocks per brick, 8 bytes (uvec2) per block
-// Block layout: 2 RGB565 reference colors + 16x2-bit indices
-layout(std430, binding = 7) readonly buffer CompressedColorBuffer {
-    uvec2 compressedColors[];  // [brickIndex * 32 + blockIndex]
+layout(std430, binding = 6) readonly buffer CompressedColorBuffer {
+    uvec2 compressedColors[];
 };
 
 // DXT compressed normals - 32 blocks per brick, 16 bytes (uvec4) per block
-// Block layout: base normal + UV axes + 16x2-bit indices per axis
-layout(std430, binding = 8) readonly buffer CompressedNormalBuffer {
-    uvec4 compressedNormals[];  // [brickIndex * 32 + blockIndex]
+layout(std430, binding = 7) readonly buffer CompressedNormalBuffer {
+    uvec4 compressedNormals[];
 };
 
-// ============================================================================
-// OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
-// ============================================================================
-// Must match OctreeConfig struct in VoxelGridNode.cpp (std140 layout)
 layout(std140, binding = 5) uniform OctreeConfigUBO {
-    // ESVO scale parameters
-    int esvoMaxScale;       // Always 22 (ESVO normalized space)
-    int userMaxLevels;      // log2(resolution) = 7 for 128^3
-    int brickDepthLevels;   // 3 for 8^3 bricks
-    int brickSize;          // 8 (voxels per brick axis)
-
-    // Derived scale values
-    int minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
-    int brickESVOScale;     // Scale at which nodes are brick parents = 20
-    int bricksPerAxis;      // resolution / brickSize = 16
-    int _padding1;          // Pad to 16-byte alignment
-
-    // Grid bounds (in world units)
+    int esvoMaxScale;
+    int userMaxLevels;
+    int brickDepthLevels;
+    int brickSize;
+    int minESVOScale;
+    int brickESVOScale;
+    int bricksPerAxis;
+    int _padding1;
     vec3 gridMin;
-    float _padding2;        // Pad vec3 to vec4
-
+    float _padding2;
     vec3 gridMax;
     float _padding3;        // Pad vec3 to vec4
 

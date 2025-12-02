@@ -1,7 +1,13 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 
-// Include shared SVO data structures (must be before buffer declarations that use them)
+// ============================================================================
+// VoxelRayMarch.comp - Uncompressed Voxel Ray Marching (Benchmark Version)
+// ============================================================================
+// Reads voxel color from material palette via brickData material index.
+// Minimal version for A/B performance comparison with compressed variant.
+// ============================================================================
+
 #include "SVOTypes.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -10,108 +16,62 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // BUFFER BINDINGS
 // ============================================================================
 
-// Output image (uses shaderStorageImageWriteWithoutFormat feature)
 layout(binding = 0) uniform writeonly image2D outputImage;
 
-// ESVO octree buffer (uvec2 per node - 64 bits)
 layout(std430, binding = 1) readonly buffer ESVOBuffer {
     uvec2 esvoNodes[];
 };
 
-// Brick buffer (8x8x8 voxels per brick)
 layout(std430, binding = 2) readonly buffer BrickBuffer {
     uint brickData[];
 };
 
-// Material buffer (Material struct defined in SVOTypes.glsl)
 layout(std430, binding = 3) readonly buffer MaterialBuffer {
     Material materials[];
 };
 
-// NOTE: brickBaseIndex buffer (binding 6) has been REMOVED
-// Brick indices are now read directly from leaf descriptors via getBrickIndex()
-// This eliminates the need for a separate position→brick mapping buffer
-
-// ============================================================================
-// OCTREE CONFIG UBO (binding 5) - Runtime configuration from CPU
-// ============================================================================
-// Must match OctreeConfig struct in VoxelGridNode.cpp (std140 layout)
 layout(std140, binding = 5) uniform OctreeConfigUBO {
-    // ESVO scale parameters
-    int esvoMaxScale;       // Always 22 (ESVO normalized space)
-    int userMaxLevels;      // log2(resolution) = 7 for 128³
-    int brickDepthLevels;   // 3 for 8³ bricks
-    int brickSize;          // 8 (voxels per brick axis)
-
-    // Derived scale values
-    int minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
-    int brickESVOScale;     // Scale at which nodes are brick parents = 20
-    int bricksPerAxis;      // resolution / brickSize = 16
-    int _padding1;          // Pad to 16-byte alignment
-
-    // Grid bounds (in world units)
+    int esvoMaxScale;
+    int userMaxLevels;
+    int brickDepthLevels;
+    int brickSize;
+    int minESVOScale;
+    int brickESVOScale;
+    int bricksPerAxis;
+    int _padding1;
     vec3 gridMin;
-    float _padding2;        // Pad vec3 to vec4
-
+    float _padding2;
     vec3 gridMax;
-    float _padding3;        // Pad vec3 to vec4
-
-    // Coordinate Transformations
-    mat4 localToWorld;      // Transform from Grid Local [0,1] to World Space
-    mat4 worldToLocal;      // Transform from World Space to Grid Local [0,1]
-
-    // Padding to match C++ struct size (256 bytes)
+    float _padding3;
+    mat4 localToWorld;
+    mat4 worldToLocal;
     float _padding4[16];
 } octreeConfig;
 
-// NOTE: Ray trace buffer is declared after TraceStep/RayTraceHeader structs (see below)
-
 // ============================================================================
-// CONSTANTS - NOW MOSTLY FROM UBO (octreeConfig)
+// CONSTANTS
 // ============================================================================
 
-// ESVO uses fixed 23-bit mantissa precision for float bit manipulation tricks
-// This is INDEPENDENT of user's octree depth - it's how ESVO normalizes [1,2] space
-// NOTE: esvoMaxScale is now in octreeConfig UBO (always 22)
-// const int ESVO_MAX_SCALE = 22;  // REMOVED: Use octreeConfig.esvoMaxScale
+const int STACK_SIZE = 23;      // Must cover full ESVO range (octreeConfig.esvoMaxScale + 1)
+const int MAX_ITERS = 512;
+const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
+const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
 
 // ============================================================================
 // COORDINATE TRANSFORMATIONS
 // ============================================================================
 
-// Transform World Space Position to ESVO Normalized Space [1, 2]
-// 1. World -> Local [0, 1] using worldToLocal matrix
-// 2. Local [0, 1] -> ESVO [1, 2] by adding 1.0
 vec3 worldToNormalized(vec3 worldPos) {
     vec4 localPos = octreeConfig.worldToLocal * vec4(worldPos, 1.0);
-    // Perspective divide if needed (usually w=1 for affine)
     vec3 p = localPos.xyz / localPos.w;
     return p + 1.0;
 }
 
-// Transform ESVO Normalized Space Position [1, 2] to World Space
-// 1. ESVO [1, 2] -> Local [0, 1] by subtracting 1.0
-// 2. Local [0, 1] -> World using localToWorld matrix
 vec3 normalizedToWorld(vec3 normPos) {
     vec3 localPos = normPos - 1.0;
     vec4 worldPos = octreeConfig.localToWorld * vec4(localPos, 1.0);
     return worldPos.xyz / worldPos.w;
 }
-
-// User-defined octree parameters are now from octreeConfig UBO:
-// - octreeConfig.userMaxLevels (was USER_MAX_LEVELS)
-// - octreeConfig.brickDepthLevels (was BRICK_DEPTH)
-// - octreeConfig.brickSize
-// - octreeConfig.bricksPerAxis
-// - octreeConfig.brickESVOScale (was computed in getBrickESVOScale())
-// - octreeConfig.minESVOScale
-// - octreeConfig.gridMin/gridMax
-
-// Fixed constants (not configuration-dependent)
-const int STACK_SIZE = 23;      // Must cover full ESVO range (octreeConfig.esvoMaxScale + 1)
-const int MAX_ITERS = 512;
-const float EPSILON = 1e-6;     // General epsilon for floating point comparisons
-const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
 
 // Debug: set to 1 to visualize octant_mask instead of geometry
 #define DEBUG_OCTANT_MASK 0

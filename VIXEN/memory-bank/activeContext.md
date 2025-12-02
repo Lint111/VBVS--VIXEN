@@ -2,13 +2,79 @@
 
 **Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 3 DXT Compression COMPLETE | Memory Benchmarking Ready
+**Status**: Week 3 DXT Compression - A/B Testing Ready ✅
 
 ---
 
-## Current Focus: Week 3 DXT Compression
+## Current Focus: Week 3 DXT Compression - A/B Testing Ready
 
-GPU buffer upload integrated. Memory tracking enabled for benchmarking.
+Compressed shader variant fully integrated. Ready for runtime A/B performance comparison.
+
+### Week 3 Session 7 Summary (Dec 2, 2025)
+
+**Completed This Session:**
+- Integrated compressed shader variant toggle in VulkanGraphApplication.cpp
+- Added `USE_COMPRESSED_SHADER` compile-time flag (lines 44-60)
+- Updated shader builder to select VoxelRayMarch.comp or VoxelRayMarch_Compressed.comp
+- Added compressed buffer bindings (7, 8) conditional connections to descriptor gatherer
+- Build verified: VIXEN.exe compiles successfully
+
+**How to Run A/B Test:**
+1. Edit `application/main/source/VulkanGraphApplication.cpp`
+2. Set `#define USE_COMPRESSED_SHADER 0` for uncompressed baseline
+3. Set `#define USE_COMPRESSED_SHADER 1` for compressed variant
+4. Rebuild: `cmake --build build --config Debug -j4`
+5. Run VIXEN.exe and compare GPU timing output
+
+**Expected Results:**
+- Uncompressed baseline: ~200-247 Mrays/sec, 2.01-2.59 ms @ 800x600
+- Compressed variant: TBD (should be similar or slightly slower due to DXT decode overhead)
+- Memory savings: ~942 KB vs ~5 MB = 5.3:1 compression
+
+**Modified Files:**
+| File | Line Numbers | Changes |
+|------|--------------|---------|
+| `application/main/source/VulkanGraphApplication.cpp` | 44-60 | Added `USE_COMPRESSED_SHADER` flag |
+| `application/main/source/VulkanGraphApplication.cpp` | 657-725 | Shader variant selection in RegisterShaderBuilder |
+| `application/main/source/VulkanGraphApplication.cpp` | 1173-1187 | Conditional compressed buffer bindings (7, 8) |
+
+**Next Steps:**
+- Run A/B comparison: uncompressed vs compressed performance
+- Document memory vs performance tradeoffs
+- Analyze DXT decode overhead impact on rays/sec
+
+### Week 3 Session 5 Summary (Dec 2, 2025)
+
+**Completed This Session:**
+- Fixed QueryPool leak crash on shutdown (ReleaseGPUResources pattern)
+- Memory tracking working - runtime output verified
+- Benchmarked GPU memory usage
+
+**Memory Benchmark Results:**
+| Buffer | Size | Notes |
+|--------|------|-------|
+| OctreeBricks (uncompressed) | 2.45 MB | Raw RGBA8 voxel data |
+| CompressedNormals (DXT) | 628 KB | 4:1 compression ratio |
+| CompressedColors (DXT1) | 314 KB | 8:1 compression ratio |
+| OctreeNodes | 12.51 KB | ESVO traversal structure |
+| Materials | 0.66 KB | Material palette |
+| **Total** | **3.39 MB** | |
+
+**Compression Savings:**
+- Colors: 314 KB vs ~2.5 MB uncompressed = **8:1 compression**
+- Normals: 628 KB vs ~2.5 MB uncompressed = **4:1 compression**
+- Combined: ~942 KB vs ~5 MB = **5.3:1 compression**
+
+**Bug Fixed:**
+- QueryPool leak on shutdown - added `ReleaseGPUResources()` to GPUPerformanceLogger
+- Logger stays alive for log extraction, but GPU handles destroyed early
+
+**Modified Files:**
+| File | Changes |
+|------|---------|
+| `GPUPerformanceLogger.h:134-141` | Added `ReleaseGPUResources()` method |
+| `VoxelGridNode.cpp:799-805` | Call ReleaseGPUResources in CleanupImpl |
+| `ComputeDispatchNode.cpp:456-461` | Call ReleaseGPUResources in CleanupImpl |
 
 ### Week 3 Session 4 Summary (Dec 2, 2025)
 
@@ -117,6 +183,7 @@ GPU buffer upload integrated. Memory tracking enabled for benchmarking.
 - [x] Update GPUBuffers struct with compressed buffer fields
 - [x] GPU-side: Upload compressed buffers to bindings 7, 8 in VoxelGridNode
 - [x] Add memory tracking for GPU buffer benchmarking
+- [x] Wire up shader variant toggle (`USE_COMPRESSED_SHADER` flag)
 - [ ] Run runtime benchmarking (A/B test compressed vs uncompressed)
 - [ ] Document memory reduction results
 

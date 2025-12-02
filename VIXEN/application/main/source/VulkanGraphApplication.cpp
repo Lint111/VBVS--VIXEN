@@ -41,6 +41,24 @@
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 #include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 
+// ============================================================================
+// SHADER VARIANT SELECTION (A/B Testing)
+// ============================================================================
+// Set to 1 to use DXT-compressed shader variant (uses compressed buffers at bindings 7, 8)
+// Set to 0 to use uncompressed baseline (uses raw brick data at binding 2)
+//
+// Performance Testing:
+//   Uncompressed baseline: ~200-247 Mrays/sec, 2.01-2.59 ms dispatch @ 800x600
+//   Compressed variant: TBD (run A/B comparison)
+//
+// Memory Impact:
+//   Uncompressed: ~5 MB (OctreeBricks at 4 bytes/voxel)
+//   Compressed:   ~942 KB (DXT1 colors + DXT normals) = 5.3:1 compression
+// ============================================================================
+#ifndef USE_COMPRESSED_SHADER
+#define USE_COMPRESSED_SHADER 0  // Default: uncompressed baseline
+#endif
+
 std::unique_ptr<VulkanGraphApplication> VulkanGraphApplication::instance;
 std::once_flag VulkanGraphApplication::onlyOnce;
 
@@ -639,15 +657,26 @@ void VulkanGraphApplication::BuildRenderGraph() {
     computeShaderLibNode->RegisterShaderBuilder([this](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
+        // Shader variant selection for A/B performance testing
+        // USE_COMPRESSED_SHADER=1: DXT compressed variant (bindings 7,8 for compressed data)
+        // USE_COMPRESSED_SHADER=0: Uncompressed baseline (binding 2 for raw brick data)
+#if USE_COMPRESSED_SHADER
+        constexpr const char* shaderName = "VoxelRayMarch_Compressed.comp";
+        constexpr const char* programName = "VoxelRayMarch_Compressed";
+#else
+        constexpr const char* shaderName = "VoxelRayMarch.comp";
+        constexpr const char* programName = "VoxelRayMarch";
+#endif
+
         // Find voxel ray march shader source
         // Try compile-time shader directory first, then fallback to runtime search paths
         std::vector<std::filesystem::path> possiblePaths = {
 #ifdef VIXEN_SHADER_SOURCE_DIR
-            VIXEN_SHADER_SOURCE_DIR "/VoxelRayMarch.comp",
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
 #endif
-            "shaders/VoxelRayMarch.comp",
-            "../shaders/VoxelRayMarch.comp",
-            "VoxelRayMarch.comp"
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
         };
 
         std::filesystem::path compPath;
@@ -660,18 +689,18 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
         if (compPath.empty()) {
             if (mainLogger && mainLogger->IsEnabled()) {
-                mainLogger->Error("[BuildRenderGraph] VoxelRayMarch.comp not found in search paths");
+                mainLogger->Error("[BuildRenderGraph] " + std::string(shaderName) + " not found in search paths");
                 mainLogger->Error("[BuildRenderGraph] Current working directory: " + std::filesystem::current_path().string());
 #ifdef VIXEN_SHADER_SOURCE_DIR
                 mainLogger->Error("[BuildRenderGraph] VIXEN_SHADER_SOURCE_DIR: " VIXEN_SHADER_SOURCE_DIR);
 #endif
             }
-            throw std::runtime_error("VoxelRayMarch.comp not found - check shader search paths");
+            throw std::runtime_error(std::string(shaderName) + " not found - check shader search paths");
         }
 
         // Configure builder with include paths for #include directive support
         // AddIncludePath() automatically creates internal preprocessor
-        builder.SetProgramName("VoxelRayMarch")
+        builder.SetProgramName(programName)
                .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
                .SetTargetVulkanVersion(vulkanVer)
                .SetTargetSpirvVersion(spirvVer)
@@ -683,7 +712,13 @@ void VulkanGraphApplication::BuildRenderGraph() {
                .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
 
         if (mainLogger && mainLogger->IsEnabled()) {
-            mainLogger->Info("[BuildRenderGraph] Configured VoxelRayMarch compute shader from: " + compPath.string());
+#if USE_COMPRESSED_SHADER
+            mainLogger->Info("[BuildRenderGraph] Using COMPRESSED shader variant: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Compressed buffers at bindings 7 (colors), 8 (normals)");
+#else
+            mainLogger->Info("[BuildRenderGraph] Using UNCOMPRESSED shader variant: " + compPath.string());
+            mainLogger->Info("[BuildRenderGraph] Raw brick data at binding 2");
+#endif
         }
 
         return builder;
@@ -771,8 +806,8 @@ void VulkanGraphApplication::BuildRenderGraph() {
 
     // Enable logging for compute dispatch to see execution
     if (auto* dispatchLogger = dispatch->GetLogger()) {
-        dispatchLogger->SetEnabled(false);
-        dispatchLogger->SetTerminalOutput(false);
+        dispatchLogger->SetEnabled(true);
+        dispatchLogger->SetTerminalOutput(true);
     }
 
     // Enable logging for push constant gatherer to see packing
@@ -1132,8 +1167,21 @@ void VulkanGraphApplication::BuildRenderGraph() {
                           descriptorGatherer, 5,  // Binding 5 (hardcoded until SDI regenerated)
                           SlotRole::Dependency | SlotRole::Execute);
 
-    // NOTE: brickBaseIndex buffer (binding 6) REMOVED - sparse brick architecture
-    // stores brick indices directly in leaf descriptors instead of separate buffer
+#if USE_COMPRESSED_SHADER
+    // Compressed shader variant requires DXT compressed buffers at bindings 6 and 7
+    // Binding 6: compressedColors (DXT1) - 8 bytes/block, 32 blocks/brick = 256 bytes/brick
+    // Binding 7: compressedNormals (DXT) - 16 bytes/block, 32 blocks/brick = 512 bytes/brick
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+                          descriptorGatherer, 6,  // Binding 6: CompressedColorBuffer
+                          SlotRole::Dependency | SlotRole::Execute);
+    batch.ConnectVariadic(voxelGridNode, VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+                          descriptorGatherer, 7,  // Binding 7: CompressedNormalBuffer
+                          SlotRole::Dependency | SlotRole::Execute);
+
+    if (mainLogger && mainLogger->IsEnabled()) {
+        mainLogger->Info("[BuildRenderGraph] Connected compressed buffers: binding 6 (colors), binding 7 (normals)");
+    }
+#endif
 
     // Swapchain connections to descriptor set and dispatch
     // Extract imageCount metadata using field extraction, DESCRIPTOR_RESOURCES provides actual bindings

@@ -72,24 +72,17 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
-    // Brick base index buffer - per-node mapping to sparse brick array (binding 6)
-    // For nodes at brickESVOScale with leafMask != 0, stores the starting index
-    // into the sparse brickData array. 0xFFFFFFFF = no bricks at this node.
-    OUTPUT_SLOT(BRICK_BASE_INDEX_BUFFER, VkBuffer, 5,
-        SlotNullability::Required,
-        SlotMutability::WriteOnly);
-
-    // DXT compressed color buffer (shader binding 7)
+    // DXT compressed color buffer (shader binding 6)
     // 32 DXT1 blocks per brick, 8 bytes (uvec2) per block = 256 bytes/brick
     // Optional: only populated if octree provides compressed data
     OUTPUT_SLOT(COMPRESSED_COLOR_BUFFER, VkBuffer, 6,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
-    // DXT compressed normal buffer (shader binding 8)
+    // DXT compressed normal buffer (shader binding 7)
     // 32 DXT blocks per brick, 16 bytes (uvec4) per block = 512 bytes/brick
     // Optional: only populated if octree provides compressed data
-    OUTPUT_SLOT(COMPRESSED_NORMAL_BUFFER, VkBuffer, 7,
+    OUTPUT_SLOT(COMPRESSED_NORMAL_BUFFER, VkBuffer, 5,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
@@ -133,12 +126,6 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         octreeConfigDesc.size = 64;  // OctreeConfig struct padded to 64 bytes (std140 alignment)
         octreeConfigDesc.usage = ResourceUsage::UniformBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(OCTREE_CONFIG_BUFFER, "octree_config_buffer", ResourceLifetime::Persistent, octreeConfigDesc);
-
-        // Brick base index buffer - one uint32 per node
-        BufferDescriptor brickBaseIndexDesc{};
-        brickBaseIndexDesc.size = 4096 * 4;  // Initial capacity: 4096 nodes * 4 bytes
-        brickBaseIndexDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
-        INIT_OUTPUT_DESC(BRICK_BASE_INDEX_BUFFER, "brick_base_index_buffer", ResourceLifetime::Persistent, brickBaseIndexDesc);
 
         // Compressed color buffer - DXT1 blocks (256 bytes/brick, 8 bytes/block * 32 blocks)
         BufferDescriptor compressedColorDesc{};

@@ -610,15 +610,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // Output resources
     std::cout << "!!!! [VoxelGridNode::CompileImpl] OUTPUTTING NEW RESOURCES !!!!" << std::endl;
     std::cout << "  NEW octreeNodesBuffer=" << octreeNodesBuffer << ", octreeBricksBuffer=" << octreeBricksBuffer
-              << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer
-              << ", brickBaseIndexBuffer=" << brickBaseIndexBuffer << std::endl;
+              << ", octreeMaterialsBuffer=" << octreeMaterialsBuffer << ", octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
 
     // Output octree buffers
     ctx.Out(VoxelGridNodeConfig::OCTREE_NODES_BUFFER, octreeNodesBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
-    ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
 
     // Output compressed buffers (optional - only if compression is enabled)
     if (compressedColorBuffer != VK_NULL_HANDLE) {
@@ -645,13 +643,14 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Print memory summary for Week 3 benchmarking
     if (memoryLogger_) {
-        std::cout << "\n";
-        std::cout << "========================================" << std::endl;
-        std::cout << "[VoxelGridNode] GPU MEMORY SUMMARY" << std::endl;
-        std::cout << "========================================" << std::endl;
-        std::cout << memoryLogger_->GetMemorySummary() << std::endl;
-        std::cout << "Total GPU Memory: " << memoryLogger_->GetTotalTrackedMemoryMB() << " MB" << std::endl;
-        std::cout << "========================================\n" << std::endl;
+        std::cout << "\n========================================\n";
+        std::cout << "[VoxelGridNode] GPU MEMORY SUMMARY\n";
+        std::cout << "========================================\n";
+        std::cout << memoryLogger_->GetMemorySummary();
+        std::cout << "Total GPU Memory: " << memoryLogger_->GetTotalTrackedMemoryMB() << " MB\n";
+        std::cout << "========================================\n" << std::flush;
+    } else {
+        std::cout << "[VoxelGridNode] WARNING: memoryLogger_ is null, cannot print memory summary\n" << std::flush;
     }
 
     NODE_LOG_DEBUG("[VoxelGridNode::CompileImpl] COMPLETED");
@@ -671,7 +670,6 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER, octreeBricksBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
-    ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
 
     // Re-output compressed buffers (optional)
     if (compressedColorBuffer != VK_NULL_HANDLE) {
@@ -747,19 +745,6 @@ void VoxelGridNode::DestroyOctreeBuffers() {
         vkFreeMemory(vulkanDevice->device, octreeConfigMemory, nullptr);
         octreeConfigMemory = VK_NULL_HANDLE;
         LogCleanupProgress("octreeConfigMemory freed");
-    }
-
-    // Destroy brick base index buffer and memory
-    if (brickBaseIndexBuffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(vulkanDevice->device, brickBaseIndexBuffer, nullptr);
-        brickBaseIndexBuffer = VK_NULL_HANDLE;
-        LogCleanupProgress("brickBaseIndexBuffer destroyed");
-    }
-
-    if (brickBaseIndexMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(vulkanDevice->device, brickBaseIndexMemory, nullptr);
-        brickBaseIndexMemory = VK_NULL_HANDLE;
-        LogCleanupProgress("brickBaseIndexMemory freed");
     }
 
     // Destroy compressed color buffer and memory
@@ -1392,19 +1377,11 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
               << (sparseBrickData.size() * sizeof(uint32_t)) << " bytes" << std::endl;
 
     // ============================================================================
-    // Step 2: DEPRECATED - brickBaseIndex buffer no longer needed
-    // ============================================================================
     // SPARSE BRICK ARCHITECTURE: Brick indices are now stored directly in leaf
-    // descriptors via setBrickIndex(). The shader reads getBrickIndex(leafDescriptor)
-    // instead of looking up brickBaseIndex[linearIdx].
-    //
-    // We still create a minimal placeholder buffer for binding compatibility,
-    // but it's not actually used by the shader anymore.
-
-    std::vector<uint32_t> brickBaseIndex(1, 0xFFFFFFFFu);  // Minimal placeholder
+    // descriptors via setBrickIndex(). The shader reads getBrickIndex(leafDescriptor).
 
     std::cout << "[VoxelGridNode::UploadESVOBuffers] SPARSE BRICK ARCHITECTURE: "
-              << "brickIndex now embedded in leaf descriptors (brickBaseIndex buffer deprecated)" << std::endl;
+              << "brickIndex now embedded in leaf descriptors" << std::endl;
 
     VkDeviceSize bricksBufferSize = sparseBrickData.size() * sizeof(uint32_t);
     if (bricksBufferSize == 0) {
@@ -1413,12 +1390,9 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
         bricksBufferSize = voxelsPerBrick * sizeof(uint32_t);
     }
 
-    VkDeviceSize baseIndexBufferSize = brickBaseIndex.size() * sizeof(uint32_t);
-
     NODE_LOG_INFO("Uploading ESVO buffers: " +
                   std::to_string(nodesBufferSize) + " bytes (nodes), " +
-                  std::to_string(bricksBufferSize) + " bytes (sparse bricks), " +
-                  std::to_string(baseIndexBufferSize) + " bytes (base indices)");
+                  std::to_string(bricksBufferSize) + " bytes (sparse bricks)");
 
     const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
 
@@ -1591,51 +1565,6 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
     }
 
     // ============================================================================
-    // CREATE BRICK BASE INDEX BUFFER (binding 6)
-    // ============================================================================
-    VkBufferCreateInfo baseIndexBufferInfo{};
-    baseIndexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    baseIndexBufferInfo.size = baseIndexBufferSize;
-    baseIndexBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    baseIndexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    result = vkCreateBuffer(vulkanDevice->device, &baseIndexBufferInfo, nullptr, &brickBaseIndexBuffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[VoxelGridNode] Failed to create brick base index buffer: " + std::to_string(result));
-    }
-
-    VkMemoryRequirements baseIndexMemReq;
-    vkGetBufferMemoryRequirements(vulkanDevice->device, brickBaseIndexBuffer, &baseIndexMemReq);
-
-    VkMemoryAllocateInfo baseIndexAllocInfo{};
-    baseIndexAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    baseIndexAllocInfo.allocationSize = baseIndexMemReq.size;
-
-    memoryTypeIndex = UINT32_MAX;
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
-        if ((baseIndexMemReq.memoryTypeBits & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-            memoryTypeIndex = i;
-            break;
-        }
-    }
-    if (memoryTypeIndex == UINT32_MAX) {
-        throw std::runtime_error("[VoxelGridNode] Failed to find device-local memory for brick base index");
-    }
-    baseIndexAllocInfo.memoryTypeIndex = memoryTypeIndex;
-
-    result = vkAllocateMemory(vulkanDevice->device, &baseIndexAllocInfo, nullptr, &brickBaseIndexMemory);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("[VoxelGridNode] Failed to allocate brick base index memory: " + std::to_string(result));
-    }
-    vkBindBufferMemory(vulkanDevice->device, brickBaseIndexBuffer, brickBaseIndexMemory, 0);
-
-    // Register base index buffer for memory tracking
-    if (memoryLogger_) {
-        memoryLogger_->RegisterBufferAllocation("BrickBaseIndex", baseIndexBufferSize);
-    }
-
-    // ============================================================================
     // UPLOAD DATA VIA STAGING BUFFERS
     // ============================================================================
     VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1727,11 +1656,6 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
 
     // Upload materials
     uploadBuffer(octreeMaterialsBuffer, defaultMaterials.data(), materialsBufferSize);
-
-    // Upload brick base indices
-    if (!brickBaseIndex.empty()) {
-        uploadBuffer(brickBaseIndexBuffer, brickBaseIndex.data(), baseIndexBufferSize);
-    }
 
     NODE_LOG_INFO("Uploaded ESVO buffers to GPU (sparse brick architecture)");
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
