@@ -150,9 +150,8 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_MATERIALS_BUFFER_Slot::index == 2, "OCTREE_MATERIALS_BUFFER must be at index 2");
     static_assert(DEBUG_CAPTURE_BUFFER_Slot::index == 3, "DEBUG_CAPTURE_BUFFER must be at index 3");
     static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 4, "OCTREE_CONFIG_BUFFER must be at index 4");
-    static_assert(BRICK_BASE_INDEX_BUFFER_Slot::index == 5, "BRICK_BASE_INDEX_BUFFER must be at index 5");
+    static_assert(COMPRESSED_NORMAL_BUFFER_Slot::index == 5, "COMPRESSED_NORMAL_BUFFER must be at index 5");
     static_assert(COMPRESSED_COLOR_BUFFER_Slot::index == 6, "COMPRESSED_COLOR_BUFFER must be at index 6");
-    static_assert(COMPRESSED_NORMAL_BUFFER_Slot::index == 7, "COMPRESSED_NORMAL_BUFFER must be at index 7");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -162,7 +161,6 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<OCTREE_MATERIALS_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
-    static_assert(std::is_same_v<BRICK_BASE_INDEX_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_COLOR_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_NORMAL_BUFFER_Slot::Type, VkBuffer>);
 };

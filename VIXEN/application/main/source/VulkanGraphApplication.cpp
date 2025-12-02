@@ -56,7 +56,7 @@
 //   Compressed:   ~942 KB (DXT1 colors + DXT normals) = 5.3:1 compression
 // ============================================================================
 #ifndef USE_COMPRESSED_SHADER
-#define USE_COMPRESSED_SHADER 0  // Default: uncompressed baseline
+#define USE_COMPRESSED_SHADER 1  // Default: compressed baseline
 #endif
 
 std::unique_ptr<VulkanGraphApplication> VulkanGraphApplication::instance;
