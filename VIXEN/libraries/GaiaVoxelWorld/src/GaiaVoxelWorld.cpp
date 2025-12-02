@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "GaiaVoxelWorld.h"
 #include <algorithm>
 #include <iostream>

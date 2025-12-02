@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "ShaderCompilationCacher.h"
 #include "VixenHash.h"
 #include "ShaderCompiler.h"

@@ -15,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 6;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, BRICK_BASE_INDEX
+    static constexpr size_t OUTPUTS = 8;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, BRICK_BASE_INDEX, COMPRESSED_COLOR, COMPRESSED_NORMAL
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -26,7 +26,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 6 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, BRICK_BASE_INDEX_BUFFER)
+ * Outputs: 8 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, BRICK_BASE_INDEX_BUFFER, COMPRESSED_COLOR_BUFFER, COMPRESSED_NORMAL_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -79,6 +79,20 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // DXT compressed color buffer (shader binding 7)
+    // 32 DXT1 blocks per brick, 8 bytes (uvec2) per block = 256 bytes/brick
+    // Optional: only populated if octree provides compressed data
+    OUTPUT_SLOT(COMPRESSED_COLOR_BUFFER, VkBuffer, 6,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
+    // DXT compressed normal buffer (shader binding 8)
+    // 32 DXT blocks per brick, 16 bytes (uvec4) per block = 512 bytes/brick
+    // Optional: only populated if octree provides compressed data
+    OUTPUT_SLOT(COMPRESSED_NORMAL_BUFFER, VkBuffer, 7,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -125,6 +139,18 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         brickBaseIndexDesc.size = 4096 * 4;  // Initial capacity: 4096 nodes * 4 bytes
         brickBaseIndexDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(BRICK_BASE_INDEX_BUFFER, "brick_base_index_buffer", ResourceLifetime::Persistent, brickBaseIndexDesc);
+
+        // Compressed color buffer - DXT1 blocks (256 bytes/brick, 8 bytes/block * 32 blocks)
+        BufferDescriptor compressedColorDesc{};
+        compressedColorDesc.size = 1024 * 256;  // Initial capacity: 1024 bricks * 256 bytes
+        compressedColorDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(COMPRESSED_COLOR_BUFFER, "compressed_color_buffer", ResourceLifetime::Persistent, compressedColorDesc);
+
+        // Compressed normal buffer - DXT blocks (512 bytes/brick, 16 bytes/block * 32 blocks)
+        BufferDescriptor compressedNormalDesc{};
+        compressedNormalDesc.size = 1024 * 512;  // Initial capacity: 1024 bricks * 512 bytes
+        compressedNormalDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(COMPRESSED_NORMAL_BUFFER, "compressed_normal_buffer", ResourceLifetime::Persistent, compressedNormalDesc);
     }
 
     // Automated config validation
@@ -138,6 +164,8 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(DEBUG_CAPTURE_BUFFER_Slot::index == 3, "DEBUG_CAPTURE_BUFFER must be at index 3");
     static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 4, "OCTREE_CONFIG_BUFFER must be at index 4");
     static_assert(BRICK_BASE_INDEX_BUFFER_Slot::index == 5, "BRICK_BASE_INDEX_BUFFER must be at index 5");
+    static_assert(COMPRESSED_COLOR_BUFFER_Slot::index == 6, "COMPRESSED_COLOR_BUFFER must be at index 6");
+    static_assert(COMPRESSED_NORMAL_BUFFER_Slot::index == 7, "COMPRESSED_NORMAL_BUFFER must be at index 7");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -148,6 +176,8 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<DEBUG_CAPTURE_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<BRICK_BASE_INDEX_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<COMPRESSED_COLOR_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<COMPRESSED_NORMAL_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "MessageBus.h"
 #include <iostream>
 #include <algorithm>

@@ -1,6 +1,7 @@
 // Example usage of DynamicVoxelScalar iterator
 // This demonstrates the intended pattern for GaiaVoxelWorld::createVoxel
 
+#include "pch.h"
 #include "GaiaVoxelWorld.h"
 #include "DynamicVoxelStruct.h"
 

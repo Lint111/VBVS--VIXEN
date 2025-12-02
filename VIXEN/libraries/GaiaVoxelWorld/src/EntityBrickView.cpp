@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "EntityBrickView.h"
 #include "GaiaVoxelWorld.h"
 #include <algorithm>

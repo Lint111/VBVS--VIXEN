@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "ArchetypeBuilder.h"
 #include <iostream>
 #include <algorithm>

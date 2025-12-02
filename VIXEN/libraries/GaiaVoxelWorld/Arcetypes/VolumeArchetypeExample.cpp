@@ -1,3 +1,5 @@
+#include "pch.h"
+
 /**
  * Complete Example: VolumeArchetype with ArchetypeBuilder
  *

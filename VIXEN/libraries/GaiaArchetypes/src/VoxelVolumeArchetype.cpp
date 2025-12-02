@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "VoxelVolumeArchetype.h"
 #include <iostream>
 #include <chrono>

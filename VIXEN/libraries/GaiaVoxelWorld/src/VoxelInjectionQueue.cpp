@@ -1,4 +1,5 @@
 #define NOMINMAX  // Prevent Windows min/max macros
+#include "pch.h"
 #include "VoxelInjectionQueue.h"
 #include "GaiaVoxelWorld.h"
 #include "VoxelComponents.h"

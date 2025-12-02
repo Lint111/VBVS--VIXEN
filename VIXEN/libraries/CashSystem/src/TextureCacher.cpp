@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "TextureCacher.h"
 #include "SamplerCacher.h"
 #include "VixenHash.h"

@@ -257,6 +257,150 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     UploadESVOBuffers(*octreeData, grid);
     std::cout << "[VoxelGridNode] ESVO buffers uploaded successfully" << std::endl;
 
+    // ========================================================================
+    // Upload DXT Compressed Buffers (Week 3)
+    // ========================================================================
+    // LaineKarrasOctree::rebuild() generates compressed color/normal data.
+    // These buffers are optional - only created if compressed data is available.
+    if (octree.hasCompressedData()) {
+        const VkPhysicalDeviceMemoryProperties& memProperties = vulkanDevice->gpuMemoryProperties;
+
+        // Helper lambda to create and upload a buffer
+        auto createAndUploadBuffer = [&](VkBuffer& buffer, VkDeviceMemory& memory,
+                                        const void* data, VkDeviceSize size,
+                                        const char* bufferName) {
+            if (size == 0 || data == nullptr) {
+                std::cout << "[VoxelGridNode] Skipping " << bufferName << " (no data)" << std::endl;
+                return;
+            }
+
+            // Create buffer
+            VkBufferCreateInfo bufferInfo{};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bufferInfo.size = size;
+            bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VkResult result = vkCreateBuffer(vulkanDevice->device, &bufferInfo, nullptr, &buffer);
+            if (result != VK_SUCCESS) {
+                throw std::runtime_error(std::string("[VoxelGridNode] Failed to create ") + bufferName);
+            }
+
+            // Allocate device-local memory
+            VkMemoryRequirements memReq;
+            vkGetBufferMemoryRequirements(vulkanDevice->device, buffer, &memReq);
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memReq.size;
+
+            uint32_t memoryTypeIndex = UINT32_MAX;
+            for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+                if ((memReq.memoryTypeBits & (1 << i)) &&
+                    (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                    memoryTypeIndex = i;
+                    break;
+                }
+            }
+            if (memoryTypeIndex == UINT32_MAX) {
+                throw std::runtime_error(std::string("[VoxelGridNode] Failed to find memory for ") + bufferName);
+            }
+            allocInfo.memoryTypeIndex = memoryTypeIndex;
+
+            result = vkAllocateMemory(vulkanDevice->device, &allocInfo, nullptr, &memory);
+            if (result != VK_SUCCESS) {
+                throw std::runtime_error(std::string("[VoxelGridNode] Failed to allocate ") + bufferName);
+            }
+            vkBindBufferMemory(vulkanDevice->device, buffer, memory, 0);
+
+            // Upload via staging buffer
+            VkBufferCreateInfo stagingInfo{};
+            stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            stagingInfo.size = size;
+            stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VkBuffer stagingBuffer;
+            vkCreateBuffer(vulkanDevice->device, &stagingInfo, nullptr, &stagingBuffer);
+
+            VkMemoryRequirements stagingMemReq;
+            vkGetBufferMemoryRequirements(vulkanDevice->device, stagingBuffer, &stagingMemReq);
+
+            VkMemoryAllocateInfo stagingAllocInfo{};
+            stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            stagingAllocInfo.allocationSize = stagingMemReq.size;
+
+            VkMemoryPropertyFlags stagingProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+                if ((stagingMemReq.memoryTypeBits & (1 << i)) &&
+                    (memProperties.memoryTypes[i].propertyFlags & stagingProps) == stagingProps) {
+                    stagingAllocInfo.memoryTypeIndex = i;
+                    break;
+                }
+            }
+
+            VkDeviceMemory stagingMemory;
+            vkAllocateMemory(vulkanDevice->device, &stagingAllocInfo, nullptr, &stagingMemory);
+            vkBindBufferMemory(vulkanDevice->device, stagingBuffer, stagingMemory, 0);
+
+            void* mappedData;
+            vkMapMemory(vulkanDevice->device, stagingMemory, 0, size, 0, &mappedData);
+            std::memcpy(mappedData, data, size);
+            vkUnmapMemory(vulkanDevice->device, stagingMemory);
+
+            // Copy from staging to device
+            VkCommandBufferAllocateInfo cmdAllocInfo{};
+            cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cmdAllocInfo.commandPool = commandPool;
+            cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cmdAllocInfo.commandBufferCount = 1;
+
+            VkCommandBuffer cmdBuffer;
+            vkAllocateCommandBuffers(vulkanDevice->device, &cmdAllocInfo, &cmdBuffer);
+
+            VkCommandBufferBeginInfo beginInfo{};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+            vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+            VkBufferCopy copyRegion{};
+            copyRegion.size = size;
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer, buffer, 1, &copyRegion);
+            vkEndCommandBuffer(cmdBuffer);
+
+            VkSubmitInfo submitInfo{};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &cmdBuffer;
+
+            vkQueueSubmit(vulkanDevice->queue, 1, &submitInfo, VK_NULL_HANDLE);
+            vkQueueWaitIdle(vulkanDevice->queue);
+
+            vkFreeCommandBuffers(vulkanDevice->device, commandPool, 1, &cmdBuffer);
+            vkDestroyBuffer(vulkanDevice->device, stagingBuffer, nullptr);
+            vkFreeMemory(vulkanDevice->device, stagingMemory, nullptr);
+
+            std::cout << "[VoxelGridNode] Uploaded " << bufferName << " (" << size << " bytes)" << std::endl;
+        };
+
+        // Upload compressed color buffer (binding 7)
+        createAndUploadBuffer(compressedColorBuffer, compressedColorMemory,
+                             octree.getCompressedColorData(),
+                             octree.getCompressedColorSize(),
+                             "compressedColorBuffer");
+
+        // Upload compressed normal buffer (binding 8)
+        createAndUploadBuffer(compressedNormalBuffer, compressedNormalMemory,
+                             octree.getCompressedNormalData(),
+                             octree.getCompressedNormalSize(),
+                             "compressedNormalBuffer");
+
+        std::cout << "[VoxelGridNode] DXT compressed buffers uploaded ("
+                  << octree.getCompressedBrickCount() << " bricks)" << std::endl;
+    } else {
+        std::cout << "[VoxelGridNode] No compressed data available (compression not enabled)" << std::endl;
+    }
+
     // Create and upload OctreeConfig UBO with scale parameters
     {
         OctreeConfig config{};
@@ -456,6 +600,16 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
     ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
 
+    // Output compressed buffers (optional - only if compression is enabled)
+    if (compressedColorBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER, compressedColorBuffer);
+        std::cout << "  COMPRESSED_COLOR_BUFFER=" << compressedColorBuffer << std::endl;
+    }
+    if (compressedNormalBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
+        std::cout << "  COMPRESSED_NORMAL_BUFFER=" << compressedNormalBuffer << std::endl;
+    }
+
     // Output debug capture buffer with IDebugCapture interface attached
     // When connected with SlotRole::Debug, the gatherer will auto-collect it
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
@@ -486,6 +640,14 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER, octreeMaterialsBuffer);
     ctx.Out(VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER, octreeConfigBuffer);
     ctx.Out(VoxelGridNodeConfig::BRICK_BASE_INDEX_BUFFER, brickBaseIndexBuffer);
+
+    // Re-output compressed buffers (optional)
+    if (compressedColorBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER, compressedColorBuffer);
+    }
+    if (compressedNormalBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
+    }
 
     // Re-output debug capture buffer (with interface)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
@@ -566,6 +728,32 @@ void VoxelGridNode::DestroyOctreeBuffers() {
         vkFreeMemory(vulkanDevice->device, brickBaseIndexMemory, nullptr);
         brickBaseIndexMemory = VK_NULL_HANDLE;
         LogCleanupProgress("brickBaseIndexMemory freed");
+    }
+
+    // Destroy compressed color buffer and memory
+    if (compressedColorBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, compressedColorBuffer, nullptr);
+        compressedColorBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("compressedColorBuffer destroyed");
+    }
+
+    if (compressedColorMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, compressedColorMemory, nullptr);
+        compressedColorMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("compressedColorMemory freed");
+    }
+
+    // Destroy compressed normal buffer and memory
+    if (compressedNormalBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, compressedNormalBuffer, nullptr);
+        compressedNormalBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("compressedNormalBuffer destroyed");
+    }
+
+    if (compressedNormalMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, compressedNormalMemory, nullptr);
+        compressedNormalMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("compressedNormalMemory freed");
     }
 }
 

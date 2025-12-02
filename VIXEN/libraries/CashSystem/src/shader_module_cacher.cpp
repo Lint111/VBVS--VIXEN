@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "ShaderModuleCacher.h"
 #include "VulkanDevice.h"
 #include "VixenHash.h"  // Project-wide hash library (Vixen::Hash namespace)

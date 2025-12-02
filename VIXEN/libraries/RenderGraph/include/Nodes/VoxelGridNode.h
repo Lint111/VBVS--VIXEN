@@ -106,6 +106,16 @@ private:
     VkBuffer brickBaseIndexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory brickBaseIndexMemory = VK_NULL_HANDLE;
 
+    // DXT compressed color buffer (shader binding 7)
+    // 32 DXT1 blocks per brick, 8 bytes (uvec2) per block = 256 bytes/brick
+    VkBuffer compressedColorBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory compressedColorMemory = VK_NULL_HANDLE;
+
+    // DXT compressed normal buffer (shader binding 8)
+    // 32 DXT blocks per brick, 16 bytes (uvec4) per block = 512 bytes/brick
+    VkBuffer compressedNormalBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory compressedNormalMemory = VK_NULL_HANDLE;
+
     // Debug capture resource (owns buffer, implements IDebugCapture)
     std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 
