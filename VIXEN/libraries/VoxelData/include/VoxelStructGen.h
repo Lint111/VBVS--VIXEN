@@ -4,7 +4,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // ============================================================================
 // MACRO: Generate Scalar and Array Structures from VoxelConfig

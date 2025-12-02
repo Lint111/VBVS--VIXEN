@@ -6,7 +6,7 @@
 #include <thread>
 #include <chrono>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // Queue Lifecycle Tests

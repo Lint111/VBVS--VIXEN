@@ -3,7 +3,7 @@
 #include <cmath>
 #include <algorithm>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 // ============================================================================
 // Contour Implementation
@@ -230,4 +230,4 @@ int popc8(uint8_t mask) {
     return count;
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

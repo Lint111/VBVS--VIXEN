@@ -5,7 +5,7 @@
 #include "ComponentData.h"
 #include <glm/glm.hpp>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 using namespace VoxelData;
 
 // ============================================================================

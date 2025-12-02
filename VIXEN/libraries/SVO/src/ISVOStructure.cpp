@@ -2,7 +2,7 @@
 #include "ISVOStructure.h"
 #include <fstream>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 // Default implementation for file I/O
 bool ISVOStructure::saveToFile(const std::string& filename) const {
@@ -40,4 +40,4 @@ bool ISVOStructure::loadFromFile(const std::string& filename) {
     return deserialize(data);
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

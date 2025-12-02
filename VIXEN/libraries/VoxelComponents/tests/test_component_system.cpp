@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // Macro Component Registry Tests

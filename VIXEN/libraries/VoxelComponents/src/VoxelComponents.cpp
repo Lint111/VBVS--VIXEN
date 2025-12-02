@@ -2,7 +2,7 @@
 #include "VoxelComponents.h"
 #include <cmath>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 // ============================================================================
 // Morton Code (Z-Order Curve) - Encode/Decode
@@ -122,4 +122,4 @@ MortonKey fromPosition(const glm::ivec3& pos) {
 
 } // namespace MortonKeyUtils
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

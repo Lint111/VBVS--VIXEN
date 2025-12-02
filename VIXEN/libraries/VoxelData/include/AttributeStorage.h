@@ -7,7 +7,7 @@
 #include <string>
 #include <cstdint>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 /**
  * AttributeStorage - Owns raw data for one attribute across ALL bricks

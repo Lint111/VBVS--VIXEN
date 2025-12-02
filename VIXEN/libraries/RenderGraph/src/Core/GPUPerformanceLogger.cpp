@@ -142,6 +142,71 @@ std::string GPUPerformanceLogger::GetPerformanceSummary() const {
         oss << " | Resolution: " << frameDispatchInfo_[0].width << "x" << frameDispatchInfo_[0].height;
     }
 
+    // Add memory info if tracked
+    if (totalTrackedMemory_ > 0) {
+        oss << " | Memory: " << std::fixed << std::setprecision(2)
+            << (static_cast<float>(totalTrackedMemory_) / (1024.0f * 1024.0f)) << " MB";
+    }
+
+    return oss.str();
+}
+
+// ============================================================================
+// MEMORY TRACKING
+// ============================================================================
+
+void GPUPerformanceLogger::RegisterBufferAllocation(const std::string& name, VkDeviceSize sizeBytes) {
+    // If buffer already registered, remove old size first
+    auto it = bufferAllocations_.find(name);
+    if (it != bufferAllocations_.end()) {
+        totalTrackedMemory_ -= it->second;
+    }
+
+    bufferAllocations_[name] = sizeBytes;
+    totalTrackedMemory_ += sizeBytes;
+
+    // Log the allocation
+    std::ostringstream oss;
+    oss << "Buffer '" << name << "' allocated: "
+        << std::fixed << std::setprecision(2)
+        << (static_cast<float>(sizeBytes) / 1024.0f) << " KB";
+    Debug(oss.str());
+}
+
+void GPUPerformanceLogger::UnregisterBufferAllocation(const std::string& name) {
+    auto it = bufferAllocations_.find(name);
+    if (it != bufferAllocations_.end()) {
+        totalTrackedMemory_ -= it->second;
+        bufferAllocations_.erase(it);
+        Debug("Buffer '" + name + "' deallocated");
+    }
+}
+
+std::string GPUPerformanceLogger::GetMemorySummary() const {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2);
+
+    oss << "=== GPU Memory Summary ===\n";
+    oss << "Total tracked: " << (static_cast<float>(totalTrackedMemory_) / (1024.0f * 1024.0f)) << " MB\n";
+    oss << "\nBuffer breakdown:\n";
+
+    // Sort by size (largest first)
+    std::vector<std::pair<std::string, VkDeviceSize>> sorted(
+        bufferAllocations_.begin(), bufferAllocations_.end());
+    std::sort(sorted.begin(), sorted.end(),
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    for (const auto& [name, size] : sorted) {
+        float sizeMB = static_cast<float>(size) / (1024.0f * 1024.0f);
+        float sizeKB = static_cast<float>(size) / 1024.0f;
+
+        if (sizeMB >= 1.0f) {
+            oss << "  " << name << ": " << sizeMB << " MB\n";
+        } else {
+            oss << "  " << name << ": " << sizeKB << " KB\n";
+        }
+    }
+
     return oss.str();
 }
 

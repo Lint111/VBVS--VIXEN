@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <cstring>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 AttributeStorage::AttributeStorage(std::string name, AttributeType type, std::any defaultValue)
     : m_name(std::move(name))

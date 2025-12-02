@@ -4,7 +4,7 @@
 #include <bit>  // C++20 std::popcount
 #include <glm/glm.hpp>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 // ============================================================================
 // Core Data Structures based on Laine & Karras 2010
@@ -388,4 +388,4 @@ inline int worldToMirroredOctant(int worldIdx, int octant_mask) {
     return localToMirroredOctant(worldIdx, octant_mask);
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

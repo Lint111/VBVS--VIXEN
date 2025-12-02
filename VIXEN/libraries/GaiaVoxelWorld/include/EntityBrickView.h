@@ -11,7 +11,7 @@
 #include <span>
 #include <optional>
 
-namespace GaiaVoxel {
+namespace  Vixen::GaiaVoxel {
 
 // Forward declaration
 class GaiaVoxelWorld;
@@ -277,7 +277,7 @@ private:
 // This works because GaiaVoxelWorld.h doesn't include EntityBrickView.h
 #include "GaiaVoxelWorld.h"
 
-namespace GaiaVoxel {
+namespace  Vixen::GaiaVoxel {
 
 template<typename TComponent>
 auto EntityBrickView::getComponentValue(size_t voxelIdx) const -> std::optional<ComponentValueType_t<TComponent>> {

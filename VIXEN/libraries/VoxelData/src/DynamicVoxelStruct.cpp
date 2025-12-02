@@ -2,7 +2,7 @@
 #include "DynamicVoxelStruct.h"
 #include <stdexcept>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // ============================================================================
 // DynamicVoxelScalar Implementation

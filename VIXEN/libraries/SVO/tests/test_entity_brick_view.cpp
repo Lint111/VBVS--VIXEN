@@ -7,7 +7,7 @@
 #include "VoxelComponents.h"
 #include "ComponentData.h"
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // EntityBrickView Construction Tests

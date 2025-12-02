@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Type-erased brick reference stored in octree leaf nodes.
@@ -56,4 +56,4 @@ struct GPUBrickReference {
         : brick(ref), arrayOffsets{} {}
 };
 
-} // namespace SVO
+} // namespace Vixen::SVO

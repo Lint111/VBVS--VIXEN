@@ -5,7 +5,7 @@
 #include <glm/glm.hpp>
 #include <stdexcept>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 // Forward declarations - implementations will include DynamicVoxelStruct.h later
 class DynamicVoxelScalar;
 class DynamicVoxelArrays;
@@ -508,30 +508,29 @@ void BrickView::indexToCoords(size_t index, int& x, int& y, int& z) const {
 
 // Template method implementations for 3D coordinate access
 template<typename T>
-void BrickView::setAt3D(const std::string& attrName, int x, int y, int z, T value) {
+void Vixen::VoxelData::BrickView::setAt3D(const std::string& attrName, int x, int y, int z, T value) {
     size_t index = coordsToIndex(x, y, z);
     set<T>(attrName, index, value);
 }
 
 template<typename T>
-T BrickView::getAt3D(const std::string& attrName, int x, int y, int z) const {
+T Vixen::VoxelData::BrickView::getAt3D(const std::string& attrName, int x, int y, int z) const {
     size_t index = coordsToIndex(x, y, z);
     return get<T>(attrName, index);
 }
 
 // Explicit template instantiations for common types
-template void BrickView::setAt3D<float>(const std::string&, int, int, int, float);
-template void BrickView::setAt3D<uint32_t>(const std::string&, int, int, int, uint32_t);
-template void BrickView::setAt3D<uint16_t>(const std::string&, int, int, int, uint16_t);
-template void BrickView::setAt3D<uint8_t>(const std::string&, int, int, int, uint8_t);
-template void BrickView::setAt3D<glm::vec3>(const std::string&, int, int, int, glm::vec3);
+template void Vixen::VoxelData::BrickView::setAt3D<float>(const std::string&, int, int, int, float);
+template void Vixen::VoxelData::BrickView::setAt3D<uint32_t>(const std::string&, int, int, int, uint32_t);
+template void Vixen::VoxelData::BrickView::setAt3D<uint16_t>(const std::string&, int, int, int, uint16_t);
+template void Vixen::VoxelData::BrickView::setAt3D<uint8_t>(const std::string&, int, int, int, uint8_t);
+template void Vixen::VoxelData::BrickView::setAt3D<glm::vec3>(const std::string&, int, int, int, glm::vec3);
+template float Vixen::VoxelData::BrickView::getAt3D<float>(const std::string&, int, int, int) const;
+template uint32_t Vixen::VoxelData::BrickView::getAt3D<uint32_t>(const std::string&, int, int, int) const;
+template uint16_t Vixen::VoxelData::BrickView::getAt3D<uint16_t>(const std::string&, int, int, int) const;
+template uint8_t Vixen::VoxelData::BrickView::getAt3D<uint8_t>(const std::string&, int, int, int) const;
+template glm::vec3 Vixen::VoxelData::BrickView::getAt3D<glm::vec3>(const std::string&, int, int, int) const;
 
-template float BrickView::getAt3D<float>(const std::string&, int, int, int) const;
-template uint32_t BrickView::getAt3D<uint32_t>(const std::string&, int, int, int) const;
-template uint16_t BrickView::getAt3D<uint16_t>(const std::string&, int, int, int) const;
-template uint8_t BrickView::getAt3D<uint8_t>(const std::string&, int, int, int) const;
-template glm::vec3 BrickView::getAt3D<glm::vec3>(const std::string&, int, int, int) const;
+template std::span<glm::vec3> Vixen::VoxelData::BrickView::getAttributeArray<glm::vec3>(const std::string&);
 
-template std::span<glm::vec3> BrickView::getAttributeArray<glm::vec3>(const std::string&);
-
-} // namespace VoxelData
+} // namespace Vixen::VoxelData

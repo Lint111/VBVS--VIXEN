@@ -9,7 +9,7 @@
 #include <optional>
 #include <span>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 /**
  * Central ECS-based voxel data management.
@@ -553,4 +553,4 @@ void GaiaVoxelWorld::setComponentByIndex(EntityID id, uint32_t index,
     // e.g., getWorld().add<Pair<TComponent, IndexEntity[index]>>(id)
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

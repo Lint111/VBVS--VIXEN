@@ -3,7 +3,7 @@
 #include "GaiaVoxelWorld.h"
 #include <cmath>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 VoxelInjector::VoxelInjector(GaiaVoxelWorld& world)
     : m_world(world) {
@@ -43,4 +43,4 @@ VoxelInjector::BrickEntityMap VoxelInjector::groupByBrick(
     return brickMap;
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

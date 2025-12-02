@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cmath>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Dense 3D-DDA traversal within a single brick.
@@ -239,4 +239,4 @@ private:
     glm::vec3 m_tDelta;     // t-parameter increment per voxel
 };
 
-} // namespace SVO
+} // namespace Vixen::SVO

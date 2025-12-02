@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <iostream>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 /**
  * ECS Components for voxel data using Gaia's native multi-member support.
@@ -807,4 +807,4 @@ void setValue(T& component, const glm::vec3& value) {
     component = T(value);  // Uses conversion constructor
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

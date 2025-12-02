@@ -6,7 +6,7 @@
 #include <span>
 #include <cstdint>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 /**
  * Single component query/creation request with compile-time type safety.
@@ -100,4 +100,4 @@ struct VoxelQueryResult {
     // Example: world.get<Density>(Entity::from_id(result.entityID))
 };
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <glm/glm.hpp>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // ============================================================================
 // Component Type Extraction - Get underlying type from Gaia component

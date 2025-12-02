@@ -11,16 +11,16 @@
 #include "ISVOStructure.h"
 #include "SVOTypes.h"
 
-using namespace SVO;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::GaiaVoxel;
 
 class ComprehensiveRayCastingTest : public ::testing::Test {
 protected:
     void SetUp() override {
 
-        registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+        registry = std::make_shared<AttributeRegistry>();
+        registry->registerKey("density", AttributeType::Float, 1.0f);
+        registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
 
         // Create fresh GaiaVoxelWorld for each test (ensures test isolation)
         voxelWorld = std::make_shared<GaiaVoxelWorld>();
@@ -96,7 +96,7 @@ protected:
 
     glm::vec3 worldMin, worldMax, worldCenter;
     std::shared_ptr<GaiaVoxelWorld> voxelWorld;
-    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+    std::shared_ptr<AttributeRegistry> registry;
 };
 
 // ============================================================================

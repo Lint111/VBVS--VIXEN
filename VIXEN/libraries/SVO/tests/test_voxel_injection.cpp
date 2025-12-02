@@ -21,7 +21,9 @@
 #include "AttributeRegistry.h"
 #include <chrono>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::VoxelData;
 
 // ===========================================================================
 // Helper: Create octree with voxels using NEW workflow
@@ -30,14 +32,14 @@ using namespace GaiaVoxel;
 class VoxelInjectionNewAPITest : public ::testing::Test {
 protected:
     void SetUp() override {
-        registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+        registry = std::make_shared<AttributeRegistry>();
+        registry->registerKey("density", AttributeType::Float, 1.0f);
+        registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
 
         voxelWorld = std::make_shared<GaiaVoxelWorld>();
     }
 
-    std::unique_ptr<SVO::LaineKarrasOctree> createOctreeWithVoxels(
+    std::unique_ptr<LaineKarrasOctree> createOctreeWithVoxels(
         const std::vector<glm::vec3>& positions,
         int maxDepth = 6)
     {
@@ -61,7 +63,7 @@ protected:
         }
 
         // Create octree and rebuild
-        auto octree = std::make_unique<SVO::LaineKarrasOctree>(
+        auto octree = std::make_unique<LaineKarrasOctree>(
             *voxelWorld, registry.get(), maxDepth, 3);
         octree->rebuild(*voxelWorld, testMin, testMax);
 
@@ -69,7 +71,7 @@ protected:
     }
 
     std::shared_ptr<GaiaVoxelWorld> voxelWorld;
-    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+    std::shared_ptr<AttributeRegistry> registry;
 };
 
 // ===========================================================================

@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <algorithm>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 AttributeIndex AttributeRegistry::registerKey(std::string name, AttributeType type, std::any defaultValue) {
     if (!m_keyAttributeName.empty()) {

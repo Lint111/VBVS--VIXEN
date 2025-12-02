@@ -9,7 +9,7 @@
 #include <string>
 #include <functional>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // Forward declarations
 class AttributeRegistry;

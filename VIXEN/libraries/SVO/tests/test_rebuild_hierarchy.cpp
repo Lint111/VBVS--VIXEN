@@ -12,8 +12,8 @@
 #include <iostream>
 #include <chrono>
 
-using namespace GaiaVoxel;
-using namespace SVO;
+using namespace Vixen::GaiaVoxel;
+using namespace Vixen::SVO;
 
 /**
  * Test rebuild() with hierarchical structure validation.
@@ -27,9 +27,9 @@ TEST(RebuildHierarchyTest, MultipleBricksHierarchy) {
     std::cout << "\n[MultipleBricksHierarchy] Testing hierarchical octree construction...\n";
 
     GaiaVoxelWorld world;
-    VoxelData::AttributeRegistry registry;
-    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
-    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    AttributeRegistry registry;
+    registry.registerKey("density", AttributeType::Float, 1.0f);
+    registry.addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
 
     // Create entities in 4 separate bricks (depth 3 = 8³ voxels per brick)
     // This ensures we have multiple bricks and need parent hierarchy
@@ -111,9 +111,9 @@ TEST(RebuildHierarchyTest, SingleBrick) {
     std::cout << "\n[SingleBrick] Testing single brick rebuild...\n";
 
     GaiaVoxelWorld world;
-    VoxelData::AttributeRegistry registry;
-    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
-    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    AttributeRegistry registry;
+    registry.registerKey("density", AttributeType::Float, 1.0f);
+    registry.addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
 
     ComponentQueryRequest components[] = {
         Density{1.0f},
@@ -153,9 +153,9 @@ TEST(RebuildHierarchyTest, EmptyWorld) {
     std::cout << "\n[EmptyWorld] Testing empty world rebuild...\n";
 
     GaiaVoxelWorld world;
-    VoxelData::AttributeRegistry registry;
-    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
-    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    AttributeRegistry registry;
+    registry.registerKey("density", AttributeType::Float, 1.0f);
+    registry.addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
     LaineKarrasOctree octree(world, &registry, 8, 3);  // depth 8, brick depth 3
 
     octree.rebuild(world, glm::vec3(0, 0, 0), glm::vec3(16, 16, 16));
@@ -178,15 +178,15 @@ TEST(RebuildHierarchyTest, EmptyWorld) {
  * Uses simple 3D noise to create a realistic sparse scene.
  */
 TEST(RebuildHierarchyTest, StressTest_NoiseGenerated) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[StressTest_NoiseGenerated] Testing large sparse scene with procedural noise...\n";
 
     GaiaVoxelWorld world;
-    VoxelData::AttributeRegistry registry;
-    registry.registerKey("density", VoxelData::AttributeType::Float, 1.0f);
-    registry.addAttribute("color", VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
+    AttributeRegistry registry;
+    registry.registerKey("density", AttributeType::Float, 1.0f);
+    registry.addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
 
     // Simple 3D noise function (hash-based)
     auto noise3D = [](int x, int y, int z) -> float {

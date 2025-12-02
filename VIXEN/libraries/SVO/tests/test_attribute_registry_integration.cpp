@@ -8,9 +8,9 @@
 #include "ComponentData.h"
 #include <glm/glm.hpp>
 
-using namespace SVO;
-using namespace VoxelData;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::VoxelData;
+using namespace Vixen::GaiaVoxel;
 
 /**
  * Test suite for AttributeRegistry integration with LaineKarrasOctree.
@@ -20,15 +20,15 @@ class AttributeRegistryIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Create registry and register attributes
-        registry = std::make_shared<::VoxelData::AttributeRegistry>();
+        registry = std::make_shared<AttributeRegistry>();
 
         // Register key attribute (density) - MUST be index 0
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
+        registry->registerKey("density", AttributeType::Float, 1.0f);
 
         // Register additional attributes
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-        registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
-        registry->addAttribute("metallic", ::VoxelData::AttributeType::Float, 0.0f);
+        registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
+        registry->addAttribute("normal", AttributeType::Vec3, glm::vec3(0, 1, 0));
+        registry->addAttribute("metallic", AttributeType::Float, 0.0f);
     }
 
     // Helper to create voxel in GaiaVoxelWorld with components
@@ -48,7 +48,7 @@ protected:
         return world.createVoxel(req);
     }
 
-    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+    std::shared_ptr<AttributeRegistry> registry;
 };
 
 // ============================================================================
@@ -61,7 +61,7 @@ TEST_F(AttributeRegistryIntegrationTest, KeyAttributeIsAtIndexZero) {
 
     // Verify descriptor confirms this
     auto descriptor = registry->getDescriptor(keyIndex);
-    EXPECT_EQ(descriptor.type, ::VoxelData::AttributeType::Float);
+    EXPECT_EQ(descriptor.type, AttributeType::Float);
     EXPECT_STREQ(descriptor.name.c_str(), "density");
 }
 

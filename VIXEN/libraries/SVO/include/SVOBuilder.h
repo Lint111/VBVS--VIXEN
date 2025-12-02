@@ -9,7 +9,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Input triangle for voxelization.
@@ -368,4 +368,4 @@ private:
     static uint32_t encodeNormal(const glm::vec3& normal);
 };
 
-} // namespace SVO
+} // namespace Vixen::SVO

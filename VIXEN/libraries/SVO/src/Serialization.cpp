@@ -4,7 +4,7 @@
 #include <fstream>
 #include <cstring>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Serialization format (.oct files):
@@ -103,4 +103,4 @@ void OctreeBlock::serialize(std::vector<uint8_t>& buffer) const {
     // Pack child descriptors, contours, and attributes into buffer
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

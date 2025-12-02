@@ -7,8 +7,8 @@
 #include "ComponentData.h"
 #include <iostream>
 
-using namespace SVO;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::GaiaVoxel;
 
 /**
  * Helper to create voxel in GaiaVoxelWorld with standard components.
@@ -34,10 +34,10 @@ TEST(BrickCreationTest, BricksAreAllocatedFromGaiaWorld) {
     GaiaVoxelWorld world;
 
     // Create AttributeRegistry with density as key attribute
-    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
-    registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-    registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
+    auto registry = std::make_shared<AttributeRegistry>();
+    registry->registerKey("density", AttributeType::Float, 0.0f);
+    registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
+    registry->addAttribute("normal", AttributeType::Vec3, glm::vec3(0, 1, 0));
 
     // Create sphere of voxels using GaiaVoxelWorld
     glm::vec3 sphereCenter(50.0f, 50.0f, 50.0f);
@@ -79,10 +79,10 @@ TEST(BrickCreationTest, RayCastingWithGaiaWorldOctree) {
     GaiaVoxelWorld world;
 
     // Create AttributeRegistry
-    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
-    registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-    registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
+    auto registry = std::make_shared<AttributeRegistry>();
+    registry->registerKey("density", AttributeType::Float, 0.0f);
+    registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
+    registry->addAttribute("normal", AttributeType::Vec3, glm::vec3(0, 1, 0));
 
     // Create a box of voxels (40-60 in each dimension)
     int voxelCount = 0;
@@ -123,8 +123,8 @@ TEST(BrickCreationTest, EntityDataQueryAfterRayHit) {
     GaiaVoxelWorld world;
 
     // Create AttributeRegistry
-    auto registry = std::make_shared<::VoxelData::AttributeRegistry>();
-    registry->registerKey("density", ::VoxelData::AttributeType::Float, 0.0f);
+    auto registry = std::make_shared<AttributeRegistry>();
+    registry->registerKey("density", AttributeType::Float, 0.0f);
 
     // Create voxels with gradient density
     for (float x = 10.0f; x <= 90.0f; x += 10.0f) {

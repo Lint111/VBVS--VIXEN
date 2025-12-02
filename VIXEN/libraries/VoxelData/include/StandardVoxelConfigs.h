@@ -4,7 +4,7 @@
 #include <VoxelComponents.h>  // Canonical component definitions
 #include <glm/glm.hpp>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // ============================================================================
 // Component-Based Voxel Configurations

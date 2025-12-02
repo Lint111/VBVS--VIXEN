@@ -6,7 +6,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // ============================================================================
 // Dynamic Voxel Structures - Runtime Modifiable

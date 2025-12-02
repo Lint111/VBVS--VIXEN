@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <numeric>
+#include <unordered_map>
 
 namespace Vixen::RenderGraph {
 
@@ -92,6 +93,37 @@ public:
     std::string GetPerformanceSummary() const;
 
     // ========================================================================
+    // MEMORY TRACKING
+    // ========================================================================
+
+    /**
+     * @brief Register a buffer allocation for memory tracking
+     * @param name Buffer name for logging
+     * @param sizeBytes Size in bytes
+     */
+    void RegisterBufferAllocation(const std::string& name, VkDeviceSize sizeBytes);
+
+    /**
+     * @brief Unregister a buffer (on deallocation)
+     */
+    void UnregisterBufferAllocation(const std::string& name);
+
+    /**
+     * @brief Get total tracked memory in bytes
+     */
+    VkDeviceSize GetTotalTrackedMemory() const { return totalTrackedMemory_; }
+
+    /**
+     * @brief Get total tracked memory in MB
+     */
+    float GetTotalTrackedMemoryMB() const { return static_cast<float>(totalTrackedMemory_) / (1024.0f * 1024.0f); }
+
+    /**
+     * @brief Get memory breakdown summary
+     */
+    std::string GetMemorySummary() const;
+
+    // ========================================================================
     // CONFIGURATION
     // ========================================================================
 
@@ -122,6 +154,10 @@ private:
     uint32_t logFrequency_ = 60;
     uint32_t frameCounter_ = 0;
     bool printToTerminal_ = true;
+
+    // Memory tracking
+    std::unordered_map<std::string, VkDeviceSize> bufferAllocations_;
+    VkDeviceSize totalTrackedMemory_ = 0;
 
     void UpdateRollingStats();
 };

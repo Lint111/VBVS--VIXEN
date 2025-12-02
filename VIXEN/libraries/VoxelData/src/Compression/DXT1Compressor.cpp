@@ -5,7 +5,7 @@
 #include <limits>
 #include <cstring>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData::Compression {
 
 // ============================================================================
 // DXT1ColorCompressor Implementation

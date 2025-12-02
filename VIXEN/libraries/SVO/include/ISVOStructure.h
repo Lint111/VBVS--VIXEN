@@ -9,7 +9,7 @@
 #include <string>
 #include <functional>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Abstract interface for sparse voxel structure implementations.
@@ -298,4 +298,4 @@ public:
     static std::optional<Type> detectType(std::span<const uint8_t> data);
 };
 
-} // namespace SVO
+} // namespace Vixen::SVO

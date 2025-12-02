@@ -12,7 +12,11 @@
 #include <unordered_map>
 #include <array>
 
-namespace SVO {
+using namespace Vixen::GaiaVoxel;
+using namespace Vixen::VoxelData;
+using namespace Vixen::VoxelData::Compression;
+
+namespace Vixen::SVO {
 
 // ============================================================================
 // Debug Utilities
@@ -157,7 +161,7 @@ namespace {
 
 
 // NEW: Entity-based constructor
-LaineKarrasOctree::LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld,::VoxelData::AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
+LaineKarrasOctree::LaineKarrasOctree(GaiaVoxelWorld& voxelWorld, AttributeRegistry* registry, int maxLevels, int brickDepthLevels)
     : m_voxelWorld(&voxelWorld)
     , m_registry(registry)  // AttributeRegistry pointer in entity-based mode
     , m_maxLevels(maxLevels)
@@ -1118,7 +1122,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
     // Primary strategy: Use ESVO state position (advances with octant traversal)
     // This correctly handles multi-brick traversal.
 
-    const ::GaiaVoxel::EntityBrickView* brickView = nullptr;
+    const EntityBrickView* brickView = nullptr;
     glm::ivec3 brickIndex;
 
     // Method 1: ESVO state position (correct for multi-octant traversal)
@@ -1198,7 +1202,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::handleLeafHit(
  * - All brick bounds are in local space
  */
 std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickAndReturnHit(
-    const ::GaiaVoxel::EntityBrickView& brickView,
+    const EntityBrickView& brickView,
     const glm::vec3& localRayOrigin,
     const glm::vec3& rayDir,
     float tEntry) const
@@ -1808,7 +1812,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
 
         if (m_registry) {
             // Get brick view (zero-copy)
-            ::VoxelData::BrickView brick = m_registry->getBrick(brickRef.brickID);
+            BrickView brick = m_registry->getBrick(brickRef.brickID);
 
             // Compute linear index from 3D coordinates
             const int brickN = brickRef.getSideLength();
@@ -1925,7 +1929,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrick(
 }
 
 std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
-    const ::GaiaVoxel::EntityBrickView& brickView,
+    const EntityBrickView& brickView,
     const glm::vec3& brickWorldMin,
     float brickVoxelSize,
     const glm::vec3& rayOrigin,
@@ -2093,8 +2097,7 @@ std::optional<ISVOStructure::RayHit> LaineKarrasOctree::traverseBrickView(
 // Octree Rebuild API (Phase 3)
 // ============================================================================
 
-void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax) {
-    using namespace ::GaiaVoxel;
+void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax) {
 
     // 1. Acquire write lock (blocks rendering)
     std::unique_lock<std::shared_mutex> lock(m_renderLock);
@@ -2549,8 +2552,8 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
         m_octree->root->compressedColors.resize(numBricks * blocksPerBrick);
         m_octree->root->compressedNormals.resize(numBricks * blocksPerBrick);
 
-        ::VoxelData::DXT1ColorCompressor colorCompressor;
-        ::VoxelData::DXTNormalCompressor normalCompressor;
+        DXT1ColorCompressor colorCompressor;
+        DXTNormalCompressor normalCompressor;
 
         std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks..." << std::endl;
 
@@ -2585,11 +2588,11 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
                     }
 
                     // Get color from entity (default to gray if missing)
-                    auto colorOpt = brickView.getComponentValue<::GaiaVoxel::Color>(voxelLinearIdx);
+                    auto colorOpt = brickView.getComponentValue<Color>(voxelLinearIdx);
                     blockColors[texelIdx] = colorOpt.value_or(glm::vec3(0.5f));
 
                     // Get normal from entity (default to up if missing)
-                    auto normalOpt = brickView.getComponentValue<::GaiaVoxel::Normal>(voxelLinearIdx);
+                    auto normalOpt = brickView.getComponentValue<Normal>(voxelLinearIdx);
                     blockNormals[texelIdx] = normalOpt.value_or(glm::vec3(0.0f, 1.0f, 0.0f));
 
                     validIndices[validCount] = texelIdx;
@@ -2625,7 +2628,6 @@ void LaineKarrasOctree::rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::v
 }
 
 void LaineKarrasOctree::updateBlock(const glm::vec3& blockWorldMin, uint8_t blockDepth) {
-    using namespace ::GaiaVoxel;
 
     // 1. Acquire write lock (blocks rendering)
     std::unique_lock<std::shared_mutex> lock(m_renderLock);
@@ -2747,4 +2749,4 @@ void LaineKarrasOctree::unlockAfterRendering() {
     m_renderLock.unlock();
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

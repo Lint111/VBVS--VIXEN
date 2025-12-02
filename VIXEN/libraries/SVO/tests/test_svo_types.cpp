@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "SVOTypes.h"
 
-using namespace SVO;
+using namespace Vixen::SVO;
 
 // ===========================================================================
 // ChildDescriptor Tests

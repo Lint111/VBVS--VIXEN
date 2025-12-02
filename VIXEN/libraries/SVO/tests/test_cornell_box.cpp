@@ -8,8 +8,8 @@
 #include <chrono>
 #include <iostream>
 
-using namespace SVO;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::GaiaVoxel;
 
 /**
  * Cornell Box Test Fixture using GaiaVoxelWorld
@@ -41,14 +41,14 @@ protected:
 
     GaiaVoxelWorld world;
     std::unique_ptr<LaineKarrasOctree> cornellBox;
-    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+    std::shared_ptr<AttributeRegistry> registry;
 
     void SetUp() override {
         // Create AttributeRegistry
-        registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-        registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
+        registry = std::make_shared<AttributeRegistry>();
+        registry->registerKey("density", AttributeType::Float, 1.0f);
+        registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
+        registry->addAttribute("normal", AttributeType::Vec3, glm::vec3(0.0f, 1.0f, 0.0f));
 
         // Build Cornell box
         buildCornellBox();

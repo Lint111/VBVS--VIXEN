@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace GaiaVoxel {
+namespace  Vixen::GaiaVoxel {
 
 // Forward declaration
 class GaiaVoxelWorld;

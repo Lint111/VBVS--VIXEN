@@ -8,7 +8,7 @@
 #include <LaineKarrasOctree.h>
 #include <iostream>
 
-using namespace SVO;
+using namespace Vixen::SVO;
 
 // ============================================================================
 // Example 1: Simple Procedural Noise Terrain

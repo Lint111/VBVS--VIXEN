@@ -13,7 +13,10 @@
 #include <unordered_map>
 #include <shared_mutex>  // For std::shared_mutex concurrency control
 
-namespace SVO {
+using namespace Vixen::GaiaVoxel;
+using namespace Vixen::VoxelData;
+
+namespace Vixen::SVO {
 
 
 /**
@@ -52,7 +55,7 @@ public:
     // Entity-based constructor (pure spatial index)
     // SVO stores entity IDs via EntityBrickView (8 bytes/entity)
     // Use rebuild() to populate octree from GaiaVoxelWorld entities
-    explicit LaineKarrasOctree(::GaiaVoxel::GaiaVoxelWorld& voxelWorld,::VoxelData::AttributeRegistry* registry = nullptr, int maxLevels = 23, int brickDepthLevels = 3);
+    explicit LaineKarrasOctree(GaiaVoxelWorld& voxelWorld, AttributeRegistry* registry = nullptr, int maxLevels = 23, int brickDepthLevels = 3);
 
     ~LaineKarrasOctree() override;
 
@@ -120,7 +123,7 @@ public:
      *
      * NOTE: Clears existing octree structure. Use updateBlock() for incremental changes.
      */
-    void rebuild(::GaiaVoxel::GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax);
+    void rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin, const glm::vec3& worldMax);
 
     /**
      * Update specific octree block region.
@@ -274,14 +277,14 @@ private:
     std::unique_ptr<Octree> m_octree;
 
     // Entity-based storage (NEW architecture)
-    ::GaiaVoxel::GaiaVoxelWorld* m_voxelWorld = nullptr;  // Non-owning pointer to voxel world
+    GaiaVoxelWorld* m_voxelWorld = nullptr;  // Non-owning pointer to voxel world
 
     // Concurrency control - prevents rebuild during frame rendering
     mutable std::shared_mutex m_renderLock;
     // Write lock held during rendering, read lock held during rebuild/update
 
     // DEPRECATED: Will be removed once migration to entity-based storage is complete
-    ::VoxelData::AttributeRegistry* m_registry = nullptr; // Non-owning pointer
+    AttributeRegistry* m_registry = nullptr; // Non-owning pointer
 
     // NOTE: Key attribute is ALWAYS index 0 in AttributeRegistry (guaranteed by design)
     // This eliminates the need to cache or lookup the key index
@@ -302,12 +305,11 @@ private:
     glm::mat4 m_worldToLocal{1.0f};   // inverse of localToWorld
 
     // Transform: maps normalized [0,1]³ octree space ↔ world space
-    ::GaiaVoxel::VolumeTransform m_transform;
+    VolumeTransform m_transform;
 
     // Integer grid bounds for quantized voxel coordinates
     // Stores the actual data bounds; normalization uses power-of-2 padded extent
-    ::GaiaVoxel::VolumeGrid m_volumeGrid;
-
+    VolumeGrid m_volumeGrid;
     // ========================================================================
     // ADOPTED FROM: NVIDIA ESVO Reference (cuda/Raycast.inl)
     // Copyright (c) 2009-2011, NVIDIA Corporation (BSD 3-Clause)
@@ -462,7 +464,7 @@ private:
      * EntityBrickView uses local gridOrigin (brickIndex * brickSideLength).
      */
     std::optional<ISVOStructure::RayHit> traverseBrickAndReturnHit(
-        const ::GaiaVoxel::EntityBrickView& brickView,
+        const EntityBrickView& brickView,
         const glm::vec3& localRayOrigin,  // Ray origin in volume local space
         const glm::vec3& rayDir,
         float tEntry) const;
@@ -525,7 +527,7 @@ private:
      * @return RayHit with entity reference, or nullopt if miss
      */
     std::optional<ISVOStructure::RayHit> traverseBrickView(
-        const ::GaiaVoxel::EntityBrickView& brickView,
+        const EntityBrickView& brickView,
         const glm::vec3& brickWorldMin,
         float brickVoxelSize,
         const glm::vec3& rayOrigin,
@@ -559,4 +561,4 @@ private:
     InputMesh convertGeometry(const InputGeometry& geometry);
 };
 
-} // namespace SVO
+} // namespace Vixen::SVO

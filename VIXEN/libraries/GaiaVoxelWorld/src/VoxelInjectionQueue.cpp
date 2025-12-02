@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <iostream>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 VoxelInjectionQueue::VoxelInjectionQueue(GaiaVoxelWorld& world, size_t capacity)
     : m_world(world), m_capacity(capacity) {
@@ -192,4 +192,4 @@ void VoxelInjectionQueue::processWorker() {
     }
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

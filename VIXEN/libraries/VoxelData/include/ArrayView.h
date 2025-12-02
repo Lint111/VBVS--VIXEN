@@ -14,7 +14,7 @@
 
 #include <span>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // Type aliases for convenience
 template<typename T>

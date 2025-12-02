@@ -7,7 +7,7 @@
 #include <vector>
 #include <type_traits>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData::Compression {
 
 /**
  * IBlockCompressor - Type-erased interface for block compression algorithms

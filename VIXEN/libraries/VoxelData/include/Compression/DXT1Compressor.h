@@ -4,7 +4,7 @@
 #include <glm/glm.hpp>
 #include <array>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData::Compression {
 
 /**
  * DXT1ColorCompressor - Encodes 16 RGB colors into 64-bit DXT1/BC1 block

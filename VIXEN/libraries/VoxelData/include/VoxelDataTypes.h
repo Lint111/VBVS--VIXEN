@@ -4,7 +4,7 @@
 #include <string>
 #include <any>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 /**
  * Attribute type enumeration

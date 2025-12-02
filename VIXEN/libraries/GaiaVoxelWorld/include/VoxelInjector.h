@@ -6,7 +6,7 @@
 #include <vector>
 #include <unordered_map>
 
-namespace GaiaVoxel {
+namespace  Vixen::GaiaVoxel {
 
 // Forward declarations
 class GaiaVoxelWorld;

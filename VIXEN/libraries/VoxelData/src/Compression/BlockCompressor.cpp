@@ -2,7 +2,7 @@
 #include "Compression/BlockCompressor.h"
 #include <cstring>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData::Compression {
 
 // ============================================================================
 // IBlockCompressor - Default bulk implementations

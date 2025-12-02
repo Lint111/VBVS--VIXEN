@@ -7,7 +7,7 @@
 #include <vector>
 #include <cstddef>
 
-namespace VoxelData {
+namespace  Vixen::VoxelData {
 
 // Forward declarations
 class AttributeRegistry;

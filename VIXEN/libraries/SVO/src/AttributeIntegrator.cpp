@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <numeric>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Integrates color and normal attributes from triangles within a voxel.
@@ -111,4 +111,4 @@ glm::vec3 AttributeIntegrator::integrateNormal(
     return glm::vec3(0, 1, 0);  // Fallback
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Constructs optimal contour for a voxel using greedy algorithm.
@@ -162,4 +162,4 @@ float ContourBuilder::evaluateOverestimation(
     return overestimation;
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO

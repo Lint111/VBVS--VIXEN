@@ -4,11 +4,11 @@
 #include <iostream>
 #include <unordered_map>
 
-using namespace GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
+using namespace Vixen::GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
 
 using namespace gaia::ecs;
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 // ============================================================================
 // GaiaVoxelWorld::Impl - Pimpl for ECS world encapsulation
@@ -626,4 +626,4 @@ uint64_t GaiaVoxelWorld::computeSpatialHash(const glm::vec3& position) const {
     return fromPosition(position).code;
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

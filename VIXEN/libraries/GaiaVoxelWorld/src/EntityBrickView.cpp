@@ -3,7 +3,7 @@
 #include "GaiaVoxelWorld.h"
 #include <algorithm>
 
-namespace GaiaVoxel {
+namespace Vixen::GaiaVoxel {
 
 EntityBrickView::EntityBrickView(
     GaiaVoxelWorld& world,
@@ -224,4 +224,4 @@ void EntityBrickView::linearIndexToCoord(size_t idx, int& x, int& y, int& z) con
     x = static_cast<int>(idx % m_brickSize);
 }
 
-} // namespace GaiaVoxel
+} // namespace Vixen::GaiaVoxel

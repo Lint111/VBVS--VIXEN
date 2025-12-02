@@ -9,7 +9,7 @@
 #include "ComponentData.h"
 #include <span>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // Entity Creation Tests

@@ -8,8 +8,8 @@
 #include "ComponentData.h"
 #include <chrono>
 
-using namespace SVO;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // Helper: Create Simple Test Octree
@@ -576,7 +576,7 @@ TEST(LaineKarrasOctree, CastStack_PushPop) {
  * 5. Read entity components via ECS world
  */
 TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
-    using namespace GaiaVoxel;
+    using namespace Vixen::GaiaVoxel;
 
     // 1. Create ECS world
     GaiaVoxelWorld world;
@@ -642,7 +642,7 @@ TEST(EntityOctreeIntegrationTest, EntityBasedRayCasting) {
  * Test multiple entity creation and selective ray casting.
  */
 TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
-    using namespace GaiaVoxel;
+    using namespace Vixen::GaiaVoxel;
 
     GaiaVoxelWorld world;
 
@@ -698,7 +698,7 @@ TEST(EntityOctreeIntegrationTest, MultipleEntitiesRayCasting) {
  * Test entity lookup failure when no entity exists at position.
  */
 TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
-    using namespace GaiaVoxel;
+    using namespace Vixen::GaiaVoxel;
 
     GaiaVoxelWorld world;
 
@@ -729,8 +729,8 @@ TEST(EntityOctreeIntegrationTest, MissReturnsInvalidEntity) {
  * Verifies API exists and compiles correctly.
  */
 TEST(EntityBasedRebuildTest, RebuildAPIStub) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     GaiaVoxelWorld world;
 
@@ -779,8 +779,8 @@ TEST(EntityBasedRebuildTest, RebuildAPIStub) {
  * - BFS ordering maintained (contiguous children)
  */
 TEST(EntityBasedRebuildTest, RebuildHierarchicalStructure) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[RebuildHierarchicalStructure] Testing hierarchical octree construction...\n";
 
@@ -877,8 +877,8 @@ TEST(EntityBasedRebuildTest, RebuildHierarchicalStructure) {
  * Test updateBlock() - adding a new brick to empty region
  */
 TEST(PartialBlockUpdateTest, AddNewBrick) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[AddNewBrick] Testing updateBlock with new brick...\n";
 
@@ -925,8 +925,8 @@ TEST(PartialBlockUpdateTest, AddNewBrick) {
  * Test updateBlock() - updating existing brick with new entities
  */
 TEST(PartialBlockUpdateTest, UpdateExistingBrick) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[UpdateExistingBrick] Testing updateBlock on existing brick...\n";
 
@@ -969,8 +969,8 @@ TEST(PartialBlockUpdateTest, UpdateExistingBrick) {
  * Test removeBlock() - removing a brick
  */
 TEST(PartialBlockUpdateTest, RemoveBrick) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[RemoveBrick] Testing removeBlock...\n";
 
@@ -1016,8 +1016,8 @@ TEST(PartialBlockUpdateTest, RemoveBrick) {
  * Test updateBlock() with empty region - removes brick from map
  */
 TEST(PartialBlockUpdateTest, UpdateEmptyRegionRemovesBrick) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[UpdateEmptyRegion] Testing updateBlock on region with no entities...\n";
 
@@ -1059,8 +1059,8 @@ TEST(PartialBlockUpdateTest, UpdateEmptyRegionRemovesBrick) {
  * Test concurrency - lockForRendering blocks updates
  */
 TEST(PartialBlockUpdateTest, LockForRenderingAPI) {
-    using namespace GaiaVoxel;
-    using namespace SVO;
+    using namespace Vixen::GaiaVoxel;
+    using namespace Vixen::SVO;
 
     std::cout << "\n[LockForRenderingAPI] Testing lock/unlock API...\n";
 

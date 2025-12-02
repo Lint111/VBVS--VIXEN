@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 /**
  * Morton code (Z-order curve) encoding/decoding for 3D coordinates.
@@ -133,4 +133,4 @@ private:
  * - Morton indexing: ~78% L1 hit rate  (2.2× improvement)
  */
 
-} // namespace SVO
+} // namespace Vixen::SVO

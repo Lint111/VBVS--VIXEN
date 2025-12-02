@@ -5,8 +5,8 @@
 #include <glm/glm.hpp>
 #include "GaiaVoxelWorld.h"
 
-using namespace SVO;
-using namespace GaiaVoxel;
+using namespace Vixen::SVO;
+using namespace Vixen::GaiaVoxel;
 
 /**
  * Test suite for brick DDA traversal within LaineKarrasOctree.
@@ -20,10 +20,10 @@ protected:
 
 
         // Create registry and register attributes
-        registry = std::make_shared<::VoxelData::AttributeRegistry>();
-        registry->registerKey("density", ::VoxelData::AttributeType::Float, 1.0f);
-        registry->addAttribute("color", ::VoxelData::AttributeType::Vec3, glm::vec3(1.0f));
-        registry->addAttribute("normal", ::VoxelData::AttributeType::Vec3, glm::vec3(0, 1, 0));
+        registry = std::make_shared<AttributeRegistry>();
+        registry->registerKey("density", AttributeType::Float, 1.0f);
+        registry->addAttribute("color", AttributeType::Vec3, glm::vec3(1.0f));
+        registry->addAttribute("normal", AttributeType::Vec3, glm::vec3(0, 1, 0));
 
         // Create a 10x10x10 world
         worldMin = glm::vec3(0, 0, 0);
@@ -64,7 +64,7 @@ protected:
 
 
     glm::vec3 worldMin, worldMax, worldCenter;    
-    std::shared_ptr<::VoxelData::AttributeRegistry> registry;
+    std::shared_ptr<AttributeRegistry> registry;
     std::shared_ptr<GaiaVoxelWorld> voxelWorld;
 };
 

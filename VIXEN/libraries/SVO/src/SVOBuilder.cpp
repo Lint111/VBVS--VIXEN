@@ -10,7 +10,7 @@
 #include <tbb/parallel_for.h>
 #include <tbb/concurrent_vector.h>
 
-namespace SVO {
+namespace Vixen::SVO {
 
 // ============================================================================
 // SVOBuilder Implementation
@@ -780,4 +780,4 @@ void SVOBuilder::subdivideNodeFromVoxels(
     }
 }
 
-} // namespace SVO
+} // namespace Vixen::SVO
