@@ -239,35 +239,108 @@ When updating:
 - **Rarely update**: `projectbrief.md` and `productContext.md` (stable foundations)
 - Keep documentation concise but comprehensive
 
-## Build System
+## Build System - MANDATORY
 
 This is a CMake-based C++ Vulkan application project. The build system is configured for Windows with Visual Studio.
 
-### Build Commands
+### Build Procedure - REQUIRED WORKFLOW
 
-**IMPORTANT**: Before building, always kill existing compiler processes to prevent background buildup:
+**CRITICAL**: Always follow this exact procedure for optimal build speed and error tracking.
+
+#### 1. Initial Configuration (First Time / After CMake Changes)
+
 ```bash
-taskkill /F /IM MSBuild.exe /T 2>nul; taskkill /F /IM cl.exe /T 2>nul
+# Standard configuration (Unity builds disabled - incompatible with some files)
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
 ```
 
+**Note**: Unity builds (`-DUSE_UNITY_BUILD=ON`) are disabled due to syntax conflicts in DXT1Compressor.cpp. Standard incremental builds are still fast (~10-30 seconds for typical changes).
+
+#### 2. Full Build (Clean Build / Major Changes)
+
 ```bash
-# Generate build files (run from project root)
-cmake -B build
-
-# Build the project
-cmake --build build --config Debug
-# or
-cmake --build build --config Release
-
-# Alternative: Use Visual Studio solution
-# Open build/3_0_DeviceHandshake.sln in Visual Studio and build from IDE
+# Build entire project with all 16 cores, filter PDB warnings
+cd C:/cpp/VBVS--VIXEN/VIXEN
+cmake --build build --config Debug --parallel 16 2>&1 | grep -v "warning LNK4099" | tail -100
 ```
 
-**Build Error Logging - MANDATORY**:
-- **Always capture build output** to `temp/build-errors.txt` (overwrite existing)
-- Use PowerShell redirection: `cmake --build build --config Debug 2>&1 | Out-File -FilePath "temp/build-errors.txt" -Encoding utf8`
-- This provides persistent error log for user review
-- File location: `c:\cpp\VBVS--VIXEN\VIXEN\temp\build-errors.txt`
+**Build time**: ~3-5 minutes (full project)
+
+#### 3. Incremental Build (Daily Workflow - Fastest)
+
+After initial full build, **only rebuild changed files**:
+
+```bash
+# Build only modified targets (10-30 seconds typically)
+cmake --build build --config Debug --parallel 16
+```
+
+#### 4. Target-Specific Build (Recommended for Development)
+
+Build only what you're working on:
+
+```bash
+# Build only SVO library
+cmake --build build --config Debug --target SVO --parallel 16
+
+# Build only specific tests
+cmake --build build --config Debug --target test_rebuild_hierarchy test_cornell_box --parallel 16
+
+# Build only Core + GaiaVoxelWorld + SVO stack
+cmake --build build --config Debug --target Core GaiaVoxelWorld SVO --parallel 16
+```
+
+**Build time**: ~30 seconds - 1 minute (single library)
+
+#### 5. Build Optimization Flags
+
+Already enabled in CMakeLists.txt:
+- ✅ `/MP` - MSVC multi-processor compilation (all 16 cores)
+- ✅ `sccache` - Compilation caching (automatic)
+- ✅ Precompiled headers (pch.h in each library)
+- ✅ PDB warnings suppressed (`/ignore:4099`)
+- ✅ Unity builds (when enabled with `-DUSE_UNITY_BUILD=ON`)
+
+#### 6. Build Performance Tips
+
+**DO**:
+- ✅ Use `--parallel 16` (leverages all CPU cores)
+- ✅ Build specific targets during development (faster iteration)
+- ✅ Use incremental builds (cmake tracks changes automatically)
+- ✅ Filter PDB warnings with `grep -v "warning LNK4099"`
+- ✅ Enable Unity builds for clean builds
+
+**DON'T**:
+- ❌ Clean build directory unnecessarily (incremental builds are fast)
+- ❌ Build all tests when only working on one library
+- ❌ Disable parallel compilation
+- ❌ Ignore build errors in output (scroll to find real issues)
+
+#### 7. Testing After Build
+
+```bash
+# Run specific test suite
+./build/libraries/SVO/tests/Debug/test_rebuild_hierarchy.exe --gtest_brief=1
+
+# Run all SVO tests
+cd build/libraries/SVO/tests/Debug && for test in test_*.exe; do ./$test --gtest_brief=1; done
+```
+
+**Test time**: ~2-3 seconds per test, ~30 seconds for full SVO suite
+
+#### 8. Build Troubleshooting
+
+**Problem**: "Cannot open include file"
+- **Solution**: Run full configuration: `cmake -B build -DUSE_UNITY_BUILD=ON`
+
+**Problem**: "LNK4099 PDB warnings spam"
+- **Solution**: Filter with `grep -v "warning LNK4099"` (these are external lib warnings, safe to ignore)
+
+**Problem**: "MSBuild.exe or cl.exe using 100% CPU"
+- **Solution**: Kill zombie processes: `taskkill /F /IM MSBuild.exe /T 2>nul; taskkill /F /IM cl.exe /T 2>nul`
+
+**Problem**: "Build takes 10+ minutes"
+- **Solution**: Check Unity builds enabled, use `--parallel 16`, build specific targets only
 
 ### Project Structure
 

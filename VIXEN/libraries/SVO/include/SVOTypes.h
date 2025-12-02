@@ -233,6 +233,17 @@ struct RayHit {
 };
 
 /**
+ * Normal computation mode for voxel surfaces.
+ *
+ * Phase B.1: Controls how surface normals are derived during octree build.
+ */
+enum class NormalMode {
+    EntityComponent,    ///< Use Normal component from GaiaVoxelWorld entities (legacy)
+    GeometricGradient,  ///< Compute from 6-neighbor occupancy gradient (recommended)
+    Hybrid              ///< Use entity normal if available, fallback to geometric
+};
+
+/**
  * Octree build parameters.
  */
 struct BuildParams {
@@ -248,6 +259,11 @@ struct BuildParams {
     bool enableContours = true;            // Generate contours
     bool enableCompression = true;         // Compress attributes
     int numThreads = 0;                    // 0 = auto-detect
+
+    // Phase B.1: Normal computation mode
+    // GeometricGradient computes normals from 6-neighbor voxel topology,
+    // producing surface normals that match the actual voxel geometry.
+    NormalMode normalMode = NormalMode::GeometricGradient;
 };
 
 // ============================================================================

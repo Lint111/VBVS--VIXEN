@@ -53,6 +53,108 @@ using namespace Vixen::VoxelData::Compression;
 namespace Vixen::SVO {
 
 // ============================================================================
+// Geometric Normal Computation (Phase B.1)
+// ============================================================================
+// Computes surface normals from voxel topology using 6-neighbor gradient method.
+// This produces normals based on actual voxel geometry rather than stored values.
+//
+// Algorithm: Central differences (6-neighbor sampling)
+//   gradient = (occupied(x+1) - occupied(x-1), occupied(y+1) - occupied(y-1), occupied(z+1) - occupied(z-1))
+//   normal = -normalize(gradient)
+//
+// The negative sign ensures normals point outward from solid regions toward empty space.
+// ============================================================================
+
+namespace {
+
+/**
+ * Check if a voxel position is occupied (solid) within a brick.
+ *
+ * @param brickView Reference to the brick's entity view
+ * @param x, y, z Local coordinates within brick (may be out of bounds)
+ * @param brickSize Size of brick (typically 8)
+ * @return 1.0f if occupied/solid, 0.0f if empty or out of bounds
+ */
+float getOccupancy(const EntityBrickView& brickView, int x, int y, int z, int brickSize) {
+    // Out of bounds = empty (conservative: assumes exterior is empty)
+    if (x < 0 || x >= brickSize || y < 0 || y >= brickSize || z < 0 || z >= brickSize) {
+        return 0.0f;
+    }
+
+    auto entity = brickView.getEntity(x, y, z);
+    if (entity == gaia::ecs::Entity()) {
+        return 0.0f;  // No entity = empty
+    }
+
+    // Check density component for solid determination
+    size_t linearIdx = static_cast<size_t>(z * brickSize * brickSize + y * brickSize + x);
+    auto density = brickView.getComponentValue<Density>(linearIdx);
+    return (density.has_value() && density.value() > 0.0f) ? 1.0f : 0.0f;
+}
+
+/**
+ * Compute geometric normal from 6-neighbor voxel topology.
+ *
+ * Uses central differences to compute gradient from occupancy field.
+ * The gradient points from empty toward solid, so we negate it to get
+ * the outward-facing surface normal.
+ *
+ * @param brickView Reference to the brick's entity view
+ * @param x, y, z Local voxel coordinates within brick [0, brickSize)
+ * @param brickSize Size of brick per axis (typically 8)
+ * @return Normalized surface normal, or (0,1,0) fallback for interior voxels
+ */
+glm::vec3 computeGeometricNormal(const EntityBrickView& brickView, int x, int y, int z, int brickSize) {
+    // Central differences: sample 6 neighbors
+    float dx = getOccupancy(brickView, x + 1, y, z, brickSize) - getOccupancy(brickView, x - 1, y, z, brickSize);
+    float dy = getOccupancy(brickView, x, y + 1, z, brickSize) - getOccupancy(brickView, x, y - 1, z, brickSize);
+    float dz = getOccupancy(brickView, x, y, z + 1, brickSize) - getOccupancy(brickView, x, y, z - 1, brickSize);
+
+    glm::vec3 gradient(dx, dy, dz);
+    float len = glm::length(gradient);
+
+    // Surface voxel = has non-zero gradient (at least one empty neighbor)
+    // Interior voxels have zero gradient (all neighbors solid)
+    constexpr float EPSILON = 0.001f;
+    if (len > EPSILON) {
+        // Negate gradient to get outward-facing normal
+        // (gradient points toward solid, we want normal pointing toward empty)
+        return -glm::normalize(gradient);
+    }
+
+    // Fallback for interior voxels or edge cases
+    return glm::vec3(0.0f, 1.0f, 0.0f);
+}
+
+/**
+ * Pre-compute all geometric normals for a brick.
+ *
+ * Caches normals for all 512 voxels (8x8x8) to avoid redundant neighbor lookups
+ * during DXT compression. Each voxel requires 6 neighbor checks, so pre-computing
+ * saves 3,072 lookups per brick during the compression loop.
+ *
+ * @param brickView Reference to the brick's entity view
+ * @param brickSize Size of brick per axis (typically 8)
+ * @return Array of 512 pre-computed normals indexed by linear voxel index
+ */
+std::array<glm::vec3, 512> precomputeGeometricNormals(const EntityBrickView& brickView, int brickSize) {
+    std::array<glm::vec3, 512> normals;
+
+    for (int z = 0; z < brickSize; ++z) {
+        for (int y = 0; y < brickSize; ++y) {
+            for (int x = 0; x < brickSize; ++x) {
+                int idx = z * brickSize * brickSize + y * brickSize + x;
+                normals[idx] = computeGeometricNormal(brickView, x, y, z, brickSize);
+            }
+        }
+    }
+
+    return normals;
+}
+
+} // anonymous namespace
+
+// ============================================================================
 // Octree Rebuild API (Phase 3)
 // ============================================================================
 
@@ -435,10 +537,12 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
     // ========================================================================
     // 8. PHASE 4: DXT Compression (Week 3)
+    // Phase B.1: Geometric normals computed from voxel topology
     // ========================================================================
     {
         const size_t numBricks = m_octree->root->brickViews.size();
         const size_t blocksPerBrick = 32;
+        const int brickSize = 8;  // 8x8x8 voxels per brick
 
         m_octree->root->compressedColors.resize(numBricks * blocksPerBrick);
         m_octree->root->compressedNormals.resize(numBricks * blocksPerBrick);
@@ -446,10 +550,15 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         DXT1ColorCompressor colorCompressor;
         DXTNormalCompressor normalCompressor;
 
-        std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks..." << std::endl;
+        std::cout << "[LaineKarrasOctree] Compressing " << numBricks << " bricks (geometric normals)..." << std::endl;
 
         for (size_t brickIdx = 0; brickIdx < numBricks; ++brickIdx) {
             const auto& brickView = m_octree->root->brickViews[brickIdx];
+
+            // Phase B.1: Pre-compute geometric normals for entire brick
+            // This avoids redundant 6-neighbor lookups during DXT compression
+            // Performance: O(512 * 6) = 3,072 neighbor checks, done once per brick
+            std::array<glm::vec3, 512> geometricNormals = precomputeGeometricNormals(brickView, brickSize);
 
             for (int blockIdx = 0; blockIdx < static_cast<int>(blocksPerBrick); ++blockIdx) {
                 std::array<glm::vec3, 16> blockColors;
@@ -472,11 +581,13 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
                         continue;
                     }
 
+                    // Color: still from entity component (user-defined)
                     auto colorOpt = brickView.getComponentValue<Color>(voxelLinearIdx);
                     blockColors[texelIdx] = colorOpt.value_or(glm::vec3(0.5f));
 
-                    auto normalOpt = brickView.getComponentValue<Normal>(voxelLinearIdx);
-                    blockNormals[texelIdx] = normalOpt.value_or(glm::vec3(0.0f, 1.0f, 0.0f));
+                    // Phase B.1: Use pre-computed geometric normal from voxel topology
+                    // This replaces entity Normal component with topology-derived normal
+                    blockNormals[texelIdx] = geometricNormals[voxelLinearIdx];
 
                     validIndices[validCount] = texelIdx;
                     validCount++;
@@ -501,7 +612,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
         size_t normalBytes = numBricks * blocksPerBrick * sizeof(OctreeBlock::CompressedNormalBlock);
         std::cout << "[LaineKarrasOctree] Compression complete: "
                   << colorBytes << " bytes colors, "
-                  << normalBytes << " bytes normals" << std::endl;
+                  << normalBytes << " bytes normals (geometric)" << std::endl;
     }
 }
 

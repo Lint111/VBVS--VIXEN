@@ -9,6 +9,11 @@
 #include <string>
 #include <functional>
 
+// Forward declaration for LOD parameters
+namespace Vixen::SVO {
+    struct LODParameters;
+}
+
 namespace Vixen::SVO {
 
 /**
@@ -130,6 +135,50 @@ public:
         float lodBias,
         float tMin = 0.0f,
         float tMax = 1e30f) const = 0;  // Use large float instead of max()
+
+    /**
+     * Cast ray with screen-space LOD termination.
+     *
+     * Based on Laine & Karras (2010) Section 4.4 "Level-of-detail".
+     * Terminates traversal when voxel projects to less than one pixel.
+     *
+     * ESVO formula (Raycast.inl line 181):
+     *   if (tc_max * ray.dir_sz + ray_orig_sz >= scale_exp2) break;
+     *
+     * @param origin Ray origin in world space
+     * @param direction Ray direction (normalized)
+     * @param fovY Vertical field of view in radians
+     * @param screenHeight Screen resolution in pixels (vertical)
+     * @param tMin Minimum t-value
+     * @param tMax Maximum t-value
+     * @return Closest hit (may be at coarser LOD for distant voxels)
+     */
+    virtual RayHit castRayScreenSpaceLOD(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        float fovY,
+        int screenHeight,
+        float tMin = 0.0f,
+        float tMax = 1e30f) const = 0;
+
+    /**
+     * Cast ray with explicit LOD parameters.
+     *
+     * Use LODParameters::fromCamera() to compute parameters from camera settings.
+     *
+     * @param origin Ray origin in world space
+     * @param direction Ray direction (normalized)
+     * @param lodParams Screen-space LOD parameters (ray cone)
+     * @param tMin Minimum t-value
+     * @param tMax Maximum t-value
+     * @return Closest hit (may be at coarser LOD for distant voxels)
+     */
+    virtual RayHit castRayWithLOD(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        const LODParameters& lodParams,
+        float tMin = 0.0f,
+        float tMax = 1e30f) const = 0;
 
     // ========================================================================
     // Metadata Interface

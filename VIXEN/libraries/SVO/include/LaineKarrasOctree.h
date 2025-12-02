@@ -6,6 +6,7 @@
 #include "BrickReference.h"
 #include "AttributeRegistry.h"
 #include "VoxelComponents.h"  // For Transform component
+#include "SVOLOD.h"  // For LODParameters screen-space LOD
 #include <gaia.h>  // For gaia::ecs::World and gaia::ecs::Entity
 #include <memory>
 #include <optional>
@@ -75,6 +76,21 @@ public:
         const glm::vec3& origin,
         const glm::vec3& direction,
         float lodBias,
+        float tMin = 0.0f,
+        float tMax = (std::numeric_limits<float>::max)()) const override;
+
+    ISVOStructure::RayHit castRayScreenSpaceLOD(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        float fovY,
+        int screenHeight,
+        float tMin = 0.0f,
+        float tMax = (std::numeric_limits<float>::max)()) const override;
+
+    ISVOStructure::RayHit castRayWithLOD(
+        const glm::vec3& origin,
+        const glm::vec3& direction,
+        const LODParameters& lodParams,
         float tMin = 0.0f,
         float tMax = (std::numeric_limits<float>::max)()) const override;
 
@@ -375,8 +391,10 @@ private:
     };
 
     // Main ray casting implementation
+    // lodParams is optional - nullptr disables screen-space LOD termination
     ISVOStructure::RayHit castRayImpl(const glm::vec3& origin, const glm::vec3& direction,
-                       float tMin, float tMax, float rayBias) const;
+                       float tMin, float tMax, float rayBias,
+                       const LODParameters* lodParams = nullptr) const;
 
     // ========================================================================
     // Refactored Traversal Phase Methods

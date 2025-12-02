@@ -192,7 +192,7 @@ ISVOStructure::RayHit LaineKarrasOctree::castRay(
     float tMin,
     float tMax) const
 {
-    return castRayImpl(origin, direction, tMin, tMax, 0.0f);
+    return castRayImpl(origin, direction, tMin, tMax, 0.0f, nullptr);
 }
 
 ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(
@@ -202,7 +202,33 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayLOD(
     float tMin,
     float tMax) const
 {
-    return castRayImpl(origin, direction, tMin, tMax, lodBias);
+    // Legacy lodBias interface - apply bias to LOD parameters
+    LODParameters lodParams;
+    lodParams.rayDirSize = lodBias;  // Use lodBias as direct cone spread
+    lodParams.rayOrigSize = 0.0f;
+    return castRayImpl(origin, direction, tMin, tMax, lodBias, &lodParams);
+}
+
+ISVOStructure::RayHit LaineKarrasOctree::castRayScreenSpaceLOD(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    float fovY,
+    int screenHeight,
+    float tMin,
+    float tMax) const
+{
+    LODParameters lodParams = LODParameters::fromCamera(fovY, screenHeight);
+    return castRayImpl(origin, direction, tMin, tMax, 0.0f, &lodParams);
+}
+
+ISVOStructure::RayHit LaineKarrasOctree::castRayWithLOD(
+    const glm::vec3& origin,
+    const glm::vec3& direction,
+    const LODParameters& lodParams,
+    float tMin,
+    float tMax) const
+{
+    return castRayImpl(origin, direction, tMin, tMax, 0.0f, &lodParams);
 }
 
 // ============================================================================
@@ -492,7 +518,8 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     const glm::vec3& direction,
     float tMin,
     float tMax,
-    float lodBias) const
+    float lodBias,
+    const LODParameters* lodParams) const
 {
     ISVOStructure::RayHit miss{};
     miss.hit = false;
@@ -519,6 +546,10 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
     glm::vec3 rayEntryPoint = origin + rayDir * tRayStart;
     glm::vec3 worldSize = m_worldMax - m_worldMin;
     glm::vec3 normOrigin = (rayEntryPoint - m_worldMin) / worldSize + glm::vec3(1.0f);
+
+    // Precompute world-space ray length for LOD distance conversion
+    // ESVO t-values are in [0,1] normalized space; multiply by worldRayLength for distance
+    float worldRayLength = glm::length(worldSize);
 
     ESVORayCoefficients coef = computeRayCoefficients(rayDir, normOrigin);
 
@@ -581,6 +612,44 @@ ISVOStructure::RayHit LaineKarrasOctree::castRayImpl(
         bool skipToAdvance = false;
 
         if (shouldProcess) {
+            // ================================================================
+            // Screen-Space LOD Termination Check (ESVO Raycast.inl line 181)
+            // ================================================================
+            // Check if voxel projects to less than one pixel.
+            // Formula: tc_max * ray.dir_sz + ray_orig_sz >= scale_exp2
+            //
+            // If the projected pixel size at current distance exceeds the
+            // voxel size, terminate at this LOD level (coarse detail acceptable).
+            // ================================================================
+            if (lodParams != nullptr && lodParams->isEnabled()) {
+                // Convert ESVO normalized t to world-space distance
+                // state.t_min is entry into current voxel in [0,1] normalized space
+                float worldDistance = (tRayStart + state.t_min * worldRayLength);
+
+                // Get world-space voxel size at current scale
+                float worldVoxelSize = esvoScaleToWorldSize(state.scale, worldSize.x);
+
+                // Check LOD termination condition
+                if (lodParams->shouldTerminate(worldDistance, worldVoxelSize)) {
+                    DEBUG_PRINT("  LOD TERMINATE: distance=%.3f, voxelSize=%.3f, projectedSize=%.3f\n",
+                                worldDistance, worldVoxelSize,
+                                lodParams->getProjectedPixelSize(worldDistance));
+
+                    // Return hit at current coarse LOD level
+                    // This voxel is smaller than a pixel, so we accept it
+                    ISVOStructure::RayHit lodHit{};
+                    lodHit.hit = true;
+                    lodHit.entity = gaia::ecs::Entity();  // No specific entity at internal node
+                    lodHit.hitPoint = origin + rayDir * worldDistance;
+                    lodHit.normal = glm::vec3(0.0f, 1.0f, 0.0f);  // Placeholder normal
+                    lodHit.tMin = worldDistance;
+                    lodHit.tMax = worldDistance + worldVoxelSize;
+                    lodHit.scale = esvoToUserScale(state.scale);
+
+                    return lodHit;
+                }
+            }
+
             if (isLeaf) {
                 auto leafResult = handleLeafHit(state, coef, origin, tRayStart, tEntry, tExit, tv_max);
 

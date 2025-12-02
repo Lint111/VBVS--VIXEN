@@ -408,3 +408,35 @@ if(TARGET TBB::tbb)
 endif()
 
 gtest_discover_tests(test_cornell_box)
+
+# ===========================================================================
+# Screen-Space LOD Tests (Phase B.2)
+# ===========================================================================
+# Tests LODParameters structure and screen-space adaptive ray termination.
+# Based on ESVO paper Section 4.4 and Raycast.inl line 181.
+
+add_executable(test_lod
+    test_lod.cpp
+)
+
+target_link_libraries(test_lod PRIVATE
+    GTest::gtest_main
+    SVO
+    GaiaVoxelWorld
+    VoxelComponents
+    VoxelData
+)
+
+set_target_properties(test_lod PROPERTIES FOLDER "Tests/SVO Tests")
+
+# Copy TBB DLLs to test executable directory for runtime
+if(TARGET TBB::tbb)
+    add_custom_command(TARGET test_lod POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:TBB::tbb>
+            $<TARGET_FILE_DIR:test_lod>
+        COMMENT "Copying TBB DLL for test_lod"
+    )
+endif()
+
+gtest_discover_tests(test_lod)

@@ -16,6 +16,7 @@ add_library(SVO STATIC
     include/SVOTypes.h
     include/SVOBuilder.h
     include/LaineKarrasOctree.h
+    include/SVOLOD.h  # Screen-space LOD parameters (Phase B.2)
     # VoxelInjection.h DEPRECATED - removed in favor of rebuild() API
 
     # Implementation

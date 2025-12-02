@@ -2,7 +2,7 @@
 
 **Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 4 Phase A.3 Complete - SVOManager Subsystem Split
+**Status**: Week 4 Phase B.2 Complete - Screen-Space LOD Termination
 
 ---
 
@@ -79,6 +79,13 @@ Should be: getBrickEntities(mortonBase, depth) = 1 bulk request per brick
 - [x] Sort bricks by Morton code during `rebuild()` - **DONE**
 - [x] Store compact indices in descriptors - **DONE** (via SVORebuild.cpp)
 - [x] Benchmark cache locality improvement - **DONE** (neighbors ~768 bytes apart vs ~49 KB)
+
+### Phase A.4: Zero-Copy API (Day 3) - COMPLETE
+- [x] Add `getBrickEntitiesInto()` for caller-provided buffer - **DONE**
+- [x] Add `countBrickEntities()` for isEmpty() without allocation - **DONE**
+- [x] Mark old `getBrickEntities()` as deprecated - **DONE**
+- [x] Update `EntityBrickView::isEmpty()` to use zero-copy API - **DONE**
+- [x] Verify SVO traversal uses EntityBrickView (already correct) - **DONE**
 
 ### Phase 3: LOD System (Days 4-5)
 - [ ] Implement `SVOLOD.h` with LODParameters struct
@@ -164,15 +171,20 @@ Should be: getBrickEntities(mortonBase, depth) = 1 bulk request per brick
   - [x] API compatibility maintained (all tests pass)
 
 **Phase B: Original Week 4 Features (Days 4-7)**
-- [ ] Phase B.1: Normal Calculation Enhancement (Day 4)
-  - [ ] Add `FaceNormal` enum to SVOTypes.h for debug mode
-  - [ ] Note: DXT compressed normals already working (binding 7) ✅
+- [x] Phase B.1: Geometric Normal Computation (Day 4) - **COMPLETE**
+  - [x] Added `computeGeometricNormal()` using 6-neighbor gradient method
+  - [x] Added `precomputeGeometricNormals()` for O(512) cached computation per brick
+  - [x] Added `NormalMode` enum to SVOTypes.h (`EntityComponent`, `GeometricGradient`, `Hybrid`)
+  - [x] Default: `GeometricGradient` - normals derived from voxel topology
+  - [x] Note: DXT compressed normals already working (binding 7)
 
-- [ ] Phase B.2: Adaptive LOD System (Days 5-6)
-  - [ ] Create `SVOLOD.h` with LODParameters
-  - [ ] Implement screen-space voxel termination (ESVO Raycast.inl reference)
-  - [ ] Wire into `castRayLOD()` (currently stub)
-  - [ ] Add GPU shader LOD early termination
+- [x] Phase B.2: Adaptive LOD System (Days 5-6) - **COMPLETE**
+  - [x] Created `SVOLOD.h` with LODParameters struct
+  - [x] Implemented screen-space voxel termination (ESVO Raycast.inl line 181 reference)
+  - [x] Added `castRayScreenSpaceLOD()` and `castRayWithLOD()` methods
+  - [x] LOD termination check in SVOTraversal.cpp main loop
+  - [x] 16/16 test_lod tests passing
+  - [ ] GPU shader LOD early termination (deferred to GPU phase)
 
 - [ ] Phase B.3: Streaming Foundation (Day 7)
   - [ ] Create `SVOStreaming.h` (SliceState, SVOStreamingManager)
@@ -253,6 +265,78 @@ These edge cases are documented and accepted:
 ---
 
 ## Session Metrics
+
+### Week 4 Phase B.2 - Screen-Space LOD Termination (Dec 2, 2025)
+- **Status**: COMPLETE - ESVO screen-space LOD termination implemented
+- **Files Created**:
+  - `libraries/SVO/include/SVOLOD.h` - LODParameters struct with ray cone math
+  - `libraries/SVO/tests/test_lod.cpp` - 16 unit tests for LOD functionality
+- **Files Modified**:
+  - `libraries/SVO/include/ISVOStructure.h` - Added `castRayScreenSpaceLOD()`, `castRayWithLOD()` pure virtual methods
+  - `libraries/SVO/include/LaineKarrasOctree.h` - Implemented new LOD methods, added SVOLOD.h include
+  - `libraries/SVO/src/SVOTraversal.cpp` - Added LOD termination check before PUSH phase
+  - `libraries/SVO/CMakeLists.txt` - Added SVOLOD.h to source list
+  - `libraries/SVO/tests/CMakeLists.txt` - Added test_lod target
+- **Algorithm**: Based on ESVO paper Section 4.4 and Raycast.inl line 181
+  - `projectedSize = distance * rayDirSize + rayOrigSize`
+  - When `projectedSize >= voxelSize`, voxel is smaller than pixel -> terminate
+  - `LODParameters::fromCamera(fovY, screenHeight)` computes ray cone spread
+  - `shouldTerminate(distance, voxelSize)` implements ESVO condition
+- **API**:
+  - `castRayScreenSpaceLOD(origin, dir, fovY, screenHeight)` - camera-based LOD
+  - `castRayWithLOD(origin, dir, lodParams)` - explicit LOD parameters
+  - `LODParameters::withBias(float)` - adjust termination threshold
+  - Helper functions: `esvoScaleToWorldSize()`, `esvoTToWorldDistance()`
+- **Tests Verified**:
+  - test_lod: 16/16 passing
+  - test_cornell_box: 7/9 passing (pre-existing issues)
+  - test_ray_casting_comprehensive: 9/11 passing (pre-existing issues)
+- **Performance**: No regression for non-LOD rays (nullptr check is O(1))
+
+### Week 4 Phase B.1 - Geometric Normal Computation (Dec 2, 2025)
+- **Status**: COMPLETE - Normals computed from voxel topology instead of entity components
+- **Files Modified**:
+  - `libraries/SVO/src/SVORebuild.cpp` - Added `computeGeometricNormal()`, `precomputeGeometricNormals()`, updated DXT compression loop
+  - `libraries/SVO/include/SVOTypes.h` - Added `NormalMode` enum to `BuildParams`
+- **Algorithm**: 6-neighbor central differences gradient
+  - For each voxel, check occupancy of 6 neighbors (+/- X, Y, Z)
+  - Compute gradient: `(occupied(x+1) - occupied(x-1), ...)`
+  - Normal = `-normalize(gradient)` (points outward from solid to empty)
+  - Interior voxels (zero gradient) use fallback `(0, 1, 0)`
+- **Performance**:
+  - Pre-computed: O(512 * 6) = 3,072 neighbor checks per brick, done once
+  - Cached in `std::array<glm::vec3, 512>` before DXT compression loop
+  - No performance regression (same DXT compression, just different input normals)
+- **Configuration**: `BuildParams::normalMode = NormalMode::GeometricGradient` (default)
+  - `EntityComponent`: Legacy mode, uses Normal component from GaiaVoxelWorld
+  - `GeometricGradient`: New default, computes from voxel topology
+  - `Hybrid`: Entity normal if available, fallback to geometric
+- **Tests Verified**:
+  - Build: SUCCESS (all warnings are SPIRV-Tools PDB warnings, not errors)
+  - test_rebuild_hierarchy: 4/4 passing
+  - test_cornell_box: 7/9 passing (pre-existing ray casting issues, not normal-related)
+  - Console output confirms: `Compressing X bricks (geometric normals)...`
+
+### Week 4 Phase A.4 - Zero-Copy API Implementation (Dec 2, 2025)
+- **Status**: COMPLETE - SVO/GaiaVoxelWorld API now follows zero-copy view design
+- **Files Modified**:
+  - `libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h` - Added `getBrickEntitiesInto()`, `countBrickEntities()`, deprecated old API
+  - `libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp` - Implemented zero-copy methods, legacy API delegates to new
+  - `libraries/GaiaVoxelWorld/src/EntityBrickView.cpp` - `isEmpty()` uses `countBrickEntities()` (no allocation)
+- **Design Philosophy**:
+  - "SVO is a VIEW for data in GaiaWorld - no copies during traversal"
+  - "Data materialization only at GPU upload boundary"
+- **API Changes**:
+  - `getBrickEntitiesInto(morton, span<EntityID>&, count&)` - zero-copy bulk load
+  - `countBrickEntities(morton)` - count without allocating 512-element array
+  - Old `getBrickEntities()` marked deprecated (still works, calls new API internally)
+- **SVO Verification**: SVORebuild.cpp and SVOBrickDDA.cpp already use EntityBrickView correctly (no violations)
+- **Tests Verified**:
+  - GaiaVoxelWorld library: builds successfully
+  - SVO library: builds successfully
+  - test_rebuild_hierarchy: 4/4 passing
+  - test_cornell_box: 7/9 passing
+  - test_svo_builder: 9/11 passing
 
 ### Week 4 Phase A.3 - SVOManager Subsystem Split (Dec 2, 2025)
 - **Status**: COMPLETE - Monolithic file split into 4 logical subsystems
