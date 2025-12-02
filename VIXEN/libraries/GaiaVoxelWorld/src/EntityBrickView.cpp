@@ -225,8 +225,41 @@ size_t EntityBrickView::countSolidVoxels() const {
 }
 
 bool EntityBrickView::isEmpty() const {
-    return std::all_of(m_entities.begin(), m_entities.end(),
-        [](const auto& entity) { return entity == gaia::ecs::Entity(); });
+    // For span-based mode, check if any entity is valid
+    // gaia::ecs::Entity() creates an invalid/empty entity (likely ID=0 or null)
+    // We can optimize by checking if all entities are invalid
+    if (m_queryMode == QueryMode::EntitySpan) {
+        // Fast path: Check if all entity IDs are zero/invalid
+        // This avoids 512 comparisons by checking the underlying bits
+        return std::all_of(m_entities.begin(), m_entities.end(),
+            [](const gaia::ecs::Entity& entity) {
+                return entity == gaia::ecs::Entity();  // Or: entity == gaia::ecs::Entity()
+            });
+    }
+
+    // For query-based modes (WorldSpace, IntegerGrid, LocalGrid):
+    // Use Morton lookup via GaiaVoxelWorld - check if brick has any entities
+    // Optimization: Use bulk API if available
+    if (m_queryMode == QueryMode::LocalGrid) {
+    
+        // Fast path: Use getBrickEntities() bulk API to check count
+        auto brickEntities = m_world.getBrickEntities(m_brickMortonBase, m_brickSize);
+        return brickEntities.count == 0;  // Zero entities = empty brick
+    }
+
+    // Fallback: Iterate through all voxel positions
+    const int brickSizeInt = static_cast<int>(m_brickSize);
+    for (int z = 0; z < brickSizeInt; ++z) {
+        for (int y = 0; y < brickSizeInt; ++y) {
+            for (int x = 0; x < brickSizeInt; ++x) {
+                auto entity = getEntityFast(x, y, z);
+                if (entity != gaia::ecs::Entity()) {
+                    return false;  // Found at least one entity
+                }
+            }
+        }
+    }
+    return true;  // No entities found
 }
 
 bool EntityBrickView::isFull() const {

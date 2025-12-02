@@ -2,7 +2,7 @@
 
 **Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 4 Planning in Progress
+**Status**: Week 4 Phase A.1 Complete - Unified Morton Architecture
 
 ---
 
@@ -67,12 +67,13 @@ Should be: getBrickEntities(mortonBase, depth) = 1 bulk request per brick
 
 ## Week 4 Implementation Plan
 
-### Phase 1: Unified Morton Architecture (Days 1-2)
-- [ ] Extract unified `MortonCode64` to `libraries/Core/`
-- [ ] Migrate GaiaVoxelWorld to use unified implementation
-- [ ] Add `getEntityByMorton(uint64_t)` for direct lookup
-- [ ] Implement `getBrickEntities(mortonBase, depth)` for bulk loading
-- [ ] Update EntityBrickView to use Morton pass-through
+### Phase 1: Unified Morton Architecture (Days 1-2) - COMPLETE
+- [x] Extract unified `MortonCode64` to `libraries/Core/` - **DONE**
+- [x] Migrate GaiaVoxelWorld to use unified implementation - **DONE**
+- [x] Add `getEntityByMorton(uint64_t)` for direct lookup - **DONE**
+- [x] Implement `getBrickEntities(mortonBase, depth)` for bulk loading - **DONE**
+- [x] Update EntityBrickView to use Morton pass-through (`getEntityFast()`) - **DONE**
+- [x] VoxelComponents.cpp now delegates to Core::MortonCode64 - **DONE**
 
 ### Phase 2: Morton Brick Sorting (Day 3)
 - [ ] Sort bricks by Morton code during `rebuild()`
@@ -263,8 +264,25 @@ These edge cases are documented and accepted:
 
 ## Session Metrics
 
+### Week 4 Phase A.1 (Dec 2, 2025)
+- **Status**: Unified Morton Architecture COMPLETE
+- **Files Created**:
+  - `libraries/Core/include/MortonEncoding.h` - MortonCode64 struct with brick operations
+  - `libraries/Core/src/MortonEncoding.cpp` - Implementation with 21-bit per axis
+  - `libraries/Core/CMakeLists.txt` - New Core static library
+- **Files Modified**:
+  - `libraries/CMakeLists.txt` - Added Core library
+  - `libraries/VoxelComponents/CMakeLists.txt` - Link Core
+  - `libraries/VoxelComponents/src/VoxelComponents.cpp` - Delegate to Core
+  - `libraries/GaiaVoxelWorld/CMakeLists.txt` - Link Core
+  - `libraries/GaiaVoxelWorld/include/GaiaVoxelWorld.h` - Added `getEntityByMorton()`, `BrickEntities`, `getBrickEntities()`
+  - `libraries/GaiaVoxelWorld/src/GaiaVoxelWorld.cpp` - Implemented Morton API
+  - `libraries/GaiaVoxelWorld/include/EntityBrickView.h` - Added `m_brickMortonBase`, `getEntityFast()`
+  - `libraries/GaiaVoxelWorld/src/EntityBrickView.cpp` - Implemented fast Morton lookups
+- **Tests**: 36/36 EntityBrickView pass, 25/26 GaiaVoxelWorld pass (1 pre-existing float precision test)
+- **Architecture impact**: Eliminates 4 redundant conversions per entity lookup
+
 ### Week 4 Planning (Dec 2, 2025)
-- **Status**: Planning phase, no implementation yet
 - **Architecture analysis**: 3 critical inefficiencies identified
 - **Expected gains**: 2-4x performance improvement from fixes
 
