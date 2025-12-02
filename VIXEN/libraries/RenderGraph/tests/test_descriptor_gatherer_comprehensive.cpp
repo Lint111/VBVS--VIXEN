@@ -14,9 +14,9 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-// Real SDI-generated files
-#include "../../generated/sdi/43bded93fcbc37f9-SDI.h"
-#include "../../generated/sdi/VoxelRayMarchNames.h"
+// Real SDI-generated files (use project-root include path)
+#include <generated/sdi/43bded93fcbc37f9-SDI.h>
+#include <generated/sdi/VoxelRayMarchNames.h>
 
 // Render graph components
 #include <RenderGraph/Nodes/DescriptorResourceGathererNode.h>

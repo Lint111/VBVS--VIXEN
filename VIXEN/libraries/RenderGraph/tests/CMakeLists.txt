@@ -9,6 +9,10 @@ add_executable(test_rendergraph_basic
     test_rendergraph_dependency.cpp
 )
 
+# Ensure tests can include generated headers and centralized test mocks
+# (Allows includes like <generated/sdi/Name.h> and <RenderGraph/tests/TestMocks.h>)
+include_directories(${CMAKE_SOURCE_DIR})
+
 # Link against the RenderGraph library target - includes propagate automatically
 # RenderGraph target exposes its include directory as PUBLIC, no manual include_directories needed
 if(TARGET RenderGraph)
