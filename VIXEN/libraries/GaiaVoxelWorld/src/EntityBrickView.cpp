@@ -1,7 +1,10 @@
 #include "pch.h"
 #include "EntityBrickView.h"
 #include "GaiaVoxelWorld.h"
+#include "MortonEncoding.h"
 #include <algorithm>
+
+using Vixen::Core::MortonCode64;
 
 namespace Vixen::GaiaVoxel {
 
@@ -16,6 +19,7 @@ EntityBrickView::EntityBrickView(
     , m_depth(depth)
     , m_brickSize(1u << depth)  // 2^depth
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
+    , m_brickMortonBase(MortonCode64::fromWorldPos(glm::ivec3(0)))  // Precompute Morton base
     , m_queryMode(QueryMode::EntitySpan) {
 }
 
@@ -32,6 +36,7 @@ EntityBrickView::EntityBrickView(
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(voxelSize)
+    , m_brickMortonBase(MortonCode64::fromWorldPos(rootPositionInWorldSpace))  // Precompute Morton base
     , m_queryMode(QueryMode::WorldSpace) {
 }
 
@@ -47,6 +52,7 @@ EntityBrickView::EntityBrickView(
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    , m_brickMortonBase(MortonCode64::fromWorldPos(gridOrigin))  // Precompute Morton base
     , m_queryMode(QueryMode::IntegerGrid) {
 }
 
@@ -64,6 +70,9 @@ EntityBrickView::EntityBrickView(
     , m_brickSize(1u << depth)
     , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
     , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    // For LocalGrid: compute world position of brick minimum corner
+    , m_brickMortonBase(MortonCode64::fromWorldPos(
+        glm::ivec3(volumeWorldMin) + localGridOrigin))  // Precompute Morton base
     , m_queryMode(QueryMode::LocalGrid) {  // Use local grid query mode
 }
 
@@ -143,6 +152,25 @@ gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
 
 gaia::ecs::Entity EntityBrickView::getEntity(int x, int y, int z) const {
     return getEntity(coordToLinearIndex(x, y, z));
+}
+
+gaia::ecs::Entity EntityBrickView::getEntityFast(int x, int y, int z) const {
+    // FAST PATH: Direct Morton lookup eliminates 4 redundant conversions
+    // OLD: coordToLinearIndex -> linearIndexToCoord -> vec3 cast -> morton encode
+    // NEW: Morton arithmetic with precomputed base
+    //
+    // Uses precomputed m_brickMortonBase (set in constructor)
+    // and addLocalOffset for efficient voxel lookup.
+
+    // Compute Morton code for this voxel using Morton arithmetic
+    MortonCode64 voxelMorton = m_brickMortonBase.addLocalOffset(
+        static_cast<uint32_t>(x),
+        static_cast<uint32_t>(y),
+        static_cast<uint32_t>(z)
+    );
+
+    // Direct O(1) lookup via Morton index
+    return m_world.getEntityByMorton(voxelMorton);
 }
 
 void EntityBrickView::setEntity(size_t voxelIdx, gaia::ecs::Entity entity) {

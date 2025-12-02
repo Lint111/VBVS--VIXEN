@@ -35,6 +35,7 @@ target_include_directories(GaiaVoxelWorld
 target_link_libraries(GaiaVoxelWorld
     PUBLIC
         VoxelComponents  # Component definitions only (includes Gaia + GLM)
+        Core             # Unified Morton encoding
     # VoxelData removed - no longer needed! Clean separation achieved.
 )
 

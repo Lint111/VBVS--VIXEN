@@ -5,6 +5,7 @@
 #endif
 
 #include "VoxelComponents.h"
+#include "MortonEncoding.h"
 #include <gaia.h>
 #include <glm/glm.hpp>
 #include <array>
@@ -142,6 +143,22 @@ public:
     gaia::ecs::Entity getEntity(int x, int y, int z) const;
 
     /**
+     * Get entity at 3D coordinate using direct Morton lookup (FAST PATH).
+     *
+     * PERFORMANCE: Eliminates 4 redundant conversions in old pipeline:
+     *   OLD: coordToLinearIndex -> linearIndexToCoord -> vec3 cast -> morton encode
+     *   NEW: Direct Morton arithmetic (brickBase + localOffset)
+     *
+     * Uses precomputed m_brickMortonBase for O(1) lookup.
+     *
+     * @param x Local X coordinate [0, brickSize)
+     * @param y Local Y coordinate [0, brickSize)
+     * @param z Local Z coordinate [0, brickSize)
+     * @return Entity at position, or invalid entity if empty
+     */
+    gaia::ecs::Entity getEntityFast(int x, int y, int z) const;
+
+    /**
      * Set entity at linear voxel index.
      */
     void setEntity(size_t voxelIdx, gaia::ecs::Entity entity);
@@ -257,6 +274,10 @@ private:
     size_t m_brickSize;             // 2^depth (8, 16, 32, ... 256)
     size_t m_voxelsPerBrick;        // brickSize³ (512, 4096, 32768, ...)
     float m_voxelSize{ 1.0f };      // World-space size of each voxel
+
+    // Precomputed Morton base (Week 4 Phase A.1: Unified Morton Architecture)
+    // Eliminates redundant conversions: coordToLinearIndex -> linearIndexToCoord -> vec3 -> morton
+    Vixen::Core::MortonCode64 m_brickMortonBase;  // Morton code of brick's minimum corner
 
     // Query mode
     // - EntitySpan: Direct array access to pre-populated entity array

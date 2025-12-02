@@ -16,11 +16,12 @@ target_include_directories(VoxelComponents
         $<INSTALL_INTERFACE:include>
 )
 
-# Link Gaia ECS and GLM
+# Link Gaia ECS, GLM, and Core (unified Morton encoding)
 target_link_libraries(VoxelComponents
     PUBLIC
         gaia
         glm::glm
+        Core  # Week 4 Phase A.1: Unified Morton Architecture
 )
 
 # C++23 standard

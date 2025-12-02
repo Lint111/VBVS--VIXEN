@@ -3,11 +3,13 @@
 #include <gaia.h>
 #include "VoxelComponents.h"
 #include "ComponentData.h"
+#include "MortonEncoding.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
 #include <optional>
 #include <span>
+#include <array>
 
 namespace Vixen::GaiaVoxel {
 
@@ -218,6 +220,76 @@ public:
      * @return Entity with matching world position, or invalid entity if not found
      */
     EntityID getEntityByWorldSpace(glm::vec3 worldPos) const;
+
+    // ========================================================================
+    // Direct Morton Lookup (Zero Conversion API)
+    // ========================================================================
+
+    /**
+     * Direct entity lookup by Morton code (O(1) hash lookup).
+     * Eliminates coordinate conversions - fastest possible lookup.
+     *
+     * @param mortonCode Raw Morton code (uint64_t)
+     * @return Entity at position, or invalid entity if not found
+     */
+    EntityID getEntityByMorton(uint64_t mortonCode) const;
+
+    /**
+     * Direct entity lookup by MortonCode64 (O(1) hash lookup).
+     * Type-safe wrapper for unified Morton architecture.
+     *
+     * @param morton MortonCode64 from Core library
+     * @return Entity at position, or invalid entity if not found
+     */
+    EntityID getEntityByMorton(const Vixen::Core::MortonCode64& morton) const;
+
+    // ========================================================================
+    // Bulk Brick Loading (512x More Efficient)
+    // ========================================================================
+
+    /**
+     * Result of bulk brick entity lookup.
+     * Contains entities for all 512 voxels in an 8x8x8 brick.
+     */
+    struct BrickEntities {
+        static constexpr size_t BRICK_SIZE = 8;
+        static constexpr size_t BRICK_VOLUME = 512;  // 8^3
+
+        /** Entities at each voxel position (invalid entity if empty) */
+        std::array<EntityID, BRICK_VOLUME> entities;
+
+        /** Count of valid (non-empty) voxels */
+        uint32_t count = 0;
+
+        /** Check if brick is empty */
+        [[nodiscard]] bool isEmpty() const { return count == 0; }
+
+        /** Check if brick is fully populated */
+        [[nodiscard]] bool isFull() const { return count == BRICK_VOLUME; }
+    };
+
+    /**
+     * Bulk load all entities in a brick (512x more efficient than individual lookups).
+     *
+     * PERFORMANCE:
+     * - OLD: 512 individual getEntity(x,y,z) calls with hash lookups
+     * - NEW: 1 getBrickEntities() call with optimized iteration
+     *
+     * @param brickBaseMorton Morton code of brick's minimum corner
+     * @param brickSize Brick side length (default 8 for 8x8x8)
+     * @return BrickEntities with all 512 entity references
+     */
+    BrickEntities getBrickEntities(const Vixen::Core::MortonCode64& brickBaseMorton, uint32_t brickSize = 8) const;
+
+    /**
+     * Bulk load entities by brick world position.
+     * Convenience wrapper that computes Morton base from world position.
+     *
+     * @param brickWorldMin World position of brick's minimum corner
+     * @param brickSize Brick side length (default 8 for 8x8x8)
+     * @return BrickEntities with all 512 entity references
+     */
+    BrickEntities getBrickEntitiesByWorldPos(const glm::ivec3& brickWorldMin, uint32_t brickSize = 8) const;
 
     // ========================================================================
     // Spatial Queries

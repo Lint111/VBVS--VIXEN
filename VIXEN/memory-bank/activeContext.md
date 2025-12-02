@@ -2,7 +2,102 @@
 
 **Last Updated**: December 2, 2025
 **Current Branch**: `claude/phase-h-voxel-infrastructure`
-**Status**: Week 3 DXT Compression - COMPLETE ✅
+**Status**: Week 4 Planning in Progress
+
+---
+
+## Current Focus: Week 4 Architecture Improvements
+
+Critical architectural inefficiencies identified. Week 4 will address performance bottlenecks before adding new features.
+
+**Expected Impact**:
+- Entity lookup: 2x faster (eliminate redundant conversions)
+- Brick loading: 512x more efficient (bulk requests)
+- Cache hits: 4x better (Morton sorting)
+- Combined: ~700-900 Mrays/sec (vs current 320-390)
+
+---
+
+## Architecture Inefficiencies Identified
+
+### 1. Morton Key Duplication (Priority: HIGH)
+
+**Problem**: GaiaVoxelWorld and SVO both use Morton encoding with redundant conversions.
+
+```
+Current Flow:
+worldPos → morton (Gaia) → worldPos → morton (SVO) → GPU
+           ↑ waste #1        ↑ waste #2   ↑ waste #3-4
+```
+
+- 4 unnecessary conversions per entity lookup
+- Two separate Morton implementations:
+  - `VoxelComponents.h`: 64-bit Morton (GaiaVoxelWorld)
+  - `MortonCode.h`: 32-bit Morton (SVO)
+- No Morton pass-through between systems
+
+**Solution**: Unified `MortonCode64` in `libraries/Core/`, direct Morton lookup API.
+
+### 2. Inefficient Entity Lookups (Priority: HIGH)
+
+**Problem**: EntityBrickView does single-voxel queries instead of bulk brick requests.
+
+```
+Current:  getEntity(x,y,z) per voxel = 512 hash lookups per brick
+Should be: getBrickEntities(mortonBase, depth) = 1 bulk request per brick
+```
+
+- Hash map lookup overhead: ~50-100 cycles per query
+- 512 lookups per brick × 50 cycles = 25,600 cycles wasted
+- Chunk-based loading would be 512x more efficient
+
+**Solution**: Add `getBrickEntities(mortonBase, depth)` for bulk loading.
+
+### 3. Cache Locality (Priority: MEDIUM)
+
+**Problem**: Bricks stored linearly instead of Morton-sorted.
+
+- Neighbor bricks: 49 KB apart (linear) vs 3 KB apart (Morton)
+- 4x cache miss rate during traversal
+- GPU L2 cache thrashing on spatial queries
+
+**Solution**: Sort bricks by Morton code during `rebuild()`, store compact indices.
+
+---
+
+## Week 4 Implementation Plan
+
+### Phase 1: Unified Morton Architecture (Days 1-2)
+- [ ] Extract unified `MortonCode64` to `libraries/Core/`
+- [ ] Migrate GaiaVoxelWorld to use unified implementation
+- [ ] Add `getEntityByMorton(uint64_t)` for direct lookup
+- [ ] Implement `getBrickEntities(mortonBase, depth)` for bulk loading
+- [ ] Update EntityBrickView to use Morton pass-through
+
+### Phase 2: Morton Brick Sorting (Day 3)
+- [ ] Sort bricks by Morton code during `rebuild()`
+- [ ] Store compact indices in descriptors
+- [ ] Benchmark cache locality improvement
+
+### Phase 3: LOD System (Days 4-5)
+- [ ] Implement `SVOLOD.h` with LODParameters struct
+- [ ] Add screen-space termination (from ESVO `Raycast.inl`)
+- [ ] Wire into `castRayLOD()` method
+- [ ] Test with variable screen resolutions
+
+### Phase 4: Streaming Foundation (Days 6-7)
+- [ ] Define `SVOStreaming.h` (SliceState, camera-based prefetch)
+- [ ] Implement LRU eviction with memory budget
+- [ ] Foundation for large octree support (>GPU memory)
+
+### Phase 5: SVOManager Refactoring (Ongoing)
+- [ ] Split `LaineKarrasOctree.cpp` (2,752 lines) into logical files:
+  - `SVOBuilder.cpp` - octree construction
+  - `SVOTraversal.cpp` - ray casting
+  - `SVOCompression.cpp` - DXT encoding
+  - `SVOGPUBuffers.cpp` - GPU upload
+- [ ] Add Laine & Karras (2010) attribution headers
+- [ ] Maintain API compatibility
 
 ---
 
@@ -10,7 +105,7 @@
 
 **Unexpected Performance Win**: Compressed variant is 40-70% FASTER than uncompressed.
 
-### Performance Comparison (800×600, Cornell Box)
+### Performance Comparison (800x600, Cornell Box)
 
 | Variant | Dispatch Time | Throughput | Memory |
 |---------|---------------|------------|--------|
@@ -19,116 +114,87 @@
 | **Gain** | **+40-70% faster** | **+60% higher** | **5.3:1 reduction** |
 
 ### Why Compressed is Faster
-- Memory bandwidth reduced 5.3× (dominant bottleneck)
+- Memory bandwidth reduced 5.3x (dominant bottleneck)
 - 768 bytes/brick (256+512) fits GPU L2 cache better than 3072 bytes
 - DXT decode cost negligible vs memory bandwidth savings
 - GPU is memory-bound, not compute-bound
 
-### Memory Footprint (Confirmed)
-
-| Buffer | Size | Compression |
-|--------|------|-------------|
-| OctreeNodes | 12.51 KB | - |
-| CompressedColors (DXT1) | 314.00 KB | 8:1 ratio |
-| CompressedNormals (DXT) | 628.00 KB | 4:1 ratio |
-| Materials | 0.66 KB | - |
-| **Total** | **~955 KB** | vs ~5 MB uncompressed |
-
-### Shader Integration Complete
-- Removed deprecated `brickBaseIndexBuffer` (binding 6)
-- Shifted compressed buffers to bindings 6-7 (was 7-8)
-- `USE_COMPRESSED_SHADER` flag in VulkanGraphApplication.cpp
-- Both variants compile and run successfully
-
----
-
-## Week 3 Session Archive (Dec 2, 2025)
-
 <details>
-<summary>Click to expand session details (7 sessions)</summary>
+<summary>Week 3 Session Archive (7 sessions)</summary>
 
 ### Session 7: A/B Testing Integration
 - Added `USE_COMPRESSED_SHADER` compile-time flag (lines 44-60)
 - Shader builder selects VoxelRayMarch.comp or VoxelRayMarch_Compressed.comp
-- Build verified, runtime tested
 
 ### Session 5: Memory Tracking & QueryPool Fix
 - Fixed QueryPool leak crash (ReleaseGPUResources pattern)
 - Memory tracking verified at runtime
-- Benchmarked all GPU buffer allocations
 
 ### Session 4: GPUPerformanceLogger Integration
 - Added GPUPerformanceLogger to VoxelGridNode
 - Track all voxel buffer allocations (6 buffers)
-- Memory reports on compile
 
 ### Session 3: Build Fixes
 - Fixed test_attribute_registry.cpp includes
 - Verified SVO.lib builds with compression
-- All core libraries building
 
 ### Session 2: LaineKarrasOctree Integration
 - Integrated DXT compression into rebuild()
 - Added CompressedNormalBlock to OctreeBlock
-- Updated GPUBuffers struct with compressed fields
 
 ### Session 1: Framework Design
 - Designed generic `BlockCompressor` framework
-- Implemented DXT1ColorCompressor (24:1), DXTNormalCompressor (12:1)
+- Implemented DXT1ColorCompressor, DXTNormalCompressor
 - Created 12 unit tests (all passing)
-- Created shaders/Compression.glsl and VoxelRayMarch_Compressed.comp
 
 </details>
 
 ---
 
-## Week 3 Achievements Summary
-
-| Metric | Result | Notes |
-|--------|--------|-------|
-| Compression Ratio | 5.3:1 | 955 KB vs ~5 MB |
-| Performance Gain | +40-70% | Memory bandwidth win |
-| Throughput | 320-390 Mrays/sec | vs 186-247 baseline |
-| Tests Passing | 12/12 | Compression unit tests |
-| Shader Variants | 2 | Compressed + Uncompressed |
-| Build Status | ✅ | VIXEN.exe verified |
-
----
-
-## Current Focus: Week 3 Complete - Ready for Week 4
-
-Compressed shader variant is **production-ready**. Recommend defaulting to compressed path.
-
-### Week 4 Priorities
-1. Normal calculation from voxel faces
-2. Adaptive LOD
-3. Streaming for large octrees
-
----
-
 ## Todo List (Active Tasks)
 
-### Week 3: DXT Compression (COMPLETE ✅)
-- [x] Study ESVO DXT section (paper 4.1)
-- [x] Design generic BlockCompressor framework
-- [x] Implement CPU DXT1/BC1 encoder for color bricks
-- [x] Implement CPU DXT normal encoder
-- [x] Create unit tests (12 passing)
-- [x] Create GLSL decompression utilities file (`shaders/Compression.glsl`)
-- [x] Create VoxelRayMarch_Compressed.comp shader variant
-- [x] Integrate into LaineKarrasOctree (compress on build)
-- [x] Add accessor methods (getCompressedColorData, etc.)
-- [x] Update GPUBuffers struct with compressed buffer fields
-- [x] GPU-side: Upload compressed buffers to bindings 7, 8 in VoxelGridNode
-- [x] Add memory tracking for GPU buffer benchmarking
-- [x] Wire up shader variant toggle (`USE_COMPRESSED_SHADER` flag)
-- [x] Run runtime benchmarking (A/B test compressed vs uncompressed)
-- [x] Document memory reduction results
+### Week 4: Architecture Refactoring + Feature Implementation
 
-### Week 4: Polish
-- [ ] Normal calculation from voxel faces
-- [ ] Adaptive LOD
-- [ ] Streaming for large octrees
+**Phase A: Architectural Improvements (Days 1-3)**
+- [ ] Phase A.1: Unified Morton Architecture (Days 1-2)
+  - [ ] Extract unified `MortonCode64` to `libraries/Core/MortonEncoding.h`
+  - [ ] Add `getEntityByMorton(uint64_t)` to GaiaVoxelWorld
+  - [ ] Implement `getBrickEntities(mortonBase, depth)` bulk loading (512× more efficient)
+  - [ ] Update EntityBrickView to use Morton pass-through (eliminate 4 conversions)
+
+- [ ] Phase A.2: Morton Brick Sorting (Day 3)
+  - [ ] Sort bricks by Morton code in rebuild()
+  - [ ] Update descriptor compact indices
+  - [ ] Expected: +50-60% throughput from cache locality
+
+- [ ] Phase A.3: SVOManager Refactoring (Day 3-4)
+  - [ ] Split LaineKarrasOctree.cpp (2,752 lines) into logical subsystems
+  - [ ] Create SVOManager facade with proper Laine & Karras (2010) attribution
+  - [ ] Maintain API compatibility
+
+**Phase B: Original Week 4 Features (Days 4-7)**
+- [ ] Phase B.1: Normal Calculation Enhancement (Day 4)
+  - [ ] Add `FaceNormal` enum to SVOTypes.h for debug mode
+  - [ ] Note: DXT compressed normals already working (binding 7) ✅
+
+- [ ] Phase B.2: Adaptive LOD System (Days 5-6)
+  - [ ] Create `SVOLOD.h` with LODParameters
+  - [ ] Implement screen-space voxel termination (ESVO Raycast.inl reference)
+  - [ ] Wire into `castRayLOD()` (currently stub)
+  - [ ] Add GPU shader LOD early termination
+
+- [ ] Phase B.3: Streaming Foundation (Day 7)
+  - [ ] Create `SVOStreaming.h` (SliceState, SVOStreamingManager)
+  - [ ] Implement camera-based prefetch queue
+  - [ ] Add LRU eviction with memory budget
+
+### Week 3: DXT Compression (COMPLETE)
+- [x] BlockCompressor framework
+- [x] DXT1ColorCompressor, DXTNormalCompressor
+- [x] 12 unit tests passing
+- [x] VoxelRayMarch_Compressed.comp shader
+- [x] A/B testing with USE_COMPRESSED_SHADER flag
+- [x] Memory reduction: 5.3:1 compression
 
 ### Low Priority (Deferred)
 - [ ] Multi-threaded CPU ray casting
@@ -137,19 +203,15 @@ Compressed shader variant is **production-ready**. Recommend defaulting to compr
 
 ---
 
-## Week 2 Achievements (Reference)
-
-| Metric | Result | Target | Status |
-|--------|--------|--------|--------|
-| GPU Throughput | 1,400-1,750 Mrays/sec | >200 Mrays/sec | 8.5x exceeded |
-| Shader Bugs Fixed | 8/8 | - | Complete |
-| Cornell Box Rendering | Working | Working | Complete |
-| Debug Capture System | Working | - | Complete |
-| GPU Performance Logging | Working | - | Complete |
-
----
-
 ## Technical Reference
+
+### Morton Code Specifications
+
+| Implementation | Bits | Location | Use Case |
+|----------------|------|----------|----------|
+| VoxelComponents.h | 64-bit | GaiaVoxelWorld | Entity storage |
+| MortonCode.h | 32-bit | SVO | Octree traversal |
+| MortonCode64.h (NEW) | 64-bit | Core | Unified (Week 4) |
 
 ### ESVO Coordinate Spaces
 - **LOCAL SPACE**: Octree storage (ray-independent, integer grid)
@@ -171,13 +233,6 @@ Compressed shader variant is **production-ready**. Recommend defaulting to compr
 | DXT1ColorBlock | 8 bytes | 16 colors compressed |
 | DXTNormalBlock | 16 bytes | 16 normals compressed |
 
-### DXT Block Format (Color)
-```
-bits[31:0]  = Two RGB-565 reference colors
-bits[63:32] = 16 × 2-bit interpolation indices
-Interpolation: ref0, ref1, 2/3*ref0+1/3*ref1, 1/3*ref0+2/3*ref1
-```
-
 ---
 
 ## Known Limitations
@@ -188,6 +243,7 @@ These edge cases are documented and accepted:
 2. **Axis-parallel rays**: Require `computeCorrectedTcMax()` filtering
 3. **Brick boundaries**: Handled by descriptor-based lookup (not position-based)
 4. **DXT lossy compression**: Colors may shift slightly (acceptable for voxels)
+5. **Morton duplication**: GaiaVoxelWorld/SVO use separate implementations (Week 4 fix)
 
 ---
 
@@ -197,6 +253,7 @@ These edge cases are documented and accepted:
 - Paper: `C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\`
 - Key files: `trunk/src/octree/Octree.cpp` (castRay), `trunk/src/octree/build/Builder.cpp`
 - DXT: `trunk/src/octree/Util.cpp` (encode/decode), `trunk/src/octree/cuda/AttribLookup.inl` (GPU decode)
+- LOD: `trunk/src/octree/cuda/Raycast.inl` (screen-space termination)
 
 ### Papers
 - Laine & Karras (2010): "Efficient Sparse Voxel Octrees"
@@ -206,7 +263,12 @@ These edge cases are documented and accepted:
 
 ## Session Metrics
 
-### Week 3 Cumulative Stats (Dec 2, 2025)
+### Week 4 Planning (Dec 2, 2025)
+- **Status**: Planning phase, no implementation yet
+- **Architecture analysis**: 3 critical inefficiencies identified
+- **Expected gains**: 2-4x performance improvement from fixes
+
+### Week 3 Cumulative Stats
 - **Sessions**: 7
 - **New Files**: 8 (compression framework, shaders)
 - **Lines Added**: ~1,200+

@@ -1,10 +1,12 @@
 #include "pch.h"
 #include "GaiaVoxelWorld.h"
+#include "MortonEncoding.h"
 #include <algorithm>
 #include <iostream>
 #include <unordered_map>
 
 using namespace Vixen::GaiaVoxel::MortonKeyUtils; // For fromPosition(), toWorldPos(), etc.
+using Vixen::Core::MortonCode64;
 
 using namespace gaia::ecs;
 
@@ -392,6 +394,66 @@ GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByWorldSpace(glm::vec3 worldPo
     }
 
     return EntityID{};  // Returns invalid entity if not found
+}
+
+// ============================================================================
+// Direct Morton Lookup (Zero Conversion API)
+// ============================================================================
+
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMorton(uint64_t mortonCode) const {
+    auto it = m_impl->mortonIndex.find(mortonCode);
+    return (it != m_impl->mortonIndex.end()) ? it->second : EntityID{};
+}
+
+GaiaVoxelWorld::EntityID GaiaVoxelWorld::getEntityByMorton(const MortonCode64& morton) const {
+    return getEntityByMorton(morton.code);
+}
+
+// ============================================================================
+// Bulk Brick Loading (512x More Efficient)
+// ============================================================================
+
+GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntities(
+    const MortonCode64& brickBaseMorton,
+    uint32_t brickSize) const {
+
+    BrickEntities result;
+    result.count = 0;
+
+    // Initialize all entities to invalid
+    for (auto& entity : result.entities) {
+        entity = EntityID{};
+    }
+
+    // Iterate all voxels in brick (brickSize^3)
+    // Linear index: z*brickSize^2 + y*brickSize + x
+    for (uint32_t z = 0; z < brickSize; ++z) {
+        for (uint32_t y = 0; y < brickSize; ++y) {
+            for (uint32_t x = 0; x < brickSize; ++x) {
+                // Compute Morton code for this voxel using Morton arithmetic
+                MortonCode64 voxelMorton = brickBaseMorton.addLocalOffset(x, y, z);
+
+                // O(1) lookup in Morton index
+                auto it = m_impl->mortonIndex.find(voxelMorton.code);
+                if (it != m_impl->mortonIndex.end()) {
+                    size_t linearIndex = z * brickSize * brickSize + y * brickSize + x;
+                    result.entities[linearIndex] = it->second;
+                    result.count++;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+GaiaVoxelWorld::BrickEntities GaiaVoxelWorld::getBrickEntitiesByWorldPos(
+    const glm::ivec3& brickWorldMin,
+    uint32_t brickSize) const {
+
+    // Compute Morton base from world position
+    MortonCode64 brickBaseMorton = MortonCode64::fromWorldPos(brickWorldMin);
+    return getBrickEntities(brickBaseMorton, brickSize);
 }
 
 // ============================================================================

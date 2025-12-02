@@ -11,6 +11,9 @@ cmake_minimum_required(VERSION 3.15...4.2 FATAL_ERROR)
 # ============================================================================
 # Order matters: dependencies must be built before libraries that use them
 
+# Core library (fundamental utilities: Morton encoding, etc.)
+add_subdirectory(Core)
+
 # Logger library (used by everything)
 add_subdirectory(logger)
 
