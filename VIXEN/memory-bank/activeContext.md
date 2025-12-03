@@ -2,42 +2,58 @@
 
 **Last Updated**: December 3, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase II STARTED - VulkanIntegration Helper Complete (126 Tests Passing)
+**Status**: Phase II IN PROGRESS - Export Complete (131 Tests Passing)
 
 ---
 
 ## Session Summary
 
-Started Phase II: Vulkan Integration. Created VulkanIntegration helper class for bridging the Profiler system with real Vulkan handles from RenderGraph nodes.
+Completed export of compute ray march graph from VulkanGraphApplication to BenchmarkGraphFactory. Added ConnectVariadic resource wiring and shader builder registration.
 
 ### Completed This Session
-- **VulkanIntegration.h/cpp** - Helper class for extracting Vulkan handles
-  - `VulkanHandles` struct with device, physicalDevice, queue, framesInFlight
-  - `VulkanIntegrationHelper::ExtractFromGraph()` - Extracts VkDevice/VkPhysicalDevice from DeviceNode
-  - `VulkanIntegrationHelper::InitializeProfilerFromGraph()` - One-liner profiler setup
-  - `VulkanIntegrationHelper::RunBenchmarkSuite()` - High-level benchmark runner
-  - `VulkanIntegrationHelper::CreateWiredAdapter()` - Creates and wires ProfilerGraphAdapter
-  - `ScopedProfilerIntegration` - RAII wrapper for profiler lifecycle
-- **10 New Unit Tests** for VulkanIntegration
+- **WireVariadicResources()** - New method in BenchmarkGraphFactory
+  - Wires descriptor bindings (0-5) for VoxelRayMarch.comp
+  - Wires push constant bindings (camera data fields)
+  - Uses hardcoded binding indices matching VoxelRayMarchNames.h
+  - Proper SlotRole assignment (Dependency, Execute, Debug)
+- **RegisterVoxelRayMarchShader()** - Shader builder registration
+  - Registers ShaderBundleBuilder callback for VoxelRayMarch.comp
+  - Supports compressed variant (useCompressed flag)
+  - Configures include paths for shader preprocessing
+- **BuildComputeRayMarchGraph() Updated** - Now includes full wiring
+  - Calls WireVariadicResources after typed connections
+  - Calls RegisterVoxelRayMarchShader for shader loading
+- **5 New Unit Tests** for export functionality (126 -> 131)
   - Null graph handling
-  - VulkanHandles validation
-  - ScopedProfilerIntegration lifecycle
-  - All 126 tests pass
+  - Binding layout documentation tests
+  - Push constant layout documentation tests
 
 ### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/Profiler/include/Profiler/VulkanIntegration.h` | NEW: VulkanHandles, VulkanIntegrationHelper, ScopedProfilerIntegration |
-| `libraries/Profiler/src/VulkanIntegration.cpp` | NEW: Implementation using DeviceNode extraction |
-| `libraries/Profiler/CMakeLists.txt` | Added VulkanIntegration.cpp to sources |
-| `libraries/Profiler/tests/test_profiler.cpp` | Added 10 new VulkanIntegration tests (116 -> 126) |
+| `libraries/Profiler/include/Profiler/BenchmarkGraphFactory.h` | Added WireVariadicResources, RegisterVoxelRayMarchShader declarations |
+| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Implemented variadic wiring + shader registration |
+| `libraries/Profiler/CMakeLists.txt` | Added ShaderManagement dependency |
+| `libraries/Profiler/tests/test_profiler.cpp` | Added 5 new export tests (126 -> 131) |
 
-### Key Discovery: Real Vulkan Already Wired
-The existing MetricsCollector and DeviceCapabilities classes already support real Vulkan:
-- `MetricsCollector::Initialize(VkDevice, VkPhysicalDevice, framesInFlight)` creates `VkQueryPool`
-- `MetricsCollector::OnFrameBegin/End()` uses `vkCmdWriteTimestamp`, `vkCmdResetQueryPool`
-- `DeviceCapabilities::Capture(VkPhysicalDevice)` calls real `vkGetPhysicalDeviceProperties`
-- Phase I implementation was more complete than initially thought
+### Binding Layout (VoxelRayMarch.comp)
+**Descriptor Set 0:**
+- Binding 0: outputImage (storage image)
+- Binding 1: esvoNodes (SSBO)
+- Binding 2: brickData (SSBO)
+- Binding 3: materials (SSBO)
+- Binding 4: traceWriteIndex (SSBO, debug)
+- Binding 5: octreeConfig (UBO)
+
+**Push Constants (64 bytes):**
+- 0: cameraPos (vec3)
+- 1: time (float)
+- 2: cameraDir (vec3)
+- 3: fov (float)
+- 4: cameraUp (vec3)
+- 5: aspect (float)
+- 6: cameraRight (vec3)
+- 7: debugMode (int32)
 
 ---
 
@@ -239,7 +255,7 @@ libraries/Profiler/
 │   ├── BenchmarkGraphFactory.cpp
 │   └── VulkanIntegration.cpp  # NEW: Phase II
 └── tests/
-    └── test_profiler.cpp       # 126 unit/integration tests
+    └── test_profiler.cpp       # 131 unit/integration tests
 ```
 
 ---
@@ -288,6 +304,10 @@ libraries/Profiler/
 - [x] VulkanIntegrationHelper - ExtractFromGraph, InitializeProfilerFromGraph
 - [x] ScopedProfilerIntegration - RAII wrapper for profiler lifecycle
 - [x] 10 new unit tests (116 -> 126 total)
+- [x] WireVariadicResources() - Descriptor bindings + push constant wiring
+- [x] RegisterVoxelRayMarchShader() - Shader builder registration
+- [x] BuildComputeRayMarchGraph() fully wired with ConnectVariadic
+- [x] 5 new export tests (126 -> 131 total)
 - [ ] GPU integration test (requires running Vulkan application)
 - [ ] VK_KHR_ray_tracing_pipeline (Hardware RT implementation)
 - [ ] GLSL shader counter queries

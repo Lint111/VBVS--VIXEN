@@ -1028,6 +1028,11 @@ void BenchmarkGraphFactory::WireVariadicResources(
 
     RG::ConnectionBatch batch(graph);
 
+    // Use RenderGraph namespace types
+    using RG::SlotRole;
+    using RG::CameraData;
+    using RG::InputState;
+
     //--------------------------------------------------------------------------
     // VoxelRayMarch.comp Descriptor Bindings (Set 0)
     //--------------------------------------------------------------------------
@@ -1093,6 +1098,9 @@ void BenchmarkGraphFactory::WireVariadicResources(
     constexpr uint32_t PC_ASPECT = 5;
     constexpr uint32_t PC_CAMERA_RIGHT = 6;
     constexpr uint32_t PC_DEBUG_MODE = 7;
+
+    // Suppress unused variable warning for PC_TIME
+    (void)PC_TIME;
 
     // Connect camera data to push constants using field extraction
     batch.ConnectVariadic(
