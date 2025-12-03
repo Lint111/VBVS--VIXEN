@@ -1,5 +1,7 @@
 #include "Profiler/ProfilerSystem.h"
+#include <nlohmann/json.hpp>
 #include <Logger.h>
+#include <iostream>
 
 namespace Vixen::Profiler {
 
@@ -167,9 +169,9 @@ size_t ProfilerSystem::RunTestBatch(
         const auto& config = configs[i];
 
         // Log progress
-        Logger::Info("[Profiler] Running test " + std::to_string(i + 1) + "/" +
-                     std::to_string(configs.size()) + ": " + config.pipeline + "/" +
-                     config.algorithm + "/" + std::to_string(config.voxelResolution));
+        std::cout << "[Profiler] Running test " << (i + 1) << "/" << configs.size()
+                  << ": " << config.pipeline << "/" << config.algorithm << "/"
+                  << config.voxelResolution << std::endl;
 
         StartTestRun(config);
 

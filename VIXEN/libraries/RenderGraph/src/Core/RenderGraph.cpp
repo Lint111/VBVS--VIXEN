@@ -481,7 +481,7 @@ void RenderGraph::Execute(VkCommandBuffer commandBuffer) {
             // Phase 0.4: Check if node should execute this frame (loop gating)
             if (node->ShouldExecuteThisFrame()) {
                 node->SetState(NodeState::Executing);
-                node->Execute();
+                node->Execute();  // Hooks fired inside NodeInstance::Execute()
                 node->SetState(NodeState::Complete);
             }
         }
