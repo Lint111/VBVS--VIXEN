@@ -7,6 +7,108 @@
 
 namespace Vixen::Profiler {
 
+/**
+ * @brief GPU-side shader counters for detailed ray marching metrics
+ *
+ * These counters require GPU-side atomic operations and readback to CPU.
+ * The shader writes to atomic counters in a storage buffer, which is then
+ * read back after frame completion.
+ *
+ * Implementation requirements:
+ * 1. Storage buffer with atomic counters (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+ * 2. Shader writes via atomicAdd() in GLSL/HLSL
+ * 3. Readback via vkCmdCopyBuffer or mapped staging buffer
+ * 4. Double/triple buffering to avoid stalls
+ *
+ * GPU-side GLSL example:
+ * @code
+ * layout(set = 0, binding = X, std430) buffer ShaderCountersBuffer {
+ *     uint totalVoxelsTraversed;
+ *     uint totalRaysCast;
+ *     uint totalNodesVisited;
+ *     uint totalLeafNodesVisited;
+ *     uint totalEmptySpaceSkipped;
+ *     uint rayHitCount;
+ *     uint rayMissCount;
+ *     uint earlyTerminations;
+ * } counters;
+ *
+ * // In ray march loop:
+ * atomicAdd(counters.totalVoxelsTraversed, 1);
+ * atomicAdd(counters.totalNodesVisited, 1);
+ * @endcode
+ *
+ * TODO: Integration with MetricsCollector
+ * - Add CreateCounterBuffer() method
+ * - Add ResetCounters() for per-frame reset
+ * - Add ReadbackCounters() with fence synchronization
+ * - Connect to DescriptorResourceGatherer for binding
+ */
+struct ShaderCounters {
+    /// Total voxels traversed across all rays this frame
+    /// Divide by totalRaysCast to get avgVoxelsPerRay
+    uint64_t totalVoxelsTraversed = 0;
+
+    /// Total rays cast this frame (screen_width * screen_height for full-screen)
+    uint64_t totalRaysCast = 0;
+
+    /// Total octree/SVO nodes visited during traversal
+    /// High values indicate deep traversal or inefficient skip logic
+    uint64_t totalNodesVisited = 0;
+
+    /// Leaf nodes (actual voxel data) visited
+    /// totalNodesVisited - totalLeafNodesVisited = internal node visits
+    uint64_t totalLeafNodesVisited = 0;
+
+    /// Voxels skipped via empty space optimization (e.g., ESVO empty-skip)
+    /// Higher is better - indicates efficient empty space culling
+    uint64_t totalEmptySpaceSkipped = 0;
+
+    /// Rays that hit geometry (found a voxel)
+    uint64_t rayHitCount = 0;
+
+    /// Rays that missed all geometry (background)
+    uint64_t rayMissCount = 0;
+
+    /// Rays terminated early (e.g., max depth, max iterations)
+    uint64_t earlyTerminations = 0;
+
+    /// Compute derived metrics
+    float GetAvgVoxelsPerRay() const {
+        return totalRaysCast > 0 ? static_cast<float>(totalVoxelsTraversed) / totalRaysCast : 0.0f;
+    }
+
+    float GetAvgNodesPerRay() const {
+        return totalRaysCast > 0 ? static_cast<float>(totalNodesVisited) / totalRaysCast : 0.0f;
+    }
+
+    float GetHitRate() const {
+        return totalRaysCast > 0 ? static_cast<float>(rayHitCount) / totalRaysCast : 0.0f;
+    }
+
+    float GetEmptySpaceSkipRatio() const {
+        uint64_t totalPotential = totalVoxelsTraversed + totalEmptySpaceSkipped;
+        return totalPotential > 0 ? static_cast<float>(totalEmptySpaceSkipped) / totalPotential : 0.0f;
+    }
+
+    /// Reset all counters to zero (call at frame start)
+    void Reset() {
+        totalVoxelsTraversed = 0;
+        totalRaysCast = 0;
+        totalNodesVisited = 0;
+        totalLeafNodesVisited = 0;
+        totalEmptySpaceSkipped = 0;
+        rayHitCount = 0;
+        rayMissCount = 0;
+        earlyTerminations = 0;
+    }
+
+    /// Check if counters contain valid data (at least one ray was cast)
+    bool HasData() const {
+        return totalRaysCast > 0;
+    }
+};
+
 /// Per-frame metrics collected during profiling
 struct FrameMetrics {
     uint64_t frameNumber = 0;
@@ -32,6 +134,15 @@ struct FrameMetrics {
 
     // Bandwidth estimation info
     bool bandwidthEstimated = false;    // True if bandwidth is estimated (no HW counters)
+
+    // GPU shader counters (when available)
+    // These require GPU-side atomic counters and readback - see ShaderCounters documentation
+    ShaderCounters shaderCounters;
+
+    /// Check if shader counters contain valid data
+    bool HasShaderCounters() const {
+        return shaderCounters.HasData();
+    }
 };
 
 /// Aggregate statistics for a metric

@@ -78,16 +78,54 @@ struct OutputNodes {
     }
 };
 
+/// Fragment (graphics) pipeline nodes: Vertex shader, fragment shader, render pass, pipeline
+struct FragmentPipelineNodes {
+    RG::NodeHandle shaderLib;
+    RG::NodeHandle descriptorGatherer;
+    RG::NodeHandle pushConstantGatherer;
+    RG::NodeHandle descriptorSet;
+    RG::NodeHandle renderPass;
+    RG::NodeHandle framebuffer;
+    RG::NodeHandle pipeline;        // GraphicsPipelineNode
+    RG::NodeHandle drawCommand;     // Future: DrawCommandNode (currently uses compute dispatch path)
+
+    /// Check if required nodes are valid (drawCommand optional until implemented)
+    bool IsValid() const {
+        return shaderLib.IsValid() && descriptorGatherer.IsValid() &&
+               pushConstantGatherer.IsValid() && descriptorSet.IsValid() &&
+               renderPass.IsValid() && framebuffer.IsValid() && pipeline.IsValid();
+    }
+};
+
 /// Complete benchmark graph structure
 struct BenchmarkGraph {
     InfrastructureNodes infra;
     ComputePipelineNodes compute;
+    FragmentPipelineNodes fragment;   // Used for fragment pipeline type
     RayMarchNodes rayMarch;
     OutputNodes output;
 
-    /// Check if all subgraphs are valid
+    /// The pipeline type this graph was built for
+    PipelineType pipelineType = PipelineType::Invalid;
+
+    /// Check if all required subgraphs are valid based on pipeline type
     bool IsValid() const {
-        return infra.IsValid() && compute.IsValid() && rayMarch.IsValid() && output.IsValid();
+        if (!infra.IsValid() || !rayMarch.IsValid() || !output.IsValid()) {
+            return false;
+        }
+
+        switch (pipelineType) {
+            case PipelineType::Compute:
+                return compute.IsValid();
+            case PipelineType::Fragment:
+                return fragment.IsValid();
+            case PipelineType::HardwareRT:
+            case PipelineType::Hybrid:
+                // Not yet implemented - return false
+                return false;
+            default:
+                return false;
+        }
     }
 };
 
@@ -315,14 +353,101 @@ public:
     static bool HasProfilerHooks(const RG::RenderGraph* graph);
 
     //==========================================================================
-    // Future Pipeline Types (Stubs)
+    // Additional Pipeline Types
     //==========================================================================
 
-    // Fragment shader ray marching pipeline
-    // static BenchmarkGraph BuildFragmentRayMarchGraph(...);
+    /**
+     * @brief Build fragment pipeline subgraph
+     *
+     * Creates fragment shader pipeline nodes for full-screen ray marching:
+     * - ShaderLibraryNode: Vertex + Fragment shader loading
+     * - DescriptorResourceGathererNode: Collects descriptor bindings
+     * - PushConstantGathererNode: Collects push constant data
+     * - DescriptorSetNode: Descriptor set management
+     * - RenderPassNode: Single-pass render pass
+     * - FramebufferNode: Framebuffer for each swapchain image
+     * - GraphicsPipelineNode: Graphics pipeline state object
+     *
+     * Note: This creates a full-screen triangle approach - the vertex shader
+     * generates a full-screen triangle and the fragment shader performs ray marching.
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes (for device/swapchain connection)
+     * @param vertexShaderPath Path to vertex shader (default: fullscreen pass-through)
+     * @param fragmentShaderPath Path to fragment shader (ray marching)
+     * @return FragmentPipelineNodes with handles to all created nodes
+     */
+    static FragmentPipelineNodes BuildFragmentPipeline(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
+        const std::string& vertexShaderPath,
+        const std::string& fragmentShaderPath
+    );
 
-    // Hardware RT pipeline (VK_KHR_ray_tracing_pipeline)
-    // static BenchmarkGraph BuildHardwareRTGraph(...);
+    /**
+     * @brief Connect all subgraphs for fragment ray march pipeline
+     *
+     * Wires infrastructure, fragment pipeline, ray march scene, and output together.
+     * Uses ConnectionBatch for atomic registration.
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes
+     * @param fragment Fragment pipeline nodes
+     * @param rayMarch Ray marching scene nodes
+     * @param output Output/presentation nodes
+     */
+    static void ConnectFragmentRayMarch(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
+        const FragmentPipelineNodes& fragment,
+        const RayMarchNodes& rayMarch,
+        const OutputNodes& output
+    );
+
+    /**
+     * @brief Build complete fragment ray march benchmark graph
+     *
+     * High-level convenience method that creates all subgraphs and connects them
+     * for fragment shader-based ray marching (full-screen triangle approach).
+     *
+     * @param graph Target render graph
+     * @param config Benchmark test configuration
+     * @param width Screen width in pixels
+     * @param height Screen height in pixels
+     * @return BenchmarkGraph with all node handles (pipelineType = Fragment)
+     */
+    static BenchmarkGraph BuildFragmentRayMarchGraph(
+        RG::RenderGraph* graph,
+        const TestConfiguration& config,
+        uint32_t width,
+        uint32_t height
+    );
+
+    /**
+     * @brief Build hardware ray tracing benchmark graph (stub)
+     *
+     * Placeholder for VK_KHR_ray_tracing_pipeline based benchmark graph.
+     *
+     * TODO: Implementation requires:
+     * - VK_KHR_ray_tracing_pipeline extension support
+     * - VK_KHR_acceleration_structure for BVH building
+     * - Ray generation, closest hit, and miss shaders
+     * - Acceleration structure build nodes
+     * - Shader binding table management
+     *
+     * @param graph Target render graph
+     * @param config Benchmark test configuration
+     * @param width Screen width in pixels
+     * @param height Screen height in pixels
+     * @return Empty BenchmarkGraph (not yet implemented)
+     * @throws std::runtime_error indicating feature is not implemented
+     */
+    static BenchmarkGraph BuildHardwareRTGraph(
+        RG::RenderGraph* graph,
+        const TestConfiguration& config,
+        uint32_t width,
+        uint32_t height
+    );
 
     // Hybrid pipeline (compute + fragment stages)
     // static BenchmarkGraph BuildHybridGraph(...);
@@ -360,6 +485,14 @@ private:
         RG::RenderGraph* graph,
         const OutputNodes& nodes,
         bool enableDebugCapture
+    );
+
+    static void ConfigureFragmentPipelineParams(
+        RG::RenderGraph* graph,
+        const FragmentPipelineNodes& nodes,
+        const InfrastructureNodes& infra,
+        const std::string& vertexShaderPath,
+        const std::string& fragmentShaderPath
     );
 
     /// Map scene type string to VoxelGridNode scene parameter

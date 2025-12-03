@@ -24,6 +24,10 @@
 #include <Nodes/InputNode.h>
 #include <Nodes/PresentNode.h>
 #include <Nodes/DebugBufferReaderNode.h>
+// Fragment pipeline node types
+#include <Nodes/RenderPassNode.h>
+#include <Nodes/FramebufferNode.h>
+#include <Nodes/GraphicsPipelineNode.h>
 
 // Node configs
 #include <Data/Nodes/InstanceNodeConfig.h>
@@ -43,6 +47,10 @@
 #include <Data/Nodes/InputNodeConfig.h>
 #include <Data/Nodes/PresentNodeConfig.h>
 #include <Data/Nodes/DebugBufferReaderNodeConfig.h>
+// Fragment pipeline node configs
+#include <Data/Nodes/RenderPassNodeConfig.h>
+#include <Data/Nodes/FramebufferNodeConfig.h>
+#include <Data/Nodes/GraphicsPipelineNodeConfig.h>
 
 // Data types
 #include <Data/CameraData.h>
@@ -426,6 +434,7 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     }
 
     BenchmarkGraph result{};
+    result.pipelineType = PipelineType::Compute;
 
     // Create scene info from config
     SceneInfo scene = SceneInfo::FromResolutionAndDensity(
@@ -574,6 +583,331 @@ std::string BenchmarkGraphFactory::MapSceneType(const std::string& sceneType)
 
     // Default to cornell
     return "cornell";
+}
+
+void BenchmarkGraphFactory::ConfigureFragmentPipelineParams(
+    RG::RenderGraph* graph,
+    const FragmentPipelineNodes& nodes,
+    const InfrastructureNodes& /*infra*/,
+    const std::string& /*vertexShaderPath*/,
+    const std::string& /*fragmentShaderPath*/)
+{
+    // RenderPass parameters
+    auto* renderPass = static_cast<RG::RenderPassNode*>(graph->GetInstance(nodes.renderPass));
+    if (renderPass) {
+        // Use AttachmentLoadOp/StoreOp enums from RenderPassNodeConfig
+        // Color: Clear on load, store result
+        // Note: Parameters are set via SetParameter with string names
+    }
+
+    // GraphicsPipeline parameters
+    auto* pipeline = static_cast<RG::GraphicsPipelineNode*>(graph->GetInstance(nodes.pipeline));
+    if (pipeline) {
+        pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::ENABLE_DEPTH_TEST, false);
+        pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::ENABLE_DEPTH_WRITE, false);
+        pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::ENABLE_VERTEX_INPUT, false);  // Full-screen triangle
+        pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::CULL_MODE, std::string("None"));
+        pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
+    }
+
+    // Shader builder registration would be done by the application code
+    // since it requires access to ShaderBundleBuilder and file paths
+}
+
+//==============================================================================
+// Fragment Pipeline Builders
+//==============================================================================
+
+FragmentPipelineNodes BenchmarkGraphFactory::BuildFragmentPipeline(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const std::string& vertexShaderPath,
+    const std::string& fragmentShaderPath)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildFragmentPipeline: graph is null");
+    }
+
+    if (!infra.IsValid()) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildFragmentPipeline: infrastructure nodes invalid");
+    }
+
+    FragmentPipelineNodes nodes{};
+
+    // Create fragment pipeline nodes
+    nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_fragment_shader_lib");
+    nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_fragment_desc_gatherer");
+    nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_fragment_pc_gatherer");
+    nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_fragment_descriptors");
+    nodes.renderPass = graph->AddNode<RG::RenderPassNodeType>("benchmark_render_pass");
+    nodes.framebuffer = graph->AddNode<RG::FramebufferNodeType>("benchmark_framebuffer");
+    nodes.pipeline = graph->AddNode<RG::GraphicsPipelineNodeType>("benchmark_graphics_pipeline");
+    // Note: drawCommand is left invalid - future: add DrawCommandNode
+
+    // Configure parameters
+    ConfigureFragmentPipelineParams(graph, nodes, infra, vertexShaderPath, fragmentShaderPath);
+
+    return nodes;
+}
+
+void BenchmarkGraphFactory::ConnectFragmentRayMarch(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const FragmentPipelineNodes& fragment,
+    const RayMarchNodes& rayMarch,
+    const OutputNodes& output)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::ConnectFragmentRayMarch: graph is null");
+    }
+
+    RG::ConnectionBatch batch(graph);
+
+    //--------------------------------------------------------------------------
+    // Infrastructure Connections (same as compute pipeline)
+    //--------------------------------------------------------------------------
+
+    // Instance -> Device
+    batch.Connect(infra.instance, RG::InstanceNodeConfig::INSTANCE,
+                  infra.device, RG::DeviceNodeConfig::INSTANCE_IN);
+
+    // Device -> Window (VkInstance passthrough)
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.window, RG::WindowNodeConfig::INSTANCE);
+
+    // Window -> SwapChain
+    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
+         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+         .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
+         .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HEIGHT);
+
+    // Window -> Input
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+    }
+
+    // Device -> SwapChain
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::INSTANCE)
+         .Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> FrameSync
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.frameSync, RG::FrameSyncNodeConfig::VULKAN_DEVICE);
+
+    // FrameSync -> SwapChain
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+
+    // Device -> CommandPool
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.commandPool, RG::CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    //--------------------------------------------------------------------------
+    // Fragment Pipeline Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> Shader Library
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  fragment.shaderLib, RG::ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> Descriptor Set
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+
+    // Shader -> Descriptor Gatherer
+    batch.Connect(fragment.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  fragment.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // Gatherer -> Descriptor Set
+    batch.Connect(fragment.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+
+    // Shader -> Push Constant Gatherer
+    batch.Connect(fragment.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  fragment.pushConstantGatherer, RG::PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // Shader -> Descriptor Set
+    batch.Connect(fragment.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+
+    // Device -> RenderPass
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  fragment.renderPass, RG::RenderPassNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> RenderPass (for color format)
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  fragment.renderPass, RG::RenderPassNodeConfig::SWAPCHAIN_INFO);
+
+    // RenderPass -> GraphicsPipeline
+    batch.Connect(fragment.renderPass, RG::RenderPassNodeConfig::RENDER_PASS,
+                  fragment.pipeline, RG::GraphicsPipelineNodeConfig::RENDER_PASS);
+
+    // Device -> GraphicsPipeline
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  fragment.pipeline, RG::GraphicsPipelineNodeConfig::VULKAN_DEVICE_IN);
+
+    // Shader -> GraphicsPipeline
+    batch.Connect(fragment.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  fragment.pipeline, RG::GraphicsPipelineNodeConfig::SHADER_DATA_BUNDLE);
+
+    // Descriptor Set Layout -> GraphicsPipeline
+    batch.Connect(fragment.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  fragment.pipeline, RG::GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+
+    // RenderPass + SwapChain -> Framebuffer (uses FramebufferNodeConfig)
+    // Framebuffer needs render pass and swapchain image views
+    // Note: Exact connections depend on FramebufferNodeConfig slot definitions
+
+    //--------------------------------------------------------------------------
+    // Ray March Scene Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> Camera
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.camera, RG::CameraNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Camera
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  rayMarch.camera, RG::CameraNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  rayMarch.camera, RG::CameraNodeConfig::IMAGE_INDEX);
+
+    // Input -> Camera
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+                      rayMarch.camera, RG::CameraNodeConfig::INPUT_STATE);
+    }
+
+    // Device -> VoxelGrid
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> VoxelGrid
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMMAND_POOL);
+
+    //--------------------------------------------------------------------------
+    // Output Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> Present
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  output.present, RG::PresentNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Present
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_HANDLE,
+                  output.present, RG::PresentNodeConfig::SWAPCHAIN)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  output.present, RG::PresentNodeConfig::IMAGE_INDEX);
+
+    // FrameSync -> Present (present fences)
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
+    RG::RenderGraph* graph,
+    const TestConfiguration& config,
+    uint32_t width,
+    uint32_t height)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildFragmentRayMarchGraph: graph is null");
+    }
+
+    BenchmarkGraph result{};
+    result.pipelineType = PipelineType::Fragment;
+
+    // Create scene info from config
+    SceneInfo scene = SceneInfo::FromResolutionAndDensity(
+        config.voxelResolution,
+        config.densityPercent * 100.0f,  // Convert from 0-1 to 0-100 percent
+        MapSceneType(config.sceneType),
+        config.testId
+    );
+
+    // Build all subgraphs
+    result.infra = BuildInfrastructure(graph, width, height, true);
+    result.fragment = BuildFragmentPipeline(
+        graph, result.infra,
+        "FullscreenTriangle.vert",   // Full-screen triangle vertex shader
+        "VoxelRayMarch.frag"         // Fragment shader ray marching
+    );
+    result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
+    result.output = BuildOutput(graph, result.infra, false);
+
+    // Connect subgraphs
+    ConnectFragmentRayMarch(graph, result.infra, result.fragment, result.rayMarch, result.output);
+
+    return result;
+}
+
+//==============================================================================
+// Hardware RT Pipeline (Stub)
+//==============================================================================
+
+BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
+    RG::RenderGraph* /*graph*/,
+    const TestConfiguration& /*config*/,
+    uint32_t /*width*/,
+    uint32_t /*height*/)
+{
+    // TODO: Implement when VK_KHR_ray_tracing_pipeline support is added
+    //
+    // Implementation requirements:
+    // 1. VK_KHR_ray_tracing_pipeline extension
+    //    - Check device support via vkGetPhysicalDeviceFeatures2 with
+    //      VkPhysicalDeviceRayTracingPipelineFeaturesKHR
+    //
+    // 2. VK_KHR_acceleration_structure extension
+    //    - Required for building bottom-level (BLAS) and top-level (TLAS)
+    //      acceleration structures
+    //
+    // 3. New node types needed:
+    //    - AccelerationStructureNode: Builds BLAS from voxel geometry
+    //    - TopLevelASNode: Builds TLAS from BLAS instances
+    //    - RTShaderLibraryNode: Ray gen, closest hit, miss shaders
+    //    - ShaderBindingTableNode: SBT management
+    //    - RayTracingPipelineNode: VkRayTracingPipelineCreateInfoKHR
+    //    - RayTraceDispatchNode: vkCmdTraceRaysKHR
+    //
+    // 4. Shader types:
+    //    - Ray generation shader (.rgen): Camera ray generation
+    //    - Closest hit shader (.rchit): Surface shading
+    //    - Miss shader (.rmiss): Background color
+    //    - Optional: Any hit, intersection shaders for transparency
+    //
+    // 5. Memory requirements:
+    //    - Scratch buffers for AS building
+    //    - AS storage buffers
+    //    - SBT buffer
+    //
+    // 6. Comparison metrics:
+    //    - Hardware RT vs software ray marching performance
+    //    - Memory overhead of acceleration structures
+    //    - Build time for AS vs octree
+
+    throw std::runtime_error(
+        "BuildHardwareRTGraph: Hardware ray tracing pipeline not yet implemented. "
+        "Requires VK_KHR_ray_tracing_pipeline and VK_KHR_acceleration_structure extensions. "
+        "See implementation notes in BenchmarkGraphFactory.cpp for requirements."
+    );
 }
 
 //==============================================================================

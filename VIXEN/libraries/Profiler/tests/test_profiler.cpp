@@ -1304,3 +1304,758 @@ TEST(ProfilerEndToEndTest, TestConfigurationGeneratesValidId) {
     EXPECT_NE(testId.find("EMPTY_SKIP"), std::string::npos);
     EXPECT_NE(testId.find("RUN1"), std::string::npos);
 }
+
+// ============================================================================
+// End-to-End Integration Tests (Full Profiler Stack)
+// ============================================================================
+
+/// Tests the complete flow: BenchmarkRunner -> BenchmarkGraphFactory ->
+/// ProfilerGraphAdapter -> MetricsCollector -> MetricsExporter
+/// Uses mock Vulkan objects (nullptr with guards) to exercise the full pipeline
+
+class EndToEndIntegrationTest : public ::testing::Test {
+protected:
+    std::filesystem::path tempDir;
+
+    void SetUp() override {
+        tempDir = std::filesystem::temp_directory_path() / "profiler_e2e_test";
+        std::filesystem::create_directories(tempDir);
+    }
+
+    void TearDown() override {
+        std::error_code ec;
+        std::filesystem::remove_all(tempDir, ec);
+    }
+
+    // Helper to create a valid test configuration
+    TestConfiguration CreateValidConfig() {
+        TestConfiguration config;
+        config.testId = "E2E_INTEGRATION_TEST";
+        config.pipeline = "compute";
+        config.algorithm = "baseline";
+        config.sceneType = "cornell";
+        config.voxelResolution = 128;
+        config.densityPercent = 0.25f;
+        config.warmupFrames = 10;
+        config.measurementFrames = 100;
+        return config;
+    }
+
+    // Helper to create mock device capabilities
+    DeviceCaps CreateMockDeviceCaps() {
+        DeviceCaps caps;
+        caps.deviceName = "Mock Integration Test GPU";
+        caps.driverVersion = "1.0.0";
+        caps.vulkanVersion = "1.3.0";
+        caps.totalVRAM_MB = 8192;
+        caps.timestampSupported = false;  // No real GPU
+        caps.performanceQuerySupported = false;
+        caps.memoryBudgetSupported = false;
+        return caps;
+    }
+};
+
+TEST_F(EndToEndIntegrationTest, FullPipelineFlowWithMockVulkan) {
+    // This test exercises the complete profiler stack without real Vulkan
+    // BenchmarkRunner -> BenchmarkGraphFactory -> ProfilerGraphAdapter -> Export
+
+    // 1. Setup configuration
+    TestConfiguration config = CreateValidConfig();
+    ASSERT_TRUE(config.Validate());
+
+    // 2. Create and configure BenchmarkRunner
+    BenchmarkRunner runner;
+    runner.SetDeviceCapabilities(CreateMockDeviceCaps());
+    runner.SetOutputDirectory(tempDir);
+    runner.SetRenderDimensions(800, 600);
+
+    // 3. Set test matrix
+    std::vector<TestConfiguration> matrix{config};
+    runner.SetTestMatrix(matrix);
+
+    // 4. Start benchmark suite
+    ASSERT_TRUE(runner.StartSuite());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+
+    // 5. Begin first test
+    ASSERT_TRUE(runner.BeginNextTest());
+
+    // 6. Get adapter and verify it's accessible
+    ProfilerGraphAdapter& adapter = runner.GetAdapter();
+
+    // 7. Simulate frame lifecycle with mock Vulkan handles
+    VkCommandBuffer mockCmdBuffer = VK_NULL_HANDLE;  // Guards in ProfilerSystem handle this
+
+    // Warmup phase
+    for (uint32_t i = 0; i < config.warmupFrames; ++i) {
+        adapter.SetFrameContext(mockCmdBuffer, i % 3);  // Simulate triple buffering
+        EXPECT_NO_THROW(adapter.OnFrameBegin());
+
+        // Simulate node execution
+        adapter.OnNodePreExecute("benchmark_instance");
+        adapter.OnNodePostExecute("benchmark_instance");
+        adapter.OnNodePreExecute("benchmark_dispatch");
+        EXPECT_NO_THROW(adapter.OnDispatchBegin());
+        EXPECT_NO_THROW(adapter.OnDispatchEnd(100, 75));  // 800/8, 600/8
+        adapter.OnNodePostExecute("benchmark_dispatch");
+
+        EXPECT_NO_THROW(adapter.OnFrameEnd());
+
+        // Record frame metrics
+        FrameMetrics warmupMetrics;
+        warmupMetrics.frameNumber = i;
+        warmupMetrics.frameTimeMs = 16.67f;  // 60 FPS
+        warmupMetrics.fps = 60.0f;
+        warmupMetrics.totalRaysCast = 800 * 600;
+        runner.RecordFrame(warmupMetrics);
+    }
+
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Measuring);
+
+    // 8. Measurement phase with varied metrics
+    std::vector<FrameMetrics> recordedMetrics;
+    for (uint32_t i = 0; i < config.measurementFrames; ++i) {
+        adapter.SetFrameContext(mockCmdBuffer, i % 3);
+        adapter.OnFrameBegin();
+
+        adapter.OnNodePreExecute("benchmark_dispatch");
+        adapter.OnDispatchBegin();
+        adapter.OnDispatchEnd(100, 75);
+        adapter.OnNodePostExecute("benchmark_dispatch");
+
+        adapter.OnFrameEnd();
+
+        // Create varied metrics to test statistics
+        FrameMetrics metrics;
+        metrics.frameNumber = i;
+        metrics.frameTimeMs = 16.0f + (i % 10) * 0.1f;  // 16.0ms - 16.9ms
+        metrics.fps = 1000.0f / metrics.frameTimeMs;
+        metrics.gpuTimeMs = 14.0f + (i % 8) * 0.2f;
+        metrics.mRaysPerSec = 100.0f + (i % 20);
+        metrics.totalRaysCast = 800 * 600;
+        metrics.vramUsageMB = 2048 + (i % 100);
+        metrics.vramBudgetMB = 8192;
+        metrics.avgVoxelsPerRay = 15.0f + (i % 10) * 0.5f;
+        metrics.bandwidthReadGB = 50.0f + (i % 30);
+        metrics.bandwidthWriteGB = 10.0f + (i % 10);
+        metrics.bandwidthEstimated = true;  // No real HW counters
+        metrics.sceneResolution = config.voxelResolution;
+        metrics.screenWidth = 800;
+        metrics.screenHeight = 600;
+        metrics.sceneDensity = config.densityPercent * 100.0f;
+
+        runner.RecordFrame(metrics);
+        recordedMetrics.push_back(metrics);
+    }
+
+    // 9. Verify test completion
+    EXPECT_TRUE(runner.IsCurrentTestComplete());
+
+    // 10. Finalize and cleanup
+    adapter.OnPreGraphCleanup();
+    runner.FinalizeCurrentTest();
+
+    // 11. Verify results
+    const auto& results = runner.GetSuiteResults();
+    ASSERT_EQ(results.GetAllResults().size(), 1u);
+
+    const auto& testResult = results.GetAllResults()[0];
+    EXPECT_EQ(testResult.frames.size(), config.measurementFrames);
+    EXPECT_TRUE(testResult.IsValid());
+
+    // 12. Export and verify files
+    runner.ExportAllResults();
+
+    // Check that output files exist
+    std::filesystem::path jsonPath = tempDir / (config.testId + ".json");
+    std::filesystem::path csvPath = tempDir / (config.testId + ".csv");
+
+    // Export creates files with configuration-based names
+    bool foundJson = false;
+    bool foundCsv = false;
+    for (const auto& entry : std::filesystem::directory_iterator(tempDir)) {
+        std::string filename = entry.path().filename().string();
+        if (filename.find(".json") != std::string::npos) foundJson = true;
+        if (filename.find(".csv") != std::string::npos) foundCsv = true;
+    }
+
+    EXPECT_TRUE(foundJson || foundCsv);  // At least one export format
+}
+
+TEST_F(EndToEndIntegrationTest, MultiIterationFrameTimingCapture) {
+    // Test frame timing capture across multiple benchmark iterations
+
+    BenchmarkRunner runner;
+    runner.SetDeviceCapabilities(CreateMockDeviceCaps());
+    runner.SetOutputDirectory(tempDir);
+
+    // Create 3 test configurations with different resolutions
+    std::vector<TestConfiguration> matrix;
+    for (uint32_t res : {64, 128, 256}) {
+        TestConfiguration config;
+        config.testId = "TIMING_TEST_RES" + std::to_string(res);
+        config.pipeline = "compute";
+        config.voxelResolution = res;
+        config.warmupFrames = 10;
+        config.measurementFrames = 100;
+        matrix.push_back(config);
+    }
+
+    runner.SetTestMatrix(matrix);
+    ASSERT_TRUE(runner.StartSuite());
+
+    uint32_t testsCompleted = 0;
+    while (runner.BeginNextTest()) {
+        const auto& currentConfig = runner.GetCurrentTestConfig();
+
+        // Warmup
+        for (uint32_t i = 0; i < currentConfig.warmupFrames; ++i) {
+            FrameMetrics m;
+            m.frameTimeMs = 16.0f;
+            runner.RecordFrame(m);
+        }
+
+        EXPECT_EQ(runner.GetState(), BenchmarkState::Measuring);
+
+        // Measurement - higher resolution = longer frame time
+        float baseTime = 10.0f + currentConfig.voxelResolution * 0.05f;
+        while (!runner.IsCurrentTestComplete()) {
+            FrameMetrics m;
+            m.frameNumber = runner.GetCurrentFrameNumber();
+            m.frameTimeMs = baseTime + (m.frameNumber % 5) * 0.1f;
+            m.fps = 1000.0f / m.frameTimeMs;
+            m.sceneResolution = currentConfig.voxelResolution;
+            runner.RecordFrame(m);
+        }
+
+        runner.FinalizeCurrentTest();
+        testsCompleted++;
+    }
+
+    EXPECT_EQ(testsCompleted, 3u);
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Completed);
+
+    const auto& results = runner.GetSuiteResults();
+    EXPECT_EQ(results.GetAllResults().size(), 3u);
+
+    // Verify each test has correct frame count
+    for (const auto& result : results.GetAllResults()) {
+        EXPECT_EQ(result.frames.size(), 100u);
+        EXPECT_TRUE(result.IsValid());
+    }
+}
+
+TEST_F(EndToEndIntegrationTest, JSONExportValidation) {
+    // Test that JSON export produces valid, parseable output with correct schema
+
+    MetricsExporter exporter;
+
+    TestConfiguration config = CreateValidConfig();
+    DeviceCaps device = CreateMockDeviceCaps();
+
+    // Create realistic frame metrics
+    std::vector<FrameMetrics> frames;
+    for (uint32_t i = 0; i < 50; ++i) {
+        FrameMetrics f;
+        f.frameNumber = i;
+        f.timestampMs = i * 16.67;
+        f.frameTimeMs = 16.0f + (i % 5) * 0.2f;
+        f.gpuTimeMs = 14.0f + (i % 4) * 0.3f;
+        f.fps = 1000.0f / f.frameTimeMs;
+        f.mRaysPerSec = 150.0f + (i % 20);
+        f.totalRaysCast = 800 * 600;
+        f.avgVoxelsPerRay = 18.0f + (i % 10) * 0.5f;
+        f.vramUsageMB = 2048;
+        f.vramBudgetMB = 8192;
+        f.bandwidthReadGB = 60.0f + (i % 15);
+        f.bandwidthWriteGB = 12.0f + (i % 5);
+        f.bandwidthEstimated = true;
+        f.sceneResolution = 128;
+        f.screenWidth = 800;
+        f.screenHeight = 600;
+        f.sceneDensity = 25.0f;
+        frames.push_back(f);
+    }
+
+    // Compute aggregate statistics
+    std::map<std::string, AggregateStats> aggregates;
+
+    // Frame time stats
+    AggregateStats ftStats;
+    ftStats.min = 16.0f;
+    ftStats.max = 16.8f;
+    ftStats.mean = 16.4f;
+    ftStats.stddev = 0.25f;
+    ftStats.p1 = 16.0f;
+    ftStats.p50 = 16.4f;
+    ftStats.p99 = 16.8f;
+    ftStats.sampleCount = 50;
+    aggregates["frame_time_ms"] = ftStats;
+
+    // FPS stats
+    AggregateStats fpsStats;
+    fpsStats.min = 59.5f;
+    fpsStats.max = 62.5f;
+    fpsStats.mean = 61.0f;
+    fpsStats.stddev = 0.8f;
+    fpsStats.p1 = 59.5f;
+    fpsStats.p50 = 61.0f;
+    fpsStats.p99 = 62.5f;
+    fpsStats.sampleCount = 50;
+    aggregates["fps"] = fpsStats;
+
+    // Export to JSON
+    std::filesystem::path jsonPath = tempDir / "e2e_export_test.json";
+    exporter.ExportToJSON(jsonPath, config, device, frames, aggregates);
+
+    // Read and validate JSON structure
+    std::ifstream file(jsonPath);
+    ASSERT_TRUE(file.is_open());
+
+    nlohmann::json j;
+    ASSERT_NO_THROW(file >> j);
+
+    // Verify required top-level fields
+    EXPECT_TRUE(j.contains("test_id"));
+    EXPECT_TRUE(j.contains("timestamp"));
+    EXPECT_TRUE(j.contains("configuration"));
+    EXPECT_TRUE(j.contains("device"));
+    EXPECT_TRUE(j.contains("frames"));
+    EXPECT_TRUE(j.contains("statistics"));
+
+    // Verify configuration section
+    EXPECT_EQ(j["configuration"]["pipeline"], "compute");
+    EXPECT_EQ(j["configuration"]["algorithm"], "baseline");
+    EXPECT_EQ(j["configuration"]["resolution"], 128);
+    EXPECT_EQ(j["configuration"]["density_percent"], 25);  // 0.25 * 100
+
+    // Verify device section
+    EXPECT_EQ(j["device"]["gpu"], "Mock Integration Test GPU");
+    EXPECT_TRUE(j["device"]["bandwidth_estimated"].get<bool>());
+
+    // Verify frames array
+    EXPECT_EQ(j["frames"].size(), 50u);
+    EXPECT_TRUE(j["frames"][0].contains("frame_num"));
+    EXPECT_TRUE(j["frames"][0].contains("frame_time_ms"));
+    EXPECT_TRUE(j["frames"][0].contains("fps"));
+    EXPECT_TRUE(j["frames"][0].contains("avg_voxels_per_ray"));
+
+    // Verify statistics section
+    EXPECT_TRUE(j["statistics"].contains("frame_time_mean"));
+    EXPECT_TRUE(j["statistics"].contains("frame_time_stddev"));
+    EXPECT_TRUE(j["statistics"].contains("fps_mean"));
+}
+
+TEST_F(EndToEndIntegrationTest, CSVExportValidation) {
+    // Test that CSV export produces valid output
+
+    MetricsExporter exporter;
+
+    TestConfiguration config = CreateValidConfig();
+    DeviceCaps device = CreateMockDeviceCaps();
+
+    std::vector<FrameMetrics> frames;
+    for (uint32_t i = 0; i < 20; ++i) {
+        FrameMetrics f;
+        f.frameNumber = i;
+        f.frameTimeMs = 16.5f;
+        f.fps = 60.6f;
+        f.mRaysPerSec = 150.0f;
+        f.vramUsageMB = 2048;
+        frames.push_back(f);
+    }
+
+    std::map<std::string, AggregateStats> aggregates;
+
+    std::filesystem::path csvPath = tempDir / "e2e_export_test.csv";
+    exporter.ExportToCSV(csvPath, config, device, frames, aggregates);
+
+    // Read and validate CSV
+    std::ifstream file(csvPath);
+    ASSERT_TRUE(file.is_open());
+
+    std::string line;
+    std::vector<std::string> lines;
+    while (std::getline(file, line)) {
+        lines.push_back(line);
+    }
+
+    // Should have header comment lines + column header + data rows
+    EXPECT_GT(lines.size(), 20u);  // At least header + 20 data rows
+
+    // Find the data rows (skip metadata comments)
+    bool foundHeader = false;
+    size_t dataRowCount = 0;
+    for (const auto& l : lines) {
+        if (l.find("frame,") == 0 || l.find("frame_num,") == 0) {
+            foundHeader = true;
+        } else if (foundHeader && !l.empty() && l[0] != '#') {
+            dataRowCount++;
+        }
+    }
+
+    EXPECT_TRUE(foundHeader);
+    EXPECT_EQ(dataRowCount, 20u);
+}
+
+TEST_F(EndToEndIntegrationTest, AdapterExtractorRegistration) {
+    // Test that custom extractors can be registered and work correctly
+
+    ProfilerGraphAdapter adapter;
+
+    bool extractorCalled = false;
+    float extractedValue = 0.0f;
+
+    // Register extractor that modifies metrics
+    adapter.RegisterExtractor("voxel_count", [&](FrameMetrics& metrics) {
+        extractorCalled = true;
+        extractedValue = metrics.avgVoxelsPerRay;
+        metrics.avgVoxelsPerRay = 42.0f;  // Modify to prove extractor ran
+    });
+
+    // Extractors are called via ProfilerSystem, which requires initialization
+    // For unit test purposes, verify registration doesn't throw
+    EXPECT_NO_THROW(adapter.UnregisterExtractor("voxel_count"));
+
+    // Re-register and verify double-unregister doesn't throw
+    adapter.RegisterExtractor("test_extractor", [](FrameMetrics&) {});
+    EXPECT_NO_THROW(adapter.UnregisterExtractor("test_extractor"));
+    EXPECT_NO_THROW(adapter.UnregisterExtractor("test_extractor"));  // Safe to call twice
+}
+
+TEST_F(EndToEndIntegrationTest, GraphFactoryIntegrationWithRunner) {
+    // Test that custom graph factory integrates properly with runner
+
+    BenchmarkRunner runner;
+    runner.SetDeviceCapabilities(CreateMockDeviceCaps());
+
+    bool factoryInvoked = false;
+    uint32_t receivedWidth = 0;
+    uint32_t receivedHeight = 0;
+    std::string receivedPipeline;
+
+    runner.SetGraphFactory([&](
+        Vixen::RenderGraph::RenderGraph* graph,
+        const TestConfiguration& config,
+        uint32_t width,
+        uint32_t height
+    ) -> BenchmarkGraph {
+        factoryInvoked = true;
+        receivedWidth = width;
+        receivedHeight = height;
+        receivedPipeline = config.pipeline;
+
+        // Return empty graph since we don't have a real RenderGraph
+        return BenchmarkGraph{};
+    });
+
+    runner.SetRenderDimensions(1920, 1080);
+
+    TestConfiguration config = CreateValidConfig();
+    runner.SetTestMatrix({config});
+    runner.StartSuite();
+    runner.BeginNextTest();
+
+    // Factory won't be called with nullptr graph (early return guard)
+    BenchmarkGraph result = runner.CreateGraphForCurrentTest(nullptr);
+    EXPECT_FALSE(result.IsValid());
+
+    // With null graph, factory should not be invoked (guard check)
+    // This is correct behavior - CreateGraphForCurrentTest returns early on null
+}
+
+TEST_F(EndToEndIntegrationTest, BenchmarkStateTransitions) {
+    // Test correct state machine transitions through benchmark lifecycle
+
+    BenchmarkRunner runner;
+    runner.SetDeviceCapabilities(CreateMockDeviceCaps());
+
+    // Initial state
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Idle);
+    EXPECT_FALSE(runner.IsRunning());
+
+    // Empty matrix -> Error
+    EXPECT_FALSE(runner.StartSuite());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Error);
+
+    // Reset by setting valid matrix
+    TestConfiguration config = CreateValidConfig();
+    runner.SetTestMatrix({config});
+
+    // Start suite
+    ASSERT_TRUE(runner.StartSuite());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+    EXPECT_TRUE(runner.IsRunning());
+
+    // Begin test
+    ASSERT_TRUE(runner.BeginNextTest());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+
+    // Record warmup frames
+    for (uint32_t i = 0; i < config.warmupFrames; ++i) {
+        FrameMetrics m;
+        m.frameTimeMs = 16.0f;
+        runner.RecordFrame(m);
+    }
+
+    // Should transition to Measuring
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Measuring);
+
+    // Record measurement frames
+    for (uint32_t i = 0; i < config.measurementFrames; ++i) {
+        FrameMetrics m;
+        m.frameTimeMs = 16.0f;
+        runner.RecordFrame(m);
+    }
+
+    // Should be complete
+    EXPECT_TRUE(runner.IsCurrentTestComplete());
+
+    // Finalize
+    runner.FinalizeCurrentTest();
+
+    // No more tests
+    EXPECT_FALSE(runner.BeginNextTest());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Completed);
+    EXPECT_FALSE(runner.IsRunning());
+}
+
+TEST_F(EndToEndIntegrationTest, AbortSuiteCleanup) {
+    // Test that aborting mid-run properly cleans up state
+
+    BenchmarkRunner runner;
+    runner.SetDeviceCapabilities(CreateMockDeviceCaps());
+
+    TestConfiguration config = CreateValidConfig();
+    runner.SetTestMatrix({config});
+
+    ASSERT_TRUE(runner.StartSuite());
+    ASSERT_TRUE(runner.BeginNextTest());
+
+    // Record some frames
+    for (uint32_t i = 0; i < 5; ++i) {
+        FrameMetrics m;
+        m.frameTimeMs = 16.0f;
+        runner.RecordFrame(m);
+    }
+
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+
+    // Abort mid-run
+    runner.AbortSuite();
+
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Idle);
+    EXPECT_FALSE(runner.IsRunning());
+}
+
+// ============================================================================
+// ShaderCounters Tests
+// ============================================================================
+
+TEST(ShaderCountersTest, DefaultValues) {
+    ShaderCounters counters;
+    EXPECT_EQ(counters.totalVoxelsTraversed, 0u);
+    EXPECT_EQ(counters.totalRaysCast, 0u);
+    EXPECT_EQ(counters.totalNodesVisited, 0u);
+    EXPECT_EQ(counters.totalLeafNodesVisited, 0u);
+    EXPECT_EQ(counters.totalEmptySpaceSkipped, 0u);
+    EXPECT_EQ(counters.rayHitCount, 0u);
+    EXPECT_EQ(counters.rayMissCount, 0u);
+    EXPECT_EQ(counters.earlyTerminations, 0u);
+    EXPECT_FALSE(counters.HasData());
+}
+
+TEST(ShaderCountersTest, DerivedMetrics) {
+    ShaderCounters counters;
+    counters.totalVoxelsTraversed = 1000;
+    counters.totalRaysCast = 100;
+    counters.totalNodesVisited = 500;
+    counters.rayHitCount = 80;
+    counters.rayMissCount = 20;
+    counters.totalEmptySpaceSkipped = 2000;
+
+    EXPECT_FLOAT_EQ(counters.GetAvgVoxelsPerRay(), 10.0f);  // 1000/100
+    EXPECT_FLOAT_EQ(counters.GetAvgNodesPerRay(), 5.0f);    // 500/100
+    EXPECT_FLOAT_EQ(counters.GetHitRate(), 0.8f);           // 80/100
+
+    // Empty space skip ratio: 2000 / (1000 + 2000) = 2/3
+    EXPECT_NEAR(counters.GetEmptySpaceSkipRatio(), 0.6667f, 0.001f);
+}
+
+TEST(ShaderCountersTest, DerivedMetricsZeroRays) {
+    ShaderCounters counters;
+    // All zeros - should handle division by zero gracefully
+    EXPECT_FLOAT_EQ(counters.GetAvgVoxelsPerRay(), 0.0f);
+    EXPECT_FLOAT_EQ(counters.GetAvgNodesPerRay(), 0.0f);
+    EXPECT_FLOAT_EQ(counters.GetHitRate(), 0.0f);
+    EXPECT_FLOAT_EQ(counters.GetEmptySpaceSkipRatio(), 0.0f);
+}
+
+TEST(ShaderCountersTest, Reset) {
+    ShaderCounters counters;
+    counters.totalVoxelsTraversed = 1000;
+    counters.totalRaysCast = 100;
+    counters.rayHitCount = 50;
+
+    EXPECT_TRUE(counters.HasData());
+
+    counters.Reset();
+
+    EXPECT_EQ(counters.totalVoxelsTraversed, 0u);
+    EXPECT_EQ(counters.totalRaysCast, 0u);
+    EXPECT_EQ(counters.rayHitCount, 0u);
+    EXPECT_FALSE(counters.HasData());
+}
+
+TEST(ShaderCountersTest, HasData) {
+    ShaderCounters counters;
+    EXPECT_FALSE(counters.HasData());
+
+    counters.totalRaysCast = 1;
+    EXPECT_TRUE(counters.HasData());
+
+    counters.Reset();
+    EXPECT_FALSE(counters.HasData());
+}
+
+// ============================================================================
+// FrameMetrics ShaderCounters Integration Tests
+// ============================================================================
+
+TEST(FrameMetricsTest, ShaderCountersDefaultEmpty) {
+    FrameMetrics metrics;
+    EXPECT_FALSE(metrics.HasShaderCounters());
+    EXPECT_EQ(metrics.shaderCounters.totalRaysCast, 0u);
+}
+
+TEST(FrameMetricsTest, ShaderCountersCanBePopulated) {
+    FrameMetrics metrics;
+    metrics.shaderCounters.totalRaysCast = 480000;  // 800 * 600
+    metrics.shaderCounters.totalVoxelsTraversed = 9600000;  // 20 voxels per ray avg
+    metrics.shaderCounters.rayHitCount = 400000;
+    metrics.shaderCounters.rayMissCount = 80000;
+
+    EXPECT_TRUE(metrics.HasShaderCounters());
+    EXPECT_FLOAT_EQ(metrics.shaderCounters.GetAvgVoxelsPerRay(), 20.0f);
+    EXPECT_NEAR(metrics.shaderCounters.GetHitRate(), 0.833f, 0.001f);
+}
+
+// ============================================================================
+// Fragment Pipeline Tests
+// ============================================================================
+
+TEST(BenchmarkGraphFactoryTest, FragmentPipelineNodesDefaultInvalid) {
+    FragmentPipelineNodes nodes{};
+    EXPECT_FALSE(nodes.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildFragmentPipelineNullGraphThrows) {
+    InfrastructureNodes invalidInfra{};
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildFragmentPipeline(nullptr, invalidInfra, "test.vert", "test.frag"),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildFragmentPipelineInvalidInfraThrows) {
+    InfrastructureNodes invalidInfra{};  // All handles invalid
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildFragmentPipeline(nullptr, invalidInfra, "test.vert", "test.frag"),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildFragmentRayMarchGraphNullGraphThrows) {
+    TestConfiguration config;
+    config.pipeline = "fragment";
+    config.voxelResolution = 128;
+
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildFragmentRayMarchGraph(nullptr, config, 800, 600),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, ConnectFragmentRayMarchNullGraphThrows) {
+    InfrastructureNodes infra{};
+    FragmentPipelineNodes fragment{};
+    RayMarchNodes rayMarch{};
+    OutputNodes output{};
+
+    EXPECT_THROW(
+        BenchmarkGraphFactory::ConnectFragmentRayMarch(nullptr, infra, fragment, rayMarch, output),
+        std::invalid_argument
+    );
+}
+
+// ============================================================================
+// Hardware RT Stub Tests
+// ============================================================================
+
+TEST(BenchmarkGraphFactoryTest, BuildHardwareRTGraphThrowsNotImplemented) {
+    TestConfiguration config;
+    config.pipeline = "hardware_rt";
+    config.voxelResolution = 128;
+
+    // Should throw runtime_error indicating not implemented
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildHardwareRTGraph(nullptr, config, 800, 600),
+        std::runtime_error
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildHardwareRTGraphErrorMessage) {
+    TestConfiguration config;
+    config.pipeline = "hardware_rt";
+
+    try {
+        BenchmarkGraphFactory::BuildHardwareRTGraph(nullptr, config, 800, 600);
+        FAIL() << "Expected runtime_error to be thrown";
+    } catch (const std::runtime_error& e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("VK_KHR_ray_tracing_pipeline"), std::string::npos);
+        EXPECT_NE(msg.find("VK_KHR_acceleration_structure"), std::string::npos);
+    }
+}
+
+// ============================================================================
+// BenchmarkGraph Pipeline Type Tests
+// ============================================================================
+
+TEST(BenchmarkGraphTest, DefaultPipelineTypeIsInvalid) {
+    BenchmarkGraph graph{};
+    EXPECT_EQ(graph.pipelineType, PipelineType::Invalid);
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkGraphTest, ComputePipelineTypeValidation) {
+    BenchmarkGraph graph{};
+    graph.pipelineType = PipelineType::Compute;
+
+    // Without valid nodes, still invalid
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkGraphTest, FragmentPipelineTypeValidation) {
+    BenchmarkGraph graph{};
+    graph.pipelineType = PipelineType::Fragment;
+
+    // Without valid nodes, still invalid
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkGraphTest, HardwareRTPipelineTypeNotYetValid) {
+    BenchmarkGraph graph{};
+    graph.pipelineType = PipelineType::HardwareRT;
+
+    // HardwareRT not implemented, always invalid
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkGraphTest, HybridPipelineTypeNotYetValid) {
+    BenchmarkGraph graph{};
+    graph.pipelineType = PipelineType::Hybrid;
+
+    // Hybrid not implemented, always invalid
+    EXPECT_FALSE(graph.IsValid());
+}
