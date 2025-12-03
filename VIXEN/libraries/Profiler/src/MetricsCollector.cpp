@@ -1,5 +1,6 @@
 #include "Profiler/MetricsCollector.h"
 #include <cstring>
+#include <vector>
 
 namespace Vixen::Profiler {
 
@@ -28,6 +29,19 @@ void MetricsCollector::Initialize(VkDevice device, VkPhysicalDevice physicalDevi
     vkGetPhysicalDeviceProperties(physicalDevice, &props);
     timestampPeriod_ = props.limits.timestampPeriod;
 
+    // Check for VK_EXT_memory_budget support
+    uint32_t extensionCount = 0;
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
+
+    for (const auto& ext : extensions) {
+        if (strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
+            memoryBudgetSupported_ = true;
+            break;
+        }
+    }
+
     // Create per-frame data
     frameData_ = std::make_unique<PerFrameData[]>(framesInFlight);
 
@@ -46,6 +60,8 @@ void MetricsCollector::Initialize(VkDevice device, VkPhysicalDevice physicalDevi
     rollingStats_["gpu_time"] = RollingStats(300);
     rollingStats_["mrays"] = RollingStats(300);
     rollingStats_["fps"] = RollingStats(300);
+    rollingStats_["vram_usage"] = RollingStats(300);
+    rollingStats_["vram_budget"] = RollingStats(300);
 
     profilingStartTime_ = std::chrono::high_resolution_clock::now();
 }
@@ -107,6 +123,9 @@ void MetricsCollector::OnFrameEnd(uint32_t frameIndex) {
 
     // Collect GPU results from previous frame
     CollectGPUResults(frameIndex);
+
+    // Collect VRAM usage (VK_EXT_memory_budget)
+    CollectVRAMUsage();
 
     // Calculate CPU frame time
     lastFrameMetrics_.frameNumber = totalFramesCollected_;
@@ -179,11 +198,45 @@ void MetricsCollector::CollectGPUResults(uint32_t frameIndex) {
     }
 }
 
+void MetricsCollector::CollectVRAMUsage() {
+    if (!memoryBudgetSupported_ || physicalDevice_ == VK_NULL_HANDLE) {
+        lastFrameMetrics_.vramUsageMB = 0;
+        lastFrameMetrics_.vramBudgetMB = 0;
+        return;
+    }
+
+    // Query memory budget using VK_EXT_memory_budget
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budgetProps{};
+    budgetProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+
+    VkPhysicalDeviceMemoryProperties2 memProps2{};
+    memProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    memProps2.pNext = &budgetProps;
+
+    vkGetPhysicalDeviceMemoryProperties2(physicalDevice_, &memProps2);
+
+    // Sum up device-local heap usage and budget
+    uint64_t totalUsage = 0;
+    uint64_t totalBudget = 0;
+
+    for (uint32_t i = 0; i < memProps2.memoryProperties.memoryHeapCount; ++i) {
+        if (memProps2.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            totalUsage += budgetProps.heapUsage[i];
+            totalBudget += budgetProps.heapBudget[i];
+        }
+    }
+
+    lastFrameMetrics_.vramUsageMB = totalUsage / (1024 * 1024);
+    lastFrameMetrics_.vramBudgetMB = totalBudget / (1024 * 1024);
+}
+
 void MetricsCollector::UpdateRollingStats(const FrameMetrics& metrics) {
     rollingStats_["frame_time"].AddSample(metrics.frameTimeMs);
     rollingStats_["gpu_time"].AddSample(metrics.gpuTimeMs);
     rollingStats_["mrays"].AddSample(metrics.mRaysPerSec);
     rollingStats_["fps"].AddSample(metrics.fps);
+    rollingStats_["vram_usage"].AddSample(static_cast<float>(metrics.vramUsageMB));
+    rollingStats_["vram_budget"].AddSample(static_cast<float>(metrics.vramBudgetMB));
 }
 
 } // namespace Vixen::Profiler

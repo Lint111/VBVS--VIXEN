@@ -14,7 +14,8 @@ struct FrameMetrics {
     float gpuTimeMs = 0.0f;             // GPU dispatch time
     float bandwidthReadGB = 0.0f;       // Memory read bandwidth (GB/s)
     float bandwidthWriteGB = 0.0f;      // Memory write bandwidth (GB/s)
-    uint64_t vramUsageMB = 0;           // VRAM usage in MB
+    uint64_t vramUsageMB = 0;           // VRAM usage in MB (from VK_EXT_memory_budget)
+    uint64_t vramBudgetMB = 0;          // VRAM budget in MB (from VK_EXT_memory_budget)
     float mRaysPerSec = 0.0f;           // Million rays per second
     float fps = 0.0f;                   // Frames per second
 

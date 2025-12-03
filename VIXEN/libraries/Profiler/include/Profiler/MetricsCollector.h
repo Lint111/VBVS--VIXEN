@@ -90,6 +90,7 @@ private:
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkQueryPool queryPool_ = VK_NULL_HANDLE;
     float timestampPeriod_ = 1.0f;
+    bool memoryBudgetSupported_ = false;
 
     std::map<std::string, NodeMetricsExtractor> extractors_;
     std::map<std::string, RollingStats> rollingStats_;
@@ -102,6 +103,7 @@ private:
     std::chrono::high_resolution_clock::time_point frameStartTime_;
 
     void CollectGPUResults(uint32_t frameIndex);
+    void CollectVRAMUsage();
     void UpdateRollingStats(const FrameMetrics& metrics);
 };
 
