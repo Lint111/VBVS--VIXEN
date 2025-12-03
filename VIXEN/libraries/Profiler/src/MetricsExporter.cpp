@@ -258,12 +258,11 @@ std::vector<std::string> TestConfiguration::ValidateWithErrors() const {
         errors.push_back("voxelResolution: must be power of 2 (32, 64, 128, 256, or 512)");
     }
 
-    // Density validation (0-100 or 0-1 depending on usage)
-    // Support both 0-1 and 0-100 ranges for backward compatibility
+    // Density validation: 0-1 range (0% to 100%)
     if (densityPercent < 0.0f) {
         errors.push_back("densityPercent: must be >= 0");
-    } else if (densityPercent > 100.0f) {
-        errors.push_back("densityPercent: must be <= 100");
+    } else if (densityPercent > 1.0f) {
+        errors.push_back("densityPercent: must be <= 1.0 (representing 0-100%)");
     }
 
     // Screen dimensions validation

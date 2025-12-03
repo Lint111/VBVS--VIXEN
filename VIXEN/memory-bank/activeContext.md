@@ -2,127 +2,156 @@
 
 **Last Updated**: December 3, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase I.1-I.4 + VRAM Tracking COMPLETE
+**Status**: Phase I Standalone Components COMPLETE - Ready for Graph Integration
 
 ---
 
 ## Session Summary
 
-Extended Profiler library with VRAM tracking via VK_EXT_memory_budget:
+Completed all standalone Profiler components. Ready for RenderGraph integration.
 
 ### Completed This Session
-- Added VRAM usage tracking (`vramUsageMB`, `vramBudgetMB`) to FrameMetrics
-- Implemented `CollectVRAMUsage()` in MetricsCollector using VK_EXT_memory_budget
-- Added memory budget extension detection in Initialize()
-- Added rolling stats for vram_usage and vram_budget metrics
-- Added 8 new unit tests (DeviceCapabilities, VRAM fields)
-- All 26 unit tests passing (18 original + 8 new)
+- JSON export matching Section 5.2 experimental schema
+- SceneInfo data structure (resolution, density, scene_type)
+- Bandwidth estimation fallback (when HW counters unavailable)
+- BenchmarkRunner framework (test matrix, callbacks, auto-export)
+- TestConfiguration validation (power-of-2 res, range checks)
+- **53 unit tests passing** (up from 26)
+
+### Files Created This Session
+| File | Description |
+|------|-------------|
+| `libraries/Profiler/include/Profiler/SceneInfo.h` | Scene configuration data structure |
+| `libraries/Profiler/src/SceneInfo.cpp` | SceneInfo implementation |
+| `libraries/Profiler/include/Profiler/BenchmarkRunner.h` | Benchmark harness framework |
+| `libraries/Profiler/src/BenchmarkRunner.cpp` | Test matrix runner |
 
 ### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Added `vramBudgetMB` field |
-| `libraries/Profiler/include/Profiler/MetricsCollector.h` | Added `memoryBudgetSupported_`, `CollectVRAMUsage()` |
-| `libraries/Profiler/src/MetricsCollector.cpp` | VRAM budget detection + querying |
-| `libraries/Profiler/tests/test_profiler.cpp` | Added 8 new tests (DeviceCapabilities, VRAM) |
+| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Added `avgVoxelsPerRay`, `bandwidthEstimated`, `PipelineType` enum, validation |
+| `libraries/Profiler/src/MetricsExporter.cpp` | Section 5.2 JSON schema export |
+| `libraries/Profiler/tests/test_profiler.cpp` | 30+ new tests |
 
 ---
 
-## Current Focus: Phase I - Performance Profiling System
+## Current Focus: Graph Integration Architecture
 
-### Phase I Progress
+### Pipeline Graph Strategy
 
-| Task | Status | Notes |
-|------|--------|-------|
-| I.1: Core Infrastructure | COMPLETE | RollingStats, ProfilerSystem |
-| I.2: Data Collection | COMPLETE | DeviceCapabilities, MetricsCollector |
-| I.3: Export System | COMPLETE | MetricsExporter (CSV/JSON) |
-| I.4: Configuration | COMPLETE | BenchmarkConfig, test matrix generation |
-| Integration | COMPLETE | NodeInstance hooks already exist |
+Create switchable RenderGraph configurations for each pipeline type in the experimental setup:
 
-### Test Results
 ```
-[==========] 26 tests from 4 test suites ran.
-[  PASSED  ] 26 tests.
+┌─────────────────────────────────────────────────────────────────────┐
+│                    BenchmarkGraphFactory                             │
+├─────────────────────────────────────────────────────────────────────┤
+│  CreateComputeGraph()      → Compute shader ray marching            │
+│  CreateFragmentGraph()     → Fragment shader ray marching           │
+│  CreateHardwareRTGraph()   → VK_KHR_ray_tracing_pipeline            │
+│  CreateHybridGraph()       → Compute primary + HW RT secondary      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### Reusable SubGraphs (Node Clusters)
 
-## Next Steps (Priority Order)
+Common node patterns extracted into reusable subgraphs:
 
-1. **Create benchmark harness** - Application code that uses ProfilerSystem
-2. **Wire up to VoxelRayMarch** - Profile actual ray tracing performance
-3. **Run initial benchmarks** - Validate CSV output, verify data accuracy
-4. **Compare with Nsight** - Validate bandwidth estimates
+| SubGraph | Nodes | Purpose |
+|----------|-------|---------|
+| `SceneSetup` | Camera, Transform, Uniforms | Scene initialization |
+| `VoxelDataLoad` | SVO Upload, Brick Cache | Voxel data binding |
+| `RayGeneration` | Primary rays from camera | Shared ray setup |
+| `OutputPresent` | Tonemap, SwapchainAcquire, Present | Display pipeline |
+| `ProfilerHooks` | BeginFrame, EndFrame markers | Profiling integration |
 
----
+### Graph Configuration Pattern
 
-## Integration Pattern
-
-NodeInstance already has all lifecycle hooks in place:
 ```cpp
-// NodeInstance.h - hooks already fire automatically
-virtual void Execute() final {
-    ExecuteNodeHook(NodeLifecyclePhase::PreExecute);
-    ExecuteImpl();
-    ExecuteNodeHook(NodeLifecyclePhase::PostExecute);
-}
+// BenchmarkGraphFactory.h
+class BenchmarkGraphFactory {
+public:
+    enum class PipelineType {
+        Compute,        // Compute shader DDA ray marching
+        Fragment,       // Fragment shader ray marching
+        HardwareRT,     // VK_KHR_ray_tracing_pipeline
+        Hybrid          // Compute + HW RT secondary
+    };
+
+    static std::unique_ptr<RenderGraph> CreateGraph(
+        PipelineType type,
+        const SceneInfo& scene,
+        const BenchmarkConfig& config
+    );
+
+private:
+    // SubGraph builders
+    static void AddSceneSetupNodes(RenderGraph& graph);
+    static void AddVoxelDataNodes(RenderGraph& graph);
+    static void AddProfilerNodes(RenderGraph& graph);
+    static void AddOutputNodes(RenderGraph& graph);
+
+    // Pipeline-specific ray tracing
+    static void AddComputeRayMarch(RenderGraph& graph);
+    static void AddFragmentRayMarch(RenderGraph& graph);
+    static void AddHardwareRT(RenderGraph& graph);
+    static void AddHybridPipeline(RenderGraph& graph);
+};
 ```
 
-Application registers callbacks:
-```cpp
-auto& hooks = graph.GetLifecycleHooks();
-hooks.RegisterNodeHook(NodeLifecyclePhase::PreExecute,
-    [](NodeInstance* node) { /* start timing */ });
-hooks.RegisterNodeHook(NodeLifecyclePhase::PostExecute,
-    [](NodeInstance* node) { /* record metrics */ });
+### Integration Flow
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ BenchmarkRun │ ──▶ │ GraphFactory │ ──▶ │ RenderGraph  │
+│    Config    │     │  .Create()   │     │  Instance    │
+└──────────────┘     └──────────────┘     └──────┬───────┘
+                                                  │
+        ┌─────────────────────────────────────────┼──────┐
+        │                                         ▼      │
+        │  ┌───────────┐   ┌───────────┐   ┌───────────┐ │
+        │  │  Scene    │──▶│  Voxel    │──▶│   Ray     │ │
+        │  │  Setup    │   │  Data     │   │  Trace    │ │
+        │  └───────────┘   └───────────┘   └─────┬─────┘ │
+        │                                        │       │
+        │  ┌───────────┐   ┌───────────┐        │       │
+        │  │ Profiler  │◀──│  Output   │◀───────┘       │
+        │  │  Export   │   │  Present  │                │
+        │  └───────────┘   └───────────┘                │
+        └───────────────────────────────────────────────┘
 ```
 
 ---
 
-## Phase H Summary (Complete)
+## Phase I Progress Summary
 
-- Week 1-2: CPU + GPU infrastructure, 1,700 Mrays/sec achieved
-- Week 3: DXT compression (5.3:1 ratio), Phase C bug fixes
-- Week 4: Morton unification, SVOManager refactor, Geometric normals, LOD (16/16 tests)
+### Standalone Components ✅ COMPLETE
 
----
+| Component | Status | Tests |
+|-----------|--------|-------|
+| ProfilerSystem singleton | ✅ | Core orchestrator |
+| RollingStats | ✅ | Sliding window percentiles |
+| DeviceCapabilities | ✅ | GPU info capture |
+| MetricsCollector | ✅ | VkQueryPool timing |
+| MetricsExporter | ✅ | CSV + JSON (Section 5.2) |
+| BenchmarkConfig | ✅ | JSON config loader |
+| SceneInfo | ✅ | Resolution, density, type |
+| BenchmarkRunner | ✅ | Test matrix framework |
+| Config Validation | ✅ | Input validation |
+| VRAM Tracking | ✅ | VK_EXT_memory_budget |
+| Bandwidth Estimation | ✅ | Fallback calculation |
 
-## Technical Reference
+**Test Suite: 53 tests passing**
 
-### Profiler Library Structure
-```
-libraries/Profiler/
-├── CMakeLists.txt
-├── include/Profiler/
-│   ├── ProfilerSystem.h      # Singleton orchestrator
-│   ├── RollingStats.h        # Sliding window statistics
-│   ├── DeviceCapabilities.h  # GPU info capture
-│   ├── FrameMetrics.h        # Data structures
-│   ├── MetricsCollector.h    # VkQueryPool timing
-│   ├── MetricsExporter.h     # CSV/JSON output
-│   ├── BenchmarkConfig.h     # JSON config loading
-│   └── ProfilerGraphAdapter.h # RenderGraph bridge
-├── src/
-│   └── *.cpp                 # Implementations
-└── tests/
-    └── test_profiler.cpp     # 18 unit tests
-```
+### Integration Tasks (Next Phase)
 
-### Key APIs
-```cpp
-// Start profiling
-ProfilerSystem::Instance().Initialize(device, physicalDevice, framesInFlight);
-ProfilerSystem::Instance().StartTestRun(config);
-
-// Per-frame (called from hooks)
-ProfilerSystem::Instance().OnFrameBegin(cmdBuffer, frameIndex);
-ProfilerSystem::Instance().OnFrameEnd(frameIndex);
-
-// Export results
-ProfilerSystem::Instance().SetOutputDirectory("benchmarks/");
-ProfilerSystem::Instance().EndTestRun(true);  // auto-export
-```
+| Task | Description | Priority |
+|------|-------------|----------|
+| BenchmarkGraphFactory | Create switchable graph configs | HIGH |
+| SubGraph extraction | Reusable node clusters | HIGH |
+| Profiler hook wiring | Connect to NodeInstance lifecycle | HIGH |
+| Scene extractors | Pull data from VoxelGridNode | MEDIUM |
+| Shader counters | avg_voxels_per_ray atomics | MEDIUM |
+| Nsight validation | Compare estimates vs actual | LOW |
 
 ---
 
@@ -149,106 +178,67 @@ ProfilerSystem::Instance().EndTestRun(true);  // auto-export
 
 1. **Single-brick octrees**: Fallback code path for `bricksPerAxis=1`
 2. **Axis-parallel rays**: Require `computeCorrectedTcMax()` filtering
-3. **VK_KHR_performance_query**: May not be available on all GPUs (estimation fallback)
+3. **VK_KHR_performance_query**: May not be available on all GPUs (estimation fallback implemented)
+4. **Hardware RT**: VK_KHR_ray_tracing_pipeline not yet implemented
 
 ---
 
-## Phase I Plan of Action
+## Profiler Library Structure (Updated)
 
-**Plan file**: `~/.claude/plans/valiant-prancing-toucan.md`
-
-### Architecture
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     ProfilerSystem                          │
-│  (External, like EventBus - hookable and extensible)        │
-├─────────────────────────────────────────────────────────────┤
-│  DeviceCapabilities     │  Registered once per test suite   │
-│  TestConfiguration      │  Scene, resolution, algorithm     │
-│  FrameMetricsCollector  │  Hooked via GraphLifecycleHooks   │
-│  NodeMetricsExtractor   │  Custom loggers before cleanup    │
-│  ResultsExporter        │  CSV/JSON output                  │
-└─────────────────────────────────────────────────────────────┘
+libraries/Profiler/
+├── CMakeLists.txt
+├── include/Profiler/
+│   ├── ProfilerSystem.h       # Singleton orchestrator
+│   ├── RollingStats.h         # Sliding window statistics
+│   ├── DeviceCapabilities.h   # GPU info capture
+│   ├── FrameMetrics.h         # Data structures + PipelineType enum
+│   ├── MetricsCollector.h     # VkQueryPool timing + VRAM
+│   ├── MetricsExporter.h      # CSV/JSON output (Section 5.2)
+│   ├── BenchmarkConfig.h      # JSON config loading + validation
+│   ├── SceneInfo.h            # Scene metadata structure
+│   ├── BenchmarkRunner.h      # Test matrix harness
+│   └── ProfilerGraphAdapter.h # RenderGraph bridge
+├── src/
+│   ├── ProfilerSystem.cpp
+│   ├── RollingStats.cpp
+│   ├── DeviceCapabilities.cpp
+│   ├── MetricsCollector.cpp
+│   ├── MetricsExporter.cpp
+│   ├── BenchmarkConfig.cpp
+│   ├── SceneInfo.cpp
+│   └── BenchmarkRunner.cpp
+└── tests/
+    └── test_profiler.cpp      # 53 unit tests
 ```
-
-### Implementation Tasks
-
-| Task | Description | Status |
-|------|-------------|--------|
-| I.1a | RollingStats (percentiles) | ✅ COMPLETE |
-| I.1b | ProfilerSystem singleton | ✅ COMPLETE |
-| I.2a | DeviceCapabilities | ✅ COMPLETE |
-| I.2b | MetricsCollector (VkQueryPool) | ✅ COMPLETE |
-| I.2c | NodeMetricsExtractor callbacks | ✅ COMPLETE |
-| I.3a | MetricsExporter (CSV/JSON) | ✅ COMPLETE |
-| I.3b | TestSuiteResults aggregation | ✅ COMPLETE |
-| I.4a | BenchmarkConfig (JSON loader) | ✅ COMPLETE |
-| I.4b | nlohmann/json dependency | ✅ COMPLETE |
-
-### Success Criteria
-
-- [x] Profile 300+ frames with <1% overhead
-- [x] CSV readable by pandas/Excel
-- [ ] Bandwidth within ±20% of Nsight (when hardware counters available)
-- [x] JSON config drives test execution
 
 ---
 
 ## Todo List - Metrics Implementation Status
 
-### Frame Timing (VK Timestamp Queries) ✅
-- [x] frame_time_ms (CPU frame time)
-- [x] fps (frames per second)
-- [x] frame_time_p99 (99th percentile)
-- [x] frame_time_stddev (consistency)
-
-### GPU Timing ✅
-- [x] gpu_time_ms (dispatch time via VkQueryPool)
-
-### Ray Throughput ✅
-- [x] ray_throughput_mrays (Mrays/s)
-- [x] primary_rays_cast (screenW × screenH)
-
-### GPU Bandwidth (VK_KHR_performance_query) ⏳
-- [ ] bandwidth_read_gbps (memory read GB/s)
-- [ ] bandwidth_write_gbps (memory write GB/s)
-- [ ] l2_cache_hit_rate (%) - if available
-- [ ] memory_transactions_per_frame
-
-### Resource Utilization ✅
-- [x] vram_usage_mb (VK_EXT_memory_budget) - implemented
-- [x] vram_budget_mb (VK_EXT_memory_budget) - implemented
-- [ ] gpu_utilization_percent (vendor-specific)
-- [ ] acceleration_structure_size_mb (HW RT only)
-
-### Traversal Efficiency (shader counters) ⏳
-- [ ] avg_voxels_per_ray (shader atomic counter)
-- [ ] avg_nodes_visited_per_ray (shader counter)
-
-### Scene Metadata (via extractors) ⏳
-- [ ] scene_resolution (voxel grid size)
-- [ ] scene_density_percent (fill rate)
-- [ ] scene_type (cornell/cave/urban)
-
-### Test Configuration ✅
-- [x] pipeline type (compute/fragment/hw_rt/hybrid)
-- [x] algorithm (baseline/empty_skip/blockwalk)
-- [x] warmup_frames / measurement_frames
-
-### Device Info ✅
+### Standalone Components ✅ COMPLETE
+- [x] frame_time_ms, fps, p99, stddev
+- [x] gpu_time_ms (VkQueryPool)
+- [x] ray_throughput_mrays, primary_rays_cast
+- [x] vram_usage_mb, vram_budget_mb
 - [x] gpu_name, driver_version, vram_gb
+- [x] JSON export (Section 5.2 schema)
+- [x] SceneInfo data structure
+- [x] Bandwidth estimation fallback
+- [x] BenchmarkRunner framework
+- [x] Config validation
 
-### Integration Tasks
-- [ ] JSON export matching experimental schema (Section 5.2)
-- [ ] Create benchmark harness application
-- [ ] Wire up to VoxelRayMarch profiling
-- [ ] Validate output with Nsight Graphics
+### Integration Tasks ⏳ NEXT
+- [ ] BenchmarkGraphFactory (switchable pipelines)
+- [ ] SubGraph extraction (reusable node clusters)
+- [ ] Wire profiler to NodeInstance hooks
+- [ ] Scene extractors (VoxelGridNode → SceneInfo)
+- [ ] Shader counters (avg_voxels_per_ray)
 
-### Deferred to Phase N+2
-- [ ] Streaming foundation (SVOStreaming.h, LRU eviction)
-- [ ] GPU shader LOD early termination
-- [ ] Multi-threaded CPU ray casting
-- [ ] SIMD ray packets (AVX2)
+### Deferred
+- [ ] VK_KHR_performance_query (hardware bandwidth)
+- [ ] gpu_utilization_percent (vendor-specific)
+- [ ] Nsight Graphics validation
 
 ---
 

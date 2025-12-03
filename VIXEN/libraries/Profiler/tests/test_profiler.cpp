@@ -325,3 +325,484 @@ TEST(DeviceCapabilitiesTest, SummaryStringContainsKeyInfo) {
     EXPECT_NE(summary.find("Timestamp: Yes"), std::string::npos);
     EXPECT_NE(summary.find("PerfQuery: No"), std::string::npos);
 }
+
+// ============================================================================
+// SceneInfo Tests
+// ============================================================================
+
+TEST(SceneInfoTest, DefaultValues) {
+    SceneInfo info;
+    EXPECT_EQ(info.resolution, 0u);
+    EXPECT_FLOAT_EQ(info.densityPercent, 0.0f);
+    EXPECT_TRUE(info.sceneType.empty());
+    EXPECT_TRUE(info.sceneName.empty());
+}
+
+TEST(SceneInfoTest, FromResolutionAndDensity) {
+    auto info = SceneInfo::FromResolutionAndDensity(256, 25.0f, "cornell_box", "Cornell Box Test");
+    EXPECT_EQ(info.resolution, 256u);
+    EXPECT_FLOAT_EQ(info.densityPercent, 25.0f);
+    EXPECT_EQ(info.sceneType, "cornell_box");
+    EXPECT_EQ(info.sceneName, "Cornell Box Test");
+}
+
+TEST(SceneInfoTest, Validation) {
+    SceneInfo valid;
+    valid.resolution = 256;
+    valid.densityPercent = 50.0f;
+    valid.sceneType = "test";
+    EXPECT_TRUE(valid.IsValid());
+
+    SceneInfo zeroRes;
+    zeroRes.resolution = 0;
+    zeroRes.densityPercent = 50.0f;
+    zeroRes.sceneType = "test";
+    EXPECT_FALSE(zeroRes.IsValid());
+
+    SceneInfo negDensity;
+    negDensity.resolution = 256;
+    negDensity.densityPercent = -10.0f;
+    negDensity.sceneType = "test";
+    EXPECT_FALSE(negDensity.IsValid());
+
+    SceneInfo highDensity;
+    highDensity.resolution = 256;
+    highDensity.densityPercent = 150.0f;
+    highDensity.sceneType = "test";
+    EXPECT_FALSE(highDensity.IsValid());
+
+    SceneInfo emptyType;
+    emptyType.resolution = 256;
+    emptyType.densityPercent = 50.0f;
+    emptyType.sceneType = "";
+    EXPECT_FALSE(emptyType.IsValid());
+}
+
+TEST(SceneInfoTest, DisplayName) {
+    SceneInfo withName;
+    withName.resolution = 256;
+    withName.sceneType = "cornell_box";
+    withName.sceneName = "My Scene";
+    EXPECT_EQ(withName.GetDisplayName(), "My Scene");
+
+    SceneInfo withoutName;
+    withoutName.resolution = 256;
+    withoutName.sceneType = "cornell_box";
+    EXPECT_EQ(withoutName.GetDisplayName(), "Cornell Box 256^3");
+}
+
+// ============================================================================
+// TestConfiguration Validation Tests (Task 5)
+// ============================================================================
+
+TEST(TestConfigValidationTest, ValidResolutions) {
+    EXPECT_TRUE(TestConfiguration::IsValidResolution(32));
+    EXPECT_TRUE(TestConfiguration::IsValidResolution(64));
+    EXPECT_TRUE(TestConfiguration::IsValidResolution(128));
+    EXPECT_TRUE(TestConfiguration::IsValidResolution(256));
+    EXPECT_TRUE(TestConfiguration::IsValidResolution(512));
+
+    EXPECT_FALSE(TestConfiguration::IsValidResolution(0));
+    EXPECT_FALSE(TestConfiguration::IsValidResolution(100));
+    EXPECT_FALSE(TestConfiguration::IsValidResolution(1024));
+    EXPECT_FALSE(TestConfiguration::IsValidResolution(16));
+}
+
+TEST(TestConfigValidationTest, ValidConfigPasses) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.algorithm = "baseline";
+    config.sceneType = "cornell";
+    config.voxelResolution = 128;
+    config.densityPercent = 0.5f;
+    config.warmupFrames = 60;
+    config.measurementFrames = 300;
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_TRUE(errors.empty());
+}
+
+TEST(TestConfigValidationTest, InvalidPipelineType) {
+    TestConfiguration config;
+    config.pipeline = "invalid_pipeline";
+    config.voxelResolution = 128;
+    config.warmupFrames = 60;
+    config.measurementFrames = 300;
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_FALSE(errors.empty());
+    bool hasPipelineError = false;
+    for (const auto& err : errors) {
+        if (err.find("pipeline") != std::string::npos) {
+            hasPipelineError = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasPipelineError);
+}
+
+TEST(TestConfigValidationTest, InvalidResolution) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 100;  // Not power of 2
+    config.warmupFrames = 60;
+    config.measurementFrames = 300;
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_FALSE(errors.empty());
+    bool hasResolutionError = false;
+    for (const auto& err : errors) {
+        if (err.find("Resolution") != std::string::npos || err.find("resolution") != std::string::npos) {
+            hasResolutionError = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasResolutionError);
+}
+
+TEST(TestConfigValidationTest, InvalidDensity) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.densityPercent = 1.5f;  // > 1.0 (internal uses 0-1 range)
+    config.warmupFrames = 60;
+    config.measurementFrames = 300;
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_FALSE(errors.empty());
+}
+
+TEST(TestConfigValidationTest, InsufficientWarmupFrames) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 5;  // < 10
+    config.measurementFrames = 300;
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_FALSE(errors.empty());
+    bool hasWarmupError = false;
+    for (const auto& err : errors) {
+        if (err.find("warmup") != std::string::npos || err.find("Warmup") != std::string::npos) {
+            hasWarmupError = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasWarmupError);
+}
+
+TEST(TestConfigValidationTest, InsufficientMeasurementFrames) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 60;
+    config.measurementFrames = 50;  // < 100
+
+    auto errors = config.ValidateWithErrors();
+    EXPECT_FALSE(errors.empty());
+}
+
+TEST(TestConfigValidationTest, GenerateTestId) {
+    TestConfiguration config;
+    config.pipeline = "hardware_rt";
+    config.voxelResolution = 256;
+    config.sceneType = "sparse_architectural";
+    config.algorithm = "baseline";
+
+    std::string testId = config.GenerateTestId(1);
+    EXPECT_EQ(testId, "HW_RT_256_SPARSE_ARCHITECTURAL_BASELINE_RUN1");
+}
+
+TEST(TestConfigValidationTest, PipelineTypeConversion) {
+    EXPECT_EQ(PipelineTypeToString(PipelineType::Compute), "compute");
+    EXPECT_EQ(PipelineTypeToString(PipelineType::Fragment), "fragment");
+    EXPECT_EQ(PipelineTypeToString(PipelineType::HardwareRT), "hardware_rt");
+    EXPECT_EQ(PipelineTypeToString(PipelineType::Hybrid), "hybrid");
+    EXPECT_EQ(PipelineTypeToString(PipelineType::Invalid), "invalid");
+
+    EXPECT_EQ(ParsePipelineType("compute"), PipelineType::Compute);
+    EXPECT_EQ(ParsePipelineType("fragment"), PipelineType::Fragment);
+    EXPECT_EQ(ParsePipelineType("hardware_rt"), PipelineType::HardwareRT);
+    EXPECT_EQ(ParsePipelineType("hybrid"), PipelineType::Hybrid);
+    EXPECT_EQ(ParsePipelineType("unknown"), PipelineType::Invalid);
+}
+
+// ============================================================================
+// BenchmarkRunner Tests (Task 4)
+// ============================================================================
+
+class BenchmarkRunnerTest : public ::testing::Test {
+protected:
+    BenchmarkRunner runner;
+
+    void SetUp() override {
+        DeviceCaps caps;
+        caps.deviceName = "Test GPU";
+        caps.driverVersion = "1.0.0";
+        caps.totalVRAM_MB = 8192;
+        caps.performanceQuerySupported = false;  // Test bandwidth estimation
+        runner.SetDeviceCapabilities(caps);
+    }
+};
+
+TEST_F(BenchmarkRunnerTest, InitialState) {
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Idle);
+    EXPECT_FALSE(runner.IsRunning());
+}
+
+TEST_F(BenchmarkRunnerTest, SetTestMatrix) {
+    std::vector<TestConfiguration> matrix;
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+    matrix.push_back(config);
+
+    runner.SetTestMatrix(matrix);
+    EXPECT_EQ(runner.GetTestMatrix().size(), 1u);
+}
+
+TEST_F(BenchmarkRunnerTest, StartSuiteFailsWithEmptyMatrix) {
+    EXPECT_FALSE(runner.StartSuite());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Error);
+}
+
+TEST_F(BenchmarkRunnerTest, StartSuiteFailsWithInvalidConfig) {
+    std::vector<TestConfiguration> matrix;
+    TestConfiguration config;
+    config.pipeline = "invalid";  // Invalid pipeline
+    config.voxelResolution = 128;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+    matrix.push_back(config);
+
+    runner.SetTestMatrix(matrix);
+    EXPECT_FALSE(runner.StartSuite());
+}
+
+TEST_F(BenchmarkRunnerTest, StartSuiteSucceeds) {
+    std::vector<TestConfiguration> matrix;
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+    matrix.push_back(config);
+
+    runner.SetTestMatrix(matrix);
+    EXPECT_TRUE(runner.StartSuite());
+}
+
+TEST_F(BenchmarkRunnerTest, BandwidthEstimation) {
+    // Formula: bandwidth = rays * bytes_per_ray / time
+    // 1M rays * 96 bytes/ray / 0.01s = 9.6 GB/s (approximately)
+    uint64_t raysCast = 1'000'000;
+    float frameTimeSeconds = 0.01f;
+
+    float bandwidth = runner.EstimateBandwidth(raysCast, frameTimeSeconds);
+
+    // 96 MB / 0.01s = 9600 MB/s = ~9.0 GB/s (accounting for 1024-based conversion)
+    EXPECT_GT(bandwidth, 8.0f);
+    EXPECT_LT(bandwidth, 10.0f);
+}
+
+TEST_F(BenchmarkRunnerTest, BandwidthEstimationZeroTime) {
+    EXPECT_FLOAT_EQ(runner.EstimateBandwidth(1000, 0.0f), 0.0f);
+}
+
+TEST_F(BenchmarkRunnerTest, BandwidthEstimationZeroRays) {
+    EXPECT_FLOAT_EQ(runner.EstimateBandwidth(0, 0.01f), 0.0f);
+}
+
+TEST_F(BenchmarkRunnerTest, HasHardwarePerformanceCounters) {
+    // Device set in SetUp has performanceQuerySupported = false
+    EXPECT_FALSE(runner.HasHardwarePerformanceCounters());
+}
+
+// ============================================================================
+// JSON Export Schema Tests (Task 1)
+// ============================================================================
+
+class JSONExportTest : public ::testing::Test {
+protected:
+    std::filesystem::path tempDir;
+    std::filesystem::path outputPath;
+
+    void SetUp() override {
+        tempDir = std::filesystem::temp_directory_path() / "profiler_test";
+        std::filesystem::create_directories(tempDir);
+        outputPath = tempDir / "test_export.json";
+    }
+
+    void TearDown() override {
+        std::error_code ec;
+        std::filesystem::remove_all(tempDir, ec);
+    }
+};
+
+TEST_F(JSONExportTest, ExportMatchesSchema) {
+    MetricsExporter exporter;
+
+    TestConfiguration config;
+    config.testId = "HW_RT_256_SPARSE_BASELINE_RUN1";
+    config.pipeline = "hardware_rt";
+    config.algorithm = "baseline";
+    config.voxelResolution = 256;
+    config.densityPercent = 0.25f;  // 25% (internal 0-1 range)
+    config.sceneType = "sparse_architectural";
+    config.optimizations = {};
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+
+    DeviceCaps device;
+    device.deviceName = "NVIDIA RTX 4070";
+    device.driverVersion = "536.23";
+    device.totalVRAM_MB = 12 * 1024;  // 12 GB
+
+    std::vector<FrameMetrics> frames;
+    FrameMetrics f;
+    f.frameNumber = 1;
+    f.frameTimeMs = 10.82f;
+    f.fps = 92.4f;
+    f.bandwidthReadGB = 67.3f;
+    f.bandwidthWriteGB = 12.1f;
+    f.mRaysPerSec = 191.5f;
+    f.vramUsageMB = 4523;
+    f.avgVoxelsPerRay = 18.6f;
+    frames.push_back(f);
+
+    std::map<std::string, AggregateStats> aggregates;
+    aggregates["frame_time_ms"] = {10.0f, 12.0f, 10.85f, 0.34f, 10.0f, 10.85f, 12.79f, 100};
+    aggregates["fps"] = {85.0f, 100.0f, 92.1f, 3.0f, 85.0f, 92.1f, 100.0f, 100};
+    aggregates["bandwidth_read_gb"] = {60.0f, 75.0f, 67.5f, 3.0f, 60.0f, 67.5f, 75.0f, 100};
+
+    exporter.ExportToJSON(outputPath, config, device, frames, aggregates);
+
+    // Read and parse the JSON
+    std::ifstream file(outputPath);
+    ASSERT_TRUE(file.is_open());
+    nlohmann::json j;
+    file >> j;
+
+    // Verify schema structure
+    EXPECT_TRUE(j.contains("test_id"));
+    EXPECT_EQ(j["test_id"], "HW_RT_256_SPARSE_BASELINE_RUN1");
+
+    EXPECT_TRUE(j.contains("timestamp"));
+
+    EXPECT_TRUE(j.contains("configuration"));
+    EXPECT_EQ(j["configuration"]["pipeline"], "hardware_rt");
+    EXPECT_EQ(j["configuration"]["algorithm"], "baseline");
+    EXPECT_EQ(j["configuration"]["resolution"], 256);
+    EXPECT_EQ(j["configuration"]["density_percent"], 25);  // 0.25 * 100
+    EXPECT_EQ(j["configuration"]["scene_type"], "sparse_architectural");
+    EXPECT_TRUE(j["configuration"]["optimizations"].is_array());
+
+    EXPECT_TRUE(j.contains("device"));
+    EXPECT_EQ(j["device"]["gpu"], "NVIDIA RTX 4070");
+    EXPECT_EQ(j["device"]["driver"], "536.23");
+    EXPECT_NEAR(j["device"]["vram_gb"].get<double>(), 12.0, 0.1);
+
+    EXPECT_TRUE(j.contains("frames"));
+    EXPECT_EQ(j["frames"].size(), 1u);
+    EXPECT_EQ(j["frames"][0]["frame_num"], 1);
+    EXPECT_NEAR(j["frames"][0]["frame_time_ms"].get<float>(), 10.82f, 0.01f);
+    EXPECT_NEAR(j["frames"][0]["fps"].get<float>(), 92.4f, 0.1f);
+    EXPECT_NEAR(j["frames"][0]["bandwidth_read_gbps"].get<float>(), 67.3f, 0.1f);
+    EXPECT_NEAR(j["frames"][0]["ray_throughput_mrays"].get<float>(), 191.5f, 0.1f);
+    EXPECT_EQ(j["frames"][0]["vram_mb"], 4523);
+    EXPECT_NEAR(j["frames"][0]["avg_voxels_per_ray"].get<float>(), 18.6f, 0.1f);
+
+    EXPECT_TRUE(j.contains("statistics"));
+    EXPECT_NEAR(j["statistics"]["frame_time_mean"].get<float>(), 10.85f, 0.01f);
+    EXPECT_NEAR(j["statistics"]["frame_time_stddev"].get<float>(), 0.34f, 0.01f);
+    EXPECT_NEAR(j["statistics"]["frame_time_p99"].get<float>(), 12.79f, 0.01f);
+    EXPECT_NEAR(j["statistics"]["fps_mean"].get<float>(), 92.1f, 0.1f);
+    EXPECT_NEAR(j["statistics"]["bandwidth_mean"].get<float>(), 67.5f, 0.1f);
+}
+
+TEST_F(JSONExportTest, BandwidthEstimationFlag) {
+    MetricsExporter exporter;
+
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+
+    DeviceCaps device;
+    device.deviceName = "Test GPU";
+    device.totalVRAM_MB = 8192;
+
+    std::vector<FrameMetrics> frames;
+    FrameMetrics f;
+    f.frameNumber = 1;
+    f.bandwidthEstimated = true;  // Mark as estimated
+    frames.push_back(f);
+
+    std::map<std::string, AggregateStats> aggregates;
+
+    exporter.ExportToJSON(outputPath, config, device, frames, aggregates);
+
+    std::ifstream file(outputPath);
+    nlohmann::json j;
+    file >> j;
+
+    EXPECT_TRUE(j["device"].contains("bandwidth_estimated"));
+    EXPECT_TRUE(j["device"]["bandwidth_estimated"].get<bool>());
+}
+
+TEST_F(JSONExportTest, GeneratedTestId) {
+    MetricsExporter exporter;
+
+    TestConfiguration config;
+    // testId left empty - should be auto-generated
+    config.pipeline = "compute";
+    config.algorithm = "empty_skip";
+    config.voxelResolution = 64;
+    config.sceneType = "cave";
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+
+    DeviceCaps device;
+
+    std::vector<FrameMetrics> frames;
+    std::map<std::string, AggregateStats> aggregates;
+
+    exporter.ExportToJSON(outputPath, config, device, frames, aggregates);
+
+    std::ifstream file(outputPath);
+    nlohmann::json j;
+    file >> j;
+
+    // Should have auto-generated test_id
+    EXPECT_TRUE(j.contains("test_id"));
+    std::string testId = j["test_id"];
+    EXPECT_NE(testId.find("COMPUTE"), std::string::npos);
+    EXPECT_NE(testId.find("64"), std::string::npos);
+    EXPECT_NE(testId.find("CAVE"), std::string::npos);
+    EXPECT_NE(testId.find("EMPTY_SKIP"), std::string::npos);
+}
+
+// ============================================================================
+// FrameMetrics Extended Fields Tests
+// ============================================================================
+
+TEST(FrameMetricsTest, NewFieldsDefaultValues) {
+    FrameMetrics metrics;
+    EXPECT_FLOAT_EQ(metrics.avgVoxelsPerRay, 0.0f);
+    EXPECT_EQ(metrics.totalRaysCast, 0u);
+    EXPECT_FALSE(metrics.bandwidthEstimated);
+}
+
+TEST(FrameMetricsTest, NewFieldsCanBeSet) {
+    FrameMetrics metrics;
+    metrics.avgVoxelsPerRay = 18.6f;
+    metrics.totalRaysCast = 1'920'000;
+    metrics.bandwidthEstimated = true;
+
+    EXPECT_FLOAT_EQ(metrics.avgVoxelsPerRay, 18.6f);
+    EXPECT_EQ(metrics.totalRaysCast, 1'920'000u);
+    EXPECT_TRUE(metrics.bandwidthEstimated);
+}
