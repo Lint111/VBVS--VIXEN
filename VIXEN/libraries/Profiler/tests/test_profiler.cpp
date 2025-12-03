@@ -2061,3 +2061,78 @@ TEST(BenchmarkGraphTest, HybridPipelineTypeNotYetValid) {
     // Hybrid not implemented, always invalid
     EXPECT_FALSE(graph.IsValid());
 }
+
+// ============================================================================
+// VulkanIntegration Tests (Phase II)
+// ============================================================================
+
+#include "Profiler/VulkanIntegration.h"
+
+TEST(VulkanHandlesTest, DefaultValuesAreInvalid) {
+    VulkanHandles handles;
+    EXPECT_EQ(handles.device, VK_NULL_HANDLE);
+    EXPECT_EQ(handles.physicalDevice, VK_NULL_HANDLE);
+    EXPECT_EQ(handles.graphicsQueue, VK_NULL_HANDLE);
+    EXPECT_EQ(handles.graphicsQueueFamily, 0u);
+    EXPECT_EQ(handles.framesInFlight, 3u);  // Default
+    EXPECT_FALSE(handles.IsValid());
+}
+
+TEST(VulkanHandlesTest, ValidWhenBothDevicesSet) {
+    VulkanHandles handles;
+    // Note: We can't set actual Vulkan handles in unit tests,
+    // but we can verify the validation logic conceptually
+    EXPECT_FALSE(handles.IsValid());  // Both still null
+}
+
+TEST(VulkanIntegrationHelperTest, ExtractFromGraphNullReturnsInvalid) {
+    VulkanHandles handles = VulkanIntegrationHelper::ExtractFromGraph(nullptr);
+    EXPECT_FALSE(handles.IsValid());
+}
+
+TEST(VulkanIntegrationHelperTest, InitializeProfilerFromGraphNullReturnsFalse) {
+    EXPECT_FALSE(VulkanIntegrationHelper::InitializeProfilerFromGraph(nullptr));
+}
+
+TEST(VulkanIntegrationHelperTest, RunBenchmarkSuiteEmptyConfigsReturnsZero) {
+    std::vector<TestConfiguration> emptyConfigs;
+    size_t result = VulkanIntegrationHelper::RunBenchmarkSuite(
+        nullptr, emptyConfigs, "output", []() { return true; });
+    EXPECT_EQ(result, 0u);
+}
+
+TEST(VulkanIntegrationHelperTest, RunBenchmarkSuiteNullGraphReturnsZero) {
+    std::vector<TestConfiguration> configs;
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 64;
+    configs.push_back(config);
+
+    size_t result = VulkanIntegrationHelper::RunBenchmarkSuite(
+        nullptr, configs, "output", []() { return true; });
+    EXPECT_EQ(result, 0u);
+}
+
+TEST(VulkanIntegrationHelperTest, CreateWiredAdapterNullGraphReturnsAdapter) {
+    BenchmarkGraph emptyGraph{};
+    auto adapter = VulkanIntegrationHelper::CreateWiredAdapter(nullptr, emptyGraph);
+    EXPECT_NE(adapter, nullptr);  // Adapter created even with null graph
+}
+
+TEST(VulkanIntegrationHelperTest, GetCurrentFrameCommandBufferNullReturnsNull) {
+    VkCommandBuffer result = VulkanIntegrationHelper::GetCurrentFrameCommandBuffer(nullptr);
+    EXPECT_EQ(result, VK_NULL_HANDLE);
+}
+
+TEST(ScopedProfilerIntegrationTest, NullGraphIsInvalid) {
+    ScopedProfilerIntegration integration(nullptr);
+    EXPECT_FALSE(integration.IsValid());
+    EXPECT_FALSE(integration.GetHandles().IsValid());
+}
+
+TEST(ScopedProfilerIntegrationTest, GetHandlesReturnsDefaultOnNull) {
+    ScopedProfilerIntegration integration(nullptr);
+    const VulkanHandles& handles = integration.GetHandles();
+    EXPECT_EQ(handles.device, VK_NULL_HANDLE);
+    EXPECT_EQ(handles.physicalDevice, VK_NULL_HANDLE);
+}

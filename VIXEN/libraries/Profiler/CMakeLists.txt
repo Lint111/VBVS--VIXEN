@@ -19,6 +19,7 @@ add_library(Profiler STATIC
     src/BenchmarkGraphFactory.cpp
     src/SceneInfo.cpp
     src/ProfilerSystem.cpp
+    src/VulkanIntegration.cpp
 )
 
 # ============================================================================
