@@ -61,6 +61,19 @@ void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
+    // DEBUG: Inspect device pointer before usage
+    fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr = %p\n", (void*)devicePtr);
+    if (devicePtr) {
+        // Check if pointer looks like garbage (e.g. -1)
+        if (devicePtr == (VulkanDevice*)0xFFFFFFFFFFFFFFFF) {
+             fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr is 0xFFFFFFFFFFFFFFFF (INVALID!)\n");
+        } else {
+             fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr->device = %p\n", (void*)devicePtr->device);
+        }
+    } else {
+        fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr is NULL\n");
+    }
+
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
     uint32_t queueFamilyIndex = GetParameterValue<uint32_t>(

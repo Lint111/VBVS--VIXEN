@@ -266,33 +266,6 @@ These edge cases are documented and accepted:
 
 ## Session Metrics
 
-### Week 4 Phase B.2 - Screen-Space LOD Termination (Dec 2, 2025)
-- **Status**: COMPLETE - ESVO screen-space LOD termination implemented
-- **Files Created**:
-  - `libraries/SVO/include/SVOLOD.h` - LODParameters struct with ray cone math
-  - `libraries/SVO/tests/test_lod.cpp` - 16 unit tests for LOD functionality
-- **Files Modified**:
-  - `libraries/SVO/include/ISVOStructure.h` - Added `castRayScreenSpaceLOD()`, `castRayWithLOD()` pure virtual methods
-  - `libraries/SVO/include/LaineKarrasOctree.h` - Implemented new LOD methods, added SVOLOD.h include
-  - `libraries/SVO/src/SVOTraversal.cpp` - Added LOD termination check before PUSH phase
-  - `libraries/SVO/CMakeLists.txt` - Added SVOLOD.h to source list
-  - `libraries/SVO/tests/CMakeLists.txt` - Added test_lod target
-- **Algorithm**: Based on ESVO paper Section 4.4 and Raycast.inl line 181
-  - `projectedSize = distance * rayDirSize + rayOrigSize`
-  - When `projectedSize >= voxelSize`, voxel is smaller than pixel -> terminate
-  - `LODParameters::fromCamera(fovY, screenHeight)` computes ray cone spread
-  - `shouldTerminate(distance, voxelSize)` implements ESVO condition
-- **API**:
-  - `castRayScreenSpaceLOD(origin, dir, fovY, screenHeight)` - camera-based LOD
-  - `castRayWithLOD(origin, dir, lodParams)` - explicit LOD parameters
-  - `LODParameters::withBias(float)` - adjust termination threshold
-  - Helper functions: `esvoScaleToWorldSize()`, `esvoTToWorldDistance()`
-- **Tests Verified**:
-  - test_lod: 16/16 passing
-  - test_cornell_box: 7/9 passing (pre-existing issues)
-  - test_ray_casting_comprehensive: 9/11 passing (pre-existing issues)
-- **Performance**: No regression for non-LOD rays (nullptr check is O(1))
-
 ### Week 4 Phase B.1 - Geometric Normal Computation (Dec 2, 2025)
 - **Status**: COMPLETE - Normals computed from voxel topology instead of entity components
 - **Files Modified**:

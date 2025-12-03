@@ -179,14 +179,18 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
     m_worldMax = worldMax;
 
     // 3b. Setup local-to-world transformation matrices
-    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin);
+    // Transform from Grid Local [0, resolution]³ to World [worldMin, worldMax]
+    // Used by brick DDA for coordinate transformations (NOT ESVO traversal)
+    glm::vec3 worldSize = worldMax - worldMin;
+    glm::vec3 gridSize = worldMax - worldMin;  // Grid is [0, resolution], e.g., [0, 128]
+    glm::vec3 scale = worldSize / gridSize;     // Usually identity if world == grid
+    m_localToWorld = glm::translate(glm::mat4(1.0f), worldMin) * glm::scale(glm::mat4(1.0f), scale);
     m_worldToLocal = glm::inverse(m_localToWorld);
 
     // 4. Calculate brick grid dimensions in normalized [0,1]^3 space
     int brickDepth = m_brickDepthLevels;
     int brickSideLength = 1 << brickDepth;
 
-    glm::vec3 worldSize = worldMax - worldMin;
     int voxelsPerAxis = static_cast<int>(worldSize.x);
     int bricksPerAxis = (voxelsPerAxis + brickSideLength - 1) / brickSideLength;
     float brickWorldSize = worldSize.x / static_cast<float>(bricksPerAxis);
@@ -546,6 +550,7 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
 
         m_octree->root->compressedColors.resize(numBricks * blocksPerBrick);
         m_octree->root->compressedNormals.resize(numBricks * blocksPerBrick);
+        m_octree->root->brickMaterialData.resize(numBricks * 512);
 
         DXT1ColorCompressor colorCompressor;
         DXTNormalCompressor normalCompressor;
@@ -559,6 +564,24 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
             // This avoids redundant 6-neighbor lookups during DXT compression
             // Performance: O(512 * 6) = 3,072 neighbor checks, done once per brick
             std::array<glm::vec3, 512> geometricNormals = precomputeGeometricNormals(brickView, brickSize);
+
+            // Populate brickMaterialData for occupancy checks in shader (binding 2)
+            // This is required because the compressed shader still uses the uncompressed
+            // brickData buffer to determine if a voxel is active before decoding DXT.
+            size_t materialBaseIdx = brickIdx * 512;
+            int occupiedCount = 0;
+            for (int i = 0; i < 512; ++i) {
+                int x = i & 7;
+                int y = (i >> 3) & 7;
+                int z = (i >> 6) & 7;
+                
+                auto entity = brickView.getEntity(x, y, z);
+                // Use 1 for occupied, 0 for empty.
+                // The shader checks (voxelData != 0u) for hit.
+                uint32_t val = (entity != gaia::ecs::Entity()) ? 1u : 0u;
+                m_octree->root->brickMaterialData[materialBaseIdx + i] = val;
+                if (val != 0) occupiedCount++;
+            }
 
             for (int blockIdx = 0; blockIdx < static_cast<int>(blocksPerBrick); ++blockIdx) {
                 std::array<glm::vec3, 16> blockColors;

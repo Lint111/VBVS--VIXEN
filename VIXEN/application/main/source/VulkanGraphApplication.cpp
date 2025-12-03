@@ -38,6 +38,7 @@
 #include "Nodes/InputNode.h"  // Input polling and event publishing
 #include <ShaderBundleBuilder.h>  // Phase G: Shader builder API (includes preprocessor support)
 #include "VoxelRayMarchNames.h"  // Generated shader binding constants
+#include "VoxelRayMarch_CompressedNames.h"
 #include "Nodes/DebugBufferReaderNode.h"  // Debug: Compute shader debug capture
 #include "VulkanGlobalNames.h"  // Global Vulkan extension/layer name lists
 

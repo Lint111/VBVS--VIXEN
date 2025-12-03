@@ -25,13 +25,16 @@
 // CONSTANTS
 // ============================================================================
 
+// Scale factor 1.0 / 2^32
+const float DXT_SCALE = 1.0 / 4294967296.0;
+
 /// DXT1 color interpolation coefficients
 /// Index mapping: 0 = ref0, 1 = ref1, 2 = 2/3*ref0+1/3*ref1, 3 = 1/3*ref0+2/3*ref1
 const float DXT_COLOR_COEFS[4] = float[4](
-    1.0 / float(1 << 24),       // c0 for index 0
-    0.0,                         // c0 for index 1
-    2.0 / float(3 << 24),       // c0 for index 2
-    1.0 / float(3 << 24)        // c0 for index 3
+    DXT_SCALE,                  // c0 for index 0
+    0.0,                        // c0 for index 1
+    2.0 * DXT_SCALE / 3.0,      // c0 for index 2
+    1.0 * DXT_SCALE / 3.0       // c0 for index 3
 );
 
 /// DXT normal interpolation coefficients: {-1, -1/3, 1/3, 1}
@@ -60,7 +63,7 @@ vec3 decodeDXT1Color(uvec2 block, int texelIdx) {
 
     // Get interpolation coefficient for this texel
     float c0 = DXT_COLOR_COEFS[(bits >> (texelIdx * 2)) & 3u];
-    float c1 = 1.0 / float(1 << 24) - c0;
+    float c1 = DXT_SCALE - c0;
 
     // Decode and interpolate RGB components
     // The bit shifts extract RGB-565 components and scale them
@@ -83,7 +86,7 @@ void decodeDXT1ColorBlock(uvec2 block, out vec3 colors[16]) {
 
     for (int i = 0; i < 16; i++) {
         float c0 = DXT_COLOR_COEFS[(bits >> (i * 2)) & 3u];
-        float c1 = 1.0 / float(1 << 24) - c0;
+        float c1 = DXT_SCALE - c0;
 
         colors[i] = vec3(
             c0 * float(head << 16) + c1 * float(head),

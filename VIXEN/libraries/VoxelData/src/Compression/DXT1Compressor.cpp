@@ -131,12 +131,15 @@ void DXT1ColorCompressor::decodeBlockTyped(
 
 const char* DXT1ColorCompressor::getGLSLDecodeFunction() {
     return R"GLSL(
+// Scale factor 1.0 / 2^32
+const float DXT_SCALE = 1.0 / 4294967296.0;
+
 // DXT1 color decode coefficients
 const float DXT_COLOR_COEFS[4] = float[4](
-    1.0 / float(1 << 24),
+    DXT_SCALE,
     0.0,
-    2.0 / float(3 << 24),
-    1.0 / float(3 << 24)
+    2.0 * DXT_SCALE / 3.0,
+    1.0 * DXT_SCALE / 3.0
 );
 
 // Decode DXT1 color block to RGB
@@ -147,7 +150,7 @@ vec3 decodeDXT1Color(uvec2 block, int texelIdx) {
     uint bits = block.y;
 
     float c0 = DXT_COLOR_COEFS[(bits >> (texelIdx * 2)) & 3u];
-    float c1 = 1.0 / float(1 << 24) - c0;
+    float c1 = DXT_SCALE - c0;
 
     return vec3(
         c0 * float(head << 16) + c1 * float(head),

@@ -107,15 +107,15 @@ const float EPSILON = 1e-6;     // General epsilon for floating point comparison
 const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
 
 // Debug flags (disabled by default for compressed variant)
-#define DEBUG_OCTANT_MASK 0
-#define DEBUG_ISOLATE_OCTANT 0
-#define DEBUG_ONLY_OCTANT 0
-#define DEBUG_FORCE_OCTANT_ZERO 0
-#define DEBUG_LOCAL_NORM 0
-#define DEBUG_BRICK_COORD 0
-#define DEBUG_FIRST_VOXEL 0
-#define DEBUG_RAY_BRICK_LOOKUP 0
-#define DEBUG_BYPASS_ESVO 0
+#define DEBUG_OCTANT_MASK 1
+#define DEBUG_ISOLATE_OCTANT 2
+#define DEBUG_ONLY_OCTANT 3
+#define DEBUG_FORCE_OCTANT_ZERO 4
+#define DEBUG_LOCAL_NORM 5
+#define DEBUG_BRICK_COORD 6
+#define DEBUG_FIRST_VOXEL 7
+#define DEBUG_RAY_BRICK_LOOKUP 8
+#define DEBUG_BYPASS_ESVO 9
 #define DEBUG_AXIS_PARALLEL 0
 
 // Per-ray trace recording disabled for compressed variant
@@ -311,11 +311,13 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
 }
 
 // ============================================================================
-// TRACE RECORDING (Stub implementation for compressed variant)
+// TRACE RECORDING (Enabled for compressed variant)
 // ============================================================================
 
 bool shouldCaptureDebug(ivec2 pixelCoords) {
-    return false;  // Disabled for compressed variant
+    // Capture if pixel is on grid intersection
+    return (pixelCoords.x % DEBUG_GRID_SPACING == 0) && 
+           (pixelCoords.y % DEBUG_GRID_SPACING == 0);
 }
 
 const uint TRACE_HEADER_SIZE = 16;
@@ -325,12 +327,64 @@ const uint TRACE_RAY_SIZE = TRACE_HEADER_SIZE + (MAX_TRACE_STEPS * TRACE_STEP_SI
 uint g_traceRaySlot = 0xFFFFFFFF;
 uint g_traceStepCount = 0;
 
-bool beginRayTrace(ivec2 pixelCoords) { return false; }
+bool beginRayTrace(ivec2 pixelCoords) {
+    if (!shouldCaptureDebug(pixelCoords)) return false;
+    
+    // Atomic increment to get a slot
+    uint slot = atomicAdd(traceWriteIndex, 1);
+    if (slot >= traceCapacity) return false;
+    
+    g_traceRaySlot = slot;
+    g_traceStepCount = 0;
+    
+    // Initialize header
+    uint offset = slot * (TRACE_RAY_SIZE / 4); // Index in uint array
+    traceData[offset + 0] = pixelCoords.x;
+    traceData[offset + 1] = pixelCoords.y;
+    traceData[offset + 2] = 0; // Step count (will update later)
+    traceData[offset + 3] = 0; // Flags
+    
+    return true;
+}
 
 void recordTraceStep(uint stepType, uint nodeIndex, int scale, uint octantMask,
-                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {}
+                     vec3 pos, float tMin, float tMax, uvec2 childDesc) {
+    if (g_traceRaySlot == 0xFFFFFFFF || g_traceStepCount >= MAX_TRACE_STEPS) return;
+    
+    uint rayOffset = g_traceRaySlot * (TRACE_RAY_SIZE / 4);
+    uint stepOffset = rayOffset + (TRACE_HEADER_SIZE / 4) + g_traceStepCount * (TRACE_STEP_SIZE / 4);
+    
+    traceData[stepOffset + 0] = stepType;
+    traceData[stepOffset + 1] = nodeIndex;
+    traceData[stepOffset + 2] = uint(scale);
+    traceData[stepOffset + 3] = octantMask;
+    
+    traceData[stepOffset + 4] = floatBitsToUint(pos.x);
+    traceData[stepOffset + 5] = floatBitsToUint(pos.y);
+    traceData[stepOffset + 6] = floatBitsToUint(pos.z);
+    
+    traceData[stepOffset + 7] = floatBitsToUint(tMin);
+    traceData[stepOffset + 8] = floatBitsToUint(tMax);
+    
+    traceData[stepOffset + 9] = childDesc.x;
+    traceData[stepOffset + 10] = childDesc.y;
+    traceData[stepOffset + 11] = 0; // Padding
+    
+    g_traceStepCount++;
+}
 
-void endRayTrace(bool hit) {}
+void endRayTrace(bool hit) {
+    if (g_traceRaySlot == 0xFFFFFFFF) return;
+    
+    uint offset = g_traceRaySlot * (TRACE_RAY_SIZE / 4);
+    traceData[offset + 2] = g_traceStepCount;
+    
+    uint flags = 0;
+    if (hit) flags |= 1;
+    if (g_traceStepCount >= MAX_TRACE_STEPS) flags |= 2;
+    
+    traceData[offset + 3] = flags;
+}
 
 // ============================================================================
 // ESVO BUFFER ACCESS

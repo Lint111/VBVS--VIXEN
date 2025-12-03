@@ -74,8 +74,8 @@ private:
     uint32_t gridResolution = 128;
 
     // Orbit mode: WASD/QE moves orbit center, arrow keys rotate around it
-    glm::vec3 orbitCenter{5.0f, 5.0f, 5.0f};  // Center of grid (10/2 for 10^3 world size)
-    float orbitDistance = 30.0f;  // Distance from orbit center (scaled for 10^3 world)
+    glm::vec3 orbitCenter{64.0f, 64.0f, 64.0f};  // Center of grid (resolution/2 for dynamic world size)
+    float orbitDistance = 200.0f;  // Distance from orbit center (scaled for 128^3 world)
 
     // Accumulated input deltas (cleared after applying)
     glm::vec3 movementDelta{0.0f};  // Local-space WASD + global Y for QE
@@ -83,8 +83,8 @@ private:
     glm::vec2 smoothedRotationDelta{0.0f};  // Smoothed rotation for jitter reduction
 
     // Camera control parameters
-    float moveSpeed = 20.0f;       // Horizontal movement: units per second (scaled for 10^3 world)
-    float verticalSpeed = 20.0f;   // Vertical movement (QE): units per second
+    float moveSpeed = 100.0f;       // Horizontal movement: units per second (scaled for 128^3 world)
+    float verticalSpeed = 100.0f;   // Vertical movement (QE): units per second
     float mouseSensitivity = 0.0015f;  // Radians per pixel (reduced from 0.004 for less sensitivity)
     float mouseSmoothingFactor = 0.6f;  // 0=no smoothing, 1=instant (0.6 = responsive)
     float maxRotationDeltaPerFrame = 100.0f;  // Max pixels per frame to prevent jumps
