@@ -202,4 +202,28 @@ include_directories(BEFORE ${gli_SOURCE_DIR})
 # STB is header-only
 include_directories(BEFORE ${stb_SOURCE_DIR})
 
+# ============================================================================
+# nlohmann/json - JSON for Modern C++
+# ============================================================================
+
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+
+# Don't build tests or install for nlohmann_json
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+set(JSON_Install OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(nlohmann_json)
+
+# Organize in Dependencies folder
+if(TARGET nlohmann_json)
+    set_target_properties(nlohmann_json PROPERTIES FOLDER "Dependencies")
+endif()
+
+message(STATUS "nlohmann/json fetched - available to all libraries")
+
 message(STATUS "Dependencies configured - all third-party libraries fetched")
