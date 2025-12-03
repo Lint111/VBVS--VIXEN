@@ -823,7 +823,7 @@ void VulkanGraphApplication::BuildRenderGraph() {
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_AUTO_EXPORT, true);
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_EXPORT_FORMAT, static_cast<int>(DebugExportFormat::JSON));
     debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_OUTPUT_PATH, std::string("binaries/compute_debug_output"));
-    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 1000u);
+    debugCapture->SetParameter(DebugBufferReaderNodeConfig::PARAM_FRAMES_PER_EXPORT, 100u);
     if (auto* debugLogger = debugCapture->GetLogger()) {
         debugLogger->SetEnabled(true);
         debugLogger->SetTerminalOutput(true);

@@ -13,7 +13,7 @@
 #include <AttributeRegistry.h>
 #include <glm/glm.hpp>
 
-using namespace VoxelData;
+using namespace Vixen::VoxelData;
 
 class AttributeRegistryTest : public ::testing::Test {
 protected:

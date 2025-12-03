@@ -61,18 +61,14 @@ void CommandPoolNode::CompileImpl(TypedCompileContext& ctx) {
     // Set base class device member for cleanup tracking
     SetDevice(devicePtr);
 
-    // DEBUG: Inspect device pointer before usage
-    fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr = %p\n", (void*)devicePtr);
-    if (devicePtr) {
-        // Check if pointer looks like garbage (e.g. -1)
-        if (devicePtr == (VulkanDevice*)0xFFFFFFFFFFFFFFFF) {
-             fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr is 0xFFFFFFFFFFFFFFFF (INVALID!)\n");
-        } else {
-             fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr->device = %p\n", (void*)devicePtr->device);
-        }
-    } else {
-        fprintf(stderr, "DEBUG: CommandPoolNode: devicePtr is NULL\n");
+    // Validate device pointer
+    if (devicePtr == reinterpret_cast<VulkanDevice*>(0xFFFFFFFFFFFFFFFF)) {
+        std::string errorMsg = "CommandPoolNode: VkDevice input is INVALID (0xFFFFFFFFFFFFFFFF)";
+        NODE_LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
     }
+
+    NODE_LOG_DEBUG("CommandPoolNode: devicePtr = " + std::to_string(reinterpret_cast<uintptr_t>(devicePtr)));
 
     // Get queue family index parameter
     // TODO: Should get queue family index from DeviceNode output instead of parameter
@@ -109,7 +105,7 @@ void CommandPoolNode::ExecuteImpl(TypedExecuteContext& ctx) {
 }
 
 void CommandPoolNode::CleanupImpl(TypedCleanupContext& ctx) {
-    if (isCreated && commandPool != VK_NULL_HANDLE && device != nullptr) {
+    if (isCreated && commandPool != VK_NULL_HANDLE && device != nullptr && reinterpret_cast<uintptr_t>(device) != 0xFFFFFFFFFFFFFFFF) {
         vkDestroyCommandPool(device->device, commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
         isCreated = false;

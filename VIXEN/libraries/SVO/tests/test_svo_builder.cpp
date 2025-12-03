@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "SVOBuilder.h"
 
-using namespace SVO;
+using namespace Vixen::SVO;
 
 // ===========================================================================
 // Helper Functions

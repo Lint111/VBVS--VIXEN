@@ -32,12 +32,12 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/tests/TestMocks.h>  // Centralized test mocks (use project-root include path)
-#include <RenderGraph/Nodes/PushConstantGathererNode.h>
-#include <RenderGraph/Data/Nodes/PushConstantGathererNodeConfig.h>
-#include <RenderGraph/Core/NodeTypeRegistry.h>
-#include <RenderGraph/Core/RenderGraph.h>
-#include <RenderGraph/Data/Core/CompileTimeResourceSystem.h>
+#include "Libraries/RenderGraph/tests/TestMocks.h"  // Centralized test mocks (use project-root include path)
+#include "Nodes/PushConstantGathererNode.h"
+#include "Data/Nodes/PushConstantGathererNodeConfig.h"
+#include "Core/NodeTypeRegistry.h"
+#include "Core/RenderGraph.h"
+#include "Data/Core/CompileTimeResourceSystem.h"
 #include <TestFixtures.h>  // ShaderManagement test fixtures (from include path)
 #include <memory>
 #include <vector>

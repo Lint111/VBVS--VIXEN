@@ -23,7 +23,7 @@
 #include <gtest/gtest.h>
 #include "Core/ResourceDependencyTracker.h"
 #include "Core/NodeInstance.h"
-#include <RenderGraph/CleanupStack.h>
+#include "CleanupStack.h"
 #include <memory>
 #include <chrono>
 

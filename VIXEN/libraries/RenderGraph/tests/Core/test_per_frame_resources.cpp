@@ -20,7 +20,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Core/PerFrameResources.h>
+#include "Core/PerFrameResources.h"
 #include "VulkanDevice.h"
 #include <memory>
 

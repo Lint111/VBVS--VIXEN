@@ -16,7 +16,10 @@
 #include <array>
 #include <cmath>
 
-using namespace VoxelData;
+
+
+using namespace Vixen::VoxelData;
+using namespace Vixen::VoxelData::Compression;
 
 class BlockCompressorTest : public ::testing::Test {
 protected:

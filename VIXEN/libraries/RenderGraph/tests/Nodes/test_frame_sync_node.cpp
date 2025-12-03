@@ -11,8 +11,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Nodes/FrameSyncNode.h>
-#include <RenderGraph/Data/Nodes/FrameSyncNodeConfig.h>
+#include "Nodes/FrameSyncNode.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 
 using namespace Vixen::RenderGraph;
 

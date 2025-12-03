@@ -6,7 +6,7 @@
 #include <glm/glm.hpp>
 
 using namespace Vixen::GaiaVoxel;
-using namespace VoxelData;
+using namespace Vixen::VoxelData;
 
 // ============================================================================
 // Conversion Utilities: Entity ↔ DynamicVoxelScalar

@@ -5,7 +5,7 @@
 #include <thread>
 #include <algorithm>
 
-using namespace GaiaVoxel;
+using namespace Vixen::GaiaVoxel;
 
 // ===========================================================================
 // VoxelCreationRequest API Tests (New - Session 6)

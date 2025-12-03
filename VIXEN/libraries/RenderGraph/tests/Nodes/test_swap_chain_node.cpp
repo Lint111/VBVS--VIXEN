@@ -11,8 +11,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Nodes/SwapChainNode.h>
-#include <RenderGraph/Data/Nodes/SwapChainNodeConfig.h>
+#include "Nodes/SwapChainNode.h"
+#include "Data/Nodes/SwapChainNodeConfig.h"
 
 using namespace Vixen::RenderGraph;
 

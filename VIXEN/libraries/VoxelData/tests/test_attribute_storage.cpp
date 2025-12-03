@@ -12,7 +12,7 @@
 #include <AttributeStorage.h>
 #include <glm/glm.hpp>
 
-using namespace VoxelData;
+using namespace Vixen::VoxelData;
 
 class AttributeStorageTest : public ::testing::Test {
 protected:

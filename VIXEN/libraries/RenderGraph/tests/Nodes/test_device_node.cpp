@@ -24,8 +24,8 @@
  */
 
 #include <gtest/gtest.h>
-#include <RenderGraph/Nodes/DeviceNode.h>
-#include <RenderGraph/Data/Nodes/DeviceNodeConfig.h>
+#include "Nodes/DeviceNode.h"
+#include "Data/Nodes/DeviceNodeConfig.h"
 #include <memory>
 
 // Define globals required by DeviceNode

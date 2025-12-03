@@ -3,7 +3,7 @@
 #include "BrickView.h"
 #include <glm/glm.hpp>
 
-using namespace VoxelData;
+using namespace Vixen::VoxelData;
 
 // ============================================================================
 // Test Fixture for BrickView Tests
