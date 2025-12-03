@@ -497,6 +497,64 @@ private:
 
     /// Map scene type string to VoxelGridNode scene parameter
     static std::string MapSceneType(const std::string& sceneType);
+
+    //==========================================================================
+    // Variadic Resource Wiring
+    //==========================================================================
+
+    /**
+     * @brief Wire descriptor resources and push constants using ConnectVariadic
+     *
+     * This connects the ray march scene nodes (VoxelGrid, Camera) to the
+     * descriptor gatherer and push constant gatherer using ConnectVariadic
+     * for proper binding-indexed resource population.
+     *
+     * Uses VoxelRayMarch.comp binding layout:
+     * - Descriptor Set 0:
+     *   - Binding 0: outputImage (storage image, swapchain)
+     *   - Binding 1: esvoNodes (SSBO, octree node buffer)
+     *   - Binding 2: brickData (SSBO, voxel brick data)
+     *   - Binding 3: materials (SSBO, material palette)
+     *   - Binding 4: traceWriteIndex (SSBO, debug capture)
+     *   - Binding 5: octreeConfig (UBO, scale/depth params)
+     *
+     * - Push Constants:
+     *   - cameraPos (vec3), time (float)
+     *   - cameraDir (vec3), fov (float)
+     *   - cameraUp (vec3), aspect (float)
+     *   - cameraRight (vec3), debugMode (int)
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes
+     * @param compute Compute pipeline nodes
+     * @param rayMarch Ray march scene nodes
+     */
+    static void WireVariadicResources(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
+        const ComputePipelineNodes& compute,
+        const RayMarchNodes& rayMarch
+    );
+
+    //==========================================================================
+    // Shader Builder Registration
+    //==========================================================================
+
+    /**
+     * @brief Register VoxelRayMarch.comp shader builder
+     *
+     * Registers a ShaderBundleBuilder callback that loads VoxelRayMarch.comp
+     * with proper include paths for the shader preprocessor.
+     *
+     * @param graph Target render graph
+     * @param compute Compute pipeline nodes (shader library node)
+     * @param useCompressed Use DXT-compressed variant (bindings 6,7 for compressed data)
+     */
+    static void RegisterVoxelRayMarchShader(
+        RG::RenderGraph* graph,
+        const ComputePipelineNodes& compute,
+        bool useCompressed = false
+    );
 };
 
 } // namespace Vixen::Profiler

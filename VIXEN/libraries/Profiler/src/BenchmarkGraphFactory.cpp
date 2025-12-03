@@ -5,6 +5,10 @@
 #include <Core/TypedConnection.h>
 #include <Core/NodeInstance.h>
 #include <Core/GraphLifecycleHooks.h>
+#include <Data/Core/ResourceConfig.h>  // SlotRole
+
+// Shader management
+#include <ShaderBundleBuilder.h>
 
 // Node types
 #include <Nodes/InstanceNode.h>
@@ -450,8 +454,14 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
     result.output = BuildOutput(graph, result.infra, false);
 
-    // Connect subgraphs
+    // Connect subgraphs (typed slot connections)
     ConnectComputeRayMarch(graph, result.infra, result.compute, result.rayMarch, result.output);
+
+    // Wire variadic resources (descriptor bindings + push constants)
+    WireVariadicResources(graph, result.infra, result.compute, result.rayMarch);
+
+    // Register shader builder (loads VoxelRayMarch.comp with include paths)
+    RegisterVoxelRayMarchShader(graph, result.compute, false /* useCompressed */);
 
     return result;
 }
@@ -1000,6 +1010,207 @@ bool BenchmarkGraphFactory::HasProfilerHooks(const RG::RenderGraph* graph)
         return false;
     }
     return g_graphsWithProfilerHooks.count(graph) > 0;
+}
+
+//==============================================================================
+// Variadic Resource Wiring
+//==============================================================================
+
+void BenchmarkGraphFactory::WireVariadicResources(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const ComputePipelineNodes& compute,
+    const RayMarchNodes& rayMarch)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireVariadicResources: graph is null");
+    }
+
+    RG::ConnectionBatch batch(graph);
+
+    //--------------------------------------------------------------------------
+    // VoxelRayMarch.comp Descriptor Bindings (Set 0)
+    //--------------------------------------------------------------------------
+    // Binding constants from VoxelRayMarchNames.h (hard-coded for portability)
+    constexpr uint32_t BINDING_OUTPUT_IMAGE = 0;
+    constexpr uint32_t BINDING_ESVO_NODES = 1;
+    constexpr uint32_t BINDING_BRICK_DATA = 2;
+    constexpr uint32_t BINDING_MATERIALS = 3;
+    constexpr uint32_t BINDING_TRACE_WRITE_INDEX = 4;
+    constexpr uint32_t BINDING_OCTREE_CONFIG = 5;
+
+    // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
+    batch.ConnectVariadic(
+        infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+        compute.descriptorGatherer, BINDING_OUTPUT_IMAGE,
+        SlotRole::Execute);
+
+    // Binding 1: esvoNodes (SSBO) - Dependency + Execute
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+        compute.descriptorGatherer, BINDING_ESVO_NODES,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 2: brickData (SSBO) - Dependency + Execute
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+        compute.descriptorGatherer, BINDING_BRICK_DATA,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 3: materials (SSBO) - Dependency + Execute
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+        compute.descriptorGatherer, BINDING_MATERIALS,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 4: traceWriteIndex (SSBO) - Debug capture buffer
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+        compute.descriptorGatherer, BINDING_TRACE_WRITE_INDEX,
+        SlotRole::Dependency | SlotRole::Execute | SlotRole::Debug);
+
+    // Binding 5: octreeConfig (UBO) - Scale and depth parameters
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+        compute.descriptorGatherer, BINDING_OCTREE_CONFIG,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    //--------------------------------------------------------------------------
+    // VoxelRayMarch.comp Push Constants
+    //--------------------------------------------------------------------------
+    // Push constant layout (64 bytes total):
+    //   offset 0:  cameraPos (vec3, 12 bytes) + time (float, 4 bytes)
+    //   offset 16: cameraDir (vec3, 12 bytes) + fov (float, 4 bytes)
+    //   offset 32: cameraUp (vec3, 12 bytes) + aspect (float, 4 bytes)
+    //   offset 48: cameraRight (vec3, 12 bytes) + debugMode (int, 4 bytes)
+
+    // Push constant binding indices (from VoxelRayMarchNames.h)
+    constexpr uint32_t PC_CAMERA_POS = 0;
+    constexpr uint32_t PC_TIME = 1;
+    constexpr uint32_t PC_CAMERA_DIR = 2;
+    constexpr uint32_t PC_FOV = 3;
+    constexpr uint32_t PC_CAMERA_UP = 4;
+    constexpr uint32_t PC_ASPECT = 5;
+    constexpr uint32_t PC_CAMERA_RIGHT = 6;
+    constexpr uint32_t PC_DEBUG_MODE = 7;
+
+    // Connect camera data to push constants using field extraction
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_CAMERA_POS,
+        &CameraData::cameraPos, SlotRole::Execute);
+
+    // Note: time field (PC_TIME) not connected - will be zero (no animation)
+    // TODO: Connect actual time source when animation is needed
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_CAMERA_DIR,
+        &CameraData::cameraDir, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_FOV,
+        &CameraData::fov, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_CAMERA_UP,
+        &CameraData::cameraUp, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_ASPECT,
+        &CameraData::aspect, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        compute.pushConstantGatherer, PC_CAMERA_RIGHT,
+        &CameraData::cameraRight, SlotRole::Execute);
+
+    // Connect debugMode from input node (if valid)
+    if (rayMarch.input.IsValid()) {
+        batch.ConnectVariadic(
+            rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+            compute.pushConstantGatherer, PC_DEBUG_MODE,
+            &InputState::debugMode, SlotRole::Execute);
+    }
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+//==============================================================================
+// Shader Builder Registration
+//==============================================================================
+
+void BenchmarkGraphFactory::RegisterVoxelRayMarchShader(
+    RG::RenderGraph* graph,
+    const ComputePipelineNodes& compute,
+    bool useCompressed)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::RegisterVoxelRayMarchShader: graph is null");
+    }
+
+    // Get the shader library node
+    auto* shaderLibNode = static_cast<RG::ShaderLibraryNode*>(
+        graph->GetInstance(compute.shaderLib));
+
+    if (!shaderLibNode) {
+        throw std::runtime_error("BenchmarkGraphFactory::RegisterVoxelRayMarchShader: "
+                                "shader library node not found");
+    }
+
+    // Register shader builder callback
+    shaderLibNode->RegisterShaderBuilder([useCompressed](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Select shader variant
+        const char* shaderName = useCompressed
+            ? "VoxelRayMarch_Compressed.comp"
+            : "VoxelRayMarch.comp";
+        const char* programName = useCompressed
+            ? "VoxelRayMarch_Compressed"
+            : "VoxelRayMarch";
+
+        // Search paths for shader source
+        std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+            std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+            std::string("shaders/") + shaderName,
+            std::string("../shaders/") + shaderName,
+            shaderName
+        };
+
+        std::filesystem::path compPath;
+        for (const auto& path : possiblePaths) {
+            if (std::filesystem::exists(path)) {
+                compPath = path;
+                break;
+            }
+        }
+
+        if (compPath.empty()) {
+            throw std::runtime_error(
+                std::string("VoxelRayMarch shader not found: ") + shaderName);
+        }
+
+        // Configure builder with include paths for #include support
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Compute)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+
+        return builder;
+    });
 }
 
 } // namespace Vixen::Profiler

@@ -2,43 +2,81 @@
 
 **Last Updated**: December 3, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase I COMPLETE - All Deferred Tasks Finished (116 Tests Passing)
+**Status**: Phase II STARTED - VulkanIntegration Helper Complete (126 Tests Passing)
 
 ---
 
 ## Session Summary
 
-Completed final Phase I deferred tasks: end-to-end benchmark tests, fragment pipeline stub, hardware RT stub, and shader counter metrics.
+Started Phase II: Vulkan Integration. Created VulkanIntegration helper class for bridging the Profiler system with real Vulkan handles from RenderGraph nodes.
 
 ### Completed This Session
-- **10 End-to-End Benchmark Tests** - Full integration tests for profiler stack
-  - Test matrix validation (resolution, density combinations)
-  - BenchmarkRunner state machine validation
-  - Benchmark lifecycle (StartSuite -> BeginNextTest -> RecordFrame -> Finalize)
-  - Graph creation and adapter integration
-- **BuildFragmentRayMarchGraph()** - Fragment pipeline graph builder
-  - FragmentPipelineNodes struct: fragment shader, descriptor set, render pass
-  - Ray march attachment configuration
-  - Output present connections
-  - Documentation of ray march fragment attachment semantics
-- **BuildHardwareRTGraph()** - Hardware RT stub with requirements documentation
-  - Placeholder implementation noting VK_KHR_ray_tracing_pipeline dependency
-  - Stub for Phase II Vulkan integration
-- **ShaderCounters** - Metrics struct in FrameMetrics.h
-  - avg_voxels_per_ray, ray_coherence_score, cache_line_hits
-  - GLSL integration documentation for counter queries
+- **VulkanIntegration.h/cpp** - Helper class for extracting Vulkan handles
+  - `VulkanHandles` struct with device, physicalDevice, queue, framesInFlight
+  - `VulkanIntegrationHelper::ExtractFromGraph()` - Extracts VkDevice/VkPhysicalDevice from DeviceNode
+  - `VulkanIntegrationHelper::InitializeProfilerFromGraph()` - One-liner profiler setup
+  - `VulkanIntegrationHelper::RunBenchmarkSuite()` - High-level benchmark runner
+  - `VulkanIntegrationHelper::CreateWiredAdapter()` - Creates and wires ProfilerGraphAdapter
+  - `ScopedProfilerIntegration` - RAII wrapper for profiler lifecycle
+- **10 New Unit Tests** for VulkanIntegration
+  - Null graph handling
+  - VulkanHandles validation
+  - ScopedProfilerIntegration lifecycle
+  - All 126 tests pass
 
 ### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/Profiler/include/Profiler/BenchmarkGraphFactory.h` | Added BuildFragmentRayMarchGraph(), BuildHardwareRTGraph() signatures, FragmentPipelineNodes struct |
-| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Implemented fragment/hardware RT builders, shader counter integration |
-| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Added ShaderCounters struct with GLSL integration docs |
-| `libraries/Profiler/tests/test_profiler.cpp` | Added 27 new tests (89 -> 116 tests passing) |
+| `libraries/Profiler/include/Profiler/VulkanIntegration.h` | NEW: VulkanHandles, VulkanIntegrationHelper, ScopedProfilerIntegration |
+| `libraries/Profiler/src/VulkanIntegration.cpp` | NEW: Implementation using DeviceNode extraction |
+| `libraries/Profiler/CMakeLists.txt` | Added VulkanIntegration.cpp to sources |
+| `libraries/Profiler/tests/test_profiler.cpp` | Added 10 new VulkanIntegration tests (116 -> 126) |
+
+### Key Discovery: Real Vulkan Already Wired
+The existing MetricsCollector and DeviceCapabilities classes already support real Vulkan:
+- `MetricsCollector::Initialize(VkDevice, VkPhysicalDevice, framesInFlight)` creates `VkQueryPool`
+- `MetricsCollector::OnFrameBegin/End()` uses `vkCmdWriteTimestamp`, `vkCmdResetQueryPool`
+- `DeviceCapabilities::Capture(VkPhysicalDevice)` calls real `vkGetPhysicalDeviceProperties`
+- Phase I implementation was more complete than initially thought
 
 ---
 
-## Current Focus: Phase I Complete
+## Current Focus: Phase II Vulkan Integration
+
+### VulkanIntegration API
+
+```cpp
+// Option 1: One-liner initialization from compiled graph
+if (VulkanIntegrationHelper::InitializeProfilerFromGraph(graph, "main_device")) {
+    ProfilerSystem::Instance().StartTestRun(config);
+    // ... render frames ...
+    ProfilerSystem::Instance().EndTestRun();
+}
+
+// Option 2: RAII scoped integration
+{
+    ScopedProfilerIntegration profiler(graph);
+    if (profiler.IsValid()) {
+        ProfilerSystem::Instance().StartTestRun(config);
+        // ... render frames ...
+        ProfilerSystem::Instance().EndTestRun();
+    }
+} // Profiler automatically shutdown
+
+// Option 3: High-level batch runner
+size_t passed = VulkanIntegrationHelper::RunBenchmarkSuite(
+    graph,
+    BenchmarkConfigLoader::GetQuickTestMatrix(),
+    "benchmarks/results",
+    [&]() { return graph->RenderFrame() == VK_SUCCESS; }
+);
+
+// Option 4: Manual handle extraction
+VulkanHandles handles = VulkanIntegrationHelper::ExtractFromGraph(graph);
+if (handles.IsValid()) {
+    ProfilerSystem::Instance().Initialize(handles.device, handles.physicalDevice);
+}
+```
 
 ### Hook Wiring API
 
@@ -187,7 +225,8 @@ libraries/Profiler/
 │   ├── SceneInfo.h             # Scene metadata structure
 │   ├── BenchmarkRunner.h       # Test matrix harness + graph mgmt
 │   ├── BenchmarkGraphFactory.h # Graph factory + hook wiring
-│   └── ProfilerGraphAdapter.h  # RenderGraph bridge
+│   ├── ProfilerGraphAdapter.h  # RenderGraph bridge
+│   └── VulkanIntegration.h     # NEW: Phase II - VkDevice extraction
 ├── src/
 │   ├── ProfilerSystem.cpp
 │   ├── RollingStats.cpp
@@ -197,9 +236,10 @@ libraries/Profiler/
 │   ├── BenchmarkConfig.cpp
 │   ├── SceneInfo.cpp
 │   ├── BenchmarkRunner.cpp
-│   └── BenchmarkGraphFactory.cpp
+│   ├── BenchmarkGraphFactory.cpp
+│   └── VulkanIntegration.cpp  # NEW: Phase II
 └── tests/
-    └── test_profiler.cpp       # 116 unit/integration tests
+    └── test_profiler.cpp       # 126 unit/integration tests
 ```
 
 ---
@@ -242,14 +282,19 @@ libraries/Profiler/
 - [x] Shader counters struct (avg_voxels_per_ray, cache_line_hits)
 - [x] Fragment pipeline documentation
 
-### Phase II - Vulkan Integration (Upcoming)
+### Phase II - Vulkan Integration (IN PROGRESS)
+- [x] VulkanIntegration.h/.cpp - Vulkan handle extraction from RenderGraph
+- [x] VulkanHandles struct - device, physicalDevice, queue, framesInFlight
+- [x] VulkanIntegrationHelper - ExtractFromGraph, InitializeProfilerFromGraph
+- [x] ScopedProfilerIntegration - RAII wrapper for profiler lifecycle
+- [x] 10 new unit tests (116 -> 126 total)
+- [ ] GPU integration test (requires running Vulkan application)
 - [ ] VK_KHR_ray_tracing_pipeline (Hardware RT implementation)
 - [ ] GLSL shader counter queries
 - [ ] VK_KHR_performance_query (hardware bandwidth)
 - [ ] gpu_utilization_percent (vendor-specific)
 - [ ] Nsight Graphics validation
 - [ ] BuildHybridGraph() implementation
-- [ ] Real Vulkan integration testing
 
 ---
 
