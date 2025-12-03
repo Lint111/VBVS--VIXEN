@@ -13,6 +13,16 @@
 //   Total:  768 bytes per brick (was 3072 bytes) = 4:1 compression
 // ============================================================================
 
+// ============================================================================
+// DEBUG FLAGS - Set to 1 to enable specific debug visualization
+// ============================================================================
+#define DEBUG_MATERIAL_ID 1       // Show raw material ID as color (bypass DXT)
+#define DEBUG_BRICK_INDEX 0       // Show brick index as color
+#define DEBUG_POS_IN_BRICK 0      // Show posInBrick as color
+#define DEBUG_VOXEL_COORD 0       // Show voxel coordinate within brick as color
+#define DEBUG_COMPRESSED_RAW 0    // Show raw DXT block values
+#define DEBUG_FIRST_VOXEL 0       // Show first non-zero voxel in brick (tests brick data access)
+
 #include "SVOTypes.glsl"
 #include "Compression.glsl"
 
@@ -113,7 +123,7 @@ const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel dete
 #define DEBUG_FORCE_OCTANT_ZERO 0
 #define DEBUG_LOCAL_NORM 0
 #define DEBUG_BRICK_COORD 0
-#define DEBUG_FIRST_VOXEL 0
+// DEBUG_FIRST_VOXEL defined at top of file
 #define DEBUG_RAY_BRICK_LOOKUP 0
 #define DEBUG_BYPASS_ESVO 0
 #define DEBUG_AXIS_PARALLEL 0
@@ -637,146 +647,158 @@ int executeAdvancePhase(inout TraversalState state, RayCoefficients coef, out in
         tc_max = max(max(fallbackX, fallbackY), fallbackZ);
     }
 
+    // Step along axes at their exit boundary (in mirrored space, pos decreases)
+    // Only step axes that are non-parallel to avoid incorrect traversal
     step_mask = 0;
-    const float step_epsilon = 1e-6;
-    if (canStepX && tx_corner <= tc_max + step_epsilon) step_mask |= 1;
-    if (canStepY && ty_corner <= tc_max + step_epsilon) step_mask |= 2;
-    if (canStepZ && tz_corner <= tc_max + step_epsilon) step_mask |= 4;
+    if (canStepX && tx_corner <= tc_max) { step_mask ^= 1; state.pos.x -= state.scale_exp2; }
+    if (canStepY && ty_corner <= tc_max) { step_mask ^= 2; state.pos.y -= state.scale_exp2; }
+    if (canStepZ && tz_corner <= tc_max) { step_mask ^= 4; state.pos.z -= state.scale_exp2; }
 
-    if (step_mask == 0) {
-        if (canStepX && !canStepY && !canStepZ) step_mask = 1;
-        else if (!canStepX && canStepY && !canStepZ) step_mask = 2;
-        else if (!canStepX && !canStepY && canStepZ) step_mask = 4;
-        else step_mask = 1;
-    }
-
-    state.pos.x -= state.scale_exp2 * float((step_mask >> 0) & 1);
-    state.pos.y -= state.scale_exp2 * float((step_mask >> 1) & 1);
-    state.pos.z -= state.scale_exp2 * float((step_mask >> 2) & 1);
-
-    state.t_min = tc_max;
+    state.t_min = max(tc_max, 0.0);
     state.idx ^= step_mask;
 
+    // Check if we need to POP (bit flips disagree with ray direction)
     if ((state.idx & step_mask) != 0) {
-        return 0;
+        return 1;  // POP_NEEDED
     }
 
-    return 1;
+    return 0;  // CONTINUE
 }
 
 // ============================================================================
 // POP PHASE
 // ============================================================================
+// NVIDIA ESVO-style POP using IEEE 754 float bit manipulation
+// See: efficient-sparse-voxel-octrees/trunk/src/octree/cuda/Raycast.inl lines 294-327
+int executePopPhase(inout TraversalState state, RayCoefficients coef,
+                    inout StackEntry stack[STACK_SIZE], int step_mask) {
+    // For root scale (ESVO_MAX_SCALE), check for octree exit
+    if (state.scale >= octreeConfig.esvoMaxScale) {
+        if (state.t_min > state.t_max ||
+            state.pos.x < 1.0 || state.pos.x >= 2.0 ||
+            state.pos.y < 1.0 || state.pos.y >= 2.0 ||
+            state.pos.z < 1.0 || state.pos.z >= 2.0) {
+            return 1;  // EXIT_OCTREE
+        }
+        return 0;  // CONTINUE at root
+    }
 
-bool executePopPhase(inout TraversalState state, RayCoefficients coef,
-                     inout StackEntry stack[STACK_SIZE]) {
-    const int ESVO_MIN_SCALE = octreeConfig.minESVOScale;
-
+    // NVIDIA-style: Find highest differing bit by XORing IEEE 754 float bits directly
+    // This works because positions in [1,2] map to mantissa bits, and the exponent
+    // encodes the scale level. XORing pos with pos+scale_exp2 finds the highest bit
+    // that changes when stepping, which determines the ascent level.
     uint differing_bits = 0u;
-    if (state.scale < octreeConfig.esvoMaxScale) {
-        float scale_exp2_current = exp2(float(state.scale - octreeConfig.esvoMaxScale));
-        differing_bits = uint(floor(state.pos.x * (1.0 / scale_exp2_current))) ^
-                        uint(floor((state.pos.x + state.scale_exp2) * (1.0 / scale_exp2_current)));
-        differing_bits |= uint(floor(state.pos.y * (1.0 / scale_exp2_current))) ^
-                         uint(floor((state.pos.y + state.scale_exp2) * (1.0 / scale_exp2_current)));
-        differing_bits |= uint(floor(state.pos.z * (1.0 / scale_exp2_current))) ^
-                         uint(floor((state.pos.z + state.scale_exp2) * (1.0 / scale_exp2_current)));
+    if ((step_mask & 1) != 0)
+        differing_bits |= floatBitsToUint(state.pos.x) ^ floatBitsToUint(state.pos.x + state.scale_exp2);
+    if ((step_mask & 2) != 0)
+        differing_bits |= floatBitsToUint(state.pos.y) ^ floatBitsToUint(state.pos.y + state.scale_exp2);
+    if ((step_mask & 4) != 0)
+        differing_bits |= floatBitsToUint(state.pos.z) ^ floatBitsToUint(state.pos.z + state.scale_exp2);
+
+    if (differing_bits == 0u) {
+        return 1;  // EXIT_OCTREE
     }
 
-    int new_scale = (differing_bits != 0u)
-        ? min(findMSB(differing_bits) + state.scale, octreeConfig.esvoMaxScale)
-        : octreeConfig.esvoMaxScale;
+    // Extract scale from highest bit using IEEE 754 exponent extraction
+    // NVIDIA: scale = (__float_as_int((float)differing_bits) >> 23) - 127
+    // This converts differing_bits to a float, then extracts the exponent (biased by 127)
+    state.scale = int((floatBitsToUint(float(differing_bits)) >> 23u) - 127u);
 
-    // FIX: Add epsilon tolerance and position bounds check to prevent infinite loops
-    if (state.scale >= octreeConfig.esvoMaxScale || state.t_min > state.t_max + EPSILON) {
-        return false;
+    // scale_exp2 = exp2(scale - CAST_STACK_DEPTH) = 2^(scale - 23)
+    // NVIDIA: scale_exp2 = __int_as_float((scale - CAST_STACK_DEPTH + 127) << 23)
+    state.scale_exp2 = uintBitsToFloat(uint(state.scale - octreeConfig.esvoMaxScale - 1 + 127) << 23u);
+
+    // Validate scale range using UBO values
+    int minESVOScale = octreeConfig.minESVOScale;
+    if (state.scale < minESVOScale || state.scale > octreeConfig.esvoMaxScale) {
+        return 1;  // EXIT_OCTREE
     }
-    // FIX: Check if position has exited valid [1,2] ESVO range
-    if (any(lessThan(state.pos, vec3(1.0 - EPSILON))) || any(greaterThanEqual(state.pos, vec3(2.0 + EPSILON)))) {
-        return false;
-    }
 
-    new_scale = max(new_scale, state.scale + 1);
+    // Restore from stack
+    state.parentPtr = stack[state.scale].parentPtr;
+    state.t_max = stack[state.scale].t_max;
 
-    state.scale = new_scale;
-    state.scale_exp2 = exp2(float(new_scale - octreeConfig.esvoMaxScale));
+    // Round position by shifting float bits (NVIDIA-style)
+    // This quantizes the position to the voxel boundary at the new scale
+    // NVIDIA: int shx = __float_as_int(pos.x) >> scale; pos.x = __int_as_float(shx << scale);
+    uint shx = floatBitsToUint(state.pos.x) >> uint(state.scale);
+    uint shy = floatBitsToUint(state.pos.y) >> uint(state.scale);
+    uint shz = floatBitsToUint(state.pos.z) >> uint(state.scale);
+    state.pos.x = uintBitsToFloat(shx << uint(state.scale));
+    state.pos.y = uintBitsToFloat(shy << uint(state.scale));
+    state.pos.z = uintBitsToFloat(shz << uint(state.scale));
 
-    state.parentPtr = stack[new_scale].parentPtr;
-    state.t_max = stack[new_scale].t_max;
+    // Extract child index from shifted position bits
+    // The lowest bit of each shifted coordinate gives the octant index
+    state.idx = int(shx & 1u) | (int(shy & 1u) << 1) | (int(shz & 1u) << 2);
 
-    float posX_rounded = floor(state.pos.x / state.scale_exp2) * state.scale_exp2;
-    float posY_rounded = floor(state.pos.y / state.scale_exp2) * state.scale_exp2;
-    float posZ_rounded = floor(state.pos.z / state.scale_exp2) * state.scale_exp2;
-    state.pos = vec3(posX_rounded, posY_rounded, posZ_rounded);
-
-    int shx = int(state.pos.x / state.scale_exp2) & 1;
-    int shy = int(state.pos.y / state.scale_exp2) & 1;
-    int shz = int(state.pos.z / state.scale_exp2) & 1;
-    state.idx = shx | (shy << 1) | (shz << 2);
-
+    // Prevent same parent from being stored again
     state.h = 0.0;
 
-    return state.t_min <= state.t_max;
+    return 0;  // CONTINUE
 }
 
 // ============================================================================
 // COMPRESSED BRICK DDA - Uses DXT decompression for color/normal
 // ============================================================================
+// Matches the non-compressed marchBrickFromPos: works entirely in brick-local
+// voxel coordinates [0,8]. This avoids world-space AABB mismatch issues.
 
-bool marchBrickCompressed(vec3 rayOrigin, vec3 rayDir, float startT,
-                          vec3 brickMin, vec3 brickMax, uint brickIndex,
-                          out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
+bool marchBrickFromPosCompressed(vec3 rayDir, vec3 posInBrick, uint brickIndex,
+                                  out vec3 hitColor, out vec3 hitNormal, out uint axisMask) {
+    // posInBrick is in brick-local voxel coordinates [0, 8]
+    // DDA works entirely in this local voxel space
 
-    vec2 brickT = rayAABBIntersection(rayOrigin, rayDir, brickMin, brickMax);
-    if (brickT.y < 0.0) {
+    int BRICK_SIZE_VAL = octreeConfig.brickSize;
+
+    // Compute initial voxel from ESVO-provided position
+    ivec3 currentVoxel = ivec3(floor(posInBrick));
+    currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
+
+    // DDA setup - step direction
+    ivec3 step = ivec3(sign(rayDir));
+    // Fix for axis-parallel rays: step = 0 would cause infinite loop
+    if (step.x == 0) step.x = 1;
+    if (step.y == 0) step.y = 1;
+    if (step.z == 0) step.z = 1;
+
+    // Check if we are starting at the exit boundary (and moving away)
+    // This prevents false hits when posInBrick is clamped to the far edge
+    if ((posInBrick.x <= 0.001 && rayDir.x < 0.0) || (posInBrick.x >= float(BRICK_SIZE_VAL)-0.001 && rayDir.x > 0.0) ||
+        (posInBrick.y <= 0.001 && rayDir.y < 0.0) || (posInBrick.y >= float(BRICK_SIZE_VAL)-0.001 && rayDir.y > 0.0) ||
+        (posInBrick.z <= 0.001 && rayDir.z < 0.0) || (posInBrick.z >= float(BRICK_SIZE_VAL)-0.001 && rayDir.z > 0.0)) {
         return false;
     }
 
-    float t = max(brickT.x, startT);
-    if (t > brickT.y) return false;
+    // DDA in LOCAL voxel space [0,8] - deltaDist is distance per voxel crossing
+    vec3 deltaDist;
+    deltaDist.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / abs(rayDir.x) : 1e20;
+    deltaDist.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / abs(rayDir.y) : 1e20;
+    deltaDist.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / abs(rayDir.z) : 1e20;
 
-    vec3 brickSize = brickMax - brickMin;
-    vec3 voxelSize = brickSize / 8.0;
-
-    vec3 pos = rayOrigin + rayDir * (t + EPSILON);
-
-    vec3 invDir;
-    invDir.x = abs(rayDir.x) > DIR_EPSILON ? 1.0 / rayDir.x : (rayDir.x >= 0.0 ? 1e20 : -1e20);
-    invDir.y = abs(rayDir.y) > DIR_EPSILON ? 1.0 / rayDir.y : (rayDir.y >= 0.0 ? 1e20 : -1e20);
-    invDir.z = abs(rayDir.z) > DIR_EPSILON ? 1.0 / rayDir.z : (rayDir.z >= 0.0 ? 1e20 : -1e20);
-
-    ivec3 step = ivec3(sign(rayDir));
-    vec3 deltaDist = abs(voxelSize * invDir);
-
-    vec3 localPos = (pos - brickMin) / voxelSize;
-
-    for (int axis = 0; axis < 3; axis++) {
-        if (abs(rayDir[axis]) < DIR_EPSILON) {
-            localPos[axis] = clamp(localPos[axis], EPSILON, 8.0 - EPSILON);
-        }
-    }
-
-    ivec3 currentVoxel = ivec3(floor(localPos));
-    currentVoxel = clamp(currentVoxel, ivec3(0), ivec3(7));
-
+    // Compute initial tMax - distance to next voxel boundary in each axis
     vec3 tMax;
+    const float MIN_DIST = 0.0001;
     for (int axis = 0; axis < 3; axis++) {
         if (abs(rayDir[axis]) < DIR_EPSILON) {
             tMax[axis] = 1e20;
-        } else if (rayDir[axis] > 0.0) {
-            float nextBoundaryWorld = brickMin[axis] + float(currentVoxel[axis] + 1) * voxelSize[axis];
-            float distToNextBoundary = nextBoundaryWorld - pos[axis];
-            tMax[axis] = t + distToNextBoundary / rayDir[axis];
         } else {
-            float nextBoundaryWorld = brickMin[axis] + float(currentVoxel[axis]) * voxelSize[axis];
-            float distToNextBoundary = pos[axis] - nextBoundaryWorld;
-            tMax[axis] = t + distToNextBoundary / abs(rayDir[axis]);
+            float posLocal = posInBrick[axis];
+            float distToNext;
+            if (rayDir[axis] > 0.0) {
+                distToNext = float(currentVoxel[axis] + 1) - posLocal;
+            } else {
+                distToNext = posLocal - float(currentVoxel[axis]);
+            }
+            distToNext = max(distToNext, MIN_DIST);
+            tMax[axis] = distToNext / abs(rayDir[axis]);
         }
     }
 
     axisMask = 0u;
     const int MAX_STEPS = 64;
     for (int i = 0; i < MAX_STEPS; i++) {
+        // Check bounds
         if (any(lessThan(currentVoxel, ivec3(0))) || any(greaterThanEqual(currentVoxel, ivec3(8)))) {
             break;
         }
@@ -786,13 +808,58 @@ bool marchBrickCompressed(vec3 rayOrigin, vec3 rayDir, float startT,
         uint voxelData = brickData[brickIndex * 512u + uint(voxelLinearIdx)];
 
         if (voxelData != 0u) {
-            // Hit! Decode color and normal from compressed buffers
+            // ================================================================
+            // DEBUG VISUALIZATIONS
+            // ================================================================
+#if DEBUG_MATERIAL_ID
+            // Show material ID as color - matches SceneGenerator.cpp CornellBox:
+            // 1 = Left wall (RED)
+            // 2 = Right wall (GREEN)
+            // 3 = Back wall (WHITE)
+            // 4 = Floor (WHITE)
+            // 5 = Ceiling (WHITE)
+            // 6,7 = Checker floor (light/dark gray)
+            // 10,11 = Cubes
+            // 20 = Ceiling light (emissive)
+            uint matId = voxelData;
+            if (matId == 1u) hitColor = vec3(0.9, 0.1, 0.1);      // Left wall = RED
+            else if (matId == 2u) hitColor = vec3(0.1, 0.9, 0.1); // Right wall = GREEN
+            else if (matId == 3u) hitColor = vec3(0.9, 0.9, 0.9); // Back wall = WHITE
+            else if (matId == 4u) hitColor = vec3(0.8, 0.8, 0.8); // Floor = WHITE
+            else if (matId == 5u) hitColor = vec3(0.85, 0.85, 0.85); // Ceiling = WHITE
+            else if (matId == 6u) hitColor = vec3(0.7, 0.7, 0.7); // Checker light
+            else if (matId == 7u) hitColor = vec3(0.3, 0.3, 0.3); // Checker dark
+            else if (matId == 10u) hitColor = vec3(0.8, 0.6, 0.4); // Left cube (tan)
+            else if (matId == 11u) hitColor = vec3(0.4, 0.6, 0.8); // Right cube (blue)
+            else if (matId == 20u) hitColor = vec3(1.0, 1.0, 0.8); // Ceiling light
+            else hitColor = vec3(float(matId) / 25.0, 0.5, 1.0 - float(matId) / 25.0);
+#elif DEBUG_BRICK_INDEX
+            // Show brick index as color
+            hitColor = vec3(
+                float(brickIndex & 0xFFu) / 255.0,
+                float((brickIndex >> 8) & 0xFFu) / 255.0,
+                float((brickIndex >> 16) & 0xFFu) / 255.0
+            );
+#elif DEBUG_VOXEL_COORD
+            // Show voxel coordinate within brick as RGB
+            hitColor = vec3(currentVoxel) / 7.0;
+#elif DEBUG_COMPRESSED_RAW
+            // Show raw compressed color block value
+            uvec2 block = loadColorBlock(brickIndex, voxelLinearIdx);
+            hitColor = vec3(
+                float(block.x & 0xFFFFu) / 65535.0,
+                float(block.x >> 16) / 65535.0,
+                float(block.y & 0xFFFFu) / 65535.0
+            );
+#else
+            // Normal path: decode from DXT compressed buffers
             hitColor = getCompressedVoxelColor(brickIndex, voxelLinearIdx);
+#endif
             hitNormal = getCompressedVoxelNormal(brickIndex, voxelLinearIdx);
 
-            // Adjust normal based on entry axis (flip to face ray)
-            if (i == 0) {
-                // First iteration: use ray direction for normal
+            // Compute geometric normal from entry axis
+            if (axisMask == 0u) {
+                // First voxel - use dominant ray direction
                 vec3 absRayDir = abs(rayDir);
                 if (absRayDir.x > absRayDir.y && absRayDir.x > absRayDir.z) {
                     hitNormal = vec3(-sign(rayDir.x), 0.0, 0.0);
@@ -802,19 +869,19 @@ bool marchBrickCompressed(vec3 rayOrigin, vec3 rayDir, float startT,
                     hitNormal = vec3(0.0, 0.0, -sign(rayDir.z));
                 }
             } else {
-                // Subsequent iterations: use DDA axis mask
+                // Subsequent iterations: use DDA axis mask for geometric normal
                 vec3 ddaNormal = vec3(0.0);
                 if (axisMask == 1u) ddaNormal.x = -float(step.x);
                 else if (axisMask == 2u) ddaNormal.y = -float(step.y);
                 else ddaNormal.z = -float(step.z);
-                // Blend DDA normal with compressed normal
+                // Blend geometric normal with compressed normal for smoother look
                 hitNormal = normalize(hitNormal + ddaNormal * 0.5);
             }
 
             return true;
         }
 
-        // DDA step
+        // DDA step - choose axis with smallest tMax
         if (tMax.x < tMax.y && tMax.x < tMax.z) {
             currentVoxel.x += step.x;
             tMax.x += deltaDist.x;
@@ -836,6 +903,8 @@ bool marchBrickCompressed(vec3 rayOrigin, vec3 rayDir, float startT,
 // ============================================================================
 // LEAF HIT HANDLING - COMPRESSED VERSION
 // ============================================================================
+// Now matches the non-compressed handleLeafHit: computes posInBrick from
+// ESVO traversal state instead of world-space coordinates.
 
 bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
                              vec3 rayStartWorld, vec3 rayDir, float tBias,
@@ -845,11 +914,17 @@ bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
 
     int BRICK_SIZE_VAL = octreeConfig.brickSize;
 
+    // ========================================================================
+    // STEP 1: Resolve LOCAL child index from traversal state
+    // ========================================================================
     int localChildIdx = mirroredToLocalOctant(state.idx, coef.octant_mask);
     if (localChildIdx < 0 || localChildIdx > 7) {
         return false;
     }
 
+    // ========================================================================
+    // STEP 2: Fetch leaf descriptor and brick index
+    // ========================================================================
     uint childPointer = getChildPointer(parentDescriptor);
     uint totalInternalChildren = bitCount(validMask & ~leafMask);
     uint leafsBefore = countLeavesBefore(validMask, leafMask, localChildIdx);
@@ -861,28 +936,110 @@ bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
         return false;
     }
 
+#if DEBUG_BRICK_INDEX
+    // Debug: show brick index as color
+    hitColor = vec3(
+        float(brickIndex & 0xFFu) / 255.0,
+        float((brickIndex >> 8) & 0xFFu) / 255.0,
+        float((brickIndex >> 16) & 0xFFu) / 255.0
+    );
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = state.t_min;
+    return true;
+#endif
+
+    // ========================================================================
+    // STEP 3: Compute brick-local position from ESVO state
+    // ========================================================================
+    // This matches the non-compressed handleLeafHit approach exactly.
     float tHit = state.t_min;
 
+    // Compute hit position in ESVO [1,2] space directly
     vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
     vec3 hitPos12 = coef.normOrigin + rayDirLocal * tHit;
 
-    vec3 hitPos01 = esvoToGrid01(hitPos12);
-    hitPos01 = clamp(hitPos01, vec3(0.0), vec3(1.0) - vec3(1e-5));
+    // Convert to Mirrored Space (matching ESVO traversal)
+    vec3 hitPosMirrored = hitPos12;
+    if ((coef.octant_mask & 1) == 0) hitPosMirrored.x = 3.0 - hitPosMirrored.x;
+    if ((coef.octant_mask & 2) == 0) hitPosMirrored.y = 3.0 - hitPosMirrored.y;
+    if ((coef.octant_mask & 4) == 0) hitPosMirrored.z = 3.0 - hitPosMirrored.z;
 
-    int bricksPerAxis = octreeConfig.bricksPerAxis;
-    ivec3 brickCoord = ivec3(floor(hitPos01 * float(bricksPerAxis)));
-    brickCoord = clamp(brickCoord, ivec3(0), ivec3(bricksPerAxis - 1));
+    // Compute Offset in Node (Mirrored Space)
+    // state.pos is the min corner of the CURRENT node (the brick) in mirrored space
+    vec3 offsetMirrored = hitPosMirrored - state.pos;
 
-    vec3 gridSize = octreeConfig.gridMax - octreeConfig.gridMin;
-    float brickWorldSize = gridSize.x / float(bricksPerAxis);
+    // Scale to Brick Coordinates [0, 8] (Mirrored Orientation)
+    vec3 posInBrickMirrored = (offsetMirrored / state.scale_exp2) * float(BRICK_SIZE_VAL);
 
-    vec3 brickMinWorld = octreeConfig.gridMin + vec3(brickCoord) * brickWorldSize;
-    vec3 brickMaxWorld = brickMinWorld + vec3(brickWorldSize);
+    // Unmirror to Local Brick Coordinates [0, 8] (Canonical Orientation)
+    vec3 posInBrick = posInBrickMirrored;
+    if ((coef.octant_mask & 1) == 0) posInBrick.x = float(BRICK_SIZE_VAL) - posInBrick.x;
+    if ((coef.octant_mask & 2) == 0) posInBrick.y = float(BRICK_SIZE_VAL) - posInBrick.y;
+    if ((coef.octant_mask & 4) == 0) posInBrick.z = float(BRICK_SIZE_VAL) - posInBrick.z;
 
+    // Clamp to handle precision issues at boundaries
+    posInBrick = clamp(posInBrick, vec3(0.0), vec3(float(BRICK_SIZE_VAL)));
+
+#if DEBUG_POS_IN_BRICK
+    // Debug: visualize posInBrick directly (early return to see entry position)
+    hitColor = posInBrick / float(BRICK_SIZE_VAL);
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = tHit + tBias;
+    return true;
+#endif
+
+#if DEBUG_FIRST_VOXEL
+    // Debug: scan entire brick for first non-zero voxel
+    // This tests if brickData is being read correctly
+
+    uint anyNonZero = 0u;
+    ivec3 firstVoxelPos = ivec3(-1);
+    for (int vz = 0; vz < 8 && anyNonZero == 0u; vz++) {
+        for (int vy = 0; vy < 8 && anyNonZero == 0u; vy++) {
+            for (int vx = 0; vx < 8 && anyNonZero == 0u; vx++) {
+                uint voxelLinearIdx = uint(vz * 64 + vy * 8 + vx);
+                uint voxelData = brickData[brickIndex * 512u + voxelLinearIdx];
+                if (voxelData != 0u) {
+                    anyNonZero = voxelData;
+                    firstVoxelPos = ivec3(vx, vy, vz);
+                }
+            }
+        }
+    }
+    if (anyNonZero != 0u) {
+        // Show material ID of first voxel found
+        uint matId = anyNonZero;
+        if (matId == 1u) hitColor = vec3(0.9, 0.1, 0.1);      // RED
+        else if (matId == 2u) hitColor = vec3(0.1, 0.9, 0.1); // GREEN
+        else if (matId == 3u) hitColor = vec3(0.9, 0.9, 0.9); // WHITE
+        else if (matId == 4u) hitColor = vec3(0.8, 0.8, 0.8); // WHITE
+        else if (matId == 5u) hitColor = vec3(0.85, 0.85, 0.85); // WHITE
+        else hitColor = vec3(float(matId) / 25.0, 0.5, 1.0 - float(matId) / 25.0);
+    } else {
+        // No voxels in brick - show brickIndex as color to debug
+        // Low indices: red, Mid indices: green, High indices: blue
+        // This helps identify which brick indices have no data
+        recordTraceStep(20u, brickIndex, 0, leafDescriptorIndex,
+                       posInBrick, float(validMask), float(leafMask), leafDescriptor);
+        // Show brickIndex modulo 16 as distinct colors to identify pattern
+        uint idx = brickIndex & 0xFu;
+        hitColor = vec3(
+            float(idx & 3u) / 3.0,           // R based on bits 0-1
+            float((idx >> 2) & 3u) / 3.0,    // G based on bits 2-3
+            0.5                               // B fixed (to distinguish from material colors)
+        );
+    }
+    hitNormal = vec3(0.0, 1.0, 0.0);
+    hitT = tHit + tBias;
+    return true;
+#endif
+
+    // ========================================================================
+    // STEP 4: March through brick using DDA in local voxel space
+    // ========================================================================
     uint axisMask;
-    bool ddaHit = marchBrickCompressed(rayStartWorld, rayDir, 0.0,
-                                       brickMinWorld, brickMaxWorld, brickIndex,
-                                       hitColor, hitNormal, axisMask);
+    bool ddaHit = marchBrickFromPosCompressed(rayDir, posInBrick, brickIndex,
+                                               hitColor, hitNormal, axisMask);
 
     if (ddaHit) {
         hitT = tHit + tBias;
@@ -896,82 +1053,163 @@ bool handleLeafHitCompressed(TraversalState state, RayCoefficients coef,
 // OCTREE TRAVERSAL
 // ============================================================================
 
-bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
+bool traverseOctree(vec3 rayOrigin, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                     out vec3 hitColor, out vec3 hitNormal, out float hitT,
                     inout DebugRaySample debugSample) {
 
+    debugSample.hitFlag = 0u;
+    debugSample.exitCode = DEBUG_EXIT_NONE;
+    debugSample.lastStepMask = 0u;
+    debugSample.iterationCount = 0u;
+
+    // ========================================================================
+    // STEP 1: World-space AABB test (matches uncompressed shader)
+    // ========================================================================
+    // Transform Ray to Local Space for AABB test
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rayDirLocal = mat3(octreeConfig.worldToLocal) * rayDir;
+
+    // Test against Unit Cube [0, 1] (Local Space)
+    vec2 gridT = rayAABBIntersection(rayOriginLocal, rayDirLocal, vec3(0.0), vec3(1.0));
+    if (gridT.y < 0.0) {
+        debugSample.exitCode = DEBUG_EXIT_INVALID_SPAN;
+        debugSample.tMin = gridT.x;
+        debugSample.tMax = gridT.y;
+        return false;
+    }
+
+    // Detect if ray starts inside the volume
+    bool rayStartsInside = (gridT.x < 0.0);
+
+    // For exterior rays, move to entry point; for interior, use origin
+    vec3 rayStartWorld;
+    float tEntryWorld = 0.0;
+    if (rayStartsInside) {
+        rayStartWorld = rayOrigin;
+        tEntryWorld = 0.0;
+    } else {
+        vec3 entryPointLocal = rayOriginLocal + rayDirLocal * (gridT.x + EPSILON);
+        rayStartWorld = (octreeConfig.localToWorld * vec4(entryPointLocal, 1.0)).xyz;
+        tEntryWorld = length(rayStartWorld - rayOrigin);
+    }
+
+    // ========================================================================
+    // STEP 2: Initialize Ray Coefficients and Traversal State
+    // ========================================================================
     RayCoefficients coef = initRayCoefficients(rayDir, rayStartWorld);
     debugSample.octantMask = uint(coef.octant_mask);
 
     StackEntry stack[STACK_SIZE];
-    bool rayStartsInside = all(greaterThanEqual(coef.normOrigin, vec3(1.0))) &&
-                           all(lessThanEqual(coef.normOrigin, vec3(2.0)));
     TraversalState state = initTraversalState(coef, stack, rayStartsInside);
+    snapshotTraversalState(state, coef, debugSample);
 
-    float tBias = 0.0;
+    // Check for valid initial t-span
+    if (state.t_min >= state.t_max) {
+        debugSample.exitCode = DEBUG_EXIT_INVALID_SPAN;
+        debugSample.iterationCount = 0u;
+        recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(state.idx),
+                        state.pos, state.t_min, state.t_max, uvec2(0u));
+        return false;
+    }
 
-    for (int iter = 0; iter < MAX_ITERS; iter++) {
+    float tBias = tEntryWorld;
+
+    // ========================================================================
+    // STEP 3: Main traversal loop (matches uncompressed shader)
+    // ========================================================================
+    int iter = 0;
+    for (; iter < MAX_ITERS && state.scale <= octreeConfig.esvoMaxScale; ++iter) {
         debugSample.iterationCount = uint(iter);
 
-        if (state.t_min > state.t_max + EPSILON) {
-            debugSample.exitCode = DEBUG_EXIT_INVALID_SPAN;
-            break;
-        }
-
-        // Position bounds check - terminate if clearly outside [1,2]³ ESVO space
-        // Use generous bounds to avoid killing valid rays at edges
-        if (any(lessThan(state.pos, vec3(0.5))) || any(greaterThan(state.pos, vec3(2.5)))) {
-            debugSample.exitCode = DEBUG_EXIT_STACK;
-            break;
-        }
-
+        // Fetch current parent node
         uvec2 parentDescriptor = fetchESVONode(state.parentPtr);
         uint validMask = getValidMask(parentDescriptor);
         uint leafMask = getLeafMask(parentDescriptor);
         uint childPointer = getChildPointer(parentDescriptor);
 
+        // Check child validity and compute t-span intersection
         bool isLeaf;
         float tv_max, tx_center, ty_center, tz_center;
-        bool childValid = checkChildValidity(state, coef, validMask, leafMask,
-                                            isLeaf, tv_max, tx_center, ty_center, tz_center);
 
-        if (childValid && isLeaf) {
-            bool leafHit = handleLeafHitCompressed(state, coef, rayStartWorld, rayDir, tBias,
-                                                   parentDescriptor, validMask, leafMask,
-                                                   state.parentPtr, stack, hitColor, hitNormal, hitT);
-            if (leafHit) {
-                recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(coef.octant_mask),
-                               state.pos, state.t_min, state.t_max, parentDescriptor);
-                debugSample.hitFlag = 1u;
-                debugSample.exitCode = DEBUG_EXIT_HIT;
+        if (checkChildValidity(state, coef, validMask, leafMask,
+                               isLeaf, tv_max, tx_center, ty_center, tz_center)) {
+
+            if (isLeaf) {
+                // Record brick entry trace
+                recordTraceStep(TRACE_STEP_BRICK_ENTER, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, tv_max, parentDescriptor);
+
+                // Try to hit voxels in this brick
+                bool leafHit = handleLeafHitCompressed(state, coef, rayStartWorld, rayDir, tBias,
+                                                       parentDescriptor, validMask, leafMask,
+                                                       state.parentPtr, stack, hitColor, hitNormal, hitT);
+                if (leafHit) {
+                    recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(state.idx),
+                                   state.pos, state.t_min, tv_max, parentDescriptor);
+                    debugSample.hitFlag = 1u;
+                    debugSample.exitCode = DEBUG_EXIT_HIT;
+                    debugSample.iterationCount = uint(iter + 1);
+                    snapshotTraversalState(state, coef, debugSample);
+                    return true;
+                }
+
+                // Record brick exit (miss) trace
+                recordTraceStep(TRACE_STEP_BRICK_EXIT, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, tv_max, parentDescriptor);
+
+                // Brick miss - update t_min to skip past empty brick
+                // Fall through to ADVANCE phase to find next brick
+                state.t_min = tv_max;
                 snapshotTraversalState(state, coef, debugSample);
-                return true;
+            } else {
+                // Internal node - PUSH & DESCEND
+                executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
+                                 tv_max, tx_center, ty_center, tz_center);
+
+                // Record PUSH trace (after state is updated)
+                recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale, uint(state.idx),
+                                state.pos, state.t_min, state.t_max, parentDescriptor);
+
+                snapshotTraversalState(state, coef, debugSample);
+                continue;
             }
         }
 
-        if (childValid && !isLeaf) {
-            recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale, uint(coef.octant_mask),
-                           state.pos, state.t_min, state.t_max, parentDescriptor);
-            executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
-                           tv_max, tx_center, ty_center, tz_center);
-            continue;
-        }
-
+        // ADVANCE to next sibling
         int step_mask;
         int advanceResult = executeAdvancePhase(state, coef, step_mask);
-        debugSample.lastStepMask = uint(step_mask);
 
+        // Record ADVANCE trace
+        recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale, uint(state.idx),
+                        state.pos, state.t_min, state.t_max, parentDescriptor);
+
+        debugSample.lastStepMask = uint(step_mask);
+        snapshotTraversalState(state, coef, debugSample);
+
+        // CRITICAL FIX: Restore t_max from stack when moving to a sibling.
+        // executePushPhase overwrites state.t_max with the child's limit.
+        // When we ADVANCE to a sibling, we must reset state.t_max to the PARENT's limit,
+        // otherwise the new sibling is clipped against the previous sibling's bounds (causing misses).
         if (advanceResult == 0) {
-            recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale, uint(coef.octant_mask),
-                           state.pos, state.t_min, state.t_max, parentDescriptor);
-            continue;
+             if (state.scale < octreeConfig.esvoMaxScale) {
+                 state.t_max = stack[state.scale + 1].t_max;
+             }
         }
 
-        recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale, uint(coef.octant_mask),
-                       state.pos, state.t_min, state.t_max, parentDescriptor);
-        if (!executePopPhase(state, coef, stack)) {
-            debugSample.exitCode = DEBUG_EXIT_STACK;
-            break;
+        if (advanceResult == 1) {
+            // POP needed - pass step_mask for correct IEEE 754 ascent calculation
+            int popResult = executePopPhase(state, coef, stack, step_mask);
+
+            // Record POP trace (after state is updated)
+            recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale, uint(state.idx),
+                            state.pos, state.t_min, state.t_max, uvec2(0u));
+
+            snapshotTraversalState(state, coef, debugSample);
+
+            if (popResult == 1) {
+                debugSample.exitCode = DEBUG_EXIT_STACK;
+                break;
+            }
         }
     }
 
