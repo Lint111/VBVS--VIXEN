@@ -972,11 +972,11 @@ TEST_F(ProfilerGraphAdapterTest, NodeCallbacksAcceptValidNames) {
 }
 
 TEST_F(ProfilerGraphAdapterTest, RegisterUnregisterExtractor) {
-    // Register a simple extractor
+    // Register a simple extractor (takes FrameMetrics& and modifies it)
     bool extractorCalled = false;
-    adapter.RegisterExtractor("test_extractor", [&extractorCalled]() {
+    adapter.RegisterExtractor("test_extractor", [&extractorCalled](FrameMetrics& metrics) {
         extractorCalled = true;
-        return FrameMetrics{};  // Return empty metrics
+        metrics.avgVoxelsPerRay = 42.0f;  // Modify metrics to show extractor ran
     });
 
     // Unregister should not throw
@@ -1125,14 +1125,14 @@ TEST(ProfilerEndToEndTest, ConfigToMetricsExportFlow) {
     config.sceneType = "cornell";
     config.voxelResolution = 64;
     config.densityPercent = 0.25f;
-    config.warmupFrames = 10;
-    config.measurementFrames = 50;
+    config.warmupFrames = 10;           // Minimum allowed
+    config.measurementFrames = 100;     // Minimum allowed (was 50, invalid)
 
     ASSERT_TRUE(config.Validate());
 
     // 2. Set up BenchmarkRunner
     BenchmarkRunner runner;
-    DeviceCapabilities caps;
+    DeviceCaps caps;  // Use alias to avoid Windows API conflict
     caps.deviceName = "Mock GPU";
     caps.driverVersion = "1.0.0";
     caps.totalVRAM_MB = 8192;
@@ -1186,7 +1186,7 @@ TEST(ProfilerEndToEndTest, MultipleTestsInMatrix) {
     // Test running multiple configurations in sequence
 
     BenchmarkRunner runner;
-    DeviceCapabilities caps;
+    DeviceCaps caps;  // Use alias to avoid Windows API conflict
     caps.deviceName = "Mock GPU";
     runner.SetDeviceCapabilities(caps);
 
@@ -1199,10 +1199,10 @@ TEST(ProfilerEndToEndTest, MultipleTestsInMatrix) {
     );
     ASSERT_EQ(matrix.size(), 2u);
 
-    // Override warmup/measurement for speed
+    // Override warmup/measurement for speed (but keep above minimums)
     for (auto& config : matrix) {
-        config.warmupFrames = 10;
-        config.measurementFrames = 20;
+        config.warmupFrames = 10;        // Minimum allowed
+        config.measurementFrames = 100;  // Minimum allowed
     }
 
     runner.SetTestMatrix(matrix);

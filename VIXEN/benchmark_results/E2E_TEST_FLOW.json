@@ -1,0 +1,1027 @@
+{
+  "configuration": {
+    "algorithm": "baseline",
+    "density_percent": 25,
+    "optimizations": [],
+    "pipeline": "compute",
+    "resolution": 64,
+    "scene_type": "cornell"
+  },
+  "device": {
+    "bandwidth_estimated": true,
+    "driver": "1.0.0",
+    "gpu": "Mock GPU",
+    "vram_gb": 8.0
+  },
+  "frames": [
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 0,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 100.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 1,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 101.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 2,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 102.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 3,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 103.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 4,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 104.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 5,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 105.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 6,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 106.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 7,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 107.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 8,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 108.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 9,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 109.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 10,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 110.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 11,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 111.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 12,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 112.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 13,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 113.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 14,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 114.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 15,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 115.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 16,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 116.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 17,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 117.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 18,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 118.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 19,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 119.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 20,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 120.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 21,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 121.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 22,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 122.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 23,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 123.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 24,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 124.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 25,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 125.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 26,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 126.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 27,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 127.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 28,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 128.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 29,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 129.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 30,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 130.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 31,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 131.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 32,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 132.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 33,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 133.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 34,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 134.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 35,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 135.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 36,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 136.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 37,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 137.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 38,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 138.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 39,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 139.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 40,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 140.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 41,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 141.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 42,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 142.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 43,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 143.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 44,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 144.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 45,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 145.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 46,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 146.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 47,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 147.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 48,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 148.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 49,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 149.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 50,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 150.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 51,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 151.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 52,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 152.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 53,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 153.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 54,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 154.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 55,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 155.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 56,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 156.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 57,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 157.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 58,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 158.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 59,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 159.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 60,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 160.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 61,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 161.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 62,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 162.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 63,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 163.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 64,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 164.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 65,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 165.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 66,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 166.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 67,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 167.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 68,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 168.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 69,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 169.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 70,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 170.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 71,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 171.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 72,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 172.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 73,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 173.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 74,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 174.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 75,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 175.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 76,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 176.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 77,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 177.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 78,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 178.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 79,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 179.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 80,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 180.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 81,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 181.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 82,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 182.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 83,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 183.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 84,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 184.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 85,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 185.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 86,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 186.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 87,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 187.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 88,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 188.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 89,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 189.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 90,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 190.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 91,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 191.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 92,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 192.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 93,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 193.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 94,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 194.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.236017227172852,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.60606002807617,
+      "frame_num": 95,
+      "frame_time_ms": 16.5,
+      "ray_throughput_mrays": 195.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.168331146240234,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 60.240962982177734,
+      "frame_num": 96,
+      "frame_time_ms": 16.600000381469727,
+      "ray_throughput_mrays": 196.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.10145378112793,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.8802375793457,
+      "frame_num": 97,
+      "frame_time_ms": 16.700000762939453,
+      "ray_throughput_mrays": 197.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 11.035374641418457,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.52381134033203,
+      "frame_num": 98,
+      "frame_time_ms": 16.799999237060547,
+      "ray_throughput_mrays": 198.0,
+      "vram_mb": 2048
+    },
+    {
+      "avg_voxels_per_ray": 0.0,
+      "bandwidth_read_gbps": 10.970076560974121,
+      "bandwidth_write_gbps": 0.0,
+      "fps": 59.171600341796875,
+      "frame_num": 99,
+      "frame_time_ms": 16.899999618530273,
+      "ray_throughput_mrays": 199.0,
+      "vram_mb": 2048
+    }
+  ],
+  "statistics": {
+    "bandwidth_mean": 11.102251052856445,
+    "fps_mean": 59.8845329284668,
+    "frame_time_mean": 16.700000762939453,
+    "frame_time_p99": 16.899999618530273,
+    "frame_time_stddev": 0.14142107963562012
+  },
+  "test_id": "E2E_TEST_FLOW",
+  "timestamp": "2025-12-03T20:51:13Z"
+}

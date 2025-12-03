@@ -589,40 +589,37 @@ void BenchmarkGraphFactory::WireProfilerHooks(
         throw std::invalid_argument("BenchmarkGraphFactory::WireProfilerHooks: graph is null");
     }
 
-    // Get or create the lifecycle hooks from the graph
-    auto* hooks = graph->GetLifecycleHooks();
-    if (!hooks) {
-        throw std::invalid_argument("BenchmarkGraphFactory::WireProfilerHooks: graph has no lifecycle hooks");
-    }
+    // Get lifecycle hooks from the graph (returns reference)
+    RG::GraphLifecycleHooks& hooks = graph->GetLifecycleHooks();
 
     // Register node-level hooks for dispatch timing
     // PreExecute: Called before node executes (for dispatch begin timing)
-    hooks->RegisterNodeHook(
+    hooks.RegisterNodeHook(
         RG::NodeLifecyclePhase::PreExecute,
         [&adapter, dispatchNodeName](RG::NodeInstance* node) {
-            if (node && node->GetName() == dispatchNodeName) {
+            if (node && node->GetInstanceName() == dispatchNodeName) {
                 adapter.OnDispatchBegin();
             }
-            adapter.OnNodePreExecute(node ? node->GetName() : "");
+            adapter.OnNodePreExecute(node ? node->GetInstanceName() : "");
         },
         "ProfilerDispatchBegin"
     );
 
     // PostExecute: Called after node executes (for dispatch end timing)
     // Note: Dispatch dimensions need to be passed externally since node doesn't expose them
-    hooks->RegisterNodeHook(
+    hooks.RegisterNodeHook(
         RG::NodeLifecyclePhase::PostExecute,
         [&adapter](RG::NodeInstance* node) {
-            adapter.OnNodePostExecute(node ? node->GetName() : "");
+            adapter.OnNodePostExecute(node ? node->GetInstanceName() : "");
         },
         "ProfilerDispatchEnd"
     );
 
     // PreCleanup: Called before cleanup for metrics extraction
-    hooks->RegisterNodeHook(
+    hooks.RegisterNodeHook(
         RG::NodeLifecyclePhase::PreCleanup,
         [&adapter](RG::NodeInstance* node) {
-            adapter.OnNodePreCleanup(node ? node->GetName() : "");
+            adapter.OnNodePreCleanup(node ? node->GetInstanceName() : "");
         },
         "ProfilerPreCleanup"
     );
@@ -647,7 +644,7 @@ void BenchmarkGraphFactory::WireProfilerHooks(
     if (benchGraph.compute.dispatch.IsValid()) {
         auto* dispatchNode = graph->GetInstance(benchGraph.compute.dispatch);
         if (dispatchNode) {
-            dispatchNodeName = dispatchNode->GetName();
+            dispatchNodeName = dispatchNode->GetInstanceName();
         }
     }
 
