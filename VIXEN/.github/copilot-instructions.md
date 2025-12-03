@@ -156,3 +156,14 @@ build/7e_ShadersWithSPIRV.sln
 | Node doesn't execute | Check EventBus subscription, verify `Compile()` succeeded, inspect `dirty` flag |
 | Memory leaks | Verify RAII pattern followed, all `new` wrapped in `std::unique_ptr` |
 | Validation layer warnings | See console output, check Vulkan SDK version compatibility |
+
+## Documentation Policy
+
+**Only create `.md` files when explicitly requested by user.** 
+- Do NOT auto-generate summary documents after changes
+- Do NOT create checklist files, completion reports, or tracking documents
+- Focus on code implementation, not documentation
+- If user wants documentation, they will ask: "Create a summary" or "Document this"
+- All changes should speak for themselves through clean code and inline comments
+
+**Exception:** Update existing `.md` files (like this one) or config files as needed for project management.

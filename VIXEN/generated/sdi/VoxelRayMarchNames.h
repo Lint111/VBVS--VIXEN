@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch
-// UUID: bc61d7a06c98333f
-// Generated: 2025-11-08 22:18:56
+// UUID: db426427d16f4d1d
+// Generated: 2025-12-01 22:04:42
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,51 +17,59 @@
 
 #pragma once
 
-#include "bc61d7a06c98333f-SDI.h"
+#include "db426427d16f4d1d-SDI.h"
 
 namespace VoxelRayMarch {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::bc61d7a06c98333f;
+namespace SDI = ShaderInterface::db426427d16f4d1d;
+
+// Forward declare push constant type to prevent error messages
+using pc = SDI::pc;
 
 // ============================================================================
-// Descriptor Binding Constants
+// Descriptor Binding Aliases
 // ============================================================================
 
 // outputImage (Set 0, Binding 0)
-struct outputImage_Ref {
-    using SDI_Type = SDI::Set0::outputImage;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "outputImage";
-};
-inline constexpr outputImage_Ref outputImage{};
-
-// camera (Set 0, Binding 1)
-struct camera_Ref {
-    using SDI_Type = SDI::Set0::camera;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "camera";
-};
-inline constexpr camera_Ref camera{};
-
-// voxelGrid (Set 0, Binding 2)
-struct voxelGrid_Ref {
-    using SDI_Type = SDI::Set0::voxelGrid;
-    static constexpr uint32_t set = SDI_Type::SET;
-    static constexpr uint32_t binding = SDI_Type::BINDING;
-    static constexpr VkDescriptorType type = SDI_Type::TYPE;
-    static constexpr const char* name = "voxelGrid";
-};
-inline constexpr voxelGrid_Ref voxelGrid{};
+using outputImage = SDI::Set0::Binding0;
+constexpr const char* outputImage_name = "outputImage";
+// esvoNodes (Set 0, Binding 1)
+using esvoNodes = SDI::Set0::Binding1;
+constexpr const char* esvoNodes_name = "esvoNodes";
+// brickData (Set 0, Binding 2)
+using brickData = SDI::Set0::Binding2;
+constexpr const char* brickData_name = "brickData";
+// materials (Set 0, Binding 3)
+using materials = SDI::Set0::Binding3;
+constexpr const char* materials_name = "materials";
+// traceWriteIndex (Set 0, Binding 4)
+using traceWriteIndex = SDI::Set0::Binding4;
+constexpr const char* traceWriteIndex_name = "traceWriteIndex";
+// octreeConfig (Set 0, Binding 5)
+using octreeConfig = SDI::Set0::Binding5;
+constexpr const char* octreeConfig_name = "octreeConfig";
 
 // ============================================================================
-// UBO/SSBO Struct Type Aliases
+// Push Constant Member Aliases (With Metadata)
 // ============================================================================
 
-using CameraData = SDI::CameraData;
+// pc (Size: 64 bytes)
+using cameraPos = SDI::pc::DataType::pc_0;
+constexpr const char* cameraPos_name = "cameraPos";
+using time = SDI::pc::DataType::pc_1;
+constexpr const char* time_name = "time";
+using cameraDir = SDI::pc::DataType::pc_2;
+constexpr const char* cameraDir_name = "cameraDir";
+using fov = SDI::pc::DataType::pc_3;
+constexpr const char* fov_name = "fov";
+using cameraUp = SDI::pc::DataType::pc_4;
+constexpr const char* cameraUp_name = "cameraUp";
+using aspect = SDI::pc::DataType::pc_5;
+constexpr const char* aspect_name = "aspect";
+using cameraRight = SDI::pc::DataType::pc_6;
+constexpr const char* cameraRight_name = "cameraRight";
+using debugMode = SDI::pc::DataType::pc_7;
+constexpr const char* debugMode_name = "debugMode";
 
 } // namespace VoxelRayMarch

@@ -1,0 +1,199 @@
+{
+  "tests": 35,
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "ShaderCompilerTest",
+      "tests": 14,
+      "testsuite": [
+        {
+          "name": "CompileSimpleVertexShader",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 27
+        },
+        {
+          "name": "CompileSimpleFragmentShader",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 50
+        },
+        {
+          "name": "InvalidShaderFails",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 69
+        },
+        {
+          "name": "SyntaxErrorReported",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 79
+        },
+        {
+          "name": "CompileFromFile",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 96
+        },
+        {
+          "name": "CompileNonExistentFileFails",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 123
+        },
+        {
+          "name": "CompileWithOptimization",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 136
+        },
+        {
+          "name": "CompileWithDebugInfo",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 160
+        },
+        {
+          "name": "DISABLED_ValidateSpirvSuccess",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 186
+        },
+        {
+          "name": "DisassembleSpirv",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 211
+        },
+        {
+          "name": "IsAvailable",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 238
+        },
+        {
+          "name": "GetVersion",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 242
+        },
+        {
+          "name": "InferStageFromPath",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 247
+        },
+        {
+          "name": "CompileVertexAndFragmentShaders",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_compiler.cpp",
+          "line": 261
+        }
+      ]
+    },
+    {
+      "name": "ShaderCacheManagerTest",
+      "tests": 15,
+      "testsuite": [
+        {
+          "name": "StoreAndRetrieveShader",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 67
+        },
+        {
+          "name": "RetrieveNonExistentShader",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 83
+        },
+        {
+          "name": "OverwriteExistingCache",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 88
+        },
+        {
+          "name": "DifferentKeysStoreSeparately",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 115
+        },
+        {
+          "name": "EmptyKeyShouldFail",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 129
+        },
+        {
+          "name": "HasCacheEntryReturnsTrue",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 139
+        },
+        {
+          "name": "HasCacheEntryReturnsFalse",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 149
+        },
+        {
+          "name": "InvalidateRemovesCache",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 155
+        },
+        {
+          "name": "InvalidateNonExistentKeyDoesNotCrash",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 171
+        },
+        {
+          "name": "ClearRemovesAllCaches",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 176
+        },
+        {
+          "name": "CachePersistsAcrossInstances",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 198
+        },
+        {
+          "name": "StoreEmptySpirvShouldFail",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 224
+        },
+        {
+          "name": "InvalidCacheDirectoryHandling",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 230
+        },
+        {
+          "name": "StoreMultipleShadersQuickly",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 249
+        },
+        {
+          "name": "CacheFilesCreatedOnDisk",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_shader_cache_manager.cpp",
+          "line": 270
+        }
+      ]
+    },
+    {
+      "name": "SdiLifecycleTest",
+      "tests": 6,
+      "testsuite": [
+        {
+          "name": "BuildCompleteShaderBundleWithSDI",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 122
+        },
+        {
+          "name": "ValidateSdiContentStructure",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 189
+        },
+        {
+          "name": "RegisterShaderInSDIRegistry",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 234
+        },
+        {
+          "name": "UpdateShaderAndRegenerateSdi",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 269
+        },
+        {
+          "name": "HandleInvalidShaderGracefully",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 357
+        },
+        {
+          "name": "BuildVertexShaderOnly",
+          "file": "C:\\cpp\\VBVS--VIXEN\\VIXEN\\libraries\\ShaderManagement\\tests\\test_sdi_lifecycle.cpp",
+          "line": 378
+        }
+      ]
+    }
+  ]
+}

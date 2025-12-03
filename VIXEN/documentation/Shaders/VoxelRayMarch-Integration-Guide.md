@@ -48,42 +48,110 @@
 
 ## Shader Interface
 
-### Descriptor Set Layout
+### Includes
 
-**Set 0**:
+The shader uses shared type definitions:
 ```glsl
-// Binding 0: Output image (storage image)
-layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outputImage;
-
-// Binding 1: Camera data (uniform buffer)
-layout(set = 0, binding = 1) uniform CameraData {
-    mat4 invProjection;      // Inverse projection matrix
-    mat4 invView;            // Inverse view matrix
-    vec3 cameraPos;          // Camera world position
-    uint gridResolution;     // Voxel grid resolution (32/64/128/256/512)
-} camera;
-
-// Binding 2: Voxel data (3D texture sampler)
-layout(set = 0, binding = 2) uniform sampler3D voxelGrid;
+#include "SVOTypes.glsl"  // ChildDescriptor helpers, Material struct, octant mirroring
 ```
 
-### Memory Layout (Binding 1)
+### Descriptor Set Layout
 
-**CameraData UBO** - 144 bytes total:
+**All bindings use implicit set = 0** (single descriptor set):
+
+```glsl
+// Binding 0: Output image (storage image, writeonly)
+layout(binding = 0) uniform writeonly image2D outputImage;
+
+// Binding 1: ESVO octree buffer (64-bit nodes = uvec2)
+layout(std430, binding = 1) readonly buffer ESVOBuffer {
+    uvec2 esvoNodes[];  // ChildDescriptor format from SVOTypes.glsl
+};
+
+// Binding 2: Brick data buffer (8x8x8 voxels per brick)
+layout(std430, binding = 2) readonly buffer BrickBuffer {
+    uint brickData[];
+};
+
+// Binding 3: Material buffer (Material struct from SVOTypes.glsl)
+layout(std430, binding = 3) readonly buffer MaterialBuffer {
+    Material materials[];
+};
+
+// Binding 4: Ray trace debug buffer (optional, for debugging)
+layout(std430, binding = 4) buffer RayTraceBuffer {
+    uint traceWriteIndex;
+    uint traceCapacity;
+    uint _padding[2];
+    uint traceData[];  // TraceStep records
+};
+
+// Binding 5: Octree configuration UBO (runtime parameters from CPU)
+layout(std140, binding = 5) uniform OctreeConfigUBO {
+    int esvoMaxScale;       // Always 22 (ESVO normalized space)
+    int userMaxLevels;      // log2(resolution) = 7 for 128^3
+    int brickDepthLevels;   // 3 for 8^3 bricks
+    int brickSize;          // 8 (voxels per brick axis)
+    int minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
+    int brickESVOScale;     // Scale at which nodes are brick parents = 20
+    int bricksPerAxis;      // resolution / brickSize = 16
+    int _padding1;
+    vec3 gridMin;
+    float _padding2;
+    vec3 gridMax;
+    float _padding3;
+    mat4 localToWorld;      // Grid Local [0,1] -> World Space
+    mat4 worldToLocal;      // World Space -> Grid Local [0,1]
+    float _padding4[16];    // Pad to 256 bytes
+} octreeConfig;
+```
+
+**Note**: Binding 6 (brickBaseIndex) was REMOVED - brick indices are now read directly from leaf descriptors via `getBrickIndex()` in SVOTypes.glsl.
+
+### Push Constants (Camera)
+
+```glsl
+layout(push_constant) uniform PushConstants {
+    vec3 cameraPos;
+    float time;
+    vec3 cameraDir;
+    float fov;
+    vec3 cameraUp;
+    float aspect;
+    vec3 cameraRight;
+    int debugMode;  // 0=normal, 1-9=debug visualizations
+} pc;
+```
+
+### Memory Layout (Binding 5 - OctreeConfigUBO)
+
+**OctreeConfigUBO** - 256 bytes total (std140 layout):
 ```cpp
-struct CameraData {
-    glm::mat4 invProjection;  // Offset 0,   Size 64 bytes
-    glm::mat4 invView;        // Offset 64,  Size 64 bytes
-    glm::vec3 cameraPos;      // Offset 128, Size 12 bytes
-    uint32_t gridResolution;  // Offset 140, Size 4 bytes
-    // Total: 144 bytes (properly aligned)
+struct OctreeConfig {
+    int32_t esvoMaxScale;       // Offset 0
+    int32_t userMaxLevels;      // Offset 4
+    int32_t brickDepthLevels;   // Offset 8
+    int32_t brickSize;          // Offset 12
+    int32_t minESVOScale;       // Offset 16
+    int32_t brickESVOScale;     // Offset 20
+    int32_t bricksPerAxis;      // Offset 24
+    int32_t _padding1;          // Offset 28
+    glm::vec3 gridMin;          // Offset 32 (vec3 = 12 bytes)
+    float _padding2;            // Offset 44
+    glm::vec3 gridMax;          // Offset 48
+    float _padding3;            // Offset 60
+    glm::mat4 localToWorld;     // Offset 64 (mat4 = 64 bytes)
+    glm::mat4 worldToLocal;     // Offset 128
+    float _padding4[16];        // Offset 192 (64 bytes)
+    // Total: 256 bytes
 };
 ```
 
-**Alignment Rules**:
-- `mat4`: 16-byte alignment
-- `vec3`: 16-byte alignment (padded to match next member)
-- Total size is multiple of 16 bytes
+**Alignment Rules (std140)**:
+- `int`: 4-byte alignment
+- `vec3`: 16-byte alignment (rounds up to vec4)
+- `mat4`: 16-byte alignment per column
+- Total size padded to 256 bytes for GPU alignment
 
 ### Workgroup Configuration
 
@@ -139,7 +207,7 @@ vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pip
 ### Step 2: Create Descriptor Sets
 
 ```cpp
-// ComputeDispatchNode::CompileImpl()
+// VoxelGridNode::CompileImpl()
 
 // Allocate descriptor set
 VkDescriptorSetAllocateInfo allocInfo = {
@@ -148,49 +216,88 @@ VkDescriptorSetAllocateInfo allocInfo = {
 };
 vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
 
-// Update descriptors
+// Update descriptors (6 bindings total)
 VkDescriptorImageInfo outputImageInfo = {
     .imageView = outputImageView,
     .imageLayout = VK_IMAGE_LAYOUT_GENERAL
 };
 
-VkDescriptorBufferInfo cameraBufferInfo = {
-    .buffer = cameraUniformBuffer,
+VkDescriptorBufferInfo esvoBufferInfo = {
+    .buffer = esvoNodesBuffer,
     .offset = 0,
-    .range = sizeof(CameraData)
+    .range = VK_WHOLE_SIZE
 };
 
-VkDescriptorImageInfo voxelGridInfo = {
-    .sampler = voxelSampler,
-    .imageView = voxelGridImageView,
-    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+VkDescriptorBufferInfo brickBufferInfo = {
+    .buffer = brickDataBuffer,
+    .offset = 0,
+    .range = VK_WHOLE_SIZE
 };
 
-VkWriteDescriptorSet writes[3] = {
-    {
+VkDescriptorBufferInfo materialBufferInfo = {
+    .buffer = materialBuffer,
+    .offset = 0,
+    .range = VK_WHOLE_SIZE
+};
+
+VkDescriptorBufferInfo traceBufferInfo = {
+    .buffer = rayTraceBuffer,
+    .offset = 0,
+    .range = VK_WHOLE_SIZE
+};
+
+VkDescriptorBufferInfo configUboInfo = {
+    .buffer = octreeConfigBuffer,
+    .offset = 0,
+    .range = sizeof(OctreeConfig)  // 256 bytes
+};
+
+VkWriteDescriptorSet writes[6] = {
+    { // Binding 0: Output image
         .dstSet = descriptorSet,
         .dstBinding = 0,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
         .pImageInfo = &outputImageInfo
     },
-    {
+    { // Binding 1: ESVO nodes
         .dstSet = descriptorSet,
         .dstBinding = 1,
         .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo = &cameraBufferInfo
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &esvoBufferInfo
     },
-    {
+    { // Binding 2: Brick data
         .dstSet = descriptorSet,
         .dstBinding = 2,
         .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &voxelGridInfo
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &brickBufferInfo
+    },
+    { // Binding 3: Materials
+        .dstSet = descriptorSet,
+        .dstBinding = 3,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &materialBufferInfo
+    },
+    { // Binding 4: Ray trace debug buffer
+        .dstSet = descriptorSet,
+        .dstBinding = 4,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &traceBufferInfo
+    },
+    { // Binding 5: Octree config UBO
+        .dstSet = descriptorSet,
+        .dstBinding = 5,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &configUboInfo
     }
 };
 
-vkUpdateDescriptorSets(device, 3, writes, 0, nullptr);
+vkUpdateDescriptorSets(device, 6, writes, 0, nullptr);
 ```
 
 ### Step 3: Record Dispatch Commands

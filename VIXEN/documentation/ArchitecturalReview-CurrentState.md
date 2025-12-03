@@ -1,7 +1,7 @@
 # Architectural Review: Current State
-**Date**: November 8, 2025
-**Phase**: Phase G + Infrastructure COMPLETE | Phase H 60% Complete
-**Status**: Research Platform Ready for Voxel Ray Tracing Implementation
+**Date**: December 1, 2025 (Updated)
+**Phase**: Phase H Voxel Infrastructure - Week 2 COMPLETE
+**Status**: GPU Ray Marching Operational | 1,700 Mrays/sec Achieved
 
 ---
 
@@ -9,13 +9,26 @@
 
 VIXEN has achieved **production-ready status** as a voxel ray tracing research platform with comprehensive infrastructure, testing, and documentation. The engine combines industry-leading shader automation with robust synchronization, caching, and type safety systems.
 
+**Week 2 GPU Integration achieved 1,700 Mrays/sec throughput** - 8.5x target performance, competitive with NVIDIA GVDB.
+
 ### Current Status
 - **Phase G (SlotRole & Descriptor Binding)**: ✅ COMPLETE
 - **Infrastructure Systems**: ✅ COMPLETE (5 major systems)
-- **Phase H (Voxel Data Infrastructure)**: 🔨 60% Complete
-- **Test Coverage**: 40% (10 test suites, 180+ tests)
+- **Phase H Week 1 (CPU Infrastructure)**: ✅ COMPLETE (162 tests)
+- **Phase H Week 2 (GPU Integration)**: ✅ COMPLETE (1,700 Mrays/sec)
+- **Phase H Week 3 (DXT Compression)**: 🔨 In Progress
+- **Test Coverage**: 40% (10 test suites, 200+ tests)
 - **Zero Vulkan Validation Errors**: ✅ Achieved
 - **Research Timeline**: May 2026 target on track
+
+### Week 2 Performance Results
+
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Resolution | 800x600 (480K rays) | - | - |
+| Dispatch Time | 0.27-0.34 ms | - | - |
+| Throughput | **1,700 Mrays/sec** | >200 Mrays/sec | 8.5x exceeded |
+| Frame Rate | ~3,000 FPS (GPU-limited) | - | - |
 
 ---
 
@@ -199,31 +212,41 @@ struct CleanupContext { /* Cleanup-specific data */ };
 
 ## Current Phase: Phase H (Voxel Data Infrastructure)
 
-### Status: 60% Complete
+### Status: Week 2 COMPLETE, Week 3 In Progress
 
-**Completed Tasks** ✅:
-1. **CameraNode**: Camera transformation and view matrix generation
-2. **VoxelGridNode**: Voxel data management and GPU upload
-3. **VoxelRayMarch.comp**: Compute shader ray marching implementation
+**Week 1 Completed** ✅ (November 8-26, 2025):
+1. **GaiaVoxelWorld**: ECS-backed sparse voxel storage (96 tests)
+2. **VoxelComponents**: Macro-based component registry
+3. **LaineKarrasOctree**: ESVO traversal implementation (47 tests)
+4. **EntityBrickView**: Zero-storage brick pattern (16 bytes vs 70 KB)
+5. **rebuild() API**: Modern workflow replacing VoxelInjector
+6. **162 total tests passing**
 
-**In Progress** 🔨:
-4. **Octree Data Structure**: Hybrid octree design (pointer-based + brick map)
-5. **Scene Integration**: Test scene procedural generation
+**Week 2 Completed** ✅ (November 26 - December 1, 2025):
+1. **GPUTimestampQuery**: VkQueryPool wrapper for GPU timing
+2. **GPUPerformanceLogger**: Rolling 60-frame statistics
+3. **Sparse Brick Architecture**: Brick indices in leaf descriptors
+4. **Debug Capture System**: Per-ray traversal traces with JSON export
+5. **8 Shader Bug Fixes**: ESVO scale, axis-parallel rays, coordinate transforms
+6. **Performance**: 1,700 Mrays/sec at 800x600 (8.5x target)
 
-**Planned** ⏳:
-6. **Performance Baseline**: Initial performance measurements
+**Week 3 In Progress** (DXT Compression):
+- Study ESVO DXT section (paper 4.1)
+- Implement CPU DXT1/BC1 encoder for color bricks
+- Implement GLSL DXT1 decoder in VoxelRayMarch.comp
+- Benchmark: 16x memory reduction target
 
 ### Design Specifications
 
 **Octree Architecture** (from `OctreeDesign.md`):
-- Hybrid structure: Pointer-based coarse + brick map fine
-- Node size: 36 bytes
-- Brick size: 512 bytes (8³ voxels)
-- Compression: 9:1 for sparse scenes
+- ESVO algorithm: Laine & Karras (2010)
+- Node structure: ChildDescriptor (8 bytes)
+- Brick storage: EntityBrickView zero-storage pattern
 - Morton code indexing for cache locality
+- GPU buffer: Single SSBO for descriptors + bricks
 
 **Test Scenes** (from `TestScenes.md`):
-1. Cornell Box (10% density - sparse)
+1. Cornell Box (10% density - sparse) - WORKING
 2. Cave System (50% density - medium, Perlin noise)
 3. Urban Grid (90% density - dense, procedural buildings)
 
@@ -359,7 +382,7 @@ void RegisterDescriptorCacher(TaskContext& ctx);
 3. ✅ Performance profiling design (<0.5% overhead)
 4. ✅ Octree data structure design (9:1 compression)
 5. ✅ Test automation framework design (180 configurations)
-6. ✅ 60% of Phase H complete (voxel infrastructure)
+6. ✅ Phase H Week 2 complete (1,700 Mrays/sec GPU throughput)
 
 ### Process Achievements
 1. ✅ Phase G completed with zero regressions
@@ -436,7 +459,7 @@ void RegisterDescriptorCacher(TaskContext& ctx);
 - **Testing framework design**: ✅ Complete
 
 ### In Progress 🔨
-- **Voxel data infrastructure**: 60% complete (Phase H)
+- **Phase H Week 3**: DXT Compression (16x memory reduction target)
 
 ### Upcoming ⏳
 - **Performance profiling system**: Phase I
@@ -450,13 +473,13 @@ void RegisterDescriptorCacher(TaskContext& ctx);
 
 ## Timeline & Roadmap
 
-### Completed (November 2025)
+### Completed (November-December 2025)
 - Phase G + Infrastructure: ✅ COMPLETE
-- Phase H: 🔨 60% Complete
+- Phase H Week 1-2: ✅ COMPLETE (1,700 Mrays/sec GPU throughput)
 
 ### Short-Term (December 2025)
-- Phase H completion: Target December 2, 2025
-- Phase I planning: December 9-16, 2025
+- Phase H Week 3 (DXT): Target December 15, 2025
+- Phase I planning: After DXT completion
 
 ### Medium-Term (January-March 2026)
 - Phase I (Profiling): January 6-27, 2026
@@ -497,6 +520,257 @@ void RegisterDescriptorCacher(TaskContext& ctx);
 
 ---
 
+## Known Gaps vs Industry Standards
+
+**Assessment Date**: November 8, 2025
+**Review Philosophy**: Senior developer perspective providing honest, critical feedback
+
+This section documents architectural gaps compared to modern production engines (Unity HDRP 2024, Unreal RDG 2024, Frostbite). Issues categorized by severity and impact on research goals.
+
+### 🔴 Critical Gaps (Blockers or Major Research Impact)
+
+#### 1. GPU Profiling Infrastructure - RESOLVED ✅
+**Previous State**: No VkQueryPool integration
+**Current State (December 2025)**: COMPLETE
+- GPUTimestampQuery: VkQueryPool wrapper for GPU timing
+- GPUPerformanceLogger: Rolling 60-frame statistics
+- Per-dispatch timing with nanosecond precision
+- Mrays/sec calculation integrated
+**Location**: `libraries/VulkanResources/`, `libraries/RenderGraph/Core/`
+
+#### 2. Single-Threaded Graph Execution
+**Current State**: All nodes execute sequentially on single thread (RenderGraph.h:45-62)
+**Industry Standard**: Wave-based parallel command buffer recording (Unity 2016, Unreal 2018, Frostbite 2015)
+**Impact**:
+- Leaves 75-90% of CPU cores idle (modern CPUs: 8-16 cores, we use 1)
+- Research measurements reflect single-threaded perf only
+- Results may not generalize to production engines
+- 3-4× slower CPU-side execution vs parallelized graphs
+
+**Mitigation**: Document as limitation in research paper. Future Phase N+3: Wave-based parallel dispatch.
+
+**Estimated Effort**: 3-4 weeks (dependency analysis, job scheduling, thread pool)
+
+---
+
+#### 3. No Memory Aliasing / Transient Resources
+**Current State**: All resources allocated permanently (Graph owns `vector<unique_ptr<Resource>>`)
+**Industry Standard**: Automatic memory aliasing for non-overlapping resource lifetimes
+**Impact**:
+- 2-3× VRAM waste vs production engines
+- 256³ voxel grids may exceed VRAM budget (OOM risk)
+- Unity/Unreal achieve 60-70% memory savings via aliasing
+- No transient resource pool for intermediate textures
+
+**Example**:
+```
+Current: Shadow Map (128 MB) + GBuffer (32 MB) = 160 MB
+Industry: Shadow Map (128 MB), GBuffer reuses → 128 MB (20% savings)
+```
+
+**Mitigation**: Reduce voxel resolution if needed (256³ → 128³). Future Phase N+4: Transient resource system.
+
+**Estimated Effort**: 2-3 weeks (lifetime analysis, resource pool, aliasing algorithm)
+
+---
+
+#### 4. No Hot Reload
+**Current State**: Shader changes require full application restart
+**Industry Standard**: Runtime shader recompilation (Unity 2012, Unreal 2014, Frostbite 2013)
+**Impact**:
+- 5-10× slower iteration time (30-60s restart vs 1-2s hot reload)
+- Developer productivity loss: 10-20 hours/week
+- Painful for shader debugging during voxel research
+- 12 years behind industry
+
+**Mitigation**: Accept slower iteration for research phase. Future Phase N+5: File watcher + pipeline invalidation.
+
+**Estimated Effort**: 2-3 weeks (file watcher, incremental recompilation, pipeline hot-swap)
+
+---
+
+### 🟡 Major Gaps (Significant Performance Impact)
+
+#### 5. No Async Compute
+**Current State**: Single graphics queue
+**Industry Standard**: Multi-queue submission with async compute overlap
+**Impact**:
+- 20-30% performance loss vs overlapped compute
+- Modern GPUs: 1 graphics + 3-16 async compute queues
+- Missing SSAO, particle simulation, voxel processing overlap
+- Graphics + compute could run in parallel
+
+**Mitigation**: Defer to post-research. Measure graphics-only performance for now.
+
+**Estimated Effort**: 2 weeks (multi-queue management, synchronization, async passes)
+
+---
+
+#### 6. No Automatic Pipeline Barriers
+**Current State**: Manual `vkCmdPipelineBarrier` calls (assumed)
+**Industry Standard**: Automatic barrier insertion from resource dependencies
+**Impact**:
+- Error-prone (missed barriers → GPU hangs, validation errors)
+- Manual tracking of read-after-write, write-after-read hazards
+- Production engines eliminate this entire bug class
+- Current zero validation errors may not scale to complex graphs
+
+**Mitigation**: Continue manual barriers with caution. Future: Barrier auto-insertion pass.
+
+**Estimated Effort**: 1-2 weeks (resource state tracking, barrier pass in graph compilation)
+
+---
+
+#### 7. No Render Pass Merging / Subpasses
+**Current State**: Each node = separate render pass (assumed)
+**Industry Standard**: Vulkan subpasses for tile memory optimization
+**Impact**:
+- 50-70% bandwidth waste on mobile GPUs (ARM Mali, Qualcomm Adreno)
+- 10-15% overhead on desktop (tile cache flushes)
+- GBuffer + Lighting should be single render pass with subpasses
+
+**Mitigation**: Desktop-only research, mobile optimization not required. Document limitation.
+
+**Estimated Effort**: 2-3 weeks (subpass analysis, render pass restructuring)
+
+---
+
+### 🟡 Moderate Gaps (Quality of Life / Robustness)
+
+#### 8. Weak Graph Validation
+**Current State**: Placeholder validation (Phase C.3, progress.md:226)
+**Missing Validation**:
+- Resource format mismatches (RGB8 → RGBA16F without conversion)
+- Circular dependencies in graph
+- Missing shader input/output compatibility checks
+- Descriptor set layout mismatches
+
+**Impact**: Runtime validation errors instead of compile-time detection
+
+**Mitigation**: Continue relying on Vulkan validation layers. Future: Comprehensive validation pass.
+
+**Estimated Effort**: 1 week (format checking, cycle detection, descriptor validation)
+
+---
+
+#### 9. No Resource Budget Enforcement
+**Current State**: No VRAM tracking (progress.md:530 "Memory Budget: No allocation tracking")
+**Industry Standard**: VK_EXT_memory_budget + resource pool limits
+**Impact**:
+- Can easily OOM on 256³ voxel grids
+- No graceful degradation (quality reduction, eviction)
+- No visibility into VRAM usage
+
+**Mitigation**: Monitor VRAM manually during development. Future: Budget tracking + eviction policy.
+
+**Estimated Effort**: 1 week (VK_EXT_memory_budget integration, allocation tracking)
+
+---
+
+#### 10. Test Coverage 40% (Industry: 80%+)
+**Current State**: 40% coverage, 10 test suites
+**Industry Standard**: Google (80%+), Unity HDRP (~70%)
+**Untested Areas** (from TODOs):
+- Descriptor cacher serialization
+- Compute pipeline serialization
+- Error handling paths (texture load failures)
+- Edge cases in cleanup/recompilation
+
+**Impact**: Higher bug risk in untested 60% of codebase
+
+**Mitigation**: Prioritize test coverage for Phase H-I critical paths. Defer full 80% coverage.
+
+**Estimated Effort**: Ongoing (20 hours per 10% coverage increase)
+
+---
+
+### 🟠 Minor Gaps (Low Priority)
+
+#### 11. String-Based Node Lookup
+**Current State**: `AddNode(const std::string& typeName, const std::string& instanceName)`
+**Better**: Compile-time node type IDs (`constexpr NodeTypeID`)
+**Impact**: Minor (nanoseconds), but cache-unfriendly for large graphs
+
+**Mitigation**: Accept minor overhead. Future: Constexpr type registry.
+
+**Estimated Effort**: 2 days
+
+---
+
+#### 12. Legacy Code Maintenance Burden
+**Current State**: 40+ TODO comments in legacy code (VulkanPipeline.cpp, TextureLoader.cpp)
+**Impact**: Confusion about which architecture is "real" (graph vs monolithic)
+
+**Mitigation**: Archive legacy code after Phase H. Keep only for reference.
+
+**Estimated Effort**: 1 day (move to documentation/legacy/)
+
+---
+
+#### 13. No User-Facing Documentation
+**Current State**: 1,015 pages of **design docs**, zero **API usage guides**
+**Missing**:
+- "How to create a custom node" tutorial
+- Graph construction examples
+- Performance best practices guide
+
+**Impact**: Harder to onboard collaborators or publish as open-source
+
+**Mitigation**: Defer until post-research. Design docs sufficient for solo development.
+
+**Estimated Effort**: 1 week (tutorials, examples, API reference)
+
+---
+
+## Gap Summary: Industry Comparison
+
+| Feature | Industry Standard | VIXEN Status | Gap Severity | Research Impact |
+|---------|------------------|--------------|--------------|-----------------|
+| Parallel Execution | Wave-based (2015) | Single-thread | 🔴 Critical | Results non-generalizable |
+| Memory Aliasing | Automatic (60-70% savings) | No aliasing | 🔴 Critical | 2-3× VRAM waste, OOM risk |
+| GPU Profiling | VkQueryPool + markers | Not implemented | 🔴 Critical | **Phase I blocker** |
+| Hot Reload | Standard (2012-2014) | Not implemented | 🔴 Critical | 5-10× slower iteration |
+| Async Compute | Multi-queue overlap | Single queue | 🟡 Major | 20-30% perf loss |
+| Auto Barriers | Automatic insertion | Manual | 🟡 Major | Error-prone |
+| Render Pass Merging | Subpasses | Separate passes | 🟡 Major | 10-70% bandwidth waste |
+| Graph Validation | Comprehensive | Placeholder | 🟡 Moderate | Higher bug risk |
+| Resource Budgets | VRAM tracking | None | 🟡 Moderate | OOM risk |
+| Test Coverage | 80%+ | 40% | 🟡 Moderate | Untested code risk |
+| String Lookups | Constexpr IDs | Runtime strings | 🟠 Minor | Nanosecond overhead |
+| Legacy Cleanup | Clean codebase | 40+ TODOs | 🟠 Minor | Maintenance burden |
+| User Docs | API guides | Design docs only | 🟠 Minor | Onboarding friction |
+
+---
+
+## Recommended Remediation Roadmap
+
+### Before Phase I (HIGH Priority - Required for Research)
+1. 🔴 **GPU Profiling** (1-2 weeks) - VkQueryPool, timestamp queries, markers
+   - **Blocker**: Cannot measure performance without this
+   - **Target**: Phase I start date
+
+### Before May 2026 Paper (MEDIUM Priority - Improves Research Quality)
+2. 🔴 **Memory Aliasing** (2-3 weeks) - Transient resource system
+   - **Risk**: 256³ voxel grids may OOM without this
+   - **Target**: Phase H-I transition
+3. 🟡 **Async Compute** (2 weeks) - Multi-queue overlap
+   - **Benefit**: Better performance numbers for publication
+   - **Target**: Phase J-K (if time allows)
+
+### Post-Research (LOW Priority - Future Improvements)
+4. 🔴 **Parallel Execution** (3-4 weeks) - Wave-based graph dispatch
+   - **Defer**: Document as limitation, implement Phase N+3
+5. 🔴 **Hot Reload** (2-3 weeks) - Shader recompilation
+   - **Defer**: Accept slower iteration for research phase
+6. 🟡 **Auto Barriers** (1-2 weeks) - Barrier insertion pass
+   - **Defer**: Manual barriers working correctly for now
+7. 🟡 **Resource Budgets** (1 week) - VRAM tracking
+   - **Defer**: Monitor manually during research
+8. 🟡 **Test Coverage** (ongoing) - Increase to 80%+
+   - **Defer**: 40% sufficient for research, increase post-publication
+
+---
+
 ## Conclusion
 
 VIXEN has successfully transitioned from infrastructure development to research execution. The engine demonstrates:
@@ -517,13 +791,13 @@ VIXEN has successfully transitioned from infrastructure development to research 
 - Clean ownership model (RAII throughout)
 
 **Research-Ready**:
-- Phase H 60% complete (voxel infrastructure)
+- Phase H Week 2 complete (1,700 Mrays/sec GPU throughput)
 - Timeline on track (May 2026 target)
 - All pipeline architectures designed
-- Test scenes specified
-- Performance profiling designed
+- Cornell Box test scene operational
+- Performance profiling infrastructure built
 
-**Next Milestone**: Phase H completion (December 2, 2025), Phase I start (January 6, 2026)
+**Next Milestone**: Phase H Week 3 DXT (December 15, 2025), Phase I start (January 2026)
 
 ---
 

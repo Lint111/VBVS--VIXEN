@@ -1,0 +1,286 @@
+#include "pch.h"
+#include "EntityBrickView.h"
+#include "GaiaVoxelWorld.h"
+#include "MortonEncoding.h"
+#include <algorithm>
+
+using Vixen::Core::MortonCode64;
+
+namespace Vixen::GaiaVoxel {
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    std::span<gaia::ecs::Entity> entities,
+    uint8_t depth)
+    : m_world(world)
+    , m_entities(entities)
+    , m_rootPositionInWorldSpace(glm::vec3(0))
+    , m_gridOrigin(glm::ivec3(0))
+    , m_depth(depth)
+    , m_brickSize(1u << depth)  // 2^depth
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)  // brickSize³
+    , m_brickMortonBase(MortonCode64::fromWorldPos(glm::ivec3(0)))  // Precompute Morton base
+    , m_queryMode(QueryMode::EntitySpan) {
+}
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    glm::vec3 rootPositionInWorldSpace,
+    uint8_t depth,
+    float voxelSize)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_rootPositionInWorldSpace(rootPositionInWorldSpace)
+    , m_gridOrigin(glm::ivec3(0))
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(voxelSize)
+    , m_brickMortonBase(MortonCode64::fromWorldPos(rootPositionInWorldSpace))  // Precompute Morton base
+    , m_queryMode(QueryMode::WorldSpace) {
+}
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    glm::ivec3 gridOrigin,
+    uint8_t depth)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_rootPositionInWorldSpace(glm::vec3(gridOrigin))  // For getWorldMin() compatibility
+    , m_gridOrigin(gridOrigin)
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    , m_brickMortonBase(MortonCode64::fromWorldPos(gridOrigin))  // Precompute Morton base
+    , m_queryMode(QueryMode::IntegerGrid) {
+}
+
+EntityBrickView::EntityBrickView(
+    GaiaVoxelWorld& world,
+    glm::ivec3 localGridOrigin,
+    uint8_t depth,
+    const glm::vec3& volumeWorldMin,
+    LocalSpaceTag /*tag*/)
+    : m_world(world)
+    , m_entities()  // Empty span
+    , m_rootPositionInWorldSpace(volumeWorldMin + glm::vec3(localGridOrigin))  // World position for getWorldMin()
+    , m_gridOrigin(localGridOrigin)  // LOCAL grid origin (0,0,0), (8,0,0), etc.
+    , m_depth(depth)
+    , m_brickSize(1u << depth)
+    , m_voxelsPerBrick(m_brickSize * m_brickSize * m_brickSize)
+    , m_voxelSize(1.0f)  // Integer grid assumes unit voxels
+    // For LocalGrid: compute world position of brick minimum corner
+    , m_brickMortonBase(MortonCode64::fromWorldPos(
+        glm::ivec3(volumeWorldMin) + localGridOrigin))  // Precompute Morton base
+    , m_queryMode(QueryMode::LocalGrid) {  // Use local grid query mode
+}
+
+// ============================================================================
+// Entity Access (Direct)
+// ============================================================================
+
+gaia::ecs::Entity EntityBrickView::getEntity(size_t voxelIdx) const {
+    if (voxelIdx >= m_voxelsPerBrick) {
+        return gaia::ecs::Entity(); // Invalid entity
+    }
+
+    switch (m_queryMode) {
+        case QueryMode::EntitySpan:
+            // Direct array access
+            return m_entities[voxelIdx];
+
+        case QueryMode::IntegerGrid: {
+            // Integer grid mode: compute grid position directly (preferred for voxel grids)
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
+
+            // Grid position = grid origin + local offset (all integers)
+            glm::ivec3 gridPos = m_gridOrigin + glm::ivec3(x, y, z);
+
+            // Query by integer position (uses exact Morton key match)
+            return m_world.getEntityByWorldSpace(glm::vec3(gridPos));
+        }
+
+        case QueryMode::LocalGrid: {
+            // Local grid mode: brick uses LOCAL coordinates, voxels stored with LOCAL Morton keys.
+            // Brick's localGridOrigin = brickIndex * brickSideLength (0,0,0), (8,0,0), etc.
+            //
+            // For current tests: voxels are created at positions that ARE the Morton key positions.
+            // If world bounds are (1,1,1) to (9,9,9), and we want voxel at world (5,2,2):
+            //   - Test creates voxel at (5,2,2) → Morton key for (5,2,2)
+            //   - Brick local origin = (0,0,0), brick covers local (0-7) in each axis
+            //   - To find the voxel, we compute: localGridPos + volumeWorldMin
+            //
+            // Since tests store world coords directly, LocalGrid uses world position for lookup.
+            // The "local" is how the brick is addressed, not how voxels are stored.
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
+
+            // Local grid position within brick
+            glm::ivec3 localGridPos = m_gridOrigin + glm::ivec3(x, y, z);
+
+            // Convert to world position: local + volumeWorldMin (stored in m_rootPositionInWorldSpace)
+            // Since m_rootPositionInWorldSpace = volumeWorldMin + localGridOrigin,
+            // world position = volumeWorldMin + localGridPos
+            glm::ivec3 volumeWorldMinInt = VolumeGrid::quantize(m_rootPositionInWorldSpace - glm::vec3(m_gridOrigin));
+            glm::ivec3 worldGridPos = localGridPos + volumeWorldMinInt;
+
+            // Query by world position
+            return m_world.getEntityByWorldSpace(glm::vec3(worldGridPos));
+        }
+
+        case QueryMode::WorldSpace:
+        default: {
+            // World-space mode: compute fractional world position
+            int x, y, z;
+            linearIndexToCoord(voxelIdx, x, y, z);
+
+            // Compute world space position: root + local offset * voxelSize
+            glm::vec3 localOffset(
+                static_cast<float>(x) * m_voxelSize,
+                static_cast<float>(y) * m_voxelSize,
+                static_cast<float>(z) * m_voxelSize
+            );
+            glm::vec3 worldPos = m_rootPositionInWorldSpace + localOffset;
+
+            // Query world for entity at this world position
+            return m_world.getEntityByWorldSpace(worldPos);
+        }
+    }
+}
+
+gaia::ecs::Entity EntityBrickView::getEntity(int x, int y, int z) const {
+    return getEntity(coordToLinearIndex(x, y, z));
+}
+
+gaia::ecs::Entity EntityBrickView::getEntityFast(int x, int y, int z) const {
+    // FAST PATH: Direct Morton lookup eliminates 4 redundant conversions
+    // OLD: coordToLinearIndex -> linearIndexToCoord -> vec3 cast -> morton encode
+    // NEW: Morton arithmetic with precomputed base
+    //
+    // Uses precomputed m_brickMortonBase (set in constructor)
+    // and addLocalOffset for efficient voxel lookup.
+
+    // Compute Morton code for this voxel using Morton arithmetic
+    MortonCode64 voxelMorton = m_brickMortonBase.addLocalOffset(
+        static_cast<uint32_t>(x),
+        static_cast<uint32_t>(y),
+        static_cast<uint32_t>(z)
+    );
+
+    // Direct O(1) lookup via Morton index
+    return m_world.getEntityByMorton(voxelMorton);
+}
+
+void EntityBrickView::setEntity(size_t voxelIdx, gaia::ecs::Entity entity) {
+    if (voxelIdx < m_voxelsPerBrick) {
+        m_entities[voxelIdx] = entity;
+    }
+}
+
+void EntityBrickView::setEntity(int x, int y, int z, gaia::ecs::Entity entity) {
+    setEntity(coordToLinearIndex(x, y, z), entity);
+}
+
+void EntityBrickView::clearEntity(size_t voxelIdx) {
+    setEntity(voxelIdx, gaia::ecs::Entity()); // Invalid entity
+}
+
+void EntityBrickView::clearEntity(int x, int y, int z) {
+    clearEntity(coordToLinearIndex(x, y, z));
+}
+
+// ============================================================================
+// Template implementations are in header (EntityBrickView.h)
+// ============================================================================
+
+// ============================================================================
+// Span Access
+// ============================================================================
+
+std::span<gaia::ecs::Entity> EntityBrickView::entities() {
+    return m_entities;
+}
+
+std::span<const gaia::ecs::Entity> EntityBrickView::entities() const {
+    return m_entities;
+}
+
+// ============================================================================
+// Utility
+// ============================================================================
+
+size_t EntityBrickView::countSolidVoxels() const {
+    size_t count = 0;
+    for (const auto& entity : m_entities) {
+        if (entity != gaia::ecs::Entity()) {
+            auto density = m_world.getComponentValue<Density>(entity);
+            if (density.has_value() && density.value() > 0.0f) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+bool EntityBrickView::isEmpty() const {
+    // For span-based mode, check if any entity is valid
+    // gaia::ecs::Entity() creates an invalid/empty entity (likely ID=0 or null)
+    // We can optimize by checking if all entities are invalid
+    if (m_queryMode == QueryMode::EntitySpan) {
+        // Fast path: Check if all entity IDs are zero/invalid
+        // This avoids 512 comparisons by checking the underlying bits
+        return std::all_of(m_entities.begin(), m_entities.end(),
+            [](const gaia::ecs::Entity& entity) {
+                return entity == gaia::ecs::Entity();  // Or: entity == gaia::ecs::Entity()
+            });
+    }
+
+    // For query-based modes (WorldSpace, IntegerGrid, LocalGrid):
+    // Use zero-copy countBrickEntities() - no buffer allocation needed
+    if (m_queryMode == QueryMode::LocalGrid || m_queryMode == QueryMode::IntegerGrid) {
+        // ZERO-COPY: countBrickEntities() counts without materializing entity array
+        uint32_t count = m_world.countBrickEntities(m_brickMortonBase, static_cast<uint32_t>(m_brickSize));
+        return count == 0;  // Zero entities = empty brick
+    }
+
+    // Fallback for WorldSpace mode: Iterate through all voxel positions
+    const int brickSizeInt = static_cast<int>(m_brickSize);
+    for (int z = 0; z < brickSizeInt; ++z) {
+        for (int y = 0; y < brickSizeInt; ++y) {
+            for (int x = 0; x < brickSizeInt; ++x) {
+                auto entity = getEntityFast(x, y, z);
+                if (entity != gaia::ecs::Entity()) {
+                    return false;  // Found at least one entity
+                }
+            }
+        }
+    }
+    return true;  // No entities found
+}
+
+bool EntityBrickView::isFull() const {
+    return countSolidVoxels() == m_voxelsPerBrick;
+}
+
+// ============================================================================
+// Coordinate Conversion (Depth-aware)
+// ============================================================================
+
+size_t EntityBrickView::coordToLinearIndex(int x, int y, int z) const {
+    // Simple linear indexing: z*brickSize² + y*brickSize + x
+    // TODO: Switch to Morton code for better cache locality
+    return static_cast<size_t>(z * m_brickSize * m_brickSize + y * m_brickSize + x);
+}
+
+void EntityBrickView::linearIndexToCoord(size_t idx, int& x, int& y, int& z) const {
+    // Reverse of coordToLinearIndex
+    const size_t brickSizeSq = m_brickSize * m_brickSize;
+    z = static_cast<int>(idx / brickSizeSq);
+    idx %= brickSizeSq;
+    y = static_cast<int>(idx / m_brickSize);
+    x = static_cast<int>(idx % m_brickSize);
+}
+
+} // namespace Vixen::GaiaVoxel

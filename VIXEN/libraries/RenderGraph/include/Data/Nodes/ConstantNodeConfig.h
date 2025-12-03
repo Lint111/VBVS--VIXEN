@@ -1,0 +1,52 @@
+#pragma once
+
+#include "Data/Core/ResourceConfig.h"
+
+namespace Vixen::RenderGraph {
+
+/**
+ * @brief Configuration for ConstantNode
+ *
+ * Provides a single output slot that can hold any registered resource type.
+ * The actual type is determined when SetValue<T>() is called.
+ *
+ * Outputs:
+ * - OUTPUT: Generic resource output (type set at runtime)
+ */
+namespace ConstantNodeCounts {
+    static constexpr size_t INPUTS = 0;
+    static constexpr size_t OUTPUTS = 1;
+    static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
+}
+
+CONSTEXPR_NODE_CONFIG(ConstantNodeConfig,
+                      ConstantNodeCounts::INPUTS,
+                      ConstantNodeCounts::OUTPUTS,
+                      ConstantNodeCounts::ARRAY_MODE) {
+
+    // ===== OUTPUTS (1) =====
+    // Generic output - actual type determined by SetValue<T>() call
+    // Using PassThroughStorage for type-erased generic constant storage
+    OUTPUT_SLOT(OUTPUT, PassThroughStorage, 0,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
+    ConstantNodeConfig() {
+        // Initialize output descriptor as generic handle
+        HandleDescriptor genericDesc{"Constant"};
+        INIT_OUTPUT_DESC(OUTPUT, "output",
+            ResourceLifetime::Transient,
+            genericDesc
+        );
+    }
+
+    // Automated config validation
+    VALIDATE_NODE_CONFIG(ConstantNodeConfig, ConstantNodeCounts);
+
+    static_assert(OUTPUT_Slot::index == 0, "OUTPUT must be at index 0");
+    static_assert(!OUTPUT_Slot::nullable, "OUTPUT is required");
+
+    static_assert(std::is_same_v<OUTPUT_Slot::Type, PassThroughStorage>);
+};
+
+} // namespace Vixen::RenderGraph

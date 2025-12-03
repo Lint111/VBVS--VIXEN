@@ -92,7 +92,8 @@
         "coroutine": "cpp",
         "resumable": "cpp",
         "codecvt": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "execution": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "CodeGPT.apiKey": "Ollama",
@@ -137,7 +138,8 @@
         ".vs/**": true,
         ".cache/**": true,
         "binaries/**": true,
-        "builtAssets/**": true
+        "builtAssets/**": true,
+        "archive/**": true
     },
     "C_Cpp.files.exclude": {
         "**/.git": true,
@@ -154,12 +156,35 @@
         "CashSystem/**": true,
         "docs/**": true,
         "documentation/**": true,
-        "memory-bank/**": true
+        "memory-bank/**": true,
+        "archive/**": true
     },
-    "testExplorer.useNativeTesting": true,
     "cmake.options.statusBarVisibility": "visible",
     "cmake.buildDirectory": "${workspaceFolder}/build",
-    "cmakeExplorer.suiteDelimiter": "/",
+    "cmake.ctest.allowParallelJobs": true,
+    "cmake.testEnvironment": {
+        "GTEST_COLOR": "1"
+    },
+    "testExplorer.useNativeTesting": false,
     "testExplorer.sort": "byLocation",
-    "testExplorer.groupByLocation": true
+    "cmake.ctestDefaultArgs": ["--output-on-failure"],
+    "testExplorer.showCollapseButton": true,
+    "testExplorer.showExpandButton": true,
+    "testExplorer.showOnRun": true,
+    "cmake.options.advanced": {
+        "ctest": {
+            "allowParallelJobs": true
+        }
+    },
+    "cmake.ctestArgs": [],
+    "cmake.ctestDefaultArgs": [],
+    "C_Cpp.testAdapter.debugConfig": {
+        "stopAtEntry": false
+    },
+    "cmake.testExplorerIntegrationEnabled": true,
+    "cmake.enabledOutputParsers": ["cmake", "gcc", "gnuld"],
+    "gtest-adapter.debugConfig": {
+        "args": []
+    },
+    "testMate.cpp.test.advancedExecutables": []
 }

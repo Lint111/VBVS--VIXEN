@@ -1,9 +1,8 @@
 {
   "files": [
-    "3e331666c418cc79_stage32.spv",
-    "ComputeTest.json",
-    "69bb4318e2e033bd_stage32.spv",
-    "VoxelRayMarch.json"
+    "43bded93fcbc37f9_stage32.spv",
+    "VoxelRayMarch.json",
+    "89d176cd6eac7adf_stage32.spv"
   ],
   "version": 1
 }

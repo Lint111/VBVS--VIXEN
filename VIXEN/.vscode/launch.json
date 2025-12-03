@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug VIXEN",
+            "name": "Build + Launch VIXEN (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/binaries/VIXEN.exe",
@@ -14,13 +14,24 @@
             "preLaunchTask": "CMake Build Debug"
         },
         {
-            "name": "Debug VIXEN (No Build)",
+            "name": "Launch VIXEN (No Build)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/binaries/VIXEN.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/binaries",
+            "environment": [],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Launch SDI Tool",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/Debug/sdi_tool.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "console": "integratedTerminal"
         }

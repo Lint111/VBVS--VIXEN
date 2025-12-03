@@ -400,6 +400,369 @@ TEST_F(ResourceBudgetManagerTest, SetBudget) {
 
 ---
 
+### 17. shared_ptr<T> Support Pattern (November 15, 2025 - Phase H)
+**Purpose**: Enable shared ownership semantics for complex resources (ShaderDataBundle, reflection data)
+
+**Implementation**:
+- PassThroughStorage detects `shared_ptr<T>` at compile-time via template specialization detection
+- Validates element type T via `SharedPtrElementType` helper
+- Stores shared_ptr in Value mode (std::any for copy semantics)
+- Type registration: `REGISTER_COMPILE_TIME_TYPE(std::shared_ptr<ShaderManagement::ShaderDataBundle>)`
+
+**Migration from raw pointers**:
+```cpp
+// Before (Phase G - no-op deleter hack)
+INPUT_SLOT(SHADER_DATA, ShaderDataBundle*, ...);
+bundle = std::shared_ptr<ShaderDataBundle>(rawPtr, [](ShaderDataBundle*){});
+
+// After (Phase H - proper shared ownership)
+INPUT_SLOT(SHADER_DATA, std::shared_ptr<ShaderDataBundle>, ...);
+bundle = std::make_shared<ShaderDataBundle>(...);
+```
+
+**Benefits**:
+- Eliminates no-op deleter hacks
+- Clear ownership semantics
+- Automatic lifetime management
+- Type-safe shared access across nodes
+
+**Location**: `RenderGraph/include/Data/Core/CompileTimeResourceSystem.h` (lines 214-294)
+
+---
+
+### 18. ResourceVariant Elimination Pattern (November 15, 2025 - Phase H)
+**Purpose**: Eliminate redundant type-erasure wrapper, use PassThroughStorage directly
+
+**Migration**:
+```cpp
+// Before (Phase G)
+struct ResourceVariant {
+    PassThroughStorage storage;
+    // Wrapper with no additional value
+};
+
+// After (Phase H)
+// ResourceVariant deleted - use PassThroughStorage directly
+using Resource = PassThroughStorage;
+```
+
+**Affected code**:
+- Deleted: `RenderGraph/include/Data/Core/ResourceVariant.h`
+- Updated: `ResourceGathererNode.h` to use PassThroughStorage
+- Updated: All test files to use new API
+
+**Rationale**: ResourceVariant added no functionality beyond PassThroughStorage. Eliminating wrapper reduces indirection and clarifies architecture.
+
+**Location**: Phase H refactoring (November 2025)
+
+---
+
+### 19. Slot Type Compatibility Pattern (November 16, 2025 - Phase H)
+**Purpose**: Validate type compatibility before connecting slots, prevent runtime type errors
+
+**Implementation**:
+```cpp
+// TypedConnection.h - Compile-time and runtime type compatibility checks
+template<typename SourceSlotType, typename DestSlotType>
+bool AreTypesCompatible() {
+    using SourceType = typename SourceSlotType::Type;
+    using DestType = typename DestSlotType::Type;
+
+    // Direct type match
+    if constexpr (std::is_same_v<SourceType, DestType>) {
+        return true;
+    }
+
+    // Reference unwrapping: const T& matches T
+    if constexpr (IsConstReference<SourceType> && !IsConstReference<DestType>) {
+        using UnwrappedSource = std::remove_cvref_t<SourceType>;
+        return std::is_same_v<UnwrappedSource, DestType>;
+    }
+
+    // Vector element compatibility: vector<T> matches vector<const T&>
+    if constexpr (IsVector<SourceType> && IsVector<DestType>) {
+        using SourceElement = typename SourceType::value_type;
+        using DestElement = typename DestType::value_type;
+        return std::is_same_v<std::remove_cvref_t<SourceElement>,
+                               std::remove_cvref_t<DestElement>>;
+    }
+
+    return false;
+}
+```
+
+**Benefits**:
+- Catches type mismatches at connection time (not Execute time)
+- Supports const-correctness (const T& → T automatic unwrapping)
+- Handles container types (vector<T> compatibility checks)
+- Clear error messages for incompatible connections
+
+**Location**: `RenderGraph/include/Core/TypedConnection.h` (lines 40-80, November 2025)
+
+---
+
+### 20. Perfect Forwarding Pattern (November 16, 2025 - Phase H)
+**Purpose**: Zero-overhead resource output, avoid unnecessary copies
+
+**Implementation**:
+```cpp
+// TypedNodeInstance.h - Perfect forwarding for Out() and SetResource()
+template<typename SlotType, typename T>
+void Out(SlotType slot, T&& value) {
+    static_assert(SlotType::IS_OUTPUT, "Out() requires output slot");
+    SetResource(SlotType::INDEX, std::forward<T>(value));
+}
+
+template<typename T>
+void SetResource(size_t slotIndex, T&& value) {
+    PassThroughStorage storage;
+
+    // Use perfect forwarding to avoid copies
+    if constexpr (std::is_lvalue_reference_v<T>) {
+        storage = PassThroughStorage::CreateReference(value);  // Reference mode
+    } else {
+        storage = PassThroughStorage::CreateValue(std::forward<T>(value));  // Move semantics
+    }
+
+    outputs[slotIndex][0] = std::move(storage);
+}
+```
+
+**Benefits**:
+- Zero-overhead: lvalues → reference mode, rvalues → move semantics
+- Automatic reference vs value distinction based on value category
+- Type-safe: PassThroughStorage handles lifetime correctly
+- Compiler-optimized: std::forward enables copy elision
+
+**Migration**:
+```cpp
+// Before (Phase G): Always copied
+Out(OUTPUT_SLOT, myResource);
+
+// After (Phase H): Perfect forwarding
+Out(OUTPUT_SLOT, myResource);              // Reference mode (lvalue)
+Out(OUTPUT_SLOT, std::move(myResource));    // Move semantics (rvalue)
+Out(OUTPUT_SLOT, CreateResource());         // Move semantics (temporary)
+```
+
+**Location**: `RenderGraph/include/Core/TypedNodeInstance.h` (lines 200-230, November 2025)
+
+---
+
+### 21. EntityBrickView Zero-Storage Pattern (November 2025 - Phase H.2)
+**Classes**: `EntityBrickView`, `GaiaVoxelWorld`, `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// EntityBrickView stores only reference data (16 bytes)
+class EntityBrickView {
+    GaiaVoxelWorld* world;      // 8 bytes - reference to entity storage
+    uint64_t baseMortonKey;     // 8 bytes - brick origin in Morton space
+    // No voxel data storage - queries ECS on-demand
+
+public:
+    // Query voxel by local brick position (0-7 per axis)
+    bool getVoxelAt(int x, int y, int z) const {
+        uint64_t key = baseMortonKey + encodeMorton(x, y, z);
+        return world->hasEntity(key);
+    }
+
+    // Get component values for specific voxel
+    template<typename T>
+    std::optional<T> getComponent(int x, int y, int z) const {
+        uint64_t key = baseMortonKey + encodeMorton(x, y, z);
+        return world->getComponentValue<T>(key);
+    }
+};
+```
+
+**Memory Comparison**:
+```
+Legacy BrickStorage: 8x8x8 voxels × 8-byte attributes = 4,096 bytes/brick
++ Occupancy mask: 512 bits = 64 bytes
++ Metadata: ~4,000 bytes
+Total: ~70 KB per brick
+
+EntityBrickView: 16 bytes per brick (world ptr + morton key)
+Reduction: 94% memory savings
+```
+
+**Purpose**: Eliminate brick data duplication by viewing entities through Morton-indexed queries
+
+**Key Insight**: Bricks don't need to store voxel data - they're spatial indices into the ECS world. Ray traversal queries components on-demand.
+
+**Location**: `libraries/SVO/include/EntityBrickView.h`, `libraries/SVO/src/EntityBrickView.cpp`
+
+---
+
+### 22. Modern rebuild() Workflow Pattern (November 2025 - Phase H.2)
+**Classes**: `LaineKarrasOctree`, `GaiaVoxelWorld`
+
+**Implementation**:
+```cpp
+// Modern workflow replaces legacy VoxelInjector::inject()
+// Step 1: Populate entity world
+GaiaVoxelWorld world;
+world.createVoxel(VoxelCreationRequest{
+    position,
+    {Density{1.0f}, Color{red}}  // Component pack
+});
+
+// Step 2: Build octree from entities (single call)
+LaineKarrasOctree octree(world, maxLevels, brickDepth);
+octree.rebuild(world, worldMin, worldMax);
+
+// Step 3: Ray cast using entity-based SVO
+RayHit hit = octree.castRay(origin, direction);
+if (hit.hit) {
+    auto color = world.getComponentValue<Color>(hit.entity);
+}
+```
+
+**rebuild() Implementation**:
+```cpp
+void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world,
+                                 const glm::vec3& worldMin,
+                                 const glm::vec3& worldMax) {
+    // 1. Clear existing hierarchy
+    blocks.clear();
+
+    // 2. Calculate brick grid dimensions
+    bricksPerAxis = calculateBricksPerAxis(worldMin, worldMax, brickDepth);
+
+    // 3. Iterate Morton-ordered bricks
+    for (uint64_t mortonKey = 0; mortonKey < totalBricks; ++mortonKey) {
+        EntityBrickView brick(world, mortonKey, brickDepth);
+
+        // 4. Skip empty bricks
+        if (brick.isEmpty()) continue;
+
+        // 5. Register occupied octants in parent descriptor
+        registerBrickInHierarchy(mortonKey, brick);
+    }
+
+    // 6. Build parent descriptors bottom-up
+    buildParentDescriptors();
+}
+```
+
+**Why Legacy API Failed**:
+- VoxelInjector::inject() + BrickStorage created malformed octree hierarchy
+- Root cause: Legacy API populated bricks without proper ChildDescriptor linking
+- Symptom: Infinite loop in castRay() (ADVANCE phase never found valid child)
+
+**Purpose**: Clean separation - GaiaVoxelWorld owns data, LaineKarrasOctree owns spatial index
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp`
+
+---
+
+### 23. Component Macro System Pattern (November 2025 - Phase H.2)
+**Classes**: `VoxelComponents.h`, component types (Density, Color, Normal, etc.)
+
+**Implementation**:
+```cpp
+// Single source of truth for all voxel components
+#define FOR_EACH_COMPONENT(MACRO) \
+    MACRO(Density)                \
+    MACRO(Color)                  \
+    MACRO(Normal)                 \
+    MACRO(Roughness)              \
+    MACRO(Metallic)               \
+    MACRO(Emissive)
+
+// Auto-generate ComponentVariant
+#define VARIANT_MEMBER(T) T,
+using ComponentVariant = std::variant<
+    FOR_EACH_COMPONENT(VARIANT_MEMBER)
+    std::monostate
+>;
+
+// Auto-generate AllComponents tuple for compile-time iteration
+#define TUPLE_MEMBER(T) T,
+using AllComponents = std::tuple<FOR_EACH_COMPONENT(TUPLE_MEMBER) void*>;
+
+// Auto-generate ComponentTraits
+#define TRAITS_CASE(T) \
+    template<> struct ComponentTraits<T> { \
+        static constexpr const char* name = #T; \
+        static constexpr size_t index = __COUNTER__ - ComponentBaseCounter; \
+    };
+FOR_EACH_COMPONENT(TRAITS_CASE)
+```
+
+**Adding New Component**:
+```cpp
+// Before: 3+ edits (variant, tuple, traits, each handler)
+// After: 1 edit
+#define FOR_EACH_COMPONENT(MACRO) \
+    MACRO(Density)                \
+    MACRO(Color)                  \
+    MACRO(NewComponent)  // <-- Add here, everything else auto-generated
+```
+
+**Benefits**:
+- Single edit point (eliminates 3+ location updates)
+- Compile-time safety (impossible to have mismatched types)
+- Zero duplication across variant/tuple/traits
+- Automatic visitor pattern support
+
+**Purpose**: Maintain type safety across voxel component system with minimal boilerplate
+
+**Location**: `libraries/VoxelComponents/include/VoxelComponents.h`
+
+---
+
+### 24. Const-Correctness Pattern (November 16, 2025 - Phase H)
+**Purpose**: Enforce const-correctness across node config slots, enable compiler optimizations
+
+**Implementation**:
+```cpp
+// Node config slots use const references where appropriate
+struct GraphicsPipelineNodeConfig {
+    // Before: INPUT_SLOT(SHADER_DATA, ShaderDataBundle*, ...)
+    // After: INPUT_SLOT(SHADER_DATA, const std::shared_ptr<ShaderDataBundle>&, ...)
+
+    AUTO_INPUT(SHADER_DATA_BUNDLE,
+               const std::shared_ptr<ShaderManagement::ShaderDataBundle>&,
+               SlotNullability::Required,
+               SlotRole::Dependency,
+               SlotMutability::ReadOnly);
+
+    // Vectors of primitives use const references
+    AUTO_INPUT(IMAGE_AVAILABLE_SEMAPHORES,
+               const std::vector<VkSemaphore>&,
+               SlotNullability::Required,
+               SlotRole::Execute,
+               SlotMutability::ReadOnly);
+}
+```
+
+**Enforcement Pattern**:
+```cpp
+// ResourceConfig.h - Slot type assertions
+#define AUTO_INPUT(name, type, ...) \
+    static_assert(!std::is_pointer_v<type> || std::is_const_v<std::remove_pointer_t<type>>, \
+                  #name " pointer must be const"); \
+    static_assert(!IsVector<type> || IsConstReference<type>, \
+                  #name " vector must be const reference");
+```
+
+**Benefits**:
+- Compiler optimizations (const enables caching, reordering)
+- Intent clarity (ReadOnly slots are const, WriteOnly slots are mutable)
+- Type safety (prevents accidental mutation of read-only resources)
+- ABI compatibility (const references are ABI-stable)
+
+**Migration Impact**:
+- All node config headers updated (ComputePipelineNodeConfig, DescriptorSetNodeConfig, etc.)
+- TypedConnection handles const reference unwrapping automatically
+- Zero runtime overhead (const is compile-time only)
+
+**Location**: All `RenderGraph/include/Data/Nodes/*Config.h` files (November 2025)
+
+---
+
 ## Additional Pattern Updates (November 5, 2025)
 
 ### Generic Dispatcher Pattern
@@ -1041,3 +1404,253 @@ Each addition follows the established pattern:
 - Create dedicated class for subsystem
 - Manage resource lifecycle via RAII
 - Integrate with VulkanApplication orchestration
+
+---
+
+## GPU Performance Logging Pattern (December 2025 - Week 2)
+
+### 25. GPU Timestamp Query Pattern
+**Classes**: `GPUTimestampQuery`, `GPUPerformanceLogger`, `ComputeDispatchNode`
+
+**Implementation**:
+```cpp
+// GPUTimestampQuery - VkQueryPool wrapper
+class GPUTimestampQuery {
+    VkQueryPool timestampPool_;
+    VkQueryPool pipelineStatsPool_;
+    float timestampPeriod_;  // Nanoseconds per tick
+    uint32_t maxTimestamps_ = 4;
+
+public:
+    void Create(VkDevice device, VkPhysicalDevice physicalDevice);
+    void ResetQueries(VkCommandBuffer cmd);
+    void WriteTimestamp(VkCommandBuffer cmd, VkPipelineStageFlagBits stage, uint32_t query);
+
+    // After fence wait, read GPU timing
+    std::optional<double> GetElapsedMs(VkDevice device, uint32_t startQuery, uint32_t endQuery);
+
+    // Calculate throughput
+    double CalculateMraysPerSec(double elapsedMs, uint32_t width, uint32_t height) {
+        double rays = width * height;
+        return (rays / 1'000'000.0) / (elapsedMs / 1000.0);
+    }
+};
+
+// GPUPerformanceLogger - Rolling statistics
+class GPUPerformanceLogger : public Logger {
+    std::array<double, 60> dispatchTimes_;  // Rolling window
+    std::array<double, 60> mraysPerSec_;
+    size_t sampleIndex_ = 0;
+    size_t sampleCount_ = 0;
+
+public:
+    void RecordFrame(double dispatchMs, double mrays);
+
+    // Auto-log every 120 frames
+    void MaybeLog(uint32_t frameNumber, uint32_t width, uint32_t height) {
+        if (frameNumber % 120 == 0) {
+            LogStats(width, height);
+        }
+    }
+
+    void LogStats(uint32_t width, uint32_t height) {
+        // Output: "[GPU Perf] Dispatch: X.XX ms avg | Mrays/s: XXX avg | Resolution: WxH"
+    }
+};
+
+// Integration in ComputeDispatchNode
+class ComputeDispatchNode {
+    GPUTimestampQuery gpuQuery_;
+    GPUPerformanceLogger gpuPerfLogger_;
+
+    void ExecuteImpl(Context& ctx) override {
+        // Reset queries at frame start
+        gpuQuery_.ResetQueries(cmd);
+
+        // Record start timestamp
+        gpuQuery_.WriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+
+        vkCmdDispatch(cmd, dispatchX, dispatchY, dispatchZ);
+
+        // Record end timestamp
+        gpuQuery_.WriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
+
+        // After fence wait (separate call)
+        CollectTimingResults();
+    }
+
+    void CollectTimingResults() {
+        auto elapsedMs = gpuQuery_.GetElapsedMs(device, 0, 1);
+        if (elapsedMs) {
+            double mrays = gpuQuery_.CalculateMraysPerSec(*elapsedMs, width, height);
+            gpuPerfLogger_.RecordFrame(*elapsedMs, mrays);
+            gpuPerfLogger_.MaybeLog(frameNumber, width, height);
+        }
+    }
+};
+```
+
+**Key Implementation Details**:
+1. **Query Pool Sizing**: Request only the number of queries actually written (avoid VK_NOT_READY)
+2. **Timestamp Period**: Use `VkPhysicalDeviceLimits::timestampPeriod` for nanosecond conversion
+3. **Rolling Statistics**: 60-frame window provides stable averages
+4. **Auto-Logging**: Every 120 frames prevents console spam
+
+**Bug Fix (VK_NOT_READY)**:
+```cpp
+// WRONG: Request 4 queries when only 2 written
+vkGetQueryPoolResults(device, pool, 0, 4, ...);  // VK_NOT_READY
+
+// CORRECT: Request only written queries
+uint32_t queriesToRead = 2;  // startQuery + endQuery
+vkGetQueryPoolResults(device, pool, 0, queriesToRead, ...);
+```
+
+**Location**:
+- `libraries/VulkanResources/include/GPUTimestampQuery.h`
+- `libraries/RenderGraph/include/Core/GPUPerformanceLogger.h`
+- `libraries/RenderGraph/src/Nodes/ComputeDispatchNode.cpp`
+
+---
+
+## Voxel Infrastructure Patterns (November 26, 2025 - Phase H.2)
+
+### 19. Entity-Based Voxel Storage Pattern
+**Classes**: `GaiaVoxelWorld`, `VoxelComponents`, `MortonKey`
+
+**Implementation**:
+```cpp
+// Create voxel world and populate
+GaiaVoxelWorld world;
+ComponentQueryRequest components[] = {
+    Density{1.0f},
+    Color{glm::vec3(1, 0, 0)}
+};
+world.createVoxel(VoxelCreationRequest{glm::vec3(2, 2, 2), components});
+
+// Morton key encodes 3D position in single uint64
+MortonKey key = MortonKey::fromPosition(glm::ivec3(x, y, z));
+```
+
+**Purpose**: Sparse voxel storage with O(1) position lookup via Morton codes
+
+**Location**: `libraries/GaiaVoxelWorld/`, `libraries/VoxelComponents/`
+
+---
+
+### 20. EntityBrickView Zero-Storage Pattern
+**Classes**: `EntityBrickView`, `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// Zero-storage brick view - queries entities on demand
+EntityBrickView brickView(world, localGridOrigin, depth, worldMin, EntityBrickView::LocalSpace);
+
+// View stores only: world ref + grid origin + depth = 16 bytes
+// vs legacy: 512 voxels × 140 bytes = 70 KB per brick (94% reduction)
+
+// Query voxel data on-demand
+if (brickView.hasVoxel(x, y, z)) {
+    auto entity = brickView.getVoxel(x, y, z);
+    auto color = world.getComponentValue<Color>(entity);
+}
+```
+
+**Purpose**: Eliminate data duplication - SVO stores spatial index, ECS owns data
+
+**Location**: `libraries/GaiaVoxelWorld/include/EntityBrickView.h`
+
+---
+
+### 21. ESVO Ray Casting Pattern
+**Classes**: `LaineKarrasOctree`, `ESVOTraversalState`
+
+**Implementation**:
+```cpp
+// Build octree from entities
+LaineKarrasOctree octree(world, nullptr, maxLevels, brickDepth);
+octree.rebuild(world, worldMin, worldMax);
+
+// Cast ray
+auto hit = octree.castRay(origin, direction, tMin, tMax);
+if (hit.hit) {
+    glm::vec3 hitPoint = hit.hitPoint;
+    auto entity = hit.entity;
+}
+```
+
+**Key Algorithm Components**:
+- **Mirrored Space**: `octant_mask` XOR convention for ray direction handling
+- **Parametric Plane Traversal**: tx_coef, ty_coef, tz_coef for efficient octant selection
+- **Brick DDA**: 3D DDA within leaf bricks (Amanatides & Woo 1987)
+
+**Coordinate Conversion**:
+```cpp
+// Mirrored ↔ Local conversion
+int localOctant = mirroredIdx ^ ((~octant_mask) & 7);
+```
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp`
+
+---
+
+### 22. Partial Block Update Pattern
+**Classes**: `LaineKarrasOctree`
+
+**Implementation**:
+```cpp
+// Thread-safe partial updates
+octree.updateBlock(blockWorldMin, depth);  // Add or update brick
+octree.removeBlock(blockWorldMin, depth);  // Remove brick
+
+// Concurrency control for rendering
+octree.lockForRendering();
+// ... ray casting (GPU or CPU) ...
+octree.unlockAfterRendering();
+```
+
+**Internal Details**:
+- Uses `std::shared_mutex` for reader-writer locking
+- Brick lookup via hash map: `brickGridToBrickView[gridKey]`
+- Placement new for brick view updates (no default constructor)
+
+**Location**: `libraries/SVO/src/LaineKarrasOctree.cpp:2443-2552`
+
+---
+
+### 23. GLSL Shader Sync Pattern
+**Files**: `VoxelRayMarch.comp`, `OctreeTraversal-ESVO.glsl`
+
+**Key Functions (mirrored C++ ↔ GLSL)**:
+```glsl
+// Coordinate space conversion
+int mirrorMask(int mask, int octant_mask);
+int mirroredToLocalOctant(int mirroredIdx, int octant_mask);
+
+// Child descriptor navigation
+uint countChildrenBefore(uint childMask, int childIndex);
+
+// FP precision fix for rays starting inside voxels
+float t = max(max(brickT.x, startT), 0.0);
+```
+
+**Purpose**: Keep CPU (C++) and GPU (GLSL) implementations in sync
+
+**Location**: `shaders/VoxelRayMarch.comp`, `shaders/OctreeTraversal-ESVO.glsl`
+
+---
+
+## Week 2 GPU Integration Summary (December 2025)
+
+**Achievement**: 1,700 Mrays/sec (8.5x target of 200 Mrays/sec)
+
+### Key Components Added
+1. **GPUTimestampQuery** - Per-frame query pool management
+2. **GPUPerformanceLogger** - Rolling statistics with 60-frame window
+3. **Debug Capture System** - Frame-by-frame GPU debugging
+4. **Cornell Box Scene** - Reference test scene for validation
+
+### Documentation
+- `documentation/VulkanResources/GPUPerformanceSystem.md` - Complete API reference
+- `libraries/VulkanResources/README.md` - Library overview
+- `libraries/RenderGraph/README.md` - Node system overview

@@ -11,7 +11,7 @@
 #   cmake --build . && ctest --output-on-failure
 #
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15...4.2)
 
 # This CMakeLists aggregates all per-library test subdirectories so the top-level
 # CMake can simply call add_subdirectory(tests).
@@ -26,45 +26,50 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Helper macro: add subdirectory only if folder exists and contains CMakeLists.txt
-macro(maybe_add_subdir dir)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
-        message(STATUS "Adding tests subdir: ${dir}")
-        add_subdirectory(${dir})
-    else()
-        message(STATUS "Skipping tests subdir (missing): ${dir}")
-    endif()
-endmacro()
+# ============================================================================
+# Test Organization Note
+# ============================================================================
+#
+# Tests have been migrated to component-local directories:
+#   - CashSystem/tests/
+#   - EventBus/tests/
+#   - logger/tests/
+#   - RenderGraph/tests/
+#   - ResourceManagement/tests/
+#   - ShaderManagement/tests/
+#   - source/VulkanResources/tests/
+#
+# Each component's CMakeLists.txt now includes its own tests/ subdirectory
+# when BUILD_TESTS is enabled. This centralized tests/ directory is deprecated
+# and should be removed once migration is complete.
+#
+# ============================================================================
 
-# Helper macro: add external test directory from outside the tests/ folder
-macro(maybe_add_external_subdir dir)
-    if(EXISTS "${PROJECT_SOURCE_DIR}/${dir}/CMakeLists.txt")
-        message(STATUS "Adding external tests subdir: ${dir}")
-        add_subdirectory(${PROJECT_SOURCE_DIR}/${dir} ${CMAKE_CURRENT_BINARY_DIR}/${dir})
-    else()
-        message(STATUS "Skipping external tests subdir (missing): ${dir}")
-    endif()
-endmacro()
+# ============================================================================
+# Test Discovery Complete
+# ============================================================================
+# All component tests are now added via their respective CMakeLists.txt files:
+#   - logger/CMakeLists.txt includes logger/tests/
+#   - EventBus/CMakeLists.txt includes EventBus/tests/
+#   - ResourceManagement/CMakeLists.txt includes ResourceManagement/tests/
+#   - ShaderManagement/CMakeLists.txt includes ShaderManagement/tests/
+#   - source/VulkanResources/CMakeLists.txt includes source/VulkanResources/tests/
+#   - RenderGraph/CMakeLists.txt includes RenderGraph/tests/
+#   - CashSystem/CMakeLists.txt includes CashSystem/tests/
+#
+# This centralized tests/ directory serves only as a common configuration point.
+# No test targets are defined here directly.
 
-# List of test subfolders to include. Add new entries as needed.
-set(TEST_SUBFOLDERS
-    CashSystem
-    EventBus
-    ResourceManagement
-    Logger
-    VulkanResources
+# ============================================================================
+# Standalone Test Executables (Not Google Test)
+# ============================================================================
+
+# Coordinate System Test - Verifies Vulkan coordinate conventions
+add_executable(coordinate_system_test coordinate_system_test.cpp)
+target_link_libraries(coordinate_system_test PRIVATE glm::glm)
+set_target_properties(coordinate_system_test PROPERTIES
+    FOLDER "Tests/Standalone"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/binaries/tests"
 )
-
-set(EXTERNAL_TEST_DIRS
-    ShaderManagement/tests
-)
-
-foreach(subdir IN LISTS TEST_SUBFOLDERS)
-    maybe_add_subdir(${subdir})
-endforeach()
-
-foreach(external_subdir IN LISTS EXTERNAL_TEST_DIRS)
-    maybe_add_external_subdir(${external_subdir})
-endforeach()
 
 message(STATUS "Tests aggregation ready. Use ctest to run the discovered tests.")

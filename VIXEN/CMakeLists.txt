@@ -3,7 +3,7 @@
 # Graph-Based Rendering Environment
 #
 
-cmake_minimum_required(VERSION 3.11..4.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.11..4.2 FATAL_ERROR)
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
@@ -53,7 +53,30 @@ endif()
 # Parallel compilation (MSVC)
 if(MSVC)
     add_compile_options(/MP)  # Multi-processor compilation
+
+    # Suppress warnings from third-party libraries
+    # Use CMAKE_*_LINKER_FLAGS for compatibility with CMake < 3.13
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4099 /NOLOGO")
+
+    # Suppress warnings from external headers (angle-bracket includes)
+    add_compile_options(
+        /external:W0           # Suppress all warnings from external headers
+        /external:anglebrackets # Treat <> includes as external
+    )
+
+    # Suppress common third-party compile warnings
+    add_compile_options(
+        /wd4100  # Unreferenced formal parameter
+        /wd4189  # Local variable initialized but not referenced
+        /wd4244  # Conversion warnings
+        /wd4267  # Size_t conversion warnings
+    )
+
     message(STATUS "MSVC multi-processor compilation enabled")
+    message(STATUS "MSVC linker warnings suppressed (LNK4099: missing PDB files)")
+    message(STATUS "MSVC compile warnings suppressed for third-party libs (4100, 4189, 4244, 4267)")
 endif()
 
 # Generate compile_commands.json for better IDE integration
@@ -78,6 +101,12 @@ endif()
 # ============================================================================
 # Build Configuration
 # ============================================================================
+
+# Configure build output directories to use temp for intermediate files
+# Keep final binaries in project directory
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# Note: RUNTIME_OUTPUT_DIRECTORY is overridden per-target below to use binaries/
 
 # AUTO_LOCATE_VULKAN - accepted value ON or OFF
 # ON  - Use CMake to auto locate the Vulkan SDK.
@@ -240,84 +269,20 @@ if(BUILD_SPV_ON_COMPILE_TIME AND NOT VULKAN_TRIMMED_BUILD_ACTIVE)
 	# No additional link_directories needed - already configured at line 125
 endif()
 
-# GLM SETUP using FetchContent
-include(FetchContent)
-
-FetchContent_Declare(
-    glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG        1.0.1 # Use tag name directly
-)
-
-FetchContent_MakeAvailable(glm)
-
-# Fetch the latest Khronos Vulkan header files only if not already provided (e.g., by Vulkan SDK)
-if(NOT TARGET Vulkan::Headers)
-	FetchContent_Declare(
-		VulkanHeaders
-		GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
-		GIT_TAG main  # or pick a specific release, e.g., v1.3.300
-	)
-	FetchContent_MakeAvailable(VulkanHeaders)
-endif()
-
-# GLI Setup - header-only library for compressed texture loading (DDS/KTX)
-set(GLI_TEST_ENABLE OFF CACHE BOOL "" FORCE)  # Disable GLI tests
-FetchContent_Declare(
-	gli
-	GIT_REPOSITORY https://github.com/g-truc/gli.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE  # Shallow clone to reduce download size
-)
-
-FetchContent_MakeAvailable(gli)
-
-# STB Setup - header-only library for uncompressed image loading (PNG/JPG/etc)
-FetchContent_Declare(
-	stb
-	GIT_REPOSITORY https://github.com/nothings/stb.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE
-)
-
-FetchContent_MakeAvailable(stb)
-
-# ===== Global hash provider (OpenSSL or header-only fallback) =====
-find_package(OpenSSL QUIET)
-if(OpenSSL_FOUND)
-	message(STATUS "OpenSSL found - enabling global SHA256 support")
-	add_compile_definitions(HAS_OPENSSL)
-	include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
-else()
-	message(STATUS "OpenSSL not found - fetching header-only stbrumme/hash-library as fallback for SHA256")
-	FetchContent_Declare(
-		stbrumme_hash
-		GIT_REPOSITORY https://github.com/stbrumme/hash-library.git
-		GIT_TAG        master
-		GIT_SHALLOW    TRUE
-	)
-	FetchContent_MakeAvailable(stbrumme_hash)
-	add_compile_definitions(HAS_STBRUMME_HASH)
-	include_directories(BEFORE ${stbrumme_hash_SOURCE_DIR})
-endif()
-
-# Project-level hash provider interface
-add_library(ProjectHash INTERFACE)
-if(OpenSSL_FOUND)
-	target_link_libraries(ProjectHash INTERFACE OpenSSL::Crypto)
-	target_include_directories(ProjectHash INTERFACE ${OPENSSL_INCLUDE_DIR})
-	target_compile_definitions(ProjectHash INTERFACE HAS_OPENSSL)
-elseif(TARGET stbrumme_hash OR DEFINED stbrumme_hash_SOURCE_DIR)
-	# If we fetched stbrumme_hash, expose its include dir
-	target_include_directories(ProjectHash INTERFACE ${stbrumme_hash_SOURCE_DIR})
-	target_compile_definitions(ProjectHash INTERFACE HAS_STBRUMME_HASH)
-else()
-	# fallback - no external provider, ProjectHash provides compile-time macro for fallback
-	target_compile_definitions(ProjectHash INTERFACE HAS_HASH_FALLBACK)
-endif()
-
 # Specify a suitable project name
 project(${Recipe_Name})
+
+# MSVC parallel build PDB fix (must be right after project())
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FS")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /FS")
+endif()
+
+# ============================================================================
+# Third-Party Dependencies
+# ============================================================================
+# All FetchContent and external library setup moved to dependencies/
+add_subdirectory(dependencies)
 
 # Suppress warnings from external dependencies
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress deprecation warnings" FORCE)
@@ -343,13 +308,6 @@ endif()
 list(APPEND VULKAN_LIB_LIST "vulkan-1")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	# Vulkan headers include path (only when fetched)
-	if(DEFINED vulkanheaders_SOURCE_DIR)
-		include_directories(BEFORE ${vulkanheaders_SOURCE_DIR}/include)
-	endif()
-	include_directories(BEFORE ${gli_SOURCE_DIR})  # GLI is header-only
-	include_directories(BEFORE ${stb_SOURCE_DIR})  # STB is header-only
-
 	# Include Vulkan header files from Vulkan SDK
 	include_directories(AFTER ${VULKAN_PATH}/include)
 
@@ -358,141 +316,41 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
 endif()
 
-
-# Define directories and the contained folder and files inside.
-if(WIN32)
-    source_group("include" REGULAR_EXPRESSION "include/*")
-    source_group("source" REGULAR_EXPRESSION "source/*")
-endif(WIN32)
-
-# Define include path
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/logger)
+# ============================================================================
+# SHADER ASSETS
+# ============================================================================
+# Global shader source directory - GLSL files compiled by applications
+add_subdirectory(Shaders)
 
 # ============================================================================
 # LIBRARY STRUCTURE FOR INCREMENTAL COMPILATION
 # ============================================================================
-# Each node is a separate OBJECT library - changing one node won't recompile others
-# Core systems are static libraries with proper dependencies
+# Each component is a separate static library with proper CMake target-based dependencies
+# Changing one component won't force recompilation of others
 
-# Logger library (used by everything)
-file(GLOB LOGGER_CPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.cpp)
-file(GLOB LOGGER_HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/logger/*.h)
-add_library(Logger STATIC ${LOGGER_CPP_FILES} ${LOGGER_HPP_FILES})
-target_include_directories(Logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/logger)
-set_property(TARGET Logger PROPERTY CXX_STANDARD 23)
-
-# EventBus library (message passing, worker thread integration)
-add_subdirectory(EventBus)
-
-# ResourceManagement library (RM<T> wrapper with state tracking)
-add_subdirectory(ResourceManagement)
-
-# ShaderManagement library (device-agnostic shader compilation and hot reload)
-# Re-enabling for CashSystem integration
-add_subdirectory(ShaderManagement)
-
-# Vulkan Resources library (device, swapchain, descriptors, pipeline, shader, texture handling, time, error, utilities)
-file(GLOB_RECURSE VULKAN_RESOURCES_CPP
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanResources/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/TextureHandling/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/Time/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/error/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDescriptor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanPipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanShader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanSwapChain.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/wrapper.cpp
-)
-add_library(VulkanResources STATIC ${VULKAN_RESOURCES_CPP})
-target_link_libraries(VulkanResources PUBLIC ${VULKAN_LIB_LIST} glm::glm Logger)
-set_property(TARGET VulkanResources PROPERTY CXX_STANDARD 23)
-
-# RenderGraph static library (replaces old inline definitions)
-add_subdirectory(RenderGraph)
-
-# CashSystem static library (caching and resource management)
-add_subdirectory(CashSystem)
+add_subdirectory(libraries)
 
 # ============================================================================
-# MAIN EXECUTABLE
+# APPLICATION EXECUTABLES
 # ============================================================================
-# Main application files
-file(GLOB MAIN_CPP_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/main.cpp
-    # Legacy files - commented out for graph-based architecture migration
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplication.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanApplicationBase.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanGraphApplication.cpp
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanRenderer.cpp
-    # ${CMAKE_CURRENT_SOURCE_DIR}/source/VulkanDrawable.cpp
-)
-
-# All headers (for IDE project generation)
-file(GLOB_RECURSE HPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/*.*)
-
-# Build main executable
-add_executable(${Recipe_Name}
-    ${MAIN_CPP_FILES}
-    ${HPP_FILES}
-)
-
-# Link libraries to main executable
-target_link_libraries(${Recipe_Name}
-    RenderGraph
-    CashSystem
-    VulkanResources
-    Logger
-    ${VULKAN_LIB_LIST}
-    glm::glm
-)
-
-# Define project properties
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-set_property(TARGET ${Recipe_Name} PROPERTY RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_CURRENT_SOURCE_DIR}/binaries)
-
-# Define C++ version to be used for building the project
-set_property(TARGET ${Recipe_Name} PROPERTY CXX_STANDARD 23)
-set_property(TARGET ${Recipe_Name} PROPERTY CXX_STANDARD_REQUIRED ON)
-
-# Define C version to be used for building the project
-set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD 23)
-set_property(TARGET ${Recipe_Name} PROPERTY C_STANDARD_REQUIRED ON)
-
-# Add /FS flag for MSVC to allow multiple CL.EXE to write to the same PDB file
-if(MSVC)
-    target_compile_options(${Recipe_Name} PRIVATE /FS)
-endif()
+# All application entry points and executables
+add_subdirectory(application)
 
 # ============================================================================
 # TESTING INFRASTRUCTURE
 # ============================================================================
+# Note: GoogleTest is fetched early (near top of file) so all subdirectories can use it.
+# This section only enables CTest and adds root-level tests directory.
 
 if(BUILD_TESTS)
     # Enable testing with CTest
     enable_testing()
 
-    # Fetch Google Test framework
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0
-        GIT_SHALLOW    TRUE
-    )
-
-    # For Windows: Prevent overriding the parent project's compiler/linker settings
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-
-    # Don't install GTest when installing our project
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-
-    FetchContent_MakeAvailable(googletest)
-
-    # Add tests subdirectory
-    add_subdirectory(tests)
+    # Add root-level tests subdirectory (if it exists)
+    # Note: Subdirectories (RenderGraph, ShaderManagement, etc.) add their own tests
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_subdirectory(tests)
+    endif()
 
     message(STATUS "Unit tests enabled - use 'ctest' or 'make test' to run")
 else()
@@ -523,3 +381,12 @@ if(ENABLE_COVERAGE)
         COMMENT "Cleaning coverage data"
     )
 endif()
+
+# CompileTimeResourceSystem tests moved to RenderGraph/tests/
+# (See RenderGraph/tests/CMakeLists.txt for test configuration)
+
+# ============================================================================
+# Visual Studio Solution Organization
+# ============================================================================
+# Set VIXEN as the startup project in Visual Studio
+set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT VIXEN)
