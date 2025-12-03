@@ -1375,10 +1375,11 @@ TEST_F(EndToEndIntegrationTest, FullPipelineFlowWithMockVulkan) {
 
     // 4. Start benchmark suite
     ASSERT_TRUE(runner.StartSuite());
-    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Idle);  // StartSuite sets Idle, BeginNextTest sets Warmup
 
     // 5. Begin first test
     ASSERT_TRUE(runner.BeginNextTest());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
 
     // 6. Get adapter and verify it's accessible
     ProfilerGraphAdapter& adapter = runner.GetAdapter();
@@ -1782,14 +1783,15 @@ TEST_F(EndToEndIntegrationTest, BenchmarkStateTransitions) {
     TestConfiguration config = CreateValidConfig();
     runner.SetTestMatrix({config});
 
-    // Start suite
+    // Start suite - sets state to Idle (ready to begin tests)
     ASSERT_TRUE(runner.StartSuite());
-    EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
-    EXPECT_TRUE(runner.IsRunning());
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Idle);
+    EXPECT_FALSE(runner.IsRunning());  // Not "running" until BeginNextTest
 
-    // Begin test
+    // Begin test - transitions to Warmup
     ASSERT_TRUE(runner.BeginNextTest());
     EXPECT_EQ(runner.GetState(), BenchmarkState::Warmup);
+    EXPECT_TRUE(runner.IsRunning());
 
     // Record warmup frames
     for (uint32_t i = 0; i < config.warmupFrames; ++i) {
