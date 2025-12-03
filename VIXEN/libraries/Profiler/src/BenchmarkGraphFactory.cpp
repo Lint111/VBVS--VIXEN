@@ -592,6 +592,15 @@ void BenchmarkGraphFactory::WireProfilerHooks(
     // Get lifecycle hooks from the graph (returns reference)
     RG::GraphLifecycleHooks& hooks = graph->GetLifecycleHooks();
 
+    // TODO: OPTIMIZATION - Current implementation is O(N) per frame where N = node count.
+    // RegisterNodeHook fires for ALL nodes, then we filter by name inside callback.
+    // Same pattern used in TypedConnection::ConnectVariadic (RegisterVariadicResourcePopulationHook).
+    //
+    // Future improvement: Extend GraphLifecycleHooks with node-specific registration:
+    //   void RegisterNodeHook(phase, NodeHandle nodeHandle, callback, debugName);
+    // This would enable O(1) dispatch instead of O(N) filtering.
+    // See: RenderGraph/include/Core/GraphLifecycleHooks.h
+
     // Register node-level hooks for dispatch timing
     // PreExecute: Called before node executes (for dispatch begin timing)
     hooks.RegisterNodeHook(

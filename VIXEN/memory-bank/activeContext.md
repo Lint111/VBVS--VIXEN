@@ -119,6 +119,17 @@ while (runner.BeginNextTest()) {
 
 **Test Suite: 89 tests passing**
 
+### Known Optimization (Deferred)
+
+**Node-specific hook registration** - Current `GraphLifecycleHooks` broadcasts to ALL nodes, then filters by name inside callback (O(N) per hook per frame). Same pattern used in `TypedConnection::ConnectVariadic`.
+
+Future improvement: Extend `GraphLifecycleHooks` with node-filtered registration:
+```cpp
+void RegisterNodeHook(phase, NodeHandle nodeHandle, callback, debugName);  // O(1) dispatch
+```
+
+See TODO in `BenchmarkGraphFactory.cpp:594-602`.
+
 ---
 
 ## Reference Sources
