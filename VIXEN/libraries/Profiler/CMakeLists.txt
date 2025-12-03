@@ -15,6 +15,8 @@ add_library(Profiler STATIC
     src/MetricsCollector.cpp
     src/MetricsExporter.cpp
     src/BenchmarkConfig.cpp
+    src/BenchmarkRunner.cpp
+    src/SceneInfo.cpp
     src/ProfilerSystem.cpp
 )
 

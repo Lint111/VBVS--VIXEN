@@ -2,41 +2,29 @@
 
 **Last Updated**: December 3, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase I.1-I.3 COMPLETE - Core Profiler Infrastructure
+**Status**: Phase I.1-I.4 + VRAM Tracking COMPLETE
 
 ---
 
 ## Session Summary
 
-Implemented the complete Profiler library for Phase I Performance Profiling System:
+Extended Profiler library with VRAM tracking via VK_EXT_memory_budget:
 
 ### Completed This Session
-- Created `libraries/Profiler/` static library (follows EventBus/Logger pattern)
-- Implemented all core components: RollingStats, DeviceCapabilities, MetricsCollector, MetricsExporter, BenchmarkConfig, ProfilerSystem
-- Added nlohmann/json dependency via FetchContent
-- Created ProfilerGraphAdapter for RenderGraph integration
-- All 18 unit tests passing
+- Added VRAM usage tracking (`vramUsageMB`, `vramBudgetMB`) to FrameMetrics
+- Implemented `CollectVRAMUsage()` in MetricsCollector using VK_EXT_memory_budget
+- Added memory budget extension detection in Initialize()
+- Added rolling stats for vram_usage and vram_budget metrics
+- Added 8 new unit tests (DeviceCapabilities, VRAM fields)
+- All 26 unit tests passing (18 original + 8 new)
 
-### Files Created
-| File | Purpose |
-|------|---------|
-| `libraries/Profiler/CMakeLists.txt` | Library build config |
-| `libraries/Profiler/include/Profiler/ProfilerSystem.h` | Main singleton system |
-| `libraries/Profiler/include/Profiler/RollingStats.h` | Statistics with percentiles |
-| `libraries/Profiler/include/Profiler/DeviceCapabilities.h` | GPU info capture |
-| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Metric structs |
-| `libraries/Profiler/include/Profiler/MetricsCollector.h` | Hook-based collection |
-| `libraries/Profiler/include/Profiler/MetricsExporter.h` | CSV/JSON export |
-| `libraries/Profiler/include/Profiler/BenchmarkConfig.h` | Config + JSON loader |
-| `libraries/Profiler/include/Profiler/ProfilerGraphAdapter.h` | RenderGraph bridge |
-| `libraries/Profiler/src/*.cpp` | All implementations |
-| `libraries/Profiler/tests/test_profiler.cpp` | 18 unit tests |
-
-### Files Modified
+### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/CMakeLists.txt` | Added `add_subdirectory(Profiler)` |
-| `dependencies/CMakeLists.txt` | Added nlohmann/json via FetchContent |
+| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Added `vramBudgetMB` field |
+| `libraries/Profiler/include/Profiler/MetricsCollector.h` | Added `memoryBudgetSupported_`, `CollectVRAMUsage()` |
+| `libraries/Profiler/src/MetricsCollector.cpp` | VRAM budget detection + querying |
+| `libraries/Profiler/tests/test_profiler.cpp` | Added 8 new tests (DeviceCapabilities, VRAM) |
 
 ---
 
@@ -54,8 +42,8 @@ Implemented the complete Profiler library for Phase I Performance Profiling Syst
 
 ### Test Results
 ```
-[==========] 18 tests from 3 test suites ran.
-[  PASSED  ] 18 tests.
+[==========] 26 tests from 4 test suites ran.
+[  PASSED  ] 26 tests.
 ```
 
 ---
@@ -140,6 +128,13 @@ ProfilerSystem::Instance().EndTestRun(true);  // auto-export
 
 ## Reference Sources
 
+### Experimental Setup (Assignment 3)
+- **Document**: `C:\Users\liory\Downloads\Experimental Setup - Assignment 3 2ad1204525ac81e5996df013045cc57d.md`
+- **Research Question**: How do different Vulkan ray tracing pipeline architectures affect performance, bandwidth, and scalability?
+- **Pipelines**: Hardware RT, Compute Shader, Fragment Shader, Hybrid
+- **Tests**: Resolution scaling (32³-512³), Density variation (10-90%), Ray complexity, Dynamic updates
+- **Key JSON Schema**: Section 5.2 defines target export format for benchmark data
+
 ### ESVO Implementation Paths
 - Paper: `C:\Users\liory\Downloads\source-archive\efficient-sparse-voxel-octrees\`
 - Key files: `trunk/src/octree/Octree.cpp` (castRay), `trunk/src/octree/build/Builder.cpp`
@@ -220,8 +215,9 @@ ProfilerSystem::Instance().EndTestRun(true);  // auto-export
 - [ ] l2_cache_hit_rate (%) - if available
 - [ ] memory_transactions_per_frame
 
-### Resource Utilization ⏳
-- [ ] vram_mb (VK_EXT_memory_budget)
+### Resource Utilization ✅
+- [x] vram_usage_mb (VK_EXT_memory_budget) - implemented
+- [x] vram_budget_mb (VK_EXT_memory_budget) - implemented
 - [ ] gpu_utilization_percent (vendor-specific)
 - [ ] acceleration_structure_size_mb (HW RT only)
 

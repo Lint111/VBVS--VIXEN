@@ -40,52 +40,63 @@ void MetricsExporter::ExportToJSON(
 
     nlohmann::json j;
 
-    // Metadata
-    j["metadata"]["timestamp"] = GetISO8601Timestamp();
-    j["metadata"]["pipeline"] = config.pipeline;
-    j["metadata"]["algorithm"] = config.algorithm;
-    j["metadata"]["scene_type"] = config.sceneType;
-    j["metadata"]["voxel_resolution"] = config.voxelResolution;
-    j["metadata"]["density_percent"] = config.densityPercent;
-    j["metadata"]["screen_width"] = config.screenWidth;
-    j["metadata"]["screen_height"] = config.screenHeight;
-    j["metadata"]["warmup_frames"] = config.warmupFrames;
-    j["metadata"]["measurement_frames"] = config.measurementFrames;
+    // Test identification (Section 5.2 schema)
+    j["test_id"] = config.testId.empty() ? config.GenerateTestId() : config.testId;
+    j["timestamp"] = GetISO8601Timestamp();
 
-    // Device info
-    j["device"]["name"] = device.deviceName;
-    j["device"]["driver_version"] = device.driverVersion;
-    j["device"]["vulkan_version"] = device.vulkanVersion;
-    j["device"]["vram_mb"] = device.totalVRAM_MB;
-    j["device"]["type"] = device.GetDeviceTypeString();
+    // Configuration block
+    j["configuration"]["pipeline"] = config.pipeline;
+    j["configuration"]["algorithm"] = config.algorithm;
+    j["configuration"]["resolution"] = config.voxelResolution;
+    j["configuration"]["density_percent"] = static_cast<int>(config.densityPercent * 100.0f);
+    j["configuration"]["scene_type"] = config.sceneType;
+    j["configuration"]["optimizations"] = config.optimizations;
 
-    // Frame data
+    // Device info block
+    j["device"]["gpu"] = device.deviceName;
+    j["device"]["driver"] = device.driverVersion;
+    j["device"]["vram_gb"] = device.totalVRAM_MB / 1024.0;
+
+    // Check if any frame has estimated bandwidth
+    bool anyBandwidthEstimated = false;
+    for (const auto& frame : frames) {
+        if (frame.bandwidthEstimated) {
+            anyBandwidthEstimated = true;
+            break;
+        }
+    }
+    if (anyBandwidthEstimated) {
+        j["device"]["bandwidth_estimated"] = true;
+    }
+
+    // Frame data array (Section 5.2 schema)
     nlohmann::json framesArray = nlohmann::json::array();
     for (const auto& frame : frames) {
         nlohmann::json f;
-        f["frame"] = frame.frameNumber;
-        f["timestamp_ms"] = frame.timestampMs;
+        f["frame_num"] = frame.frameNumber;
         f["frame_time_ms"] = frame.frameTimeMs;
-        f["gpu_time_ms"] = frame.gpuTimeMs;
-        f["bandwidth_read_gb"] = frame.bandwidthReadGB;
-        f["bandwidth_write_gb"] = frame.bandwidthWriteGB;
-        f["vram_mb"] = frame.vramUsageMB;
-        f["mrays_per_sec"] = frame.mRaysPerSec;
         f["fps"] = frame.fps;
+        f["bandwidth_read_gbps"] = frame.bandwidthReadGB;
+        f["bandwidth_write_gbps"] = frame.bandwidthWriteGB;
+        f["ray_throughput_mrays"] = frame.mRaysPerSec;
+        f["vram_mb"] = frame.vramUsageMB;
+        f["avg_voxels_per_ray"] = frame.avgVoxelsPerRay;
         framesArray.push_back(f);
     }
     j["frames"] = framesArray;
 
-    // Aggregates
-    for (const auto& [name, stats] : aggregates) {
-        j["aggregates"][name]["min"] = stats.min;
-        j["aggregates"][name]["max"] = stats.max;
-        j["aggregates"][name]["mean"] = stats.mean;
-        j["aggregates"][name]["stddev"] = stats.stddev;
-        j["aggregates"][name]["p1"] = stats.p1;
-        j["aggregates"][name]["p50"] = stats.p50;
-        j["aggregates"][name]["p99"] = stats.p99;
-        j["aggregates"][name]["sample_count"] = stats.sampleCount;
+    // Statistics block (Section 5.2 schema)
+    if (aggregates.count("frame_time_ms")) {
+        const auto& ft = aggregates.at("frame_time_ms");
+        j["statistics"]["frame_time_mean"] = ft.mean;
+        j["statistics"]["frame_time_stddev"] = ft.stddev;
+        j["statistics"]["frame_time_p99"] = ft.p99;
+    }
+    if (aggregates.count("fps")) {
+        j["statistics"]["fps_mean"] = aggregates.at("fps").mean;
+    }
+    if (aggregates.count("bandwidth_read_gb")) {
+        j["statistics"]["bandwidth_mean"] = aggregates.at("bandwidth_read_gb").mean;
     }
 
     std::ofstream file(filepath);
@@ -219,12 +230,102 @@ std::string TestConfiguration::GetDefaultFilename() const {
 }
 
 bool TestConfiguration::Validate() const {
-    if (pipeline.empty() || algorithm.empty() || sceneType.empty()) return false;
-    if (voxelResolution == 0 || voxelResolution > 4096) return false;
-    if (densityPercent < 0.0f || densityPercent > 1.0f) return false;
-    if (screenWidth == 0 || screenHeight == 0) return false;
-    if (measurementFrames == 0) return false;
-    return true;
+    return ValidateWithErrors().empty();
+}
+
+std::vector<std::string> TestConfiguration::ValidateWithErrors() const {
+    std::vector<std::string> errors;
+
+    // Pipeline validation
+    if (pipeline.empty()) {
+        errors.push_back("pipeline: must not be empty");
+    } else if (ParsePipelineType(pipeline) == PipelineType::Invalid) {
+        errors.push_back("pipeline: must be one of: compute, fragment, hardware_rt, hybrid");
+    }
+
+    // Algorithm validation
+    if (algorithm.empty()) {
+        errors.push_back("algorithm: must not be empty");
+    }
+
+    // Scene type validation
+    if (sceneType.empty()) {
+        errors.push_back("sceneType: must not be empty");
+    }
+
+    // Resolution validation (must be power of 2: 32, 64, 128, 256, 512)
+    if (!IsValidResolution(voxelResolution)) {
+        errors.push_back("voxelResolution: must be power of 2 (32, 64, 128, 256, or 512)");
+    }
+
+    // Density validation (0-100 or 0-1 depending on usage)
+    // Support both 0-1 and 0-100 ranges for backward compatibility
+    if (densityPercent < 0.0f) {
+        errors.push_back("densityPercent: must be >= 0");
+    } else if (densityPercent > 100.0f) {
+        errors.push_back("densityPercent: must be <= 100");
+    }
+
+    // Screen dimensions validation
+    if (screenWidth == 0) {
+        errors.push_back("screenWidth: must be > 0");
+    }
+    if (screenHeight == 0) {
+        errors.push_back("screenHeight: must be > 0");
+    }
+
+    // Frame count validation
+    if (warmupFrames < 10) {
+        errors.push_back("warmupFrames: must be >= 10");
+    }
+    if (measurementFrames < 100) {
+        errors.push_back("measurementFrames: must be >= 100");
+    }
+
+    return errors;
+}
+
+std::string TestConfiguration::GenerateTestId(uint32_t runNumber) const {
+    std::ostringstream oss;
+
+    // Pipeline prefix
+    if (pipeline == "hardware_rt") {
+        oss << "HW_RT";
+    } else if (pipeline == "compute") {
+        oss << "COMPUTE";
+    } else if (pipeline == "fragment") {
+        oss << "FRAGMENT";
+    } else if (pipeline == "hybrid") {
+        oss << "HYBRID";
+    } else {
+        oss << pipeline;
+    }
+
+    oss << "_" << voxelResolution;
+
+    // Scene type (uppercase)
+    std::string sceneUpper = sceneType;
+    for (char& c : sceneUpper) {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    oss << "_" << sceneUpper;
+
+    // Algorithm (uppercase)
+    std::string algoUpper = algorithm;
+    for (char& c : algoUpper) {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    oss << "_" << algoUpper;
+
+    oss << "_RUN" << runNumber;
+
+    return oss.str();
+}
+
+bool TestConfiguration::IsValidResolution(uint32_t resolution) {
+    // Valid resolutions are powers of 2: 32, 64, 128, 256, 512
+    return resolution == 32 || resolution == 64 || resolution == 128 ||
+           resolution == 256 || resolution == 512;
 }
 
 } // namespace Vixen::Profiler

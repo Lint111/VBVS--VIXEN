@@ -1,8 +1,14 @@
 #include <gtest/gtest.h>
 #include "Profiler/RollingStats.h"
 #include "Profiler/BenchmarkConfig.h"
+#include "Profiler/BenchmarkRunner.h"
 #include "Profiler/FrameMetrics.h"
 #include "Profiler/DeviceCapabilities.h"
+#include "Profiler/SceneInfo.h"
+#include "Profiler/MetricsExporter.h"
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
 
 using namespace Vixen::Profiler;
 
