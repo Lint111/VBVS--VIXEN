@@ -107,15 +107,15 @@ const float EPSILON = 1e-6;     // General epsilon for floating point comparison
 const float DIR_EPSILON = 1e-5; // Epsilon for ray direction (axis-parallel detection)
 
 // Debug flags (disabled by default for compressed variant)
-#define DEBUG_OCTANT_MASK 1
-#define DEBUG_ISOLATE_OCTANT 2
-#define DEBUG_ONLY_OCTANT 3
-#define DEBUG_FORCE_OCTANT_ZERO 4
-#define DEBUG_LOCAL_NORM 5
-#define DEBUG_BRICK_COORD 6
-#define DEBUG_FIRST_VOXEL 7
-#define DEBUG_RAY_BRICK_LOOKUP 8
-#define DEBUG_BYPASS_ESVO 9
+#define DEBUG_OCTANT_MASK 0
+#define DEBUG_ISOLATE_OCTANT 0
+#define DEBUG_ONLY_OCTANT 0
+#define DEBUG_FORCE_OCTANT_ZERO 0
+#define DEBUG_LOCAL_NORM 0
+#define DEBUG_BRICK_COORD 0
+#define DEBUG_FIRST_VOXEL 0
+#define DEBUG_RAY_BRICK_LOOKUP 0
+#define DEBUG_BYPASS_ESVO 0
 #define DEBUG_AXIS_PARALLEL 0
 
 // Per-ray trace recording disabled for compressed variant
@@ -315,6 +315,9 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
 // ============================================================================
 
 bool shouldCaptureDebug(ivec2 pixelCoords) {
+    // Capture center pixel (assuming 800x600)
+    if (pixelCoords.x == 400 && pixelCoords.y == 300) return true;
+
     // Capture if pixel is on grid intersection
     return (pixelCoords.x % DEBUG_GRID_SPACING == 0) && 
            (pixelCoords.y % DEBUG_GRID_SPACING == 0);
@@ -332,7 +335,7 @@ bool beginRayTrace(ivec2 pixelCoords) {
     
     // Atomic increment to get a slot
     uint slot = atomicAdd(traceWriteIndex, 1);
-    if (slot >= traceCapacity) return false;
+    if (slot >= 256) return false;
     
     g_traceRaySlot = slot;
     g_traceStepCount = 0;
@@ -684,7 +687,12 @@ bool executePopPhase(inout TraversalState state, RayCoefficients coef,
         ? min(findMSB(differing_bits) + state.scale, octreeConfig.esvoMaxScale)
         : octreeConfig.esvoMaxScale;
 
-    if (state.scale >= octreeConfig.esvoMaxScale || state.t_min > state.t_max) {
+    // FIX: Add epsilon tolerance and position bounds check to prevent infinite loops
+    if (state.scale >= octreeConfig.esvoMaxScale || state.t_min > state.t_max + EPSILON) {
+        return false;
+    }
+    // FIX: Check if position has exited valid [1,2] ESVO range
+    if (any(lessThan(state.pos, vec3(1.0 - EPSILON))) || any(greaterThanEqual(state.pos, vec3(2.0 + EPSILON)))) {
         return false;
     }
 
@@ -910,6 +918,13 @@ bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
             break;
         }
 
+        // Position bounds check - terminate if clearly outside [1,2]³ ESVO space
+        // Use generous bounds to avoid killing valid rays at edges
+        if (any(lessThan(state.pos, vec3(0.5))) || any(greaterThan(state.pos, vec3(2.5)))) {
+            debugSample.exitCode = DEBUG_EXIT_STACK;
+            break;
+        }
+
         uvec2 parentDescriptor = fetchESVONode(state.parentPtr);
         uint validMask = getValidMask(parentDescriptor);
         uint leafMask = getLeafMask(parentDescriptor);
@@ -925,6 +940,8 @@ bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
                                                    parentDescriptor, validMask, leafMask,
                                                    state.parentPtr, stack, hitColor, hitNormal, hitT);
             if (leafHit) {
+                recordTraceStep(TRACE_STEP_HIT, state.parentPtr, state.scale, uint(coef.octant_mask),
+                               state.pos, state.t_min, state.t_max, parentDescriptor);
                 debugSample.hitFlag = 1u;
                 debugSample.exitCode = DEBUG_EXIT_HIT;
                 snapshotTraversalState(state, coef, debugSample);
@@ -933,6 +950,8 @@ bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         }
 
         if (childValid && !isLeaf) {
+            recordTraceStep(TRACE_STEP_PUSH, state.parentPtr, state.scale, uint(coef.octant_mask),
+                           state.pos, state.t_min, state.t_max, parentDescriptor);
             executePushPhase(state, coef, stack, validMask, leafMask, childPointer,
                            tv_max, tx_center, ty_center, tz_center);
             continue;
@@ -943,15 +962,21 @@ bool traverseOctree(vec3 rayStartWorld, vec3 rayDir, vec3 gridMin, vec3 gridMax,
         debugSample.lastStepMask = uint(step_mask);
 
         if (advanceResult == 0) {
+            recordTraceStep(TRACE_STEP_ADVANCE, state.parentPtr, state.scale, uint(coef.octant_mask),
+                           state.pos, state.t_min, state.t_max, parentDescriptor);
             continue;
         }
 
+        recordTraceStep(TRACE_STEP_POP, state.parentPtr, state.scale, uint(coef.octant_mask),
+                       state.pos, state.t_min, state.t_max, parentDescriptor);
         if (!executePopPhase(state, coef, stack)) {
             debugSample.exitCode = DEBUG_EXIT_STACK;
             break;
         }
     }
 
+    recordTraceStep(TRACE_STEP_MISS, state.parentPtr, state.scale, uint(coef.octant_mask),
+                   state.pos, state.t_min, state.t_max, uvec2(0u));
     debugSample.hitFlag = 0u;
     if (debugSample.exitCode == DEBUG_EXIT_NONE) {
         debugSample.exitCode = DEBUG_EXIT_NO_HIT;
@@ -987,6 +1012,9 @@ void main() {
     vec3 rayOrigin = pc.cameraPos;
     vec3 rayDir = getRayDir(uv);
 
+    // Begin trace recording for selected pixels
+    bool tracing = beginRayTrace(pixelCoords);
+
     vec3 color = vec3(0.0);
     float hitT = 0.0;
     DebugRaySample debugSample;
@@ -1019,12 +1047,17 @@ void main() {
         bool hit = traverseOctree(rayOrigin, rayDir, vec3(0.0), vec3(1.0),
                                   hitColor, hitNormal, hitT, debugSample);
 
+        // End trace recording
+        endRayTrace(hit);
+
         if (hit) {
             color = computeLighting(hitColor, hitNormal, rayDir);
         } else {
             color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
         }
     } else {
+        // End trace recording for rays that miss AABB
+        endRayTrace(false);
         color = vec3(0.5, 0.7, 1.0) * (1.0 - uv.y * 0.5);
     }
 

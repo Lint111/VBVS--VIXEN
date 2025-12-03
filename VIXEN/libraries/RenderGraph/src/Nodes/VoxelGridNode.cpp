@@ -440,28 +440,34 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
         config.bricksPerAxis = octreeData->bricksPerAxis;
 
-        // Grid bounds - store actual grid extents for reference
-        config.gridMinX = worldMin.x;
-        config.gridMinY = worldMin.y;
-        config.gridMinZ = worldMin.z;
-        config.gridMaxX = worldMax.x;
-        config.gridMaxY = worldMax.y;
-        config.gridMaxZ = worldMax.z;
+        // Grid bounds
+        config.gridMinX = 0.0f;
+        config.gridMinY = 0.0f;
+        config.gridMinZ = 0.0f;
+        config.gridMaxX = static_cast<float>(resolution);
+        config.gridMaxY = static_cast<float>(resolution);
+        config.gridMaxZ = static_cast<float>(resolution);
 
         // Compute Transformation Matrices
-        // Maps Normalized Local [0,1]³ ↔ World [worldMin, worldMax]
-        // Shader: World → Local [0,1]³ → +1.0 → ESVO [1,2]³
-        glm::vec3 worldSize = worldMax - worldMin;
-        glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), worldSize);
-        glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), worldMin);
+        // Define the grid's transform in world space
+        // TEST: Use fixed 10x10x10 world size instead of resolution-based
+        // This makes the grid smaller in world space for easier camera navigation
+        // Local Space is defined as [0, 1] unit cube
+        constexpr float WORLD_GRID_SIZE = 10.0f;  // World units per axis
+        glm::vec3 gridScale(WORLD_GRID_SIZE);
+        glm::vec3 gridTranslation(0.0f);
+        glm::vec3 gridRotation(0.0f); // Euler angles if needed
 
-        // Local [0,1]³ → World [worldMin, worldMax]
+        // Model Matrix: Local [0,1] -> World
+        // Scale to fixed world size (not resolution-based)
+        glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), gridScale);
+        glm::mat4 translateMat = glm::translate(glm::mat4(1.0f), gridTranslation);
+        // Rotation would go here
+
         config.localToWorld = translateMat * scaleMat;
         config.worldToLocal = glm::inverse(config.localToWorld);
 
-        std::cout << "[VoxelGridNode] World bounds: [" << worldMin.x << "," << worldMin.y << "," << worldMin.z
-                  << "] to [" << worldMax.x << "," << worldMax.y << "," << worldMax.z << "]" << std::endl;
-        std::cout << "[VoxelGridNode] Transforms: Local [0,1]³ ↔ World [" << worldMin.x << "," << worldMax.x << "]³" << std::endl;
+        std::cout << "[VoxelGridNode] World grid size: " << WORLD_GRID_SIZE << "^3 units" << std::endl;
 
         std::cout << "[VoxelGridNode] OctreeConfig: esvoMaxScale=" << config.esvoMaxScale
                   << ", userMaxLevels=" << config.userMaxLevels
@@ -1337,43 +1343,30 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
 
     size_t nonZeroVoxels = 0;
 
-    // Check if brickMaterialData is pre-populated (Week 4 fix)
-    if (!rootBlock.brickMaterialData.empty() && rootBlock.brickMaterialData.size() == brickViews.size() * voxelsPerBrick) {
-        std::cout << "[VoxelGridNode::UploadESVOBuffers] Using pre-computed brickMaterialData from SVORebuild" << std::endl;
-        sparseBrickData = rootBlock.brickMaterialData;
-        
-        // Count non-zero voxels for stats
-        for (uint32_t val : sparseBrickData) {
-            if (val != 0) nonZeroVoxels++;
-        }
-    } else {
-        std::cout << "[VoxelGridNode::UploadESVOBuffers] Fallback: Building brick data from VoxelGrid (legacy)" << std::endl;
-        
-        // Upload brick data in brickViews order (sparse index = brickViewIndex)
-        for (size_t viewIdx = 0; viewIdx < brickViews.size(); ++viewIdx) {
-            const auto& view = brickViews[viewIdx];
-            const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
+    // Upload brick data in brickViews order (sparse index = brickViewIndex)
+    for (size_t viewIdx = 0; viewIdx < brickViews.size(); ++viewIdx) {
+        const auto& view = brickViews[viewIdx];
+        const glm::ivec3 gridOrigin = view.getLocalGridOrigin();
 
-            // Extract voxel data for this brick directly from grid
-            for (int z = 0; z < brickSideLength; ++z) {
-                for (int y = 0; y < brickSideLength; ++y) {
-                    for (int x = 0; x < brickSideLength; ++x) {
-                        int worldX = gridOrigin.x + x;
-                        int worldY = gridOrigin.y + y;
-                        int worldZ = gridOrigin.z + z;
+        // Extract voxel data for this brick directly from grid
+        for (int z = 0; z < brickSideLength; ++z) {
+            for (int y = 0; y < brickSideLength; ++y) {
+                for (int x = 0; x < brickSideLength; ++x) {
+                    int worldX = gridOrigin.x + x;
+                    int worldY = gridOrigin.y + y;
+                    int worldZ = gridOrigin.z + z;
 
-                        uint32_t materialId = 0;
-                        if (worldX >= 0 && worldX < static_cast<int>(gridRes) &&
-                            worldY >= 0 && worldY < static_cast<int>(gridRes) &&
-                            worldZ >= 0 && worldZ < static_cast<int>(gridRes)) {
-                            size_t gridIdx = static_cast<size_t>(worldZ) * gridRes * gridRes +
-                                             static_cast<size_t>(worldY) * gridRes + worldX;
-                            materialId = static_cast<uint32_t>(gridData[gridIdx]);
-                            if (materialId != 0) nonZeroVoxels++;
-                        }
-
-                        sparseBrickData.push_back(materialId);
+                    uint32_t materialId = 0;
+                    if (worldX >= 0 && worldX < static_cast<int>(gridRes) &&
+                        worldY >= 0 && worldY < static_cast<int>(gridRes) &&
+                        worldZ >= 0 && worldZ < static_cast<int>(gridRes)) {
+                        size_t gridIdx = static_cast<size_t>(worldZ) * gridRes * gridRes +
+                                         static_cast<size_t>(worldY) * gridRes + worldX;
+                        materialId = static_cast<uint32_t>(gridData[gridIdx]);
+                        if (materialId != 0) nonZeroVoxels++;
                     }
+
+                    sparseBrickData.push_back(materialId);
                 }
             }
         }

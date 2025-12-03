@@ -329,8 +329,12 @@ void snapshotTraversalState(TraversalState state, RayCoefficients coef, inout De
 // Returns true if this pixel should capture debug data (grid-based sampling)
 // PERFORMANCE: Set to false for benchmarking - eliminates atomic operations and buffer writes
 bool shouldCaptureDebug(ivec2 pixelCoords) {
-    return false;  // Disabled for performance benchmark
-    // Original: return (pixelCoords.x % DEBUG_GRID_SPACING == 0) && (pixelCoords.y % DEBUG_GRID_SPACING == 0);
+    // Capture center pixel (assuming 800x600)
+    if (pixelCoords.x == 400 && pixelCoords.y == 300) return true;
+
+    // Capture if pixel is on grid intersection
+    return (pixelCoords.x % DEBUG_GRID_SPACING == 0) && 
+           (pixelCoords.y % DEBUG_GRID_SPACING == 0);
 }
 
 // Size constants for buffer layout
