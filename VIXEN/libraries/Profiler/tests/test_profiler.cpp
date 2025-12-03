@@ -806,3 +806,93 @@ TEST(FrameMetricsTest, NewFieldsCanBeSet) {
     EXPECT_EQ(metrics.totalRaysCast, 1'920'000u);
     EXPECT_TRUE(metrics.bandwidthEstimated);
 }
+
+// ============================================================================
+// BenchmarkGraphFactory Tests
+// ============================================================================
+
+#include "Profiler/BenchmarkGraphFactory.h"
+
+// Note: These tests validate the struct initialization and validation logic.
+// Full integration tests requiring a RenderGraph instance would need the
+// RenderGraph library with a NodeTypeRegistry, which is beyond unit test scope.
+
+TEST(BenchmarkGraphFactoryTest, InfrastructureNodesDefaultInvalid) {
+    InfrastructureNodes nodes{};
+    EXPECT_FALSE(nodes.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, ComputePipelineNodesDefaultInvalid) {
+    ComputePipelineNodes nodes{};
+    EXPECT_FALSE(nodes.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, RayMarchNodesDefaultInvalid) {
+    RayMarchNodes nodes{};
+    EXPECT_FALSE(nodes.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, OutputNodesDefaultInvalid) {
+    OutputNodes nodes{};
+    EXPECT_FALSE(nodes.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, BenchmarkGraphDefaultInvalid) {
+    BenchmarkGraph graph{};
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildInfrastructureNullGraphThrows) {
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildInfrastructure(nullptr, 800, 600),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildComputePipelineInvalidInfraThrows) {
+    InfrastructureNodes invalidInfra{};  // All handles invalid
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildComputePipeline(nullptr, invalidInfra, "test.comp"),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildRayMarchSceneInvalidInfraThrows) {
+    InfrastructureNodes invalidInfra{};
+    SceneInfo scene = SceneInfo::FromResolutionAndDensity(128, 50.0f, "test");
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildRayMarchScene(nullptr, invalidInfra, scene),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildOutputInvalidInfraThrows) {
+    InfrastructureNodes invalidInfra{};
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildOutput(nullptr, invalidInfra),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, ConnectComputeRayMarchNullGraphThrows) {
+    InfrastructureNodes infra{};
+    ComputePipelineNodes compute{};
+    RayMarchNodes rayMarch{};
+    OutputNodes output{};
+
+    EXPECT_THROW(
+        BenchmarkGraphFactory::ConnectComputeRayMarch(nullptr, infra, compute, rayMarch, output),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, BuildComputeRayMarchGraphNullGraphThrows) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+
+    EXPECT_THROW(
+        BenchmarkGraphFactory::BuildComputeRayMarchGraph(nullptr, config, 800, 600),
+        std::invalid_argument
+    );
+}

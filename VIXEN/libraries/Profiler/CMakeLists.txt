@@ -16,6 +16,7 @@ add_library(Profiler STATIC
     src/MetricsExporter.cpp
     src/BenchmarkConfig.cpp
     src/BenchmarkRunner.cpp
+    src/BenchmarkGraphFactory.cpp
     src/SceneInfo.cpp
     src/ProfilerSystem.cpp
 )
@@ -38,6 +39,7 @@ target_link_libraries(Profiler
     PUBLIC
         Logger
         nlohmann_json::nlohmann_json
+        RenderGraph
     PRIVATE
         VulkanResources
 )
