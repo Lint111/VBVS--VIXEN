@@ -5,11 +5,18 @@
 #include "DeviceCapabilities.h"
 #include "MetricsExporter.h"
 #include "RollingStats.h"
+#include "BenchmarkGraphFactory.h"
+#include "ProfilerGraphAdapter.h"
 #include <string>
 #include <vector>
 #include <functional>
 #include <filesystem>
 #include <memory>
+
+// Forward declarations to avoid circular includes
+namespace Vixen::RenderGraph {
+    class RenderGraph;
+}
 
 namespace Vixen::Profiler {
 
@@ -132,6 +139,90 @@ public:
     /// Check if hardware performance queries are available
     bool HasHardwarePerformanceCounters() const;
 
+    //==========================================================================
+    // Graph Management (Integration with BenchmarkGraphFactory)
+    //==========================================================================
+
+    /// Graph factory callback type
+    /// @param graph RenderGraph to build into
+    /// @param config Current test configuration
+    /// @param width Window/render width
+    /// @param height Window/render height
+    /// @return BenchmarkGraph containing node handles
+    using GraphFactoryFunc = std::function<BenchmarkGraph(
+        Vixen::RenderGraph::RenderGraph* graph,
+        const TestConfiguration& config,
+        uint32_t width,
+        uint32_t height
+    )>;
+
+    /**
+     * @brief Set custom graph factory function
+     *
+     * By default, uses BenchmarkGraphFactory::BuildComputeRayMarchGraph.
+     * Override for custom graph construction.
+     *
+     * @param factory Function to create graphs for tests
+     */
+    void SetGraphFactory(GraphFactoryFunc factory);
+
+    /**
+     * @brief Set render dimensions for graph creation
+     *
+     * @param width Window/render width in pixels
+     * @param height Window/render height in pixels
+     */
+    void SetRenderDimensions(uint32_t width, uint32_t height);
+
+    /**
+     * @brief Create a benchmark graph for the current test configuration
+     *
+     * Creates graph using the factory function and wires profiler hooks.
+     * Call after BeginNextTest() to create graph for current test.
+     *
+     * @param graph RenderGraph to build into (externally owned)
+     * @return BenchmarkGraph with node handles, or empty graph if creation failed
+     */
+    BenchmarkGraph CreateGraphForCurrentTest(Vixen::RenderGraph::RenderGraph* graph);
+
+    /**
+     * @brief Get the profiler adapter for manual hook wiring
+     *
+     * Use this to access the adapter for frame callbacks in render loop:
+     * @code
+     * runner.GetAdapter().SetFrameContext(cmdBuffer, frameIndex);
+     * runner.GetAdapter().OnFrameBegin();
+     * // ... dispatch ...
+     * runner.GetAdapter().OnDispatchEnd(dispatchW, dispatchH);
+     * runner.GetAdapter().OnFrameEnd();
+     * @endcode
+     *
+     * @return Reference to ProfilerGraphAdapter
+     */
+    ProfilerGraphAdapter& GetAdapter() { return adapter_; }
+
+    /**
+     * @brief Get const reference to adapter
+     */
+    const ProfilerGraphAdapter& GetAdapter() const { return adapter_; }
+
+    /**
+     * @brief Get current benchmark graph structure (if created)
+     *
+     * @return Current BenchmarkGraph or empty if no graph created
+     */
+    const BenchmarkGraph& GetCurrentGraph() const { return currentGraph_; }
+
+    /**
+     * @brief Check if a graph has been created for current test
+     */
+    bool HasCurrentGraph() const { return currentGraph_.IsValid(); }
+
+    /**
+     * @brief Clear current graph (call before destroying RenderGraph)
+     */
+    void ClearCurrentGraph();
+
 private:
     // Configuration
     std::filesystem::path configPath_;
@@ -158,6 +249,13 @@ private:
 
     // Results
     TestSuiteResults suiteResults_;
+
+    // Graph management
+    GraphFactoryFunc graphFactory_;
+    ProfilerGraphAdapter adapter_;
+    BenchmarkGraph currentGraph_;
+    uint32_t renderWidth_ = 800;
+    uint32_t renderHeight_ = 600;
 
     // Helpers
     void InitializeStatsTrackers();

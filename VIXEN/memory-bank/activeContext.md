@@ -2,122 +2,65 @@
 
 **Last Updated**: December 3, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase I Standalone Components COMPLETE - Ready for Graph Integration
+**Status**: Phase I Graph Integration IN PROGRESS - BenchmarkGraphFactory Complete
 
 ---
 
 ## Session Summary
 
-Completed all standalone Profiler components. Ready for RenderGraph integration.
+Implemented BenchmarkGraphFactory with reusable subgraph builders for switchable pipeline configurations.
 
 ### Completed This Session
-- JSON export matching Section 5.2 experimental schema
-- SceneInfo data structure (resolution, density, scene_type)
-- Bandwidth estimation fallback (when HW counters unavailable)
-- BenchmarkRunner framework (test matrix, callbacks, auto-export)
-- TestConfiguration validation (power-of-2 res, range checks)
-- **53 unit tests passing** (up from 26)
+- **BenchmarkGraphFactory** - Complete factory for building benchmark graphs
+  - `InfrastructureNodes`, `ComputePipelineNodes`, `RayMarchNodes`, `OutputNodes` structs
+  - `BuildInfrastructure()` - Instance, window, device, swapchain, cmdPool, frameSync
+  - `BuildComputePipeline()` - ShaderLib, descriptors, pipeline, dispatch
+  - `BuildRayMarchScene()` - Camera, voxelGrid, input nodes
+  - `BuildOutput()` - Present node
+  - `ConnectComputeRayMarch()` - Wires all subgraphs together
+  - `BuildComputeRayMarchGraph()` - High-level convenience method
+- **64 unit tests passing** (up from 53)
 
 ### Files Created This Session
 | File | Description |
 |------|-------------|
-| `libraries/Profiler/include/Profiler/SceneInfo.h` | Scene configuration data structure |
-| `libraries/Profiler/src/SceneInfo.cpp` | SceneInfo implementation |
-| `libraries/Profiler/include/Profiler/BenchmarkRunner.h` | Benchmark harness framework |
-| `libraries/Profiler/src/BenchmarkRunner.cpp` | Test matrix runner |
+| `libraries/Profiler/include/Profiler/BenchmarkGraphFactory.h` | Factory with node handle structs |
+| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Subgraph builders + connection logic |
 
 ### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/Profiler/include/Profiler/FrameMetrics.h` | Added `avgVoxelsPerRay`, `bandwidthEstimated`, `PipelineType` enum, validation |
-| `libraries/Profiler/src/MetricsExporter.cpp` | Section 5.2 JSON schema export |
-| `libraries/Profiler/tests/test_profiler.cpp` | 30+ new tests |
+| `libraries/Profiler/CMakeLists.txt` | Added BenchmarkGraphFactory, RenderGraph dependency |
+| `libraries/Profiler/tests/test_profiler.cpp` | Added 11 BenchmarkGraphFactory tests |
 
 ---
 
-## Current Focus: Graph Integration Architecture
+## Current Focus: Profiler Hook Wiring
 
-### Pipeline Graph Strategy
+### Next Steps (Priority Order)
 
-Create switchable RenderGraph configurations for each pipeline type in the experimental setup:
+1. **Wire ProfilerGraphAdapter hooks** - Connect lifecycle hooks to BenchmarkGraphFactory graphs
+2. **Integrate with BenchmarkRunner** - Use factory in test execution loop
+3. **End-to-end benchmark test** - Run actual benchmark with metrics export
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    BenchmarkGraphFactory                             │
-├─────────────────────────────────────────────────────────────────────┤
-│  CreateComputeGraph()      → Compute shader ray marching            │
-│  CreateFragmentGraph()     → Fragment shader ray marching           │
-│  CreateHardwareRTGraph()   → VK_KHR_ray_tracing_pipeline            │
-│  CreateHybridGraph()       → Compute primary + HW RT secondary      │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### Existing Hook Infrastructure
 
-### Reusable SubGraphs (Node Clusters)
-
-Common node patterns extracted into reusable subgraphs:
-
-| SubGraph | Nodes | Purpose |
-|----------|-------|---------|
-| `SceneSetup` | Camera, Transform, Uniforms | Scene initialization |
-| `VoxelDataLoad` | SVO Upload, Brick Cache | Voxel data binding |
-| `RayGeneration` | Primary rays from camera | Shared ray setup |
-| `OutputPresent` | Tonemap, SwapchainAcquire, Present | Display pipeline |
-| `ProfilerHooks` | BeginFrame, EndFrame markers | Profiling integration |
-
-### Graph Configuration Pattern
-
+GraphLifecycleHooks already exists in RenderGraph:
 ```cpp
-// BenchmarkGraphFactory.h
-class BenchmarkGraphFactory {
-public:
-    enum class PipelineType {
-        Compute,        // Compute shader DDA ray marching
-        Fragment,       // Fragment shader ray marching
-        HardwareRT,     // VK_KHR_ray_tracing_pipeline
-        Hybrid          // Compute + HW RT secondary
-    };
-
-    static std::unique_ptr<RenderGraph> CreateGraph(
-        PipelineType type,
-        const SceneInfo& scene,
-        const BenchmarkConfig& config
-    );
-
-private:
-    // SubGraph builders
-    static void AddSceneSetupNodes(RenderGraph& graph);
-    static void AddVoxelDataNodes(RenderGraph& graph);
-    static void AddProfilerNodes(RenderGraph& graph);
-    static void AddOutputNodes(RenderGraph& graph);
-
-    // Pipeline-specific ray tracing
-    static void AddComputeRayMarch(RenderGraph& graph);
-    static void AddFragmentRayMarch(RenderGraph& graph);
-    static void AddHardwareRT(RenderGraph& graph);
-    static void AddHybridPipeline(RenderGraph& graph);
-};
+// RenderGraph::GetLifecycleHooks()
+hooks.RegisterFrameHook(FramePhase::Begin, callback);
+hooks.RegisterFrameHook(FramePhase::End, callback);
+hooks.RegisterNodeHook(NodeLifecyclePhase::PreExecute, callback);
+hooks.RegisterNodeHook(NodeLifecyclePhase::PostExecute, callback);
 ```
 
-### Integration Flow
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ BenchmarkRun │ ──▶ │ GraphFactory │ ──▶ │ RenderGraph  │
-│    Config    │     │  .Create()   │     │  Instance    │
-└──────────────┘     └──────────────┘     └──────┬───────┘
-                                                  │
-        ┌─────────────────────────────────────────┼──────┐
-        │                                         ▼      │
-        │  ┌───────────┐   ┌───────────┐   ┌───────────┐ │
-        │  │  Scene    │──▶│  Voxel    │──▶│   Ray     │ │
-        │  │  Setup    │   │  Data     │   │  Trace    │ │
-        │  └───────────┘   └───────────┘   └─────┬─────┘ │
-        │                                        │       │
-        │  ┌───────────┐   ┌───────────┐        │       │
-        │  │ Profiler  │◀──│  Output   │◀───────┘       │
-        │  │  Export   │   │  Present  │                │
-        │  └───────────┘   └───────────┘                │
-        └───────────────────────────────────────────────┘
+ProfilerGraphAdapter already implements callbacks:
+```cpp
+ProfilerGraphAdapter adapter;
+adapter.OnFrameBegin(cmdBuffer, frameIndex);
+adapter.OnFrameEnd(frameIndex);
+adapter.OnDispatchBegin();
+adapter.OnDispatchEnd(width, height);
 ```
 
 ---
@@ -126,32 +69,89 @@ private:
 
 ### Standalone Components ✅ COMPLETE
 
-| Component | Status | Tests |
-|-----------|--------|-------|
-| ProfilerSystem singleton | ✅ | Core orchestrator |
+| Component | Status | Description |
+|-----------|--------|-------------|
+| ProfilerSystem | ✅ | Singleton orchestrator |
 | RollingStats | ✅ | Sliding window percentiles |
 | DeviceCapabilities | ✅ | GPU info capture |
-| MetricsCollector | ✅ | VkQueryPool timing |
+| MetricsCollector | ✅ | VkQueryPool timing + VRAM |
 | MetricsExporter | ✅ | CSV + JSON (Section 5.2) |
-| BenchmarkConfig | ✅ | JSON config loader |
+| BenchmarkConfig | ✅ | JSON config loader + validation |
 | SceneInfo | ✅ | Resolution, density, type |
 | BenchmarkRunner | ✅ | Test matrix framework |
-| Config Validation | ✅ | Input validation |
-| VRAM Tracking | ✅ | VK_EXT_memory_budget |
 | Bandwidth Estimation | ✅ | Fallback calculation |
 
-**Test Suite: 53 tests passing**
+### Graph Integration ✅ COMPLETE
 
-### Integration Tasks (Next Phase)
+| Component | Status | Description |
+|-----------|--------|-------------|
+| BenchmarkGraphFactory | ✅ | Factory class with Build* methods |
+| InfrastructureNodes | ✅ | Device, window, swapchain, sync |
+| ComputePipelineNodes | ✅ | Shader, descriptors, dispatch |
+| RayMarchNodes | ✅ | Camera, voxelGrid |
+| OutputNodes | ✅ | Present |
+| ConnectComputeRayMarch | ✅ | Subgraph wiring |
 
-| Task | Description | Priority |
-|------|-------------|----------|
-| BenchmarkGraphFactory | Create switchable graph configs | HIGH |
-| SubGraph extraction | Reusable node clusters | HIGH |
-| Profiler hook wiring | Connect to NodeInstance lifecycle | HIGH |
-| Scene extractors | Pull data from VoxelGridNode | MEDIUM |
-| Shader counters | avg_voxels_per_ray atomics | MEDIUM |
-| Nsight validation | Compare estimates vs actual | LOW |
+### Hook Wiring ⏳ IN PROGRESS
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Wire ProfilerGraphAdapter | ⏳ | Connect to graph lifecycle |
+| Integrate BenchmarkRunner | ⏳ | Factory in test loop |
+| End-to-end test | ⏳ | Full benchmark run |
+
+**Test Suite: 64 tests passing**
+
+---
+
+## BenchmarkGraphFactory Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    BenchmarkGraphFactory                             │
+├─────────────────────────────────────────────────────────────────────┤
+│  BuildInfrastructure()     → InfrastructureNodes                    │
+│  BuildComputePipeline()    → ComputePipelineNodes                   │
+│  BuildRayMarchScene()      → RayMarchNodes                          │
+│  BuildOutput()             → OutputNodes                            │
+│  ConnectComputeRayMarch()  → Wires all subgraphs                    │
+│  BuildComputeRayMarchGraph() → High-level convenience               │
+└─────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  BenchmarkGraph struct                                               │
+│  ├── InfrastructureNodes infra                                      │
+│  ├── ComputePipelineNodes compute                                   │
+│  ├── RayMarchNodes rayMarch                                         │
+│  └── OutputNodes output                                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Node Handle Structs
+
+```cpp
+struct InfrastructureNodes {
+    NodeHandle instance, window, device, swapchain, commandPool, frameSync;
+    bool IsValid() const;
+};
+
+struct ComputePipelineNodes {
+    NodeHandle shaderLib, descriptorGatherer, pushConstantGatherer;
+    NodeHandle descriptorSet, pipeline, dispatch;
+    bool IsValid() const;
+};
+
+struct RayMarchNodes {
+    NodeHandle camera, voxelGrid, input;
+    bool IsValid() const;
+};
+
+struct OutputNodes {
+    NodeHandle present, debugCapture;
+    bool IsValid() const;
+};
+```
 
 ---
 
@@ -180,6 +180,7 @@ private:
 2. **Axis-parallel rays**: Require `computeCorrectedTcMax()` filtering
 3. **VK_KHR_performance_query**: May not be available on all GPUs (estimation fallback implemented)
 4. **Hardware RT**: VK_KHR_ray_tracing_pipeline not yet implemented
+5. **Fragment pipeline**: BuildFragmentRayMarchGraph() not yet implemented
 
 ---
 
@@ -189,16 +190,17 @@ private:
 libraries/Profiler/
 ├── CMakeLists.txt
 ├── include/Profiler/
-│   ├── ProfilerSystem.h       # Singleton orchestrator
-│   ├── RollingStats.h         # Sliding window statistics
-│   ├── DeviceCapabilities.h   # GPU info capture
-│   ├── FrameMetrics.h         # Data structures + PipelineType enum
-│   ├── MetricsCollector.h     # VkQueryPool timing + VRAM
-│   ├── MetricsExporter.h      # CSV/JSON output (Section 5.2)
-│   ├── BenchmarkConfig.h      # JSON config loading + validation
-│   ├── SceneInfo.h            # Scene metadata structure
-│   ├── BenchmarkRunner.h      # Test matrix harness
-│   └── ProfilerGraphAdapter.h # RenderGraph bridge
+│   ├── ProfilerSystem.h        # Singleton orchestrator
+│   ├── RollingStats.h          # Sliding window statistics
+│   ├── DeviceCapabilities.h    # GPU info capture
+│   ├── FrameMetrics.h          # Data structures + PipelineType enum
+│   ├── MetricsCollector.h      # VkQueryPool timing + VRAM
+│   ├── MetricsExporter.h       # CSV/JSON output (Section 5.2)
+│   ├── BenchmarkConfig.h       # JSON config loading + validation
+│   ├── SceneInfo.h             # Scene metadata structure
+│   ├── BenchmarkRunner.h       # Test matrix harness
+│   ├── BenchmarkGraphFactory.h # Graph factory with subgraph builders
+│   └── ProfilerGraphAdapter.h  # RenderGraph bridge
 ├── src/
 │   ├── ProfilerSystem.cpp
 │   ├── RollingStats.cpp
@@ -207,14 +209,15 @@ libraries/Profiler/
 │   ├── MetricsExporter.cpp
 │   ├── BenchmarkConfig.cpp
 │   ├── SceneInfo.cpp
-│   └── BenchmarkRunner.cpp
+│   ├── BenchmarkRunner.cpp
+│   └── BenchmarkGraphFactory.cpp
 └── tests/
-    └── test_profiler.cpp      # 53 unit tests
+    └── test_profiler.cpp       # 64 unit tests
 ```
 
 ---
 
-## Todo List - Metrics Implementation Status
+## Todo List - Implementation Status
 
 ### Standalone Components ✅ COMPLETE
 - [x] frame_time_ms, fps, p99, stddev
@@ -228,17 +231,30 @@ libraries/Profiler/
 - [x] BenchmarkRunner framework
 - [x] Config validation
 
-### Integration Tasks ⏳ NEXT
-- [ ] BenchmarkGraphFactory (switchable pipelines)
-- [ ] SubGraph extraction (reusable node clusters)
-- [ ] Wire profiler to NodeInstance hooks
-- [ ] Scene extractors (VoxelGridNode → SceneInfo)
-- [ ] Shader counters (avg_voxels_per_ray)
+### Graph Integration ✅ COMPLETE
+- [x] BenchmarkGraphFactory header + node structs
+- [x] BuildInfrastructure() - device, window, swapchain
+- [x] BuildComputePipeline() - shader, descriptors, dispatch
+- [x] BuildRayMarchScene() - camera, voxel grid
+- [x] BuildOutput() - present node
+- [x] ConnectComputeRayMarch() - subgraph wiring
+- [x] BuildComputeRayMarchGraph() - full assembly
+
+### Hook Wiring ⏳ IN PROGRESS
+- [ ] Wire ProfilerGraphAdapter to graph lifecycle hooks
+- [ ] Integrate BenchmarkRunner with BenchmarkGraphFactory
+- [ ] End-to-end benchmark test
+
+### Future Pipelines
+- [ ] BuildFragmentRayMarchGraph()
+- [ ] BuildHardwareRTGraph()
+- [ ] BuildHybridGraph()
 
 ### Deferred
 - [ ] VK_KHR_performance_query (hardware bandwidth)
 - [ ] gpu_utilization_percent (vendor-specific)
 - [ ] Nsight Graphics validation
+- [ ] Shader counters (avg_voxels_per_ray)
 
 ---
 

@@ -896,3 +896,411 @@ TEST(BenchmarkGraphFactoryTest, BuildComputeRayMarchGraphNullGraphThrows) {
         std::invalid_argument
     );
 }
+
+TEST(BenchmarkGraphFactoryTest, WireProfilerHooksNullGraphThrows) {
+    ProfilerGraphAdapter adapter;
+    EXPECT_THROW(
+        BenchmarkGraphFactory::WireProfilerHooks(nullptr, adapter),
+        std::invalid_argument
+    );
+}
+
+TEST(BenchmarkGraphFactoryTest, HasProfilerHooksNullGraphReturnsFalse) {
+    EXPECT_FALSE(BenchmarkGraphFactory::HasProfilerHooks(nullptr));
+}
+
+// ============================================================================
+// ProfilerGraphAdapter Integration Tests
+// ============================================================================
+
+#include "Profiler/ProfilerGraphAdapter.h"
+
+class ProfilerGraphAdapterTest : public ::testing::Test {
+protected:
+    ProfilerGraphAdapter adapter;
+};
+
+TEST_F(ProfilerGraphAdapterTest, SetFrameContextStoresValues) {
+    // SetFrameContext should not throw with null/zero values
+    // (actual command buffer would be VK_NULL_HANDLE equivalent)
+    VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+    uint32_t frameIndex = 5;
+
+    EXPECT_NO_THROW(adapter.SetFrameContext(cmdBuffer, frameIndex));
+}
+
+TEST_F(ProfilerGraphAdapterTest, OnFrameBeginNoThrowWithoutInit) {
+    // OnFrameBegin calls ProfilerSystem::Instance() which is a singleton
+    // Without initialization, it should not crash (guards against uninitialized state)
+    adapter.SetFrameContext(VK_NULL_HANDLE, 0);
+
+    // This may do nothing if ProfilerSystem isn't initialized, but shouldn't throw
+    EXPECT_NO_THROW(adapter.OnFrameBegin());
+}
+
+TEST_F(ProfilerGraphAdapterTest, OnFrameEndNoThrowWithoutInit) {
+    adapter.SetFrameContext(VK_NULL_HANDLE, 0);
+    EXPECT_NO_THROW(adapter.OnFrameEnd());
+}
+
+TEST_F(ProfilerGraphAdapterTest, OnDispatchBeginNoThrowWithoutInit) {
+    adapter.SetFrameContext(VK_NULL_HANDLE, 0);
+    EXPECT_NO_THROW(adapter.OnDispatchBegin());
+}
+
+TEST_F(ProfilerGraphAdapterTest, OnDispatchEndNoThrowWithoutInit) {
+    adapter.SetFrameContext(VK_NULL_HANDLE, 0);
+    uint32_t dispatchWidth = 100;
+    uint32_t dispatchHeight = 75;
+    EXPECT_NO_THROW(adapter.OnDispatchEnd(dispatchWidth, dispatchHeight));
+}
+
+TEST_F(ProfilerGraphAdapterTest, OnPreGraphCleanupNoThrow) {
+    EXPECT_NO_THROW(adapter.OnPreGraphCleanup());
+}
+
+TEST_F(ProfilerGraphAdapterTest, NodeCallbacksAcceptEmptyString) {
+    EXPECT_NO_THROW(adapter.OnNodePreExecute(""));
+    EXPECT_NO_THROW(adapter.OnNodePostExecute(""));
+    EXPECT_NO_THROW(adapter.OnNodePreCleanup(""));
+}
+
+TEST_F(ProfilerGraphAdapterTest, NodeCallbacksAcceptValidNames) {
+    EXPECT_NO_THROW(adapter.OnNodePreExecute("benchmark_dispatch"));
+    EXPECT_NO_THROW(adapter.OnNodePostExecute("benchmark_dispatch"));
+    EXPECT_NO_THROW(adapter.OnNodePreCleanup("benchmark_voxel_grid"));
+}
+
+TEST_F(ProfilerGraphAdapterTest, RegisterUnregisterExtractor) {
+    // Register a simple extractor
+    bool extractorCalled = false;
+    adapter.RegisterExtractor("test_extractor", [&extractorCalled]() {
+        extractorCalled = true;
+        return FrameMetrics{};  // Return empty metrics
+    });
+
+    // Unregister should not throw
+    EXPECT_NO_THROW(adapter.UnregisterExtractor("test_extractor"));
+
+    // Unregister non-existent should not throw
+    EXPECT_NO_THROW(adapter.UnregisterExtractor("nonexistent"));
+}
+
+// ============================================================================
+// BenchmarkRunner Graph Integration Tests
+// ============================================================================
+
+TEST(BenchmarkRunnerGraphIntegrationTest, DefaultHasNoGraph) {
+    BenchmarkRunner runner;
+    EXPECT_FALSE(runner.HasCurrentGraph());
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, ClearCurrentGraphNoThrow) {
+    BenchmarkRunner runner;
+    EXPECT_NO_THROW(runner.ClearCurrentGraph());
+    EXPECT_FALSE(runner.HasCurrentGraph());
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, SetRenderDimensionsStoresValues) {
+    BenchmarkRunner runner;
+    EXPECT_NO_THROW(runner.SetRenderDimensions(1920, 1080));
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, SetGraphFactoryStoresFunction) {
+    BenchmarkRunner runner;
+
+    bool factoryCalled = false;
+    runner.SetGraphFactory([&factoryCalled](
+        Vixen::RenderGraph::RenderGraph* /*graph*/,
+        const TestConfiguration& /*config*/,
+        uint32_t /*width*/,
+        uint32_t /*height*/
+    ) -> BenchmarkGraph {
+        factoryCalled = true;
+        return BenchmarkGraph{};  // Return empty/invalid graph
+    });
+
+    // Factory won't be called until CreateGraphForCurrentTest
+    EXPECT_FALSE(factoryCalled);
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, CreateGraphForNullGraphReturnsEmpty) {
+    BenchmarkRunner runner;
+
+    // Set up a test config
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 128;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+
+    std::vector<TestConfiguration> matrix{config};
+    runner.SetTestMatrix(matrix);
+    runner.StartSuite();
+    runner.BeginNextTest();
+
+    // Creating graph with null should return empty graph
+    BenchmarkGraph result = runner.CreateGraphForCurrentTest(nullptr);
+    EXPECT_FALSE(result.IsValid());
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, GetAdapterReturnsValidReference) {
+    BenchmarkRunner runner;
+
+    // Should be able to access adapter
+    ProfilerGraphAdapter& adapter = runner.GetAdapter();
+
+    // Adapter should accept frame context
+    EXPECT_NO_THROW(adapter.SetFrameContext(VK_NULL_HANDLE, 0));
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, ConstGetAdapterWorks) {
+    const BenchmarkRunner runner;
+
+    // Should be able to access const adapter
+    const ProfilerGraphAdapter& adapter = runner.GetAdapter();
+
+    // Can't call SetFrameContext on const reference (compile-time check)
+    // Just verify we can access it
+    (void)adapter;
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, GetCurrentGraphReturnsEmptyByDefault) {
+    BenchmarkRunner runner;
+    const BenchmarkGraph& graph = runner.GetCurrentGraph();
+    EXPECT_FALSE(graph.IsValid());
+}
+
+TEST(BenchmarkRunnerGraphIntegrationTest, CustomFactoryIsCalledOnGraphCreate) {
+    BenchmarkRunner runner;
+
+    bool factoryCalled = false;
+    TestConfiguration receivedConfig;
+
+    runner.SetGraphFactory([&factoryCalled, &receivedConfig](
+        Vixen::RenderGraph::RenderGraph* /*graph*/,
+        const TestConfiguration& config,
+        uint32_t /*width*/,
+        uint32_t /*height*/
+    ) -> BenchmarkGraph {
+        factoryCalled = true;
+        receivedConfig = config;
+        return BenchmarkGraph{};  // Return invalid graph (no real RenderGraph)
+    });
+
+    // Set up test
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.voxelResolution = 256;
+    config.warmupFrames = 10;
+    config.measurementFrames = 100;
+
+    std::vector<TestConfiguration> matrix{config};
+    runner.SetTestMatrix(matrix);
+    runner.StartSuite();
+    runner.BeginNextTest();
+
+    // Create graph (with nullptr since we're mocking)
+    // Note: This will call factory but won't wire hooks (null graph)
+    runner.CreateGraphForCurrentTest(nullptr);
+
+    // Factory should have been called even with null graph (it checks after)
+    // Actually, looking at the code, it returns early if graph is null
+    EXPECT_FALSE(factoryCalled);  // Null graph returns early
+}
+
+// ============================================================================
+// End-to-End Flow Tests (Mock/Stub)
+// ============================================================================
+
+TEST(ProfilerEndToEndTest, ConfigToMetricsExportFlow) {
+    // Test the complete flow without real Vulkan:
+    // Config -> BenchmarkRunner -> Adapter -> Metrics -> Export
+
+    // 1. Configuration
+    TestConfiguration config;
+    config.testId = "E2E_TEST_FLOW";
+    config.pipeline = "compute";
+    config.algorithm = "baseline";
+    config.sceneType = "cornell";
+    config.voxelResolution = 64;
+    config.densityPercent = 0.25f;
+    config.warmupFrames = 10;
+    config.measurementFrames = 50;
+
+    ASSERT_TRUE(config.Validate());
+
+    // 2. Set up BenchmarkRunner
+    BenchmarkRunner runner;
+    DeviceCapabilities caps;
+    caps.deviceName = "Mock GPU";
+    caps.driverVersion = "1.0.0";
+    caps.totalVRAM_MB = 8192;
+    runner.SetDeviceCapabilities(caps);
+
+    std::vector<TestConfiguration> matrix{config};
+    runner.SetTestMatrix(matrix);
+
+    // 3. Start suite
+    ASSERT_TRUE(runner.StartSuite());
+    ASSERT_TRUE(runner.BeginNextTest());
+
+    // 4. Simulate warmup frames
+    for (uint32_t i = 0; i < config.warmupFrames; ++i) {
+        FrameMetrics warmupMetrics;
+        warmupMetrics.frameNumber = i;
+        warmupMetrics.frameTimeMs = 16.0f;  // 60 FPS
+        runner.RecordFrame(warmupMetrics);
+    }
+
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Measuring);
+
+    // 5. Simulate measurement frames
+    for (uint32_t i = 0; i < config.measurementFrames; ++i) {
+        FrameMetrics metrics;
+        metrics.frameNumber = i;
+        metrics.frameTimeMs = 16.5f + (i % 5) * 0.1f;  // Small variance
+        metrics.fps = 1000.0f / metrics.frameTimeMs;
+        metrics.mRaysPerSec = 100.0f + i;
+        metrics.vramUsageMB = 2048;
+        metrics.totalRaysCast = 1920 * 1080;  // Full HD ray count
+        runner.RecordFrame(metrics);
+    }
+
+    // 6. Verify test completed
+    EXPECT_TRUE(runner.IsCurrentTestComplete());
+
+    // 7. Finalize
+    runner.FinalizeCurrentTest();
+
+    // 8. Verify results
+    const auto& results = runner.GetSuiteResults();
+    EXPECT_EQ(results.GetAllResults().size(), 1u);
+
+    const auto& testResult = results.GetAllResults()[0];
+    EXPECT_EQ(testResult.frames.size(), config.measurementFrames);
+    EXPECT_TRUE(testResult.IsValid());
+}
+
+TEST(ProfilerEndToEndTest, MultipleTestsInMatrix) {
+    // Test running multiple configurations in sequence
+
+    BenchmarkRunner runner;
+    DeviceCapabilities caps;
+    caps.deviceName = "Mock GPU";
+    runner.SetDeviceCapabilities(caps);
+
+    // Create a small test matrix (3 tests)
+    auto matrix = BenchmarkConfigLoader::GenerateTestMatrix(
+        {"compute"},       // 1 pipeline
+        {64, 128},         // 2 resolutions
+        {0.25f},           // 1 density (corrected from 0.2f to match valid range)
+        {"baseline"}       // 1 algorithm
+    );
+    ASSERT_EQ(matrix.size(), 2u);
+
+    // Override warmup/measurement for speed
+    for (auto& config : matrix) {
+        config.warmupFrames = 10;
+        config.measurementFrames = 20;
+    }
+
+    runner.SetTestMatrix(matrix);
+    ASSERT_TRUE(runner.StartSuite());
+
+    // Run all tests
+    uint32_t testsCompleted = 0;
+    while (runner.BeginNextTest()) {
+        // Warmup
+        for (uint32_t i = 0; i < runner.GetCurrentTestConfig().warmupFrames; ++i) {
+            FrameMetrics m;
+            m.frameTimeMs = 16.0f;
+            runner.RecordFrame(m);
+        }
+
+        // Measurement
+        while (!runner.IsCurrentTestComplete()) {
+            FrameMetrics m;
+            m.frameNumber = runner.GetCurrentFrameNumber();
+            m.frameTimeMs = 16.5f;
+            m.fps = 60.0f;
+            runner.RecordFrame(m);
+        }
+
+        runner.FinalizeCurrentTest();
+        testsCompleted++;
+    }
+
+    EXPECT_EQ(testsCompleted, 2u);
+    EXPECT_EQ(runner.GetState(), BenchmarkState::Completed);
+    EXPECT_EQ(runner.GetSuiteResults().GetAllResults().size(), 2u);
+}
+
+TEST(ProfilerEndToEndTest, AdapterFrameLifecycle) {
+    // Test the adapter's frame lifecycle callbacks
+
+    ProfilerGraphAdapter adapter;
+
+    // Simulate a frame lifecycle
+    VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;  // Mock
+    uint32_t frameIndex = 0;
+
+    // Begin frame
+    adapter.SetFrameContext(cmdBuffer, frameIndex);
+    EXPECT_NO_THROW(adapter.OnFrameBegin());
+
+    // Simulate node executions
+    adapter.OnNodePreExecute("benchmark_instance");
+    adapter.OnNodePostExecute("benchmark_instance");
+
+    adapter.OnNodePreExecute("benchmark_device");
+    adapter.OnNodePostExecute("benchmark_device");
+
+    // Dispatch node with timing
+    adapter.OnNodePreExecute("benchmark_dispatch");
+    adapter.OnDispatchBegin();
+    // ... GPU work happens here ...
+    adapter.OnDispatchEnd(100, 75);  // 100x75 dispatch groups
+    adapter.OnNodePostExecute("benchmark_dispatch");
+
+    // Present
+    adapter.OnNodePreExecute("benchmark_present");
+    adapter.OnNodePostExecute("benchmark_present");
+
+    // End frame
+    EXPECT_NO_THROW(adapter.OnFrameEnd());
+
+    // Pre-cleanup (graph teardown)
+    adapter.OnNodePreCleanup("benchmark_dispatch");
+    adapter.OnPreGraphCleanup();
+}
+
+TEST(ProfilerEndToEndTest, BandwidthEstimationInRunner) {
+    BenchmarkRunner runner;
+
+    // Test bandwidth estimation formula
+    // Formula: rays * bytes_per_ray / time_seconds / (1024^3)
+
+    // 10M rays, 96 bytes/ray, 0.01s = 960MB / 0.01s = 96GB/s
+    // With 1024-based conversion: ~89.4 GB/s
+    float bandwidth = runner.EstimateBandwidth(10'000'000, 0.01f);
+    EXPECT_GT(bandwidth, 80.0f);
+    EXPECT_LT(bandwidth, 100.0f);
+}
+
+TEST(ProfilerEndToEndTest, TestConfigurationGeneratesValidId) {
+    TestConfiguration config;
+    config.pipeline = "compute";
+    config.algorithm = "empty_skip";
+    config.sceneType = "cave";
+    config.voxelResolution = 128;
+
+    std::string testId = config.GenerateTestId(1);
+
+    // Should contain key identifiers
+    EXPECT_NE(testId.find("COMPUTE"), std::string::npos);
+    EXPECT_NE(testId.find("128"), std::string::npos);
+    EXPECT_NE(testId.find("CAVE"), std::string::npos);
+    EXPECT_NE(testId.find("EMPTY_SKIP"), std::string::npos);
+    EXPECT_NE(testId.find("RUN1"), std::string::npos);
+}

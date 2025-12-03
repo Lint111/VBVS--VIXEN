@@ -4,6 +4,7 @@
 #include <Core/RenderGraph.h>
 #include <Core/TypedConnection.h>
 #include <Core/NodeInstance.h>
+#include <Core/GraphLifecycleHooks.h>
 
 // Node types
 #include <Nodes/InstanceNode.h>
@@ -49,9 +50,15 @@
 
 #include <filesystem>
 #include <stdexcept>
+#include <unordered_set>
 
 // Use namespace alias to avoid RenderGraph class/namespace ambiguity
 namespace RG = Vixen::RenderGraph;
+
+// Track which graphs have profiler hooks wired (for HasProfilerHooks)
+namespace {
+    std::unordered_set<const RG::RenderGraph*> g_graphsWithProfilerHooks;
+}
 
 namespace Vixen::Profiler {
 
@@ -567,6 +574,92 @@ std::string BenchmarkGraphFactory::MapSceneType(const std::string& sceneType)
 
     // Default to cornell
     return "cornell";
+}
+
+//==============================================================================
+// Profiler Hook Wiring
+//==============================================================================
+
+void BenchmarkGraphFactory::WireProfilerHooks(
+    RG::RenderGraph* graph,
+    ProfilerGraphAdapter& adapter,
+    const std::string& dispatchNodeName)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireProfilerHooks: graph is null");
+    }
+
+    // Get or create the lifecycle hooks from the graph
+    auto* hooks = graph->GetLifecycleHooks();
+    if (!hooks) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireProfilerHooks: graph has no lifecycle hooks");
+    }
+
+    // Register node-level hooks for dispatch timing
+    // PreExecute: Called before node executes (for dispatch begin timing)
+    hooks->RegisterNodeHook(
+        RG::NodeLifecyclePhase::PreExecute,
+        [&adapter, dispatchNodeName](RG::NodeInstance* node) {
+            if (node && node->GetName() == dispatchNodeName) {
+                adapter.OnDispatchBegin();
+            }
+            adapter.OnNodePreExecute(node ? node->GetName() : "");
+        },
+        "ProfilerDispatchBegin"
+    );
+
+    // PostExecute: Called after node executes (for dispatch end timing)
+    // Note: Dispatch dimensions need to be passed externally since node doesn't expose them
+    hooks->RegisterNodeHook(
+        RG::NodeLifecyclePhase::PostExecute,
+        [&adapter](RG::NodeInstance* node) {
+            adapter.OnNodePostExecute(node ? node->GetName() : "");
+        },
+        "ProfilerDispatchEnd"
+    );
+
+    // PreCleanup: Called before cleanup for metrics extraction
+    hooks->RegisterNodeHook(
+        RG::NodeLifecyclePhase::PreCleanup,
+        [&adapter](RG::NodeInstance* node) {
+            adapter.OnNodePreCleanup(node ? node->GetName() : "");
+        },
+        "ProfilerPreCleanup"
+    );
+
+    // Track that this graph has profiler hooks
+    g_graphsWithProfilerHooks.insert(graph);
+}
+
+void BenchmarkGraphFactory::WireProfilerHooks(
+    RG::RenderGraph* graph,
+    ProfilerGraphAdapter& adapter,
+    const BenchmarkGraph& benchGraph)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireProfilerHooks: graph is null");
+    }
+
+    // Get dispatch node name from the graph via handle lookup
+    std::string dispatchNodeName = "benchmark_dispatch";  // Default name used by factory
+
+    // If compute dispatch handle is valid, get actual name
+    if (benchGraph.compute.dispatch.IsValid()) {
+        auto* dispatchNode = graph->GetInstance(benchGraph.compute.dispatch);
+        if (dispatchNode) {
+            dispatchNodeName = dispatchNode->GetName();
+        }
+    }
+
+    WireProfilerHooks(graph, adapter, dispatchNodeName);
+}
+
+bool BenchmarkGraphFactory::HasProfilerHooks(const RG::RenderGraph* graph)
+{
+    if (!graph) {
+        return false;
+    }
+    return g_graphsWithProfilerHooks.count(graph) > 0;
 }
 
 } // namespace Vixen::Profiler

@@ -1,9 +1,11 @@
 #pragma once
 
 #include <Core/RenderGraph.h>
+#include <Core/GraphLifecycleHooks.h>
 #include <CleanupStack.h>
 #include "BenchmarkConfig.h"
 #include "SceneInfo.h"
+#include "ProfilerGraphAdapter.h"
 #include <string>
 #include <optional>
 #include <functional>
@@ -247,6 +249,70 @@ public:
         uint32_t width,
         uint32_t height
     );
+
+    //==========================================================================
+    // Profiler Hook Wiring
+    //==========================================================================
+
+    /**
+     * @brief Wire profiler adapter hooks to graph lifecycle events
+     *
+     * Registers the ProfilerGraphAdapter callbacks with the graph's lifecycle hooks
+     * for automatic frame and dispatch profiling. Call after graph construction
+     * but before compilation.
+     *
+     * Registers hooks for:
+     * - Frame begin/end (via graph-level PostCompilation hook)
+     * - Node pre/post execute (for dispatch timing)
+     * - Pre-cleanup (for metrics extraction)
+     *
+     * @param graph Target render graph (must have a valid GraphLifecycleHooks)
+     * @param adapter ProfilerGraphAdapter to wire callbacks to
+     * @param dispatchNodeName Name of the compute dispatch node for GPU timing hooks
+     *        (default: "benchmark_dispatch")
+     *
+     * Usage:
+     * @code
+     * ProfilerGraphAdapter adapter;
+     * auto benchGraph = BenchmarkGraphFactory::BuildComputeRayMarchGraph(graph, config, w, h);
+     * BenchmarkGraphFactory::WireProfilerHooks(graph, adapter);
+     * // In render loop:
+     * adapter.SetFrameContext(cmdBuffer, frameIndex);
+     * adapter.OnFrameBegin();
+     * // ... render ...
+     * adapter.OnDispatchEnd(dispatchWidth, dispatchHeight);
+     * adapter.OnFrameEnd();
+     * @endcode
+     */
+    static void WireProfilerHooks(
+        RG::RenderGraph* graph,
+        ProfilerGraphAdapter& adapter,
+        const std::string& dispatchNodeName = "benchmark_dispatch"
+    );
+
+    /**
+     * @brief Wire profiler hooks using BenchmarkGraph node handles
+     *
+     * Convenience overload that extracts the dispatch node name from the
+     * BenchmarkGraph structure.
+     *
+     * @param graph Target render graph
+     * @param adapter ProfilerGraphAdapter to wire callbacks to
+     * @param benchGraph BenchmarkGraph containing node handles
+     */
+    static void WireProfilerHooks(
+        RG::RenderGraph* graph,
+        ProfilerGraphAdapter& adapter,
+        const BenchmarkGraph& benchGraph
+    );
+
+    /**
+     * @brief Check if profiler hooks have been wired for a graph
+     *
+     * @param graph Graph to check
+     * @return true if WireProfilerHooks has been called on this graph
+     */
+    static bool HasProfilerHooks(const RG::RenderGraph* graph);
 
     //==========================================================================
     // Future Pipeline Types (Stubs)

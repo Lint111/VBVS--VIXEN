@@ -1,5 +1,7 @@
 #include "Profiler/BenchmarkRunner.h"
 #include "Profiler/BenchmarkConfig.h"
+#include "Profiler/BenchmarkGraphFactory.h"
+#include <Core/RenderGraph.h>
 #include <fstream>
 #include <stdexcept>
 
@@ -275,6 +277,48 @@ void BenchmarkRunner::ReportProgress() {
                           absoluteFrame,
                           totalFrames);
     }
+}
+
+//==============================================================================
+// Graph Management Implementation
+//==============================================================================
+
+void BenchmarkRunner::SetGraphFactory(GraphFactoryFunc factory) {
+    graphFactory_ = std::move(factory);
+}
+
+void BenchmarkRunner::SetRenderDimensions(uint32_t width, uint32_t height) {
+    renderWidth_ = width;
+    renderHeight_ = height;
+}
+
+BenchmarkGraph BenchmarkRunner::CreateGraphForCurrentTest(Vixen::RenderGraph::RenderGraph* graph) {
+    if (!graph) {
+        return BenchmarkGraph{};
+    }
+
+    // Clear any previous graph state
+    currentGraph_ = BenchmarkGraph{};
+
+    // Use custom factory if set, otherwise use default
+    if (graphFactory_) {
+        currentGraph_ = graphFactory_(graph, currentConfig_, renderWidth_, renderHeight_);
+    } else {
+        // Default: use BenchmarkGraphFactory
+        currentGraph_ = BenchmarkGraphFactory::BuildComputeRayMarchGraph(
+            graph, currentConfig_, renderWidth_, renderHeight_);
+    }
+
+    // Wire profiler hooks if graph was created successfully
+    if (currentGraph_.IsValid()) {
+        BenchmarkGraphFactory::WireProfilerHooks(graph, adapter_, currentGraph_);
+    }
+
+    return currentGraph_;
+}
+
+void BenchmarkRunner::ClearCurrentGraph() {
+    currentGraph_ = BenchmarkGraph{};
 }
 
 } // namespace Vixen::Profiler
