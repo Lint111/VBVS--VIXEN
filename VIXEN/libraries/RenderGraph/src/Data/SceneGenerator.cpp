@@ -114,6 +114,124 @@ bool SceneGeneratorFactory::Exists(const std::string& name) {
 }
 
 // ============================================================================
+// Voxel Data Cache Implementation
+// ============================================================================
+
+std::map<VoxelDataCache::CacheKey, std::unique_ptr<VoxelGrid>>& VoxelDataCache::GetCache() {
+    static std::map<CacheKey, std::unique_ptr<VoxelGrid>> cache;
+    return cache;
+}
+
+std::mutex& VoxelDataCache::GetMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+uint32_t& VoxelDataCache::GetHits() {
+    static uint32_t hits = 0;
+    return hits;
+}
+
+uint32_t& VoxelDataCache::GetMisses() {
+    static uint32_t misses = 0;
+    return misses;
+}
+
+bool& VoxelDataCache::GetEnabledFlag() {
+    static bool enabled = true;
+    return enabled;
+}
+
+const VoxelGrid* VoxelDataCache::GetOrGenerate(
+    const std::string& sceneType,
+    uint32_t resolution,
+    const SceneGeneratorParams& params)
+{
+    // If caching is disabled, always generate fresh data
+    if (!GetEnabledFlag()) {
+        auto generator = SceneGeneratorFactory::Create(sceneType);
+        if (!generator) {
+            std::cout << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
+            return nullptr;
+        }
+        // Return nullptr to signal caller should generate fresh
+        GetMisses()++;
+        return nullptr;
+    }
+
+    CacheKey key{sceneType, resolution};
+
+    std::lock_guard<std::mutex> lock(GetMutex());
+
+    // Check if already cached
+    auto& cache = GetCache();
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+        GetHits()++;
+        std::cout << "[VoxelDataCache] HIT: " << sceneType << " @ " << resolution
+                  << "^3 (hits=" << GetHits() << ", misses=" << GetMisses() << ")" << std::endl;
+        return it->second.get();
+    }
+
+    // Cache miss - generate new data
+    GetMisses()++;
+    std::cout << "[VoxelDataCache] MISS: Generating " << sceneType << " @ " << resolution
+              << "^3..." << std::endl;
+
+    auto generator = SceneGeneratorFactory::Create(sceneType);
+    if (!generator) {
+        std::cout << "[VoxelDataCache] ERROR: Unknown scene type: " << sceneType << std::endl;
+        return nullptr;
+    }
+
+    // Create and populate grid
+    auto grid = std::make_unique<VoxelGrid>(resolution);
+    generator->Generate(*grid, params);
+
+    std::cout << "[VoxelDataCache] Generated " << sceneType << " @ " << resolution
+              << "^3, density=" << grid->GetDensityPercent() << "%" << std::endl;
+
+    // Store in cache and return pointer
+    VoxelGrid* result = grid.get();
+    cache[key] = std::move(grid);
+
+    return result;
+}
+
+void VoxelDataCache::Clear() {
+    std::lock_guard<std::mutex> lock(GetMutex());
+    auto [hits, misses] = GetStats();
+    std::cout << "[VoxelDataCache] Clearing cache (final stats: hits=" << hits
+              << ", misses=" << misses << ")" << std::endl;
+    GetCache().clear();
+    GetHits() = 0;
+    GetMisses() = 0;
+}
+
+std::pair<uint32_t, uint32_t> VoxelDataCache::GetStats() {
+    return {GetHits(), GetMisses()};
+}
+
+size_t VoxelDataCache::GetMemoryUsage() {
+    std::lock_guard<std::mutex> lock(GetMutex());
+    size_t total = 0;
+    for (const auto& [key, grid] : GetCache()) {
+        // Each voxel is 1 byte, resolution^3 voxels
+        total += grid->GetData().size();
+    }
+    return total;
+}
+
+void VoxelDataCache::SetEnabled(bool enabled) {
+    GetEnabledFlag() = enabled;
+    std::cout << "[VoxelDataCache] Caching " << (enabled ? "enabled" : "disabled") << std::endl;
+}
+
+bool VoxelDataCache::IsEnabled() {
+    return GetEnabledFlag();
+}
+
+// ============================================================================
 // Perlin Noise 3D Implementation
 // ============================================================================
 

@@ -635,28 +635,13 @@ void BenchmarkGraphFactory::ConfigureOutputParams(
 
 std::string BenchmarkGraphFactory::MapSceneType(const std::string& sceneType)
 {
-    // Map config scene type strings to VoxelGridNode scene type parameter
-    if (sceneType == "cornell" || sceneType == "cornell_box") {
+    // Scene type names in config match SceneGeneratorFactory names directly
+    // Just handle legacy aliases
+    if (sceneType == "cornell_box") {
         return "cornell";
     }
-    if (sceneType == "cave") {
-        return "cave";
-    }
-    if (sceneType == "urban") {
-        return "urban";
-    }
-    if (sceneType == "test") {
-        return "test";
-    }
-    if (sceneType == "sparse_architectural") {
-        return "sparse";
-    }
-    if (sceneType == "dense_organic") {
-        return "dense";
-    }
-
-    // Default to cornell
-    return "cornell";
+    // Pass through directly - VoxelGridNode handles unknown types with fallback
+    return sceneType;
 }
 
 void BenchmarkGraphFactory::ConfigureFragmentPipelineParams(

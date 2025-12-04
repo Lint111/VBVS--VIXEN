@@ -3,6 +3,7 @@
 #include "Profiler/BenchmarkGraphFactory.h"
 #include "Profiler/ProfilerSystem.h"
 #include "Profiler/VulkanIntegration.h"
+#include <iomanip>
 #include <Core/RenderGraph.h>
 #include <Core/NodeTypeRegistry.h>
 #include <MessageBus.h>
@@ -437,12 +438,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
     ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
     ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
 
-    // Set progress callback if verbose
+    // Set progress callback if verbose - show progress bar with test params
     if (config.verbose) {
-        SetProgressCallback([&](uint32_t testIdx, uint32_t totalTests,
+        SetProgressCallback([this](uint32_t testIdx, uint32_t totalTests,
                                 uint32_t frame, uint32_t totalFrames) {
-            std::cout << "\r  Test " << (testIdx + 1) << "/" << totalTests
-                      << " - Frame " << frame << "/" << totalFrames << "    " << std::flush;
+            const auto& cfg = GetCurrentTestConfig();
+
+            // Build progress bar (20 chars wide)
+            int progress = (frame * 20) / totalFrames;
+            std::string bar(progress, '=');
+            std::string empty(20 - progress, ' ');
+
+            // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
+            int percent = (frame * 100) / totalFrames;
+            std::cout << "\r  [" << bar << ">" << empty << "] "
+                      << std::setw(3) << percent << "% | "
+                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
+                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
+                      << cfg.shader
+                      << "     " << std::flush;
         });
     }
 
@@ -533,12 +547,25 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         return BenchmarkGraphFactory::BuildComputeRayMarchGraph(graph, testConfig, width, height);
     });
 
-    // Set progress callback if verbose
+    // Set progress callback if verbose - show progress bar with test params
     if (config.verbose) {
-        SetProgressCallback([&](uint32_t testIdx, uint32_t totalTests,
+        SetProgressCallback([this](uint32_t testIdx, uint32_t totalTests,
                                 uint32_t frame, uint32_t totalFrames) {
-            std::cout << "\r  Test " << (testIdx + 1) << "/" << totalTests
-                      << " - Frame " << frame << "/" << totalFrames << "    " << std::flush;
+            const auto& cfg = GetCurrentTestConfig();
+
+            // Build progress bar (20 chars wide)
+            int progress = (frame * 20) / totalFrames;
+            std::string bar(progress, '=');
+            std::string empty(20 - progress, ' ');
+
+            // Format: [=====>              ] 25% | Test 1/4 | 64^3 cornell | shader.comp
+            int percent = (frame * 100) / totalFrames;
+            std::cout << "\r  [" << bar << ">" << empty << "] "
+                      << std::setw(3) << percent << "% | "
+                      << "Test " << (testIdx + 1) << "/" << totalTests << " | "
+                      << cfg.voxelResolution << "^3 " << cfg.sceneType << " | "
+                      << cfg.shader
+                      << "     " << std::flush;
         });
     }
 
@@ -739,11 +766,33 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
 
         FinalizeCurrentTest();
-        ProfilerSystem::Instance().EndTestRun(!shouldClose);
+
+        // Save user-initiated close state before graph destruction
+        bool userRequestedClose = shouldClose;
+
+        ProfilerSystem::Instance().EndTestRun(!userRequestedClose);
         ClearCurrentGraph();
 
-        // Reset graph for next test
+        // Reset graph for next test (this destroys window, triggering WindowCloseEvent)
         renderGraph.reset();
+
+        // Drain any pending window messages from graph destruction
+#ifdef _WIN32
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message != WM_QUIT) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+#endif
+
+        // Reset shouldClose - programmatic window destruction is not a user close request
+        // Only preserve if user actually clicked close button during the test
+        shouldClose = userRequestedClose;
+
+        if (shouldClose) break;  // User requested exit, don't start next test
+
         renderGraph = std::make_unique<RG::RenderGraph>(
             nodeRegistry.get(),
             messageBus.get(),

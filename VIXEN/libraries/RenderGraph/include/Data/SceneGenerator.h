@@ -6,6 +6,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <mutex>
 #include <glm/glm.hpp>
 
 namespace VIXEN {
@@ -393,6 +394,88 @@ private:
         const glm::ivec3& size,
         uint32_t height
     );
+};
+
+// ============================================================================
+// Voxel Data Cache (Performance Optimization)
+// ============================================================================
+// Caches generated VoxelGrid data to avoid regenerating the same scene
+// multiple times during benchmark runs.
+
+/**
+ * @brief Cache for generated voxel grid data
+ *
+ * Stores VoxelGrid data keyed by (sceneType, resolution) to avoid
+ * regenerating the same scene multiple times during benchmark runs.
+ * This significantly speeds up test suites that iterate over multiple
+ * shaders or render sizes with the same scene configuration.
+ *
+ * Thread-safe via mutex protection.
+ */
+class VoxelDataCache {
+public:
+    /**
+     * @brief Get or generate voxel grid data
+     *
+     * If the (sceneType, resolution) combination is cached, returns
+     * cached data. Otherwise generates the scene, caches it, and returns.
+     *
+     * @param sceneType Scene type name (e.g., "cornell", "noise")
+     * @param resolution Grid resolution (e.g., 64, 128, 256)
+     * @param params Generation parameters for the scene
+     * @return Pointer to VoxelGrid (owned by cache), or nullptr if generation failed
+     */
+    static const VoxelGrid* GetOrGenerate(
+        const std::string& sceneType,
+        uint32_t resolution,
+        const SceneGeneratorParams& params);
+
+    /**
+     * @brief Clear all cached data
+     *
+     * Call when memory needs to be freed or when starting a new benchmark suite.
+     */
+    static void Clear();
+
+    /**
+     * @brief Get cache statistics
+     * @return Pair of (hits, misses) since last clear
+     */
+    static std::pair<uint32_t, uint32_t> GetStats();
+
+    /**
+     * @brief Get current cache size in bytes (approximate)
+     * @return Total bytes used by cached VoxelGrid data
+     */
+    static size_t GetMemoryUsage();
+
+    /**
+     * @brief Enable/disable caching (default: enabled)
+     * @param enabled If false, GetOrGenerate always generates fresh data
+     */
+    static void SetEnabled(bool enabled);
+
+    /**
+     * @brief Check if caching is enabled
+     */
+    static bool IsEnabled();
+
+private:
+    struct CacheKey {
+        std::string sceneType;
+        uint32_t resolution;
+
+        bool operator<(const CacheKey& other) const {
+            if (sceneType != other.sceneType) return sceneType < other.sceneType;
+            return resolution < other.resolution;
+        }
+    };
+
+    static std::map<CacheKey, std::unique_ptr<VoxelGrid>>& GetCache();
+    static std::mutex& GetMutex();
+    static uint32_t& GetHits();
+    static uint32_t& GetMisses();
+    static bool& GetEnabledFlag();
 };
 
 // ============================================================================

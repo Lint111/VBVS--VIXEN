@@ -19,6 +19,7 @@ using VIXEN::RenderGraph::SparseVoxelOctree; // Legacy - will be removed
 using VIXEN::RenderGraph::SceneGeneratorFactory;
 using VIXEN::RenderGraph::SceneGeneratorParams;
 using VIXEN::RenderGraph::ISceneGenerator;
+using VIXEN::RenderGraph::VoxelDataCache;
 using VIXEN::RenderGraph::OctreeNode; // Legacy - will be removed
 using VIXEN::RenderGraph::VoxelBrick; // Legacy - will be removed
 
@@ -125,14 +126,32 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         nodeLogger->AddChild(memoryLogger_);
     }
 
-    // Generate procedural voxel scene
-    std::cout << "[VoxelGridNode] Generating voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
-    VoxelGrid grid(resolution);
-    GenerateProceduralScene(grid);
+    // Generate procedural voxel scene (using cache for performance)
+    std::cout << "[VoxelGridNode] Requesting voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
+
+    // Setup generation parameters
+    SceneGeneratorParams params;
+    params.resolution = resolution;
+    params.seed = 42;  // Fixed seed for reproducibility
+
+    // Try to get cached grid, or generate fresh if not cached
+    const VoxelGrid* cachedGrid = VoxelDataCache::GetOrGenerate(sceneType, resolution, params);
+
+    // If cache returned null (disabled or error), generate fresh
+    std::unique_ptr<VoxelGrid> freshGrid;
+    const VoxelGrid* gridPtr = cachedGrid;
+    if (!gridPtr) {
+        freshGrid = std::make_unique<VoxelGrid>(resolution);
+        GenerateProceduralScene(*freshGrid);
+        gridPtr = freshGrid.get();
+    }
+
+    // Reference the grid (either cached or fresh)
+    const VoxelGrid& grid = *gridPtr;
 
     size_t voxelCount = resolution * resolution * resolution;
-    std::cout << "[VoxelGridNode] Generated " << voxelCount << " voxels, density=" << grid.GetDensityPercent() << "%" << std::endl;
-    NODE_LOG_INFO("Generated " + std::to_string(voxelCount) + " voxels, density=" +
+    std::cout << "[VoxelGridNode] Using voxel grid with " << voxelCount << " voxels, density=" << grid.GetDensityPercent() << "%" << std::endl;
+    NODE_LOG_INFO("Using grid with " + std::to_string(voxelCount) + " voxels, density=" +
                   std::to_string(grid.GetDensityPercent()) + "%");
 
     // Build sparse voxel octree using LaineKarrasOctree with GaiaVoxelWorld
