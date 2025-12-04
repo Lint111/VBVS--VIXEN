@@ -304,11 +304,7 @@ void GeometryRenderNode::ValidateInputs(
         NODE_LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    if (vertexBuffer == VK_NULL_HANDLE) {
-        std::string errorMsg = "GeometryRenderNode: Vertex buffer is VK_NULL_HANDLE";
-        NODE_LOG_ERROR(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
+    // Note: vertexBuffer can be VK_NULL_HANDLE for fullscreen passes (no vertex input)
     if (swapchainInfo == nullptr) {
         std::string errorMsg = "GeometryRenderNode: SwapChain info is null";
         NODE_LOG_ERROR(errorMsg);
@@ -376,9 +372,11 @@ void GeometryRenderNode::BindVertexAndIndexBuffers(
     Context& ctx,
     VkBuffer vertexBuffer
 ) {
-    // Bind vertex buffer
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, offsets);
+    // Bind vertex buffer (skip for fullscreen passes with no vertex input)
+    if (vertexBuffer != VK_NULL_HANDLE) {
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, offsets);
+    }
 
     // Bind index buffer if enabled
     if (useIndexBuffer) {

@@ -87,13 +87,14 @@ struct FragmentPipelineNodes {
     RG::NodeHandle renderPass;
     RG::NodeHandle framebuffer;
     RG::NodeHandle pipeline;        // GraphicsPipelineNode
-    RG::NodeHandle drawCommand;     // Future: DrawCommandNode (currently uses compute dispatch path)
+    RG::NodeHandle drawCommand;     // GeometryRenderNode for fullscreen triangle rendering
 
-    /// Check if required nodes are valid (drawCommand optional until implemented)
+    /// Check if all required nodes are valid
     bool IsValid() const {
         return shaderLib.IsValid() && descriptorGatherer.IsValid() &&
                pushConstantGatherer.IsValid() && descriptorSet.IsValid() &&
-               renderPass.IsValid() && framebuffer.IsValid() && pipeline.IsValid();
+               renderPass.IsValid() && framebuffer.IsValid() && pipeline.IsValid() &&
+               drawCommand.IsValid();
     }
 };
 

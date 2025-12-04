@@ -32,6 +32,7 @@
 #include <Nodes/RenderPassNode.h>
 #include <Nodes/FramebufferNode.h>
 #include <Nodes/GraphicsPipelineNode.h>
+#include <Nodes/GeometryRenderNode.h>
 
 // Node configs
 #include <Data/Nodes/InstanceNodeConfig.h>
@@ -55,6 +56,7 @@
 #include <Data/Nodes/RenderPassNodeConfig.h>
 #include <Data/Nodes/FramebufferNodeConfig.h>
 #include <Data/Nodes/GraphicsPipelineNodeConfig.h>
+#include <Data/Nodes/GeometryRenderNodeConfig.h>
 
 // Data types
 #include <Data/CameraData.h>
@@ -669,6 +671,21 @@ void BenchmarkGraphFactory::ConfigureFragmentPipelineParams(
         pipeline->SetParameter(RG::GraphicsPipelineNodeConfig::TOPOLOGY, std::string("TriangleList"));
     }
 
+    // GeometryRenderNode parameters for fullscreen triangle
+    auto* drawCommand = static_cast<RG::GeometryRenderNode*>(graph->GetInstance(nodes.drawCommand));
+    if (drawCommand) {
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::VERTEX_COUNT, static_cast<uint32_t>(3));
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::INSTANCE_COUNT, static_cast<uint32_t>(1));
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::FIRST_VERTEX, static_cast<uint32_t>(0));
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::FIRST_INSTANCE, static_cast<uint32_t>(0));
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::USE_INDEX_BUFFER, false);
+        // Clear color (dark gray background)
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::CLEAR_COLOR_R, 0.1f);
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::CLEAR_COLOR_G, 0.1f);
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::CLEAR_COLOR_B, 0.1f);
+        drawCommand->SetParameter(RG::GeometryRenderNodeConfig::CLEAR_COLOR_A, 1.0f);
+    }
+
     // Shader builder registration would be done by the application code
     // since it requires access to ShaderBundleBuilder and file paths
 }
@@ -701,7 +718,7 @@ FragmentPipelineNodes BenchmarkGraphFactory::BuildFragmentPipeline(
     nodes.renderPass = graph->AddNode<RG::RenderPassNodeType>("benchmark_render_pass");
     nodes.framebuffer = graph->AddNode<RG::FramebufferNodeType>("benchmark_framebuffer");
     nodes.pipeline = graph->AddNode<RG::GraphicsPipelineNodeType>("benchmark_graphics_pipeline");
-    // Note: drawCommand is left invalid - future: add DrawCommandNode
+    nodes.drawCommand = graph->AddNode<RG::GeometryRenderNodeType>("benchmark_draw_command");
 
     // Configure parameters
     ConfigureFragmentPipelineParams(graph, nodes, infra, vertexShaderPath, fragmentShaderPath);
@@ -875,6 +892,58 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     // FrameSync -> Present (present fences)
     batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
                   output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    //--------------------------------------------------------------------------
+    // GeometryRenderNode (Draw Command) Connections
+    //--------------------------------------------------------------------------
+
+    if (fragment.drawCommand.IsValid()) {
+        // RenderPass -> GeometryRenderNode
+        batch.Connect(fragment.renderPass, RG::RenderPassNodeConfig::RENDER_PASS,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::RENDER_PASS);
+
+        // Framebuffer -> GeometryRenderNode
+        batch.Connect(fragment.framebuffer, RG::FramebufferNodeConfig::FRAMEBUFFERS,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::FRAMEBUFFERS);
+
+        // GraphicsPipeline -> GeometryRenderNode
+        batch.Connect(fragment.pipeline, RG::GraphicsPipelineNodeConfig::PIPELINE,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::PIPELINE)
+             .Connect(fragment.pipeline, RG::GraphicsPipelineNodeConfig::PIPELINE_LAYOUT,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::PIPELINE_LAYOUT);
+
+        // DescriptorSet -> GeometryRenderNode
+        batch.Connect(fragment.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::DESCRIPTOR_SETS);
+
+        // SwapChain -> GeometryRenderNode
+        batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::SWAPCHAIN_INFO)
+             .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::IMAGE_INDEX);
+
+        // Device -> GeometryRenderNode
+        batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::VULKAN_DEVICE);
+
+        // CommandPool -> GeometryRenderNode
+        batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::COMMAND_POOL);
+
+        // FrameSync -> GeometryRenderNode
+        batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::CURRENT_FRAME_INDEX)
+             .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::IN_FLIGHT_FENCE)
+             .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+             .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+        // GeometryRenderNode -> Present (render complete semaphore for presentation sync)
+        batch.Connect(fragment.drawCommand, RG::GeometryRenderNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                      output.present, RG::PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+    }
 
     // Register all connections atomically
     batch.RegisterAll();

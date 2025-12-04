@@ -97,7 +97,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotScope::NodeLevel);
 
     INPUT_SLOT(VERTEX_BUFFER, VkBuffer, 5,
-        SlotNullability::Required,
+        SlotNullability::Optional,  // Optional for fullscreen passes (no vertex buffer needed)
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -279,7 +279,7 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(!DESCRIPTOR_SETS_Slot::nullable, "DESCRIPTOR_SETS is required");
 
     static_assert(VERTEX_BUFFER_Slot::index == 5, "VERTEX_BUFFER must be at index 5");
-    static_assert(!VERTEX_BUFFER_Slot::nullable, "VERTEX_BUFFER is required");
+    static_assert(VERTEX_BUFFER_Slot::nullable, "VERTEX_BUFFER is optional for fullscreen passes");
 
     static_assert(INDEX_BUFFER_Slot::index == 6, "INDEX_BUFFER must be at index 6");
     static_assert(INDEX_BUFFER_Slot::nullable, "INDEX_BUFFER is optional");
