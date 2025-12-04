@@ -16,9 +16,9 @@
 
 using VIXEN::RenderGraph::VoxelGrid;
 using VIXEN::RenderGraph::SparseVoxelOctree; // Legacy - will be removed
-using VIXEN::RenderGraph::CornellBoxGenerator;
-using VIXEN::RenderGraph::CaveSystemGenerator;
-using VIXEN::RenderGraph::UrbanGridGenerator;
+using VIXEN::RenderGraph::SceneGeneratorFactory;
+using VIXEN::RenderGraph::SceneGeneratorParams;
+using VIXEN::RenderGraph::ISceneGenerator;
 using VIXEN::RenderGraph::OctreeNode; // Legacy - will be removed
 using VIXEN::RenderGraph::VoxelBrick; // Legacy - will be removed
 
@@ -808,26 +808,71 @@ void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
     std::cout << "[VoxelGridNode] GenerateProceduralScene: sceneType=\"" << sceneType << "\" (length=" << sceneType.length() << ")" << std::endl;
     NODE_LOG_INFO("Generating procedural scene: " + sceneType);
 
-    if (sceneType == "cornell") {
-        std::cout << "[VoxelGridNode] Matched 'cornell' - calling CornellBoxGenerator::Generate" << std::endl;
-        CornellBoxGenerator::Generate(grid);
-    } else if (sceneType == "cave") {
-        std::cout << "[VoxelGridNode] Matched 'cave'" << std::endl;
-        CaveSystemGenerator::Generate(grid);
-    } else if (sceneType == "urban") {
-        std::cout << "[VoxelGridNode] Matched 'urban'" << std::endl;
-        UrbanGridGenerator::Generate(grid);
-    } else {
-        std::cout << "[VoxelGridNode] NO MATCH - using default test pattern (all solid)" << std::endl;
-        // Default: test pattern (all solid)
-        for (uint32_t z = 0; z < resolution; ++z) {
-            for (uint32_t y = 0; y < resolution; ++y) {
-                for (uint32_t x = 0; x < resolution; ++x) {
-                    grid.Set(x, y, z, 1);  // Material ID 1 (not 255 - would be out of bounds)
+    // Create generator from factory
+    auto generator = SceneGeneratorFactory::Create(sceneType);
+
+    if (!generator) {
+        // Check for "test" pattern as special case
+        if (sceneType == "test") {
+            std::cout << "[VoxelGridNode] Generating test pattern (all solid)" << std::endl;
+            grid.Clear();
+            for (uint32_t z = 0; z < resolution; ++z) {
+                for (uint32_t y = 0; y < resolution; ++y) {
+                    for (uint32_t x = 0; x < resolution; ++x) {
+                        grid.Set(x, y, z, 1);  // Material ID 1
+                    }
                 }
             }
+            NODE_LOG_INFO("Generated test pattern (all solid voxels)");
+            return;
         }
-        NODE_LOG_INFO("Generated test pattern (all solid voxels)");
+
+        // Unknown scene type - fall back to cornell
+        NODE_LOG_WARNING("Unknown scene type '" + sceneType + "', falling back to 'cornell'");
+        std::cout << "[VoxelGridNode] Unknown scene type '" << sceneType << "', using cornell" << std::endl;
+        generator = SceneGeneratorFactory::Create("cornell");
+
+        if (!generator) {
+            // This should never happen with built-in generators
+            NODE_LOG_ERROR("Failed to create fallback cornell generator");
+            return;
+        }
+    }
+
+    // Build params from node config
+    SceneGeneratorParams params;
+    params.resolution = resolution;
+    params.seed = GetParameterValue<uint32_t>("seed", 42u);
+    params.noiseScale = GetParameterValue<float>("noise_scale", 4.0f);
+    params.densityThreshold = GetParameterValue<float>("density_threshold", 0.5f);
+    params.octaves = GetParameterValue<uint32_t>("octaves", 4u);
+    params.persistence = GetParameterValue<float>("persistence", 0.5f);
+    params.streetWidth = GetParameterValue<uint32_t>("street_width", 0u);
+    params.blockCount = GetParameterValue<uint32_t>("block_count", 4u);
+    params.buildingDensity = GetParameterValue<float>("building_density", 0.4f);
+    params.heightVariance = GetParameterValue<float>("height_variance", 0.8f);
+    params.blockSize = GetParameterValue<uint32_t>("block_size", 8u);
+    params.cellCount = GetParameterValue<uint32_t>("cell_count", 8u);
+    params.wallThickness = GetParameterValue<float>("wall_thickness", 0.3f);
+
+    std::cout << "[VoxelGridNode] Using generator: " << generator->GetName()
+              << " (" << generator->GetDescription() << ")" << std::endl;
+    NODE_LOG_INFO("Using generator: " + generator->GetName());
+
+    // Generate scene
+    generator->Generate(grid, params);
+
+    // Validate density
+    auto [minDensity, maxDensity] = generator->GetExpectedDensityRange();
+    float actualDensity = grid.GetDensityPercent();
+
+    std::cout << "[VoxelGridNode] Generated density: " << actualDensity << "% (expected: "
+              << minDensity << "-" << maxDensity << "%)" << std::endl;
+
+    if (actualDensity < minDensity || actualDensity > maxDensity) {
+        NODE_LOG_WARNING("Scene density " + std::to_string(actualDensity) +
+                        "% outside expected range [" + std::to_string(minDensity) +
+                        ", " + std::to_string(maxDensity) + "]");
     }
 }
 

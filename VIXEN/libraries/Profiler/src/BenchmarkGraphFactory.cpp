@@ -1217,13 +1217,13 @@ void BenchmarkGraphFactory::WireVariadicResources(
 // Shader Builder Registration
 //==============================================================================
 
-void BenchmarkGraphFactory::RegisterVoxelRayMarchShader(
+void BenchmarkGraphFactory::RegisterComputeShader(
     RG::RenderGraph* graph,
     const ComputePipelineNodes& compute,
-    bool useCompressed)
+    const std::string& shaderName)
 {
     if (!graph) {
-        throw std::invalid_argument("BenchmarkGraphFactory::RegisterVoxelRayMarchShader: graph is null");
+        throw std::invalid_argument("BenchmarkGraphFactory::RegisterComputeShader: graph is null");
     }
 
     // Get the shader library node
@@ -1231,21 +1231,21 @@ void BenchmarkGraphFactory::RegisterVoxelRayMarchShader(
         graph->GetInstance(compute.shaderLib));
 
     if (!shaderLibNode) {
-        throw std::runtime_error("BenchmarkGraphFactory::RegisterVoxelRayMarchShader: "
+        throw std::runtime_error("BenchmarkGraphFactory::RegisterComputeShader: "
                                 "shader library node not found");
     }
 
-    // Register shader builder callback
-    shaderLibNode->RegisterShaderBuilder([useCompressed](int vulkanVer, int spirvVer) {
+    // Register shader builder callback - captures shaderName by value
+    shaderLibNode->RegisterShaderBuilder([shaderName](int vulkanVer, int spirvVer) {
         ShaderManagement::ShaderBundleBuilder builder;
 
-        // Select shader variant
-        const char* shaderName = useCompressed
-            ? "VoxelRayMarch_Compressed.comp"
-            : "VoxelRayMarch.comp";
-        const char* programName = useCompressed
-            ? "VoxelRayMarch_Compressed"
-            : "VoxelRayMarch";
+        // Shader name is used directly as filename
+        // Extract program name from shader filename (remove extension)
+        std::string programName = shaderName;
+        auto dotPos = programName.rfind('.');
+        if (dotPos != std::string::npos) {
+            programName = programName.substr(0, dotPos);
+        }
 
         // Search paths for shader source
         std::vector<std::filesystem::path> possiblePaths = {
@@ -1257,17 +1257,17 @@ void BenchmarkGraphFactory::RegisterVoxelRayMarchShader(
             shaderName
         };
 
-        std::filesystem::path compPath;
+        std::filesystem::path shaderPath;
         for (const auto& path : possiblePaths) {
             if (std::filesystem::exists(path)) {
-                compPath = path;
+                shaderPath = path;
                 break;
             }
         }
 
-        if (compPath.empty()) {
+        if (shaderPath.empty()) {
             throw std::runtime_error(
-                std::string("VoxelRayMarch shader not found: ") + shaderName);
+                std::string("Compute shader not found: ") + shaderName);
         }
 
         // Configure builder with include paths for #include support
@@ -1280,7 +1280,7 @@ void BenchmarkGraphFactory::RegisterVoxelRayMarchShader(
 #ifdef VIXEN_SHADER_SOURCE_DIR
                .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
 #endif
-               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, compPath, "main");
+               .AddStageFromFile(ShaderManagement::ShaderStage::Compute, shaderPath, "main");
 
         return builder;
     });

@@ -2,6 +2,10 @@
 
 #include <cstdint>
 #include <vector>
+#include <map>
+#include <string>
+#include <memory>
+#include <functional>
 #include <glm/glm.hpp>
 
 namespace VIXEN {
@@ -13,14 +17,15 @@ namespace RenderGraph {
 //
 // Based on: documentation/Testing/TestScenes.md
 //
-// Three test scenes with controlled densities:
-// 1. Cornell Box (10% density) - Sparse traversal, empty space skipping
-// 2. Cave System (50% density) - Medium traversal, coherent structures
-// 3. Urban Grid (90% density) - Dense traversal, stress test
+// Test scenes with controlled densities:
+// 1. Cornell Box (~10% density) - Sparse traversal, empty space skipping
+// 2. Noise (~50% density) - Medium traversal, Perlin noise patterns
+// 3. Tunnels (~30-50% density) - Cave/tunnel systems
+// 4. Cityscape (~80-95% density) - Dense traversal, stress test
 //
 // Design goals:
 // - Reproducibility: Fixed seeds for deterministic generation
-// - Density control: ±5% accuracy for fair benchmarking
+// - Density control: Consistent density for fair benchmarking
 // - Spatial distribution: Realistic patterns (not random noise)
 // - Visual clarity: Recognizable structures for validation
 // ============================================================================
@@ -93,17 +98,149 @@ private:
     }
 };
 
+// ============================================================================
+// Scene Generator Interface and Parameters
+// ============================================================================
+
 /**
- * @brief Cornell Box scene generator (10% density - sparse)
+ * @brief Scene generation parameters passed from config
+ *
+ * Contains all parameters needed by various generators.
+ * Generators use only the parameters relevant to them.
+ */
+struct SceneGeneratorParams {
+    uint32_t resolution = 128;
+    uint32_t seed = 42;  // For reproducibility
+
+    // Noise-specific params (perlin3d generator)
+    float noiseScale = 4.0f;
+    float densityThreshold = 0.5f;
+    uint32_t octaves = 4;
+    float persistence = 0.5f;
+
+    // Urban/cityscape-specific params
+    uint32_t streetWidth = 0;  // 0 = auto
+    uint32_t blockCount = 4;
+    float buildingDensity = 0.4f;
+    float heightVariance = 0.8f;
+    uint32_t blockSize = 8;
+
+    // Tunnel/cave-specific params
+    uint32_t cellCount = 8;
+    float wallThickness = 0.3f;
+
+    // General extensibility
+    std::map<std::string, float> customParams;
+
+    /**
+     * @brief Get custom parameter with default value
+     * @param key Parameter name
+     * @param defaultValue Value if parameter not found
+     * @return Parameter value or default
+     */
+    float GetCustomParam(const std::string& key, float defaultValue = 0.0f) const {
+        auto it = customParams.find(key);
+        return (it != customParams.end()) ? it->second : defaultValue;
+    }
+};
+
+/**
+ * @brief Abstract scene generator interface
+ *
+ * All scene generators implement this interface to allow
+ * factory-based selection and uniform generation API.
+ */
+class ISceneGenerator {
+public:
+    virtual ~ISceneGenerator() = default;
+
+    /**
+     * @brief Generate scene into voxel grid
+     * @param grid Voxel grid to populate (will be cleared first)
+     * @param params Generation parameters
+     */
+    virtual void Generate(VoxelGrid& grid, const SceneGeneratorParams& params) = 0;
+
+    /**
+     * @brief Get generator name for logging
+     * @return Generator identifier (e.g., "cornell", "noise")
+     */
+    virtual std::string GetName() const = 0;
+
+    /**
+     * @brief Get expected density range for validation
+     * @return Pair of (minDensity%, maxDensity%)
+     */
+    virtual std::pair<float, float> GetExpectedDensityRange() const = 0;
+
+    /**
+     * @brief Get human-readable description
+     * @return Description of what the generator creates
+     */
+    virtual std::string GetDescription() const = 0;
+};
+
+// ============================================================================
+// Scene Generator Factory
+// ============================================================================
+
+/**
+ * @brief Factory for creating scene generators by name
+ *
+ * Supports built-in generators and custom registration.
+ */
+class SceneGeneratorFactory {
+public:
+    using GeneratorFactoryFunc = std::function<std::unique_ptr<ISceneGenerator>()>;
+
+    /**
+     * @brief Get generator by name
+     * @param name Generator name (e.g., "cornell", "noise")
+     * @return Generator instance or nullptr if not found
+     */
+    static std::unique_ptr<ISceneGenerator> Create(const std::string& name);
+
+    /**
+     * @brief Get list of available generator names
+     * @return Vector of registered generator names
+     */
+    static std::vector<std::string> GetAvailableGenerators();
+
+    /**
+     * @brief Register custom generator
+     * @param name Generator name for lookup
+     * @param factory Function that creates generator instance
+     */
+    static void Register(const std::string& name, GeneratorFactoryFunc factory);
+
+    /**
+     * @brief Check if generator exists
+     * @param name Generator name
+     * @return true if registered
+     */
+    static bool Exists(const std::string& name);
+
+private:
+    static std::map<std::string, GeneratorFactoryFunc>& GetRegistry();
+    static void EnsureBuiltinsRegistered();
+    static bool builtinsRegistered_;
+};
+
+// ============================================================================
+// Concrete Scene Generators
+// ============================================================================
+
+/**
+ * @brief Cornell Box scene generator (~10% density - sparse)
  *
  * Classic Cornell Box with:
- * - 1-voxel thick walls (left=red, right=green, others=white)
+ * - 3-voxel thick walls (left=red, right=green, others=white)
  * - Checkered floor pattern
  * - Two cubes (one axis-aligned, one rotated)
  * - Ceiling light (emissive patch)
  *
  * Material IDs:
- * - 0: Empty (default white)
+ * - 0: Empty
  * - 1: Red (left wall)
  * - 2: Green (right wall)
  * - 3-5: White (back wall, floor, ceiling)
@@ -111,40 +248,39 @@ private:
  * - 10-11: Cube materials
  * - 20: Emissive ceiling light
  *
- * Target density: 10% (±5%)
+ * Target density: ~10%
  * Purpose: Sparse traversal, empty space skipping optimization test
  */
-class CornellBoxGenerator {
+class CornellBoxSceneGenerator : public ISceneGenerator {
 public:
-    /**
-     * @brief Generate Cornell Box scene
-     * @param grid Voxel grid to populate (will be cleared first)
-     */
-    static void Generate(VoxelGrid& grid);
+    void Generate(VoxelGrid& grid, const SceneGeneratorParams& params) override;
+    std::string GetName() const override { return "cornell"; }
+    std::pair<float, float> GetExpectedDensityRange() const override { return {5.0f, 20.0f}; }
+    std::string GetDescription() const override { return "Cornell Box with walls, cubes, and light"; }
 
 private:
-    static void GenerateWalls(VoxelGrid& grid);
-    static void GenerateCheckerFloor(VoxelGrid& grid);
-    static void GenerateCube(
+    void GenerateWalls(VoxelGrid& grid);
+    void GenerateCheckerFloor(VoxelGrid& grid);
+    void GenerateCube(
         VoxelGrid& grid,
         const glm::vec3& center,
         const glm::vec3& size,
         uint8_t material
     );
-    static void GenerateRotatedCube(
+    void GenerateRotatedCube(
         VoxelGrid& grid,
         const glm::vec3& center,
         const glm::vec3& size,
         float yRotationRadians,
         uint8_t material
     );
-    static void GenerateCeilingLight(VoxelGrid& grid);
+    void GenerateCeilingLight(VoxelGrid& grid);
 };
 
 /**
- * @brief Perlin noise generator for procedural terrain
+ * @brief Perlin noise 3D generator utility
  *
- * 3D Perlin noise implementation for cave generation.
+ * 3D Perlin noise implementation for procedural terrain.
  * Uses fixed seed for reproducibility.
  */
 class PerlinNoise3D {
@@ -160,6 +296,17 @@ public:
      */
     float Sample(float x, float y, float z) const;
 
+    /**
+     * @brief Sample octave noise (fractal brownian motion)
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @param z Z coordinate
+     * @param octaves Number of octaves
+     * @param persistence Amplitude decay per octave
+     * @return Noise value [-1.0, 1.0]
+     */
+    float SampleOctaves(float x, float y, float z, uint32_t octaves, float persistence) const;
+
 private:
     std::vector<int> permutation_;  // Permutation table for noise
 
@@ -169,75 +316,124 @@ private:
 };
 
 /**
- * @brief Cave system scene generator (50% density - medium)
+ * @brief Noise-based scene generator (~50% density - medium)
  *
- * Procedural cave network with:
- * - Perlin noise-based tunnels and chambers
- * - Stalactites and stalagmites
- * - Ore veins (iron, gold, diamond)
+ * Procedural Perlin noise terrain.
+ * Uses params: noiseScale, densityThreshold, octaves, persistence
  *
- * Target density: 50% (±5%)
- * Purpose: Medium traversal complexity, coherent structure testing
+ * Target density: ~40-60%
+ * Purpose: Medium traversal complexity, noise pattern testing
  */
-class CaveSystemGenerator {
+class NoiseSceneGenerator : public ISceneGenerator {
 public:
-    /**
-     * @brief Generate cave system scene
-     * @param grid Voxel grid to populate (will be cleared first)
-     * @param noiseScale Perlin noise frequency (default: 4.0)
-     * @param densityThreshold Solid/empty threshold (default: 0.5 for 50%)
-     */
-    static void Generate(
-        VoxelGrid& grid,
-        float noiseScale = 4.0f,
-        float densityThreshold = 0.5f
-    );
-
-private:
-    static void GenerateCaveTerrain(
-        VoxelGrid& grid,
-        float noiseScale,
-        float threshold
-    );
-    static void GenerateStalactites(VoxelGrid& grid);
-    static void GenerateStalagtites(VoxelGrid& grid);
-    static void GenerateOreVeins(VoxelGrid& grid);
+    void Generate(VoxelGrid& grid, const SceneGeneratorParams& params) override;
+    std::string GetName() const override { return "noise"; }
+    std::pair<float, float> GetExpectedDensityRange() const override { return {35.0f, 65.0f}; }
+    std::string GetDescription() const override { return "3D Perlin noise terrain"; }
 };
 
 /**
- * @brief Urban grid scene generator (90% density - dense)
+ * @brief Tunnel/cave system scene generator (~30-50% density)
+ *
+ * Procedural cave network with:
+ * - Voronoi-based or noise-based tunnels
+ * - Stalactites and stalagmites
+ * - Ore veins (decorative)
+ *
+ * Uses params: cellCount, wallThickness, seed
+ *
+ * Target density: ~30-50%
+ * Purpose: Medium traversal complexity, coherent structure testing
+ */
+class TunnelSceneGenerator : public ISceneGenerator {
+public:
+    void Generate(VoxelGrid& grid, const SceneGeneratorParams& params) override;
+    std::string GetName() const override { return "tunnels"; }
+    std::pair<float, float> GetExpectedDensityRange() const override { return {25.0f, 55.0f}; }
+    std::string GetDescription() const override { return "Cave/tunnel system with formations"; }
+
+private:
+    void GenerateCaveTerrain(VoxelGrid& grid, const SceneGeneratorParams& params);
+    void GenerateStalactites(VoxelGrid& grid, uint32_t seed);
+    void GenerateStalagmites(VoxelGrid& grid, uint32_t seed);
+    void GenerateOreVeins(VoxelGrid& grid, uint32_t seed);
+};
+
+/**
+ * @brief Cityscape scene generator (~80-95% density - dense)
  *
  * Procedural city with:
  * - Street grid layout
  * - Buildings with varying heights
  * - Windows, doors, architectural details
  *
- * Target density: 90% (±5%)
+ * Uses params: streetWidth, blockCount, buildingDensity, heightVariance, blockSize
+ *
+ * Target density: ~80-95%
  * Purpose: Dense traversal, worst-case performance testing
  */
-class UrbanGridGenerator {
+class CityscapeSceneGenerator : public ISceneGenerator {
 public:
-    /**
-     * @brief Generate urban grid scene
-     * @param grid Voxel grid to populate (will be cleared first)
-     * @param streetWidth Width of streets in voxels (default: resolution/16)
-     * @param blockCount Number of city blocks (default: 4x4)
-     */
-    static void Generate(
-        VoxelGrid& grid,
-        uint32_t streetWidth = 0,  // 0 = auto (resolution/16)
-        uint32_t blockCount = 4
-    );
+    void Generate(VoxelGrid& grid, const SceneGeneratorParams& params) override;
+    std::string GetName() const override { return "cityscape"; }
+    std::pair<float, float> GetExpectedDensityRange() const override { return {75.0f, 98.0f}; }
+    std::string GetDescription() const override { return "Urban cityscape with buildings"; }
 
 private:
-    static void GenerateStreetGrid(VoxelGrid& grid, uint32_t streetWidth, uint32_t blockCount);
-    static void GenerateBuilding(
+    void GenerateStreetGrid(VoxelGrid& grid, uint32_t streetWidth, uint32_t blockCount);
+    void GenerateBuilding(
         VoxelGrid& grid,
         const glm::ivec3& origin,
         const glm::ivec3& size,
         uint32_t height
     );
-    static void AddBuildingDetails(VoxelGrid& grid, const glm::ivec3& origin, const glm::ivec3& size, uint32_t height);
+    void AddBuildingDetails(
+        VoxelGrid& grid,
+        const glm::ivec3& origin,
+        const glm::ivec3& size,
+        uint32_t height
+    );
+};
+
+// ============================================================================
+// Legacy Static Generator Classes (Deprecated - Use ISceneGenerator)
+// ============================================================================
+// These are kept for backward compatibility but should not be used in new code.
+// Use SceneGeneratorFactory::Create("name") instead.
+
+/**
+ * @brief [DEPRECATED] Use SceneGeneratorFactory::Create("cornell")
+ */
+class CornellBoxGenerator {
+public:
+    [[deprecated("Use SceneGeneratorFactory::Create(\"cornell\") instead")]]
+    static void Generate(VoxelGrid& grid);
+};
+
+/**
+ * @brief [DEPRECATED] Use SceneGeneratorFactory::Create("tunnels")
+ */
+class CaveSystemGenerator {
+public:
+    [[deprecated("Use SceneGeneratorFactory::Create(\"tunnels\") instead")]]
+    static void Generate(
+        VoxelGrid& grid,
+        float noiseScale = 4.0f,
+        float densityThreshold = 0.5f
+    );
+};
+
+/**
+ * @brief [DEPRECATED] Use SceneGeneratorFactory::Create("cityscape")
+ */
+class UrbanGridGenerator {
+public:
+    [[deprecated("Use SceneGeneratorFactory::Create(\"cityscape\") instead")]]
+    static void Generate(
+        VoxelGrid& grid,
+        uint32_t streetWidth = 0,
+        uint32_t blockCount = 4
+    );
 };
 
 } // namespace RenderGraph

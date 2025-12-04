@@ -2,6 +2,7 @@
 #include <cmath>
 #include <algorithm>
 #include <random>
+#include <iostream>
 
 namespace VIXEN {
 namespace RenderGraph {
@@ -51,13 +52,172 @@ uint32_t VoxelGrid::CountSolidVoxels() const {
 }
 
 // ============================================================================
-// Cornell Box Generator Implementation
+// Scene Generator Factory Implementation
 // ============================================================================
 
-void CornellBoxGenerator::Generate(VoxelGrid& grid) {
+bool SceneGeneratorFactory::builtinsRegistered_ = false;
+
+std::map<std::string, SceneGeneratorFactory::GeneratorFactoryFunc>& SceneGeneratorFactory::GetRegistry() {
+    static std::map<std::string, GeneratorFactoryFunc> registry;
+    return registry;
+}
+
+void SceneGeneratorFactory::EnsureBuiltinsRegistered() {
+    if (builtinsRegistered_) {
+        return;
+    }
+    builtinsRegistered_ = true;
+
+    auto& registry = GetRegistry();
+
+    // Register built-in generators
+    registry["cornell"] = []() { return std::make_unique<CornellBoxSceneGenerator>(); };
+    registry["noise"] = []() { return std::make_unique<NoiseSceneGenerator>(); };
+    registry["tunnels"] = []() { return std::make_unique<TunnelSceneGenerator>(); };
+    registry["cityscape"] = []() { return std::make_unique<CityscapeSceneGenerator>(); };
+
+    // Aliases for backward compatibility
+    registry["cave"] = []() { return std::make_unique<TunnelSceneGenerator>(); };
+    registry["urban"] = []() { return std::make_unique<CityscapeSceneGenerator>(); };
+}
+
+std::unique_ptr<ISceneGenerator> SceneGeneratorFactory::Create(const std::string& name) {
+    EnsureBuiltinsRegistered();
+
+    auto& registry = GetRegistry();
+    auto it = registry.find(name);
+    if (it != registry.end()) {
+        return it->second();
+    }
+    return nullptr;
+}
+
+std::vector<std::string> SceneGeneratorFactory::GetAvailableGenerators() {
+    EnsureBuiltinsRegistered();
+
+    std::vector<std::string> names;
+    for (const auto& [name, _] : GetRegistry()) {
+        names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+void SceneGeneratorFactory::Register(const std::string& name, GeneratorFactoryFunc factory) {
+    EnsureBuiltinsRegistered();
+    GetRegistry()[name] = std::move(factory);
+}
+
+bool SceneGeneratorFactory::Exists(const std::string& name) {
+    EnsureBuiltinsRegistered();
+    return GetRegistry().find(name) != GetRegistry().end();
+}
+
+// ============================================================================
+// Perlin Noise 3D Implementation
+// ============================================================================
+
+PerlinNoise3D::PerlinNoise3D(uint32_t seed) {
+    // Initialize permutation table with deterministic shuffle
+    permutation_.resize(512);
+
+    std::vector<int> p(256);
+    for (int i = 0; i < 256; ++i) {
+        p[i] = i;
+    }
+
+    // Shuffle using fixed seed for reproducibility
+    std::mt19937 rng(seed);
+    std::shuffle(p.begin(), p.end(), rng);
+
+    // Duplicate for wrap-around
+    for (int i = 0; i < 256; ++i) {
+        permutation_[i] = p[i];
+        permutation_[256 + i] = p[i];
+    }
+}
+
+float PerlinNoise3D::Sample(float x, float y, float z) const {
+    // Find unit cube that contains point
+    int X = static_cast<int>(std::floor(x)) & 255;
+    int Y = static_cast<int>(std::floor(y)) & 255;
+    int Z = static_cast<int>(std::floor(z)) & 255;
+
+    // Find relative position in cube
+    x -= std::floor(x);
+    y -= std::floor(y);
+    z -= std::floor(z);
+
+    // Compute fade curves
+    float u = Fade(x);
+    float v = Fade(y);
+    float w = Fade(z);
+
+    // Hash coordinates of cube corners
+    int A = permutation_[X] + Y;
+    int AA = permutation_[A] + Z;
+    int AB = permutation_[A + 1] + Z;
+    int B = permutation_[X + 1] + Y;
+    int BA = permutation_[B] + Z;
+    int BB = permutation_[B + 1] + Z;
+
+    // Blend results from 8 corners of cube
+    float res = Lerp(w,
+        Lerp(v,
+            Lerp(u, Grad(permutation_[AA], x, y, z),
+                    Grad(permutation_[BA], x - 1, y, z)),
+            Lerp(u, Grad(permutation_[AB], x, y - 1, z),
+                    Grad(permutation_[BB], x - 1, y - 1, z))),
+        Lerp(v,
+            Lerp(u, Grad(permutation_[AA + 1], x, y, z - 1),
+                    Grad(permutation_[BA + 1], x - 1, y, z - 1)),
+            Lerp(u, Grad(permutation_[AB + 1], x, y - 1, z - 1),
+                    Grad(permutation_[BB + 1], x - 1, y - 1, z - 1))));
+
+    return res;
+}
+
+float PerlinNoise3D::SampleOctaves(float x, float y, float z, uint32_t octaves, float persistence) const {
+    float total = 0.0f;
+    float frequency = 1.0f;
+    float amplitude = 1.0f;
+    float maxValue = 0.0f;
+
+    for (uint32_t i = 0; i < octaves; ++i) {
+        total += Sample(x * frequency, y * frequency, z * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= 2.0f;
+    }
+
+    return total / maxValue;  // Normalize to [-1, 1]
+}
+
+float PerlinNoise3D::Fade(float t) const {
+    // 6t^5 - 15t^4 + 10t^3
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+float PerlinNoise3D::Lerp(float t, float a, float b) const {
+    return a + t * (b - a);
+}
+
+float PerlinNoise3D::Grad(int hash, float x, float y, float z) const {
+    // Convert low 4 bits of hash code into 12 gradient directions
+    int h = hash & 15;
+    float u = h < 8 ? x : y;
+    float v = h < 4 ? y : h == 12 || h == 14 ? x : z;
+    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+}
+
+// ============================================================================
+// Cornell Box Scene Generator Implementation
+// ============================================================================
+
+void CornellBoxSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorParams& params) {
     grid.Clear();
 
-    // 1. Generate walls (1-voxel thick box)
+    // 1. Generate walls (3-voxel thick box)
     GenerateWalls(grid);
 
     // 2. Generate checkered floor
@@ -72,7 +232,7 @@ void CornellBoxGenerator::Generate(VoxelGrid& grid) {
         10  // Material ID
     );
 
-    // 4. Right cube (rotated 15° on Y-axis, material ID 11)
+    // 4. Right cube (rotated 15 deg on Y-axis, material ID 11)
     GenerateRotatedCube(
         grid,
         glm::vec3(res * 0.7f, res * 0.1f, res * 0.6f),
@@ -85,7 +245,7 @@ void CornellBoxGenerator::Generate(VoxelGrid& grid) {
     GenerateCeilingLight(grid);
 }
 
-void CornellBoxGenerator::GenerateWalls(VoxelGrid& grid) {
+void CornellBoxSceneGenerator::GenerateWalls(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
     // Thicken walls to 3 voxels to ensure brick occupancy at all resolutions
     const uint32_t wallThickness = 3;
@@ -136,9 +296,9 @@ void CornellBoxGenerator::GenerateWalls(VoxelGrid& grid) {
     }
 }
 
-void CornellBoxGenerator::GenerateCheckerFloor(VoxelGrid& grid) {
+void CornellBoxSceneGenerator::GenerateCheckerFloor(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
-    uint32_t checkerSize = res / 8;  // 8×8 checker grid
+    uint32_t checkerSize = res / 8;  // 8x8 checker grid
 
     if (checkerSize == 0) checkerSize = 1;
 
@@ -151,7 +311,7 @@ void CornellBoxGenerator::GenerateCheckerFloor(VoxelGrid& grid) {
     }
 }
 
-void CornellBoxGenerator::GenerateCube(
+void CornellBoxSceneGenerator::GenerateCube(
     VoxelGrid& grid,
     const glm::vec3& center,
     const glm::vec3& size,
@@ -175,7 +335,7 @@ void CornellBoxGenerator::GenerateCube(
     }
 }
 
-void CornellBoxGenerator::GenerateRotatedCube(
+void CornellBoxSceneGenerator::GenerateRotatedCube(
     VoxelGrid& grid,
     const glm::vec3& center,
     const glm::vec3& size,
@@ -218,9 +378,9 @@ void CornellBoxGenerator::GenerateRotatedCube(
     }
 }
 
-void CornellBoxGenerator::GenerateCeilingLight(VoxelGrid& grid) {
+void CornellBoxSceneGenerator::GenerateCeilingLight(VoxelGrid& grid) {
     uint32_t res = grid.GetResolution();
-    uint32_t lightSize = res / 8;  // 1/8 of resolution (e.g., 16 for 128³)
+    uint32_t lightSize = res / 8;  // 1/8 of resolution (e.g., 16 for 128^3)
 
     if (lightSize == 0) lightSize = 1;
 
@@ -235,126 +395,76 @@ void CornellBoxGenerator::GenerateCeilingLight(VoxelGrid& grid) {
 }
 
 // ============================================================================
-// Perlin Noise 3D Implementation
+// Noise Scene Generator Implementation
 // ============================================================================
 
-PerlinNoise3D::PerlinNoise3D(uint32_t seed) {
-    // Initialize permutation table with deterministic shuffle
-    permutation_.resize(512);
+void NoiseSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorParams& params) {
+    grid.Clear();
 
-    std::vector<int> p(256);
-    for (int i = 0; i < 256; ++i) {
-        p[i] = i;
+    PerlinNoise3D noise(params.seed);
+    uint32_t res = grid.GetResolution();
+
+    for (uint32_t x = 0; x < res; ++x) {
+        for (uint32_t y = 0; y < res; ++y) {
+            for (uint32_t z = 0; z < res; ++z) {
+                // Sample octave noise for more interesting patterns
+                float noiseValue = noise.SampleOctaves(
+                    x / (res / params.noiseScale),
+                    y / (res / params.noiseScale),
+                    z / (res / params.noiseScale),
+                    params.octaves,
+                    params.persistence
+                );
+
+                // Convert noise range [-1, 1] to [0, 1]
+                noiseValue = (noiseValue + 1.0f) * 0.5f;
+
+                // Threshold determines solid vs empty
+                if (noiseValue > params.densityThreshold) {
+                    // Vary material based on noise for visual interest
+                    uint8_t material = 30 + static_cast<uint8_t>(noiseValue * 10);
+                    grid.Set(x, y, z, material);
+                }
+            }
+        }
     }
-
-    // Shuffle using fixed seed for reproducibility
-    std::mt19937 rng(seed);
-    std::shuffle(p.begin(), p.end(), rng);
-
-    // Duplicate for wrap-around
-    for (int i = 0; i < 256; ++i) {
-        permutation_[i] = p[i];
-        permutation_[256 + i] = p[i];
-    }
-}
-
-float PerlinNoise3D::Sample(float x, float y, float z) const {
-    // Find unit cube that contains point
-    int X = static_cast<int>(std::floor(x)) & 255;
-    int Y = static_cast<int>(std::floor(y)) & 255;
-    int Z = static_cast<int>(std::floor(z)) & 255;
-
-    // Find relative position in cube
-    x -= std::floor(x);
-    y -= std::floor(y);
-    z -= std::floor(z);
-
-    // Compute fade curves
-    float u = Fade(x);
-    float v = Fade(y);
-    float w = Fade(z);
-
-    // VixenHash coordinates of cube corners
-    int A = permutation_[X] + Y;
-    int AA = permutation_[A] + Z;
-    int AB = permutation_[A + 1] + Z;
-    int B = permutation_[X + 1] + Y;
-    int BA = permutation_[B] + Z;
-    int BB = permutation_[B + 1] + Z;
-
-    // Blend results from 8 corners of cube
-    float res = Lerp(w,
-        Lerp(v,
-            Lerp(u, Grad(permutation_[AA], x, y, z),
-                    Grad(permutation_[BA], x - 1, y, z)),
-            Lerp(u, Grad(permutation_[AB], x, y - 1, z),
-                    Grad(permutation_[BB], x - 1, y - 1, z))),
-        Lerp(v,
-            Lerp(u, Grad(permutation_[AA + 1], x, y, z - 1),
-                    Grad(permutation_[BA + 1], x - 1, y, z - 1)),
-            Lerp(u, Grad(permutation_[AB + 1], x, y - 1, z - 1),
-                    Grad(permutation_[BB + 1], x - 1, y - 1, z - 1))));
-
-    return res;
-}
-
-float PerlinNoise3D::Fade(float t) const {
-    // 6t^5 - 15t^4 + 10t^3
-    return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-float PerlinNoise3D::Lerp(float t, float a, float b) const {
-    return a + t * (b - a);
-}
-
-float PerlinNoise3D::Grad(int hash, float x, float y, float z) const {
-    // Convert low 4 bits of hash code into 12 gradient directions
-    int h = hash & 15;
-    float u = h < 8 ? x : y;
-    float v = h < 4 ? y : h == 12 || h == 14 ? x : z;
-    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
 }
 
 // ============================================================================
-// Cave System Generator Implementation
+// Tunnel Scene Generator Implementation
 // ============================================================================
 
-void CaveSystemGenerator::Generate(
-    VoxelGrid& grid,
-    float noiseScale,
-    float densityThreshold)
-{
+void TunnelSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorParams& params) {
     grid.Clear();
 
     // 1. Generate cave terrain with Perlin noise
-    GenerateCaveTerrain(grid, noiseScale, densityThreshold);
+    GenerateCaveTerrain(grid, params);
 
     // 2. Add stalactites (from ceiling)
-    GenerateStalactites(grid);
+    GenerateStalactites(grid, params.seed + 100);
 
     // 3. Add stalagmites (from floor)
-    GenerateStalagtites(grid);
+    GenerateStalagmites(grid, params.seed + 200);
 
     // 4. Add ore veins (decorative)
-    GenerateOreVeins(grid);
+    GenerateOreVeins(grid, params.seed + 300);
 }
 
-void CaveSystemGenerator::GenerateCaveTerrain(
-    VoxelGrid& grid,
-    float noiseScale,
-    float threshold)
-{
-    PerlinNoise3D noise(42);  // Fixed seed for reproducibility
+void TunnelSceneGenerator::GenerateCaveTerrain(VoxelGrid& grid, const SceneGeneratorParams& params) {
+    PerlinNoise3D noise(params.seed);
     uint32_t res = grid.GetResolution();
+
+    // Use wallThickness to control density (higher = more solid)
+    float threshold = params.wallThickness;
 
     for (uint32_t x = 0; x < res; ++x) {
         for (uint32_t y = 0; y < res; ++y) {
             for (uint32_t z = 0; z < res; ++z) {
                 // Sample 3D Perlin noise
                 float noiseValue = noise.Sample(
-                    x / (res / noiseScale),
-                    y / (res / noiseScale),
-                    z / (res / noiseScale)
+                    x / (res / params.noiseScale),
+                    y / (res / params.noiseScale),
+                    z / (res / params.noiseScale)
                 );
 
                 // Convert noise range [-1, 1] to [0, 1]
@@ -369,9 +479,9 @@ void CaveSystemGenerator::GenerateCaveTerrain(
     }
 }
 
-void CaveSystemGenerator::GenerateStalactites(VoxelGrid& grid) {
+void TunnelSceneGenerator::GenerateStalactites(VoxelGrid& grid, uint32_t seed) {
     uint32_t res = grid.GetResolution();
-    std::mt19937 rng(123);  // Fixed seed
+    std::mt19937 rng(seed);
     std::uniform_int_distribution<uint32_t> posDist(0, res - 1);
     std::uniform_int_distribution<uint32_t> lengthDist(res / 20, res / 10);
 
@@ -393,9 +503,9 @@ void CaveSystemGenerator::GenerateStalactites(VoxelGrid& grid) {
     }
 }
 
-void CaveSystemGenerator::GenerateStalagtites(VoxelGrid& grid) {
+void TunnelSceneGenerator::GenerateStalagmites(VoxelGrid& grid, uint32_t seed) {
     uint32_t res = grid.GetResolution();
-    std::mt19937 rng(456);  // Fixed seed
+    std::mt19937 rng(seed);
     std::uniform_int_distribution<uint32_t> posDist(0, res - 1);
     std::uniform_int_distribution<uint32_t> lengthDist(res / 20, res / 10);
 
@@ -417,11 +527,9 @@ void CaveSystemGenerator::GenerateStalagtites(VoxelGrid& grid) {
     }
 }
 
-void CaveSystemGenerator::GenerateOreVeins(VoxelGrid& grid) {
-    // TODO: Implement ore vein clusters (iron, gold, diamond)
-    // For now, just place a few random ore blocks
+void TunnelSceneGenerator::GenerateOreVeins(VoxelGrid& grid, uint32_t seed) {
     uint32_t res = grid.GetResolution();
-    std::mt19937 rng(789);
+    std::mt19937 rng(seed);
     std::uniform_int_distribution<uint32_t> posDist(0, res - 1);
 
     uint32_t oreCount = res / 2;
@@ -438,30 +546,29 @@ void CaveSystemGenerator::GenerateOreVeins(VoxelGrid& grid) {
 }
 
 // ============================================================================
-// Urban Grid Generator Implementation (Placeholder)
+// Cityscape Scene Generator Implementation
 // ============================================================================
 
-void UrbanGridGenerator::Generate(
-    VoxelGrid& grid,
-    uint32_t streetWidth,
-    uint32_t blockCount)
-{
+void CityscapeSceneGenerator::Generate(VoxelGrid& grid, const SceneGeneratorParams& params) {
     grid.Clear();
 
     uint32_t res = grid.GetResolution();
+    uint32_t streetWidth = params.streetWidth;
     if (streetWidth == 0) {
         streetWidth = res / 16;  // Auto: 1/16 of resolution
         if (streetWidth == 0) streetWidth = 1;
     }
 
     // 1. Generate street grid
-    GenerateStreetGrid(grid, streetWidth, blockCount);
+    GenerateStreetGrid(grid, streetWidth, params.blockCount);
 
     // 2. Generate buildings in each block
-    uint32_t blockSize = (res - (blockCount + 1) * streetWidth) / blockCount;
+    uint32_t blockSize = (res - (params.blockCount + 1) * streetWidth) / params.blockCount;
 
-    for (uint32_t bx = 0; bx < blockCount; ++bx) {
-        for (uint32_t bz = 0; bz < blockCount; ++bz) {
+    std::mt19937 rng(params.seed);
+
+    for (uint32_t bx = 0; bx < params.blockCount; ++bx) {
+        for (uint32_t bz = 0; bz < params.blockCount; ++bz) {
             glm::ivec3 origin(
                 streetWidth + bx * (blockSize + streetWidth),
                 0,
@@ -470,9 +577,13 @@ void UrbanGridGenerator::Generate(
 
             glm::ivec3 size(blockSize, 0, blockSize);
 
-            // Random building height (60-90% of grid height)
-            std::mt19937 rng(bx * 1000 + bz);
-            std::uniform_int_distribution<uint32_t> heightDist(res * 0.6f, res * 0.9f);
+            // Random building height based on heightVariance
+            float minHeight = res * (0.6f - params.heightVariance * 0.3f);
+            float maxHeight = res * (0.6f + params.heightVariance * 0.3f);
+            std::uniform_int_distribution<uint32_t> heightDist(
+                static_cast<uint32_t>(minHeight),
+                static_cast<uint32_t>(maxHeight)
+            );
             uint32_t height = heightDist(rng);
 
             GenerateBuilding(grid, origin, size, height);
@@ -480,7 +591,7 @@ void UrbanGridGenerator::Generate(
     }
 }
 
-void UrbanGridGenerator::GenerateStreetGrid(
+void CityscapeSceneGenerator::GenerateStreetGrid(
     VoxelGrid& grid,
     uint32_t streetWidth,
     uint32_t blockCount)
@@ -516,7 +627,7 @@ void UrbanGridGenerator::GenerateStreetGrid(
     }
 }
 
-void UrbanGridGenerator::GenerateBuilding(
+void CityscapeSceneGenerator::GenerateBuilding(
     VoxelGrid& grid,
     const glm::ivec3& origin,
     const glm::ivec3& size,
@@ -541,7 +652,7 @@ void UrbanGridGenerator::GenerateBuilding(
     AddBuildingDetails(grid, origin, size, height);
 }
 
-void UrbanGridGenerator::AddBuildingDetails(
+void CityscapeSceneGenerator::AddBuildingDetails(
     VoxelGrid& grid,
     const glm::ivec3& origin,
     const glm::ivec3& size,
@@ -551,7 +662,9 @@ void UrbanGridGenerator::AddBuildingDetails(
     for (uint32_t y = origin.y + 2; y < origin.y + height; y += 4) {
         // Front/back faces
         for (int x = origin.x + 2; x < origin.x + size.x; x += 4) {
-            if (x >= 0 && y >= 0 && x < static_cast<int>(grid.GetResolution()) && y < static_cast<int>(grid.GetResolution())) {
+            if (x >= 0 && y >= 0 &&
+                x < static_cast<int>(grid.GetResolution()) &&
+                y < static_cast<int>(grid.GetResolution())) {
                 grid.Set(x, y, origin.z, 61);  // Material ID 61 = glass (front)
                 grid.Set(x, y, origin.z + size.z - 1, 61);  // Back
             }
@@ -559,13 +672,61 @@ void UrbanGridGenerator::AddBuildingDetails(
 
         // Left/right faces
         for (int z = origin.z + 2; z < origin.z + size.z; z += 4) {
-            if (z >= 0 && y >= 0 && z < static_cast<int>(grid.GetResolution()) && y < static_cast<int>(grid.GetResolution())) {
+            if (z >= 0 && y >= 0 &&
+                z < static_cast<int>(grid.GetResolution()) &&
+                y < static_cast<int>(grid.GetResolution())) {
                 grid.Set(origin.x, y, z, 61);  // Left
                 grid.Set(origin.x + size.x - 1, y, z, 61);  // Right
             }
         }
     }
 }
+
+// ============================================================================
+// Legacy Static Generator Implementations (Deprecated)
+// ============================================================================
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4996)  // Disable deprecation warnings for legacy code
+#endif
+
+void CornellBoxGenerator::Generate(VoxelGrid& grid) {
+    CornellBoxSceneGenerator generator;
+    SceneGeneratorParams params;
+    params.resolution = grid.GetResolution();
+    generator.Generate(grid, params);
+}
+
+void CaveSystemGenerator::Generate(
+    VoxelGrid& grid,
+    float noiseScale,
+    float densityThreshold)
+{
+    TunnelSceneGenerator generator;
+    SceneGeneratorParams params;
+    params.resolution = grid.GetResolution();
+    params.noiseScale = noiseScale;
+    params.wallThickness = densityThreshold;  // Map threshold to wallThickness
+    generator.Generate(grid, params);
+}
+
+void UrbanGridGenerator::Generate(
+    VoxelGrid& grid,
+    uint32_t streetWidth,
+    uint32_t blockCount)
+{
+    CityscapeSceneGenerator generator;
+    SceneGeneratorParams params;
+    params.resolution = grid.GetResolution();
+    params.streetWidth = streetWidth;
+    params.blockCount = blockCount;
+    generator.Generate(grid, params);
+}
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 } // namespace RenderGraph
 } // namespace VIXEN

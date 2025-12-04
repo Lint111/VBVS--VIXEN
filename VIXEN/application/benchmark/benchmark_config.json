@@ -40,12 +40,13 @@
   },
   "scenes": {
     "cornell": {
-      "type": "file",
-      "path": "assets/cornell.vox"
+      "type": "procedural",
+      "generator": "cornell",
+      "params": {}
     },
     "noise": {
       "type": "procedural",
-      "generator": "perlin3d",
+      "generator": "noise",
       "params": {
         "octaves": 4,
         "persistence": 0.5,
@@ -54,7 +55,7 @@
     },
     "tunnels": {
       "type": "procedural",
-      "generator": "voronoi_caves",
+      "generator": "tunnels",
       "params": {
         "cell_count": 8,
         "wall_thickness": 0.3
@@ -62,7 +63,7 @@
     },
     "cityscape": {
       "type": "procedural",
-      "generator": "buildings",
+      "generator": "cityscape",
       "params": {
         "density": 0.4,
         "height_variance": 0.8,
