@@ -117,6 +117,65 @@ struct BenchmarkSuiteConfig {
     bool IsValid() const {
         return Validate().empty();
     }
+
+    /**
+     * @brief Load suite configuration from JSON file
+     *
+     * JSON schema:
+     * @code
+     * {
+     *   "suite": {
+     *     "name": "My Benchmark Suite",
+     *     "output_dir": "./results",
+     *     "render": { "width": 800, "height": 600 },
+     *     "gpu_index": 0,
+     *     "headless": true,
+     *     "verbose": false,
+     *     "validation": false,
+     *     "export": { "csv": true, "json": true }
+     *   },
+     *   "profiling": {
+     *     "warmup_frames": 60,
+     *     "measurement_frames": 300
+     *   },
+     *   "matrix": {
+     *     "pipelines": ["compute"],
+     *     "resolutions": [64, 128, 256],
+     *     "densities": [30, 50, 70],
+     *     "algorithms": ["baseline", "empty_skip"]
+     *   },
+     *   "common": {
+     *     "scene": "cornell"
+     *   }
+     * }
+     * @endcode
+     *
+     * @param filepath Path to JSON config file
+     * @return Loaded config, or empty config on error
+     */
+    static BenchmarkSuiteConfig LoadFromFile(const std::filesystem::path& filepath);
+
+    /**
+     * @brief Save suite configuration to JSON file
+     * @param filepath Path to save JSON file
+     * @return true if saved successfully
+     */
+    bool SaveToFile(const std::filesystem::path& filepath) const;
+
+    /**
+     * @brief Get default quick test suite configuration
+     * @return Pre-configured suite with minimal test matrix
+     */
+    static BenchmarkSuiteConfig GetQuickConfig();
+
+    /**
+     * @brief Get default research test suite configuration
+     * @return Pre-configured suite with full research test matrix
+     */
+    static BenchmarkSuiteConfig GetResearchConfig();
+
+    /// Suite name for reports (optional)
+    std::string suiteName = "Benchmark Suite";
 };
 
 /// Load and manage benchmark configurations from JSON files

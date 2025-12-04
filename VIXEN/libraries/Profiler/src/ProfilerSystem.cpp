@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include <Logger.h>
 #include <iostream>
+#include <ctime>
 
 namespace Vixen::Profiler {
 
@@ -240,35 +241,96 @@ double TestSuiteResults::GetTotalDurationSeconds() const {
 void TestSuiteResults::ExportSummary(const std::string& filepath) const {
     nlohmann::json j;
 
+    // Suite metadata
     j["suite_name"] = suiteName_;
     j["total_tests"] = results_.size();
+    j["passed_tests"] = GetPassCount();
     j["total_duration_seconds"] = GetTotalDurationSeconds();
 
-    // Device info
+    // Timestamp info
+    auto startTimeT = std::chrono::system_clock::to_time_t(suiteStartTime_);
+    auto endTimeT = std::chrono::system_clock::to_time_t(suiteEndTime_);
+    char startBuf[64], endBuf[64];
+    std::strftime(startBuf, sizeof(startBuf), "%Y-%m-%d %H:%M:%S", std::localtime(&startTimeT));
+    std::strftime(endBuf, sizeof(endBuf), "%Y-%m-%d %H:%M:%S", std::localtime(&endTimeT));
+    j["start_time"] = startBuf;
+    j["end_time"] = endBuf;
+
+    // Device info (comprehensive)
     j["device"]["name"] = deviceCapabilities_.deviceName;
+    j["device"]["vendor_id"] = deviceCapabilities_.vendorID;
+    j["device"]["device_id"] = deviceCapabilities_.deviceID;
     j["device"]["driver"] = deviceCapabilities_.driverVersion;
     j["device"]["vulkan"] = deviceCapabilities_.vulkanVersion;
     j["device"]["vram_mb"] = deviceCapabilities_.totalVRAM_MB;
+    j["device"]["timestamp_period_ns"] = deviceCapabilities_.timestampPeriod;
+    j["device"]["timestamp_supported"] = deviceCapabilities_.timestampSupported;
 
-    // Summary per test
+    // Helper lambda to convert AggregateStats to JSON
+    auto statsToJson = [](const AggregateStats& stats) -> nlohmann::json {
+        nlohmann::json s;
+        s["min"] = stats.min;
+        s["max"] = stats.max;
+        s["mean"] = stats.mean;
+        s["stddev"] = stats.stddev;
+        s["p1"] = stats.p1;
+        s["p50"] = stats.p50;
+        s["p99"] = stats.p99;
+        s["samples"] = stats.sampleCount;
+        return s;
+    };
+
+    // Full test results with all accumulated metrics
     nlohmann::json tests = nlohmann::json::array();
     for (const auto& result : results_) {
         nlohmann::json t;
-        t["pipeline"] = result.config.pipeline;
-        t["algorithm"] = result.config.algorithm;
-        t["scene"] = result.config.sceneType;
-        t["resolution"] = result.config.voxelResolution;
-        t["density"] = result.config.densityPercent;
-        t["frames"] = result.frames.size();
+
+        // Test configuration
+        t["config"]["test_id"] = result.config.testId;
+        t["config"]["pipeline"] = result.config.pipeline;
+        t["config"]["algorithm"] = result.config.algorithm;
+        t["config"]["scene"] = result.config.sceneType;
+        t["config"]["resolution"] = result.config.voxelResolution;
+        t["config"]["density"] = result.config.densityPercent;
+        t["config"]["screen_width"] = result.config.screenWidth;
+        t["config"]["screen_height"] = result.config.screenHeight;
+        t["config"]["warmup_frames"] = result.config.warmupFrames;
+        t["config"]["measurement_frames"] = result.config.measurementFrames;
+
+        // Test metadata
+        t["frames_collected"] = result.frames.size();
         t["duration_seconds"] = result.GetDurationSeconds();
         t["valid"] = result.IsValid();
 
-        // Key aggregates
-        if (result.aggregates.count("gpu_time")) {
-            t["gpu_time_mean_ms"] = result.aggregates.at("gpu_time").mean;
+        // All aggregate statistics
+        nlohmann::json aggregates;
+        for (const auto& [metricName, stats] : result.aggregates) {
+            aggregates[metricName] = statsToJson(stats);
         }
-        if (result.aggregates.count("mrays")) {
-            t["mrays_mean"] = result.aggregates.at("mrays").mean;
+        t["aggregates"] = aggregates;
+
+        // Summary metrics (for quick access)
+        if (result.aggregates.count("frame_time_ms")) {
+            t["summary"]["frame_time_mean_ms"] = result.aggregates.at("frame_time_ms").mean;
+            t["summary"]["frame_time_p99_ms"] = result.aggregates.at("frame_time_ms").p99;
+        }
+        if (result.aggregates.count("fps")) {
+            t["summary"]["fps_mean"] = result.aggregates.at("fps").mean;
+        }
+        if (result.aggregates.count("mrays_per_sec")) {
+            t["summary"]["mrays_mean"] = result.aggregates.at("mrays_per_sec").mean;
+        }
+        if (result.aggregates.count("bandwidth_write_gb")) {
+            t["summary"]["bandwidth_write_gbps"] = result.aggregates.at("bandwidth_write_gb").mean;
+        }
+        if (result.aggregates.count("vram_mb")) {
+            t["summary"]["vram_usage_mb"] = result.aggregates.at("vram_mb").mean;
+        }
+
+        // Calculate total rays from last frame (screen dimensions)
+        if (!result.frames.empty()) {
+            const auto& lastFrame = result.frames.back();
+            t["summary"]["total_rays_per_frame"] = lastFrame.totalRaysCast;
         }
 
         tests.push_back(t);

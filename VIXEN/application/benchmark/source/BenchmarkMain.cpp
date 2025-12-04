@@ -80,6 +80,18 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    // Save config and exit
+    if (opts.saveConfig) {
+        BenchmarkSuiteConfig config = opts.BuildSuiteConfig();
+        if (config.SaveToFile(opts.saveConfigPath)) {
+            std::cout << "Configuration saved to: " << opts.saveConfigPath << "\n";
+            return 0;
+        } else {
+            std::cerr << "Error: Failed to save configuration to: " << opts.saveConfigPath << "\n";
+            return 1;
+        }
+    }
+
     // Validate CLI options
     auto errors = opts.Validate();
     if (!errors.empty()) {

@@ -69,6 +69,10 @@ struct BenchmarkCLIOptions {
     bool headlessMode = true;   // Default: headless compute-only (no window)
     bool renderMode = false;    // Full rendering with window
 
+    // Config save/load
+    bool saveConfig = false;                    // Save current config to file and exit
+    std::filesystem::path saveConfigPath;       // Path to save config to
+
     // Help flag
     bool showHelp = false;
 

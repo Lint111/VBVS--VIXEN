@@ -326,6 +326,19 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
             continue;
         }
 
+        // Save config option
+        if (ArgMatches(arg, nullptr, "--save-config")) {
+            const char* val = GetNextArg(argc, argv, i, "--save-config");
+            if (!val) {
+                opts.hasError = true;
+                opts.parseError = "--save-config requires a file path";
+                return opts;
+            }
+            opts.saveConfig = true;
+            opts.saveConfigPath = val;
+            continue;
+        }
+
         // Unknown argument
         opts.hasError = true;
         opts.parseError = "Unknown argument: " + std::string(arg);
@@ -490,6 +503,7 @@ Execution Modes:
 Output Format:
       --csv-only          Export only CSV format
       --json-only         Export only JSON format
+      --save-config FILE  Save current config to JSON file and exit
 
 Debug Options:
       --verbose           Enable detailed logging

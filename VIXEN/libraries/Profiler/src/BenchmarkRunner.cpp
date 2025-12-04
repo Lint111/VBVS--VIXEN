@@ -601,6 +601,12 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                     deviceCaps.timestampPeriod = vulkanDevice->gpuProperties.limits.timestampPeriod;
                     deviceCaps.timestampSupported = vulkanDevice->gpuProperties.limits.timestampComputeAndGraphics;
 
+                    // Vulkan API version
+                    uint32_t apiVersion = vulkanDevice->gpuProperties.apiVersion;
+                    deviceCaps.vulkanVersion = std::to_string(VK_VERSION_MAJOR(apiVersion)) + "." +
+                                               std::to_string(VK_VERSION_MINOR(apiVersion)) + "." +
+                                               std::to_string(VK_VERSION_PATCH(apiVersion));
+
                     // Get VRAM from memory properties
                     for (uint32_t i = 0; i < vulkanDevice->gpuMemoryProperties.memoryHeapCount; ++i) {
                         if (vulkanDevice->gpuMemoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
