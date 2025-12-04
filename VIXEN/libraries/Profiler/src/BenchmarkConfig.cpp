@@ -33,62 +33,51 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::LoadBatchFromFile(const st
         nlohmann::json j;
         file >> j;
 
-        // Check if it's a matrix configuration
-        if (j.contains("matrix")) {
+        // Check if it's a new hierarchical matrix configuration
+        if (j.contains("matrix") && j["matrix"].contains("global") && j["matrix"].contains("pipelines")) {
+            GlobalMatrix global;
+            std::map<std::string, PipelineMatrix> pipelineMatrices;
+
             auto& matrix = j["matrix"];
-            std::vector<std::string> pipelines;
-            std::vector<uint32_t> resolutions;
-            std::vector<float> densities;
-            std::vector<std::string> algorithms;
 
-            if (matrix.contains("pipelines")) {
-                for (const auto& p : matrix["pipelines"]) {
-                    pipelines.push_back(p.get<std::string>());
+            // Parse global matrix
+            if (matrix["global"].contains("resolutions")) {
+                for (const auto& r : matrix["global"]["resolutions"]) {
+                    global.resolutions.push_back(r.get<uint32_t>());
                 }
             }
-            if (matrix.contains("resolutions")) {
-                for (const auto& r : matrix["resolutions"]) {
-                    resolutions.push_back(r.get<uint32_t>());
-                }
-            }
-            if (matrix.contains("densities")) {
-                for (const auto& d : matrix["densities"]) {
-                    densities.push_back(d.get<float>());
-                }
-            }
-            if (matrix.contains("algorithms")) {
-                for (const auto& a : matrix["algorithms"]) {
-                    algorithms.push_back(a.get<std::string>());
-                }
-            }
-
-            configs = GenerateTestMatrix(pipelines, resolutions, densities, algorithms);
-
-            // Apply common settings
-            if (j.contains("common")) {
-                auto& common = j["common"];
-                for (auto& config : configs) {
-                    if (common.contains("scene")) {
-                        config.sceneType = common["scene"].get<std::string>();
-                    }
-                    if (common.contains("render")) {
-                        if (common["render"].contains("width")) {
-                            config.screenWidth = common["render"]["width"].get<uint32_t>();
-                        }
-                        if (common["render"].contains("height")) {
-                            config.screenHeight = common["render"]["height"].get<uint32_t>();
-                        }
-                    }
-                    if (common.contains("profiling")) {
-                        if (common["profiling"].contains("warmupFrames")) {
-                            config.warmupFrames = common["profiling"]["warmupFrames"].get<uint32_t>();
-                        }
-                        if (common["profiling"].contains("measurementFrames")) {
-                            config.measurementFrames = common["profiling"]["measurementFrames"].get<uint32_t>();
-                        }
+            if (matrix["global"].contains("render_sizes")) {
+                global.renderSizes.clear();
+                for (const auto& size : matrix["global"]["render_sizes"]) {
+                    if (size.is_array() && size.size() == 2) {
+                        RenderSize rs;
+                        rs.width = size[0].get<uint32_t>();
+                        rs.height = size[1].get<uint32_t>();
+                        global.renderSizes.push_back(rs);
                     }
                 }
             }
+
+            // Parse pipeline matrices
+            for (auto& [pipelineName, pipelineConfig] : matrix["pipelines"].items()) {
+                PipelineMatrix pm;
+                if (pipelineConfig.contains("enabled")) {
+                    pm.enabled = pipelineConfig["enabled"].get<bool>();
+                }
+                if (pipelineConfig.contains("scenes")) {
+                    for (const auto& s : pipelineConfig["scenes"]) {
+                        pm.scenes.push_back(s.get<std::string>());
+                    }
+                }
+                if (pipelineConfig.contains("shaders")) {
+                    for (const auto& sh : pipelineConfig["shaders"]) {
+                        pm.shaders.push_back(sh.get<std::string>());
+                    }
+                }
+                pipelineMatrices[pipelineName] = pm;
+            }
+
+            configs = GenerateTestMatrix(global, pipelineMatrices);
         }
         // Check if it's a batch of individual configs
         else if (j.contains("benchmarks") && j["benchmarks"].is_array()) {
@@ -114,23 +103,34 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::LoadBatchFromFile(const st
 }
 
 std::vector<TestConfiguration> BenchmarkConfigLoader::GenerateTestMatrix(
-    const std::vector<std::string>& pipelines,
-    const std::vector<uint32_t>& resolutions,
-    const std::vector<float>& densities,
-    const std::vector<std::string>& algorithms) {
+    const GlobalMatrix& globalMatrix,
+    const std::map<std::string, PipelineMatrix>& pipelineMatrices) {
 
     std::vector<TestConfiguration> configs;
 
-    for (const auto& pipeline : pipelines) {
-        for (const auto& resolution : resolutions) {
-            for (const auto& density : densities) {
-                for (const auto& algorithm : algorithms) {
-                    TestConfiguration config;
-                    config.pipeline = pipeline;
-                    config.voxelResolution = resolution;
-                    config.densityPercent = density;
-                    config.algorithm = algorithm;
-                    configs.push_back(config);
+    // For each pipeline
+    for (const auto& [pipelineName, pipelineMatrix] : pipelineMatrices) {
+        if (!pipelineMatrix.enabled) {
+            continue;
+        }
+
+        // For each global resolution
+        for (const auto& resolution : globalMatrix.resolutions) {
+            // For each screen size
+            for (const auto& renderSize : globalMatrix.renderSizes) {
+                // For each scene in this pipeline
+                for (const auto& scene : pipelineMatrix.scenes) {
+                    // For each shader in this pipeline
+                    for (const auto& shader : pipelineMatrix.shaders) {
+                        TestConfiguration config;
+                        config.pipeline = pipelineName;
+                        config.voxelResolution = resolution;
+                        config.screenWidth = renderSize.width;
+                        config.screenHeight = renderSize.height;
+                        config.sceneType = scene;
+                        config.shader = shader;
+                        configs.push_back(config);
+                    }
                 }
             }
         }
@@ -142,14 +142,13 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GenerateTestMatrix(
 bool BenchmarkConfigLoader::SaveToFile(const TestConfiguration& config, const std::filesystem::path& filepath) {
     nlohmann::json j;
     j["pipeline"] = config.pipeline;
-    j["algorithm"] = config.algorithm;
-    j["scene"]["type"] = config.sceneType;
-    j["scene"]["resolution"] = config.voxelResolution;
-    j["scene"]["density"] = config.densityPercent;
+    j["shader"] = config.shader;
+    j["scene"] = config.sceneType;
+    j["resolution"] = config.voxelResolution;
     j["render"]["width"] = config.screenWidth;
     j["render"]["height"] = config.screenHeight;
-    j["profiling"]["warmupFrames"] = config.warmupFrames;
-    j["profiling"]["measurementFrames"] = config.measurementFrames;
+    j["profiling"]["warmup_frames"] = config.warmupFrames;
+    j["profiling"]["measurement_frames"] = config.measurementFrames;
 
     std::ofstream file(filepath);
     if (!file.is_open()) {
@@ -168,14 +167,13 @@ bool BenchmarkConfigLoader::SaveBatchToFile(const std::vector<TestConfiguration>
     for (const auto& config : configs) {
         nlohmann::json c;
         c["pipeline"] = config.pipeline;
-        c["algorithm"] = config.algorithm;
-        c["scene"]["type"] = config.sceneType;
-        c["scene"]["resolution"] = config.voxelResolution;
-        c["scene"]["density"] = config.densityPercent;
+        c["shader"] = config.shader;
+        c["scene"] = config.sceneType;
+        c["resolution"] = config.voxelResolution;
         c["render"]["width"] = config.screenWidth;
         c["render"]["height"] = config.screenHeight;
-        c["profiling"]["warmupFrames"] = config.warmupFrames;
-        c["profiling"]["measurementFrames"] = config.measurementFrames;
+        c["profiling"]["warmup_frames"] = config.warmupFrames;
+        c["profiling"]["measurement_frames"] = config.measurementFrames;
         j["benchmarks"].push_back(c);
     }
 
@@ -189,21 +187,50 @@ bool BenchmarkConfigLoader::SaveBatchToFile(const std::vector<TestConfiguration>
 }
 
 std::vector<TestConfiguration> BenchmarkConfigLoader::GetResearchTestMatrix() {
-    return GenerateTestMatrix(
-        {"compute", "fragment", "hardware_rt", "hybrid"},
-        {32, 64, 128, 256, 512},
-        {0.2f, 0.5f, 0.8f},
-        {"baseline", "empty_skip", "blockwalk"}
-    );
+    GlobalMatrix global;
+    global.resolutions = {64, 128, 256, 512};
+    global.renderSizes = {{1280, 720}, {1920, 1080}};
+
+    std::map<std::string, PipelineMatrix> pipelines;
+
+    // Compute pipeline - full matrix
+    PipelineMatrix compute;
+    compute.enabled = true;
+    compute.scenes = {"cornell", "noise", "tunnels", "cityscape"};
+    compute.shaders = {"ray_march_base", "ray_march_esvo", "ray_march_compressed"};
+    pipelines["compute"] = compute;
+
+    // Fragment pipeline - limited
+    PipelineMatrix fragment;
+    fragment.enabled = true;
+    fragment.scenes = {"cornell"};
+    fragment.shaders = {"ray_march_frag"};
+    pipelines["fragment"] = fragment;
+
+    // Hardware RT pipeline - limited
+    PipelineMatrix hardware_rt;
+    hardware_rt.enabled = false;  // Disabled by default
+    hardware_rt.scenes = {"cornell"};
+    hardware_rt.shaders = {"ray_march_rt"};
+    pipelines["hardware_rt"] = hardware_rt;
+
+    return GenerateTestMatrix(global, pipelines);
 }
 
 std::vector<TestConfiguration> BenchmarkConfigLoader::GetQuickTestMatrix() {
-    return GenerateTestMatrix(
-        {"compute"},
-        {64, 128},
-        {0.2f, 0.5f},
-        {"baseline", "empty_skip"}
-    );
+    GlobalMatrix global;
+    global.resolutions = {64, 128};
+    global.renderSizes = {{800, 600}};
+
+    std::map<std::string, PipelineMatrix> pipelines;
+
+    PipelineMatrix compute;
+    compute.enabled = true;
+    compute.scenes = {"cornell"};
+    compute.shaders = {"ray_march_base", "ray_march_esvo"};
+    pipelines["compute"] = compute;
+
+    return GenerateTestMatrix(global, pipelines);
 }
 
 std::optional<TestConfiguration> BenchmarkConfigLoader::ParseFromString(const std::string& jsonString) {
@@ -218,14 +245,13 @@ std::optional<TestConfiguration> BenchmarkConfigLoader::ParseFromString(const st
 std::string BenchmarkConfigLoader::SerializeToString(const TestConfiguration& config) {
     nlohmann::json j;
     j["pipeline"] = config.pipeline;
-    j["algorithm"] = config.algorithm;
-    j["scene"]["type"] = config.sceneType;
-    j["scene"]["resolution"] = config.voxelResolution;
-    j["scene"]["density"] = config.densityPercent;
+    j["shader"] = config.shader;
+    j["scene"] = config.sceneType;
+    j["resolution"] = config.voxelResolution;
     j["render"]["width"] = config.screenWidth;
     j["render"]["height"] = config.screenHeight;
-    j["profiling"]["warmupFrames"] = config.warmupFrames;
-    j["profiling"]["measurementFrames"] = config.measurementFrames;
+    j["profiling"]["warmup_frames"] = config.warmupFrames;
+    j["profiling"]["measurement_frames"] = config.measurementFrames;
     return j.dump(2);
 }
 
@@ -234,13 +260,18 @@ TestConfiguration BenchmarkConfigLoader::ParseConfigObject(const void* jsonObjec
     TestConfiguration config;
 
     if (j.contains("pipeline")) config.pipeline = j["pipeline"].get<std::string>();
-    if (j.contains("algorithm")) config.algorithm = j["algorithm"].get<std::string>();
+    if (j.contains("shader")) config.shader = j["shader"].get<std::string>();
+    // Legacy support for "algorithm" field
+    if (j.contains("algorithm")) config.shader = j["algorithm"].get<std::string>();
 
-    if (j.contains("scene")) {
+    if (j.contains("scene")) config.sceneType = j["scene"].get<std::string>();
+    if (j.contains("resolution")) config.voxelResolution = j["resolution"].get<uint32_t>();
+
+    // Legacy scene object format
+    if (j.contains("scene") && j["scene"].is_object()) {
         auto& scene = j["scene"];
         if (scene.contains("type")) config.sceneType = scene["type"].get<std::string>();
         if (scene.contains("resolution")) config.voxelResolution = scene["resolution"].get<uint32_t>();
-        if (scene.contains("density")) config.densityPercent = scene["density"].get<float>();
     }
 
     if (j.contains("render")) {
@@ -251,6 +282,9 @@ TestConfiguration BenchmarkConfigLoader::ParseConfigObject(const void* jsonObjec
 
     if (j.contains("profiling")) {
         auto& profiling = j["profiling"];
+        if (profiling.contains("warmup_frames")) config.warmupFrames = profiling["warmup_frames"].get<uint32_t>();
+        if (profiling.contains("measurement_frames")) config.measurementFrames = profiling["measurement_frames"].get<uint32_t>();
+        // Legacy camelCase support
         if (profiling.contains("warmupFrames")) config.warmupFrames = profiling["warmupFrames"].get<uint32_t>();
         if (profiling.contains("measurementFrames")) config.measurementFrames = profiling["measurementFrames"].get<uint32_t>();
     }
@@ -259,8 +293,13 @@ TestConfiguration BenchmarkConfigLoader::ParseConfigObject(const void* jsonObjec
 }
 
 //==============================================================================
-// BenchmarkSuiteConfig Static Methods
+// BenchmarkSuiteConfig Methods
 //==============================================================================
+
+void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
+    tests = BenchmarkConfigLoader::GenerateTestMatrix(globalMatrix, pipelineMatrices);
+    ApplyOverrides();
+}
 
 BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::path& filepath) {
     BenchmarkSuiteConfig config;
@@ -284,11 +323,6 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
             if (suite.contains("verbose")) config.verbose = suite["verbose"].get<bool>();
             if (suite.contains("validation")) config.enableValidation = suite["validation"].get<bool>();
 
-            if (suite.contains("render")) {
-                if (suite["render"].contains("width")) config.renderWidth = suite["render"]["width"].get<uint32_t>();
-                if (suite["render"].contains("height")) config.renderHeight = suite["render"]["height"].get<uint32_t>();
-            }
-
             if (suite.contains("export")) {
                 if (suite["export"].contains("csv")) config.exportCSV = suite["export"]["csv"].get<bool>();
                 if (suite["export"].contains("json")) config.exportJSON = suite["export"]["json"].get<bool>();
@@ -306,50 +340,91 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
             }
         }
 
-        // Parse test matrix
+        // Parse matrix configuration
         if (j.contains("matrix")) {
             auto& matrix = j["matrix"];
-            std::vector<std::string> pipelines;
-            std::vector<uint32_t> resolutions;
-            std::vector<float> densities;
-            std::vector<std::string> algorithms;
 
+            // Parse global matrix
+            if (matrix.contains("global")) {
+                auto& global = matrix["global"];
+                if (global.contains("resolutions")) {
+                    config.globalMatrix.resolutions.clear();
+                    for (const auto& r : global["resolutions"]) {
+                        config.globalMatrix.resolutions.push_back(r.get<uint32_t>());
+                    }
+                }
+                if (global.contains("render_sizes")) {
+                    config.globalMatrix.renderSizes.clear();
+                    for (const auto& size : global["render_sizes"]) {
+                        if (size.is_array() && size.size() == 2) {
+                            RenderSize rs;
+                            rs.width = size[0].get<uint32_t>();
+                            rs.height = size[1].get<uint32_t>();
+                            config.globalMatrix.renderSizes.push_back(rs);
+                        }
+                    }
+                }
+            }
+
+            // Parse pipeline matrices
             if (matrix.contains("pipelines")) {
-                for (const auto& p : matrix["pipelines"]) {
-                    pipelines.push_back(p.get<std::string>());
-                }
-            }
-            if (matrix.contains("resolutions")) {
-                for (const auto& r : matrix["resolutions"]) {
-                    resolutions.push_back(r.get<uint32_t>());
-                }
-            }
-            if (matrix.contains("densities")) {
-                for (const auto& d : matrix["densities"]) {
-                    densities.push_back(d.get<float>());
-                }
-            }
-            if (matrix.contains("algorithms")) {
-                for (const auto& a : matrix["algorithms"]) {
-                    algorithms.push_back(a.get<std::string>());
-                }
-            }
-
-            config.tests = BenchmarkConfigLoader::GenerateTestMatrix(pipelines, resolutions, densities, algorithms);
-        }
-
-        // Parse common settings for all tests
-        if (j.contains("common")) {
-            auto& common = j["common"];
-            for (auto& test : config.tests) {
-                if (common.contains("scene")) {
-                    test.sceneType = common["scene"].get<std::string>();
+                for (auto& [pipelineName, pipelineConfig] : matrix["pipelines"].items()) {
+                    PipelineMatrix pm;
+                    if (pipelineConfig.contains("enabled")) {
+                        pm.enabled = pipelineConfig["enabled"].get<bool>();
+                    }
+                    if (pipelineConfig.contains("scenes")) {
+                        for (const auto& s : pipelineConfig["scenes"]) {
+                            pm.scenes.push_back(s.get<std::string>());
+                        }
+                    }
+                    if (pipelineConfig.contains("shaders")) {
+                        for (const auto& sh : pipelineConfig["shaders"]) {
+                            pm.shaders.push_back(sh.get<std::string>());
+                        }
+                    }
+                    config.pipelineMatrices[pipelineName] = pm;
                 }
             }
         }
 
-        // Apply profiling overrides to all tests
-        config.ApplyOverrides();
+        // Parse scene definitions
+        if (j.contains("scenes")) {
+            for (auto& [sceneName, sceneConfig] : j["scenes"].items()) {
+                SceneDefinition scene;
+                scene.name = sceneName;
+
+                if (sceneConfig.contains("type")) {
+                    std::string typeStr = sceneConfig["type"].get<std::string>();
+                    if (typeStr == "file") {
+                        scene.sourceType = SceneSourceType::File;
+                        if (sceneConfig.contains("path")) {
+                            scene.filePath = sceneConfig["path"].get<std::string>();
+                        }
+                    } else if (typeStr == "procedural") {
+                        scene.sourceType = SceneSourceType::Procedural;
+                        if (sceneConfig.contains("generator")) {
+                            scene.procedural.generator = sceneConfig["generator"].get<std::string>();
+                        }
+                        if (sceneConfig.contains("params")) {
+                            for (auto& [paramName, paramValue] : sceneConfig["params"].items()) {
+                                if (paramValue.is_number_integer()) {
+                                    scene.procedural.params[paramName] = paramValue.get<int>();
+                                } else if (paramValue.is_number_float()) {
+                                    scene.procedural.params[paramName] = paramValue.get<float>();
+                                } else if (paramValue.is_string()) {
+                                    scene.procedural.params[paramName] = paramValue.get<std::string>();
+                                }
+                            }
+                        }
+                    }
+                }
+                config.sceneDefinitions[sceneName] = scene;
+            }
+        }
+
+        // Generate tests from matrix
+        config.GenerateTestsFromMatrix();
 
     } catch (const std::exception&) {
         // Return empty config on parse error
@@ -365,8 +440,6 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
     // Suite settings
     j["suite"]["name"] = suiteName;
     j["suite"]["output_dir"] = outputDir.string();
-    j["suite"]["render"]["width"] = renderWidth;
-    j["suite"]["render"]["height"] = renderHeight;
     j["suite"]["gpu_index"] = gpuIndex;
     j["suite"]["headless"] = headless;
     j["suite"]["verbose"] = verbose;
@@ -379,34 +452,42 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
         j["profiling"]["warmup_frames"] = *warmupFramesOverride;
     } else if (!tests.empty()) {
         j["profiling"]["warmup_frames"] = tests[0].warmupFrames;
+    } else {
+        j["profiling"]["warmup_frames"] = 100;
     }
     if (measurementFramesOverride) {
         j["profiling"]["measurement_frames"] = *measurementFramesOverride;
     } else if (!tests.empty()) {
         j["profiling"]["measurement_frames"] = tests[0].measurementFrames;
+    } else {
+        j["profiling"]["measurement_frames"] = 300;
     }
 
-    // Extract unique values from tests to build matrix
-    std::set<std::string> pipelines, algorithms, scenes;
-    std::set<uint32_t> resolutions;
-    std::set<float> densities;
+    // Global matrix
+    j["matrix"]["global"]["resolutions"] = globalMatrix.resolutions;
+    nlohmann::json renderSizesJson = nlohmann::json::array();
+    for (const auto& size : globalMatrix.renderSizes) {
+        renderSizesJson.push_back({size.width, size.height});
+    }
+    j["matrix"]["global"]["render_sizes"] = renderSizesJson;
 
-    for (const auto& test : tests) {
-        pipelines.insert(test.pipeline);
-        algorithms.insert(test.algorithm);
-        scenes.insert(test.sceneType);
-        resolutions.insert(test.voxelResolution);
-        densities.insert(test.densityPercent);
+    // Pipeline matrices
+    for (const auto& [pipelineName, pm] : pipelineMatrices) {
+        j["matrix"]["pipelines"][pipelineName]["enabled"] = pm.enabled;
+        j["matrix"]["pipelines"][pipelineName]["scenes"] = pm.scenes;
+        j["matrix"]["pipelines"][pipelineName]["shaders"] = pm.shaders;
     }
 
-    j["matrix"]["pipelines"] = std::vector<std::string>(pipelines.begin(), pipelines.end());
-    j["matrix"]["resolutions"] = std::vector<uint32_t>(resolutions.begin(), resolutions.end());
-    j["matrix"]["densities"] = std::vector<float>(densities.begin(), densities.end());
-    j["matrix"]["algorithms"] = std::vector<std::string>(algorithms.begin(), algorithms.end());
-
-    // Common settings (use first scene if all same)
-    if (scenes.size() == 1) {
-        j["common"]["scene"] = *scenes.begin();
+    // Scene definitions
+    for (const auto& [sceneName, scene] : sceneDefinitions) {
+        if (scene.sourceType == SceneSourceType::File) {
+            j["scenes"][sceneName]["type"] = "file";
+            j["scenes"][sceneName]["path"] = scene.filePath;
+        } else {
+            j["scenes"][sceneName]["type"] = "procedural";
+            j["scenes"][sceneName]["generator"] = scene.procedural.generator;
+            // Note: params would need more complex serialization
+        }
     }
 
     std::ofstream file(filepath);
@@ -421,20 +502,67 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
 BenchmarkSuiteConfig BenchmarkSuiteConfig::GetQuickConfig() {
     BenchmarkSuiteConfig config;
     config.suiteName = "Quick Validation Suite";
-    config.tests = BenchmarkConfigLoader::GetQuickTestMatrix();
+
+    // Global matrix
+    config.globalMatrix.resolutions = {64, 128};
+    config.globalMatrix.renderSizes = {{800, 600}};
+
+    // Compute pipeline only
+    PipelineMatrix compute;
+    compute.enabled = true;
+    compute.scenes = {"cornell"};
+    compute.shaders = {"ray_march_base", "ray_march_esvo"};
+    config.pipelineMatrices["compute"] = compute;
+
+    // Default scene definitions
+    config.sceneDefinitions["cornell"] = SceneDefinition::FromFile("cornell", "assets/cornell.vox");
+
     config.warmupFramesOverride = 10;
     config.measurementFramesOverride = 100;
-    config.ApplyOverrides();
+    config.GenerateTestsFromMatrix();
+
     return config;
 }
 
 BenchmarkSuiteConfig BenchmarkSuiteConfig::GetResearchConfig() {
     BenchmarkSuiteConfig config;
     config.suiteName = "Research Benchmark Suite";
-    config.tests = BenchmarkConfigLoader::GetResearchTestMatrix();
-    config.warmupFramesOverride = 60;
+
+    // Global matrix
+    config.globalMatrix.resolutions = {64, 128, 256, 512};
+    config.globalMatrix.renderSizes = {{1280, 720}, {1920, 1080}};
+
+    // Compute pipeline - full test
+    PipelineMatrix compute;
+    compute.enabled = true;
+    compute.scenes = {"cornell", "noise", "tunnels", "cityscape"};
+    compute.shaders = {"ray_march_base", "ray_march_esvo", "ray_march_compressed"};
+    config.pipelineMatrices["compute"] = compute;
+
+    // Fragment pipeline - limited
+    PipelineMatrix fragment;
+    fragment.enabled = true;
+    fragment.scenes = {"cornell"};
+    fragment.shaders = {"ray_march_frag"};
+    config.pipelineMatrices["fragment"] = fragment;
+
+    // Hardware RT - disabled by default
+    PipelineMatrix hardware_rt;
+    hardware_rt.enabled = false;
+    hardware_rt.scenes = {"cornell"};
+    hardware_rt.shaders = {"ray_march_rt"};
+    config.pipelineMatrices["hardware_rt"] = hardware_rt;
+
+    // Scene definitions
+    config.sceneDefinitions["cornell"] = SceneDefinition::FromFile("cornell", "assets/cornell.vox");
+    config.sceneDefinitions["noise"] = SceneDefinition::FromProcedural("noise", "perlin3d");
+    config.sceneDefinitions["tunnels"] = SceneDefinition::FromProcedural("tunnels", "voronoi_caves");
+    config.sceneDefinitions["cityscape"] = SceneDefinition::FromProcedural("cityscape", "buildings");
+
+    config.warmupFramesOverride = 100;
     config.measurementFramesOverride = 300;
-    config.ApplyOverrides();
+    config.GenerateTestsFromMatrix();
+
     return config;
 }
 

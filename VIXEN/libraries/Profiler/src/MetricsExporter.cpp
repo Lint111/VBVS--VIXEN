@@ -46,10 +46,11 @@ void MetricsExporter::ExportToJSON(
 
     // Configuration block
     j["configuration"]["pipeline"] = config.pipeline;
-    j["configuration"]["algorithm"] = config.algorithm;
+    j["configuration"]["shader"] = config.shader;
     j["configuration"]["resolution"] = config.voxelResolution;
-    j["configuration"]["density_percent"] = static_cast<int>(config.densityPercent * 100.0f);
     j["configuration"]["scene_type"] = config.sceneType;
+    j["configuration"]["screen_width"] = config.screenWidth;
+    j["configuration"]["screen_height"] = config.screenHeight;
     j["configuration"]["optimizations"] = config.optimizations;
 
     // Device info block
@@ -130,10 +131,10 @@ std::string MetricsExporter::GetISO8601Timestamp() {
 std::string MetricsExporter::GetDefaultFilename(const TestConfiguration& config, ExportFormat format) {
     std::ostringstream oss;
     oss << config.pipeline << "_"
-        << config.algorithm << "_"
+        << config.shader << "_"
         << config.sceneType << "_"
         << config.voxelResolution << "_"
-        << static_cast<int>(config.densityPercent * 100) << "pct";
+        << config.screenWidth << "x" << config.screenHeight;
 
     switch (format) {
         case ExportFormat::CSV: oss << ".csv"; break;
@@ -159,10 +160,9 @@ void MetricsExporter::WriteCSVHeader(std::ofstream& file, const TestConfiguratio
     file << "# VIXEN Voxel Ray Tracing Benchmark Results\n";
     file << "# Timestamp: " << GetISO8601Timestamp() << "\n";
     file << "# Pipeline: " << config.pipeline << "\n";
-    file << "# Algorithm: " << config.algorithm << "\n";
+    file << "# Shader: " << config.shader << "\n";
     file << "# Scene Type: " << config.sceneType << "\n";
     file << "# Voxel Resolution: " << config.voxelResolution << "\n";
-    file << "# Density: " << config.densityPercent << "\n";
     file << "# Screen: " << config.screenWidth << "x" << config.screenHeight << "\n";
     file << "# Warmup Frames: " << config.warmupFrames << "\n";
     file << "# Measurement Frames: " << config.measurementFrames << "\n";
@@ -243,10 +243,7 @@ std::vector<std::string> TestConfiguration::ValidateWithErrors() const {
         errors.push_back("pipeline: must be one of: compute, fragment, hardware_rt, hybrid");
     }
 
-    // Algorithm validation
-    if (algorithm.empty()) {
-        errors.push_back("algorithm: must not be empty");
-    }
+    // Note: shader validation is already done above
 
     // Scene type validation
     if (sceneType.empty()) {
@@ -258,11 +255,9 @@ std::vector<std::string> TestConfiguration::ValidateWithErrors() const {
         errors.push_back("voxelResolution: must be power of 2 (32, 64, 128, 256, or 512)");
     }
 
-    // Density validation: 0-1 range (0% to 100%)
-    if (densityPercent < 0.0f) {
-        errors.push_back("densityPercent: must be >= 0");
-    } else if (densityPercent > 1.0f) {
-        errors.push_back("densityPercent: must be <= 1.0 (representing 0-100%)");
+    // Shader validation
+    if (shader.empty()) {
+        errors.push_back("shader: must not be empty");
     }
 
     // Screen dimensions validation
@@ -309,12 +304,12 @@ std::string TestConfiguration::GenerateTestId(uint32_t runNumber) const {
     }
     oss << "_" << sceneUpper;
 
-    // Algorithm (uppercase)
-    std::string algoUpper = algorithm;
-    for (char& c : algoUpper) {
+    // Shader (uppercase)
+    std::string shaderUpper = shader;
+    for (char& c : shaderUpper) {
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     }
-    oss << "_" << algoUpper;
+    oss << "_" << shaderUpper;
 
     oss << "_RUN" << runNumber;
 

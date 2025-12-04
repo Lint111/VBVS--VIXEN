@@ -441,9 +441,10 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     result.pipelineType = PipelineType::Compute;
 
     // Create scene info from config
+    // Density is 0 - will be computed from actual scene data
     SceneInfo scene = SceneInfo::FromResolutionAndDensity(
         config.voxelResolution,
-        config.densityPercent * 100.0f,  // Convert from 0-1 to 0-100 percent
+        0.0f,  // Density computed from scene data, not config
         MapSceneType(config.sceneType),
         config.testId
     );
@@ -845,9 +846,10 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
     result.pipelineType = PipelineType::Fragment;
 
     // Create scene info from config
+    // Density is 0 - will be computed from actual scene data
     SceneInfo scene = SceneInfo::FromResolutionAndDensity(
         config.voxelResolution,
-        config.densityPercent * 100.0f,  // Convert from 0-1 to 0-100 percent
+        0.0f,  // Density computed from scene data, not config
         MapSceneType(config.sceneType),
         config.testId
     );

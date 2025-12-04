@@ -1,0 +1,73 @@
+{
+  "suite": {
+    "name": "VIXEN Performance Suite",
+    "output_dir": "./benchmark_results",
+    "gpu_index": 0,
+    "headless": false,
+    "verbose": true,
+    "validation": false,
+    "export": {
+      "csv": true,
+      "json": true
+    }
+  },
+  "profiling": {
+    "warmup_frames": 100,
+    "measurement_frames": 300
+  },
+  "matrix": {
+    "global": {
+      "resolutions": [64, 128, 256],
+      "render_sizes": [[1280, 720], [1920, 1080]]
+    },
+    "pipelines": {
+      "compute": {
+        "enabled": true,
+        "scenes": ["cornell", "noise", "tunnels", "cityscape"],
+        "shaders": ["ray_march_base", "ray_march_esvo", "ray_march_compressed"]
+      },
+      "fragment": {
+        "enabled": false,
+        "scenes": ["cornell"],
+        "shaders": ["ray_march_frag"]
+      },
+      "hardware_rt": {
+        "enabled": false,
+        "scenes": ["cornell"],
+        "shaders": ["ray_march_rt"]
+      }
+    }
+  },
+  "scenes": {
+    "cornell": {
+      "type": "file",
+      "path": "assets/cornell.vox"
+    },
+    "noise": {
+      "type": "procedural",
+      "generator": "perlin3d",
+      "params": {
+        "octaves": 4,
+        "persistence": 0.5,
+        "scale": 0.1
+      }
+    },
+    "tunnels": {
+      "type": "procedural",
+      "generator": "voronoi_caves",
+      "params": {
+        "cell_count": 8,
+        "wall_thickness": 0.3
+      }
+    },
+    "cityscape": {
+      "type": "procedural",
+      "generator": "buildings",
+      "params": {
+        "density": 0.4,
+        "height_variance": 0.8,
+        "block_size": 8
+      }
+    }
+  }
+}

@@ -364,7 +364,15 @@ TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
     // Setup internal state from config
     SetOutputDirectory(config.outputDir);
     SetTestMatrix(config.tests);
-    SetRenderDimensions(config.renderWidth, config.renderHeight);
+    // Use first test's render dimensions or default
+    if (!config.tests.empty()) {
+        SetRenderDimensions(config.tests[0].screenWidth, config.tests[0].screenHeight);
+    } else if (!config.globalMatrix.renderSizes.empty()) {
+        SetRenderDimensions(config.globalMatrix.renderSizes[0].width, 
+                           config.globalMatrix.renderSizes[0].height);
+    } else {
+        SetRenderDimensions(1280, 720);  // Default
+    }
 
     // Create output directory
     if (!MetricsExporter::EnsureDirectoryExists(config.outputDir)) {
@@ -453,8 +461,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
             std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
                       << testConfig.pipeline << " | "
                       << testConfig.voxelResolution << "^3 | "
-                      << testConfig.densityPercent << "% | "
-                      << testConfig.algorithm << "\n";
+                      << testConfig.sceneType << " | "
+                      << testConfig.shader << "\n";
         }
 
         ProfilerSystem::Instance().StartTestRun(testConfig);
@@ -470,7 +478,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
             metrics.sceneResolution = testConfig.voxelResolution;
             metrics.screenWidth = testConfig.screenWidth;
             metrics.screenHeight = testConfig.screenHeight;
-            metrics.sceneDensity = testConfig.densityPercent;
+            metrics.sceneDensity = 0.0f;  // Will be computed from actual scene data
             metrics.totalRaysCast = testConfig.screenWidth * testConfig.screenHeight;
             metrics.mRaysPerSec = static_cast<float>(metrics.totalRaysCast) / (metrics.gpuTimeMs * 1000.0f);
             metrics.fps = 1000.0f / metrics.frameTimeMs;
@@ -548,8 +556,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
                       << testConfig.pipeline << " | "
                       << testConfig.voxelResolution << "^3 | "
-                      << testConfig.densityPercent << "% | "
-                      << testConfig.algorithm << "\n";
+                      << testConfig.sceneType << " | "
+                      << testConfig.shader << "\n";
         }
 
         // Create graph for current test
@@ -703,7 +711,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             metrics.sceneResolution = testConfig.voxelResolution;
             metrics.screenWidth = testConfig.screenWidth;
             metrics.screenHeight = testConfig.screenHeight;
-            metrics.sceneDensity = testConfig.densityPercent;
+            metrics.sceneDensity = 0.0f;  // Will be computed from actual scene data
             metrics.totalRaysCast = static_cast<uint64_t>(testConfig.screenWidth) * testConfig.screenHeight;
 
             // Calculate mRays/sec from GPU time if not available from logger

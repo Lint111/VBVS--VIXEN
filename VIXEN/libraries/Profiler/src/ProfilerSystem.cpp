@@ -171,7 +171,7 @@ size_t ProfilerSystem::RunTestBatch(
 
         // Log progress
         std::cout << "[Profiler] Running test " << (i + 1) << "/" << configs.size()
-                  << ": " << config.pipeline << "/" << config.algorithm << "/"
+                  << ": " << config.pipeline << "/" << config.shader << "/"
                   << config.voxelResolution << std::endl;
 
         StartTestRun(config);
@@ -288,10 +288,9 @@ void TestSuiteResults::ExportSummary(const std::string& filepath) const {
         // Test configuration
         t["config"]["test_id"] = result.config.testId;
         t["config"]["pipeline"] = result.config.pipeline;
-        t["config"]["algorithm"] = result.config.algorithm;
+        t["config"]["shader"] = result.config.shader;
         t["config"]["scene"] = result.config.sceneType;
         t["config"]["resolution"] = result.config.voxelResolution;
-        t["config"]["density"] = result.config.densityPercent;
         t["config"]["screen_width"] = result.config.screenWidth;
         t["config"]["screen_height"] = result.config.screenHeight;
         t["config"]["warmup_frames"] = result.config.warmupFrames;

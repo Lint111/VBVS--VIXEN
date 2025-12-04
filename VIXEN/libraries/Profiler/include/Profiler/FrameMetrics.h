@@ -188,14 +188,13 @@ inline PipelineType ParsePipelineType(const std::string& str) {
 
 /// Test configuration for a single benchmark run
 struct TestConfiguration {
-    std::string testId;                     // Unique test identifier (e.g., "HW_RT_256_SPARSE_BASELINE_RUN1")
+    std::string testId;                     // Unique test identifier (e.g., "COMPUTE_256_CORNELL_ESVO_RUN1")
     std::string pipeline = "compute";       // compute, fragment, hardware_rt, hybrid
-    std::string algorithm = "baseline";     // baseline, empty_skip, blockwalk
-    std::string sceneType = "cornell";      // cornell, cave, urban, test
-    uint32_t voxelResolution = 128;
-    float densityPercent = 0.5f;            // 0-100 (percent)
-    uint32_t screenWidth = 800;
-    uint32_t screenHeight = 600;
+    std::string shader = "ray_march_base";  // Shader name (ray_march_base, ray_march_esvo, ray_march_compressed)
+    std::string sceneType = "cornell";      // Scene identifier (cornell, noise, tunnels, cityscape)
+    uint32_t voxelResolution = 128;         // SVO resolution (64, 128, 256, 512)
+    uint32_t screenWidth = 800;             // Render target width
+    uint32_t screenHeight = 600;            // Render target height
     uint32_t warmupFrames = 60;
     uint32_t measurementFrames = 300;
     std::vector<std::string> optimizations; // List of enabled optimizations

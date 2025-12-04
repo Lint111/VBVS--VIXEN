@@ -5,8 +5,79 @@
 #include <vector>
 #include <optional>
 #include <filesystem>
+#include <map>
+#include <variant>
 
 namespace Vixen::Profiler {
+
+//==============================================================================
+// Scene Definition
+//==============================================================================
+
+/// Scene source type
+enum class SceneSourceType {
+    File,       // Load from .vox or similar file
+    Procedural  // Generate procedurally
+};
+
+/// Procedural scene parameters
+struct ProceduralSceneParams {
+    std::string generator;  // Generator type: perlin3d, voronoi_caves, buildings
+    std::map<std::string, std::variant<int, float, std::string>> params;  // Generator-specific params
+};
+
+/// Scene definition for benchmark testing
+struct SceneDefinition {
+    std::string name;                           // Scene identifier (cornell, noise, tunnels, cityscape)
+    SceneSourceType sourceType = SceneSourceType::Procedural;
+    std::string filePath;                       // For File type: path to scene file
+    ProceduralSceneParams procedural;           // For Procedural type: generator params
+
+    /// Create file-based scene
+    static SceneDefinition FromFile(const std::string& name, const std::string& path) {
+        SceneDefinition scene;
+        scene.name = name;
+        scene.sourceType = SceneSourceType::File;
+        scene.filePath = path;
+        return scene;
+    }
+
+    /// Create procedural scene
+    static SceneDefinition FromProcedural(const std::string& name, const std::string& generator) {
+        SceneDefinition scene;
+        scene.name = name;
+        scene.sourceType = SceneSourceType::Procedural;
+        scene.procedural.generator = generator;
+        return scene;
+    }
+};
+
+//==============================================================================
+// Pipeline Matrix Configuration
+//==============================================================================
+
+/// Per-pipeline test configuration
+struct PipelineMatrix {
+    bool enabled = true;                        // Whether to run tests for this pipeline
+    std::vector<std::string> scenes;            // Scene identifiers to test
+    std::vector<std::string> shaders;           // Shader names to test
+};
+
+/// Screen resolution pair
+struct RenderSize {
+    uint32_t width = 1280;
+    uint32_t height = 720;
+
+    bool operator==(const RenderSize& other) const {
+        return width == other.width && height == other.height;
+    }
+};
+
+/// Global matrix parameters (shared across all pipelines)
+struct GlobalMatrix {
+    std::vector<uint32_t> resolutions = {64, 128, 256};     // SVO resolutions
+    std::vector<RenderSize> renderSizes = {{1280, 720}};    // Screen resolutions
+};
 
 /**
  * @brief Configuration for an entire benchmark suite
@@ -31,7 +102,7 @@ struct BenchmarkSuiteConfig {
     /// Output directory for benchmark results (CSV/JSON files)
     std::filesystem::path outputDir = "./benchmark_results";
 
-    /// List of test configurations to run
+    /// List of test configurations to run (generated from matrix)
     std::vector<TestConfiguration> tests;
 
     /// Number of warmup frames (can override per-test settings)
@@ -40,11 +111,14 @@ struct BenchmarkSuiteConfig {
     /// Number of measurement frames (can override per-test settings)
     std::optional<uint32_t> measurementFramesOverride;
 
-    /// Render target width
-    uint32_t renderWidth = 800;
+    /// Global matrix parameters (resolutions, screen sizes)
+    GlobalMatrix globalMatrix;
 
-    /// Render target height
-    uint32_t renderHeight = 600;
+    /// Per-pipeline matrix configurations
+    std::map<std::string, PipelineMatrix> pipelineMatrices;
+
+    /// Scene definitions (name -> definition)
+    std::map<std::string, SceneDefinition> sceneDefinitions;
 
     /// GPU index to use (0 = first GPU)
     uint32_t gpuIndex = 0;
@@ -65,6 +139,15 @@ struct BenchmarkSuiteConfig {
     bool exportJSON = true;
 
     /**
+     * @brief Generate test configurations from matrix settings
+     *
+     * Generates all combinations of:
+     * - Global: resolutions x renderSizes
+     * - Per pipeline: scenes x shaders
+     */
+    void GenerateTestsFromMatrix();
+
+    /**
      * @brief Apply warmup/measurement overrides to all tests
      *
      * Call this after populating tests to apply global overrides.
@@ -77,8 +160,6 @@ struct BenchmarkSuiteConfig {
             if (measurementFramesOverride) {
                 test.measurementFrames = *measurementFramesOverride;
             }
-            test.screenWidth = renderWidth;
-            test.screenHeight = renderHeight;
         }
     }
 
@@ -101,11 +182,19 @@ struct BenchmarkSuiteConfig {
             }
         }
 
-        if (renderWidth < 64 || renderWidth > 8192) {
-            errors.push_back("Invalid render width: " + std::to_string(renderWidth));
+        // Validate global matrix
+        for (const auto& res : globalMatrix.resolutions) {
+            if (!TestConfiguration::IsValidResolution(res)) {
+                errors.push_back("Invalid resolution: " + std::to_string(res));
+            }
         }
-        if (renderHeight < 64 || renderHeight > 8192) {
-            errors.push_back("Invalid render height: " + std::to_string(renderHeight));
+        for (const auto& size : globalMatrix.renderSizes) {
+            if (size.width < 64 || size.width > 8192) {
+                errors.push_back("Invalid render width: " + std::to_string(size.width));
+            }
+            if (size.height < 64 || size.height > 8192) {
+                errors.push_back("Invalid render height: " + std::to_string(size.height));
+            }
         }
 
         return errors;
@@ -127,7 +216,6 @@ struct BenchmarkSuiteConfig {
      *   "suite": {
      *     "name": "My Benchmark Suite",
      *     "output_dir": "./results",
-     *     "render": { "width": 800, "height": 600 },
      *     "gpu_index": 0,
      *     "headless": true,
      *     "verbose": false,
@@ -135,17 +223,32 @@ struct BenchmarkSuiteConfig {
      *     "export": { "csv": true, "json": true }
      *   },
      *   "profiling": {
-     *     "warmup_frames": 60,
+     *     "warmup_frames": 100,
      *     "measurement_frames": 300
      *   },
      *   "matrix": {
-     *     "pipelines": ["compute"],
-     *     "resolutions": [64, 128, 256],
-     *     "densities": [30, 50, 70],
-     *     "algorithms": ["baseline", "empty_skip"]
+     *     "global": {
+     *       "resolutions": [64, 128, 256],
+     *       "render_sizes": [[1280, 720], [1920, 1080]]
+     *     },
+     *     "pipelines": {
+     *       "compute": {
+     *         "enabled": true,
+     *         "scenes": ["cornell", "noise", "tunnels", "cityscape"],
+     *         "shaders": ["ray_march_base", "ray_march_esvo", "ray_march_compressed"]
+     *       },
+     *       "fragment": {
+     *         "enabled": false,
+     *         "scenes": ["cornell"],
+     *         "shaders": ["ray_march_frag"]
+     *       }
+     *     }
      *   },
-     *   "common": {
-     *     "scene": "cornell"
+     *   "scenes": {
+     *     "cornell": { "type": "file", "path": "assets/cornell.vox" },
+     *     "noise": { "type": "procedural", "generator": "perlin3d" },
+     *     "tunnels": { "type": "procedural", "generator": "voronoi_caves" },
+     *     "cityscape": { "type": "procedural", "generator": "buildings" }
      *   }
      * }
      * @endcode
@@ -190,17 +293,13 @@ public:
     /// Supports both single config and test matrix format
     static std::vector<TestConfiguration> LoadBatchFromFile(const std::filesystem::path& filepath);
 
-    /// Generate test matrix from parameter arrays
-    /// @param pipelines List of pipeline types to test
-    /// @param resolutions List of voxel resolutions
-    /// @param densities List of scene densities
-    /// @param algorithms List of traversal algorithms
+    /// Generate test matrix from hierarchical configuration
+    /// @param globalMatrix Global parameters (resolutions, render sizes)
+    /// @param pipelineMatrices Per-pipeline configurations
     /// @return Vector of all configuration combinations
     static std::vector<TestConfiguration> GenerateTestMatrix(
-        const std::vector<std::string>& pipelines,
-        const std::vector<uint32_t>& resolutions,
-        const std::vector<float>& densities,
-        const std::vector<std::string>& algorithms);
+        const GlobalMatrix& globalMatrix,
+        const std::map<std::string, PipelineMatrix>& pipelineMatrices);
 
     /// Save configuration to JSON file
     static bool SaveToFile(const TestConfiguration& config, const std::filesystem::path& filepath);
@@ -209,11 +308,11 @@ public:
     static bool SaveBatchToFile(const std::vector<TestConfiguration>& configs,
                                 const std::filesystem::path& filepath);
 
-    /// Get default test matrix for research (180 configurations)
-    /// 4 pipelines x 5 resolutions x 3 densities x 3 algorithms
+    /// Get default test matrix for research
+    /// All pipelines x multiple resolutions x all scenes x all shaders
     static std::vector<TestConfiguration> GetResearchTestMatrix();
 
-    /// Get minimal test matrix for quick validation (12 configurations)
+    /// Get minimal test matrix for quick validation
     static std::vector<TestConfiguration> GetQuickTestMatrix();
 
     /// Parse configuration from JSON string
