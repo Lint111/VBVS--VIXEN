@@ -1,10 +1,10 @@
 {
   "configuration": {
-    "algorithm": "baseline",
-    "density_percent": 20,
+    "algorithm": "empty_skip",
+    "density_percent": 50,
     "optimizations": [],
     "pipeline": "compute",
-    "resolution": 64,
+    "resolution": 128,
     "scene_type": "cornell"
   },
   "device": {
@@ -21,7 +21,7 @@
       "fps": 59.98800277709961,
       "frame_num": 60,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -31,7 +31,7 @@
       "fps": 59.98800277709961,
       "frame_num": 61,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -41,7 +41,7 @@
       "fps": 59.98800277709961,
       "frame_num": 62,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -51,7 +51,7 @@
       "fps": 59.98800277709961,
       "frame_num": 63,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -61,7 +61,7 @@
       "fps": 59.98800277709961,
       "frame_num": 64,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -71,7 +71,7 @@
       "fps": 59.98800277709961,
       "frame_num": 65,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -81,7 +81,7 @@
       "fps": 59.98800277709961,
       "frame_num": 66,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -91,7 +91,7 @@
       "fps": 59.98800277709961,
       "frame_num": 67,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -101,7 +101,7 @@
       "fps": 59.98800277709961,
       "frame_num": 68,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -111,7 +111,7 @@
       "fps": 59.98800277709961,
       "frame_num": 69,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -121,7 +121,7 @@
       "fps": 59.98800277709961,
       "frame_num": 70,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -131,7 +131,7 @@
       "fps": 59.98800277709961,
       "frame_num": 71,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -141,7 +141,7 @@
       "fps": 59.98800277709961,
       "frame_num": 72,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -151,7 +151,7 @@
       "fps": 59.98800277709961,
       "frame_num": 73,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -161,7 +161,7 @@
       "fps": 59.98800277709961,
       "frame_num": 74,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -171,7 +171,7 @@
       "fps": 59.98800277709961,
       "frame_num": 75,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -181,7 +181,7 @@
       "fps": 59.98800277709961,
       "frame_num": 76,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -191,7 +191,7 @@
       "fps": 59.98800277709961,
       "frame_num": 77,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -201,7 +201,7 @@
       "fps": 59.98800277709961,
       "frame_num": 78,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -211,7 +211,7 @@
       "fps": 59.98800277709961,
       "frame_num": 79,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -221,7 +221,7 @@
       "fps": 59.98800277709961,
       "frame_num": 80,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -231,7 +231,7 @@
       "fps": 59.98800277709961,
       "frame_num": 81,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -241,7 +241,7 @@
       "fps": 59.98800277709961,
       "frame_num": 82,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -251,7 +251,7 @@
       "fps": 59.98800277709961,
       "frame_num": 83,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -261,7 +261,7 @@
       "fps": 59.98800277709961,
       "frame_num": 84,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -271,7 +271,7 @@
       "fps": 59.98800277709961,
       "frame_num": 85,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -281,7 +281,7 @@
       "fps": 59.98800277709961,
       "frame_num": 86,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -291,7 +291,7 @@
       "fps": 59.98800277709961,
       "frame_num": 87,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -301,7 +301,7 @@
       "fps": 59.98800277709961,
       "frame_num": 88,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -311,7 +311,7 @@
       "fps": 59.98800277709961,
       "frame_num": 89,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -321,7 +321,7 @@
       "fps": 59.98800277709961,
       "frame_num": 90,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -331,7 +331,7 @@
       "fps": 59.98800277709961,
       "frame_num": 91,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -341,7 +341,7 @@
       "fps": 59.98800277709961,
       "frame_num": 92,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -351,7 +351,7 @@
       "fps": 59.98800277709961,
       "frame_num": 93,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -361,7 +361,7 @@
       "fps": 59.98800277709961,
       "frame_num": 94,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -371,7 +371,7 @@
       "fps": 59.98800277709961,
       "frame_num": 95,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -381,7 +381,7 @@
       "fps": 59.98800277709961,
       "frame_num": 96,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -391,7 +391,7 @@
       "fps": 59.98800277709961,
       "frame_num": 97,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -401,7 +401,7 @@
       "fps": 59.98800277709961,
       "frame_num": 98,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -411,7 +411,7 @@
       "fps": 59.98800277709961,
       "frame_num": 99,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -421,7 +421,7 @@
       "fps": 59.98800277709961,
       "frame_num": 100,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -431,7 +431,7 @@
       "fps": 59.98800277709961,
       "frame_num": 101,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -441,7 +441,7 @@
       "fps": 59.98800277709961,
       "frame_num": 102,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -451,7 +451,7 @@
       "fps": 59.98800277709961,
       "frame_num": 103,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -461,7 +461,7 @@
       "fps": 59.98800277709961,
       "frame_num": 104,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -471,7 +471,7 @@
       "fps": 59.98800277709961,
       "frame_num": 105,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -481,7 +481,7 @@
       "fps": 59.98800277709961,
       "frame_num": 106,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -491,7 +491,7 @@
       "fps": 59.98800277709961,
       "frame_num": 107,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -501,7 +501,7 @@
       "fps": 59.98800277709961,
       "frame_num": 108,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -511,7 +511,7 @@
       "fps": 59.98800277709961,
       "frame_num": 109,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -521,7 +521,7 @@
       "fps": 59.98800277709961,
       "frame_num": 110,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -531,7 +531,7 @@
       "fps": 59.98800277709961,
       "frame_num": 111,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -541,7 +541,7 @@
       "fps": 59.98800277709961,
       "frame_num": 112,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -551,7 +551,7 @@
       "fps": 59.98800277709961,
       "frame_num": 113,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -561,7 +561,7 @@
       "fps": 59.98800277709961,
       "frame_num": 114,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -571,7 +571,7 @@
       "fps": 59.98800277709961,
       "frame_num": 115,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -581,7 +581,7 @@
       "fps": 59.98800277709961,
       "frame_num": 116,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -591,7 +591,7 @@
       "fps": 59.98800277709961,
       "frame_num": 117,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -601,7 +601,7 @@
       "fps": 59.98800277709961,
       "frame_num": 118,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -611,7 +611,7 @@
       "fps": 59.98800277709961,
       "frame_num": 119,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -621,7 +621,7 @@
       "fps": 59.98800277709961,
       "frame_num": 120,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -631,7 +631,7 @@
       "fps": 59.98800277709961,
       "frame_num": 121,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -641,7 +641,7 @@
       "fps": 59.98800277709961,
       "frame_num": 122,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -651,7 +651,7 @@
       "fps": 59.98800277709961,
       "frame_num": 123,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -661,7 +661,7 @@
       "fps": 59.98800277709961,
       "frame_num": 124,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -671,7 +671,7 @@
       "fps": 59.98800277709961,
       "frame_num": 125,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -681,7 +681,7 @@
       "fps": 59.98800277709961,
       "frame_num": 126,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -691,7 +691,7 @@
       "fps": 59.98800277709961,
       "frame_num": 127,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -701,7 +701,7 @@
       "fps": 59.98800277709961,
       "frame_num": 128,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -711,7 +711,7 @@
       "fps": 59.98800277709961,
       "frame_num": 129,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -721,7 +721,7 @@
       "fps": 59.98800277709961,
       "frame_num": 130,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -731,7 +731,7 @@
       "fps": 59.98800277709961,
       "frame_num": 131,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -741,7 +741,7 @@
       "fps": 59.98800277709961,
       "frame_num": 132,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -751,7 +751,7 @@
       "fps": 59.98800277709961,
       "frame_num": 133,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -761,7 +761,7 @@
       "fps": 59.98800277709961,
       "frame_num": 134,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -771,7 +771,7 @@
       "fps": 59.98800277709961,
       "frame_num": 135,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -781,7 +781,7 @@
       "fps": 59.98800277709961,
       "frame_num": 136,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -791,7 +791,7 @@
       "fps": 59.98800277709961,
       "frame_num": 137,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -801,7 +801,7 @@
       "fps": 59.98800277709961,
       "frame_num": 138,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -811,7 +811,7 @@
       "fps": 59.98800277709961,
       "frame_num": 139,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -821,7 +821,7 @@
       "fps": 59.98800277709961,
       "frame_num": 140,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -831,7 +831,7 @@
       "fps": 59.98800277709961,
       "frame_num": 141,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -841,7 +841,7 @@
       "fps": 59.98800277709961,
       "frame_num": 142,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -851,7 +851,7 @@
       "fps": 59.98800277709961,
       "frame_num": 143,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -861,7 +861,7 @@
       "fps": 59.98800277709961,
       "frame_num": 144,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -871,7 +871,7 @@
       "fps": 59.98800277709961,
       "frame_num": 145,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -881,7 +881,7 @@
       "fps": 59.98800277709961,
       "frame_num": 146,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -891,7 +891,7 @@
       "fps": 59.98800277709961,
       "frame_num": 147,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -901,7 +901,7 @@
       "fps": 59.98800277709961,
       "frame_num": 148,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -911,7 +911,7 @@
       "fps": 59.98800277709961,
       "frame_num": 149,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -921,7 +921,7 @@
       "fps": 59.98800277709961,
       "frame_num": 150,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -931,7 +931,7 @@
       "fps": 59.98800277709961,
       "frame_num": 151,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -941,7 +941,7 @@
       "fps": 59.98800277709961,
       "frame_num": 152,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -951,7 +951,7 @@
       "fps": 59.98800277709961,
       "frame_num": 153,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -961,7 +961,7 @@
       "fps": 59.98800277709961,
       "frame_num": 154,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -971,7 +971,7 @@
       "fps": 59.98800277709961,
       "frame_num": 155,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -981,7 +981,7 @@
       "fps": 59.98800277709961,
       "frame_num": 156,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -991,7 +991,7 @@
       "fps": 59.98800277709961,
       "frame_num": 157,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1001,7 +1001,7 @@
       "fps": 59.98800277709961,
       "frame_num": 158,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1011,7 +1011,7 @@
       "fps": 59.98800277709961,
       "frame_num": 159,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1021,7 +1021,7 @@
       "fps": 59.98800277709961,
       "frame_num": 160,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1031,7 +1031,7 @@
       "fps": 59.98800277709961,
       "frame_num": 161,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1041,7 +1041,7 @@
       "fps": 59.98800277709961,
       "frame_num": 162,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1051,7 +1051,7 @@
       "fps": 59.98800277709961,
       "frame_num": 163,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1061,7 +1061,7 @@
       "fps": 59.98800277709961,
       "frame_num": 164,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1071,7 +1071,7 @@
       "fps": 59.98800277709961,
       "frame_num": 165,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1081,7 +1081,7 @@
       "fps": 59.98800277709961,
       "frame_num": 166,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1091,7 +1091,7 @@
       "fps": 59.98800277709961,
       "frame_num": 167,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1101,7 +1101,7 @@
       "fps": 59.98800277709961,
       "frame_num": 168,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1111,7 +1111,7 @@
       "fps": 59.98800277709961,
       "frame_num": 169,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1121,7 +1121,7 @@
       "fps": 59.98800277709961,
       "frame_num": 170,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1131,7 +1131,7 @@
       "fps": 59.98800277709961,
       "frame_num": 171,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1141,7 +1141,7 @@
       "fps": 59.98800277709961,
       "frame_num": 172,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1151,7 +1151,7 @@
       "fps": 59.98800277709961,
       "frame_num": 173,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1161,7 +1161,7 @@
       "fps": 59.98800277709961,
       "frame_num": 174,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1171,7 +1171,7 @@
       "fps": 59.98800277709961,
       "frame_num": 175,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1181,7 +1181,7 @@
       "fps": 59.98800277709961,
       "frame_num": 176,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1191,7 +1191,7 @@
       "fps": 59.98800277709961,
       "frame_num": 177,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1201,7 +1201,7 @@
       "fps": 59.98800277709961,
       "frame_num": 178,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1211,7 +1211,7 @@
       "fps": 59.98800277709961,
       "frame_num": 179,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1221,7 +1221,7 @@
       "fps": 59.98800277709961,
       "frame_num": 180,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1231,7 +1231,7 @@
       "fps": 59.98800277709961,
       "frame_num": 181,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1241,7 +1241,7 @@
       "fps": 59.98800277709961,
       "frame_num": 182,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1251,7 +1251,7 @@
       "fps": 59.98800277709961,
       "frame_num": 183,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1261,7 +1261,7 @@
       "fps": 59.98800277709961,
       "frame_num": 184,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1271,7 +1271,7 @@
       "fps": 59.98800277709961,
       "frame_num": 185,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1281,7 +1281,7 @@
       "fps": 59.98800277709961,
       "frame_num": 186,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1291,7 +1291,7 @@
       "fps": 59.98800277709961,
       "frame_num": 187,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1301,7 +1301,7 @@
       "fps": 59.98800277709961,
       "frame_num": 188,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1311,7 +1311,7 @@
       "fps": 59.98800277709961,
       "frame_num": 189,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1321,7 +1321,7 @@
       "fps": 59.98800277709961,
       "frame_num": 190,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1331,7 +1331,7 @@
       "fps": 59.98800277709961,
       "frame_num": 191,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1341,7 +1341,7 @@
       "fps": 59.98800277709961,
       "frame_num": 192,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1351,7 +1351,7 @@
       "fps": 59.98800277709961,
       "frame_num": 193,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1361,7 +1361,7 @@
       "fps": 59.98800277709961,
       "frame_num": 194,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1371,7 +1371,7 @@
       "fps": 59.98800277709961,
       "frame_num": 195,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1381,7 +1381,7 @@
       "fps": 59.98800277709961,
       "frame_num": 196,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1391,7 +1391,7 @@
       "fps": 59.98800277709961,
       "frame_num": 197,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1401,7 +1401,7 @@
       "fps": 59.98800277709961,
       "frame_num": 198,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1411,7 +1411,7 @@
       "fps": 59.98800277709961,
       "frame_num": 199,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1421,7 +1421,7 @@
       "fps": 59.98800277709961,
       "frame_num": 200,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1431,7 +1431,7 @@
       "fps": 59.98800277709961,
       "frame_num": 201,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1441,7 +1441,7 @@
       "fps": 59.98800277709961,
       "frame_num": 202,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1451,7 +1451,7 @@
       "fps": 59.98800277709961,
       "frame_num": 203,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1461,7 +1461,7 @@
       "fps": 59.98800277709961,
       "frame_num": 204,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1471,7 +1471,7 @@
       "fps": 59.98800277709961,
       "frame_num": 205,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1481,7 +1481,7 @@
       "fps": 59.98800277709961,
       "frame_num": 206,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1491,7 +1491,7 @@
       "fps": 59.98800277709961,
       "frame_num": 207,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1501,7 +1501,7 @@
       "fps": 59.98800277709961,
       "frame_num": 208,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1511,7 +1511,7 @@
       "fps": 59.98800277709961,
       "frame_num": 209,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1521,7 +1521,7 @@
       "fps": 59.98800277709961,
       "frame_num": 210,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1531,7 +1531,7 @@
       "fps": 59.98800277709961,
       "frame_num": 211,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1541,7 +1541,7 @@
       "fps": 59.98800277709961,
       "frame_num": 212,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1551,7 +1551,7 @@
       "fps": 59.98800277709961,
       "frame_num": 213,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1561,7 +1561,7 @@
       "fps": 59.98800277709961,
       "frame_num": 214,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1571,7 +1571,7 @@
       "fps": 59.98800277709961,
       "frame_num": 215,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1581,7 +1581,7 @@
       "fps": 59.98800277709961,
       "frame_num": 216,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1591,7 +1591,7 @@
       "fps": 59.98800277709961,
       "frame_num": 217,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1601,7 +1601,7 @@
       "fps": 59.98800277709961,
       "frame_num": 218,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1611,7 +1611,7 @@
       "fps": 59.98800277709961,
       "frame_num": 219,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1621,7 +1621,7 @@
       "fps": 59.98800277709961,
       "frame_num": 220,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1631,7 +1631,7 @@
       "fps": 59.98800277709961,
       "frame_num": 221,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1641,7 +1641,7 @@
       "fps": 59.98800277709961,
       "frame_num": 222,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1651,7 +1651,7 @@
       "fps": 59.98800277709961,
       "frame_num": 223,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1661,7 +1661,7 @@
       "fps": 59.98800277709961,
       "frame_num": 224,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1671,7 +1671,7 @@
       "fps": 59.98800277709961,
       "frame_num": 225,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1681,7 +1681,7 @@
       "fps": 59.98800277709961,
       "frame_num": 226,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1691,7 +1691,7 @@
       "fps": 59.98800277709961,
       "frame_num": 227,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1701,7 +1701,7 @@
       "fps": 59.98800277709961,
       "frame_num": 228,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1711,7 +1711,7 @@
       "fps": 59.98800277709961,
       "frame_num": 229,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1721,7 +1721,7 @@
       "fps": 59.98800277709961,
       "frame_num": 230,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1731,7 +1731,7 @@
       "fps": 59.98800277709961,
       "frame_num": 231,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1741,7 +1741,7 @@
       "fps": 59.98800277709961,
       "frame_num": 232,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1751,7 +1751,7 @@
       "fps": 59.98800277709961,
       "frame_num": 233,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1761,7 +1761,7 @@
       "fps": 59.98800277709961,
       "frame_num": 234,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1771,7 +1771,7 @@
       "fps": 59.98800277709961,
       "frame_num": 235,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1781,7 +1781,7 @@
       "fps": 59.98800277709961,
       "frame_num": 236,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1791,7 +1791,7 @@
       "fps": 59.98800277709961,
       "frame_num": 237,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1801,7 +1801,7 @@
       "fps": 59.98800277709961,
       "frame_num": 238,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1811,7 +1811,7 @@
       "fps": 59.98800277709961,
       "frame_num": 239,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1821,7 +1821,7 @@
       "fps": 59.98800277709961,
       "frame_num": 240,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1831,7 +1831,7 @@
       "fps": 59.98800277709961,
       "frame_num": 241,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1841,7 +1841,7 @@
       "fps": 59.98800277709961,
       "frame_num": 242,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1851,7 +1851,7 @@
       "fps": 59.98800277709961,
       "frame_num": 243,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1861,7 +1861,7 @@
       "fps": 59.98800277709961,
       "frame_num": 244,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1871,7 +1871,7 @@
       "fps": 59.98800277709961,
       "frame_num": 245,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1881,7 +1881,7 @@
       "fps": 59.98800277709961,
       "frame_num": 246,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1891,7 +1891,7 @@
       "fps": 59.98800277709961,
       "frame_num": 247,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1901,7 +1901,7 @@
       "fps": 59.98800277709961,
       "frame_num": 248,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1911,7 +1911,7 @@
       "fps": 59.98800277709961,
       "frame_num": 249,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1921,7 +1921,7 @@
       "fps": 59.98800277709961,
       "frame_num": 250,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1931,7 +1931,7 @@
       "fps": 59.98800277709961,
       "frame_num": 251,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1941,7 +1941,7 @@
       "fps": 59.98800277709961,
       "frame_num": 252,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1951,7 +1951,7 @@
       "fps": 59.98800277709961,
       "frame_num": 253,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1961,7 +1961,7 @@
       "fps": 59.98800277709961,
       "frame_num": 254,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1971,7 +1971,7 @@
       "fps": 59.98800277709961,
       "frame_num": 255,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1981,7 +1981,7 @@
       "fps": 59.98800277709961,
       "frame_num": 256,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -1991,7 +1991,7 @@
       "fps": 59.98800277709961,
       "frame_num": 257,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2001,7 +2001,7 @@
       "fps": 59.98800277709961,
       "frame_num": 258,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2011,7 +2011,7 @@
       "fps": 59.98800277709961,
       "frame_num": 259,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2021,7 +2021,7 @@
       "fps": 59.98800277709961,
       "frame_num": 260,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2031,7 +2031,7 @@
       "fps": 59.98800277709961,
       "frame_num": 261,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2041,7 +2041,7 @@
       "fps": 59.98800277709961,
       "frame_num": 262,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2051,7 +2051,7 @@
       "fps": 59.98800277709961,
       "frame_num": 263,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2061,7 +2061,7 @@
       "fps": 59.98800277709961,
       "frame_num": 264,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2071,7 +2071,7 @@
       "fps": 59.98800277709961,
       "frame_num": 265,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2081,7 +2081,7 @@
       "fps": 59.98800277709961,
       "frame_num": 266,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2091,7 +2091,7 @@
       "fps": 59.98800277709961,
       "frame_num": 267,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2101,7 +2101,7 @@
       "fps": 59.98800277709961,
       "frame_num": 268,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2111,7 +2111,7 @@
       "fps": 59.98800277709961,
       "frame_num": 269,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2121,7 +2121,7 @@
       "fps": 59.98800277709961,
       "frame_num": 270,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2131,7 +2131,7 @@
       "fps": 59.98800277709961,
       "frame_num": 271,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2141,7 +2141,7 @@
       "fps": 59.98800277709961,
       "frame_num": 272,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2151,7 +2151,7 @@
       "fps": 59.98800277709961,
       "frame_num": 273,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2161,7 +2161,7 @@
       "fps": 59.98800277709961,
       "frame_num": 274,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2171,7 +2171,7 @@
       "fps": 59.98800277709961,
       "frame_num": 275,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2181,7 +2181,7 @@
       "fps": 59.98800277709961,
       "frame_num": 276,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2191,7 +2191,7 @@
       "fps": 59.98800277709961,
       "frame_num": 277,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2201,7 +2201,7 @@
       "fps": 59.98800277709961,
       "frame_num": 278,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2211,7 +2211,7 @@
       "fps": 59.98800277709961,
       "frame_num": 279,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2221,7 +2221,7 @@
       "fps": 59.98800277709961,
       "frame_num": 280,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2231,7 +2231,7 @@
       "fps": 59.98800277709961,
       "frame_num": 281,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2241,7 +2241,7 @@
       "fps": 59.98800277709961,
       "frame_num": 282,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2251,7 +2251,7 @@
       "fps": 59.98800277709961,
       "frame_num": 283,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2261,7 +2261,7 @@
       "fps": 59.98800277709961,
       "frame_num": 284,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2271,7 +2271,7 @@
       "fps": 59.98800277709961,
       "frame_num": 285,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2281,7 +2281,7 @@
       "fps": 59.98800277709961,
       "frame_num": 286,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2291,7 +2291,7 @@
       "fps": 59.98800277709961,
       "frame_num": 287,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2301,7 +2301,7 @@
       "fps": 59.98800277709961,
       "frame_num": 288,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2311,7 +2311,7 @@
       "fps": 59.98800277709961,
       "frame_num": 289,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2321,7 +2321,7 @@
       "fps": 59.98800277709961,
       "frame_num": 290,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2331,7 +2331,7 @@
       "fps": 59.98800277709961,
       "frame_num": 291,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2341,7 +2341,7 @@
       "fps": 59.98800277709961,
       "frame_num": 292,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2351,7 +2351,7 @@
       "fps": 59.98800277709961,
       "frame_num": 293,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2361,7 +2361,7 @@
       "fps": 59.98800277709961,
       "frame_num": 294,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2371,7 +2371,7 @@
       "fps": 59.98800277709961,
       "frame_num": 295,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2381,7 +2381,7 @@
       "fps": 59.98800277709961,
       "frame_num": 296,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2391,7 +2391,7 @@
       "fps": 59.98800277709961,
       "frame_num": 297,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2401,7 +2401,7 @@
       "fps": 59.98800277709961,
       "frame_num": 298,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2411,7 +2411,7 @@
       "fps": 59.98800277709961,
       "frame_num": 299,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2421,7 +2421,7 @@
       "fps": 59.98800277709961,
       "frame_num": 300,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2431,7 +2431,7 @@
       "fps": 59.98800277709961,
       "frame_num": 301,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2441,7 +2441,7 @@
       "fps": 59.98800277709961,
       "frame_num": 302,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2451,7 +2451,7 @@
       "fps": 59.98800277709961,
       "frame_num": 303,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2461,7 +2461,7 @@
       "fps": 59.98800277709961,
       "frame_num": 304,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2471,7 +2471,7 @@
       "fps": 59.98800277709961,
       "frame_num": 305,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2481,7 +2481,7 @@
       "fps": 59.98800277709961,
       "frame_num": 306,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2491,7 +2491,7 @@
       "fps": 59.98800277709961,
       "frame_num": 307,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2501,7 +2501,7 @@
       "fps": 59.98800277709961,
       "frame_num": 308,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2511,7 +2511,7 @@
       "fps": 59.98800277709961,
       "frame_num": 309,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2521,7 +2521,7 @@
       "fps": 59.98800277709961,
       "frame_num": 310,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2531,7 +2531,7 @@
       "fps": 59.98800277709961,
       "frame_num": 311,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2541,7 +2541,7 @@
       "fps": 59.98800277709961,
       "frame_num": 312,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2551,7 +2551,7 @@
       "fps": 59.98800277709961,
       "frame_num": 313,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2561,7 +2561,7 @@
       "fps": 59.98800277709961,
       "frame_num": 314,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2571,7 +2571,7 @@
       "fps": 59.98800277709961,
       "frame_num": 315,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2581,7 +2581,7 @@
       "fps": 59.98800277709961,
       "frame_num": 316,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2591,7 +2591,7 @@
       "fps": 59.98800277709961,
       "frame_num": 317,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2601,7 +2601,7 @@
       "fps": 59.98800277709961,
       "frame_num": 318,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2611,7 +2611,7 @@
       "fps": 59.98800277709961,
       "frame_num": 319,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2621,7 +2621,7 @@
       "fps": 59.98800277709961,
       "frame_num": 320,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2631,7 +2631,7 @@
       "fps": 59.98800277709961,
       "frame_num": 321,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2641,7 +2641,7 @@
       "fps": 59.98800277709961,
       "frame_num": 322,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2651,7 +2651,7 @@
       "fps": 59.98800277709961,
       "frame_num": 323,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2661,7 +2661,7 @@
       "fps": 59.98800277709961,
       "frame_num": 324,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2671,7 +2671,7 @@
       "fps": 59.98800277709961,
       "frame_num": 325,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2681,7 +2681,7 @@
       "fps": 59.98800277709961,
       "frame_num": 326,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2691,7 +2691,7 @@
       "fps": 59.98800277709961,
       "frame_num": 327,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2701,7 +2701,7 @@
       "fps": 59.98800277709961,
       "frame_num": 328,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2711,7 +2711,7 @@
       "fps": 59.98800277709961,
       "frame_num": 329,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2721,7 +2721,7 @@
       "fps": 59.98800277709961,
       "frame_num": 330,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2731,7 +2731,7 @@
       "fps": 59.98800277709961,
       "frame_num": 331,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2741,7 +2741,7 @@
       "fps": 59.98800277709961,
       "frame_num": 332,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2751,7 +2751,7 @@
       "fps": 59.98800277709961,
       "frame_num": 333,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2761,7 +2761,7 @@
       "fps": 59.98800277709961,
       "frame_num": 334,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2771,7 +2771,7 @@
       "fps": 59.98800277709961,
       "frame_num": 335,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2781,7 +2781,7 @@
       "fps": 59.98800277709961,
       "frame_num": 336,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2791,7 +2791,7 @@
       "fps": 59.98800277709961,
       "frame_num": 337,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2801,7 +2801,7 @@
       "fps": 59.98800277709961,
       "frame_num": 338,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2811,7 +2811,7 @@
       "fps": 59.98800277709961,
       "frame_num": 339,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2821,7 +2821,7 @@
       "fps": 59.98800277709961,
       "frame_num": 340,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2831,7 +2831,7 @@
       "fps": 59.98800277709961,
       "frame_num": 341,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2841,7 +2841,7 @@
       "fps": 59.98800277709961,
       "frame_num": 342,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2851,7 +2851,7 @@
       "fps": 59.98800277709961,
       "frame_num": 343,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2861,7 +2861,7 @@
       "fps": 59.98800277709961,
       "frame_num": 344,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2871,7 +2871,7 @@
       "fps": 59.98800277709961,
       "frame_num": 345,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2881,7 +2881,7 @@
       "fps": 59.98800277709961,
       "frame_num": 346,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2891,7 +2891,7 @@
       "fps": 59.98800277709961,
       "frame_num": 347,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2901,7 +2901,7 @@
       "fps": 59.98800277709961,
       "frame_num": 348,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2911,7 +2911,7 @@
       "fps": 59.98800277709961,
       "frame_num": 349,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2921,7 +2921,7 @@
       "fps": 59.98800277709961,
       "frame_num": 350,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2931,7 +2931,7 @@
       "fps": 59.98800277709961,
       "frame_num": 351,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2941,7 +2941,7 @@
       "fps": 59.98800277709961,
       "frame_num": 352,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2951,7 +2951,7 @@
       "fps": 59.98800277709961,
       "frame_num": 353,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2961,7 +2961,7 @@
       "fps": 59.98800277709961,
       "frame_num": 354,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2971,7 +2971,7 @@
       "fps": 59.98800277709961,
       "frame_num": 355,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2981,7 +2981,7 @@
       "fps": 59.98800277709961,
       "frame_num": 356,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -2991,7 +2991,7 @@
       "fps": 59.98800277709961,
       "frame_num": 357,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -3001,7 +3001,7 @@
       "fps": 59.98800277709961,
       "frame_num": 358,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     },
     {
@@ -3011,7 +3011,7 @@
       "fps": 59.98800277709961,
       "frame_num": 359,
       "frame_time_ms": 16.670000076293945,
-      "ray_throughput_mrays": 48.0,
+      "ray_throughput_mrays": 40.0,
       "vram_mb": 0
     }
   ],
@@ -3022,6 +3022,6 @@
     "frame_time_p99": 16.670000076293945,
     "frame_time_stddev": 0.0
   },
-  "test_id": "COMPUTE_64_CORNELL_BASELINE_RUN1",
+  "test_id": "COMPUTE_128_CORNELL_EMPTY_SKIP_RUN1",
   "timestamp": "2025-12-04T14:54:53Z"
 }

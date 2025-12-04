@@ -1,7 +1,7 @@
 {
   "configuration": {
     "algorithm": "baseline",
-    "density_percent": 20,
+    "density_percent": 50,
     "optimizations": [],
     "pipeline": "compute",
     "resolution": 64,

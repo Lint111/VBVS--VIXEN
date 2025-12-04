@@ -1,7 +1,7 @@
 {
   "configuration": {
-    "algorithm": "baseline",
-    "density_percent": 20,
+    "algorithm": "empty_skip",
+    "density_percent": 50,
     "optimizations": [],
     "pipeline": "compute",
     "resolution": 64,
@@ -3022,6 +3022,6 @@
     "frame_time_p99": 16.670000076293945,
     "frame_time_stddev": 0.0
   },
-  "test_id": "COMPUTE_64_CORNELL_BASELINE_RUN1",
+  "test_id": "COMPUTE_64_CORNELL_EMPTY_SKIP_RUN1",
   "timestamp": "2025-12-04T14:54:53Z"
 }

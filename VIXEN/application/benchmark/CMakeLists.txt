@@ -52,6 +52,7 @@ target_include_directories(vixen_benchmark
 target_link_libraries(vixen_benchmark
     PRIVATE
         Profiler
+        RenderGraph       # RenderGraph + all node types
         Logger
         ${VULKAN_LIB_LIST}
 )

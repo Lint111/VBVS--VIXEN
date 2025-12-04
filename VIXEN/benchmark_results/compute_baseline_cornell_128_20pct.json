@@ -1,0 +1,21 @@
+{
+  "configuration": {
+    "algorithm": "baseline",
+    "density_percent": 20,
+    "optimizations": [],
+    "pipeline": "compute",
+    "resolution": 128,
+    "scene_type": "cornell"
+  },
+  "device": {
+    "driver": "581.29.0",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "vram_gb": 5.85546875
+  },
+  "frames": [],
+  "statistics": {
+    "fps_mean": 0.0
+  },
+  "test_id": "COMPUTE_128_CORNELL_BASELINE_RUN1",
+  "timestamp": "2025-12-04T14:54:53Z"
+}

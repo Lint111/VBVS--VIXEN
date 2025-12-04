@@ -301,6 +301,19 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
             continue;
         }
 
+        // Execution mode flags
+        if (ArgMatches(arg, nullptr, "--headless")) {
+            opts.headlessMode = true;
+            opts.renderMode = false;
+            continue;
+        }
+
+        if (ArgMatches(arg, nullptr, "--render")) {
+            opts.headlessMode = false;
+            opts.renderMode = true;
+            continue;
+        }
+
         if (ArgMatches(arg, nullptr, "--csv-only")) {
             opts.exportCSV = true;
             opts.exportJSON = false;
@@ -469,6 +482,10 @@ GPU Selection:
 Preset Modes:
       --quick             Run minimal test matrix (12 configurations)
       --full              Run full research test matrix (180 configurations)
+
+Execution Modes:
+      --headless          Compute-only benchmark, no window (default)
+      --render            Full rendering with window and real-time preview
 
 Output Format:
       --csv-only          Export only CSV format

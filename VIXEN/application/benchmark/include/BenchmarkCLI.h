@@ -64,6 +64,10 @@ struct BenchmarkCLIOptions {
     bool quickMode = false;   // Minimal test matrix
     bool fullMode = false;    // Full research matrix
 
+    // Execution modes
+    bool headlessMode = true;   // Default: headless compute-only (no window)
+    bool renderMode = false;    // Full rendering with window
+
     // Help flag
     bool showHelp = false;
 
