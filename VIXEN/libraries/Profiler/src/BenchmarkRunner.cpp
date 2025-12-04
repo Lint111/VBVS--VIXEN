@@ -491,6 +491,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& c
 
 TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig& config) {
     namespace RG = Vixen::RenderGraph;
+    using namespace Vixen::EventBus;
 
     // Create node registry and register all node types
     auto nodeRegistry = std::make_unique<RG::NodeTypeRegistry>();
@@ -510,7 +511,7 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // Subscribe to window close events
     bool shouldClose = false;
     messageBus->Subscribe(
-        WindowCloseEvent::TYPE,
+        Vixen::EventBus::WindowCloseEvent::TYPE,
         [&shouldClose](const BaseEventMessage& /*msg*/) -> bool {
             shouldClose = true;
             return true;

@@ -101,3 +101,5 @@ app_output.txt
 vulkan_app_log.txt
 nul
 temp/
+benchmark_results/
+benchmark_test_results/
