@@ -34,6 +34,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <cstring>
+#include <chrono>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -562,18 +563,29 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         renderGraph->Compile();
 
         // Initialize profiler from graph
+        VulkanHandles vulkanHandles;
         if (VulkanIntegrationHelper::InitializeProfilerFromGraph(renderGraph.get())) {
             ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
             ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
 
-            auto handles = VulkanIntegrationHelper::ExtractFromGraph(renderGraph.get());
-            if (handles.IsValid()) {
-                auto deviceCaps = DeviceCapabilities::Capture(handles.physicalDevice);
+            vulkanHandles = VulkanIntegrationHelper::ExtractFromGraph(renderGraph.get());
+            if (vulkanHandles.IsValid()) {
+                auto deviceCaps = DeviceCapabilities::Capture(vulkanHandles.physicalDevice);
                 SetDeviceCapabilities(deviceCaps);
             }
         }
 
+        // Get ComputeDispatchNode for GPU timing extraction
+        RG::ComputeDispatchNode* dispatchNode = nullptr;
+        if (benchGraph.compute.dispatch.IsValid()) {
+            dispatchNode = static_cast<RG::ComputeDispatchNode*>(
+                renderGraph->GetInstance(benchGraph.compute.dispatch));
+        }
+
         ProfilerSystem::Instance().StartTestRun(testConfig);
+
+        // Frame timing variables
+        auto profilingStartTime = std::chrono::high_resolution_clock::now();
 
         // Render loop
         uint32_t totalFrames = testConfig.warmupFrames + testConfig.measurementFrames;
@@ -592,6 +604,9 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 #endif
             if (shouldClose) break;
 
+            // CPU frame timing start
+            auto frameStart = std::chrono::high_resolution_clock::now();
+
             renderGraph->UpdateTime();
             renderGraph->ProcessEvents();
             renderGraph->RecompileDirtyNodes();
@@ -601,19 +616,60 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
                 // Non-fatal warning
             }
 
-            // Collect frame metrics
+            // CPU frame timing end
+            auto frameEnd = std::chrono::high_resolution_clock::now();
+            auto frameDuration = std::chrono::duration<float, std::milli>(frameEnd - frameStart);
+            auto sinceStart = std::chrono::duration<double, std::milli>(frameEnd - profilingStartTime);
+
+            // ============================================================
+            // Collect REAL frame metrics (not synthetic!)
+            // ============================================================
             FrameMetrics metrics{};
+
+            // Frame identification
             metrics.frameNumber = frame;
-            metrics.timestampMs = static_cast<double>(frame) * 16.67;
-            metrics.frameTimeMs = 16.67f;
-            metrics.gpuTimeMs = 8.0f;
+            metrics.timestampMs = sinceStart.count();
+
+            // CPU timing (REAL)
+            metrics.frameTimeMs = frameDuration.count();
+            metrics.fps = (metrics.frameTimeMs > 0.0f) ? (1000.0f / metrics.frameTimeMs) : 0.0f;
+
+            // GPU timing from ComputeDispatchNode's GPUPerformanceLogger (REAL)
+            if (dispatchNode) {
+                // The GPUPerformanceLogger collects results during Execute()
+                // via CollectResults(frameIndex) - results are 1 frame behind
+                // due to frames-in-flight, but this gives us actual GPU timing
+                auto* gpuLogger = dispatchNode->GetGPUPerformanceLogger();
+                if (gpuLogger) {
+                    metrics.gpuTimeMs = gpuLogger->GetLastDispatchMs();
+                    metrics.mRaysPerSec = gpuLogger->GetLastMraysPerSec();
+                }
+            }
+
+            // Scene properties from TestConfiguration (REAL)
             metrics.sceneResolution = testConfig.voxelResolution;
             metrics.screenWidth = testConfig.screenWidth;
             metrics.screenHeight = testConfig.screenHeight;
             metrics.sceneDensity = testConfig.densityPercent;
-            metrics.totalRaysCast = testConfig.screenWidth * testConfig.screenHeight;
-            metrics.mRaysPerSec = static_cast<float>(metrics.totalRaysCast) / (metrics.gpuTimeMs * 1000.0f);
-            metrics.fps = 1000.0f / metrics.frameTimeMs;
+            metrics.totalRaysCast = static_cast<uint64_t>(testConfig.screenWidth) * testConfig.screenHeight;
+
+            // Calculate mRays/sec from GPU time if not available from logger
+            if (metrics.mRaysPerSec == 0.0f && metrics.gpuTimeMs > 0.0f) {
+                metrics.mRaysPerSec = (static_cast<float>(metrics.totalRaysCast) / 1e6f) /
+                                      (metrics.gpuTimeMs / 1000.0f);
+            }
+
+            // VRAM usage via VK_EXT_memory_budget
+            if (vulkanHandles.IsValid() && vulkanHandles.physicalDevice != VK_NULL_HANDLE) {
+                CollectVRAMUsage(vulkanHandles.physicalDevice, metrics);
+            }
+
+            // Bandwidth estimation (if GPU timing available but no HW counters)
+            if (metrics.gpuTimeMs > 0.0f && !HasHardwarePerformanceCounters()) {
+                float estimatedBW = EstimateBandwidth(metrics.totalRaysCast, metrics.gpuTimeMs / 1000.0f);
+                metrics.bandwidthReadGB = estimatedBW;
+                metrics.bandwidthEstimated = true;
+            }
 
             RecordFrame(metrics);
         }
@@ -991,6 +1047,62 @@ BenchmarkGraph BenchmarkRunner::CreateGraphForCurrentTest(Vixen::RenderGraph::Re
 
 void BenchmarkRunner::ClearCurrentGraph() {
     currentGraph_ = BenchmarkGraph{};
+}
+
+//==============================================================================
+// VRAM Collection via VK_EXT_memory_budget
+//==============================================================================
+
+void BenchmarkRunner::CollectVRAMUsage(VkPhysicalDevice physicalDevice, FrameMetrics& metrics) const {
+    if (physicalDevice == VK_NULL_HANDLE) {
+        metrics.vramUsageMB = 0;
+        metrics.vramBudgetMB = 0;
+        return;
+    }
+
+    // Check for VK_EXT_memory_budget support
+    uint32_t extensionCount = 0;
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
+
+    bool memoryBudgetSupported = false;
+    for (const auto& ext : extensions) {
+        if (std::strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
+            memoryBudgetSupported = true;
+            break;
+        }
+    }
+
+    if (!memoryBudgetSupported) {
+        metrics.vramUsageMB = 0;
+        metrics.vramBudgetMB = 0;
+        return;
+    }
+
+    // Query memory budget using VK_EXT_memory_budget
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budgetProps{};
+    budgetProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+
+    VkPhysicalDeviceMemoryProperties2 memProps2{};
+    memProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    memProps2.pNext = &budgetProps;
+
+    vkGetPhysicalDeviceMemoryProperties2(physicalDevice, &memProps2);
+
+    // Sum up device-local heap usage and budget
+    uint64_t totalUsage = 0;
+    uint64_t totalBudget = 0;
+
+    for (uint32_t i = 0; i < memProps2.memoryProperties.memoryHeapCount; ++i) {
+        if (memProps2.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            totalUsage += budgetProps.heapUsage[i];
+            totalBudget += budgetProps.heapBudget[i];
+        }
+    }
+
+    metrics.vramUsageMB = totalUsage / (1024 * 1024);
+    metrics.vramBudgetMB = totalBudget / (1024 * 1024);
 }
 
 } // namespace Vixen::Profiler

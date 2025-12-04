@@ -92,6 +92,13 @@ private:
 
     // GPU performance metrics (timestamp queries + pipeline stats)
     std::shared_ptr<GPUPerformanceLogger> gpuPerfLogger_;
+
+public:
+    /// Get GPU performance logger for external metrics extraction
+    /// @return Pointer to GPUPerformanceLogger, or nullptr if not initialized
+    GPUPerformanceLogger* GetGPUPerformanceLogger() const {
+        return gpuPerfLogger_.get();
+    }
 };
 
 } // namespace Vixen::RenderGraph
