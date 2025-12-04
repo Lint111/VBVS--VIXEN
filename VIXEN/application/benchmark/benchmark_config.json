@@ -18,22 +18,20 @@
   "matrix": {
     "global": {
       "resolutions": [64, 128, 256],
-      "render_sizes": [[1280, 720], [1920, 1080]]
+      "render_sizes": [[1280, 720], [1920, 1080]],
+      "scenes": ["cornell", "noise", "tunnels", "cityscape"]
     },
     "pipelines": {
       "compute": {
         "enabled": true,
-        "scenes": ["cornell", "noise", "tunnels", "cityscape"],
         "shaders": ["VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"]
       },
       "fragment": {
         "enabled": false,
-        "scenes": ["cornell"],
-        "shaders": ["ray_march_frag"]
+        "shaders": ["VoxelRayMarch.frag", "VoxelRayMarch.vert"]
       },
       "hardware_rt": {
         "enabled": false,
-        "scenes": ["cornell"],
         "shaders": ["ray_march_rt"]
       }
     }

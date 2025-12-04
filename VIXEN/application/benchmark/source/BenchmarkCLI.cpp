@@ -382,23 +382,21 @@ std::vector<Vixen::Profiler::TestConfiguration> BenchmarkCLIOptions::GenerateTes
         ? std::vector<uint32_t>{64, 128, 256}
         : resolutions;
     globalMatrix.renderSizes = {{renderWidth, renderHeight}};
+    globalMatrix.scenes = {"cornell"};  // Default scene (global)
 
     std::vector<std::string> pipelineList = pipelines.empty()
         ? std::vector<std::string>{"compute"}
         : pipelines;
 
     std::vector<std::string> shaderList = algorithms.empty()
-        ? std::vector<std::string>{"ray_march_base"}
+        ? std::vector<std::string>{"VoxelRayMarch.comp"}
         : algorithms;
-
-    std::vector<std::string> sceneList = {"cornell"};  // Default scene
 
     // Build pipeline matrices
     std::map<std::string, PipelineMatrix> pipelineMatrices;
     for (const auto& pipeline : pipelineList) {
         PipelineMatrix pm;
         pm.enabled = true;
-        pm.scenes = sceneList;
         pm.shaders = shaderList;
         pipelineMatrices[pipeline] = pm;
     }

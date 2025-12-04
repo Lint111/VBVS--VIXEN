@@ -57,17 +57,18 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::LoadBatchFromFile(const st
                     }
                 }
             }
+            if (matrix["global"].contains("scenes")) {
+                global.scenes.clear();
+                for (const auto& s : matrix["global"]["scenes"]) {
+                    global.scenes.push_back(s.get<std::string>());
+                }
+            }
 
             // Parse pipeline matrices
             for (auto& [pipelineName, pipelineConfig] : matrix["pipelines"].items()) {
                 PipelineMatrix pm;
                 if (pipelineConfig.contains("enabled")) {
                     pm.enabled = pipelineConfig["enabled"].get<bool>();
-                }
-                if (pipelineConfig.contains("scenes")) {
-                    for (const auto& s : pipelineConfig["scenes"]) {
-                        pm.scenes.push_back(s.get<std::string>());
-                    }
                 }
                 if (pipelineConfig.contains("shaders")) {
                     for (const auto& sh : pipelineConfig["shaders"]) {
@@ -118,8 +119,8 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GenerateTestMatrix(
         for (const auto& resolution : globalMatrix.resolutions) {
             // For each screen size
             for (const auto& renderSize : globalMatrix.renderSizes) {
-                // For each scene in this pipeline
-                for (const auto& scene : pipelineMatrix.scenes) {
+                // For each scene (from global matrix)
+                for (const auto& scene : globalMatrix.scenes) {
                     // For each shader in this pipeline
                     for (const auto& shader : pipelineMatrix.shaders) {
                         TestConfiguration config;
@@ -190,28 +191,26 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GetResearchTestMatrix() {
     GlobalMatrix global;
     global.resolutions = {64, 128, 256, 512};
     global.renderSizes = {{1280, 720}, {1920, 1080}};
+    global.scenes = {"cornell", "noise", "tunnels", "cityscape"};
 
     std::map<std::string, PipelineMatrix> pipelines;
 
     // Compute pipeline - full matrix
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.scenes = {"cornell", "noise", "tunnels", "cityscape"};
-    compute.shaders = {"ray_march_base", "ray_march_esvo", "ray_march_compressed"};
+    compute.shaders = {"VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"};
     pipelines["compute"] = compute;
 
-    // Fragment pipeline - limited
+    // Fragment pipeline
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.scenes = {"cornell"};
-    fragment.shaders = {"ray_march_frag"};
+    fragment.shaders = {"VoxelRayMarch.frag"};
     pipelines["fragment"] = fragment;
 
-    // Hardware RT pipeline - limited
+    // Hardware RT pipeline - disabled by default
     PipelineMatrix hardware_rt;
-    hardware_rt.enabled = false;  // Disabled by default
-    hardware_rt.scenes = {"cornell"};
-    hardware_rt.shaders = {"ray_march_rt"};
+    hardware_rt.enabled = false;
+    hardware_rt.shaders = {"VoxelRayMarch_RT.rgen"};
     pipelines["hardware_rt"] = hardware_rt;
 
     return GenerateTestMatrix(global, pipelines);
@@ -221,13 +220,13 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GetQuickTestMatrix() {
     GlobalMatrix global;
     global.resolutions = {64, 128};
     global.renderSizes = {{800, 600}};
+    global.scenes = {"cornell"};
 
     std::map<std::string, PipelineMatrix> pipelines;
 
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.scenes = {"cornell"};
-    compute.shaders = {"ray_march_base", "ray_march_esvo"};
+    compute.shaders = {"VoxelRayMarch.comp"};
     pipelines["compute"] = compute;
 
     return GenerateTestMatrix(global, pipelines);
@@ -308,7 +307,7 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
 
         for (uint32_t resolution : globalMatrix.resolutions) {
             for (const auto& renderSize : globalMatrix.renderSizes) {
-                for (const auto& sceneName : pipelineMatrix.scenes) {
+                for (const auto& sceneName : globalMatrix.scenes) {
                     for (const auto& shaderName : pipelineMatrix.shaders) {
                         TestConfiguration test;
                         test.pipeline = pipelineName;
@@ -391,6 +390,12 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
                         }
                     }
                 }
+                if (global.contains("scenes")) {
+                    config.globalMatrix.scenes.clear();
+                    for (const auto& s : global["scenes"]) {
+                        config.globalMatrix.scenes.push_back(s.get<std::string>());
+                    }
+                }
             }
 
             // Parse pipeline matrices
@@ -399,11 +404,6 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
                     PipelineMatrix pm;
                     if (pipelineConfig.contains("enabled")) {
                         pm.enabled = pipelineConfig["enabled"].get<bool>();
-                    }
-                    if (pipelineConfig.contains("scenes")) {
-                        for (const auto& s : pipelineConfig["scenes"]) {
-                            pm.scenes.push_back(s.get<std::string>());
-                        }
                     }
                     if (pipelineConfig.contains("shaders")) {
                         for (const auto& sh : pipelineConfig["shaders"]) {
@@ -497,11 +497,11 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
         renderSizesJson.push_back({size.width, size.height});
     }
     j["matrix"]["global"]["render_sizes"] = renderSizesJson;
+    j["matrix"]["global"]["scenes"] = globalMatrix.scenes;
 
     // Pipeline matrices
     for (const auto& [pipelineName, pm] : pipelineMatrices) {
         j["matrix"]["pipelines"][pipelineName]["enabled"] = pm.enabled;
-        j["matrix"]["pipelines"][pipelineName]["scenes"] = pm.scenes;
         j["matrix"]["pipelines"][pipelineName]["shaders"] = pm.shaders;
     }
 
@@ -533,12 +533,12 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::GetQuickConfig() {
     // Global matrix
     config.globalMatrix.resolutions = {64, 128};
     config.globalMatrix.renderSizes = {{800, 600}};
+    config.globalMatrix.scenes = {"cornell"};
 
     // Compute pipeline only
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.scenes = {"cornell"};
-    compute.shaders = {"ray_march_base", "ray_march_esvo"};
+    compute.shaders = {"VoxelRayMarch.comp"};
     config.pipelineMatrices["compute"] = compute;
 
     // Default scene definitions
@@ -558,26 +558,24 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::GetResearchConfig() {
     // Global matrix
     config.globalMatrix.resolutions = {64, 128, 256, 512};
     config.globalMatrix.renderSizes = {{1280, 720}, {1920, 1080}};
+    config.globalMatrix.scenes = {"cornell", "noise", "tunnels", "cityscape"};
 
     // Compute pipeline - full test
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.scenes = {"cornell", "noise", "tunnels", "cityscape"};
-    compute.shaders = {"ray_march_base", "ray_march_esvo", "ray_march_compressed"};
+    compute.shaders = {"VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"};
     config.pipelineMatrices["compute"] = compute;
 
     // Fragment pipeline - limited
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.scenes = {"cornell"};
-    fragment.shaders = {"ray_march_frag"};
+    fragment.shaders = {"VoxelRayMarch.frag"};
     config.pipelineMatrices["fragment"] = fragment;
 
     // Hardware RT - disabled by default
     PipelineMatrix hardware_rt;
     hardware_rt.enabled = false;
-    hardware_rt.scenes = {"cornell"};
-    hardware_rt.shaders = {"ray_march_rt"};
+    hardware_rt.shaders = {"VoxelRayMarch_RT.rgen"};
     config.pipelineMatrices["hardware_rt"] = hardware_rt;
 
     // Scene definitions

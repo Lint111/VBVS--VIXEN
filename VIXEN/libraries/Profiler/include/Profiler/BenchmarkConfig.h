@@ -59,7 +59,6 @@ struct SceneDefinition {
 /// Per-pipeline test configuration
 struct PipelineMatrix {
     bool enabled = true;                        // Whether to run tests for this pipeline
-    std::vector<std::string> scenes;            // Scene identifiers to test
     std::vector<std::string> shaders;           // Shader names to test
 };
 
@@ -75,8 +74,9 @@ struct RenderSize {
 
 /// Global matrix parameters (shared across all pipelines)
 struct GlobalMatrix {
-    std::vector<uint32_t> resolutions = {64, 128, 256};     // SVO resolutions
-    std::vector<RenderSize> renderSizes = {{1280, 720}};    // Screen resolutions
+    std::vector<uint32_t> resolutions = {64, 128, 256};         // SVO resolutions
+    std::vector<RenderSize> renderSizes = {{1280, 720}};        // Screen resolutions
+    std::vector<std::string> scenes = {"cornell"};              // Scene identifiers (shared by all pipelines)
 };
 
 /**
