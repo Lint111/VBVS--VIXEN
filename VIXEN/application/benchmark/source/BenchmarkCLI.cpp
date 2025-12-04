@@ -376,32 +376,39 @@ std::vector<Vixen::Profiler::TestConfiguration> BenchmarkCLIOptions::GenerateTes
         }
     }
 
-    // Generate from CLI parameters
+    // Generate from CLI parameters using new matrix structure
+    GlobalMatrix globalMatrix;
+    globalMatrix.resolutions = resolutions.empty()
+        ? std::vector<uint32_t>{64, 128, 256}
+        : resolutions;
+    globalMatrix.renderSizes = {{renderWidth, renderHeight}};
+
     std::vector<std::string> pipelineList = pipelines.empty()
         ? std::vector<std::string>{"compute"}
         : pipelines;
 
-    std::vector<uint32_t> resolutionList = resolutions.empty()
-        ? std::vector<uint32_t>{64, 128, 256}
-        : resolutions;
-
-    std::vector<float> densityList = densities.empty()
-        ? std::vector<float>{30.0f, 50.0f, 70.0f}
-        : densities;
-
-    std::vector<std::string> algorithmList = algorithms.empty()
-        ? std::vector<std::string>{"baseline"}
+    std::vector<std::string> shaderList = algorithms.empty()
+        ? std::vector<std::string>{"ray_march_base"}
         : algorithms;
 
-    auto configs = BenchmarkConfigLoader::GenerateTestMatrix(
-        pipelineList, resolutionList, densityList, algorithmList);
+    std::vector<std::string> sceneList = {"cornell"};  // Default scene
+
+    // Build pipeline matrices
+    std::map<std::string, PipelineMatrix> pipelineMatrices;
+    for (const auto& pipeline : pipelineList) {
+        PipelineMatrix pm;
+        pm.enabled = true;
+        pm.scenes = sceneList;
+        pm.shaders = shaderList;
+        pipelineMatrices[pipeline] = pm;
+    }
+
+    auto configs = BenchmarkConfigLoader::GenerateTestMatrix(globalMatrix, pipelineMatrices);
 
     // Apply CLI overrides
     for (auto& cfg : configs) {
         if (measurementFrames) cfg.measurementFrames = *measurementFrames;
         if (warmupFrames) cfg.warmupFrames = *warmupFrames;
-        cfg.screenWidth = renderWidth;
-        cfg.screenHeight = renderHeight;
     }
 
     return configs;
@@ -557,9 +564,8 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
     config.exportCSV = exportCSV;
     config.exportJSON = exportJSON;
 
-    // Copy render dimensions
-    config.renderWidth = renderWidth;
-    config.renderHeight = renderHeight;
+    // Copy render dimensions to global matrix
+    config.globalMatrix.renderSizes = {{renderWidth, renderHeight}};
 
     // Copy GPU selection
     config.gpuIndex = gpuIndex;

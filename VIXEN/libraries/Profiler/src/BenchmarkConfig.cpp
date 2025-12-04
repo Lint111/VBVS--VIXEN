@@ -297,7 +297,34 @@ TestConfiguration BenchmarkConfigLoader::ParseConfigObject(const void* jsonObjec
 //==============================================================================
 
 void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
-    tests = BenchmarkConfigLoader::GenerateTestMatrix(globalMatrix, pipelineMatrices);
+    tests.clear();
+    uint32_t runNumber = 1;
+
+    // Generate tests from matrix configuration
+    for (const auto& [pipelineName, pipelineMatrix] : pipelineMatrices) {
+        if (!pipelineMatrix.enabled) {
+            continue;
+        }
+
+        for (uint32_t resolution : globalMatrix.resolutions) {
+            for (const auto& renderSize : globalMatrix.renderSizes) {
+                for (const auto& sceneName : pipelineMatrix.scenes) {
+                    for (const auto& shaderName : pipelineMatrix.shaders) {
+                        TestConfiguration test;
+                        test.pipeline = pipelineName;
+                        test.voxelResolution = resolution;
+                        test.screenWidth = renderSize.width;
+                        test.screenHeight = renderSize.height;
+                        test.sceneType = sceneName;
+                        test.shader = shaderName;
+                        test.testId = test.GenerateTestId(runNumber++);
+                        tests.push_back(test);
+                    }
+                }
+            }
+        }
+    }
+
     ApplyOverrides();
 }
 

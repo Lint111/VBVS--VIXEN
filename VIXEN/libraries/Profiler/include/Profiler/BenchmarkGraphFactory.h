@@ -270,6 +270,31 @@ public:
     //==========================================================================
 
     /**
+     * @brief Build benchmark graph from test configuration
+     *
+     * Unified entry point that dispatches to appropriate pipeline builder based
+     * on config.pipeline. Configures shader, scene, and dimensions from
+     * TestConfiguration.
+     *
+     * Supported pipelines:
+     * - "compute": Builds compute shader ray march graph
+     * - "fragment": Builds fragment shader ray march graph
+     * - "hardware_rt": Not yet implemented (throws)
+     *
+     * @param graph Target render graph
+     * @param config Test configuration (pipeline, shader, scene, resolution)
+     * @param suiteConfig Suite config for scene definitions (optional, used for
+     *                    file-based scenes)
+     * @return BenchmarkGraph with configured pipeline
+     * @throws std::invalid_argument if graph is null or pipeline is unsupported
+     */
+    static BenchmarkGraph BuildFromConfig(
+        RG::RenderGraph* graph,
+        const TestConfiguration& config,
+        const BenchmarkSuiteConfig* suiteConfig = nullptr
+    );
+
+    /**
      * @brief Build complete compute ray march benchmark graph
      *
      * High-level convenience method that creates all subgraphs and connects them.
@@ -541,19 +566,22 @@ private:
     //==========================================================================
 
     /**
-     * @brief Register VoxelRayMarch.comp shader builder
+     * @brief Register compute shader builder
      *
-     * Registers a ShaderBundleBuilder callback that loads VoxelRayMarch.comp
+     * Registers a ShaderBundleBuilder callback that loads the specified shader
      * with proper include paths for the shader preprocessor.
+     *
+     * The shader name is used directly as the filename - it will be searched
+     * in the shader directories (shaders/, ../shaders/, VIXEN_SHADER_SOURCE_DIR).
      *
      * @param graph Target render graph
      * @param compute Compute pipeline nodes (shader library node)
-     * @param useCompressed Use DXT-compressed variant (bindings 6,7 for compressed data)
+     * @param shaderName Shader filename (e.g., "VoxelRayMarch.comp")
      */
-    static void RegisterVoxelRayMarchShader(
+    static void RegisterComputeShader(
         RG::RenderGraph* graph,
         const ComputePipelineNodes& compute,
-        bool useCompressed = false
+        const std::string& shaderName
     );
 };
 

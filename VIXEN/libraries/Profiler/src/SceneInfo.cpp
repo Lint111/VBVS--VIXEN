@@ -1,4 +1,5 @@
 #include "Profiler/SceneInfo.h"
+#include "Profiler/BenchmarkConfig.h"
 
 namespace Vixen::Profiler {
 
@@ -13,6 +14,44 @@ SceneInfo SceneInfo::FromResolutionAndDensity(
     info.densityPercent = densityPercent;
     info.sceneType = sceneType;
     info.sceneName = sceneName;
+    return info;
+}
+
+SceneInfo SceneInfo::FromSceneDefinition(
+    const SceneDefinition& sceneDef,
+    uint32_t resolution) {
+
+    SceneInfo info;
+    info.resolution = resolution;
+    info.densityPercent = 0.0f;  // Will be computed from actual scene data
+    info.sceneName = sceneDef.name;
+
+    // Map scene definition to scene type
+    if (sceneDef.sourceType == SceneSourceType::Procedural) {
+        // Map procedural generator to scene type
+        const std::string& generator = sceneDef.procedural.generator;
+
+        if (generator == "cornell" || generator == "cornell_box") {
+            info.sceneType = TYPE_CORNELL_BOX;
+        } else if (generator == "perlin3d" || generator == "noise") {
+            info.sceneType = TYPE_DENSE_ORGANIC;
+        } else if (generator == "voronoi_caves" || generator == "cave" || generator == "tunnels") {
+            info.sceneType = TYPE_CAVE;
+        } else if (generator == "buildings" || generator == "urban" || generator == "cityscape") {
+            info.sceneType = TYPE_URBAN;
+        } else if (generator == "sparse" || generator == "architectural") {
+            info.sceneType = TYPE_SPARSE_ARCHITECTURAL;
+        } else {
+            // Use generator name directly as scene type for unknown generators
+            info.sceneType = generator.empty() ? TYPE_TEST : generator;
+        }
+    } else {
+        // File-based scene
+        // TODO: Extract scene type from file contents or use filename
+        // For now, use the scene name as type
+        info.sceneType = sceneDef.name.empty() ? TYPE_TEST : sceneDef.name;
+    }
+
     return info;
 }
 

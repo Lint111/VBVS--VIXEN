@@ -24,7 +24,7 @@
       "compute": {
         "enabled": true,
         "scenes": ["cornell", "noise", "tunnels", "cityscape"],
-        "shaders": ["ray_march_base", "ray_march_esvo", "ray_march_compressed"]
+        "shaders": ["VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"]
       },
       "fragment": {
         "enabled": false,

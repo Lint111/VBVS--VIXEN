@@ -427,6 +427,69 @@ void BenchmarkGraphFactory::ConnectComputeRayMarch(
 // High-Level Graph Builders
 //==============================================================================
 
+BenchmarkGraph BenchmarkGraphFactory::BuildFromConfig(
+    RG::RenderGraph* graph,
+    const TestConfiguration& config,
+    const BenchmarkSuiteConfig* suiteConfig)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildFromConfig: graph is null");
+    }
+
+    // Parse pipeline type
+    PipelineType pipelineType = ParsePipelineType(config.pipeline);
+
+    // Get scene definition if available from suite config
+    const SceneDefinition* sceneDef = nullptr;
+    if (suiteConfig && suiteConfig->sceneDefinitions.count(config.sceneType) > 0) {
+        sceneDef = &suiteConfig->sceneDefinitions.at(config.sceneType);
+    }
+
+    // Build appropriate graph based on pipeline type
+    switch (pipelineType) {
+        case PipelineType::Compute: {
+            // Build compute ray march graph with config dimensions
+            auto benchGraph = BuildComputeRayMarchGraph(
+                graph, config, config.screenWidth, config.screenHeight);
+
+            // Register shader from config - shader name is used directly as filename
+            RegisterComputeShader(graph, benchGraph.compute, config.shader);
+
+            // TODO: If sceneDef is File type, configure VoxelGridNode to load from file
+            // This requires extending VoxelGridNode to support file loading
+            if (sceneDef && sceneDef->sourceType == SceneSourceType::File) {
+                // Future: voxelGrid->SetParameter(VoxelGridNodeConfig::PARAM_FILE_PATH, sceneDef->filePath);
+                // For now, file loading is not implemented - fall back to procedural
+            }
+
+            return benchGraph;
+        }
+
+        case PipelineType::Fragment: {
+            // Build fragment ray march graph
+            auto benchGraph = BuildFragmentRayMarchGraph(
+                graph, config, config.screenWidth, config.screenHeight);
+
+            // TODO: Register fragment shader variant if needed
+            // The fragment pipeline uses different shader registration
+
+            return benchGraph;
+        }
+
+        case PipelineType::HardwareRT:
+            return BuildHardwareRTGraph(graph, config, config.screenWidth, config.screenHeight);
+
+        case PipelineType::Hybrid:
+            throw std::invalid_argument(
+                "BenchmarkGraphFactory::BuildFromConfig: Hybrid pipeline not yet implemented");
+
+        default:
+            throw std::invalid_argument(
+                "BenchmarkGraphFactory::BuildFromConfig: Invalid pipeline type '" +
+                config.pipeline + "'. Valid options: compute, fragment, hardware_rt");
+    }
+}
+
 BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     RG::RenderGraph* graph,
     const TestConfiguration& config,
@@ -451,7 +514,7 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
 
     // Build all subgraphs
     result.infra = BuildInfrastructure(graph, width, height, true);
-    result.compute = BuildComputePipeline(graph, result.infra, "VoxelRayMarch.comp");
+    result.compute = BuildComputePipeline(graph, result.infra, config.shader);
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
     result.output = BuildOutput(graph, result.infra, false);
 
@@ -461,8 +524,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildComputeRayMarchGraph(
     // Wire variadic resources (descriptor bindings + push constants)
     WireVariadicResources(graph, result.infra, result.compute, result.rayMarch);
 
-    // Register shader builder (loads VoxelRayMarch.comp with include paths)
-    RegisterVoxelRayMarchShader(graph, result.compute, false /* useCompressed */);
+    // Register shader builder (uses config.shader as filename)
+    RegisterComputeShader(graph, result.compute, config.shader);
 
     return result;
 }
