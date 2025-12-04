@@ -35,6 +35,9 @@ public:
     InstanceNode(const std::string& instanceName, NodeType* nodeType);
     ~InstanceNode() override;
 
+    /// Get the VkInstance handle (for profiler integration)
+    VkInstance GetVkInstance() const { return instance; }
+
 protected:
     // TypedNode lifecycle overrides
     void SetupImpl(TypedSetupContext& ctx) override;

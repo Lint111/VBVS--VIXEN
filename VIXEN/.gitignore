@@ -105,3 +105,8 @@ benchmark_results/
 benchmark_test_results/
 benchmark_results_test/
 
+// any folder that has the world "tests" in its name
+**/*tests*/**
+**/*test*/**
+
+

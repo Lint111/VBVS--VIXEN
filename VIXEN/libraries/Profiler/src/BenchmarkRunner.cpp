@@ -564,16 +564,63 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
 
         // Initialize profiler from graph
         VulkanHandles vulkanHandles;
-        if (VulkanIntegrationHelper::InitializeProfilerFromGraph(renderGraph.get())) {
-            ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
-            ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
+        bool profilerInitialized = VulkanIntegrationHelper::InitializeProfilerFromGraph(renderGraph.get());
 
+        if (profilerInitialized) {
             vulkanHandles = VulkanIntegrationHelper::ExtractFromGraph(renderGraph.get());
             if (vulkanHandles.IsValid()) {
                 auto deviceCaps = DeviceCapabilities::Capture(vulkanHandles.physicalDevice);
                 SetDeviceCapabilities(deviceCaps);
+                if (config.verbose) {
+                    std::cout << "[BenchmarkRunner] Device: " << deviceCaps.deviceName << "\n";
+                }
             }
         }
+
+        // Fallback: capture device info via DeviceNode if profiler init failed
+        if (!vulkanHandles.IsValid()) {
+            auto* deviceNode = dynamic_cast<RG::DeviceNode*>(
+                renderGraph->GetInstanceByName("benchmark_device"));
+            if (deviceNode) {
+                auto* vulkanDevice = deviceNode->GetVulkanDevice();
+                if (vulkanDevice && vulkanDevice->device != VK_NULL_HANDLE) {
+                    vulkanHandles.device = vulkanDevice->device;
+                    vulkanHandles.physicalDevice = vulkanDevice->gpu ? *vulkanDevice->gpu : VK_NULL_HANDLE;
+                    vulkanHandles.graphicsQueue = vulkanDevice->queue;
+                    vulkanHandles.graphicsQueueFamily = vulkanDevice->graphicsQueueIndex;
+
+                    // Use VulkanDevice's cached properties instead of Vulkan API calls
+                    DeviceCapabilities deviceCaps;
+                    deviceCaps.deviceName = vulkanDevice->gpuProperties.deviceName;
+                    deviceCaps.vendorID = vulkanDevice->gpuProperties.vendorID;
+                    deviceCaps.deviceID = vulkanDevice->gpuProperties.deviceID;
+                    deviceCaps.deviceType = vulkanDevice->gpuProperties.deviceType;
+                    deviceCaps.driverVersion = DeviceCapabilities::FormatDriverVersion(
+                        vulkanDevice->gpuProperties.driverVersion,
+                        vulkanDevice->gpuProperties.vendorID);
+                    deviceCaps.timestampPeriod = vulkanDevice->gpuProperties.limits.timestampPeriod;
+                    deviceCaps.timestampSupported = vulkanDevice->gpuProperties.limits.timestampComputeAndGraphics;
+
+                    // Get VRAM from memory properties
+                    for (uint32_t i = 0; i < vulkanDevice->gpuMemoryProperties.memoryHeapCount; ++i) {
+                        if (vulkanDevice->gpuMemoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                            deviceCaps.totalVRAM_MB += vulkanDevice->gpuMemoryProperties.memoryHeaps[i].size / (1024 * 1024);
+                        }
+                    }
+
+                    SetDeviceCapabilities(deviceCaps);
+                    if (config.verbose) {
+                        std::cout << "[BenchmarkRunner] Device from graph: " << deviceCaps.deviceName << "\n";
+                    }
+                }
+            }
+        }
+
+        // Update suite results with device capabilities (StartSuite was called before device detection)
+        suiteResults_.SetDeviceCapabilities(deviceCapabilities_);
+
+        ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
+        ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
 
         // Get ComputeDispatchNode for GPU timing extraction
         RG::ComputeDispatchNode* dispatchNode = nullptr;
@@ -668,6 +715,9 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
             if (metrics.gpuTimeMs > 0.0f && !HasHardwarePerformanceCounters()) {
                 float estimatedBW = EstimateBandwidth(metrics.totalRaysCast, metrics.gpuTimeMs / 1000.0f);
                 metrics.bandwidthReadGB = estimatedBW;
+                // Write bandwidth: framebuffer output (4 bytes RGBA8 per pixel)
+                float writeBytes = static_cast<float>(metrics.totalRaysCast) * 4.0f;
+                metrics.bandwidthWriteGB = (writeBytes / 1e9f) / (metrics.gpuTimeMs / 1000.0f);
                 metrics.bandwidthEstimated = true;
             }
 
@@ -849,6 +899,9 @@ void BenchmarkRunner::RecordFrame(const FrameMetrics& metrics) {
         if (!HasHardwarePerformanceCounters() && bandwidthConfig_.useEstimation) {
             float estimatedBW = EstimateBandwidth(metrics.totalRaysCast, metrics.frameTimeMs / 1000.0f);
             adjustedMetrics.bandwidthReadGB = estimatedBW;
+            // Write bandwidth: framebuffer output (4 bytes RGBA8 per pixel)
+            float writeBytes = static_cast<float>(metrics.totalRaysCast) * 4.0f;
+            adjustedMetrics.bandwidthWriteGB = (writeBytes / 1e9f) / (metrics.frameTimeMs / 1000.0f);
             adjustedMetrics.bandwidthEstimated = true;
         }
 
