@@ -615,7 +615,7 @@ tests/Benchmarks/ResultAggregator.cpp
 | I (Profiling) | 2-3 weeks | 3 weeks | G,H | ⏳ NEXT |
 | J (Fragment Shader) | 1-2 weeks | 5 weeks | H | ⏳ PENDING |
 | K (Hardware RT) | 4-5 weeks | 10 weeks | H | ⏳ PENDING |
-| L (Optimizations) | 3-4 weeks | 14 weeks | G,J,K | ⏳ PENDING |
+| L (Optimizations) | 3-4 weeks | 14 weeks | G,J,K | ⏳ PENDING | Deffered
 | M (Automation) | 3-4 weeks | 18 weeks | G,J,K,L | ⏳ PENDING |
 | N (Research) | 2-3 weeks | 21 weeks | M | ⏳ PENDING |
 

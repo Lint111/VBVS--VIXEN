@@ -308,6 +308,7 @@ libraries/Profiler/
 - [x] RegisterVoxelRayMarchShader() - Shader builder registration
 - [x] BuildComputeRayMarchGraph() fully wired with ConnectVariadic
 - [x] 5 new export tests (126 -> 131 total)
+- [ ] vertex + Fragment VoxelRayTracer Implmentation
 - [ ] GPU integration test (requires running Vulkan application)
 - [ ] VK_KHR_ray_tracing_pipeline (Hardware RT implementation)
 - [ ] GLSL shader counter queries
