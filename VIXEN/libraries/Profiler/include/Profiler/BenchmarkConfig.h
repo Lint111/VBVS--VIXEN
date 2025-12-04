@@ -8,6 +8,117 @@
 
 namespace Vixen::Profiler {
 
+/**
+ * @brief Configuration for an entire benchmark suite
+ *
+ * This is the primary configuration struct passed to BenchmarkRunner.
+ * The benchmark executable creates this struct from CLI arguments and
+ * passes it to BenchmarkRunner::RunSuite() - the runner handles ALL
+ * Vulkan initialization and execution internally.
+ *
+ * Usage:
+ * @code
+ * BenchmarkSuiteConfig config;
+ * config.outputDir = "./results";
+ * config.tests = BenchmarkConfigLoader::GetQuickTestMatrix();
+ * config.headless = true;
+ *
+ * BenchmarkRunner runner;
+ * auto results = runner.RunSuite(config);
+ * @endcode
+ */
+struct BenchmarkSuiteConfig {
+    /// Output directory for benchmark results (CSV/JSON files)
+    std::filesystem::path outputDir = "./benchmark_results";
+
+    /// List of test configurations to run
+    std::vector<TestConfiguration> tests;
+
+    /// Number of warmup frames (can override per-test settings)
+    std::optional<uint32_t> warmupFramesOverride;
+
+    /// Number of measurement frames (can override per-test settings)
+    std::optional<uint32_t> measurementFramesOverride;
+
+    /// Render target width
+    uint32_t renderWidth = 800;
+
+    /// Render target height
+    uint32_t renderHeight = 600;
+
+    /// GPU index to use (0 = first GPU)
+    uint32_t gpuIndex = 0;
+
+    /// Enable headless mode (no window, compute-only)
+    bool headless = true;
+
+    /// Enable verbose logging
+    bool verbose = false;
+
+    /// Enable Vulkan validation layers
+    bool enableValidation = false;
+
+    /// Export results as CSV
+    bool exportCSV = true;
+
+    /// Export results as JSON
+    bool exportJSON = true;
+
+    /**
+     * @brief Apply warmup/measurement overrides to all tests
+     *
+     * Call this after populating tests to apply global overrides.
+     */
+    void ApplyOverrides() {
+        for (auto& test : tests) {
+            if (warmupFramesOverride) {
+                test.warmupFrames = *warmupFramesOverride;
+            }
+            if (measurementFramesOverride) {
+                test.measurementFrames = *measurementFramesOverride;
+            }
+            test.screenWidth = renderWidth;
+            test.screenHeight = renderHeight;
+        }
+    }
+
+    /**
+     * @brief Validate the suite configuration
+     *
+     * @return Vector of error messages (empty if valid)
+     */
+    std::vector<std::string> Validate() const {
+        std::vector<std::string> errors;
+
+        if (tests.empty()) {
+            errors.push_back("No test configurations provided");
+        }
+
+        for (size_t i = 0; i < tests.size(); ++i) {
+            auto testErrors = tests[i].ValidateWithErrors();
+            for (const auto& err : testErrors) {
+                errors.push_back("Test[" + std::to_string(i) + "]: " + err);
+            }
+        }
+
+        if (renderWidth < 64 || renderWidth > 8192) {
+            errors.push_back("Invalid render width: " + std::to_string(renderWidth));
+        }
+        if (renderHeight < 64 || renderHeight > 8192) {
+            errors.push_back("Invalid render height: " + std::to_string(renderHeight));
+        }
+
+        return errors;
+    }
+
+    /**
+     * @brief Check if configuration is valid
+     */
+    bool IsValid() const {
+        return Validate().empty();
+    }
+};
+
 /// Load and manage benchmark configurations from JSON files
 class BenchmarkConfigLoader {
 public:

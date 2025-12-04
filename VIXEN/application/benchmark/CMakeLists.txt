@@ -1,13 +1,20 @@
 # ============================================================================
 # VIXEN Benchmark Executable
 # ============================================================================
-# Standalone GPU benchmark tool for compute ray march performance profiling
+# Config-only benchmark orchestrator - all Vulkan handled by BenchmarkRunner
 #
 # Usage:
 #   vixen_benchmark [--config benchmark.json] [--output ./results]
+#   vixen_benchmark --quick --headless --output ./results
+#   vixen_benchmark --list-gpus
+#
+# Architecture:
+#   - BenchmarkMain.cpp contains ZERO Vulkan API calls
+#   - CLI parsing creates BenchmarkSuiteConfig
+#   - BenchmarkRunner::RunSuite() handles all Vulkan lifecycle
 #
 # Features:
-#   - Headless Vulkan initialization (no window required)
+#   - Headless or windowed execution modes
 #   - Configurable test matrix via CLI or JSON
 #   - JSON/CSV export of benchmark results
 #   - GPU enumeration and selection

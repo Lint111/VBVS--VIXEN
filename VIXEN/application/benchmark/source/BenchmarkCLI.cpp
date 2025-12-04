@@ -533,4 +533,39 @@ void PrintVersion() {
     std::cout << "Built with Vulkan 1.4\n";
 }
 
+Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() const {
+    using namespace Vixen::Profiler;
+
+    BenchmarkSuiteConfig config;
+
+    // Copy output settings
+    config.outputDir = outputDirectory;
+    config.exportCSV = exportCSV;
+    config.exportJSON = exportJSON;
+
+    // Copy render dimensions
+    config.renderWidth = renderWidth;
+    config.renderHeight = renderHeight;
+
+    // Copy GPU selection
+    config.gpuIndex = gpuIndex;
+
+    // Copy execution mode
+    config.headless = headlessMode;
+    config.verbose = verbose;
+    config.enableValidation = enableValidation;
+
+    // Copy frame overrides
+    config.warmupFramesOverride = warmupFrames;
+    config.measurementFramesOverride = measurementFrames;
+
+    // Generate test configurations
+    config.tests = GenerateTestConfigurations();
+
+    // Apply overrides to all tests
+    config.ApplyOverrides();
+
+    return config;
+}
+
 } // namespace Vixen::Benchmark

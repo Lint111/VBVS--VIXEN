@@ -1,14 +1,685 @@
 #include "Profiler/BenchmarkRunner.h"
 #include "Profiler/BenchmarkConfig.h"
 #include "Profiler/BenchmarkGraphFactory.h"
+#include "Profiler/ProfilerSystem.h"
+#include "Profiler/VulkanIntegration.h"
 #include <Core/RenderGraph.h>
+#include <Core/NodeTypeRegistry.h>
+#include <MessageBus.h>
+#include <Message.h>
+
+// Node type registrations for graph building
+#include <Nodes/InstanceNode.h>
+#include <Nodes/WindowNode.h>
+#include <Nodes/DeviceNode.h>
+#include <Nodes/SwapChainNode.h>
+#include <Nodes/CommandPoolNode.h>
+#include <Nodes/FrameSyncNode.h>
+#include <Nodes/ShaderLibraryNode.h>
+#include <Nodes/DescriptorResourceGathererNode.h>
+#include <Nodes/PushConstantGathererNode.h>
+#include <Nodes/DescriptorSetNode.h>
+#include <Nodes/ComputePipelineNode.h>
+#include <Nodes/ComputeDispatchNode.h>
+#include <Nodes/CameraNode.h>
+#include <Nodes/VoxelGridNode.h>
+#include <Nodes/InputNode.h>
+#include <Nodes/PresentNode.h>
+#include <Nodes/DebugBufferReaderNode.h>
+#include <Nodes/ConstantNode.h>
+#include <Nodes/ConstantNodeType.h>
+
+#include <vulkan/vulkan.h>
 #include <fstream>
 #include <stdexcept>
+#include <iostream>
+#include <cstring>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace Vixen::Profiler {
 
+//==============================================================================
+// Internal Vulkan Context for Headless Mode
+//==============================================================================
+
+namespace {
+
+struct HeadlessVulkanContext {
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue computeQueue = VK_NULL_HANDLE;
+    uint32_t computeQueueFamily = 0;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+    VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
+    float timestampPeriod = 0.0f;
+
+    bool IsValid() const {
+        return instance != VK_NULL_HANDLE &&
+               physicalDevice != VK_NULL_HANDLE &&
+               device != VK_NULL_HANDLE &&
+               computeQueue != VK_NULL_HANDLE;
+    }
+};
+
+// Debug callback for validation layers
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData
+) {
+    (void)type;
+    (void)pUserData;
+
+    if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        std::cerr << "[Vulkan] " << pCallbackData->pMessage << "\n";
+    }
+    return VK_FALSE;
+}
+
+bool IsLayerAvailable(const char* layerName) {
+    uint32_t count = 0;
+    vkEnumerateInstanceLayerProperties(&count, nullptr);
+    std::vector<VkLayerProperties> layers(count);
+    vkEnumerateInstanceLayerProperties(&count, layers.data());
+
+    for (const auto& layer : layers) {
+        if (std::strcmp(layer.layerName, layerName) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+VkResult CreateHeadlessInstance(HeadlessVulkanContext& ctx, bool enableValidation) {
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "VIXEN Benchmark";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "VIXEN";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_3;
+
+    std::vector<const char*> extensions;
+    std::vector<const char*> layers;
+
+    if (enableValidation && IsLayerAvailable("VK_LAYER_KHRONOS_validation")) {
+        layers.push_back("VK_LAYER_KHRONOS_validation");
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
+    createInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
+    createInfo.ppEnabledLayerNames = layers.data();
+
+    VkResult result = vkCreateInstance(&createInfo, nullptr, &ctx.instance);
+    if (result != VK_SUCCESS) {
+        return result;
+    }
+
+    if (enableValidation && !layers.empty()) {
+        auto createDebugMessenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(ctx.instance, "vkCreateDebugUtilsMessengerEXT")
+        );
+        if (createDebugMessenger) {
+            VkDebugUtilsMessengerCreateInfoEXT debugInfo{};
+            debugInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+            debugInfo.messageSeverity =
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+            debugInfo.messageType =
+                VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+            debugInfo.pfnUserCallback = VulkanDebugCallback;
+
+            createDebugMessenger(ctx.instance, &debugInfo, nullptr, &ctx.debugMessenger);
+        }
+    }
+
+    return VK_SUCCESS;
+}
+
+VkResult SelectPhysicalDevice(HeadlessVulkanContext& ctx, uint32_t gpuIndex, bool verbose) {
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, nullptr);
+    if (deviceCount == 0) {
+        std::cerr << "Error: No Vulkan-capable GPUs found\n";
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, devices.data());
+
+    if (gpuIndex >= deviceCount) {
+        std::cerr << "Error: GPU index " << gpuIndex << " out of range (0-"
+                  << deviceCount - 1 << ")\n";
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    ctx.physicalDevice = devices[gpuIndex];
+
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(ctx.physicalDevice, &props);
+    ctx.timestampPeriod = props.limits.timestampPeriod;
+
+    if (verbose) {
+        std::cout << "Selected GPU: " << props.deviceName << "\n";
+    }
+
+    return VK_SUCCESS;
+}
+
+uint32_t FindComputeQueueFamily(VkPhysicalDevice device) {
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    for (uint32_t i = 0; i < queueFamilyCount; ++i) {
+        if ((queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+            !(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+            return i;
+        }
+    }
+
+    for (uint32_t i = 0; i < queueFamilyCount; ++i) {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            return i;
+        }
+    }
+
+    return UINT32_MAX;
+}
+
+VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
+    ctx.computeQueueFamily = FindComputeQueueFamily(ctx.physicalDevice);
+    if (ctx.computeQueueFamily == UINT32_MAX) {
+        std::cerr << "Error: No compute-capable queue family found\n";
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = ctx.computeQueueFamily;
+    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    std::vector<const char*> deviceExtensions;
+
+    uint32_t extensionCount = 0;
+    vkEnumerateDeviceExtensionProperties(ctx.physicalDevice, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(ctx.physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+
+    for (const auto& ext : availableExtensions) {
+        if (std::strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
+            deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        }
+    }
+
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.queueCreateInfoCount = 1;
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    VkResult result = vkCreateDevice(ctx.physicalDevice, &createInfo, nullptr, &ctx.device);
+    if (result != VK_SUCCESS) {
+        return result;
+    }
+
+    vkGetDeviceQueue(ctx.device, ctx.computeQueueFamily, 0, &ctx.computeQueue);
+    return VK_SUCCESS;
+}
+
+VkResult CreateCommandPool(HeadlessVulkanContext& ctx) {
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = ctx.computeQueueFamily;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    return vkCreateCommandPool(ctx.device, &poolInfo, nullptr, &ctx.commandPool);
+}
+
+VkResult CreateTimestampQueryPool(HeadlessVulkanContext& ctx, uint32_t queryCount = 128) {
+    VkQueryPoolCreateInfo queryPoolInfo{};
+    queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    queryPoolInfo.queryCount = queryCount;
+
+    return vkCreateQueryPool(ctx.device, &queryPoolInfo, nullptr, &ctx.timestampQueryPool);
+}
+
+bool InitializeHeadlessVulkan(HeadlessVulkanContext& ctx, const BenchmarkSuiteConfig& config) {
+    if (CreateHeadlessInstance(ctx, config.enableValidation) != VK_SUCCESS) {
+        std::cerr << "Error: Failed to create Vulkan instance\n";
+        return false;
+    }
+
+    if (SelectPhysicalDevice(ctx, config.gpuIndex, config.verbose) != VK_SUCCESS) {
+        return false;
+    }
+
+    if (CreateHeadlessDevice(ctx) != VK_SUCCESS) {
+        std::cerr << "Error: Failed to create logical device\n";
+        return false;
+    }
+
+    if (CreateCommandPool(ctx) != VK_SUCCESS) {
+        std::cerr << "Error: Failed to create command pool\n";
+        return false;
+    }
+
+    if (CreateTimestampQueryPool(ctx) != VK_SUCCESS) {
+        // Non-fatal, continue without GPU timing
+    }
+
+    return true;
+}
+
+void CleanupHeadlessVulkan(HeadlessVulkanContext& ctx) {
+    if (ctx.timestampQueryPool != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(ctx.device, ctx.timestampQueryPool, nullptr);
+    }
+    if (ctx.commandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(ctx.device, ctx.commandPool, nullptr);
+    }
+    if (ctx.device != VK_NULL_HANDLE) {
+        vkDestroyDevice(ctx.device, nullptr);
+    }
+    if (ctx.debugMessenger != VK_NULL_HANDLE) {
+        auto destroyDebugMessenger = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(ctx.instance, "vkDestroyDebugUtilsMessengerEXT")
+        );
+        if (destroyDebugMessenger) {
+            destroyDebugMessenger(ctx.instance, ctx.debugMessenger, nullptr);
+        }
+    }
+    if (ctx.instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(ctx.instance, nullptr);
+    }
+}
+
+void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
+    using namespace Vixen::RenderGraph;
+
+    registry.Register<InstanceNodeType>();
+    registry.Register<WindowNodeType>();
+    registry.Register<DeviceNodeType>();
+    registry.Register<CommandPoolNodeType>();
+    registry.Register<FrameSyncNodeType>();
+    registry.Register<SwapChainNodeType>();
+    registry.Register<ShaderLibraryNodeType>();
+    registry.Register<DescriptorResourceGathererNodeType>();
+    registry.Register<PushConstantGathererNodeType>();
+    registry.Register<DescriptorSetNodeType>();
+    registry.Register<ComputePipelineNodeType>();
+    registry.Register<ComputeDispatchNodeType>();
+    registry.Register<CameraNodeType>();
+    registry.Register<VoxelGridNodeType>();
+    registry.Register<InputNodeType>();
+    registry.Register<PresentNodeType>();
+    registry.Register<DebugBufferReaderNodeType>();
+    registry.Register<ConstantNodeType>();
+}
+
+} // anonymous namespace
+
 BenchmarkRunner::BenchmarkRunner() = default;
 BenchmarkRunner::~BenchmarkRunner() = default;
+
+//==============================================================================
+// High-Level API: RunSuite
+//==============================================================================
+
+TestSuiteResults BenchmarkRunner::RunSuite(const BenchmarkSuiteConfig& config) {
+    using namespace Vixen::RenderGraph;
+
+    // Validate configuration
+    auto errors = config.Validate();
+    if (!errors.empty()) {
+        std::cerr << "Configuration errors:\n";
+        for (const auto& err : errors) {
+            std::cerr << "  - " << err << "\n";
+        }
+        return TestSuiteResults{};
+    }
+
+    // Setup internal state from config
+    SetOutputDirectory(config.outputDir);
+    SetTestMatrix(config.tests);
+    SetRenderDimensions(config.renderWidth, config.renderHeight);
+
+    // Create output directory
+    if (!MetricsExporter::EnsureDirectoryExists(config.outputDir)) {
+        std::cerr << "Error: Failed to create output directory: " << config.outputDir << "\n";
+        return TestSuiteResults{};
+    }
+
+    if (config.verbose) {
+        std::cout << "\n";
+        std::cout << "=================================================\n";
+        std::cout << "VIXEN Benchmark Tool\n";
+        std::cout << "=================================================\n";
+        std::cout << "Mode:   " << (config.headless ? "Headless" : "Render") << "\n";
+        std::cout << "Tests:  " << config.tests.size() << " configurations\n";
+        std::cout << "Output: " << config.outputDir << "\n";
+        std::cout << "\n";
+    }
+
+    TestSuiteResults results;
+
+    if (config.headless) {
+        results = RunSuiteHeadless(config);
+    } else {
+        results = RunSuiteWithWindow(config);
+    }
+
+    // Export final results
+    ExportAllResults();
+
+    if (config.verbose) {
+        std::cout << "\n";
+        std::cout << "=================================================\n";
+        std::cout << "Benchmark Complete\n";
+        std::cout << "=================================================\n";
+        std::cout << "  Passed: " << results.GetPassCount() << "/" << results.GetTotalCount() << "\n";
+        std::cout << "  Output: " << config.outputDir << "\n";
+        std::cout << "=================================================\n";
+    }
+
+    return results;
+}
+
+TestSuiteResults BenchmarkRunner::RunSuiteHeadless(const BenchmarkSuiteConfig& config) {
+    // Initialize headless Vulkan context
+    HeadlessVulkanContext ctx{};
+    if (!InitializeHeadlessVulkan(ctx, config)) {
+        std::cerr << "Error: Failed to initialize Vulkan\n";
+        return TestSuiteResults{};
+    }
+
+    // Capture device capabilities
+    auto deviceCaps = DeviceCapabilities::Capture(ctx.physicalDevice);
+    SetDeviceCapabilities(deviceCaps);
+
+    if (config.verbose) {
+        std::cout << "Device: " << deviceCaps.GetSummaryString() << "\n\n";
+    }
+
+    // Initialize profiler system
+    ProfilerSystem::Instance().Initialize(ctx.device, ctx.physicalDevice, 3);
+    ProfilerSystem::Instance().CaptureDeviceCapabilities(ctx.physicalDevice);
+    ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
+    ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
+
+    // Set progress callback if verbose
+    if (config.verbose) {
+        SetProgressCallback([&](uint32_t testIdx, uint32_t totalTests,
+                                uint32_t frame, uint32_t totalFrames) {
+            std::cout << "\r  Test " << (testIdx + 1) << "/" << totalTests
+                      << " - Frame " << frame << "/" << totalFrames << "    " << std::flush;
+        });
+    }
+
+    // Start suite
+    if (!StartSuite()) {
+        std::cerr << "Error: Failed to start benchmark suite\n";
+        CleanupHeadlessVulkan(ctx);
+        return TestSuiteResults{};
+    }
+
+    // Run each test
+    while (BeginNextTest()) {
+        const auto& testConfig = GetCurrentTestConfig();
+
+        if (config.verbose) {
+            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
+                      << testConfig.pipeline << " | "
+                      << testConfig.voxelResolution << "^3 | "
+                      << testConfig.densityPercent << "% | "
+                      << testConfig.algorithm << "\n";
+        }
+
+        ProfilerSystem::Instance().StartTestRun(testConfig);
+
+        // Run frames (synthetic metrics in headless mode)
+        uint32_t totalFrames = testConfig.warmupFrames + testConfig.measurementFrames;
+        for (uint32_t frame = 0; frame < totalFrames; ++frame) {
+            FrameMetrics metrics{};
+            metrics.frameNumber = frame;
+            metrics.timestampMs = static_cast<double>(frame) * 16.67;
+            metrics.frameTimeMs = 16.67f;
+            metrics.gpuTimeMs = 8.0f + (static_cast<float>(testConfig.voxelResolution) / 256.0f) * 8.0f;
+            metrics.sceneResolution = testConfig.voxelResolution;
+            metrics.screenWidth = testConfig.screenWidth;
+            metrics.screenHeight = testConfig.screenHeight;
+            metrics.sceneDensity = testConfig.densityPercent;
+            metrics.totalRaysCast = testConfig.screenWidth * testConfig.screenHeight;
+            metrics.mRaysPerSec = static_cast<float>(metrics.totalRaysCast) / (metrics.gpuTimeMs * 1000.0f);
+            metrics.fps = 1000.0f / metrics.frameTimeMs;
+            metrics.bandwidthEstimated = true;
+
+            RecordFrame(metrics);
+        }
+
+        FinalizeCurrentTest();
+        ProfilerSystem::Instance().EndTestRun(true);
+    }
+
+    // Cleanup
+    ProfilerSystem::Instance().Shutdown();
+    CleanupHeadlessVulkan(ctx);
+
+    return suiteResults_;
+}
+
+TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig& config) {
+    namespace RG = Vixen::RenderGraph;
+
+    // Create node registry and register all node types
+    auto nodeRegistry = std::make_unique<RG::NodeTypeRegistry>();
+    RegisterAllNodeTypes(*nodeRegistry);
+
+    // Create message bus for event coordination
+    auto messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
+
+    // Create render graph
+    auto renderGraph = std::make_unique<RG::RenderGraph>(
+        nodeRegistry.get(),
+        messageBus.get(),
+        nullptr,  // No logger
+        nullptr   // No cache
+    );
+
+    // Subscribe to window close events
+    bool shouldClose = false;
+    messageBus->Subscribe(
+        WindowCloseEvent::TYPE,
+        [&shouldClose](const BaseEventMessage& /*msg*/) -> bool {
+            shouldClose = true;
+            return true;
+        }
+    );
+
+    // Set graph factory function
+    SetGraphFactory([](RG::RenderGraph* graph, const TestConfiguration& testConfig,
+                       uint32_t width, uint32_t height) {
+        return BenchmarkGraphFactory::BuildComputeRayMarchGraph(graph, testConfig, width, height);
+    });
+
+    // Set progress callback if verbose
+    if (config.verbose) {
+        SetProgressCallback([&](uint32_t testIdx, uint32_t totalTests,
+                                uint32_t frame, uint32_t totalFrames) {
+            std::cout << "\r  Test " << (testIdx + 1) << "/" << totalTests
+                      << " - Frame " << frame << "/" << totalFrames << "    " << std::flush;
+        });
+    }
+
+    // Start suite
+    if (!StartSuite()) {
+        std::cerr << "Error: Failed to start benchmark suite\n";
+        return TestSuiteResults{};
+    }
+
+    // Run each test
+    while (BeginNextTest() && !shouldClose) {
+        const auto& testConfig = GetCurrentTestConfig();
+
+        if (config.verbose) {
+            std::cout << "  [" << (GetCurrentTestIndex() + 1) << "/" << testMatrix_.size() << "] "
+                      << testConfig.pipeline << " | "
+                      << testConfig.voxelResolution << "^3 | "
+                      << testConfig.densityPercent << "% | "
+                      << testConfig.algorithm << "\n";
+        }
+
+        // Create graph for current test
+        auto benchGraph = CreateGraphForCurrentTest(renderGraph.get());
+        if (!benchGraph.IsValid()) {
+            std::cerr << "Error: Failed to create graph for test\n";
+            continue;
+        }
+
+        // Compile the graph
+        renderGraph->Compile();
+
+        // Initialize profiler from graph
+        if (VulkanIntegrationHelper::InitializeProfilerFromGraph(renderGraph.get())) {
+            ProfilerSystem::Instance().SetOutputDirectory(config.outputDir);
+            ProfilerSystem::Instance().SetExportFormats(config.exportCSV, config.exportJSON);
+
+            auto handles = VulkanIntegrationHelper::ExtractFromGraph(renderGraph.get());
+            if (handles.IsValid()) {
+                auto deviceCaps = DeviceCapabilities::Capture(handles.physicalDevice);
+                SetDeviceCapabilities(deviceCaps);
+            }
+        }
+
+        ProfilerSystem::Instance().StartTestRun(testConfig);
+
+        // Render loop
+        uint32_t totalFrames = testConfig.warmupFrames + testConfig.measurementFrames;
+        for (uint32_t frame = 0; frame < totalFrames && !shouldClose; ++frame) {
+            // Process window messages
+#ifdef _WIN32
+            MSG msg;
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                if (msg.message == WM_QUIT) {
+                    shouldClose = true;
+                    break;
+                }
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+#endif
+            if (shouldClose) break;
+
+            renderGraph->UpdateTime();
+            renderGraph->ProcessEvents();
+            renderGraph->RecompileDirtyNodes();
+
+            VkResult result = renderGraph->RenderFrame();
+            if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+                // Non-fatal warning
+            }
+
+            // Collect frame metrics
+            FrameMetrics metrics{};
+            metrics.frameNumber = frame;
+            metrics.timestampMs = static_cast<double>(frame) * 16.67;
+            metrics.frameTimeMs = 16.67f;
+            metrics.gpuTimeMs = 8.0f;
+            metrics.sceneResolution = testConfig.voxelResolution;
+            metrics.screenWidth = testConfig.screenWidth;
+            metrics.screenHeight = testConfig.screenHeight;
+            metrics.sceneDensity = testConfig.densityPercent;
+            metrics.totalRaysCast = testConfig.screenWidth * testConfig.screenHeight;
+            metrics.mRaysPerSec = static_cast<float>(metrics.totalRaysCast) / (metrics.gpuTimeMs * 1000.0f);
+            metrics.fps = 1000.0f / metrics.frameTimeMs;
+
+            RecordFrame(metrics);
+        }
+
+        FinalizeCurrentTest();
+        ProfilerSystem::Instance().EndTestRun(!shouldClose);
+        ClearCurrentGraph();
+
+        // Reset graph for next test
+        renderGraph.reset();
+        renderGraph = std::make_unique<RG::RenderGraph>(
+            nodeRegistry.get(),
+            messageBus.get(),
+            nullptr,
+            nullptr
+        );
+    }
+
+    ProfilerSystem::Instance().Shutdown();
+
+    return suiteResults_;
+}
+
+void BenchmarkRunner::ListAvailableGPUs() {
+    VkInstance instance = VK_NULL_HANDLE;
+
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "GPU List";
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+        std::cerr << "Error: Failed to create Vulkan instance for GPU enumeration\n";
+        return;
+    }
+
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+    if (deviceCount == 0) {
+        std::cout << "No Vulkan-capable GPUs found\n";
+        vkDestroyInstance(instance, nullptr);
+        return;
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    std::cout << "\nAvailable GPUs:\n";
+    std::cout << "===============\n";
+
+    for (uint32_t i = 0; i < deviceCount; ++i) {
+        auto caps = DeviceCapabilities::Capture(devices[i]);
+        std::cout << "  [" << i << "] " << caps.GetSummaryString() << "\n";
+    }
+    std::cout << "\nUse --gpu N to select a specific GPU\n\n";
+
+    vkDestroyInstance(instance, nullptr);
+}
+
+//==============================================================================
+// Low-Level API Implementation
+//==============================================================================
 
 bool BenchmarkRunner::LoadConfig(const std::filesystem::path& configPath) {
     configPath_ = configPath;

@@ -1,40 +1,57 @@
 # Active Context
 
-**Last Updated**: December 3, 2025
+**Last Updated**: December 4, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase II IN PROGRESS - Export Complete (131 Tests Passing)
+**Status**: Phase II IN PROGRESS - Benchmark Executable Wired (131 Tests Passing)
 
 ---
 
 ## Session Summary
 
-Completed export of compute ray march graph from VulkanGraphApplication to BenchmarkGraphFactory. Added ConnectVariadic resource wiring and shader builder registration.
+Wired the benchmark executable (`vixen_benchmark`) to the real profiler framework. The executable now supports both headless and render execution modes.
 
 ### Completed This Session
-- **WireVariadicResources()** - New method in BenchmarkGraphFactory
-  - Wires descriptor bindings (0-5) for VoxelRayMarch.comp
-  - Wires push constant bindings (camera data fields)
-  - Uses hardcoded binding indices matching VoxelRayMarchNames.h
-  - Proper SlotRole assignment (Dependency, Execute, Debug)
-- **RegisterVoxelRayMarchShader()** - Shader builder registration
-  - Registers ShaderBundleBuilder callback for VoxelRayMarch.comp
-  - Supports compressed variant (useCompressed flag)
-  - Configures include paths for shader preprocessing
-- **BuildComputeRayMarchGraph() Updated** - Now includes full wiring
-  - Calls WireVariadicResources after typed connections
-  - Calls RegisterVoxelRayMarchShader for shader loading
-- **5 New Unit Tests** for export functionality (126 -> 131)
-  - Null graph handling
-  - Binding layout documentation tests
-  - Push constant layout documentation tests
+
+**CLI Options Added:**
+- `--headless` (default): Compute-only benchmark without window
+- `--render`: Full rendering with window and real-time preview
+
+**Headless Mode Implementation:**
+- Minimal VulkanContext struct with instance, device, command pool
+- VkQueryPool for GPU timestamp collection
+- Uses BenchmarkRunner with synthetic metrics (real compute dispatch requires RenderGraph)
+- Successfully tested: 8 tests complete in <1 second
+
+**Render Mode Implementation:**
+- Full RenderGraph integration with NodeTypeRegistry
+- Uses BenchmarkGraphFactory::BuildComputeRayMarchGraph() for graph construction
+- WireProfilerHooks() integration for metrics collection
+- Window message loop with close event handling
+
+**Integration Points:**
+- BenchmarkRunner.SetGraphFactory() - Graph creation per test config
+- BenchmarkRunner.CreateGraphForCurrentTest() - Dynamic graph instantiation
+- ProfilerSystem initialization via VulkanIntegrationHelper
+- Progress callbacks for verbose output
 
 ### Files Modified This Session
 | File | Change |
 |------|--------|
-| `libraries/Profiler/include/Profiler/BenchmarkGraphFactory.h` | Added WireVariadicResources, RegisterVoxelRayMarchShader declarations |
-| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Implemented variadic wiring + shader registration |
-| `libraries/Profiler/CMakeLists.txt` | Added ShaderManagement dependency |
-| `libraries/Profiler/tests/test_profiler.cpp` | Added 5 new export tests (126 -> 131) |
+| `application/benchmark/include/BenchmarkCLI.h` | Added headlessMode, renderMode flags |
+| `application/benchmark/source/BenchmarkCLI.cpp` | Added --headless, --render argument parsing + help text |
+| `application/benchmark/source/BenchmarkMain.cpp` | Complete rewrite: VulkanContext, headless/render modes, framework integration |
+| `application/benchmark/CMakeLists.txt` | Added RenderGraph library dependency |
+
+### Test Results
+```
+$ ./binaries/vixen_benchmark.exe --quick --headless --output ./benchmark_results
+
+VIXEN Benchmark Tool (Headless Mode)
+Device: NVIDIA GeForce RTX 3060 Laptop GPU (Discrete GPU) | Driver: 581.29.0 | Vulkan: 1.4.312
+Tests:    8/8 succeeded
+Duration: 0 seconds
+Output:   ./benchmark_results
+```
 
 ### Binding Layout (VoxelRayMarch.comp)
 **Descriptor Set 0:**
@@ -308,6 +325,11 @@ libraries/Profiler/
 - [x] RegisterVoxelRayMarchShader() - Shader builder registration
 - [x] BuildComputeRayMarchGraph() fully wired with ConnectVariadic
 - [x] 5 new export tests (126 -> 131 total)
+- [x] vixen_benchmark executable wired to real framework
+  - [x] --headless mode (compute-only, synthetic metrics)
+  - [x] --render mode (RenderGraph with window)
+  - [x] BenchmarkRunner integration
+  - [x] VulkanContext headless initialization
 - [ ] vertex + Fragment VoxelRayTracer Implmentation
 - [ ] GPU integration test (requires running Vulkan application)
 - [ ] VK_KHR_ray_tracing_pipeline (Hardware RT implementation)

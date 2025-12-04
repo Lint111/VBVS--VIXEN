@@ -47,6 +47,8 @@ bld/
 # build folder
 build/
 build/*
+benchmark_results/
+benchmark_results/*
 
 # Binaries and generated logs
 binaries/

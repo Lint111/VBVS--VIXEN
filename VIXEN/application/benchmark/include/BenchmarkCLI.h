@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Profiler/FrameMetrics.h>
+#include <Profiler/BenchmarkConfig.h>
 #include <string>
 #include <vector>
 #include <optional>
@@ -98,6 +99,17 @@ struct BenchmarkCLIOptions {
      * @return Empty vector if valid, error messages otherwise
      */
     std::vector<std::string> Validate() const;
+
+    /**
+     * @brief Build a BenchmarkSuiteConfig from CLI options
+     *
+     * This is the primary entry point for creating suite configuration.
+     * Converts all CLI options into a single config struct that can be
+     * passed to BenchmarkRunner::RunSuite().
+     *
+     * @return Complete suite configuration
+     */
+    Vixen::Profiler::BenchmarkSuiteConfig BuildSuiteConfig() const;
 };
 
 /**

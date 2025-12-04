@@ -7,6 +7,7 @@
 #include "RollingStats.h"
 #include "BenchmarkGraphFactory.h"
 #include "ProfilerGraphAdapter.h"
+#include "BenchmarkConfig.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -16,6 +17,11 @@
 // Forward declarations to avoid circular includes
 namespace Vixen::RenderGraph {
     class RenderGraph;
+    class NodeTypeRegistry;
+}
+
+namespace Vixen::EventBus {
+    class MessageBus;
 }
 
 namespace Vixen::Profiler {
@@ -54,6 +60,52 @@ public:
 
     BenchmarkRunner();
     ~BenchmarkRunner();
+
+    //==========================================================================
+    // High-Level API: Complete Benchmark Suite Execution
+    //==========================================================================
+
+    /**
+     * @brief Run a complete benchmark suite with internal Vulkan lifecycle
+     *
+     * This is the primary entry point for benchmark execution. It handles:
+     * - Vulkan instance and device creation
+     * - RenderGraph setup (headless or windowed)
+     * - Test matrix execution with profiler hooks
+     * - Results collection and export
+     * - Vulkan cleanup
+     *
+     * The caller (vixen_benchmark) only needs to create TestConfiguration
+     * structs - all Vulkan operations are internal to this method.
+     *
+     * @param config Suite configuration including tests, output path, etc.
+     * @return Suite results with all collected metrics
+     *
+     * Usage:
+     * @code
+     * BenchmarkSuiteConfig config;
+     * config.outputDir = "./results";
+     * config.tests = BenchmarkConfigLoader::GetQuickTestMatrix();
+     * config.headless = true;
+     *
+     * BenchmarkRunner runner;
+     * auto results = runner.RunSuite(config);
+     * std::cout << "Passed: " << results.GetPassCount() << "\n";
+     * @endcode
+     */
+    TestSuiteResults RunSuite(const BenchmarkSuiteConfig& config);
+
+    /**
+     * @brief List available GPUs
+     *
+     * Creates a temporary Vulkan instance to enumerate physical devices.
+     * Prints GPU info to stdout. Does not affect runner state.
+     */
+    static void ListAvailableGPUs();
+
+    //==========================================================================
+    // Low-Level API: Manual Test Execution (for custom integrations)
+    //==========================================================================
 
     // Configuration
     /// Load benchmark configuration from JSON file
@@ -224,6 +276,10 @@ public:
     void ClearCurrentGraph();
 
 private:
+    // High-level suite execution helpers
+    TestSuiteResults RunSuiteHeadless(const BenchmarkSuiteConfig& config);
+    TestSuiteResults RunSuiteWithWindow(const BenchmarkSuiteConfig& config);
+
     // Configuration
     std::filesystem::path configPath_;
     std::filesystem::path outputDirectory_ = "./benchmark_results";

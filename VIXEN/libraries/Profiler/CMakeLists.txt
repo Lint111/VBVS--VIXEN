@@ -41,6 +41,7 @@ target_link_libraries(Profiler
         Logger
         nlohmann_json::nlohmann_json
         RenderGraph
+        EventBus
     PRIVATE
         VulkanResources
         ShaderManagement

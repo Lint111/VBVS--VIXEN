@@ -44,6 +44,20 @@ public:
     /// Get number of completed tests
     size_t GetTestCount() const { return results_.size(); }
 
+    /// Get total number of tests (same as GetTestCount, for consistency)
+    uint32_t GetTotalCount() const { return static_cast<uint32_t>(results_.size()); }
+
+    /// Get number of passed tests (tests with valid results)
+    uint32_t GetPassCount() const {
+        uint32_t passed = 0;
+        for (const auto& result : results_) {
+            if (result.IsValid()) {
+                ++passed;
+            }
+        }
+        return passed;
+    }
+
     /// Get total duration of all tests
     double GetTotalDurationSeconds() const;
 
