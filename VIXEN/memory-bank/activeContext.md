@@ -2,17 +2,46 @@
 
 **Last Updated**: December 4, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase II IN PROGRESS - Benchmark System Fully Functional
+**Status**: Phase II IN PROGRESS - Shader Refactoring Complete, Graphics Pipeline Next
 
 ---
 
 ## Session Summary
 
-Added VoxelDataCache for benchmark performance optimization and verified full benchmark pipeline working with multiple scenes, shaders, and incremental export.
+Refactored shader architecture to use shared include files, reducing code duplication by 60-75%. Both compute shaders verified working with benchmark system.
 
 ### Completed This Session
 
-**VoxelDataCache (Performance Optimization):**
+**Shader Refactoring (Code Quality):**
+Created 6 shared GLSL include files to eliminate ~1300 lines of duplicate code between VoxelRayMarch.comp and VoxelRayMarch_Compressed.comp.
+
+| Include File | Size | Content |
+|-------------|------|---------|
+| RayGeneration.glsl | 3.8KB | `getRayDir()`, `rayAABBIntersection()`, coord transforms |
+| CoordinateTransforms.glsl | 5.7KB | ESVO/grid/brick space conversions, octant mirroring |
+| ESVOCoefficients.glsl | 4.2KB | `RayCoefficients` struct, `initRayCoefficients()` |
+| ESVOTraversal.glsl | 16.3KB | PUSH/ADVANCE/POP phases, `StackEntry`, `TraversalState` |
+| TraceRecording.glsl | 8.1KB | Debug capture infrastructure, `DebugRaySample` |
+| Lighting.glsl | 1.8KB | `computeLighting()`, shading helpers |
+
+**Size Reduction:**
+- VoxelRayMarch.comp: 80KB → 20KB (**75% smaller**)
+- VoxelRayMarch_Compressed.comp: 56KB → 22KB (**60% smaller**)
+
+**What's Shared (via includes):**
+- ESVO traversal algorithm (PUSH/ADVANCE/POP phases)
+- Ray coefficient initialization
+- Coordinate space transformations
+- Debug trace recording
+- Lighting calculations
+
+**What's Shader-Specific (kept in .comp):**
+- Buffer bindings and UBOs
+- Brick DDA (`marchBrickFromPos` vs `marchBrickFromPosCompressed`)
+- `handleLeafHit` (different brick data access patterns)
+- `traverseOctree()` main loop (calls shader-specific handleLeafHit)
+
+**Previous Session - VoxelDataCache (Performance Optimization):**
 Added caching system to avoid regenerating the same voxel scene multiple times during benchmark runs.
 
 ```cpp
@@ -38,6 +67,18 @@ VoxelDataCache::SetEnabled(bool);  // Enable/disable caching
 ```
 
 ### Files Modified This Session
+| File | Change |
+|------|--------|
+| `shaders/RayGeneration.glsl` | **NEW** - Ray setup, AABB intersection, scale mappings |
+| `shaders/CoordinateTransforms.glsl` | **NEW** - Space conversions, octant mirroring |
+| `shaders/ESVOCoefficients.glsl` | **NEW** - RayCoefficients struct + init |
+| `shaders/ESVOTraversal.glsl` | **NEW** - PUSH/ADVANCE/POP phases, state structs |
+| `shaders/TraceRecording.glsl` | **NEW** - Debug capture infrastructure |
+| `shaders/Lighting.glsl` | **NEW** - Shading functions |
+| `shaders/VoxelRayMarch.comp` | Refactored to use includes (80KB → 20KB) |
+| `shaders/VoxelRayMarch_Compressed.comp` | Refactored to use includes (56KB → 22KB) |
+
+**Previous Session Files:**
 | File | Change |
 |------|--------|
 | `libraries/RenderGraph/include/Data/SceneGenerator.h:398-478` | Added VoxelDataCache class |
@@ -241,6 +282,7 @@ See TODO in `BenchmarkGraphFactory.cpp:594-602`.
 4. **Hardware RT**: VK_KHR_ray_tracing_pipeline documented in stub, requires Phase II implementation
 5. **Fragment pipeline**: BuildFragmentRayMarchGraph() documented in stub, requires Phase II implementation
 6. **Shader counters**: Stubs defined, require GLSL query integration in Phase II
+7. **Window resolution bug**: Changing render resolution in benchmark config doesn't resize window, only shifts render origin. Likely issue in WindowNode or swapchain configuration - window size stays fixed while compute dispatch dimensions change.
 
 ---
 
@@ -336,6 +378,7 @@ libraries/Profiler/
 - [x] Incremental export - Each test exports JSON immediately after completion
 - [x] Multi-scene support verified (cornell, noise, tunnels, cityscape)
 - [x] Multi-shader support verified (VoxelRayMarch.comp, VoxelRayMarch_Compressed.comp)
+- [x] Shader refactoring - Created 6 shared GLSL include files, reduced duplication 60-75%
 
 **Next Steps (Pipeline Expansion):**
 - [ ] BuildFragmentRayMarchGraph() - Full implementation (currently stub)
