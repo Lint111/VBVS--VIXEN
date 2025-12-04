@@ -48,6 +48,18 @@ target_link_libraries(Profiler
 )
 
 # ============================================================================
+# Shader Source Directory
+# ============================================================================
+
+# Pass shader source directory for runtime shader compilation in BenchmarkGraphFactory
+if(VIXEN_SHADER_SOURCE_DIR)
+    target_compile_definitions(Profiler
+        PRIVATE
+            VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
+    )
+endif()
+
+# ============================================================================
 # Compiler settings
 # ============================================================================
 

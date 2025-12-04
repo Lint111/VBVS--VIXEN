@@ -22,7 +22,37 @@
 #include "BenchmarkCLI.h"
 #include <Profiler/BenchmarkRunner.h>
 #include <Profiler/BenchmarkConfig.h>
+#include <VulkanGlobalNames.h>
 #include <iostream>
+
+// Initialize global Vulkan extension/layer lists for windowed benchmark mode.
+// These are required by InstanceNode and DeviceNode when running with a window.
+// Headless mode doesn't need these (creates its own minimal instance).
+static bool initGlobalNames = []() {
+    deviceExtensionNames = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
+    };
+
+    instanceExtensionNames = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+        VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
+        VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+#ifdef _DEBUG
+        , VK_EXT_DEBUG_REPORT_EXTENSION_NAME
+#endif
+    };
+
+    layerNames = {
+#ifdef _DEBUG
+        "VK_LAYER_KHRONOS_validation"
+#endif
+    };
+
+    return true;
+}();
 
 int main(int argc, char* argv[]) {
     using namespace Vixen::Benchmark;

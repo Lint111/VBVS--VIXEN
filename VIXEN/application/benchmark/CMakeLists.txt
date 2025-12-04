@@ -65,6 +65,16 @@ target_link_libraries(vixen_benchmark
 )
 
 # ============================================================================
+# Shader Source Directory
+# ============================================================================
+
+# Pass shader source directory for runtime compilation
+target_compile_definitions(vixen_benchmark
+    PRIVATE
+        VIXEN_SHADER_SOURCE_DIR="${VIXEN_SHADER_SOURCE_DIR}"
+)
+
+# ============================================================================
 # Compiler Settings
 # ============================================================================
 
