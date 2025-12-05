@@ -584,6 +584,43 @@ private:
         const ComputePipelineNodes& compute,
         const std::string& shaderName
     );
+
+    /**
+     * @brief Register fragment shader builder (vertex + fragment pair)
+     *
+     * Registers a ShaderBundleBuilder callback that loads the specified vertex
+     * and fragment shaders with proper include paths for the shader preprocessor.
+     *
+     * @param graph Target render graph
+     * @param fragment Fragment pipeline nodes (shader library node)
+     * @param vertexShaderName Vertex shader filename (e.g., "Fullscreen.vert")
+     * @param fragmentShaderName Fragment shader filename (e.g., "VoxelRayMarch.frag")
+     */
+    static void RegisterFragmentShader(
+        RG::RenderGraph* graph,
+        const FragmentPipelineNodes& fragment,
+        const std::string& vertexShaderName,
+        const std::string& fragmentShaderName
+    );
+
+    /**
+     * @brief Wire descriptor resources and push constants for fragment pipeline
+     *
+     * Similar to WireVariadicResources but for fragment/graphics pipeline.
+     * Connects VoxelGrid buffers and Camera data to the fragment pipeline's
+     * descriptor and push constant gatherers.
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes
+     * @param fragment Fragment pipeline nodes
+     * @param rayMarch Ray march scene nodes
+     */
+    static void WireFragmentVariadicResources(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
+        const FragmentPipelineNodes& fragment,
+        const RayMarchNodes& rayMarch
+    );
 };
 
 } // namespace Vixen::Profiler

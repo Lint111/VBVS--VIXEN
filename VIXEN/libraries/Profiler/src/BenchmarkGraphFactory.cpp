@@ -711,17 +711,31 @@ FragmentPipelineNodes BenchmarkGraphFactory::BuildFragmentPipeline(
     FragmentPipelineNodes nodes{};
 
     // Create fragment pipeline nodes
+    std::cerr << "  [FragPipe] Creating shaderLib..." << std::endl;
     nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_fragment_shader_lib");
+    std::cerr << "  [FragPipe] Creating descriptorGatherer..." << std::endl;
     nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_fragment_desc_gatherer");
+    std::cerr << "  [FragPipe] Creating pushConstantGatherer..." << std::endl;
     nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_fragment_pc_gatherer");
+    std::cerr << "  [FragPipe] Creating descriptorSet..." << std::endl;
     nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_fragment_descriptors");
+    std::cerr << "  [FragPipe] Creating renderPass..." << std::endl; std::cerr.flush();
+    std::cerr << "  [FragPipe] Graph ptr: " << (void*)graph << std::endl;
+
+    std::cerr.flush();
     nodes.renderPass = graph->AddNode<RG::RenderPassNodeType>("benchmark_render_pass");
+    std::cerr << "  [FragPipe] RenderPass created!" << std::endl;
+    std::cerr << "  [FragPipe] RenderPass created. Creating framebuffer..." << std::endl; std::cerr.flush();
     nodes.framebuffer = graph->AddNode<RG::FramebufferNodeType>("benchmark_framebuffer");
+    std::cerr << "  [FragPipe] Creating graphics pipeline..." << std::endl;
     nodes.pipeline = graph->AddNode<RG::GraphicsPipelineNodeType>("benchmark_graphics_pipeline");
+    std::cerr << "  [FragPipe] Creating drawCommand (GeometryRenderNode)..." << std::endl;
     nodes.drawCommand = graph->AddNode<RG::GeometryRenderNodeType>("benchmark_draw_command");
 
+    std::cerr << "  [FragPipe] Configuring parameters..." << std::endl;
     // Configure parameters
     ConfigureFragmentPipelineParams(graph, nodes, infra, vertexShaderPath, fragmentShaderPath);
+    std::cerr << "  [FragPipe] Done!" << std::endl;
 
     return nodes;
 }
@@ -972,18 +986,35 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
     );
 
     // Build all subgraphs
+    std::cerr << "[Fragment] Building infrastructure..." << std::endl;
     result.infra = BuildInfrastructure(graph, width, height, true);
+    
+    std::cerr << "[Fragment] Building fragment pipeline..." << std::endl;
     result.fragment = BuildFragmentPipeline(
         graph, result.infra,
-        "FullscreenTriangle.vert",   // Full-screen triangle vertex shader
+        "Fullscreen.vert",           // Full-screen triangle vertex shader
         "VoxelRayMarch.frag"         // Fragment shader ray marching
     );
+    
+    std::cerr << "[Fragment] Building ray march scene..." << std::endl;
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
+    
+    std::cerr << "[Fragment] Building output..." << std::endl;
     result.output = BuildOutput(graph, result.infra, false);
 
+    std::cerr << "[Fragment] Registering shaders..." << std::endl;
+    // Register shader builder for vertex + fragment shaders
+    RegisterFragmentShader(graph, result.fragment, "Fullscreen.vert", "VoxelRayMarch.frag");
+
+    std::cerr << "[Fragment] Wiring variadic resources..." << std::endl;
+    // Wire variadic resources (descriptors and push constants)
+    WireFragmentVariadicResources(graph, result.infra, result.fragment, result.rayMarch);
+
+    std::cerr << "[Fragment] Connecting subgraphs..." << std::endl;
     // Connect subgraphs
     ConnectFragmentRayMarch(graph, result.infra, result.fragment, result.rayMarch, result.output);
 
+    std::cerr << "[Fragment] Build complete!" << std::endl;
     return result;
 }
 
@@ -1338,6 +1369,191 @@ void BenchmarkGraphFactory::RegisterComputeShader(
 
         return builder;
     });
+}
+
+void BenchmarkGraphFactory::RegisterFragmentShader(
+    RG::RenderGraph* graph,
+    const FragmentPipelineNodes& fragment,
+    const std::string& vertexShaderName,
+    const std::string& fragmentShaderName)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::RegisterFragmentShader: graph is null");
+    }
+
+    // Get the shader library node
+    auto* shaderLibNode = static_cast<RG::ShaderLibraryNode*>(
+        graph->GetInstance(fragment.shaderLib));
+
+    if (!shaderLibNode) {
+        throw std::runtime_error("BenchmarkGraphFactory::RegisterFragmentShader: "
+                                "shader library node not found");
+    }
+
+    // Capture shader names by value for the lambda
+    shaderLibNode->RegisterShaderBuilder(
+        [vertexShaderName, fragmentShaderName](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Extract program name from fragment shader (remove extension)
+        std::string programName = fragmentShaderName;
+        auto dotPos = programName.rfind('.');
+        if (dotPos != std::string::npos) {
+            programName = programName.substr(0, dotPos);
+        }
+
+        // Helper to find shader file
+        auto findShader = [](const std::string& shaderName) -> std::filesystem::path {
+            std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName
+            };
+
+            for (const auto& path : possiblePaths) {
+                if (std::filesystem::exists(path)) {
+                    return path;
+                }
+            }
+            return {};
+        };
+
+        auto vertexPath = findShader(vertexShaderName);
+        auto fragmentPath = findShader(fragmentShaderName);
+
+        if (vertexPath.empty()) {
+            throw std::runtime_error(
+                std::string("Vertex shader not found: ") + vertexShaderName);
+        }
+        if (fragmentPath.empty()) {
+            throw std::runtime_error(
+                std::string("Fragment shader not found: ") + fragmentShaderName);
+        }
+
+        // Configure builder with include paths and both stages
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::Graphics)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
+
+        return builder;
+    });
+}
+
+void BenchmarkGraphFactory::WireFragmentVariadicResources(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& /*infra*/,
+    const FragmentPipelineNodes& fragment,
+    const RayMarchNodes& rayMarch)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireFragmentVariadicResources: graph is null");
+    }
+
+    // Local using declarations for cleaner code
+    using RG::SlotRole;
+    using Vixen::RenderGraph::CameraData;
+    using Vixen::RenderGraph::InputState;
+
+    RG::ConnectionBatch batch(graph);
+
+    // Descriptor binding indices (matching VoxelRayMarch.frag layout)
+    // binding 0: outputImage (handled by swapchain, not via variadic)
+    constexpr uint32_t BINDING_ESVO_NODES = 1;
+    constexpr uint32_t BINDING_BRICK_DATA = 2;
+    constexpr uint32_t BINDING_MATERIALS = 3;
+    constexpr uint32_t BINDING_DEBUG_CAPTURE = 4;
+    constexpr uint32_t BINDING_OCTREE_CONFIG = 5;
+
+    // Connect voxel grid buffers to descriptor gatherer
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+        fragment.descriptorGatherer, BINDING_ESVO_NODES,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_BRICKS_BUFFER,
+        fragment.descriptorGatherer, BINDING_BRICK_DATA,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_MATERIALS_BUFFER,
+        fragment.descriptorGatherer, BINDING_MATERIALS,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::DEBUG_CAPTURE_BUFFER,
+        fragment.descriptorGatherer, BINDING_DEBUG_CAPTURE,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+        fragment.descriptorGatherer, BINDING_OCTREE_CONFIG,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Push constant binding indices
+    constexpr uint32_t PC_CAMERA_POS = 0;
+    constexpr uint32_t PC_TIME = 1;
+    constexpr uint32_t PC_CAMERA_DIR = 2;
+    constexpr uint32_t PC_FOV = 3;
+    constexpr uint32_t PC_CAMERA_UP = 4;
+    constexpr uint32_t PC_ASPECT = 5;
+    constexpr uint32_t PC_CAMERA_RIGHT = 6;
+    constexpr uint32_t PC_DEBUG_MODE = 7;
+
+    (void)PC_TIME;  // Suppress unused warning
+
+    // Connect camera data to push constants using field extraction
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_CAMERA_POS,
+        &CameraData::cameraPos, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_CAMERA_DIR,
+        &CameraData::cameraDir, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_FOV,
+        &CameraData::fov, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_CAMERA_UP,
+        &CameraData::cameraUp, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_ASPECT,
+        &CameraData::aspect, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        fragment.pushConstantGatherer, PC_CAMERA_RIGHT,
+        &CameraData::cameraRight, SlotRole::Execute);
+
+    // Connect debugMode from input node (if valid)
+    if (rayMarch.input.IsValid()) {
+        batch.ConnectVariadic(
+            rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+            fragment.pushConstantGatherer, PC_DEBUG_MODE,
+            &InputState::debugMode, SlotRole::Execute);
+    }
+
+    // Register all connections atomically
+    batch.RegisterAll();
 }
 
 } // namespace Vixen::Profiler

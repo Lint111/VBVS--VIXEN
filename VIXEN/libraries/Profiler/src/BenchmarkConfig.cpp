@@ -70,9 +70,20 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::LoadBatchFromFile(const st
                 if (pipelineConfig.contains("enabled")) {
                     pm.enabled = pipelineConfig["enabled"].get<bool>();
                 }
-                if (pipelineConfig.contains("shaders")) {
+                // New format: shader_groups (array of arrays)
+                if (pipelineConfig.contains("shader_groups")) {
+                    for (const auto& group : pipelineConfig["shader_groups"]) {
+                        std::vector<std::string> shaderGroup;
+                        for (const auto& sh : group) {
+                            shaderGroup.push_back(sh.get<std::string>());
+                        }
+                        pm.shaderGroups.push_back(shaderGroup);
+                    }
+                }
+                // Legacy format: shaders (flat array) - convert to single-shader groups
+                else if (pipelineConfig.contains("shaders")) {
                     for (const auto& sh : pipelineConfig["shaders"]) {
-                        pm.shaders.push_back(sh.get<std::string>());
+                        pm.shaderGroups.push_back({sh.get<std::string>()});
                     }
                 }
                 pipelineMatrices[pipelineName] = pm;
@@ -121,15 +132,17 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GenerateTestMatrix(
             for (const auto& renderSize : globalMatrix.renderSizes) {
                 // For each scene (from global matrix)
                 for (const auto& scene : globalMatrix.scenes) {
-                    // For each shader in this pipeline
-                    for (const auto& shader : pipelineMatrix.shaders) {
+                    // For each shader group in this pipeline
+                    for (const auto& shaderGroup : pipelineMatrix.shaderGroups) {
                         TestConfiguration config;
                         config.pipeline = pipelineName;
                         config.voxelResolution = resolution;
                         config.screenWidth = renderSize.width;
                         config.screenHeight = renderSize.height;
                         config.sceneType = scene;
-                        config.shader = shader;
+                        config.shaderGroup = shaderGroup;
+                        // Use first shader (or last for fragment) as primary identifier
+                        config.shader = shaderGroup.empty() ? "" : shaderGroup.back();
                         configs.push_back(config);
                     }
                 }
@@ -198,19 +211,19 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GetResearchTestMatrix() {
     // Compute pipeline - full matrix
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.shaders = {"VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"};
+    compute.shaderGroups = {{"VoxelRayMarch.comp"}, {"VoxelRayMarch_Compressed.comp"}};
     pipelines["compute"] = compute;
 
     // Fragment pipeline
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.shaders = {"VoxelRayMarch.frag"};
+    fragment.shaderGroups = {{"Fullscreen.vert", "VoxelRayMarch.frag"}};
     pipelines["fragment"] = fragment;
 
     // Hardware RT pipeline - disabled by default
     PipelineMatrix hardware_rt;
     hardware_rt.enabled = false;
-    hardware_rt.shaders = {"VoxelRayMarch_RT.rgen"};
+    hardware_rt.shaderGroups = {{"VoxelRayMarch_RT.rgen", "VoxelRayMarch_RT.rmiss", "VoxelRayMarch_RT.rchit"}};
     pipelines["hardware_rt"] = hardware_rt;
 
     return GenerateTestMatrix(global, pipelines);
@@ -226,7 +239,7 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GetQuickTestMatrix() {
 
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.shaders = {"VoxelRayMarch.comp"};
+    compute.shaderGroups = {{"VoxelRayMarch.comp"}};
     pipelines["compute"] = compute;
 
     return GenerateTestMatrix(global, pipelines);
@@ -308,14 +321,15 @@ void BenchmarkSuiteConfig::GenerateTestsFromMatrix() {
         for (uint32_t resolution : globalMatrix.resolutions) {
             for (const auto& renderSize : globalMatrix.renderSizes) {
                 for (const auto& sceneName : globalMatrix.scenes) {
-                    for (const auto& shaderName : pipelineMatrix.shaders) {
+                    for (const auto& shaderGroup : pipelineMatrix.shaderGroups) {
                         TestConfiguration test;
                         test.pipeline = pipelineName;
                         test.voxelResolution = resolution;
                         test.screenWidth = renderSize.width;
                         test.screenHeight = renderSize.height;
                         test.sceneType = sceneName;
-                        test.shader = shaderName;
+                        test.shaderGroup = shaderGroup;
+                        test.shader = shaderGroup.empty() ? "" : shaderGroup.back();
                         test.testId = test.GenerateTestId(runNumber++);
                         tests.push_back(test);
                     }
@@ -405,9 +419,20 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::LoadFromFile(const std::filesystem::p
                     if (pipelineConfig.contains("enabled")) {
                         pm.enabled = pipelineConfig["enabled"].get<bool>();
                     }
-                    if (pipelineConfig.contains("shaders")) {
+                    // New format: shader_groups (array of arrays)
+                    if (pipelineConfig.contains("shader_groups")) {
+                        for (const auto& group : pipelineConfig["shader_groups"]) {
+                            std::vector<std::string> shaderGroup;
+                            for (const auto& sh : group) {
+                                shaderGroup.push_back(sh.get<std::string>());
+                            }
+                            pm.shaderGroups.push_back(shaderGroup);
+                        }
+                    }
+                    // Legacy format: shaders (flat array) - convert to single-shader groups
+                    else if (pipelineConfig.contains("shaders")) {
                         for (const auto& sh : pipelineConfig["shaders"]) {
-                            pm.shaders.push_back(sh.get<std::string>());
+                            pm.shaderGroups.push_back({sh.get<std::string>()});
                         }
                     }
                     config.pipelineMatrices[pipelineName] = pm;
@@ -502,7 +527,7 @@ bool BenchmarkSuiteConfig::SaveToFile(const std::filesystem::path& filepath) con
     // Pipeline matrices
     for (const auto& [pipelineName, pm] : pipelineMatrices) {
         j["matrix"]["pipelines"][pipelineName]["enabled"] = pm.enabled;
-        j["matrix"]["pipelines"][pipelineName]["shaders"] = pm.shaders;
+        j["matrix"]["pipelines"][pipelineName]["shader_groups"] = pm.shaderGroups;
     }
 
     // Scene definitions
@@ -538,7 +563,7 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::GetQuickConfig() {
     // Compute pipeline only
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.shaders = {"VoxelRayMarch.comp"};
+    compute.shaderGroups = {{"VoxelRayMarch.comp"}};
     config.pipelineMatrices["compute"] = compute;
 
     // Default scene definitions
@@ -563,19 +588,19 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::GetResearchConfig() {
     // Compute pipeline - full test
     PipelineMatrix compute;
     compute.enabled = true;
-    compute.shaders = {"VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"};
+    compute.shaderGroups = {{"VoxelRayMarch.comp"}, {"VoxelRayMarch_Compressed.comp"}};
     config.pipelineMatrices["compute"] = compute;
 
     // Fragment pipeline - limited
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.shaders = {"VoxelRayMarch.frag"};
+    fragment.shaderGroups = {{"Fullscreen.vert", "VoxelRayMarch.frag"}};
     config.pipelineMatrices["fragment"] = fragment;
 
     // Hardware RT - disabled by default
     PipelineMatrix hardware_rt;
     hardware_rt.enabled = false;
-    hardware_rt.shaders = {"VoxelRayMarch_RT.rgen"};
+    hardware_rt.shaderGroups = {{"VoxelRayMarch_RT.rgen", "VoxelRayMarch_RT.rmiss", "VoxelRayMarch_RT.rchit"}};
     config.pipelineMatrices["hardware_rt"] = hardware_rt;
 
     // Scene definitions

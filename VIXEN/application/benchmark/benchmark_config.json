@@ -23,16 +23,23 @@
     },
     "pipelines": {
       "compute": {
-        "enabled": true,
-        "shaders": ["VoxelRayMarch.comp", "VoxelRayMarch_Compressed.comp"]
+        "enabled": false,
+        "shader_groups": [
+          ["VoxelRayMarch.comp"],
+          ["VoxelRayMarch_Optimized.comp"]
+        ]
       },
       "fragment": {
-        "enabled": false,
-        "shaders": ["VoxelRayMarch.frag", "VoxelRayMarch.vert"]
+        "enabled": true,
+        "shader_groups": [
+          ["Fullscreen.vert", "VoxelRayMarch.frag"]
+        ]
       },
       "hardware_rt": {
         "enabled": false,
-        "shaders": ["ray_march_rt"]
+        "shader_groups": [
+          ["ray_march_rt.rgen", "ray_march_rt.rmiss", "ray_march_rt.rchit"]
+        ]
       }
     }
   },

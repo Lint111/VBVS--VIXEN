@@ -58,8 +58,11 @@ struct SceneDefinition {
 
 /// Per-pipeline test configuration
 struct PipelineMatrix {
-    bool enabled = true;                        // Whether to run tests for this pipeline
-    std::vector<std::string> shaders;           // Shader names to test
+    bool enabled = true;                                      // Whether to run tests for this pipeline
+    std::vector<std::vector<std::string>> shaderGroups;       // Shader groups to test (each group = one pipeline config)
+    // Example: [["VoxelRayMarch.comp"]] for compute
+    //          [["Fullscreen.vert", "VoxelRayMarch.frag"]] for graphics
+    //          [["ray.rgen", "ray.rmiss", "ray.rchit"]] for RT
 };
 
 /// Screen resolution pair

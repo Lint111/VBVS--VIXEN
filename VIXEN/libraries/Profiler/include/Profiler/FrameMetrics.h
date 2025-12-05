@@ -190,7 +190,8 @@ inline PipelineType ParsePipelineType(const std::string& str) {
 struct TestConfiguration {
     std::string testId;                     // Unique test identifier (e.g., "COMPUTE_256_CORNELL_ESVO_RUN1")
     std::string pipeline = "compute";       // compute, fragment, hardware_rt, hybrid
-    std::string shader = "ray_march_base";  // Shader name (ray_march_base, ray_march_esvo, ray_march_compressed)
+    std::string shader = "ray_march_base";  // Primary shader name (for identification/logging)
+    std::vector<std::string> shaderGroup;   // All shaders in group (e.g., [vert, frag] for graphics)
     std::string sceneType = "cornell";      // Scene identifier (cornell, noise, tunnels, cityscape)
     uint32_t voxelResolution = 128;         // SVO resolution (64, 128, 256, 512)
     uint32_t screenWidth = 800;             // Render target width

@@ -239,6 +239,18 @@ When updating:
 - **Rarely update**: `projectbrief.md` and `productContext.md` (stable foundations)
 - Keep documentation concise but comprehensive
 
+## Known Claude Code Workarounds
+
+### File Path Bug (Windows)
+**Always use complete absolute Windows paths with drive letters and backslashes for ALL file operations.**
+
+Example:
+- ✅ `C:\cpp\VBVS--VIXEN\VIXEN\libraries\Profiler\src\BenchmarkConfig.cpp`
+- ❌ `libraries/Profiler/src/BenchmarkConfig.cpp`
+- ❌ `./libraries/Profiler/src/BenchmarkConfig.cpp`
+
+This prevents file modification issues where Claude Code fails to recognize already-read files.
+
 ## Build System - MANDATORY
 
 This is a CMake-based C++ Vulkan application project. The build system is configured for Windows with Visual Studio.

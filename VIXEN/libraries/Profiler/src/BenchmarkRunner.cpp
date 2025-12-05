@@ -541,10 +541,10 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         }
     );
 
-    // Set graph factory function
+    // Set graph factory function - dispatch based on pipeline type in config
     SetGraphFactory([](RG::RenderGraph* graph, const TestConfiguration& testConfig,
                        uint32_t width, uint32_t height) {
-        return BenchmarkGraphFactory::BuildComputeRayMarchGraph(graph, testConfig, width, height);
+        return BenchmarkGraphFactory::BuildFromConfig(graph, testConfig);
     });
 
     // Set progress callback if verbose - show progress bar with test params
@@ -1148,9 +1148,8 @@ BenchmarkGraph BenchmarkRunner::CreateGraphForCurrentTest(Vixen::RenderGraph::Re
     if (graphFactory_) {
         currentGraph_ = graphFactory_(graph, currentConfig_, renderWidth_, renderHeight_);
     } else {
-        // Default: use BenchmarkGraphFactory
-        currentGraph_ = BenchmarkGraphFactory::BuildComputeRayMarchGraph(
-            graph, currentConfig_, renderWidth_, renderHeight_);
+        // Default: use BenchmarkGraphFactory with pipeline dispatch
+        currentGraph_ = BenchmarkGraphFactory::BuildFromConfig(graph, currentConfig_);
     }
 
     // Wire profiler hooks if graph was created successfully
