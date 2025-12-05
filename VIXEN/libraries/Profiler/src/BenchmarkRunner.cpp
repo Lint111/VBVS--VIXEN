@@ -30,6 +30,12 @@
 #include <Nodes/ConstantNode.h>
 #include <Nodes/ConstantNodeType.h>
 
+// Fragment/graphics pipeline nodes
+#include <Nodes/RenderPassNode.h>
+#include <Nodes/FramebufferNode.h>
+#include <Nodes/GraphicsPipelineNode.h>
+#include <Nodes/GeometryRenderNode.h>
+
 #include <vulkan/vulkan.h>
 #include <fstream>
 #include <stdexcept>
@@ -320,18 +326,31 @@ void CleanupHeadlessVulkan(HeadlessVulkanContext& ctx) {
 void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
     using namespace Vixen::RenderGraph;
 
+    // Infrastructure nodes
     registry.Register<InstanceNodeType>();
     registry.Register<WindowNodeType>();
     registry.Register<DeviceNodeType>();
     registry.Register<CommandPoolNodeType>();
     registry.Register<FrameSyncNodeType>();
     registry.Register<SwapChainNodeType>();
+
+    // Shader/descriptor nodes (shared by compute and fragment)
     registry.Register<ShaderLibraryNodeType>();
     registry.Register<DescriptorResourceGathererNodeType>();
     registry.Register<PushConstantGathererNodeType>();
     registry.Register<DescriptorSetNodeType>();
+
+    // Compute pipeline nodes
     registry.Register<ComputePipelineNodeType>();
     registry.Register<ComputeDispatchNodeType>();
+
+    // Fragment/graphics pipeline nodes
+    registry.Register<RenderPassNodeType>();
+    registry.Register<FramebufferNodeType>();
+    registry.Register<GraphicsPipelineNodeType>();
+    registry.Register<GeometryRenderNodeType>();
+
+    // Scene/utility nodes
     registry.Register<CameraNodeType>();
     registry.Register<VoxelGridNodeType>();
     registry.Register<InputNodeType>();

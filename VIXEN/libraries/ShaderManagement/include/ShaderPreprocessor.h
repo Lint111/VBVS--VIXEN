@@ -10,6 +10,20 @@
 namespace ShaderManagement {
 
 /**
+ * @todo Add support for shader steps includes, for example: adding part of a glsl file to layout definition (add layout element at specific index or dynamically the next open index)
+ *      the idea is as follows, in the glsl file we set markers like: #mark <phase> (e.g. layout, ubo, pc, methods, etc.)
+ *      Then when another shader include said glsl file, we split the file into those sections and insert them into the appropriate locations in the including shader.
+ * 
+ * @todo Add support for #dependecy "<file>" directive, which would track the dependency and recompile the shader if the dependency file changes.
+ *       Additionally when a file include many breakable includes, we can add them according to dependecy tree, so if a dependency changes we only recompile the affected parts.
+ *       It would also avoid dependecy order issues in the shader includes.
+ * 
+ * @todo 
+ *      
+ *   
+ */    
+
+/**
  * @brief Preprocessor configuration
  */
 struct PreprocessorConfig {

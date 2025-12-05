@@ -833,6 +833,13 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     batch.Connect(fragment.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   fragment.descriptorSet, RG::DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
 
+    // SwapChain -> Descriptor Set (image count and image index)
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
+                  &SwapChainPublicVariables::swapChainImageCount);
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  fragment.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
+
     // Device -> RenderPass
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   fragment.renderPass, RG::RenderPassNodeConfig::VULKAN_DEVICE_IN);
@@ -857,9 +864,17 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
     batch.Connect(fragment.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
                   fragment.pipeline, RG::GraphicsPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
-    // RenderPass + SwapChain -> Framebuffer (uses FramebufferNodeConfig)
-    // Framebuffer needs render pass and swapchain image views
-    // Note: Exact connections depend on FramebufferNodeConfig slot definitions
+    // Device -> Framebuffer
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  fragment.framebuffer, RG::FramebufferNodeConfig::VULKAN_DEVICE_IN);
+
+    // RenderPass -> Framebuffer
+    batch.Connect(fragment.renderPass, RG::RenderPassNodeConfig::RENDER_PASS,
+                  fragment.framebuffer, RG::FramebufferNodeConfig::RENDER_PASS);
+
+    // SwapChain -> Framebuffer (swapchain info for image views and dimensions)
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  fragment.framebuffer, RG::FramebufferNodeConfig::SWAPCHAIN_INFO);
 
     //--------------------------------------------------------------------------
     // Ray March Scene Connections

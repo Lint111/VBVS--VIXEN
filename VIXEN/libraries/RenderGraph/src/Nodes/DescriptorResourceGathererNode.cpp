@@ -222,6 +222,13 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
         uint32_t binding = slotInfo->binding;
         auto variant = freshResource->GetDescriptorHandle();
 
+        // Bounds check - binding must be within resourceArray_ range
+        if (binding >= resourceArray_.size()) {
+            std::cerr << "[DescriptorResourceGathererNode::Execute] ERROR: Binding " << binding
+                      << " out of range (resourceArray_.size()=" << resourceArray_.size() << ")" << std::endl;
+            continue;
+        }
+
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Updated transient resource at binding " + std::to_string(binding) +
                       " (slot " + std::to_string(i) + "), variant type: " +
                       (std::holds_alternative<std::monostate>(variant) ? "monostate" :

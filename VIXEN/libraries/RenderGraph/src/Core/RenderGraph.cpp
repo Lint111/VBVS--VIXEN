@@ -407,6 +407,7 @@ void RenderGraph::Compile() {
     GRAPH_LOG_INFO("[RenderGraph::Compile] Phase: Validation...");
     std::string errorMessage;
     if (!Validate(errorMessage)) {
+        std::cerr << "[RenderGraph::Compile] VALIDATION FAILED: " << errorMessage << std::endl;
         throw std::runtime_error("Graph validation failed: " + errorMessage);
     }
 
@@ -616,8 +617,9 @@ bool RenderGraph::Validate(std::string& errorMessage) const {
         for (size_t i = 0; i < inputSchema.size(); ++i) {
             // Check if slot has at least one resource (array index 0)
             if (!inputSchema[i].nullable && !instance->GetInput(static_cast<uint32_t>(i), 0)) {
-                errorMessage = "Node " + instance->GetInstanceName() +
-                             " missing required input at index " + std::to_string(i);
+                errorMessage = "Node '" + instance->GetInstanceName() + "' (" + type->GetTypeName() +
+                             ") missing required input '" + inputSchema[i].name +
+                             "' at slot index " + std::to_string(i);
                 return false;
             }
         }
