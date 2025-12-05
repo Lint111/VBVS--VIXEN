@@ -65,6 +65,7 @@ protected:
     void BindPipelineAndDescriptors(VkCommandBuffer cmdBuffer, VkPipeline pipeline,
                                     VkPipelineLayout pipelineLayout,
                                     const std::vector<VkDescriptorSet>& descriptorSets);
+    void SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout);
     void BindVertexAndIndexBuffers(VkCommandBuffer cmdBuffer, Context& ctx, VkBuffer vertexBuffer);
     void SetViewportAndScissor(VkCommandBuffer cmdBuffer, const VkExtent2D& extent);
     void RecordDrawCall(VkCommandBuffer cmdBuffer, Context& ctx);

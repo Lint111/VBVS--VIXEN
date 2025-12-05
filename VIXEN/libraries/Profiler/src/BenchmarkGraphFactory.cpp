@@ -945,6 +945,12 @@ void BenchmarkGraphFactory::ConnectFragmentRayMarch(
         batch.Connect(fragment.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SETS,
                       fragment.drawCommand, RG::GeometryRenderNodeConfig::DESCRIPTOR_SETS);
 
+        // PushConstantGatherer -> GeometryRenderNode (camera data for ray marching)
+        batch.Connect(fragment.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::PUSH_CONSTANT_DATA)
+             .Connect(fragment.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                      fragment.drawCommand, RG::GeometryRenderNodeConfig::PUSH_CONSTANT_RANGES);
+
         // SwapChain -> GeometryRenderNode
         batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
                       fragment.drawCommand, RG::GeometryRenderNodeConfig::SWAPCHAIN_INFO)

@@ -46,13 +46,17 @@ void DescriptorResourceGathererNode::SetupImpl(VariadicSetupContext& ctx) {
 }
 
 void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] START - Validating tentative slots against shader metadata...");
-    NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Compile] Current variadic input count: " + std::to_string(GetVariadicInputCount()));
+    std::cerr << "[DescriptorResourceGathererNode::Compile] START for " << GetInstanceName() << std::endl;
 
     // Get shader bundle to discover expected descriptor layout
     auto shaderBundle = ctx.In(DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
-    if (!shaderBundle || !shaderBundle->descriptorLayout) {
-        NODE_LOG_INFO("[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle or descriptor layout");
+    if (!shaderBundle) {
+        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: No shader bundle for " << GetInstanceName()
+                  << " - ensure ShaderLibraryNode is connected via SHADER_DATA_BUNDLE slot" << std::endl;
+        return;
+    }
+    if (!shaderBundle->descriptorLayout) {
+        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Shader bundle has no descriptor layout for " << GetInstanceName() << std::endl;
         return;
     }
 
@@ -125,9 +129,11 @@ void DescriptorResourceGathererNode::CompileImpl(VariadicCompileContext& ctx) {
 
     // Call base validation (type checks, null checks)
     if (!ValidateVariadicInputsImpl(ctx)) {
-        NODE_LOG_INFO("[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed");
+        std::cerr << "[DescriptorResourceGathererNode::Compile] ERROR: Variadic input validation failed for " << GetInstanceName() << std::endl;
         return;
     }
+    std::cerr << "[DescriptorResourceGathererNode::Compile] Validation passed for " << GetInstanceName()
+              << ", bindings.size()=" << layoutSpec->bindings.size() << std::endl;
 
     // Find max binding to size output array
     uint32_t maxBinding = 0;
@@ -370,7 +376,13 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
     size_t inputCount = ctx.InVariadicCount();
     bool allValid = true;
 
+    std::cerr << "[ValidateVariadicInputsImpl] Checking " << inputCount << " slots for " << GetInstanceName() << std::endl;
     for (size_t i = 0; i < inputCount; ++i) {
+        const auto* slotInfo = ctx.InVariadicSlot(i);
+        std::cerr << "  slot[" << i << "]: binding=" << (slotInfo ? slotInfo->binding : -1)
+                  << " name='" << (slotInfo ? slotInfo->slotName : "NULL") << "'"
+                  << " descType=" << (slotInfo ? (int)slotInfo->descriptorType : -1)
+                  << " state=" << (slotInfo ? (int)slotInfo->state : -1) << std::endl;
         if (!ValidateSingleInput(ctx, i)) {
             allValid = false;
         }
@@ -383,6 +395,11 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
     const auto* slotInfo = ctx.InVariadicSlot(slotIndex);
     if (!slotInfo) {
         return true;  // Skip null slots
+    }
+
+    // Skip Invalid slots (already marked as failed during ValidateTentativeSlotsAgainstShader)
+    if (slotInfo->state == SlotState::Invalid) {
+        return true;  // Invalid slots are expected to be skipped, not cause validation failure
     }
 
     // Skip validation for transient slots (Execute) - validated in Execute phase
@@ -400,7 +417,9 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
     VkDescriptorType expectedType = slotInfo->descriptorType;
 
     if (!ValidateResourceType(res, expectedType)) {
-        LogTypeValidationError(slotIndex, slotInfo, expectedType);
+        std::cerr << "[ValidateSingleInput] FAILED: slot " << slotIndex
+                  << " (" << slotInfo->slotName << ") binding=" << slotInfo->binding
+                  << " expectedType=" << expectedType << " resource=" << (res ? "valid" : "NULL") << std::endl;
         return false;
     }
 

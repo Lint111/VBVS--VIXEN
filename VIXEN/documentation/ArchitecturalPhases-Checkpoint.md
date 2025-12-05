@@ -2,8 +2,8 @@
 
 **Project**: VIXEN RenderGraph Architecture → Voxel Ray Tracing Research Platform
 **Started**: October 31, 2025
-**Updated**: December 3, 2025 (Phase H COMPLETE)
-**Status**: Phase H (Voxel Infrastructure) - COMPLETE | Ready for Phase I
+**Updated**: December 5, 2025 (Phase J COMPLETE)
+**Status**: Phase J (Fragment Pipeline) - COMPLETE | Ready for Phase K - Hardware RT
 **Research Timeline**: 16-20 weeks remaining (Week 4 → May 2026)
 
 ---
@@ -100,11 +100,19 @@
 - **Duration**: 2-3 weeks
 - **Goal**: Automated metrics collection and export
 - **Deliverables**: PerformanceProfiler, GPU performance counters, CSV export, benchmark configuration
+- **Status**: IN PROGRESS
 
-**Phase J**: Fragment Shader Ray Marching
-- **Duration**: 1-2 weeks
+**Phase J**: Fragment Shader Ray Marching ✅ COMPLETE
+- **Duration**: 1-2 weeks → Completed December 5, 2025
 - **Goal**: Traditional rasterization-based ray marching
-- **Deliverables**: Fragment shader pipeline, 3D texture support
+- **Deliverables**: Fragment shader pipeline, push constant support, GeometryRenderNode integration
+- **Status**: ✅ COMPLETE
+- **Key Changes**:
+  - Added `PUSH_CONSTANT_DATA` and `PUSH_CONSTANT_RANGES` to GeometryRenderNodeConfig
+  - Implemented `SetPushConstants()` in GeometryRenderNode (vkCmdPushConstants)
+  - Wired PushConstantGatherer → GeometryRenderNode in BenchmarkGraphFactory
+  - Fixed DescriptorResourceGathererNode to skip Invalid slots during validation
+  - Registered fragment pipeline node types (RenderPass, Framebuffer, GraphicsPipeline, GeometryRender)
 
 **Phase K**: Hardware Ray Tracing Pipeline
 - **Duration**: 4-5 weeks
@@ -140,8 +148,8 @@
 | **G** | 🎯 RESEARCH | 2-3 weeks | ✅ COMPLETE (Nov 8) | SlotRole + Descriptor |
 | **INFRA** | 🔴 CRITICAL | ~80h | ✅ COMPLETE (Nov 5-8) | Testing, logging, context |
 | **H** | 🎯 RESEARCH | 4 weeks | ✅ COMPLETE (Dec 3) | Voxel data + DXT + LOD + Refactor |
-| **I** | 🎯 RESEARCH | 2-3 weeks | ⏳ PENDING | Profiling system |
-| **J** | 🎯 RESEARCH | 1-2 weeks | ⏳ PENDING | Fragment shader |
+| **I** | 🎯 RESEARCH | 2-3 weeks | ⏳ IN PROGRESS | Profiling system |
+| **J** | 🎯 RESEARCH | 1-2 weeks | ✅ COMPLETE (Dec 5) | Fragment shader |
 | **K** | 🎯 RESEARCH | 4-5 weeks | ⏳ PENDING | Hardware RT |
 | **L** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Optimizations |
 | **M** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Automation |
@@ -150,7 +158,7 @@
 | **E** | ⭐ LOW | 17-22h | ⏸️ DEFERRED | Hot reload |
 | **G-OLD** | ⭐⭐ MEDIUM | 40-60h | ❌ CANCELLED | Visual editor |
 
-**Total Research Timeline**: 16-20 weeks remaining (Phase H Week 4 → May 2026)
+**Total Research Timeline**: 14-18 weeks remaining (Phase J → May 2026)
 
 ---
 

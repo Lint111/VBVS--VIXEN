@@ -253,6 +253,9 @@ void GeometryRenderNode::RecordDrawCommands(Context& ctx, VkCommandBuffer cmdBuf
     // Bind pipeline and descriptors
     BindPipelineAndDescriptors(cmdBuffer, pipeline, pipelineLayout, descriptorSets);
 
+    // Set push constants (camera data for ray marching)
+    SetPushConstants(ctx, cmdBuffer, pipelineLayout);
+
     // Bind buffers
     BindVertexAndIndexBuffers(cmdBuffer, ctx, vertexBuffer);
 
@@ -364,6 +367,35 @@ void GeometryRenderNode::BindPipelineAndDescriptors(
         );
     } else {
         NODE_LOG_WARNING("[GeometryRenderNode] WARNING: Descriptor set is NULL, rendering may fail!");
+    }
+}
+
+void GeometryRenderNode::SetPushConstants(Context& ctx, VkCommandBuffer cmdBuffer, VkPipelineLayout pipelineLayout) {
+    // Get push constant data from PushConstantGathererNode
+    std::vector<uint8_t> pushConstantData = ctx.In(GeometryRenderNodeConfig::PUSH_CONSTANT_DATA);
+    std::vector<VkPushConstantRange> pushConstantRanges = ctx.In(GeometryRenderNodeConfig::PUSH_CONSTANT_RANGES);
+
+    if (pushConstantData.empty() || pushConstantRanges.empty()) {
+        // No push constants provided - this is OK for shaders that don't use them
+        return;
+    }
+
+    // Apply each push constant range
+    for (const auto& range : pushConstantRanges) {
+        if (range.offset + range.size <= pushConstantData.size()) {
+            vkCmdPushConstants(
+                cmdBuffer,
+                pipelineLayout,
+                range.stageFlags,
+                range.offset,
+                range.size,
+                pushConstantData.data() + range.offset
+            );
+            NODE_LOG_DEBUG("[GeometryRenderNode] Set push constants: offset=" + std::to_string(range.offset) +
+                          ", size=" + std::to_string(range.size) + ", stages=" + std::to_string(range.stageFlags));
+        } else {
+            NODE_LOG_WARNING("[GeometryRenderNode] WARNING: Push constant range exceeds data size!");
+        }
     }
 }
 

@@ -1,16 +1,37 @@
 # Active Context
 
-**Last Updated**: December 4, 2025
+**Last Updated**: December 5, 2025
 **Current Branch**: `claude/phase-i-performance-profiling`
-**Status**: Phase II IN PROGRESS - Shader Refactoring Complete, Graphics Pipeline Next
+**Status**: Phase II IN PROGRESS - Fragment Pipeline COMPLETE ✅
 
 ---
 
 ## Session Summary
 
-Refactored shader architecture to use shared include files, reducing code duplication by 60-75%. Both compute shaders verified working with benchmark system.
+**Fragment pipeline now renders voxels correctly!** Implemented full graphics pipeline support including push constants for camera data. Both compute and fragment pipelines verified working.
 
-### Completed This Session
+### Completed This Session (December 5, 2025)
+
+**Fragment Pipeline Implementation:**
+Fixed multiple issues to enable VoxelRayMarch.frag rendering through the graphics pipeline.
+
+| Fix | File | Description |
+|-----|------|-------------|
+| Config auto-load | `BenchmarkCLI.cpp:577-594` | Searches exe-relative paths for config file |
+| Node type registration | `BenchmarkRunner.cpp:341-345` | Added RenderPassNodeType, FramebufferNodeType, GraphicsPipelineNodeType, GeometryRenderNodeType |
+| DescriptorSet connections | `BenchmarkGraphFactory.cpp:836-841` | Added SWAPCHAIN_IMAGE_COUNT, IMAGE_INDEX connections |
+| Framebuffer connections | `BenchmarkGraphFactory.cpp:856-867` | Added Device/RenderPass/SwapChain → Framebuffer |
+| Validation error fix | `RenderGraph.cpp:620-622` | Improved error message with node type and slot name |
+| Skip Invalid slots | `DescriptorResourceGathererNode.cpp:400-403` | Skip SlotState::Invalid during validation |
+| Push constant support | `GeometryRenderNodeConfig.h:159-171` | Added PUSH_CONSTANT_DATA (slot 15), PUSH_CONSTANT_RANGES (slot 16) |
+| SetPushConstants() | `GeometryRenderNode.cpp:373-400` | vkCmdPushConstants call for camera data |
+| Push constant wiring | `BenchmarkGraphFactory.cpp:948-952` | PushConstantGatherer → GeometryRenderNode |
+
+**Result:** Fragment pipeline renders voxels with proper camera control via push constants.
+
+---
+
+### Previous Session (December 4, 2025)
 
 **Shader Refactoring (Code Quality):**
 Created 6 shared GLSL include files to eliminate ~1300 lines of duplicate code between VoxelRayMarch.comp and VoxelRayMarch_Compressed.comp.
@@ -280,7 +301,7 @@ See TODO in `BenchmarkGraphFactory.cpp:594-602`.
 2. **Axis-parallel rays**: Require `computeCorrectedTcMax()` filtering
 3. **VK_KHR_performance_query**: May not be available on all GPUs (estimation fallback implemented)
 4. **Hardware RT**: VK_KHR_ray_tracing_pipeline documented in stub, requires Phase II implementation
-5. **Fragment pipeline**: BuildFragmentRayMarchGraph() documented in stub, requires Phase II implementation
+5. ~~**Fragment pipeline**: BuildFragmentRayMarchGraph() documented in stub~~ **RESOLVED** ✅ (December 5, 2025)
 6. **Shader counters**: Stubs defined, require GLSL query integration in Phase II
 7. **Window resolution bug**: Changing render resolution in benchmark config doesn't resize window, only shifts render origin. Likely issue in WindowNode or swapchain configuration - window size stays fixed while compute dispatch dimensions change.
 
@@ -349,8 +370,8 @@ libraries/Profiler/
 - [x] Integrate BenchmarkRunner with BenchmarkGraphFactory
 - [x] Integration tests (25 new tests)
 
-### Future Pipelines ✅ STUBS COMPLETE
-- [x] BuildFragmentRayMarchGraph() - Fragment builder + FragmentPipelineNodes struct
+### Future Pipelines
+- [x] BuildFragmentRayMarchGraph() - **COMPLETE** ✅ Full implementation with push constants
 - [x] BuildHardwareRTGraph() - Hardware RT stub with VK_KHR_ray_tracing_pipeline docs
 - [ ] BuildHybridGraph() (Phase II)
 
@@ -381,7 +402,7 @@ libraries/Profiler/
 - [x] Shader refactoring - Created 6 shared GLSL include files, reduced duplication 60-75%
 
 **Next Steps (Pipeline Expansion):**
-- [ ] BuildFragmentRayMarchGraph() - Full implementation (currently stub)
+- [x] BuildFragmentRayMarchGraph() - **COMPLETE** ✅ Full implementation with push constants
 - [ ] BuildHardwareRTGraph() - VK_KHR_ray_tracing_pipeline implementation
 - [ ] BuildHybridGraph() - Combine compute + fragment approaches
 - [ ] GPU integration test (requires running Vulkan application)

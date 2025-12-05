@@ -42,7 +42,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
  */
 // Compile-time slot counts (declared early for reuse)
 namespace GeometryRenderNodeCounts {
-    static constexpr size_t INPUTS = 15;  // Phase 0.5: Added CURRENT_FRAME_INDEX for semaphore array indexing
+    static constexpr size_t INPUTS = 17;  // Added PUSH_CONSTANT_DATA and PUSH_CONSTANT_RANGES
     static constexpr size_t OUTPUTS = 2;  // COMMAND_BUFFERS, RENDER_COMPLETE_SEMAPHORE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Array; // Framebuffers + descriptor sets are arrays
 }
@@ -156,6 +156,20 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Push constant data buffer (from PushConstantGathererNode)
+    INPUT_SLOT(PUSH_CONSTANT_DATA, std::vector<uint8_t>, 15,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Push constant ranges from shader reflection
+    INPUT_SLOT(PUSH_CONSTANT_RANGES, std::vector<VkPushConstantRange>, 16,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS (2) =====
     OUTPUT_SLOT(COMMAND_BUFFERS, VkCommandBuffer, 0,
         SlotNullability::Required,
@@ -248,6 +262,19 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
             semaphoreArrayDesc
         );
 
+        // Push constant inputs
+        HandleDescriptor pushConstDataDesc{"std::vector<uint8_t>"};
+        INIT_INPUT_DESC(PUSH_CONSTANT_DATA, "push_constant_data",
+            ResourceLifetime::Transient,
+            pushConstDataDesc
+        );
+
+        HandleDescriptor pushConstRangesDesc{"std::vector<VkPushConstantRange>"};
+        INIT_INPUT_DESC(PUSH_CONSTANT_RANGES, "push_constant_ranges",
+            ResourceLifetime::Transient,
+            pushConstRangesDesc
+        );
+
         // Initialize output descriptors
         INIT_OUTPUT_DESC(COMMAND_BUFFERS, "command_buffers",
             ResourceLifetime::Transient,
@@ -308,6 +335,12 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 14, "RENDER_COMPLETE_SEMAPHORES_ARRAY must be at index 14");
     static_assert(!RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::nullable, "RENDER_COMPLETE_SEMAPHORES_ARRAY is required");
 
+    static_assert(PUSH_CONSTANT_DATA_Slot::index == 15, "PUSH_CONSTANT_DATA must be at index 15");
+    static_assert(PUSH_CONSTANT_DATA_Slot::nullable, "PUSH_CONSTANT_DATA is optional");
+
+    static_assert(PUSH_CONSTANT_RANGES_Slot::index == 16, "PUSH_CONSTANT_RANGES must be at index 16");
+    static_assert(PUSH_CONSTANT_RANGES_Slot::nullable, "PUSH_CONSTANT_RANGES is optional");
+
     static_assert(COMMAND_BUFFERS_Slot::index == 0, "COMMAND_BUFFERS must be at index 0");
     static_assert(!COMMAND_BUFFERS_Slot::nullable, "COMMAND_BUFFERS is required");
     
@@ -330,6 +363,8 @@ CONSTEXPR_NODE_CONFIG(GeometryRenderNodeConfig,
     static_assert(std::is_same_v<IN_FLIGHT_FENCE_Slot::Type, VkFence>);
     static_assert(std::is_same_v<IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::Type, const std::vector<VkSemaphore>&>);
+    static_assert(std::is_same_v<PUSH_CONSTANT_DATA_Slot::Type, std::vector<uint8_t>>);
+    static_assert(std::is_same_v<PUSH_CONSTANT_RANGES_Slot::Type, std::vector<VkPushConstantRange>>);
     static_assert(std::is_same_v<COMMAND_BUFFERS_Slot::Type, VkCommandBuffer>);
     static_assert(std::is_same_v<RENDER_COMPLETE_SEMAPHORE_Slot::Type, VkSemaphore>);
 };
