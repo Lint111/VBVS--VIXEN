@@ -305,12 +305,14 @@ BenchmarkCLIOptions ParseCommandLine(int argc, char* argv[]) {
         if (ArgMatches(arg, nullptr, "--headless")) {
             opts.headlessMode = true;
             opts.renderMode = false;
+            opts.headlessExplicitlySet = true;
             continue;
         }
 
         if (ArgMatches(arg, nullptr, "--render")) {
             opts.headlessMode = false;
             opts.renderMode = true;
+            opts.headlessExplicitlySet = true;
             continue;
         }
 
@@ -393,11 +395,15 @@ std::vector<Vixen::Profiler::TestConfiguration> BenchmarkCLIOptions::GenerateTes
         : algorithms;
 
     // Build pipeline matrices
+    // Convert flat shader list to shader groups (each shader becomes its own group)
     std::map<std::string, PipelineMatrix> pipelineMatrices;
     for (const auto& pipeline : pipelineList) {
         PipelineMatrix pm;
         pm.enabled = true;
-        pm.shaders = shaderList;
+        // Each shader from CLI becomes a single-shader group
+        for (const auto& shader : shaderList) {
+            pm.shaderGroups.push_back({shader});
+        }
         pipelineMatrices[pipeline] = pm;
     }
 
@@ -557,28 +563,56 @@ Vixen::Profiler::BenchmarkSuiteConfig BenchmarkCLIOptions::BuildSuiteConfig() co
 
     BenchmarkSuiteConfig config;
 
-    // Copy output settings
-    config.outputDir = outputDirectory;
+    // Try to load from config file first (either explicit or default)
+    // Search paths: explicit path, ./benchmark_config.json, ./application/benchmark/benchmark_config.json
+    std::vector<std::filesystem::path> searchPaths;
+    if (hasConfigFile) {
+        searchPaths.push_back(configPath);
+    }
+    searchPaths.push_back("benchmark_config.json");
+    searchPaths.push_back("./application/benchmark/benchmark_config.json");
+
+    for (const auto& path : searchPaths) {
+        if (std::filesystem::exists(path)) {
+            config = BenchmarkSuiteConfig::LoadFromFile(path);
+            if (!config.tests.empty() || !config.pipelineMatrices.empty()) {
+                // Successfully loaded config, generate tests from matrix
+                config.GenerateTestsFromMatrix();
+                break;
+            }
+        }
+    }
+
+    // Override with CLI values (only when explicitly provided or no config loaded)
+    if (!outputDirectory.empty() && outputDirectory != "./benchmark_results") {
+        config.outputDir = outputDirectory;
+    }
     config.exportCSV = exportCSV;
     config.exportJSON = exportJSON;
 
-    // Copy render dimensions to global matrix
-    config.globalMatrix.renderSizes = {{renderWidth, renderHeight}};
+    // Copy render dimensions to global matrix (CLI override)
+    if (renderWidth != 800 || renderHeight != 600) {
+        config.globalMatrix.renderSizes = {{renderWidth, renderHeight}};
+    }
 
     // Copy GPU selection
     config.gpuIndex = gpuIndex;
 
-    // Copy execution mode
-    config.headless = headlessMode;
-    config.verbose = verbose;
-    config.enableValidation = enableValidation;
+    // Copy execution mode - only override if explicitly set via CLI
+    if (headlessExplicitlySet) {
+        config.headless = headlessMode;
+    }
+    if (verbose) config.verbose = verbose;
+    if (enableValidation) config.enableValidation = enableValidation;
 
-    // Copy frame overrides
-    config.warmupFramesOverride = warmupFrames;
-    config.measurementFramesOverride = measurementFrames;
+    // Copy frame overrides (only if provided via CLI)
+    if (warmupFrames) config.warmupFramesOverride = warmupFrames;
+    if (measurementFrames) config.measurementFramesOverride = measurementFrames;
 
-    // Generate test configurations
-    config.tests = GenerateTestConfigurations();
+    // Generate test configurations (if not already loaded from file)
+    if (config.tests.empty()) {
+        config.tests = GenerateTestConfigurations();
+    }
 
     // Apply overrides to all tests
     config.ApplyOverrides();

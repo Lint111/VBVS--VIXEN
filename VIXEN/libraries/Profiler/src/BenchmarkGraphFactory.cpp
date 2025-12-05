@@ -985,26 +985,37 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
         config.testId
     );
 
+    // Extract shader names from config.shaderGroup (expected: [vertex, fragment])
+    std::string vertexShader = "Fullscreen.vert";    // Default vertex shader
+    std::string fragmentShader = "VoxelRayMarch.frag"; // Default fragment shader
+    if (config.shaderGroup.size() >= 2) {
+        vertexShader = config.shaderGroup[0];
+        fragmentShader = config.shaderGroup[1];
+    } else if (config.shaderGroup.size() == 1) {
+        fragmentShader = config.shaderGroup[0];  // Only fragment specified
+    }
+    std::cerr << "[Fragment] Using shaders: " << vertexShader << " + " << fragmentShader << std::endl;
+
     // Build all subgraphs
     std::cerr << "[Fragment] Building infrastructure..." << std::endl;
     result.infra = BuildInfrastructure(graph, width, height, true);
-    
+
     std::cerr << "[Fragment] Building fragment pipeline..." << std::endl;
     result.fragment = BuildFragmentPipeline(
         graph, result.infra,
-        "Fullscreen.vert",           // Full-screen triangle vertex shader
-        "VoxelRayMarch.frag"         // Fragment shader ray marching
+        vertexShader,           // Full-screen triangle vertex shader
+        fragmentShader          // Fragment shader ray marching
     );
-    
+
     std::cerr << "[Fragment] Building ray march scene..." << std::endl;
     result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
-    
+
     std::cerr << "[Fragment] Building output..." << std::endl;
     result.output = BuildOutput(graph, result.infra, false);
 
     std::cerr << "[Fragment] Registering shaders..." << std::endl;
     // Register shader builder for vertex + fragment shaders
-    RegisterFragmentShader(graph, result.fragment, "Fullscreen.vert", "VoxelRayMarch.frag");
+    RegisterFragmentShader(graph, result.fragment, vertexShader, fragmentShader);
 
     std::cerr << "[Fragment] Wiring variadic resources..." << std::endl;
     // Wire variadic resources (descriptors and push constants)
