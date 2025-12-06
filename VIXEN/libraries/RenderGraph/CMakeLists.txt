@@ -68,6 +68,8 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/VertexBufferNodeConfig.h
     include/Data/Nodes/VoxelGridNodeConfig.h
     include/Data/Nodes/VoxelAABBConverterNodeConfig.h
+    include/Data/Nodes/AccelerationStructureNodeConfig.h
+    include/Data/Nodes/RayTracingPipelineNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
 )
 
@@ -161,6 +163,8 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/VertexBufferNode.h
     include/Nodes/VoxelGridNode.h
     include/Nodes/VoxelAABBConverterNode.h
+    include/Nodes/AccelerationStructureNode.h
+    include/Nodes/RayTracingPipelineNode.h
     include/Nodes/WindowNode.h
 )
 
@@ -192,6 +196,8 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/VertexBufferNode.cpp
     src/Nodes/VoxelGridNode.cpp
     src/Nodes/VoxelAABBConverterNode.cpp
+    src/Nodes/AccelerationStructureNode.cpp
+    src/Nodes/RayTracingPipelineNode.cpp
     src/Nodes/WindowNode.cpp
 )
 
