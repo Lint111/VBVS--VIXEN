@@ -34,14 +34,30 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     std::vector<DeviceFeatureMapping> deviceExtentionMappings = {
         {
-            VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME, 
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, 
+            VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT,
             sizeof(VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT)
         },
         {
-            VK_KHR_MAINTENANCE_6_EXTENSION_NAME, 
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR, 
+            VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR,
             sizeof(VkPhysicalDeviceMaintenance6FeaturesKHR)
+        },
+        // RTX Extensions (Phase K)
+        {
+            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+            sizeof(VkPhysicalDeviceAccelerationStructureFeaturesKHR)
+        },
+        {
+            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+            sizeof(VkPhysicalDeviceRayTracingPipelineFeaturesKHR)
+        },
+        {
+            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
+            sizeof(VkPhysicalDeviceBufferDeviceAddressFeaturesKHR)
         }
     };
 
@@ -62,6 +78,17 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
         } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR) {
             VkPhysicalDeviceMaintenance6FeaturesKHR* maintenance6Features = reinterpret_cast<VkPhysicalDeviceMaintenance6FeaturesKHR*>(featureStruct.get());
             maintenance6Features->maintenance6 = VK_TRUE;
+        }
+        // RTX feature enabling (Phase K)
+        else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR) {
+            VkPhysicalDeviceAccelerationStructureFeaturesKHR* asFeatures = reinterpret_cast<VkPhysicalDeviceAccelerationStructureFeaturesKHR*>(featureStruct.get());
+            asFeatures->accelerationStructure = VK_TRUE;
+        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR) {
+            VkPhysicalDeviceRayTracingPipelineFeaturesKHR* rtFeatures = reinterpret_cast<VkPhysicalDeviceRayTracingPipelineFeaturesKHR*>(featureStruct.get());
+            rtFeatures->rayTracingPipeline = VK_TRUE;
+        } else if (mapping.structType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR) {
+            VkPhysicalDeviceBufferDeviceAddressFeaturesKHR* bdaFeatures = reinterpret_cast<VkPhysicalDeviceBufferDeviceAddressFeaturesKHR*>(featureStruct.get());
+            bdaFeatures->bufferDeviceAddress = VK_TRUE;
         }
 
         // Append to pNext chain
@@ -90,6 +117,14 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
     deviceInfo.pEnabledFeatures = nullptr;  // Must be NULL when using VkPhysicalDeviceFeatures2
 
     VK_CHECK(vkCreateDevice(*gpu, &deviceInfo, nullptr, &device), "Failed to create logical device");
+
+    // Check if RTX was enabled and cache capabilities
+    rtxEnabled_ = HasExtension(extensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+                  HasExtension(extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+    if (rtxEnabled_) {
+        rtxCapabilities_ = CheckRTXSupport();
+    }
+
     return {};
 }
 
@@ -168,4 +203,110 @@ inline bool VulkanDevice::HasExtension(const std::vector<const char*>& extension
         }
     }
     return false;
+}
+
+// ===== RTX Support Implementation (Phase K) =====
+
+std::vector<const char*> VulkanDevice::GetRTXExtensions() {
+    return {
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME  // Required by SPIRV 1.4
+    };
+}
+
+RTXCapabilities VulkanDevice::CheckRTXSupport() const {
+    RTXCapabilities caps{};
+
+    if (!gpu || *gpu == VK_NULL_HANDLE) {
+        return caps;
+    }
+
+    // 1. Check extension availability
+    uint32_t extCount = 0;
+    vkEnumerateDeviceExtensionProperties(*gpu, nullptr, &extCount, nullptr);
+    std::vector<VkExtensionProperties> availableExts(extCount);
+    vkEnumerateDeviceExtensionProperties(*gpu, nullptr, &extCount, availableExts.data());
+
+    auto hasExt = [&availableExts](const char* name) {
+        for (const auto& ext : availableExts) {
+            if (strcmp(ext.extensionName, name) == 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Check required extensions
+    bool hasAccelStructExt = hasExt(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+    bool hasRTPipelineExt = hasExt(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+    bool hasDeferredOpsExt = hasExt(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+    bool hasBufferAddrExt = hasExt(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+    bool hasSpirv14Ext = hasExt(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+    bool hasRayQueryExt = hasExt(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+
+    // All core RTX extensions must be present
+    if (!hasAccelStructExt || !hasRTPipelineExt || !hasDeferredOpsExt || !hasBufferAddrExt) {
+        return caps;  // Not supported
+    }
+
+    // 2. Check feature support
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures{};
+    rtPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures{};
+    accelStructFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    accelStructFeatures.pNext = &rtPipelineFeatures;
+
+    VkPhysicalDeviceBufferDeviceAddressFeaturesKHR bufferAddrFeatures{};
+    bufferAddrFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR;
+    bufferAddrFeatures.pNext = &accelStructFeatures;
+
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.pNext = &bufferAddrFeatures;
+
+    vkGetPhysicalDeviceFeatures2(*gpu, &features2);
+
+    caps.accelerationStructure = (accelStructFeatures.accelerationStructure == VK_TRUE);
+    caps.rayTracingPipeline = (rtPipelineFeatures.rayTracingPipeline == VK_TRUE);
+
+    // Check if all required features are supported
+    if (!caps.accelerationStructure || !caps.rayTracingPipeline ||
+        bufferAddrFeatures.bufferDeviceAddress != VK_TRUE) {
+        caps.supported = false;
+        return caps;
+    }
+
+    // 3. Query RT properties
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProps{};
+    rtPipelineProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR accelStructProps{};
+    accelStructProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+    accelStructProps.pNext = &rtPipelineProps;
+
+    VkPhysicalDeviceProperties2 props2{};
+    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    props2.pNext = &accelStructProps;
+
+    vkGetPhysicalDeviceProperties2(*gpu, &props2);
+
+    // Populate capabilities
+    caps.supported = true;
+    caps.rayQuery = hasRayQueryExt;
+
+    caps.shaderGroupHandleSize = rtPipelineProps.shaderGroupHandleSize;
+    caps.maxRayRecursionDepth = rtPipelineProps.maxRayRecursionDepth;
+    caps.shaderGroupBaseAlignment = rtPipelineProps.shaderGroupBaseAlignment;
+    caps.shaderGroupHandleAlignment = rtPipelineProps.shaderGroupHandleAlignment;
+
+    caps.maxGeometryCount = accelStructProps.maxGeometryCount;
+    caps.maxInstanceCount = accelStructProps.maxInstanceCount;
+    caps.maxPrimitiveCount = accelStructProps.maxPrimitiveCount;
+
+    return caps;
 }
