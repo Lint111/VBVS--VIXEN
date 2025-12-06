@@ -2,6 +2,12 @@
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Nodes/AccelerationStructureNodeConfig.h"
 #include "VulkanDevice.h"
+#include <memory>
+
+// Forward declare ShaderDataBundle
+namespace ShaderManagement {
+    struct ShaderDataBundle;
+}
 
 namespace Vixen::RenderGraph {
 
@@ -70,7 +76,7 @@ struct RayTracingPipelineData {
 // ============================================================================
 
 namespace RayTracingPipelineNodeCounts {
-    static constexpr size_t INPUTS = 5;
+    static constexpr size_t INPUTS = 3;  // Device, AccelStruct, ShaderDataBundle
     static constexpr size_t OUTPUTS = 1;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -80,13 +86,13 @@ namespace RayTracingPipelineNodeCounts {
  *
  * Creates VK_KHR_ray_tracing_pipeline and builds Shader Binding Table.
  *
- * Pipeline Stages:
+ * Pipeline Stages (from ShaderDataBundle):
  * - Ray Generation (.rgen): Generates primary rays from camera
  * - Intersection (.rint): Custom AABB intersection for voxels
  * - Closest Hit (.rchit): Shading on ray hit
  * - Miss (.rmiss): Background color when no hit
  *
- * Inputs: 5 (Device, AccelStructData, RayGen, Intersection, ClosestHit, Miss shaders)
+ * Inputs: 3 (Device, AccelStructData, ShaderDataBundle)
  * Outputs: 1 (RayTracingPipelineData with pipeline + SBT)
  */
 CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
@@ -109,23 +115,10 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
-    // Shader modules (SPIR-V compiled)
-    INPUT_SLOT(RAYGEN_SHADER, VkShaderModule, 2,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    INPUT_SLOT(MISS_SHADER, VkShaderModule, 3,
-        SlotNullability::Required,
-        SlotRole::Dependency,
-        SlotMutability::ReadOnly,
-        SlotScope::NodeLevel);
-
-    // Hit group contains: intersection + closest-hit
-    // For voxel RT, we use intersection shader for AABB testing
-    INPUT_SLOT(HIT_GROUP_SHADERS, VkShaderModule, 4,
-        SlotNullability::Required,
+    // Shader data bundle containing all RT shader stages (rgen, rmiss, rchit, rint)
+    // Optional: Node can load shaders from PARAM_SHADER_* paths if not connected
+    INPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 2,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -142,6 +135,12 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
     static constexpr const char* PARAM_OUTPUT_WIDTH = "output_width";
     static constexpr const char* PARAM_OUTPUT_HEIGHT = "output_height";
 
+    // Shader paths (used when SHADER_DATA_BUNDLE input is not connected)
+    static constexpr const char* PARAM_RAYGEN_SHADER_PATH = "raygen_shader_path";
+    static constexpr const char* PARAM_MISS_SHADER_PATH = "miss_shader_path";
+    static constexpr const char* PARAM_CLOSEST_HIT_SHADER_PATH = "closest_hit_shader_path";
+    static constexpr const char* PARAM_INTERSECTION_SHADER_PATH = "intersection_shader_path";
+
     // Constructor
     RayTracingPipelineNodeConfig() {
         HandleDescriptor vulkanDeviceDesc{"VulkanDevice*"};
@@ -150,10 +149,8 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
         HandleDescriptor accelDesc{"AccelerationStructureData*"};
         INIT_INPUT_DESC(ACCELERATION_STRUCTURE_DATA, "acceleration_structure", ResourceLifetime::Persistent, accelDesc);
 
-        HandleDescriptor shaderDesc{"VkShaderModule"};
-        INIT_INPUT_DESC(RAYGEN_SHADER, "raygen_shader", ResourceLifetime::Persistent, shaderDesc);
-        INIT_INPUT_DESC(MISS_SHADER, "miss_shader", ResourceLifetime::Persistent, shaderDesc);
-        INIT_INPUT_DESC(HIT_GROUP_SHADERS, "hit_group_shaders", ResourceLifetime::Persistent, shaderDesc);
+        HandleDescriptor shaderBundleDesc{"ShaderDataBundle*"};
+        INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderBundleDesc);
 
         HandleDescriptor pipelineDesc{"RayTracingPipelineData*"};
         INIT_OUTPUT_DESC(RT_PIPELINE_DATA, "rt_pipeline", ResourceLifetime::Persistent, pipelineDesc);
@@ -163,9 +160,7 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
 
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(ACCELERATION_STRUCTURE_DATA_Slot::index == 1);
-    static_assert(RAYGEN_SHADER_Slot::index == 2);
-    static_assert(MISS_SHADER_Slot::index == 3);
-    static_assert(HIT_GROUP_SHADERS_Slot::index == 4);
+    static_assert(SHADER_DATA_BUNDLE_Slot::index == 2);
     static_assert(RT_PIPELINE_DATA_Slot::index == 0);
 };
 

@@ -36,6 +36,12 @@
 #include <Nodes/GraphicsPipelineNode.h>
 #include <Nodes/GeometryRenderNode.h>
 
+// Hardware ray tracing nodes (Phase K)
+#include <Nodes/VoxelAABBConverterNode.h>
+#include <Nodes/AccelerationStructureNode.h>
+#include <Nodes/RayTracingPipelineNode.h>
+#include <Nodes/TraceRaysNode.h>
+
 #include <vulkan/vulkan.h>
 #include <fstream>
 #include <stdexcept>
@@ -349,6 +355,12 @@ void RegisterAllNodeTypes(Vixen::RenderGraph::NodeTypeRegistry& registry) {
     registry.Register<FramebufferNodeType>();
     registry.Register<GraphicsPipelineNodeType>();
     registry.Register<GeometryRenderNodeType>();
+
+    // RTX nodes
+    registry.Register<VoxelAABBConverterNodeType>();
+    registry.Register<AccelerationStructureNodeType>();
+    registry.Register<RayTracingPipelineNodeType>();
+    registry.Register<TraceRaysNodeType>();
 
     // Scene/utility nodes
     registry.Register<CameraNodeType>();

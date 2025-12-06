@@ -30,13 +30,13 @@
         ]
       },
       "fragment": {
-        "enabled": true,
+        "enabled": false,
         "shader_groups": [
           ["Fullscreen.vert", "VoxelRayMarch.frag"]
         ]
       },
       "hardware_rt": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["ray_march_rt.rgen", "ray_march_rt.rmiss", "ray_march_rt.rchit"]
         ]

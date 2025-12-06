@@ -1126,6 +1126,20 @@ void BenchmarkGraphFactory::ConfigureHardwareRTParams(
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_MAX_RAY_RECURSION, 1u);
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_WIDTH, width);
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_HEIGHT, height);
+
+        // Configure shader paths (node loads shaders if inputs not connected)
+        rtPipeline->SetParameter(
+            RG::RayTracingPipelineNodeConfig::PARAM_RAYGEN_SHADER_PATH,
+            std::string("shaders/VoxelRT.rgen.spv"));
+        rtPipeline->SetParameter(
+            RG::RayTracingPipelineNodeConfig::PARAM_MISS_SHADER_PATH,
+            std::string("shaders/VoxelRT.rmiss.spv"));
+        rtPipeline->SetParameter(
+            RG::RayTracingPipelineNodeConfig::PARAM_CLOSEST_HIT_SHADER_PATH,
+            std::string("shaders/VoxelRT.rchit.spv"));
+        rtPipeline->SetParameter(
+            RG::RayTracingPipelineNodeConfig::PARAM_INTERSECTION_SHADER_PATH,
+            std::string("shaders/VoxelRT.rint.spv"));
     }
 
     // Configure trace rays parameters
