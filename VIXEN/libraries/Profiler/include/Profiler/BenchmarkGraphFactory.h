@@ -101,6 +101,7 @@ struct FragmentPipelineNodes {
 /// Hardware ray tracing pipeline nodes (Phase K)
 struct HardwareRTNodes {
     RG::NodeHandle shaderLib;            // ShaderLibraryNode for RT shaders
+    RG::NodeHandle pushConstantGatherer; // PushConstantGathererNode for camera data
     RG::NodeHandle aabbConverter;        // VoxelAABBConverterNode
     RG::NodeHandle accelerationStructure; // AccelerationStructureNode (BLAS + TLAS)
     RG::NodeHandle rtPipeline;           // RayTracingPipelineNode
@@ -108,9 +109,9 @@ struct HardwareRTNodes {
 
     /// Check if all required nodes are valid
     bool IsValid() const {
-        return shaderLib.IsValid() && aabbConverter.IsValid() &&
-               accelerationStructure.IsValid() && rtPipeline.IsValid() &&
-               traceRays.IsValid();
+        return shaderLib.IsValid() && pushConstantGatherer.IsValid() &&
+               aabbConverter.IsValid() && accelerationStructure.IsValid() &&
+               rtPipeline.IsValid() && traceRays.IsValid();
     }
 };
 
@@ -701,6 +702,21 @@ private:
         const std::string& missShader,
         const std::string& closestHitShader,
         const std::string& intersectionShader
+    );
+
+    /**
+     * @brief Wire variadic resources for hardware RT pipeline
+     *
+     * Connects Camera data to PushConstantGatherer for ray tracing push constants.
+     *
+     * @param graph Target render graph
+     * @param hardwareRT Hardware RT pipeline nodes
+     * @param rayMarch Ray march scene nodes (provides camera data)
+     */
+    static void WireHardwareRTVariadicResources(
+        RG::RenderGraph* graph,
+        const HardwareRTNodes& hardwareRT,
+        const RayMarchNodes& rayMarch
     );
 
     /**

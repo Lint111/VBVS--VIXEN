@@ -1084,6 +1084,9 @@ HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
     // ShaderLibraryNode: Compiles and manages RT shaders
     nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_rt_shader_lib");
 
+    // PushConstantGathererNode: Gathers camera push constants for ray tracing
+    nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_rt_pc_gatherer");
+
     // VoxelAABBConverterNode: Extracts AABBs from voxel grid for BLAS
     nodes.aabbConverter = graph->AddNode<RG::VoxelAABBConverterNodeType>("benchmark_aabb_converter");
 
@@ -1279,6 +1282,14 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
 
+    // ShaderLibraryNode -> PushConstantGathererNode (for reflection data)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // PushConstantGathererNode -> TraceRaysNode (camera push constants)
+    batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_DATA);
+
     // Device -> TraceRaysNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::VULKAN_DEVICE_IN);
@@ -1378,6 +1389,9 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
         "VoxelRT.rmiss",   // Miss shader
         "VoxelRT.rchit",   // Closest hit shader
         "VoxelRT.rint");   // Intersection shader
+
+    // Wire variadic resources (camera -> push constants)
+    WireHardwareRTVariadicResources(graph, result.hardwareRT, result.rayMarch);
 
     // Connect all subgraphs
     ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
@@ -1986,6 +2000,90 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
         batch.ConnectVariadic(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
             fragment.pushConstantGatherer, PC_DEBUG_MODE,
+            &InputState::debugMode, SlotRole::Execute);
+    }
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
+    RG::RenderGraph* graph,
+    const HardwareRTNodes& hardwareRT,
+    const RayMarchNodes& rayMarch)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::WireHardwareRTVariadicResources: graph is null");
+    }
+
+    // Local using declarations for cleaner code
+    using RG::SlotRole;
+    using RG::CameraData;
+    using RG::InputState;
+
+    RG::ConnectionBatch batch(graph);
+
+    //--------------------------------------------------------------------------
+    // VoxelRT.rgen Push Constant Layout (matches compute/fragment shaders)
+    //--------------------------------------------------------------------------
+    // layout(push_constant) uniform PushConstants {
+    //     vec3 cameraPos;     // offset 0
+    //     float time;         // offset 12
+    //     vec3 cameraDir;     // offset 16
+    //     float fov;          // offset 28
+    //     vec3 cameraUp;      // offset 32
+    //     float aspect;       // offset 44
+    //     vec3 cameraRight;   // offset 48
+    //     int debugMode;      // offset 60
+    // };                      // total: 64 bytes (but with vec3 padding = 80 bytes)
+
+    constexpr uint32_t PC_CAMERA_POS = 0;
+    constexpr uint32_t PC_TIME = 1;
+    constexpr uint32_t PC_CAMERA_DIR = 2;
+    constexpr uint32_t PC_FOV = 3;
+    constexpr uint32_t PC_CAMERA_UP = 4;
+    constexpr uint32_t PC_ASPECT = 5;
+    constexpr uint32_t PC_CAMERA_RIGHT = 6;
+    constexpr uint32_t PC_DEBUG_MODE = 7;
+
+    // Connect camera data to push constants using field extraction
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_CAMERA_POS,
+        &CameraData::cameraPos, SlotRole::Execute);
+
+    // Note: time field (PC_TIME) not connected - will be zero (no animation)
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_CAMERA_DIR,
+        &CameraData::cameraDir, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_FOV,
+        &CameraData::fov, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_CAMERA_UP,
+        &CameraData::cameraUp, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_ASPECT,
+        &CameraData::aspect, SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
+        hardwareRT.pushConstantGatherer, PC_CAMERA_RIGHT,
+        &CameraData::cameraRight, SlotRole::Execute);
+
+    // Connect debugMode from input node (if valid)
+    if (rayMarch.input.IsValid()) {
+        batch.ConnectVariadic(
+            rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+            hardwareRT.pushConstantGatherer, PC_DEBUG_MODE,
             &InputState::debugMode, SlotRole::Execute);
     }
 

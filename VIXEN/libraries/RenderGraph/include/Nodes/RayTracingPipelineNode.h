@@ -167,6 +167,9 @@ private:
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice_ = nullptr;
 
+    // Cached shader bundle (for reflection data access)
+    std::shared_ptr<ShaderManagement::ShaderDataBundle> shaderBundle_;
+
     // Shader modules (from inputs)
     VkShaderModule raygenShader_ = VK_NULL_HANDLE;
     VkShaderModule missShader_ = VK_NULL_HANDLE;

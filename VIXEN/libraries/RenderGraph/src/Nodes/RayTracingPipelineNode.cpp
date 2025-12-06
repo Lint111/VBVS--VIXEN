@@ -97,15 +97,16 @@ void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
     }
 
     // Try to get shader bundle from ShaderLibraryNode input (preferred path)
-    auto shaderBundle = ctx.In(RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
-    if (shaderBundle && shaderBundle->IsValid()) {
+    shaderBundle_ = ctx.In(RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
+    if (shaderBundle_ && shaderBundle_->IsValid()) {
         NODE_LOG_INFO("Loading RT shaders from ShaderDataBundle (ShaderLibraryNode)");
-        if (!LoadShadersFromBundle(*shaderBundle)) {
+        if (!LoadShadersFromBundle(*shaderBundle_)) {
             throw std::runtime_error("[RayTracingPipelineNode] Failed to load shaders from bundle");
         }
     } else {
         // Fallback: Load shaders from parameter paths (for standalone testing)
         NODE_LOG_INFO("Loading RT shaders from parameter paths (fallback)");
+        shaderBundle_ = nullptr;  // No reflection data available
         if (!LoadShadersFromPaths()) {
             throw std::runtime_error("[RayTracingPipelineNode] Failed to load shaders from paths");
         }
@@ -388,11 +389,26 @@ bool RayTracingPipelineNode::CreateDescriptorSetLayout() {
 bool RayTracingPipelineNode::CreatePipelineLayout() {
     VkDevice device = vulkanDevice_->device;
 
-    // Push constant for camera data (same as compute shader)
+    // Get push constant size from reflection data if available
+    uint32_t pushConstantSize = 64;  // Default fallback
+    if (shaderBundle_ && shaderBundle_->reflectionData) {
+        const auto& pushConstants = shaderBundle_->GetPushConstants();
+        if (!pushConstants.empty()) {
+            // Calculate total size from all ranges (usually just one)
+            uint32_t maxEnd = 0;
+            for (const auto& range : pushConstants) {
+                maxEnd = std::max(maxEnd, range.offset + range.size);
+            }
+            pushConstantSize = maxEnd;
+            NODE_LOG_INFO("Push constant size from reflection: " + std::to_string(pushConstantSize));
+        }
+    }
+
+    // Push constant for camera data
     VkPushConstantRange pushConstant{};
     pushConstant.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
     pushConstant.offset = 0;
-    pushConstant.size = 64;  // cameraPos, time, cameraDir, fov, cameraUp, aspect, cameraRight, debugMode
+    pushConstant.size = pushConstantSize;
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -407,7 +423,7 @@ bool RayTracingPipelineNode::CreatePipelineLayout() {
         return false;
     }
 
-    NODE_LOG_INFO("Created RT pipeline layout");
+    NODE_LOG_INFO("Created RT pipeline layout with push constant size: " + std::to_string(pushConstantSize));
     return true;
 }
 
