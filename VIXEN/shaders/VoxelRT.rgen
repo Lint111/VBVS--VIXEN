@@ -1,0 +1,79 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+// ============================================================================
+// VoxelRT.rgen - Ray Generation Shader (Phase K: Hardware Ray Tracing)
+// ============================================================================
+// Generates primary camera rays and dispatches them via traceRayEXT.
+// Results are written to the output storage image.
+// ============================================================================
+
+// Output image
+layout(binding = 0, rgba8) uniform image2D outputImage;
+
+// Acceleration structure (TLAS)
+layout(binding = 1) uniform accelerationStructureEXT topLevelAS;
+
+// Push constants (same as compute shader)
+layout(push_constant) uniform PushConstants {
+    vec3 cameraPos;
+    float time;
+    vec3 cameraDir;
+    float fov;
+    vec3 cameraUp;
+    float aspect;
+    vec3 cameraRight;
+    int debugMode;
+} pc;
+
+// Ray payload - data passed between shaders
+layout(location = 0) rayPayloadEXT vec3 hitColor;
+
+void main() {
+    // Get pixel coordinates
+    ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+    ivec2 imageSize = ivec2(gl_LaunchSizeEXT.xy);
+
+    // Compute UV coordinates (0-1 range, centered)
+    vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
+    vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
+
+    // Generate ray direction from camera parameters
+    float tanHalfFov = tan(pc.fov * 0.5);
+    vec3 rayDir = normalize(
+        pc.cameraDir +
+        ndc.x * pc.aspect * tanHalfFov * pc.cameraRight +
+        ndc.y * tanHalfFov * pc.cameraUp
+    );
+
+    // Ray parameters
+    vec3 rayOrigin = pc.cameraPos;
+    float tMin = 0.001;
+    float tMax = 10000.0;
+
+    // Initialize payload
+    hitColor = vec3(0.0);
+
+    // Trace ray
+    // Flags: gl_RayFlagsOpaqueEXT - treat all geometry as opaque
+    // Cull mask: 0xFF - hit all geometry
+    // SBT offset: 0 - use first hit group
+    // SBT stride: 0 - single hit group
+    // Miss index: 0 - use first miss shader
+    traceRayEXT(
+        topLevelAS,           // Acceleration structure
+        gl_RayFlagsOpaqueEXT, // Ray flags
+        0xFF,                 // Cull mask
+        0,                    // SBT record offset
+        0,                    // SBT record stride
+        0,                    // Miss index
+        rayOrigin,            // Ray origin
+        tMin,                 // Min distance
+        rayDir,               // Ray direction
+        tMax,                 // Max distance
+        0                     // Payload location
+    );
+
+    // Write result to output image
+    imageStore(outputImage, pixelCoords, vec4(hitColor, 1.0));
+}

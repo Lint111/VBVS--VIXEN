@@ -1063,55 +1063,316 @@ BenchmarkGraph BenchmarkGraphFactory::BuildFragmentRayMarchGraph(
 }
 
 //==============================================================================
-// Hardware RT Pipeline (Stub)
+// Hardware RT Pipeline (Phase K)
 //==============================================================================
 
-BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
-    RG::RenderGraph* /*graph*/,
-    const TestConfiguration& /*config*/,
-    uint32_t /*width*/,
-    uint32_t /*height*/)
+HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra)
 {
-    // TODO: Implement when VK_KHR_ray_tracing_pipeline support is added
-    //
-    // Implementation requirements:
-    // 1. VK_KHR_ray_tracing_pipeline extension
-    //    - Check device support via vkGetPhysicalDeviceFeatures2 with
-    //      VkPhysicalDeviceRayTracingPipelineFeaturesKHR
-    //
-    // 2. VK_KHR_acceleration_structure extension
-    //    - Required for building bottom-level (BLAS) and top-level (TLAS)
-    //      acceleration structures
-    //
-    // 3. New node types needed:
-    //    - AccelerationStructureNode: Builds BLAS from voxel geometry
-    //    - TopLevelASNode: Builds TLAS from BLAS instances
-    //    - RTShaderLibraryNode: Ray gen, closest hit, miss shaders
-    //    - ShaderBindingTableNode: SBT management
-    //    - RayTracingPipelineNode: VkRayTracingPipelineCreateInfoKHR
-    //    - RayTraceDispatchNode: vkCmdTraceRaysKHR
-    //
-    // 4. Shader types:
-    //    - Ray generation shader (.rgen): Camera ray generation
-    //    - Closest hit shader (.rchit): Surface shading
-    //    - Miss shader (.rmiss): Background color
-    //    - Optional: Any hit, intersection shaders for transparency
-    //
-    // 5. Memory requirements:
-    //    - Scratch buffers for AS building
-    //    - AS storage buffers
-    //    - SBT buffer
-    //
-    // 6. Comparison metrics:
-    //    - Hardware RT vs software ray marching performance
-    //    - Memory overhead of acceleration structures
-    //    - Build time for AS vs octree
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRT: graph is null");
+    }
 
-    throw std::runtime_error(
-        "BuildHardwareRTGraph: Hardware ray tracing pipeline not yet implemented. "
-        "Requires VK_KHR_ray_tracing_pipeline and VK_KHR_acceleration_structure extensions. "
-        "See implementation notes in BenchmarkGraphFactory.cpp for requirements."
+    if (!infra.IsValid()) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRT: infrastructure nodes invalid");
+    }
+
+    HardwareRTNodes nodes{};
+
+    // Create hardware RT nodes
+    // VoxelAABBConverterNode: Extracts AABBs from voxel grid for BLAS
+    nodes.aabbConverter = graph->AddNode<RG::VoxelAABBConverterNodeType>("benchmark_aabb_converter");
+
+    // AccelerationStructureNode: Builds BLAS + TLAS
+    nodes.accelerationStructure = graph->AddNode<RG::AccelerationStructureNodeType>("benchmark_accel_structure");
+
+    // RayTracingPipelineNode: Creates RT pipeline + SBT
+    nodes.rtPipeline = graph->AddNode<RG::RayTracingPipelineNodeType>("benchmark_rt_pipeline");
+
+    // TraceRaysNode: Dispatches vkCmdTraceRaysKHR
+    nodes.traceRays = graph->AddNode<RG::TraceRaysNodeType>("benchmark_trace_rays");
+
+    return nodes;
+}
+
+void BenchmarkGraphFactory::ConfigureHardwareRTParams(
+    RG::RenderGraph* graph,
+    const HardwareRTNodes& nodes,
+    uint32_t width,
+    uint32_t height)
+{
+    // Configure AABB converter parameters
+    auto* aabbConverter = static_cast<RG::VoxelAABBConverterNode*>(
+        graph->GetInstance(nodes.aabbConverter));
+    if (aabbConverter) {
+        // Grid resolution will come from VoxelGridNode connection
+        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_VOXEL_SIZE, 1.0f);
+    }
+
+    // Configure acceleration structure parameters
+    auto* accelStructure = static_cast<RG::AccelerationStructureNode*>(
+        graph->GetInstance(nodes.accelerationStructure));
+    if (accelStructure) {
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_PREFER_FAST_TRACE, true);
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_ALLOW_UPDATE, false);
+        accelStructure->SetParameter(RG::AccelerationStructureNodeConfig::PARAM_ALLOW_COMPACTION, false);
+    }
+
+    // Configure RT pipeline parameters
+    auto* rtPipeline = static_cast<RG::RayTracingPipelineNode*>(
+        graph->GetInstance(nodes.rtPipeline));
+    if (rtPipeline) {
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_MAX_RAY_RECURSION, 1u);
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_WIDTH, width);
+        rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_HEIGHT, height);
+    }
+
+    // Configure trace rays parameters
+    auto* traceRays = static_cast<RG::TraceRaysNode*>(
+        graph->GetInstance(nodes.traceRays));
+    if (traceRays) {
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_WIDTH, width);
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_HEIGHT, height);
+        traceRays->SetParameter(RG::TraceRaysNodeConfig::PARAM_DEPTH, 1u);
+    }
+}
+
+void BenchmarkGraphFactory::ConnectHardwareRT(
+    RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
+    const HardwareRTNodes& hardwareRT,
+    const RayMarchNodes& rayMarch,
+    const OutputNodes& output)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::ConnectHardwareRT: graph is null");
+    }
+
+    RG::ConnectionBatch batch(graph);
+
+    //--------------------------------------------------------------------------
+    // Infrastructure Connections (same as compute/fragment pipelines)
+    //--------------------------------------------------------------------------
+
+    // Instance -> Device
+    batch.Connect(infra.instance, RG::InstanceNodeConfig::INSTANCE,
+                  infra.device, RG::DeviceNodeConfig::INSTANCE_IN);
+
+    // Device -> Window (VkInstance passthrough)
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.window, RG::WindowNodeConfig::INSTANCE);
+
+    // Window -> SwapChain
+    batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HWND)
+         .Connect(infra.window, RG::WindowNodeConfig::HINSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HINSTANCE)
+         .Connect(infra.window, RG::WindowNodeConfig::WIDTH_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::WIDTH)
+         .Connect(infra.window, RG::WindowNodeConfig::HEIGHT_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::HEIGHT);
+
+    // Window -> Input
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(infra.window, RG::WindowNodeConfig::HWND_OUT,
+                      rayMarch.input, RG::InputNodeConfig::HWND_IN);
+    }
+
+    // Device -> SwapChain
+    batch.Connect(infra.device, RG::DeviceNodeConfig::INSTANCE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::INSTANCE)
+         .Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.swapchain, RG::SwapChainNodeConfig::VULKAN_DEVICE_IN);
+
+    // Device -> FrameSync
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.frameSync, RG::FrameSyncNodeConfig::VULKAN_DEVICE);
+
+    // FrameSync -> SwapChain
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  infra.swapchain, RG::SwapChainNodeConfig::PRESENT_FENCES_ARRAY);
+
+    // Device -> CommandPool
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  infra.commandPool, RG::CommandPoolNodeConfig::VULKAN_DEVICE_IN);
+
+    //--------------------------------------------------------------------------
+    // Ray March Scene Connections (VoxelGrid + Camera)
+    //--------------------------------------------------------------------------
+
+    // Device -> Camera
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.camera, RG::CameraNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Camera
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  rayMarch.camera, RG::CameraNodeConfig::SWAPCHAIN_PUBLIC)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  rayMarch.camera, RG::CameraNodeConfig::IMAGE_INDEX);
+
+    // Input -> Camera
+    if (rayMarch.input.IsValid()) {
+        batch.Connect(rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
+                      rayMarch.camera, RG::CameraNodeConfig::INPUT_STATE);
+    }
+
+    // Device -> VoxelGrid
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> VoxelGrid
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMMAND_POOL);
+
+    //--------------------------------------------------------------------------
+    // Hardware RT Pipeline Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> VoxelAABBConverterNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> VoxelAABBConverterNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::COMMAND_POOL);
+
+    // VoxelGrid -> VoxelAABBConverterNode (octree nodes buffer for AABB extraction)
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::OCTREE_NODES_BUFFER);
+
+    // Device -> AccelerationStructureNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> AccelerationStructureNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::COMMAND_POOL);
+
+    // VoxelAABBConverterNode -> AccelerationStructureNode
+    batch.Connect(hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_DATA,
+                  hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::AABB_DATA);
+
+    // Device -> RayTracingPipelineNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::VULKAN_DEVICE_IN);
+
+    // AccelerationStructureNode -> RayTracingPipelineNode
+    batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::ACCELERATION_STRUCTURE_DATA);
+
+    // NOTE: Shader modules (RAYGEN_SHADER, MISS_SHADER, HIT_GROUP_SHADERS) need to be connected
+    // from a ShaderLibraryNode configured with RT shaders. For now, the RayTracingPipelineNode
+    // will need to load shaders internally or receive them via parameters.
+    // TODO: Add ShaderLibraryNode for RT shaders when GLSL RT shader support is added.
+
+    // Device -> TraceRaysNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::VULKAN_DEVICE_IN);
+
+    // CommandPool -> TraceRaysNode
+    batch.Connect(infra.commandPool, RG::CommandPoolNodeConfig::COMMAND_POOL,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::COMMAND_POOL);
+
+    // RayTracingPipelineNode -> TraceRaysNode
+    batch.Connect(hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::RT_PIPELINE_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::RT_PIPELINE_DATA);
+
+    // AccelerationStructureNode -> TraceRaysNode
+    batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::ACCELERATION_STRUCTURE_DATA);
+
+    // SwapChain -> TraceRaysNode
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::SWAPCHAIN_INFO)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IMAGE_INDEX);
+
+    // FrameSync -> TraceRaysNode
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::CURRENT_FRAME_INDEX,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::CURRENT_FRAME_INDEX)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IN_FLIGHT_FENCE,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IN_FLIGHT_FENCE)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::IMAGE_AVAILABLE_SEMAPHORES_ARRAY)
+         .Connect(infra.frameSync, RG::FrameSyncNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORES_ARRAY);
+
+    // Camera -> TraceRaysNode (push constants for camera data)
+    // Push constant data would be wired via variadic resources or direct connection
+    // For now, the CameraNode outputs CAMERA_DATA which TraceRaysNode can use
+    // Note: This may need variadic wiring similar to compute pipeline
+
+    //--------------------------------------------------------------------------
+    // Output Connections
+    //--------------------------------------------------------------------------
+
+    // Device -> Present
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  output.present, RG::PresentNodeConfig::VULKAN_DEVICE_IN);
+
+    // SwapChain -> Present
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_HANDLE,
+                  output.present, RG::PresentNodeConfig::SWAPCHAIN)
+         .Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  output.present, RG::PresentNodeConfig::IMAGE_INDEX);
+
+    // TraceRaysNode -> Present (render complete semaphore)
+    batch.Connect(hardwareRT.traceRays, RG::TraceRaysNodeConfig::RENDER_COMPLETE_SEMAPHORE,
+                  output.present, RG::PresentNodeConfig::RENDER_COMPLETE_SEMAPHORE);
+
+    // FrameSync -> Present (present fences)
+    batch.Connect(infra.frameSync, RG::FrameSyncNodeConfig::PRESENT_FENCES_ARRAY,
+                  output.present, RG::PresentNodeConfig::PRESENT_FENCE_ARRAY);
+
+    // Register all connections atomically
+    batch.RegisterAll();
+}
+
+BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
+    RG::RenderGraph* graph,
+    const TestConfiguration& config,
+    uint32_t width,
+    uint32_t height)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::BuildHardwareRTGraph: graph is null");
+    }
+
+    BenchmarkGraph result{};
+    result.pipelineType = PipelineType::HardwareRT;
+
+    // Create scene info from config
+    SceneInfo scene = SceneInfo::FromResolutionAndDensity(
+        config.voxelResolution,
+        0.0f,  // Density computed from scene data, not config
+        MapSceneType(config.sceneType),
+        config.testId
     );
+
+    // Build all subgraphs
+    result.infra = BuildInfrastructure(graph, width, height, true);
+    result.rayMarch = BuildRayMarchScene(graph, result.infra, scene);
+    result.hardwareRT = BuildHardwareRT(graph, result.infra);
+    result.output = BuildOutput(graph, result.infra, false);
+
+    // Configure hardware RT parameters
+    ConfigureHardwareRTParams(graph, result.hardwareRT, width, height);
+
+    // Connect all subgraphs
+    ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
+
+    // Note: RT shaders (raygen, miss, hit group) need to be provided externally
+    // or the RayTracingPipelineNode needs to load them from configured paths.
+    // This differs from compute/fragment pipelines where ShaderLibraryNode handles loading.
+
+    return result;
 }
 
 //==============================================================================
