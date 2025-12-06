@@ -63,11 +63,24 @@ The core architecture is a **node-based render graph** where rendering operation
 - **Phase G Complete** - SlotRole bitwise flags, deferred descriptor binding, generalized architecture
 
 ### In Progress 🔨
-- **Phase H: Voxel Infrastructure** - Week 2 GPU COMPLETE (1,700 Mrays/sec achieved)
+- **Phase K: Hardware Ray Tracing** - NEXT (VK_KHR_ray_tracing_pipeline)
+  - BLAS/TLAS acceleration structures
+  - Ray generation and closest hit shaders
+  - Performance comparison vs compute/fragment pipelines
+
+### Recently Completed ✅
+- **Phase J: Fragment Shader Pipeline** - COMPLETE (December 6, 2025)
+  - All 4 shader variants working (compute/fragment x compressed/uncompressed)
+  - Push constant support in GeometryRenderNode
+  - VoxelRayMarch_Compressed.frag created
+- **Phase H: Voxel Infrastructure** - COMPLETE (1,700 Mrays/sec achieved)
   - Week 1: GaiaVoxelWorld, VoxelComponents, EntityBrickView, LaineKarrasOctree
   - Week 2: GPUTimestampQuery, GPUPerformanceLogger, 8 shader bugs fixed
-  - Week 3 Next: DXT Compression (16x memory reduction target)
-- **Cornell Box Rendering** - Working with ESVO traversal
+  - Week 3: DXT Compression (5.3:1 reduction), Phase C bug fixes
+  - Week 4: Morton unification, SVOManager refactor, LOD system
+- **Phase I: Performance Profiling** - COMPLETE
+  - ProfilerSystem, BenchmarkRunner, MetricsExporter
+  - 131 profiler tests passing
 
 ### Future Enhancements 🚀
 - **Parallelization** - Wave-based execution for multi-threaded rendering

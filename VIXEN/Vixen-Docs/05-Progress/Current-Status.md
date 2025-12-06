@@ -3,9 +3,11 @@ title: Current Status
 aliases: [Active Work, Current Focus]
 tags: [progress, status, active]
 created: 2025-12-06
+updated: 2025-12-06
 related:
   - "[[Overview]]"
   - "[[Roadmap]]"
+  - "[[Phase-History]]"
 ---
 
 # Current Status
@@ -18,14 +20,19 @@ Active development focus, recent changes, and immediate priorities.
 
 ## 1. Active Phase
 
-### Phase J: Fragment Shader Pipeline
+### Phase J: Fragment Shader Pipeline - COMPLETE
 
-**Status:** Complete
+**Status:** COMPLETE (December 6, 2025)
 
 **Achievements:**
-- Fragment shader ray marching working
-- Push constant support implemented
-- 4 shader variants functional (compute/fragment x compressed/uncompressed)
+- Fragment shader ray marching working with push constants
+- All 4 shader variants functional:
+  - VoxelRayMarch.comp (compute, uncompressed)
+  - VoxelRayMarch_Compressed.comp (compute, compressed)
+  - VoxelRayMarch.frag (fragment, uncompressed)
+  - VoxelRayMarch_Compressed.frag (fragment, compressed)
+- Push constant support: 64-byte camera data pipeline
+- GeometryRenderNode: SetPushConstants() implementation
 
 ---
 
@@ -113,17 +120,24 @@ Active development focus, recent changes, and immediate priorities.
 
 ### Immediate Priorities
 
-1. **Complete Phase I documentation** - Update memory-bank files
-2. **Phase K planning** - Hardware RT pipeline design
-3. **Benchmark system** - 180-config test matrix
+1. **Phase K: Hardware RT Pipeline** - VK_KHR_ray_tracing_pipeline implementation
+2. **Benchmark system completion** - 180-config test matrix execution
+3. **Research data collection** - Performance metrics for paper
 
 ### This Week
 
 | Task | Priority | Estimate |
 |------|----------|----------|
-| Update memory-bank | High | 1 hour |
 | Phase K design doc | High | 2 hours |
-| Benchmark config schema | Medium | 4 hours |
+| Enable RT extensions | High | 2 days |
+| BLAS/TLAS setup | Medium | 1 week |
+
+### Phase K Goals
+
+- Implement hardware ray tracing pipeline
+- Build BLAS from octree structure
+- Create ray generation/closest hit shaders
+- Compare performance vs compute/fragment pipelines
 
 ---
 

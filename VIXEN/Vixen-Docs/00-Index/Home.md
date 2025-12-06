@@ -10,7 +10,7 @@ created: 2025-12-06
 **Vulkan Interactive eXample Engine** - A graph-based Vulkan rendering engine with voxel ray tracing research capabilities.
 
 > [!info] Current Status
-> **Phase J COMPLETE** - Fragment shader pipeline with push constants working. 1,700 Mrays/sec achieved.
+> **Phase J COMPLETE** (December 6, 2025) - All 4 shader variants working (compute/fragment x compressed/uncompressed). **Next: Phase K - Hardware RT**
 
 ---
 
@@ -52,14 +52,18 @@ graph LR
 
 ### [[01-Architecture/Overview|Architecture]]
 Core system design and component relationships.
+- [[01-Architecture/Libraries-Overview|Libraries Overview]] - All 14 library components
 - [[01-Architecture/RenderGraph-System|RenderGraph System]] - Node-based rendering pipeline
 - [[01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - GPU resource management
 - [[01-Architecture/Type-System|Type System]] - Compile-time safety with variants
 - [[01-Architecture/EventBus|EventBus]] - Decoupled communication
+- [[01-Architecture/CashSystem-Library|CashSystem]] - Resource caching
 
 ### [[02-Implementation/Overview|Implementation]]
 Detailed implementation guides and code references.
 - [[02-Implementation/SVO-System|SVO System]] - Sparse Voxel Octree with ESVO
+- [[02-Implementation/GaiaVoxelWorld-Library|GaiaVoxelWorld]] - ECS voxel storage
+- [[02-Implementation/VoxelComponents-Library|VoxelComponents]] - Voxel attribute definitions
 - [[02-Implementation/Ray-Marching|Ray Marching]] - GPU ray traversal
 - [[02-Implementation/Compression|DXT Compression]] - 5.3:1 memory reduction
 - [[02-Implementation/Shaders|Shaders]] - GLSL shader documentation

@@ -210,6 +210,7 @@ O(1) node lookups via `NodeHandle` instead of string-based lookups.
 
 ## 7. Related Documentation
 
+- [[Libraries-Overview]] - All 14 library components
 - [[RenderGraph-System]] - Detailed render graph architecture
 - [[Vulkan-Pipeline]] - Vulkan resource management
 - [[Type-System]] - Variant-based type safety
