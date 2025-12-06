@@ -18,7 +18,7 @@ Vulkan resource management including device wrappers, swapchain handling, GPU ti
 ## 1. Core Components
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph VulkanResources
         VD[VulkanDevice]
         SC[SwapChain]

@@ -18,7 +18,7 @@ GPU-accelerated ray traversal through the sparse voxel octree. Supports both com
 ## 1. Pipeline Variants
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Compute Pipeline
         CC[VoxelRayMarch.comp]
         CCC[VoxelRayMarch_Compressed.comp]

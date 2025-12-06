@@ -19,7 +19,7 @@ Foundation utilities providing Morton encoding (Z-order curves) for spatial inde
 The Core library eliminates redundant coordinate conversions in the voxel pipeline:
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph Old Pipeline
         WP1[worldPos] --> M1[morton Gaia]
         M1 --> WP2[worldPos]
@@ -125,7 +125,7 @@ Position (0,0,1) -> Morton 4
 ## 5. Integration Points
 
 ```mermaid
-graph TB
+flowchart TB
     Core[Core/MortonEncoding.h] --> GVW[GaiaVoxelWorld]
     Core --> SVO[SVO/LaineKarrasOctree]
     Core --> VC[VoxelComponents]

@@ -18,7 +18,7 @@ Systematic comparison of 4 Vulkan pipeline architectures for voxel ray tracing.
 ## 1. Pipeline Architectures
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Compute Shader
         CS[vkCmdDispatch]
         CS --> IMG[Storage Image]
@@ -131,7 +131,7 @@ sequenceDiagram
 **Concept:** Use hardware RT for coarse structure, compute for fine detail.
 
 ```mermaid
-graph LR
+flowchart LR
     RT[Hardware RT] --> |Brick Hit| CS[Compute DDA]
     CS --> |Voxel Color| OUT[Output]
 ```
@@ -260,7 +260,7 @@ From current implementation:
 ### 7.2 Visualization
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Data Collection
         RAW[Raw Metrics]
     end

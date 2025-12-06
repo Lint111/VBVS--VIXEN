@@ -18,7 +18,7 @@ Voxel data structures and DXT block compression for GPU-efficient storage. Achie
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph VoxelData
         DXT1[DXT1ColorCompressor]
         DXTN[DXTNormalCompressor]
@@ -46,6 +46,7 @@ graph TB
 
     style DXT1 fill:#4a9eff
     style DXTN fill:#26de81
+    class VC internal-link
 ```
 
 ---

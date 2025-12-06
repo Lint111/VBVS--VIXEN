@@ -18,7 +18,7 @@ Device-agnostic shader compilation, SPIRV reflection, and hot reload support. Pr
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph ShaderManagement
         SC[ShaderCompiler]
         SR[SPIRVReflection]
@@ -128,7 +128,7 @@ auto combinedLayout = SPIRVReflection::CombineLayouts(device, shaders);
 ### 4.1 Layout Merging
 
 ```mermaid
-graph LR
+flowchart LR
     V[Vertex Shader] --> |set 0, binding 0| UBO[Camera UBO]
     F[Fragment Shader] --> |set 0, binding 1| TEX[Texture]
     F --> |set 0, binding 2| SAM[Sampler]

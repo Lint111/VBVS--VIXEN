@@ -18,7 +18,7 @@ The Sparse Voxel Octree (SVO) system implements the ESVO algorithm (Laine & Karr
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Data Layer
         VC[VoxelComponents]
         GVW[GaiaVoxelWorld]
@@ -43,6 +43,8 @@ graph TB
     style GVW fill:#4a9eff
     style LKO fill:#26de81
     style VRM fill:#ff9f43
+    class VC internal-link
+    class GVW internal-link
 ```
 
 ---
@@ -233,7 +235,7 @@ float computeCorrectedTcMax(float tc_max, bool canStepX, bool canStepY, bool can
 ## 5. Child Descriptor Format
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph 32-bit Descriptor
         CP[Child Pointer: 17 bits]
         VM[Valid Mask: 8 bits]
@@ -243,6 +245,8 @@ graph LR
     CP --> |Relative offset| Children
     VM --> |Which octants exist| Octants
     LM --> |Which are leaves| Leaves
+    class VC internal-link
+    class GVW internal-link
 ```
 
 ### 5.1 Bit Layout
@@ -284,11 +288,13 @@ bool isLeaf(uint descriptor, int octant) {
 ### 6.1 Space Transformations
 
 ```mermaid
-graph LR
+flowchart LR
     WS[World Space] --> NS[Normalized Space]
     NS --> ES[ESVO Space [1,2]]
     ES --> BS[Brick Space]
     BS --> VS[Voxel Space]
+    class VC internal-link
+    class GVW internal-link
 ```
 
 ### 6.2 Octant Mirroring

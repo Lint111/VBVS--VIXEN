@@ -18,7 +18,7 @@ ECS-backed sparse voxel storage using Gaia-ECS with Morton code indexing. Provid
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph GaiaVoxelWorld
         GVW[GaiaVoxelWorld]
         MI[Morton Index]
@@ -46,6 +46,7 @@ graph TB
     Archetype --> N
 
     style GVW fill:#4a9eff
+    class GVW internal-link
 ```
 
 ---
@@ -103,12 +104,13 @@ size_t count = world.getVoxelCount();
 ## 3. Morton Code Integration
 
 ```mermaid
-graph LR
+flowchart LR
     WP[World Position] --> MK[MortonKey]
     MK --> |Hash Map| Entity[gaia::entity]
     Entity --> |Archetype| Components[Components]
 
     style MK fill:#26de81
+    class GVW internal-link
 ```
 
 ### 3.1 Key Generation
@@ -209,7 +211,7 @@ Reduction: 11x
 ### 6.2 Archetype Optimization
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Archetypes
         A1[Density only]
         A2[Density + Color]
@@ -219,6 +221,7 @@ graph TB
     A1 --> |"Air voxels"| V1[4 bytes each]
     A2 --> |"Solid colored"| V2[16 bytes each]
     A3 --> |"Lit surfaces"| V3[28 bytes each]
+    class GVW internal-link
 ```
 
 Components are stored contiguously per archetype for cache efficiency.

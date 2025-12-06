@@ -137,7 +137,7 @@ world.createVoxel(VoxelCreationRequest{
 ## 6. Integration Points
 
 ```mermaid
-graph TB
+flowchart TB
     VC[VoxelComponents] --> GVW[GaiaVoxelWorld]
     VC --> VD[VoxelData]
     VC --> SVO[SVO]
@@ -147,6 +147,7 @@ graph TB
     SVO --> |Ray Hits| Shader[GPU Shaders]
 
     style VC fill:#4a9eff
+    class VC internal-link
 ```
 
 | Consumer | Usage |

@@ -18,7 +18,7 @@ Type-safe resource caching system with virtual cleanup architecture. Eliminates 
 ## 1. Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph CashSystem
         MC[MainCacher]
         TC[TypedCacher<T>]
@@ -194,7 +194,7 @@ void ShaderModuleCacher::Cleanup(VkDevice device) {
 ## 6. Integration
 
 ```mermaid
-graph LR
+flowchart LR
     GPN[GraphicsPipelineNode] --> PC[PipelineCacher]
     CPN[ComputePipelineNode] --> PC
     SLN[ShaderLibraryNode] --> SMC[ShaderModuleCacher]

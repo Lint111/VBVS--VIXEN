@@ -18,7 +18,7 @@ The RenderGraph is a directed acyclic graph (DAG) of rendering operations. Each 
 ## 1. Node Type vs Node Instance
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Node Types [Registry - 1 per process]
         NT1[ShadowMapPass Type]
         NT2[GeometryPass Type]
@@ -52,7 +52,7 @@ graph TB
 ## 2. Graph Compilation Phases
 
 ```mermaid
-graph LR
+flowchart LR
     V[Validate] --> A[AnalyzeDependencies]
     A --> R[AllocateResources]
     R --> G[GeneratePipelines]

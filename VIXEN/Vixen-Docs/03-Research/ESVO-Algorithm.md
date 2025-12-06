@@ -18,7 +18,7 @@ Efficient Sparse Voxel Octrees (Laine & Karras, NVIDIA 2010) provides a parametr
 ## 1. Algorithm Overview
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph Initialization
         RC[Ray Coefficient Calculation]
         OM[Octant Mirroring]

@@ -71,7 +71,7 @@ timeline
 
 **Concept:**
 ```mermaid
-graph LR
+flowchart LR
     RT[Hardware RT] --> |Coarse Hit| CS[Compute DDA]
     CS --> |Voxel Color| OUT[Output]
 
@@ -173,7 +173,7 @@ graph LR
 ## 6. Dependencies
 
 ```mermaid
-graph TD
+flowchart TD
     PH[Phase H - SVO] --> PI[Phase I - Profiling]
     PI --> PJ[Phase J - Fragment]
     PJ --> PK[Phase K - Hardware RT]

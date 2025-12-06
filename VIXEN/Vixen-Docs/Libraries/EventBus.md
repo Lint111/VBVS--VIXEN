@@ -125,7 +125,7 @@ void SwapChainNode::OnEvent(const Event& event) {
 ## 5. Cascade Invalidation Pattern
 
 ```mermaid
-graph TD
+flowchart TD
     WR[Window Resize] --> SCE[SwapChain Invalidated]
     SCE --> FBE[Framebuffer Dirty]
     SCE --> DBE[DepthBuffer Dirty]

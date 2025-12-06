@@ -18,7 +18,7 @@ VIXEN's shader system provides runtime GLSL compilation, SPIRV reflection, and a
 ## 1. Shader Pipeline
 
 ```mermaid
-graph LR
+flowchart LR
     subgraph Source
         GLSL[.glsl / .vert / .frag / .comp]
     end

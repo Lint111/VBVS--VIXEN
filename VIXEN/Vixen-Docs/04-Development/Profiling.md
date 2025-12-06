@@ -228,7 +228,7 @@ frame,frame_time_ms,gpu_time_ms,mrays_per_sec
 ### 6.1 Development Profiling
 
 ```mermaid
-graph LR
+flowchart LR
     RUN[Run Application] --> OBS[Observe Perf]
     OBS --> |Slow| PROF[Profile with NSight]
     PROF --> OPT[Optimize]
@@ -239,7 +239,7 @@ graph LR
 ### 6.2 Research Profiling
 
 ```mermaid
-graph TD
+flowchart TD
     CFG[Configure Test Matrix] --> RUN[Run Benchmarks]
     RUN --> COLLECT[Collect Metrics]
     COLLECT --> EXPORT[Export JSON/CSV]
