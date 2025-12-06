@@ -100,6 +100,7 @@ struct FragmentPipelineNodes {
 
 /// Hardware ray tracing pipeline nodes (Phase K)
 struct HardwareRTNodes {
+    RG::NodeHandle shaderLib;            // ShaderLibraryNode for RT shaders
     RG::NodeHandle aabbConverter;        // VoxelAABBConverterNode
     RG::NodeHandle accelerationStructure; // AccelerationStructureNode (BLAS + TLAS)
     RG::NodeHandle rtPipeline;           // RayTracingPipelineNode
@@ -107,8 +108,9 @@ struct HardwareRTNodes {
 
     /// Check if all required nodes are valid
     bool IsValid() const {
-        return aabbConverter.IsValid() && accelerationStructure.IsValid() &&
-               rtPipeline.IsValid() && traceRays.IsValid();
+        return shaderLib.IsValid() && aabbConverter.IsValid() &&
+               accelerationStructure.IsValid() && rtPipeline.IsValid() &&
+               traceRays.IsValid();
     }
 };
 
@@ -677,6 +679,28 @@ private:
         const InfrastructureNodes& infra,
         const FragmentPipelineNodes& fragment,
         const RayMarchNodes& rayMarch
+    );
+
+    /**
+     * @brief Register RTX shader builder (raygen, miss, closesthit, intersection)
+     *
+     * Registers a ShaderBundleBuilder callback that loads all RT shader stages
+     * with proper include paths for the shader preprocessor.
+     *
+     * @param graph Target render graph
+     * @param hardwareRT Hardware RT nodes (shader library node)
+     * @param raygenShader Ray generation shader filename (e.g., "VoxelRT.rgen")
+     * @param missShader Miss shader filename (e.g., "VoxelRT.rmiss")
+     * @param closestHitShader Closest hit shader filename (e.g., "VoxelRT.rchit")
+     * @param intersectionShader Intersection shader filename (e.g., "VoxelRT.rint")
+     */
+    static void RegisterRTXShader(
+        RG::RenderGraph* graph,
+        const HardwareRTNodes& hardwareRT,
+        const std::string& raygenShader,
+        const std::string& missShader,
+        const std::string& closestHitShader,
+        const std::string& intersectionShader
     );
 
     /**

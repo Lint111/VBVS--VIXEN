@@ -71,6 +71,7 @@ struct HeadlessVulkanContext {
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
     float timestampPeriod = 0.0f;
+    bool rtxEnabled = false;  // Phase K: Hardware RT support
 
     bool IsValid() const {
         return instance != VK_NULL_HANDLE &&
@@ -215,6 +216,16 @@ uint32_t FindComputeQueueFamily(VkPhysicalDevice device) {
     return UINT32_MAX;
 }
 
+// Helper to check if an extension is available
+bool HasDeviceExtension(const std::vector<VkExtensionProperties>& available, const char* name) {
+    for (const auto& ext : available) {
+        if (std::strcmp(ext.extensionName, name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     ctx.computeQueueFamily = FindComputeQueueFamily(ctx.physicalDevice);
     if (ctx.computeQueueFamily == UINT32_MAX) {
@@ -236,13 +247,59 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(ctx.physicalDevice, nullptr, &extensionCount, availableExtensions.data());
 
-    for (const auto& ext : availableExtensions) {
-        if (std::strcmp(ext.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0) {
-            deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    // Enable memory budget if available
+    if (HasDeviceExtension(availableExtensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {
+        deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    }
+
+    // Enable RTX extensions if available (Phase K - Hardware RT)
+    bool rtxAvailable =
+        HasDeviceExtension(availableExtensions, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) &&
+        HasDeviceExtension(availableExtensions, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+    // Feature chain for RTX
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+    bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelStructFeatures{};
+    accelStructFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    accelStructFeatures.pNext = &bufferDeviceAddressFeatures;
+    accelStructFeatures.accelerationStructure = VK_TRUE;
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures{};
+    rtPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+    rtPipelineFeatures.pNext = &accelStructFeatures;
+    rtPipelineFeatures.rayTracingPipeline = VK_TRUE;
+
+    if (rtxAvailable) {
+        deviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+
+        // Also need SPIRV 1.4 for RT shaders
+        if (HasDeviceExtension(availableExtensions, VK_KHR_SPIRV_1_4_EXTENSION_NAME)) {
+            deviceExtensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
         }
+        if (HasDeviceExtension(availableExtensions, VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME)) {
+            deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+        }
+
+        std::cout << "RTX extensions enabled for hardware ray tracing\n";
+        ctx.rtxEnabled = true;
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.features = deviceFeatures;
+    if (rtxAvailable) {
+        deviceFeatures2.pNext = &rtPipelineFeatures;
+    }
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -250,7 +307,13 @@ VkResult CreateHeadlessDevice(HeadlessVulkanContext& ctx) {
     createInfo.pQueueCreateInfos = &queueCreateInfo;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    if (rtxAvailable) {
+        createInfo.pNext = &deviceFeatures2;
+        createInfo.pEnabledFeatures = nullptr;  // Must be null when using pNext features
+    } else {
+        createInfo.pEnabledFeatures = &deviceFeatures;
+    }
 
     VkResult result = vkCreateDevice(ctx.physicalDevice, &createInfo, nullptr, &ctx.device);
     if (result != VK_SUCCESS) {

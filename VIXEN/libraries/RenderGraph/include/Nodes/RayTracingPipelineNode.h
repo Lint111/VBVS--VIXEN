@@ -139,6 +139,31 @@ private:
 
     bool LoadRTXFunctions();
 
+    // ===== Shader Loading =====
+
+    /**
+     * @brief Load shaders from ShaderDataBundle
+     */
+    bool LoadShadersFromBundle(const ShaderManagement::ShaderDataBundle& bundle);
+
+    /**
+     * @brief Load shaders from parameter paths
+     */
+    bool LoadShadersFromPaths();
+
+    /**
+     * @brief Create VkShaderModule from SPIR-V file
+     */
+    VkShaderModule CreateShaderModule(const std::string& path);
+
+    /**
+     * @brief Destroy locally-created shader modules
+     */
+    void DestroyShaderModules();
+
+    // Flag indicating we own the shader modules (created from paths)
+    bool ownsShaderModules_ = false;
+
     // Device reference
     Vixen::Vulkan::Resources::VulkanDevice* vulkanDevice_ = nullptr;
 

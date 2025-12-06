@@ -1081,6 +1081,9 @@ HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
     HardwareRTNodes nodes{};
 
     // Create hardware RT nodes
+    // ShaderLibraryNode: Compiles and manages RT shaders
+    nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_rt_shader_lib");
+
     // VoxelAABBConverterNode: Extracts AABBs from voxel grid for BLAS
     nodes.aabbConverter = graph->AddNode<RG::VoxelAABBConverterNodeType>("benchmark_aabb_converter");
 
@@ -1126,20 +1129,7 @@ void BenchmarkGraphFactory::ConfigureHardwareRTParams(
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_MAX_RAY_RECURSION, 1u);
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_WIDTH, width);
         rtPipeline->SetParameter(RG::RayTracingPipelineNodeConfig::PARAM_OUTPUT_HEIGHT, height);
-
-        // Configure shader paths (node loads shaders if inputs not connected)
-        rtPipeline->SetParameter(
-            RG::RayTracingPipelineNodeConfig::PARAM_RAYGEN_SHADER_PATH,
-            std::string("shaders/VoxelRT.rgen.spv"));
-        rtPipeline->SetParameter(
-            RG::RayTracingPipelineNodeConfig::PARAM_MISS_SHADER_PATH,
-            std::string("shaders/VoxelRT.rmiss.spv"));
-        rtPipeline->SetParameter(
-            RG::RayTracingPipelineNodeConfig::PARAM_CLOSEST_HIT_SHADER_PATH,
-            std::string("shaders/VoxelRT.rchit.spv"));
-        rtPipeline->SetParameter(
-            RG::RayTracingPipelineNodeConfig::PARAM_INTERSECTION_SHADER_PATH,
-            std::string("shaders/VoxelRT.rint.spv"));
+        // Shaders are now provided via ShaderLibraryNode -> SHADER_DATA_BUNDLE connection
     }
 
     // Configure trace rays parameters
@@ -1273,6 +1263,10 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_DATA,
                   hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::AABB_DATA);
 
+    // Device -> ShaderLibraryNode (for RT shaders)
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
+
     // Device -> RayTracingPipelineNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::VULKAN_DEVICE_IN);
@@ -1281,10 +1275,9 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
                   hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::ACCELERATION_STRUCTURE_DATA);
 
-    // NOTE: Shader modules (RAYGEN_SHADER, MISS_SHADER, HIT_GROUP_SHADERS) need to be connected
-    // from a ShaderLibraryNode configured with RT shaders. For now, the RayTracingPipelineNode
-    // will need to load shaders internally or receive them via parameters.
-    // TODO: Add ShaderLibraryNode for RT shaders when GLSL RT shader support is added.
+    // ShaderLibraryNode -> RayTracingPipelineNode (compiled RT shader bundle)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
 
     // Device -> TraceRaysNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -1379,12 +1372,15 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     // Configure hardware RT parameters
     ConfigureHardwareRTParams(graph, result.hardwareRT, width, height);
 
+    // Register RT shaders (raygen, miss, closest hit, intersection)
+    RegisterRTXShader(graph, result.hardwareRT,
+        "VoxelRT.rgen",    // Ray generation shader
+        "VoxelRT.rmiss",   // Miss shader
+        "VoxelRT.rchit",   // Closest hit shader
+        "VoxelRT.rint");   // Intersection shader
+
     // Connect all subgraphs
     ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
-
-    // Note: RT shaders (raygen, miss, hit group) need to be provided externally
-    // or the RayTracingPipelineNode needs to load them from configured paths.
-    // This differs from compute/fragment pipelines where ShaderLibraryNode handles loading.
 
     return result;
 }
@@ -1778,6 +1774,99 @@ void BenchmarkGraphFactory::RegisterFragmentShader(
 #endif
                .AddStageFromFile(ShaderManagement::ShaderStage::Vertex, vertexPath, "main")
                .AddStageFromFile(ShaderManagement::ShaderStage::Fragment, fragmentPath, "main");
+
+        return builder;
+    });
+}
+
+void BenchmarkGraphFactory::RegisterRTXShader(
+    RG::RenderGraph* graph,
+    const HardwareRTNodes& hardwareRT,
+    const std::string& raygenShader,
+    const std::string& missShader,
+    const std::string& closestHitShader,
+    const std::string& intersectionShader)
+{
+    if (!graph) {
+        throw std::invalid_argument("BenchmarkGraphFactory::RegisterRTXShader: graph is null");
+    }
+
+    // Get the shader library node
+    auto* shaderLibNode = static_cast<RG::ShaderLibraryNode*>(
+        graph->GetInstance(hardwareRT.shaderLib));
+
+    if (!shaderLibNode) {
+        throw std::runtime_error("BenchmarkGraphFactory::RegisterRTXShader: "
+                                "shader library node not found");
+    }
+
+    // Capture shader names by value for the lambda
+    shaderLibNode->RegisterShaderBuilder(
+        [raygenShader, missShader, closestHitShader, intersectionShader](int vulkanVer, int spirvVer) {
+        ShaderManagement::ShaderBundleBuilder builder;
+
+        // Extract program name from raygen shader (remove extension)
+        std::string programName = raygenShader;
+        auto dotPos = programName.rfind('.');
+        if (dotPos != std::string::npos) {
+            programName = programName.substr(0, dotPos);
+        }
+
+        // Helper to find shader file
+        auto findShader = [](const std::string& shaderName) -> std::filesystem::path {
+            std::vector<std::filesystem::path> possiblePaths = {
+#ifdef VIXEN_SHADER_SOURCE_DIR
+                std::string(VIXEN_SHADER_SOURCE_DIR) + "/" + shaderName,
+#endif
+                std::string("shaders/") + shaderName,
+                std::string("../shaders/") + shaderName,
+                shaderName
+            };
+
+            for (const auto& path : possiblePaths) {
+                if (std::filesystem::exists(path)) {
+                    return path;
+                }
+            }
+            return {};
+        };
+
+        auto raygenPath = findShader(raygenShader);
+        auto missPath = findShader(missShader);
+        auto closestHitPath = findShader(closestHitShader);
+        auto intersectionPath = findShader(intersectionShader);
+
+        if (raygenPath.empty()) {
+            throw std::runtime_error(
+                std::string("Raygen shader not found: ") + raygenShader);
+        }
+        if (missPath.empty()) {
+            throw std::runtime_error(
+                std::string("Miss shader not found: ") + missShader);
+        }
+        if (closestHitPath.empty()) {
+            throw std::runtime_error(
+                std::string("Closest hit shader not found: ") + closestHitShader);
+        }
+        if (intersectionPath.empty()) {
+            throw std::runtime_error(
+                std::string("Intersection shader not found: ") + intersectionShader);
+        }
+
+        // Configure builder with include paths and all RT stages
+        builder.SetProgramName(programName)
+               .SetPipelineType(ShaderManagement::PipelineTypeConstraint::RayTracing)
+               .SetTargetVulkanVersion(vulkanVer)
+               .SetTargetSpirvVersion(spirvVer)
+               .AddIncludePath("shaders")
+               .AddIncludePath("../shaders")
+#ifdef VIXEN_SHADER_SOURCE_DIR
+               .AddIncludePath(VIXEN_SHADER_SOURCE_DIR)
+#endif
+               .AddStageFromFile(ShaderManagement::ShaderStage::RayGen, raygenPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Miss, missPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::ClosestHit, closestHitPath, "main")
+               .AddStageFromFile(ShaderManagement::ShaderStage::Intersection, intersectionPath, "main");
 
         return builder;
     });

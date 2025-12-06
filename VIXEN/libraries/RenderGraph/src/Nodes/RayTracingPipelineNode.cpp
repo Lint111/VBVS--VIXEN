@@ -1,8 +1,12 @@
 #include "Nodes/RayTracingPipelineNode.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "ShaderDataBundle.h"
+#include "ShaderStage.h"
 #include <cstring>
 #include <array>
+#include <fstream>
+#include <filesystem>
 
 namespace Vixen::RenderGraph {
 
@@ -92,23 +96,32 @@ void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[RayTracingPipelineNode] ACCELERATION_STRUCTURE_DATA is null or invalid");
     }
 
-    // Get shader modules
-    raygenShader_ = ctx.In(RayTracingPipelineNodeConfig::RAYGEN_SHADER);
-    missShader_ = ctx.In(RayTracingPipelineNodeConfig::MISS_SHADER);
-
-    // HIT_GROUP_SHADERS contains intersection + closest-hit
-    // For now, we assume a single combined module or we'll split later
-    intersectionShader_ = ctx.In(RayTracingPipelineNodeConfig::HIT_GROUP_SHADERS);
-    closestHitShader_ = intersectionShader_;  // Same module, different entry points
+    // Try to get shader bundle from ShaderLibraryNode input (preferred path)
+    auto shaderBundle = ctx.In(RayTracingPipelineNodeConfig::SHADER_DATA_BUNDLE);
+    if (shaderBundle && shaderBundle->IsValid()) {
+        NODE_LOG_INFO("Loading RT shaders from ShaderDataBundle (ShaderLibraryNode)");
+        if (!LoadShadersFromBundle(*shaderBundle)) {
+            throw std::runtime_error("[RayTracingPipelineNode] Failed to load shaders from bundle");
+        }
+    } else {
+        // Fallback: Load shaders from parameter paths (for standalone testing)
+        NODE_LOG_INFO("Loading RT shaders from parameter paths (fallback)");
+        if (!LoadShadersFromPaths()) {
+            throw std::runtime_error("[RayTracingPipelineNode] Failed to load shaders from paths");
+        }
+    }
 
     if (raygenShader_ == VK_NULL_HANDLE) {
-        throw std::runtime_error("[RayTracingPipelineNode] RAYGEN_SHADER is null");
+        throw std::runtime_error("[RayTracingPipelineNode] Ray generation shader is null");
     }
     if (missShader_ == VK_NULL_HANDLE) {
-        throw std::runtime_error("[RayTracingPipelineNode] MISS_SHADER is null");
+        throw std::runtime_error("[RayTracingPipelineNode] Miss shader is null");
     }
     if (intersectionShader_ == VK_NULL_HANDLE) {
-        throw std::runtime_error("[RayTracingPipelineNode] HIT_GROUP_SHADERS is null");
+        throw std::runtime_error("[RayTracingPipelineNode] Intersection shader is null");
+    }
+    if (closestHitShader_ == VK_NULL_HANDLE) {
+        throw std::runtime_error("[RayTracingPipelineNode] Closest hit shader is null");
     }
 
     // Load RTX functions
@@ -148,6 +161,143 @@ void RayTracingPipelineNode::ExecuteImpl(TypedExecuteContext& ctx) {
 void RayTracingPipelineNode::CleanupImpl(TypedCleanupContext& ctx) {
     NODE_LOG_INFO("RayTracingPipelineNode cleanup");
     DestroyPipeline();
+    DestroyShaderModules();
+}
+
+// ============================================================================
+// RTX FUNCTION LOADING
+// ============================================================================
+
+// ============================================================================
+// SHADER LOADING
+// ============================================================================
+
+bool RayTracingPipelineNode::LoadShadersFromBundle(const ShaderManagement::ShaderDataBundle& bundle) {
+    // ShaderDataBundle contains CompiledProgram with SPIRV stages
+    // Use GetSpirv() API to access each stage's SPIRV data
+    VkDevice device = vulkanDevice_->device;
+
+    using ShaderManagement::ShaderStage;
+
+    // Helper to create shader module from stage
+    auto createModule = [&](ShaderStage stage) -> VkShaderModule {
+        const auto& spirv = bundle.GetSpirv(stage);
+        if (spirv.empty()) {
+            return VK_NULL_HANDLE;
+        }
+
+        VkShaderModuleCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+        createInfo.pCode = spirv.data();
+
+        VkShaderModule module = VK_NULL_HANDLE;
+        if (vkCreateShaderModule(device, &createInfo, nullptr, &module) != VK_SUCCESS) {
+            NODE_LOG_ERROR("Failed to create shader module for stage: " +
+                          std::string(ShaderManagement::ShaderStageName(stage)));
+            return VK_NULL_HANDLE;
+        }
+        return module;
+    };
+
+    // Create modules for each RT stage
+    raygenShader_ = createModule(ShaderStage::RayGen);
+    missShader_ = createModule(ShaderStage::Miss);
+    closestHitShader_ = createModule(ShaderStage::ClosestHit);
+    intersectionShader_ = createModule(ShaderStage::Intersection);
+
+    ownsShaderModules_ = true;
+    return raygenShader_ != VK_NULL_HANDLE &&
+           missShader_ != VK_NULL_HANDLE &&
+           closestHitShader_ != VK_NULL_HANDLE &&
+           intersectionShader_ != VK_NULL_HANDLE;
+}
+
+bool RayTracingPipelineNode::LoadShadersFromPaths() {
+    std::string raygenPath = GetParameterValue<std::string>(
+        RayTracingPipelineNodeConfig::PARAM_RAYGEN_SHADER_PATH, "shaders/VoxelRT.rgen.spv");
+    std::string missPath = GetParameterValue<std::string>(
+        RayTracingPipelineNodeConfig::PARAM_MISS_SHADER_PATH, "shaders/VoxelRT.rmiss.spv");
+    std::string closestHitPath = GetParameterValue<std::string>(
+        RayTracingPipelineNodeConfig::PARAM_CLOSEST_HIT_SHADER_PATH, "shaders/VoxelRT.rchit.spv");
+    std::string intersectionPath = GetParameterValue<std::string>(
+        RayTracingPipelineNodeConfig::PARAM_INTERSECTION_SHADER_PATH, "shaders/VoxelRT.rint.spv");
+
+    NODE_LOG_INFO("Loading RT shaders:");
+    NODE_LOG_INFO("  Raygen: " + raygenPath);
+    NODE_LOG_INFO("  Miss: " + missPath);
+    NODE_LOG_INFO("  ClosestHit: " + closestHitPath);
+    NODE_LOG_INFO("  Intersection: " + intersectionPath);
+
+    raygenShader_ = CreateShaderModule(raygenPath);
+    missShader_ = CreateShaderModule(missPath);
+    closestHitShader_ = CreateShaderModule(closestHitPath);
+    intersectionShader_ = CreateShaderModule(intersectionPath);
+
+    ownsShaderModules_ = true;
+    return raygenShader_ != VK_NULL_HANDLE &&
+           missShader_ != VK_NULL_HANDLE &&
+           closestHitShader_ != VK_NULL_HANDLE &&
+           intersectionShader_ != VK_NULL_HANDLE;
+}
+
+VkShaderModule RayTracingPipelineNode::CreateShaderModule(const std::string& path) {
+    // Read SPIR-V file
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        NODE_LOG_ERROR("Failed to open shader file: " + path);
+        return VK_NULL_HANDLE;
+    }
+
+    size_t fileSize = static_cast<size_t>(file.tellg());
+    std::vector<char> buffer(fileSize);
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+    file.close();
+
+    // Create shader module
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = buffer.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(vulkanDevice_->device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        NODE_LOG_ERROR("Failed to create shader module from: " + path);
+        return VK_NULL_HANDLE;
+    }
+
+    NODE_LOG_INFO("Created shader module from: " + path);
+    return shaderModule;
+}
+
+void RayTracingPipelineNode::DestroyShaderModules() {
+    if (!ownsShaderModules_ || !vulkanDevice_) {
+        return;
+    }
+
+    VkDevice device = vulkanDevice_->device;
+
+    if (raygenShader_ != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(device, raygenShader_, nullptr);
+        raygenShader_ = VK_NULL_HANDLE;
+    }
+    if (missShader_ != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(device, missShader_, nullptr);
+        missShader_ = VK_NULL_HANDLE;
+    }
+    if (closestHitShader_ != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(device, closestHitShader_, nullptr);
+        closestHitShader_ = VK_NULL_HANDLE;
+    }
+    if (intersectionShader_ != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(device, intersectionShader_, nullptr);
+        intersectionShader_ = VK_NULL_HANDLE;
+    }
+
+    ownsShaderModules_ = false;
+    NODE_LOG_INFO("Destroyed shader modules");
 }
 
 // ============================================================================

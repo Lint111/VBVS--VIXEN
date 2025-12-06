@@ -179,12 +179,12 @@ layout(binding = 5) uniform OctreeConfig {
 
 ## 7. Code References
 
-| Component | Location |
-|-----------|----------|
-| LaineKarrasOctree | `libraries/SVO/src/LaineKarrasOctree.cpp` |
-| EntityBrickView | `libraries/SVO/include/EntityBrickView.h` |
-| SVOTypes.glsl | `shaders/SVOTypes.glsl` |
-| VoxelRayMarch.comp | `shaders/VoxelRayMarch.comp` |
+| Component          | Location                                  |
+| ------------------ | ----------------------------------------- |
+| LaineKarrasOctree  | `libraries/SVO/src/LaineKarrasOctree.cpp` |
+| EntityBrickView    | `libraries/SVO/include/EntityBrickView.h` |
+| SVOTypes.glsl      | `shaders/SVOTypes.glsl`                   |
+| VoxelRayMarch.comp | `shaders/VoxelRayMarch.comp`              |
 
 ---
 
