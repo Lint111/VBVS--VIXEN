@@ -4,9 +4,9 @@ aliases: [ShaderManagement, Shaders, SPIRV]
 tags: [library, shaders, spirv, reflection]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
+  - "[[Overview]]"
   - "[[../02-Implementation/Shaders]]"
-  - "[[CashSystem-Library]]"
+  - "[[CashSystem]]"
 ---
 
 # ShaderManagement Library
@@ -210,13 +210,12 @@ sequenceDiagram
 | `libraries/ShaderManagement/include/SPIRVReflection.h` | Reflection API |
 | `libraries/ShaderManagement/include/SDIGenerator.h` | Header generation |
 | `libraries/ShaderManagement/include/ShaderLibrary.h` | Hot reload support |
-| `documentation/ShaderManagement/` | Detailed documentation |
 
 ---
 
 ## 8. Related Pages
 
-- [[Libraries-Overview]] - Library index
+- [[Overview]] - Library index
 - [[../02-Implementation/Shaders|Shaders]] - Shader implementation
-- [[CashSystem-Library]] - ShaderModuleCacher integration
-- [[RenderGraph-System]] - ShaderLibraryNode
+- [[CashSystem]] - ShaderModuleCacher integration
+- [[RenderGraph]] - ShaderLibraryNode

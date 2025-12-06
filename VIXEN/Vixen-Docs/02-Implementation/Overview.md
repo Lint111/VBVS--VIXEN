@@ -70,6 +70,8 @@ graph TD
     style PR fill:#ff9f43
 ```
 
+> **See:** [[../Libraries/Overview|Libraries Overview]] for complete library documentation.
+
 ---
 
 ## 2. Key Systems
@@ -115,25 +117,25 @@ SPIRV reflection, auto-descriptor generation, hot reload support.
 
 ```
 libraries/
-├── Core/                 # Morton encoding, utilities
-├── Logger/               # ILoggable, LOG_* macros
-├── EventBus/             # Message queue system
-├── VulkanResources/      # VkDevice wrappers, GPU timing
-├── CashSystem/           # Pipeline/shader caching
-├── ShaderManagement/     # SPIRV reflection, compilation
-├── RenderGraph/          # Node system, graph execution
-│   ├── include/
-│   │   ├── Core/         # TypedNode, RenderGraph
-│   │   ├── Data/         # Configs, ResourceVariant
-│   │   └── Nodes/        # Node implementations
-│   └── src/
-│       ├── Core/         # Graph logic
-│       └── Nodes/        # Node CPP files
-├── VoxelComponents/      # Density, Color, Normal
-├── GaiaVoxelWorld/       # ECS voxel storage
-├── VoxelData/            # Compression, grid data
-├── SVO/                  # Octree, ray casting
-└── Profiler/             # Benchmarking system
+|-- Core/                 # Morton encoding, utilities
+|-- Logger/               # ILoggable, LOG_* macros
+|-- EventBus/             # Message queue system
+|-- VulkanResources/      # VkDevice wrappers, GPU timing
+|-- CashSystem/           # Pipeline/shader caching
+|-- ShaderManagement/     # SPIRV reflection, compilation
+|-- RenderGraph/          # Node system, graph execution
+|   |-- include/
+|   |   |-- Core/         # TypedNode, RenderGraph
+|   |   |-- Data/         # Configs, ResourceVariant
+|   |   |-- Nodes/        # Node implementations
+|   |-- src/
+|       |-- Core/         # Graph logic
+|       |-- Nodes/        # Node CPP files
+|-- VoxelComponents/      # Density, Color, Normal
+|-- GaiaVoxelWorld/       # ECS voxel storage
+|-- VoxelData/            # Compression, grid data
+|-- SVO/                  # Octree, ray casting
+|-- Profiler/             # Benchmarking system
 ```
 
 ---
@@ -220,11 +222,13 @@ void Out(SlotType slot, T&& value) {
 
 | Topic | Page |
 |-------|------|
+| All Libraries | [[../Libraries/Overview]] |
+| SVO Library | [[../Libraries/SVO]] |
+| Voxel Storage | [[../Libraries/GaiaVoxelWorld]] |
+| Voxel Components | [[../Libraries/VoxelComponents]] |
+| Compression Library | [[../Libraries/VoxelData]] |
+| ECS Archetypes | [[../Libraries/GaiaArchetypes]] |
 | SVO Algorithm | [[SVO-System]] |
-| Voxel Storage | [[GaiaVoxelWorld-Library]] |
-| Voxel Components | [[VoxelComponents-Library]] |
-| Compression | [[VoxelData-Library]] |
-| ECS Archetypes | [[GaiaArchetypes-Library]] |
 | Ray Marching | [[Ray-Marching]] |
 | DXT Compression | [[Compression]] |
 | Shader Integration | [[Shaders]] |

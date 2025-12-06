@@ -4,7 +4,8 @@ aliases: [Logger, Logging, ILoggable]
 tags: [library, logger, debugging]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
+  - "[[Overview]]"
+  - "[[RenderGraph]]"
 ---
 
 # Logger Library
@@ -136,5 +137,5 @@ fpsLogger.MaybeLog(frameNumber);  // Logs every N frames
 
 ## 7. Related Pages
 
-- [[Libraries-Overview]] - Library index
-- [[RenderGraph-System]] - Uses logging for node lifecycle
+- [[Overview]] - Library index
+- [[RenderGraph]] - Uses logging for node lifecycle

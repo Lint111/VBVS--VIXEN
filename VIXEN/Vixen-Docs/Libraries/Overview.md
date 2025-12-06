@@ -4,9 +4,9 @@ aliases: [Libraries, Library Index, Lib]
 tags: [architecture, libraries, index]
 created: 2025-12-06
 related:
-  - "[[Overview]]"
-  - "[[RenderGraph-System]]"
-  - "[[EventBus]]"
+  - "[[../01-Architecture/Overview]]"
+  - "[[RenderGraph]]"
+  - "[[SVO]]"
 ---
 
 # Libraries Overview
@@ -84,45 +84,45 @@ graph TD
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
-| [[Core-Library\|Core]] | Morton encoding, math utilities | `MortonEncoding.h` |
-| [[Logger-Library\|Logger]] | Logging infrastructure, ILoggable | `Logger.h`, `ILoggable.h` |
+| [[Core]] | Morton encoding, math utilities | `MortonEncoding.h` |
+| [[Logger]] | Logging infrastructure, ILoggable | `Logger.h`, `ILoggable.h` |
 
 ### 2.2 Communication Layer
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
 | [[EventBus]] | Event-driven communication | `EventBus.h`, `Message.h` |
-| [[ResourceManagement-Library\|ResourceManagement]] | RM<T> wrapper with state tracking | `RM.h`, `ResourceState.h` |
+| [[ResourceManagement]] | RM<T> wrapper with state tracking | `RM.h`, `ResourceState.h` |
 
 ### 2.3 Vulkan Layer
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
-| [[VulkanResources-Library\|VulkanResources]] | Vulkan resource management | `VulkanDevice.h`, `GPUTimestampQuery.h` |
-| [[CashSystem-Library\|CashSystem]] | Pipeline/shader caching | `TypedCacher.h`, `MainCacher.h` |
-| [[ShaderManagement-Library\|ShaderManagement]] | SPIRV compilation, reflection | `ShaderCompiler.h`, `SPIRVReflection.h` |
+| [[VulkanResources]] | Vulkan resource management | `VulkanDevice.h`, `GPUTimestampQuery.h` |
+| [[CashSystem]] | Pipeline/shader caching | `TypedCacher.h`, `MainCacher.h` |
+| [[ShaderManagement]] | SPIRV compilation, reflection | `ShaderCompiler.h`, `SPIRVReflection.h` |
 
 ### 2.4 Rendering Layer
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
-| [[RenderGraph-System\|RenderGraph]] | Graph-based render pipeline | `RenderGraph.h`, `TypedNodeInstance.h` |
+| [[RenderGraph]] | Graph-based render pipeline | `RenderGraph.h`, `TypedNodeInstance.h` |
 
 ### 2.5 Voxel Layer
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
-| [[VoxelComponents-Library\|VoxelComponents]] | Voxel component definitions | `VoxelComponents.h` |
-| [[GaiaArchetypes-Library\|GaiaArchetypes]] | ECS archetype system | `GaiaArchetypes.h` |
-| [[GaiaVoxelWorld-Library\|GaiaVoxelWorld]] | ECS voxel storage | `GaiaVoxelWorld.h` |
-| [[VoxelData-Library\|VoxelData]] | DXT compression, grid data | `DXT1Compressor.h` |
-| [[SVO-System\|SVO]] | Sparse Voxel Octree (ESVO) | `LaineKarrasOctree.h` |
+| [[VoxelComponents]] | Voxel component definitions | `VoxelComponents.h` |
+| [[GaiaArchetypes]] | ECS archetype system | `GaiaArchetypes.h` |
+| [[GaiaVoxelWorld]] | ECS voxel storage | `GaiaVoxelWorld.h` |
+| [[VoxelData]] | DXT compression, grid data | `DXT1Compressor.h` |
+| [[SVO]] | Sparse Voxel Octree (ESVO) | `LaineKarrasOctree.h` |
 
 ### 2.6 Tools Layer
 
 | Library | Purpose | Key Files |
 |---------|---------|-----------|
-| [[../04-Development/Profiling\|Profiler]] | Benchmark runner, metrics export | `BenchmarkRunner.h` |
+| [[Profiler]] | Benchmark runner, metrics export | `BenchmarkRunner.h` |
 
 ---
 
@@ -170,7 +170,7 @@ Libraries are built in dependency order by CMake:
 
 ---
 
-## 5. Source References
+## 5. Source Paths
 
 | Library | Path |
 |---------|------|
@@ -191,9 +191,36 @@ Libraries are built in dependency order by CMake:
 
 ---
 
-## 6. Related Pages
+## 6. Quick Navigation
 
-- [[Overview]] - Architecture overview
-- [[RenderGraph-System]] - Primary rendering infrastructure
-- [[EventBus]] - Communication system
-- [[../02-Implementation/SVO-System|SVO System]] - Voxel implementation
+### By Category
+
+**Infrastructure**
+- [[Core]] - Morton encoding foundation
+- [[Logger]] - Hierarchical logging
+- [[EventBus]] - Decoupled communication
+- [[ResourceManagement]] - RM<T> wrapper
+
+**Vulkan Stack**
+- [[VulkanResources]] - Device/swapchain/timing
+- [[CashSystem]] - Resource caching
+- [[ShaderManagement]] - SPIRV compilation
+- [[RenderGraph]] - DAG-based rendering
+
+**Voxel Stack**
+- [[VoxelComponents]] - Component definitions
+- [[GaiaArchetypes]] - ECS archetypes
+- [[GaiaVoxelWorld]] - Sparse storage
+- [[VoxelData]] - DXT compression
+- [[SVO]] - ESVO octree
+
+**Tooling**
+- [[Profiler]] - Benchmarks and metrics
+
+---
+
+## 7. Related Pages
+
+- [[../01-Architecture/Overview|Architecture Overview]] - System architecture
+- [[../02-Implementation/Overview|Implementation Overview]] - Implementation details
+- [[../04-Development/Build-System|Build System]] - CMake configuration

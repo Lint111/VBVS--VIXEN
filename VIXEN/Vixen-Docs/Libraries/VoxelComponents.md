@@ -4,9 +4,9 @@ aliases: [VoxelComponents, Voxel Attributes, Components]
 tags: [library, voxel, components, ecs]
 created: 2025-12-06
 related:
-  - "[[SVO-System]]"
-  - "[[GaiaVoxelWorld-Library]]"
-  - "[[../01-Architecture/Libraries-Overview]]"
+  - "[[Overview]]"
+  - "[[SVO]]"
+  - "[[GaiaVoxelWorld]]"
 ---
 
 # VoxelComponents Library
@@ -158,49 +158,7 @@ graph TB
 
 ---
 
-## 7. Macro-Generated Code
-
-### 7.1 ComponentTraits
-
-```cpp
-template<typename T>
-struct ComponentTraits {
-    static constexpr bool isGeometry = false;
-    static constexpr bool isMaterial = false;
-    static constexpr size_t size = sizeof(T);
-};
-
-template<>
-struct ComponentTraits<Density> {
-    static constexpr bool isGeometry = true;
-    static constexpr bool isMaterial = false;
-    static constexpr size_t size = sizeof(float);
-};
-
-template<>
-struct ComponentTraits<Color> {
-    static constexpr bool isGeometry = false;
-    static constexpr bool isMaterial = true;
-    static constexpr size_t size = sizeof(glm::vec3);
-};
-```
-
-### 7.2 ForEachComponent
-
-```cpp
-// Compile-time iteration over all components
-template<typename Fn>
-void ForEachComponent(Fn&& fn) {
-    fn(ComponentTraits<Density>{});
-    fn(ComponentTraits<Color>{});
-    fn(ComponentTraits<Normal>{});
-    // ...
-}
-```
-
----
-
-## 8. Code References
+## 7. Code References
 
 | File | Purpose |
 |------|---------|
@@ -210,9 +168,9 @@ void ForEachComponent(Fn&& fn) {
 
 ---
 
-## 9. Related Pages
+## 8. Related Pages
 
-- [[../01-Architecture/Libraries-Overview|Libraries Overview]] - Library index
-- [[SVO-System]] - Octree using components
-- [[GaiaVoxelWorld-Library]] - ECS storage
-- [[Compression]] - DXT compression of components
+- [[Overview]] - Library index
+- [[SVO]] - Octree using components
+- [[GaiaVoxelWorld]] - ECS storage
+- [[VoxelData]] - DXT compression of components

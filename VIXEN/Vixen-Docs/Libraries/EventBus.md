@@ -1,11 +1,11 @@
 ---
 title: EventBus System
 aliases: [EventBus, Event System, Invalidation]
-tags: [architecture, events, decoupling, communication]
+tags: [library, events, decoupling, communication]
 created: 2025-12-06
 related:
   - "[[Overview]]"
-  - "[[RenderGraph-System]]"
+  - "[[RenderGraph]]"
 ---
 
 # EventBus System
@@ -269,12 +269,11 @@ public:
 | Event Base | `libraries/EventBus/include/Event.h` |
 | RenderGraphEvents | `libraries/RenderGraph/include/Core/RenderGraphEvents.h` |
 | Message | `libraries/EventBus/include/Message.h` |
-| AutoMessageType | `documentation/EventBus/AutoMessageTypeSystem.md` |
 
 ---
 
 ## 10. Related Pages
 
-- [[Overview]] - Architecture overview
-- [[RenderGraph-System]] - Node system integration
+- [[Overview]] - Library index
+- [[RenderGraph]] - Node system integration
 - [[../04-Development/Testing|Testing]] - Event testing patterns

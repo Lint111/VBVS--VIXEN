@@ -4,9 +4,9 @@ aliases: [VoxelData, DXT, Compression]
 tags: [library, voxel, compression, dxt]
 created: 2025-12-06
 related:
-  - "[[SVO-System]]"
-  - "[[Compression]]"
-  - "[[VoxelComponents-Library]]"
+  - "[[Overview]]"
+  - "[[SVO]]"
+  - "[[VoxelComponents]]"
 ---
 
 # VoxelData Library
@@ -104,7 +104,7 @@ std::array<glm::vec3, 16> decompressed = compressor.Decompress(block);
 ```
 Bytes 0-7:  X component (DXT5 alpha-style encoding)
 Bytes 8-15: Y component (DXT5 alpha-style encoding)
-Z component: Reconstructed from sqrt(1 - x² - y²)
+Z component: Reconstructed from sqrt(1 - x^2 - y^2)
 ```
 
 ### 4.2 API
@@ -163,37 +163,11 @@ VkBuffer colorBuffer = grid.CreateColorBuffer(device);
 VkBuffer normalBuffer = grid.CreateNormalBuffer(device);
 ```
 
-### 6.1 Memory Layout
-
-```
-Brick 0: [Color Block 0..N] [Normal Block 0..N]
-Brick 1: [Color Block 0..N] [Normal Block 0..N]
-...
-```
-
 ---
 
-## 7. Integration with SVO
+## 7. Performance
 
-```mermaid
-sequenceDiagram
-    participant CPU as CPU
-    participant VD as VoxelData
-    participant SVO as LaineKarrasOctree
-    participant GPU as GPU
-
-    CPU->>VD: Compress brick colors/normals
-    VD-->>CPU: DXT blocks
-    CPU->>SVO: Store in brick data
-    SVO->>GPU: Upload brickData SSBO
-    GPU->>GPU: Decompress on ray hit
-```
-
----
-
-## 8. Performance
-
-### 8.1 Compression Time
+### 7.1 Compression Time
 
 | Operation | Time per brick (512 voxels) |
 |-----------|----------------------------|
@@ -201,7 +175,7 @@ sequenceDiagram
 | DXTn Normal | ~80 microseconds |
 | Combined | ~130 microseconds |
 
-### 8.2 GPU Decompression
+### 7.2 GPU Decompression
 
 | Operation | Cycles |
 |-----------|--------|
@@ -213,7 +187,7 @@ Negligible impact on ray marching performance.
 
 ---
 
-## 9. Code References
+## 8. Code References
 
 | File | Purpose |
 |------|---------|
@@ -225,9 +199,9 @@ Negligible impact on ray marching performance.
 
 ---
 
-## 10. Related Pages
+## 9. Related Pages
 
-- [[Compression]] - Detailed compression documentation
-- [[SVO-System]] - Octree brick integration
-- [[VoxelComponents-Library]] - Source data components
-- [[../01-Architecture/Libraries-Overview|Libraries Overview]] - Library index
+- [[Overview]] - Library index
+- [[../02-Implementation/Compression|Compression]] - Detailed compression documentation
+- [[SVO]] - Octree brick integration
+- [[VoxelComponents]] - Source data components

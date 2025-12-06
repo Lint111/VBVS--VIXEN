@@ -4,8 +4,8 @@ aliases: [Core, Morton, MortonEncoding]
 tags: [library, core, morton, utilities]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
-  - "[[../02-Implementation/SVO-System]]"
+  - "[[Overview]]"
+  - "[[SVO]]"
 ---
 
 # Core Library
@@ -156,6 +156,6 @@ graph TB
 
 ## 7. Related Pages
 
-- [[Libraries-Overview]] - Library index
-- [[../02-Implementation/SVO-System|SVO System]] - Morton code consumer
-- [[GaiaVoxelWorld-Library]] - Entity storage using Morton keys
+- [[Overview]] - Library index
+- [[SVO]] - Morton code consumer
+- [[GaiaVoxelWorld]] - Entity storage using Morton keys

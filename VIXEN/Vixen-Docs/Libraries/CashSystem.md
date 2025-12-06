@@ -4,9 +4,9 @@ aliases: [CashSystem, Caching, Cachers]
 tags: [library, caching, vulkan, optimization]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
-  - "[[VulkanResources-Library]]"
-  - "[[RenderGraph-System]]"
+  - "[[Overview]]"
+  - "[[VulkanResources]]"
+  - "[[RenderGraph]]"
 ---
 
 # CashSystem Library
@@ -214,13 +214,11 @@ graph LR
 | `libraries/CashSystem/include/TypedCacher.h` | Template base |
 | `libraries/CashSystem/include/ShaderModuleCacher.h` | Shader caching |
 | `libraries/CashSystem/include/PipelineCacher.h` | Pipeline caching |
-| `documentation/CashSystem/01-architecture.md` | Detailed architecture |
-| `documentation/CashSystem/02-usage-guide.md` | Usage patterns |
 
 ---
 
 ## 8. Related Pages
 
-- [[Libraries-Overview]] - Library index
-- [[VulkanResources-Library]] - Vulkan resource management
-- [[RenderGraph-System]] - Node cacher integration
+- [[Overview]] - Library index
+- [[VulkanResources]] - Vulkan resource management
+- [[RenderGraph]] - Node cacher integration

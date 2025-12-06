@@ -4,9 +4,9 @@ aliases: [GaiaVoxelWorld, Voxel Storage, ECS Voxels]
 tags: [library, voxel, ecs, gaia, storage]
 created: 2025-12-06
 related:
-  - "[[SVO-System]]"
-  - "[[VoxelComponents-Library]]"
-  - "[[../01-Architecture/Libraries-Overview]]"
+  - "[[Overview]]"
+  - "[[SVO]]"
+  - "[[VoxelComponents]]"
 ---
 
 # GaiaVoxelWorld Library
@@ -126,7 +126,7 @@ glm::ivec3 decoded = key.toPosition();
 
 | Aspect | Dense Array | Morton-ECS |
 |--------|-------------|------------|
-| Memory | O(n³) | O(occupied) |
+| Memory | O(n^3) | O(occupied) |
 | Lookup | O(1) | O(1) hash |
 | Iteration | Sparse inefficient | Cache-friendly |
 | Components | Fixed struct | Dynamic archetypes |
@@ -225,27 +225,7 @@ Components are stored contiguously per archetype for cache efficiency.
 
 ---
 
-## 7. Thread Safety
-
-> [!warning] Single-Threaded
-> GaiaVoxelWorld is currently single-threaded. Modifications must occur on the main thread.
-
-### 7.1 Future: Concurrent Access
-
-```cpp
-// Planned API
-world.lockForReading();
-// ... read operations ...
-world.unlockReading();
-
-world.lockForWriting();
-// ... write operations ...
-world.unlockWriting();
-```
-
----
-
-## 8. Code References
+## 7. Code References
 
 | File | Purpose |
 |------|---------|
@@ -256,9 +236,9 @@ world.unlockWriting();
 
 ---
 
-## 9. Related Pages
+## 8. Related Pages
 
-- [[../01-Architecture/Libraries-Overview|Libraries Overview]] - Library index
-- [[SVO-System]] - Uses GaiaVoxelWorld for storage
-- [[VoxelComponents-Library]] - Component definitions
-- [[../01-Architecture/Core-Library|Core Library]] - Morton encoding
+- [[Overview]] - Library index
+- [[SVO]] - Uses GaiaVoxelWorld for storage
+- [[VoxelComponents]] - Component definitions
+- [[Core]] - Morton encoding

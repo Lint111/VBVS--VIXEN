@@ -4,9 +4,9 @@ aliases: [GaiaArchetypes, Archetypes, ECS]
 tags: [library, ecs, gaia, archetypes]
 created: 2025-12-06
 related:
-  - "[[GaiaVoxelWorld-Library]]"
-  - "[[VoxelComponents-Library]]"
-  - "[[../01-Architecture/Libraries-Overview]]"
+  - "[[Overview]]"
+  - "[[GaiaVoxelWorld]]"
+  - "[[VoxelComponents]]"
 ---
 
 # GaiaArchetypes Library
@@ -143,24 +143,7 @@ world.query<Density, Color>([](auto e, auto& d, auto& c) {
 
 ---
 
-## 6. Archetype Registration
-
-### 6.1 Explicit Registration
-
-```cpp
-// Register archetype before use (optimization)
-world.registerArchetype<Density>();
-world.registerArchetype<Density, Color>();
-world.registerArchetype<Density, Color, Normal>();
-```
-
-### 6.2 Lazy Registration
-
-If not pre-registered, archetypes are created on first entity with that component set.
-
----
-
-## 7. Code References
+## 6. Code References
 
 | File | Purpose |
 |------|---------|
@@ -170,8 +153,8 @@ If not pre-registered, archetypes are created on first entity with that componen
 
 ---
 
-## 8. Related Pages
+## 7. Related Pages
 
-- [[../01-Architecture/Libraries-Overview|Libraries Overview]] - Library index
-- [[GaiaVoxelWorld-Library]] - World using archetypes
-- [[VoxelComponents-Library]] - Component definitions
+- [[Overview]] - Library index
+- [[GaiaVoxelWorld]] - World using archetypes
+- [[VoxelComponents]] - Component definitions

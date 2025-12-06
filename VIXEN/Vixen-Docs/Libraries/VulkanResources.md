@@ -4,9 +4,9 @@ aliases: [VulkanResources, Vulkan, VkDevice]
 tags: [library, vulkan, gpu, resources]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
-  - "[[Vulkan-Pipeline]]"
-  - "[[CashSystem-Library]]"
+  - "[[Overview]]"
+  - "[[../01-Architecture/Vulkan-Pipeline]]"
+  - "[[CashSystem]]"
 ---
 
 # VulkanResources Library
@@ -215,13 +215,12 @@ VkImage image = ImageUtils::Create(device, physicalDevice, imageInfo);
 | `libraries/VulkanResources/include/SwapChain.h` | Swapchain handling |
 | `libraries/VulkanResources/include/PipelineUtils.h` | Pipeline creation |
 | `libraries/VulkanResources/include/DescriptorUtils.h` | Descriptor utilities |
-| `documentation/VulkanResources/GPUPerformanceSystem.md` | Performance docs |
 
 ---
 
 ## 8. Related Pages
 
-- [[Libraries-Overview]] - Library index
-- [[Vulkan-Pipeline]] - Vulkan architecture
-- [[CashSystem-Library]] - Resource caching
-- [[../04-Development/Profiling|Profiling]] - Performance measurement
+- [[Overview]] - Library index
+- [[../01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - Vulkan architecture
+- [[CashSystem]] - Resource caching
+- [[Profiler]] - Performance measurement

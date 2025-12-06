@@ -23,6 +23,7 @@ graph LR
     A --> D[Research]
     A --> E[Development]
     A --> F[Progress]
+    A --> L[Libraries]
 
     B --> B1[RenderGraph]
     B --> B2[Vulkan Pipeline]
@@ -32,11 +33,7 @@ graph LR
     C --> C2[Ray Marching]
     C --> C3[Shaders]
 
-    D --> D1[ESVO Algorithm]
-    D --> D2[Papers]
-
-    E --> E1[Build System]
-    E --> E2[Testing]
+    L --> L1[All 14 Libraries]
 
     style A fill:#4a9eff
     style B fill:#ff9f43
@@ -44,26 +41,30 @@ graph LR
     style D fill:#a55eea
     style E fill:#fd9644
     style F fill:#20bf6b
+    style L fill:#3498db
 ```
 
 ---
 
 ## Sections
 
+### [[Libraries/Overview|Libraries]]
+Complete documentation for all 14 VIXEN libraries.
+- [[Libraries/Core|Core]] - Morton encoding, math utilities
+- [[Libraries/RenderGraph|RenderGraph]] - Graph-based render pipeline
+- [[Libraries/SVO|SVO]] - Sparse Voxel Octree (ESVO)
+- [[Libraries/VulkanResources|VulkanResources]] - Vulkan resource management
+- [[Libraries/Profiler|Profiler]] - Benchmark runner, metrics export
+
 ### [[01-Architecture/Overview|Architecture]]
 Core system design and component relationships.
-- [[01-Architecture/Libraries-Overview|Libraries Overview]] - All 14 library components
-- [[01-Architecture/RenderGraph-System|RenderGraph System]] - Node-based rendering pipeline
+- [[01-Architecture/RenderGraph-System|RenderGraph System]] - Detailed node-based rendering pipeline
 - [[01-Architecture/Vulkan-Pipeline|Vulkan Pipeline]] - GPU resource management
 - [[01-Architecture/Type-System|Type System]] - Compile-time safety with variants
-- [[01-Architecture/EventBus|EventBus]] - Decoupled communication
-- [[01-Architecture/CashSystem-Library|CashSystem]] - Resource caching
 
 ### [[02-Implementation/Overview|Implementation]]
 Detailed implementation guides and code references.
 - [[02-Implementation/SVO-System|SVO System]] - Sparse Voxel Octree with ESVO
-- [[02-Implementation/GaiaVoxelWorld-Library|GaiaVoxelWorld]] - ECS voxel storage
-- [[02-Implementation/VoxelComponents-Library|VoxelComponents]] - Voxel attribute definitions
 - [[02-Implementation/Ray-Marching|Ray Marching]] - GPU ray traversal
 - [[02-Implementation/Compression|DXT Compression]] - 5.3:1 memory reduction
 - [[02-Implementation/Shaders|Shaders]] - GLSL shader documentation
@@ -119,7 +120,8 @@ Project status and roadmap tracking.
 1. **New to the project?** Start with [[01-Architecture/Overview|Architecture Overview]]
 2. **Want to build?** See [[04-Development/Build-System|Build System]]
 3. **Working on voxels?** Read [[02-Implementation/SVO-System|SVO System]]
-4. **Research focus?** Check [[03-Research/ESVO-Algorithm|ESVO Algorithm]]
+4. **Library reference?** Check [[Libraries/Overview|Libraries Overview]]
+5. **Research focus?** Check [[03-Research/ESVO-Algorithm|ESVO Algorithm]]
 
 ---
 

@@ -4,8 +4,8 @@ aliases: [ResourceManagement, RM, Resource Wrapper]
 tags: [library, resources, state-management]
 created: 2025-12-06
 related:
-  - "[[Libraries-Overview]]"
-  - "[[RenderGraph-System]]"
+  - "[[Overview]]"
+  - "[[RenderGraph]]"
 ---
 
 # ResourceManagement Library
@@ -194,5 +194,5 @@ uint32_t mips = textureResource.GetMetadataOr<uint32_t>("mip_levels", 1);
 
 ## 6. Related Pages
 
-- [[Libraries-Overview]] - Library index
-- [[RenderGraph-System]] - Resource management in nodes
+- [[Overview]] - Library index
+- [[RenderGraph]] - Resource management in nodes
