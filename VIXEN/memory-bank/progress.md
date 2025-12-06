@@ -1,8 +1,8 @@
 # Progress
 
-## Current State: Phase I/J COMPLETE - Fragment Pipeline Working (Dec 2025)
+## Current State: Phase J COMPLETE - All Fragment Shader Variants Done (Dec 2025)
 
-**Last Updated**: December 5, 2025 (Phase J Fragment Pipeline COMPLETE)
+**Last Updated**: December 6, 2025 (Phase J FULLY COMPLETE - both uncompressed and compressed variants)
 
 ---
 
@@ -91,6 +91,27 @@ Implemented full fragment shader ray marching pipeline with push constant suppor
 
 ### Result
 Fragment pipeline renders voxels with proper camera control. Both compute and fragment pipelines verified working.
+
+### Task J.2: Compressed Fragment Shader Variant ✅ COMPLETE
+
+**VoxelRayMarch_Compressed.frag** (December 6, 2025)
+- ✅ Created compressed fragment shader matching `VoxelRayMarch_Compressed.comp`
+- ✅ Uses DXT-compressed brick data (bindings 6-7)
+- ✅ Updated BenchmarkConfig with compressed fragment shader variant
+- ✅ Wired compressed buffer bindings in WireFragmentVariadicResources()
+- ✅ Also wired compressed buffers in WireVariadicResources() for compute pipeline
+
+**Shader Variants - Complete Comparative Study:**
+| Pipeline | Uncompressed | Compressed |
+|----------|--------------|------------|
+| Compute | ✅ VoxelRayMarch.comp | ✅ VoxelRayMarch_Compressed.comp |
+| Fragment | ✅ VoxelRayMarch.frag | ✅ VoxelRayMarch_Compressed.frag |
+| Hardware RT | ⏳ Phase K | ⏳ Phase K |
+
+**Files Modified:**
+- `shaders/VoxelRayMarch_Compressed.frag` (NEW)
+- `libraries/Profiler/src/BenchmarkConfig.cpp` (added compressed variant to fragment pipeline)
+- `libraries/Profiler/src/BenchmarkGraphFactory.cpp` (wired bindings 6-7 for compressed buffers)
 
 ---
 

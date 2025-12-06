@@ -1216,7 +1216,7 @@ void BenchmarkGraphFactory::WireVariadicResources(
     using RG::InputState;
 
     //--------------------------------------------------------------------------
-    // VoxelRayMarch.comp Descriptor Bindings (Set 0)
+    // VoxelRayMarch.comp / VoxelRayMarch_Compressed.comp Descriptor Bindings (Set 0)
     //--------------------------------------------------------------------------
     // Binding constants from VoxelRayMarchNames.h (hard-coded for portability)
     constexpr uint32_t BINDING_OUTPUT_IMAGE = 0;
@@ -1225,6 +1225,9 @@ void BenchmarkGraphFactory::WireVariadicResources(
     constexpr uint32_t BINDING_MATERIALS = 3;
     constexpr uint32_t BINDING_TRACE_WRITE_INDEX = 4;
     constexpr uint32_t BINDING_OCTREE_CONFIG = 5;
+    // Compressed shader bindings (VoxelRayMarch_Compressed.comp only)
+    constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
+    constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
 
     // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
     batch.ConnectVariadic(
@@ -1260,6 +1263,17 @@ void BenchmarkGraphFactory::WireVariadicResources(
     batch.ConnectVariadic(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         compute.descriptorGatherer, BINDING_OCTREE_CONFIG,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 6-7: Compressed buffers (optional - only used by VoxelRayMarch_Compressed.comp)
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+        compute.descriptorGatherer, BINDING_COMPRESSED_COLOR,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+        compute.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
         SlotRole::Dependency | SlotRole::Execute);
 
     //--------------------------------------------------------------------------
@@ -1499,13 +1513,16 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
 
     RG::ConnectionBatch batch(graph);
 
-    // Descriptor binding indices (matching VoxelRayMarch.frag layout)
+    // Descriptor binding indices (matching VoxelRayMarch.frag / VoxelRayMarch_Compressed.frag layout)
     // binding 0: outputImage (handled by swapchain, not via variadic)
     constexpr uint32_t BINDING_ESVO_NODES = 1;
     constexpr uint32_t BINDING_BRICK_DATA = 2;
     constexpr uint32_t BINDING_MATERIALS = 3;
     constexpr uint32_t BINDING_DEBUG_CAPTURE = 4;
     constexpr uint32_t BINDING_OCTREE_CONFIG = 5;
+    // Compressed shader bindings (VoxelRayMarch_Compressed.frag only)
+    constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
+    constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
 
     // Connect voxel grid buffers to descriptor gatherer
     batch.ConnectVariadic(
@@ -1531,6 +1548,18 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
     batch.ConnectVariadic(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         fragment.descriptorGatherer, BINDING_OCTREE_CONFIG,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Compressed buffer bindings (optional - only used by VoxelRayMarch_Compressed.frag)
+    // These are marked Optional so uncompressed shader works without them
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+        fragment.descriptorGatherer, BINDING_COMPRESSED_COLOR,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+        fragment.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
         SlotRole::Dependency | SlotRole::Execute);
 
     // Push constant binding indices

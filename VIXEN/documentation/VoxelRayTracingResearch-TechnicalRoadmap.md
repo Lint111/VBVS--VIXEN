@@ -78,8 +78,8 @@ This document outlines the technical implementation roadmap for integrating voxe
     - 16/16 test_lod tests passing
   - ⏸️ **Phase B.3 (Streaming)**: Deferred to Phase N+2 (not critical path)
 
-### ❌ Missing (Required for Research)
-Critical gaps identified in 5 major phases (I-M) outlined below.
+### ⏳ Remaining (Required for Research)
+3 major phases remaining (K-M) outlined below. Phases I-J now complete.
 
 ---
 
@@ -202,10 +202,11 @@ Key Files Modified (Week 2):
 
 ---
 
-### Phase I: Performance Profiling System 📊
-**Duration**: 2-3 weeks
+### Phase I: Performance Profiling System 📊 ✅ COMPLETE
+**Duration**: 2-3 weeks → Completed December 3, 2025
 **Priority**: HIGH - Required for metrics collection
 **Dependencies**: Phase G complete (timestamp queries)
+**Status**: ✅ COMPLETE
 
 #### Objectives
 1. Automated per-frame metric collection
@@ -320,6 +321,21 @@ struct BenchmarkConfig {
 - ✅ Profiler measures fragment shader GPU time
 - ✅ Bandwidth metrics collected
 - ✅ Visual parity with compute shader output
+
+#### Completed Task (J.2): Compressed Fragment Shader Variant ✅
+
+**J.2: VoxelRayMarch_Compressed.frag** (December 6, 2025)
+- ✅ Created `VoxelRayMarch_Compressed.frag` matching `VoxelRayMarch_Compressed.comp`
+- ✅ Uses DXT-compressed brick data (bindings 6-7 for compressed colors/normals)
+- ✅ Updated BenchmarkConfig to include compressed fragment shader variant
+- ✅ Wired compressed buffer bindings in WireFragmentVariadicResources()
+
+**Shader Variants - Complete Comparative Study**:
+| Pipeline | Uncompressed | Compressed |
+|----------|--------------|------------|
+| Compute | ✅ VoxelRayMarch.comp | ✅ VoxelRayMarch_Compressed.comp |
+| Fragment | ✅ VoxelRayMarch.frag | ✅ VoxelRayMarch_Compressed.frag |
+| Hardware RT | ⏳ Phase K | ⏳ Phase K |
 
 ---
 

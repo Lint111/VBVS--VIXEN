@@ -214,10 +214,13 @@ std::vector<TestConfiguration> BenchmarkConfigLoader::GetResearchTestMatrix() {
     compute.shaderGroups = {{"VoxelRayMarch.comp"}, {"VoxelRayMarch_Compressed.comp"}};
     pipelines["compute"] = compute;
 
-    // Fragment pipeline
+    // Fragment pipeline - both uncompressed and compressed variants
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.shaderGroups = {{"Fullscreen.vert", "VoxelRayMarch.frag"}};
+    fragment.shaderGroups = {
+        {"Fullscreen.vert", "VoxelRayMarch.frag"},
+        {"Fullscreen.vert", "VoxelRayMarch_Compressed.frag"}
+    };
     pipelines["fragment"] = fragment;
 
     // Hardware RT pipeline - disabled by default
@@ -591,10 +594,13 @@ BenchmarkSuiteConfig BenchmarkSuiteConfig::GetResearchConfig() {
     compute.shaderGroups = {{"VoxelRayMarch.comp"}, {"VoxelRayMarch_Compressed.comp"}};
     config.pipelineMatrices["compute"] = compute;
 
-    // Fragment pipeline - limited
+    // Fragment pipeline - both uncompressed and compressed variants
     PipelineMatrix fragment;
     fragment.enabled = true;
-    fragment.shaderGroups = {{"Fullscreen.vert", "VoxelRayMarch.frag"}};
+    fragment.shaderGroups = {
+        {"Fullscreen.vert", "VoxelRayMarch.frag"},
+        {"Fullscreen.vert", "VoxelRayMarch_Compressed.frag"}
+    };
     config.pipelineMatrices["fragment"] = fragment;
 
     // Hardware RT - disabled by default

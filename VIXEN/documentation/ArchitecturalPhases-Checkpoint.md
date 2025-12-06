@@ -103,16 +103,18 @@
 - **Status**: IN PROGRESS
 
 **Phase J**: Fragment Shader Ray Marching ✅ COMPLETE
-- **Duration**: 1-2 weeks → Completed December 5, 2025
+- **Duration**: 1-2 weeks → Completed December 6, 2025
 - **Goal**: Traditional rasterization-based ray marching
 - **Deliverables**: Fragment shader pipeline, push constant support, GeometryRenderNode integration
-- **Status**: ✅ COMPLETE
+- **Status**: ✅ COMPLETE - Both uncompressed and compressed variants
 - **Key Changes**:
   - Added `PUSH_CONSTANT_DATA` and `PUSH_CONSTANT_RANGES` to GeometryRenderNodeConfig
   - Implemented `SetPushConstants()` in GeometryRenderNode (vkCmdPushConstants)
   - Wired PushConstantGatherer → GeometryRenderNode in BenchmarkGraphFactory
   - Fixed DescriptorResourceGathererNode to skip Invalid slots during validation
   - Registered fragment pipeline node types (RenderPass, Framebuffer, GraphicsPipeline, GeometryRender)
+  - Created VoxelRayMarch_Compressed.frag for compressed DXT data
+  - Wired compressed buffer bindings (6-7) in WireFragmentVariadicResources()
 
 **Phase K**: Hardware Ray Tracing Pipeline
 - **Duration**: 4-5 weeks
@@ -148,9 +150,9 @@
 | **G** | 🎯 RESEARCH | 2-3 weeks | ✅ COMPLETE (Nov 8) | SlotRole + Descriptor |
 | **INFRA** | 🔴 CRITICAL | ~80h | ✅ COMPLETE (Nov 5-8) | Testing, logging, context |
 | **H** | 🎯 RESEARCH | 4 weeks | ✅ COMPLETE (Dec 3) | Voxel data + DXT + LOD + Refactor |
-| **I** | 🎯 RESEARCH | 2-3 weeks | ⏳ IN PROGRESS | Profiling system |
-| **J** | 🎯 RESEARCH | 1-2 weeks | ✅ COMPLETE (Dec 5) | Fragment shader |
-| **K** | 🎯 RESEARCH | 4-5 weeks | ⏳ PENDING | Hardware RT |
+| **I** | 🎯 RESEARCH | 2-3 weeks | ✅ COMPLETE (Dec 3) | Profiling system |
+| **J** | 🎯 RESEARCH | 1-2 weeks | ✅ COMPLETE (Dec 6) | Fragment shader (both variants) |
+| **K** | 🎯 RESEARCH | 4-5 weeks | 🔜 NEXT | Hardware RT (VK_KHR_ray_tracing_pipeline) |
 | **L** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Optimizations |
 | **M** | 🎯 RESEARCH | 3-4 weeks | ⏳ PENDING | Automation |
 | **N** | 🎯 RESEARCH | 2-3 weeks | ⏳ PENDING | Research execution |
@@ -158,7 +160,7 @@
 | **E** | ⭐ LOW | 17-22h | ⏸️ DEFERRED | Hot reload |
 | **G-OLD** | ⭐⭐ MEDIUM | 40-60h | ❌ CANCELLED | Visual editor |
 
-**Total Research Timeline**: 14-18 weeks remaining (Phase J → May 2026)
+**Total Research Timeline**: 12-16 weeks remaining (Phase K → May 2026)
 
 ---
 

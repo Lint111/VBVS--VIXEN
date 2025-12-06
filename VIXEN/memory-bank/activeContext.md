@@ -403,6 +403,9 @@ libraries/Profiler/
 
 **Next Steps (Pipeline Expansion):**
 - [x] BuildFragmentRayMarchGraph() - **COMPLETE** ✅ Full implementation with push constants
+- [x] **VoxelRayMarch_Compressed.frag** - **COMPLETE** ✅ (December 6, 2025)
+  - Created compressed fragment shader matching VoxelRayMarch_Compressed.comp
+  - Wired compressed buffer bindings (6-7) in BenchmarkGraphFactory
 - [ ] BuildHardwareRTGraph() - VK_KHR_ray_tracing_pipeline implementation
 - [ ] BuildHybridGraph() - Combine compute + fragment approaches
 - [ ] GPU integration test (requires running Vulkan application)
@@ -410,6 +413,13 @@ libraries/Profiler/
 - [ ] VK_KHR_performance_query (hardware bandwidth)
 - [ ] gpu_utilization_percent (vendor-specific)
 - [ ] Nsight Graphics validation
+
+**Shader Variants for Comparative Study - COMPLETE:**
+| Pipeline | Uncompressed | Compressed |
+|----------|--------------|------------|
+| Compute | ✅ VoxelRayMarch.comp | ✅ VoxelRayMarch_Compressed.comp |
+| Fragment | ✅ VoxelRayMarch.frag | ✅ VoxelRayMarch_Compressed.frag |
+| Hardware RT | ⏳ Phase K | ⏳ Phase K |
 
 ---
 
