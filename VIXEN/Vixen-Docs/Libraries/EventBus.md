@@ -41,11 +41,11 @@ sequenceDiagram
 
 ## 2. Event Categories
 
-| Category | Range | Examples | Purpose |
-|----------|-------|----------|---------|
-| **Resource Invalidation** | 0-99 | WindowResize, SwapChainInvalidated, ShaderReloaded | Trigger recompilation |
-| **Application State** | 100-199 | SceneChanged, CameraUpdated | Update scene state |
-| **Execution** | 200-299 | FrameComplete | Rarely used |
+| Category                  | Range   | Examples                                           | Purpose               |
+| ------------------------- | ------- | -------------------------------------------------- | --------------------- |
+| **Resource Invalidation** | 0-99    | WindowResize, SwapChainInvalidated, ShaderReloaded | Trigger recompilation |
+| **Application State**     | 100-199 | SceneChanged, CameraUpdated                        | Update scene state    |
+| **Execution**             | 200-299 | FrameComplete                                      | Rarely used           |
 
 ---
 
