@@ -98,11 +98,26 @@ struct FragmentPipelineNodes {
     }
 };
 
+/// Hardware ray tracing pipeline nodes (Phase K)
+struct HardwareRTNodes {
+    RG::NodeHandle aabbConverter;        // VoxelAABBConverterNode
+    RG::NodeHandle accelerationStructure; // AccelerationStructureNode (BLAS + TLAS)
+    RG::NodeHandle rtPipeline;           // RayTracingPipelineNode
+    RG::NodeHandle traceRays;            // TraceRaysNode
+
+    /// Check if all required nodes are valid
+    bool IsValid() const {
+        return aabbConverter.IsValid() && accelerationStructure.IsValid() &&
+               rtPipeline.IsValid() && traceRays.IsValid();
+    }
+};
+
 /// Complete benchmark graph structure
 struct BenchmarkGraph {
     InfrastructureNodes infra;
     ComputePipelineNodes compute;
     FragmentPipelineNodes fragment;   // Used for fragment pipeline type
+    HardwareRTNodes hardwareRT;       // Used for hardware RT pipeline type (Phase K)
     RayMarchNodes rayMarch;
     OutputNodes output;
 
@@ -121,6 +136,7 @@ struct BenchmarkGraph {
             case PipelineType::Fragment:
                 return fragment.IsValid();
             case PipelineType::HardwareRT:
+                return hardwareRT.IsValid();
             case PipelineType::Hybrid:
                 // Not yet implemented - return false
                 return false;
@@ -431,6 +447,44 @@ public:
     );
 
     /**
+     * @brief Build hardware ray tracing pipeline subgraph
+     *
+     * Creates hardware RT nodes for VK_KHR_ray_tracing_pipeline:
+     * - VoxelAABBConverterNode: Extracts AABBs from voxel grid
+     * - AccelerationStructureNode: Builds BLAS + TLAS
+     * - RayTracingPipelineNode: Creates RT pipeline + SBT
+     * - TraceRaysNode: Dispatches vkCmdTraceRaysKHR
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes (for device connection)
+     * @return HardwareRTNodes with handles to all created nodes
+     */
+    static HardwareRTNodes BuildHardwareRT(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra
+    );
+
+    /**
+     * @brief Connect all subgraphs for hardware ray tracing pipeline
+     *
+     * Wires infrastructure, hardware RT, ray march scene, and output together.
+     * Uses ConnectionBatch for atomic registration.
+     *
+     * @param graph Target render graph
+     * @param infra Infrastructure nodes
+     * @param hardwareRT Hardware RT pipeline nodes
+     * @param rayMarch Ray marching scene nodes (provides voxel data)
+     * @param output Output/presentation nodes
+     */
+    static void ConnectHardwareRT(
+        RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
+        const HardwareRTNodes& hardwareRT,
+        const RayMarchNodes& rayMarch,
+        const OutputNodes& output
+    );
+
+    /**
      * @brief Build complete fragment ray march benchmark graph
      *
      * High-level convenience method that creates all subgraphs and connects them
@@ -450,23 +504,26 @@ public:
     );
 
     /**
-     * @brief Build hardware ray tracing benchmark graph (stub)
+     * @brief Build complete hardware ray tracing benchmark graph
      *
-     * Placeholder for VK_KHR_ray_tracing_pipeline based benchmark graph.
+     * High-level convenience method that creates all subgraphs and connects them
+     * for VK_KHR_ray_tracing_pipeline based rendering.
      *
-     * TODO: Implementation requires:
-     * - VK_KHR_ray_tracing_pipeline extension support
-     * - VK_KHR_acceleration_structure for BVH building
-     * - Ray generation, closest hit, and miss shaders
-     * - Acceleration structure build nodes
-     * - Shader binding table management
+     * Pipeline structure:
+     * - VoxelGridNode: Generates voxel data (shared with compute/fragment)
+     * - VoxelAABBConverterNode: Extracts AABBs from voxel grid
+     * - AccelerationStructureNode: Builds BLAS + TLAS
+     * - RayTracingPipelineNode: Creates RT pipeline + SBT
+     * - TraceRaysNode: Dispatches vkCmdTraceRaysKHR
+     *
+     * Requires RTX support (checked via VulkanDevice::CheckRTXSupport).
      *
      * @param graph Target render graph
      * @param config Benchmark test configuration
      * @param width Screen width in pixels
      * @param height Screen height in pixels
-     * @return Empty BenchmarkGraph (not yet implemented)
-     * @throws std::runtime_error indicating feature is not implemented
+     * @return BenchmarkGraph with all node handles (pipelineType = HardwareRT)
+     * @throws std::runtime_error if RTX extensions are not available
      */
     static BenchmarkGraph BuildHardwareRTGraph(
         RG::RenderGraph* graph,
@@ -620,6 +677,23 @@ private:
         const InfrastructureNodes& infra,
         const FragmentPipelineNodes& fragment,
         const RayMarchNodes& rayMarch
+    );
+
+    /**
+     * @brief Configure hardware RT pipeline node parameters
+     *
+     * Sets up parameters for AABB converter, acceleration structure, and trace rays nodes.
+     *
+     * @param graph Target render graph
+     * @param nodes Hardware RT nodes
+     * @param width Output width in pixels
+     * @param height Output height in pixels
+     */
+    static void ConfigureHardwareRTParams(
+        RG::RenderGraph* graph,
+        const HardwareRTNodes& nodes,
+        uint32_t width,
+        uint32_t height
     );
 };
 

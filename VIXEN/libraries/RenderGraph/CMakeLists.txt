@@ -70,6 +70,7 @@ set(RENDERGRAPH_DATA_NODE_CONFIGS
     include/Data/Nodes/VoxelAABBConverterNodeConfig.h
     include/Data/Nodes/AccelerationStructureNodeConfig.h
     include/Data/Nodes/RayTracingPipelineNodeConfig.h
+    include/Data/Nodes/TraceRaysNodeConfig.h
     include/Data/Nodes/WindowNodeConfig.h
 )
 
@@ -165,6 +166,7 @@ set(RENDERGRAPH_NODE_HEADERS
     include/Nodes/VoxelAABBConverterNode.h
     include/Nodes/AccelerationStructureNode.h
     include/Nodes/RayTracingPipelineNode.h
+    include/Nodes/TraceRaysNode.h
     include/Nodes/WindowNode.h
 )
 
@@ -198,6 +200,7 @@ set(RENDERGRAPH_NODE_SOURCES
     src/Nodes/VoxelAABBConverterNode.cpp
     src/Nodes/AccelerationStructureNode.cpp
     src/Nodes/RayTracingPipelineNode.cpp
+    src/Nodes/TraceRaysNode.cpp
     src/Nodes/WindowNode.cpp
 )
 

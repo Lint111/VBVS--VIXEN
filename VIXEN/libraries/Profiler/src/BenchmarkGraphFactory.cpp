@@ -34,6 +34,12 @@
 #include <Nodes/GraphicsPipelineNode.h>
 #include <Nodes/GeometryRenderNode.h>
 
+// Hardware ray tracing node types (Phase K)
+#include <Nodes/VoxelAABBConverterNode.h>
+#include <Nodes/AccelerationStructureNode.h>
+#include <Nodes/RayTracingPipelineNode.h>
+#include <Nodes/TraceRaysNode.h>
+
 // Node configs
 #include <Data/Nodes/InstanceNodeConfig.h>
 #include <Data/Nodes/WindowNodeConfig.h>
@@ -57,6 +63,12 @@
 #include <Data/Nodes/FramebufferNodeConfig.h>
 #include <Data/Nodes/GraphicsPipelineNodeConfig.h>
 #include <Data/Nodes/GeometryRenderNodeConfig.h>
+
+// Hardware ray tracing node configs (Phase K)
+#include <Data/Nodes/VoxelAABBConverterNodeConfig.h>
+#include <Data/Nodes/AccelerationStructureNodeConfig.h>
+#include <Data/Nodes/RayTracingPipelineNodeConfig.h>
+#include <Data/Nodes/TraceRaysNodeConfig.h>
 
 // Data types
 #include <Data/CameraData.h>
