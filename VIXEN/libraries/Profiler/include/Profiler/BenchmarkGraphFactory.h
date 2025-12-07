@@ -711,13 +711,16 @@ private:
      * @brief Wire variadic resources for hardware RT pipeline
      *
      * Connects Camera data to PushConstantGatherer for ray tracing push constants.
+     * Wires descriptor bindings for output image and acceleration structure.
      *
      * @param graph Target render graph
+     * @param infra Infrastructure nodes (provides swapchain for output image)
      * @param hardwareRT Hardware RT pipeline nodes
      * @param rayMarch Ray march scene nodes (provides camera data)
      */
     static void WireHardwareRTVariadicResources(
         RG::RenderGraph* graph,
+        const InfrastructureNodes& infra,
         const HardwareRTNodes& hardwareRT,
         const RayMarchNodes& rayMarch
     );

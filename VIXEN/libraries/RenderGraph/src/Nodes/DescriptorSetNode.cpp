@@ -673,6 +673,40 @@ void DescriptorSetNode::HandleBuffer(
     }
 }
 
+void DescriptorSetNode::HandleAccelerationStructure(
+    const ShaderManagement::SpirvDescriptorBinding& binding,
+    const DescriptorHandleVariant& resourceVariant,
+    VkWriteDescriptorSet& write,
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR>& accelInfos,
+    std::vector<VkAccelerationStructureKHR>& accelHandles,
+    std::vector<VkWriteDescriptorSet>& writes
+) {
+    if (std::holds_alternative<VkAccelerationStructureKHR>(resourceVariant)) {
+        VkAccelerationStructureKHR accel = std::get<VkAccelerationStructureKHR>(resourceVariant);
+
+        // Store the handle in a persistent vector (pointer must remain valid until vkUpdateDescriptorSets)
+        accelHandles.push_back(accel);
+
+        // Create acceleration structure write info
+        VkWriteDescriptorSetAccelerationStructureKHR accelWriteInfo{};
+        accelWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+        accelWriteInfo.accelerationStructureCount = 1;
+        accelWriteInfo.pAccelerationStructures = &accelHandles.back();
+        accelInfos.push_back(accelWriteInfo);
+
+        // Chain the acceleration structure write info to the main write
+        write.pNext = &accelInfos.back();
+        write.descriptorCount = 1;
+        writes.push_back(write);
+
+        NODE_LOG_DEBUG("[HandleAccelerationStructure] Bound ACCELERATION_STRUCTURE '" +
+                      binding.name + "' at binding " + std::to_string(binding.binding));
+    } else {
+        NODE_LOG_WARNING("[HandleAccelerationStructure] Expected VkAccelerationStructureKHR but got variant index " +
+                        std::to_string(resourceVariant.index()) + " for binding " + std::to_string(binding.binding));
+    }
+}
+
 std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
     uint32_t imageIndex,
     const std::vector<DescriptorResourceEntry>& descriptorResources,
@@ -690,10 +724,15 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                   "), " + std::to_string(descriptorBindings.size()) + " shader bindings");
 
     // CRITICAL: Reserve space to prevent reallocation during iteration
-    // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo) become invalid
+    // When vectors reallocate, all pointers (write.pImageInfo, write.pBufferInfo, pNext) become invalid
     // Reserve enough space for worst-case: all bindings could be image descriptors
     imageInfos.reserve(imageInfos.size() + descriptorBindings.size());
     bufferInfos.reserve(bufferInfos.size() + descriptorBindings.size());
+    // Also clear and reserve acceleration structure storage (uses member vectors)
+    perFrameAccelInfos.clear();
+    perFrameAccelHandles.clear();
+    perFrameAccelInfos.reserve(descriptorBindings.size());
+    perFrameAccelHandles.reserve(descriptorBindings.size());
 
     for (size_t bindingIdx = 0; bindingIdx < descriptorBindings.size(); bindingIdx++) {
         const auto& binding = descriptorBindings[bindingIdx];
@@ -743,8 +782,15 @@ std::vector<VkWriteDescriptorSet> DescriptorSetNode::BuildDescriptorWrites(
                 HandleBuffer(binding, resourceVariant, write, bufferInfos, writes);
                 break;
 
+            case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+                HandleAccelerationStructure(binding, resourceVariant, write, perFrameAccelInfos, perFrameAccelHandles, writes);
+                break;
+
             default:
                 // Unsupported or constant descriptor type - skip
+                NODE_LOG_DEBUG("[BuildDescriptorWrites] Unsupported descriptor type " +
+                              std::to_string(static_cast<int>(binding.descriptorType)) +
+                              " for binding " + std::to_string(binding.binding));
                 break;
         }
     }

@@ -74,6 +74,9 @@
 #include <Data/CameraData.h>
 #include <Data/InputState.h>
 
+// SDI (Shader-Driven Interface) generated headers for type-safe binding references
+#include "VoxelRTNames.h"
+
 #include <filesystem>
 #include <stdexcept>
 #include <unordered_set>
@@ -1320,9 +1323,16 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
                   hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::SHADER_DATA_BUNDLE);
 
-    // PushConstantGathererNode -> TraceRaysNode (camera push constants)
+    // PushConstantGathererNode -> TraceRaysNode (camera push constants and ranges)
     batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_DATA);
+
+    batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_RANGES,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_RANGES);
+
+    // ShaderLibraryNode -> TraceRaysNode (shader data bundle for reflection metadata)
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::SHADER_DATA_BUNDLE);
 
     // DescriptorSetNode -> TraceRaysNode (descriptor sets for binding)
     batch.Connect(hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SETS,
@@ -1428,8 +1438,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
         "VoxelRT.rchit",   // Closest hit shader
         "VoxelRT.rint");   // Intersection shader
 
-    // Wire variadic resources (camera -> push constants)
-    WireHardwareRTVariadicResources(graph, result.hardwareRT, result.rayMarch);
+    // Wire variadic resources (camera -> push constants, swapchain -> output image)
+    WireHardwareRTVariadicResources(graph, result.infra, result.hardwareRT, result.rayMarch);
 
     // Connect all subgraphs
     ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
@@ -2047,6 +2057,7 @@ void BenchmarkGraphFactory::WireFragmentVariadicResources(
 
 void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     RG::RenderGraph* graph,
+    const InfrastructureNodes& infra,
     const HardwareRTNodes& hardwareRT,
     const RayMarchNodes& rayMarch)
 {
@@ -2126,17 +2137,29 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     }
 
     //--------------------------------------------------------------------------
-    // VoxelRT.rgen Descriptor Bindings
+    // VoxelRT.rgen Descriptor Bindings (SDI-driven)
     //--------------------------------------------------------------------------
-    // layout(binding = 0, rgba8) uniform image2D outputImage;
-    // layout(binding = 1) uniform accelerationStructureEXT topLevelAS;
+    // Bindings are derived from VoxelRTNames.h (generated from shader reflection)
+    // This ensures compile-time validation that bindings match the shader.
     //
-    // NOTE: RT shader descriptor bindings are handled specially:
-    // - Output image is bound from swapchain at execute time by TraceRaysNode
-    // - TLAS is bound from AccelerationStructureNode at execute time by TraceRaysNode
-    // The DescriptorSetNode will create the layout from shader reflection,
-    // but actual resource binding happens at execute time in TraceRaysNode.
-    // TODO: Implement proper SDI for RT shaders with AccelerationStructure bindings
+    // NOTE: RT shader descriptor bindings require special handling:
+    // - Output image: Bound via DescriptorResourceGatherer from swapchain
+    // - TLAS: Bound via DescriptorResourceGatherer from AccelerationStructureNode
+
+    // Binding 0: outputImage (swapchain storage image) - Execute only (changes per frame)
+    // SDI reference: VoxelRT::outputImage::BINDING
+    batch.ConnectVariadic(
+        infra.swapchain, RG::SwapChainNodeConfig::CURRENT_FRAME_IMAGE_VIEW,
+        hardwareRT.descriptorGatherer, VoxelRT::outputImage::BINDING,
+        SlotRole::Execute);
+
+    // Binding 1: topLevelAS (acceleration structure) - Dependency + Execute
+    // SDI reference: VoxelRT::topLevelAS::BINDING
+    // TLAS is static (built once during compile), so Dependency is primary role
+    batch.ConnectVariadic(
+        hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::TLAS_HANDLE,
+        hardwareRT.descriptorGatherer, VoxelRT::topLevelAS::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
 
     // Register all connections atomically
     batch.RegisterAll();

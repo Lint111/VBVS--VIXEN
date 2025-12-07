@@ -1,6 +1,7 @@
 #pragma once
 #include "Data/Core/ResourceConfig.h"
 #include "Data/Nodes/RayTracingPipelineNodeConfig.h"
+#include "ShaderDataBundle.h"
 #include "VulkanDevice.h"
 #include "VulkanSwapChain.h"
 
@@ -14,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // ============================================================================
 
 namespace TraceRaysNodeCounts {
-    static constexpr size_t INPUTS = 12;  // Added DESCRIPTOR_SETS
+    static constexpr size_t INPUTS = 14;  // Added PUSH_CONSTANT_RANGES and SHADER_DATA_BUNDLE
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -25,13 +26,15 @@ namespace TraceRaysNodeCounts {
  * Dispatches ray tracing using vkCmdTraceRaysKHR.
  * Follows same pattern as ComputeDispatchNode for frame synchronization.
  *
- * Inputs: 11
+ * Inputs: 14
  * - VULKAN_DEVICE_IN, COMMAND_POOL: Device resources
  * - RT_PIPELINE_DATA, ACCELERATION_STRUCTURE_DATA: RT resources
  * - SWAPCHAIN_INFO, IMAGE_INDEX, CURRENT_FRAME_INDEX: Frame info
  * - IN_FLIGHT_FENCE: Synchronization
  * - IMAGE_AVAILABLE_SEMAPHORES_ARRAY, RENDER_COMPLETE_SEMAPHORES_ARRAY: Semaphores
- * - PUSH_CONSTANT_DATA: Camera data
+ * - PUSH_CONSTANT_DATA, PUSH_CONSTANT_RANGES: Camera data and ranges
+ * - DESCRIPTOR_SETS: Descriptor sets for shader bindings
+ * - SHADER_DATA_BUNDLE: Shader reflection metadata
  *
  * Outputs: 2
  * - COMMAND_BUFFER: Recorded command buffer
@@ -124,6 +127,20 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Push constant ranges from shader reflection
+    INPUT_SLOT(PUSH_CONSTANT_RANGES, std::vector<VkPushConstantRange>, 12,
+        SlotNullability::Optional,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Shader data bundle for reflection metadata
+    INPUT_SLOT(SHADER_DATA_BUNDLE, const std::shared_ptr<ShaderManagement::ShaderDataBundle>&, 13,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS =====
 
     OUTPUT_SLOT(COMMAND_BUFFER, VkCommandBuffer, 0,
@@ -169,6 +186,12 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         HandleDescriptor descSetsDesc{"std::vector<VkDescriptorSet>"};
         INIT_INPUT_DESC(DESCRIPTOR_SETS, "descriptor_sets", ResourceLifetime::Persistent, descSetsDesc);
 
+        HandleDescriptor pushConstRangesDesc{"std::vector<VkPushConstantRange>"};
+        INIT_INPUT_DESC(PUSH_CONSTANT_RANGES, "push_constant_ranges", ResourceLifetime::Transient, pushConstRangesDesc);
+
+        HandleDescriptor shaderBundleDesc{"ShaderDataBundle"};
+        INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderBundleDesc);
+
         // Outputs
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};
         INIT_OUTPUT_DESC(COMMAND_BUFFER, "command_buffer", ResourceLifetime::Transient, cmdBufferDesc);
@@ -191,6 +214,8 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 9);
     static_assert(PUSH_CONSTANT_DATA_Slot::index == 10);
     static_assert(DESCRIPTOR_SETS_Slot::index == 11);
+    static_assert(PUSH_CONSTANT_RANGES_Slot::index == 12);
+    static_assert(SHADER_DATA_BUNDLE_Slot::index == 13);
     static_assert(COMMAND_BUFFER_Slot::index == 0);
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1);
 };

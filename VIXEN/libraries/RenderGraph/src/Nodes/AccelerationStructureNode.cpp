@@ -102,6 +102,8 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
 
     // Output the acceleration structure data
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
+    // Output TLAS handle separately for variadic descriptor wiring
+    ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
 
     NODE_LOG_INFO("=== AccelerationStructureNode::CompileImpl COMPLETE ===");
     NODE_LOG_INFO("BLAS address: 0x" + std::to_string(accelData_.blasDeviceAddress));
@@ -111,8 +113,9 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
 
 void AccelerationStructureNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Acceleration structures are static (built during compile)
-    // Just pass through the cached data pointer
+    // Just pass through the cached data pointer and TLAS handle
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
+    ctx.Out(AccelerationStructureNodeConfig::TLAS_HANDLE, accelData_.tlas);
 }
 
 void AccelerationStructureNode::CleanupImpl(TypedCleanupContext& ctx) {

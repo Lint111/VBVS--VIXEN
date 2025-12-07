@@ -62,16 +62,6 @@ protected:
 
 private:
     /**
-     * @brief Create descriptor pool and sets
-     */
-    bool CreateDescriptorResources();
-
-    /**
-     * @brief Update descriptor set with current resources
-     */
-    void UpdateDescriptorSet(VkImageView outputImage);
-
-    /**
      * @brief Allocate command buffers (one per frame in flight)
      */
     bool AllocateCommandBuffers();
@@ -82,7 +72,7 @@ private:
     bool LoadRTXFunctions();
 
     /**
-     * @brief Cleanup descriptor resources
+     * @brief Cleanup resources (command buffers only - descriptors managed by DescriptorSetNode)
      */
     void DestroyResources();
 
@@ -94,9 +84,9 @@ private:
     RayTracingPipelineData* pipelineData_ = nullptr;
     AccelerationStructureData* accelData_ = nullptr;
 
-    // Descriptor resources
-    VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet_ = VK_NULL_HANDLE;
+    // NOTE: Descriptor resources are now managed by DescriptorSetNode
+    // TraceRaysNode receives descriptor sets via DESCRIPTOR_SETS input slot
+    // This follows the same pattern as ComputeDispatchNode
 
     // Command buffers (one per frame in flight)
     std::vector<VkCommandBuffer> commandBuffers_;

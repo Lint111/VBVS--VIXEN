@@ -250,9 +250,13 @@ target_include_directories(RenderGraph
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/application/main/include>
         # Generated SDI headers - priority order:
         #   1. Dev-time: Tool-generated SDI files in source tree
-        #   2. Build-time: CMake-generated SDI files
+        #   2. Build-time: CMake-generated SDI files (main app)
+        #   3. Build-time: CMake-generated SDI files (benchmark app)
+        #   4. Binaries: Pre-built SDI files in binaries/generated/sdi
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/generated/sdi>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/main/generated/sdi>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/application/benchmark/generated/sdi>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/binaries/generated/sdi>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

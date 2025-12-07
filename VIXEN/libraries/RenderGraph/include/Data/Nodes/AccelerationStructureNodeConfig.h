@@ -54,7 +54,7 @@ struct AccelerationStructureData {
 
 namespace AccelerationStructureNodeCounts {
     static constexpr size_t INPUTS = 3;
-    static constexpr size_t OUTPUTS = 1;
+    static constexpr size_t OUTPUTS = 2;  // ACCELERATION_STRUCTURE_DATA + TLAS_HANDLE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -100,6 +100,12 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // TLAS handle for descriptor binding (extracted from AccelerationStructureData)
+    // Used by DescriptorResourceGathererNode for variadic resource wiring
+    OUTPUT_SLOT(TLAS_HANDLE, VkAccelerationStructureKHR, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
 
     // Build flags for acceleration structure
@@ -120,6 +126,9 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
 
         HandleDescriptor accelStructDesc{"AccelerationStructureData*"};
         INIT_OUTPUT_DESC(ACCELERATION_STRUCTURE_DATA, "acceleration_structure", ResourceLifetime::Persistent, accelStructDesc);
+
+        HandleDescriptor tlasHandleDesc{"VkAccelerationStructureKHR"};
+        INIT_OUTPUT_DESC(TLAS_HANDLE, "tlas_handle", ResourceLifetime::Persistent, tlasHandleDesc);
     }
 
     VALIDATE_NODE_CONFIG(AccelerationStructureNodeConfig, AccelerationStructureNodeCounts);
@@ -128,6 +137,7 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
     static_assert(COMMAND_POOL_Slot::index == 1);
     static_assert(AABB_DATA_Slot::index == 2);
     static_assert(ACCELERATION_STRUCTURE_DATA_Slot::index == 0);
+    static_assert(TLAS_HANDLE_Slot::index == 1);
 };
 
 } // namespace Vixen::RenderGraph

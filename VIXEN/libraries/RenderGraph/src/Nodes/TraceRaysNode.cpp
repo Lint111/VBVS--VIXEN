@@ -67,7 +67,7 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[TraceRaysNode] RT_PIPELINE_DATA is null or invalid");
     }
 
-    // Get acceleration structure data
+    // Get acceleration structure data (still needed for SBT configuration)
     accelData_ = ctx.In(TraceRaysNodeConfig::ACCELERATION_STRUCTURE_DATA);
     if (!accelData_ || !accelData_->IsValid()) {
         throw std::runtime_error("[TraceRaysNode] ACCELERATION_STRUCTURE_DATA is null or invalid");
@@ -78,10 +78,9 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[TraceRaysNode] Failed to load RTX functions");
     }
 
-    // Create descriptor resources
-    if (!CreateDescriptorResources()) {
-        throw std::runtime_error("[TraceRaysNode] Failed to create descriptor resources");
-    }
+    // NOTE: Descriptor resources are now managed by DescriptorSetNode
+    // We receive descriptor sets via DESCRIPTOR_SETS input in ExecuteImpl
+    // This follows the same pattern as ComputeDispatchNode
 
     // Allocate command buffers
     if (!AllocateCommandBuffers()) {
@@ -108,6 +107,32 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Get push constants (optional)
     std::vector<uint8_t> pushConstData = ctx.In(TraceRaysNodeConfig::PUSH_CONSTANT_DATA);
 
+    // Get descriptor sets from DescriptorSetNode (following ComputeDispatchNode pattern)
+    const std::vector<VkDescriptorSet>& descriptorSets = ctx.In(TraceRaysNodeConfig::DESCRIPTOR_SETS);
+    if (descriptorSets.empty()) {
+        NODE_LOG_ERROR("[TraceRaysNode] No descriptor sets received from graph");
+        return;
+    }
+
+    // Validate descriptor set for this image
+    if (imageIndex >= descriptorSets.size()) {
+        NODE_LOG_ERROR("[TraceRaysNode] Invalid descriptor set index: " +
+                       std::to_string(imageIndex) + " >= " + std::to_string(descriptorSets.size()));
+        return;
+    }
+
+    VkDescriptorSet descriptorSet = descriptorSets[imageIndex];
+    if (descriptorSet == VK_NULL_HANDLE) {
+        NODE_LOG_ERROR("[TraceRaysNode] Descriptor set is null for image " + std::to_string(imageIndex));
+        return;
+    }
+
+    static int logCounter = 0;
+    if (logCounter++ < 5) {
+        NODE_LOG_INFO("[TraceRaysNode] Using descriptor set from graph for image " +
+                      std::to_string(imageIndex) + " (frame " + std::to_string(currentFrame) + ")");
+    }
+
     VkDevice device = vulkanDevice_->device;
 
     // Wait for previous frame to complete
@@ -125,9 +150,8 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
-    // Get output image
+    // Get output image for layout transitions
     VkImage outputImage = swapchainInfo->colorBuffers[imageIndex].image;
-    VkImageView outputImageView = swapchainInfo->colorBuffers[imageIndex].view;
 
     // Transition image to GENERAL for ray tracing output
     VkImageMemoryBarrier barrier{};
@@ -155,20 +179,17 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
         1, &barrier
     );
 
-    // Update descriptor set with current image view
-    UpdateDescriptorSet(outputImageView);
-
     // Bind ray tracing pipeline
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineData_->pipeline);
 
-    // Bind descriptor set
+    // Bind descriptor set from graph (DescriptorSetNode handles creation/updates)
     vkCmdBindDescriptorSets(
         cmdBuffer,
         VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
         pipelineData_->pipelineLayout,
         0,
         1,
-        &descriptorSet_,
+        &descriptorSet,
         0,
         nullptr
     );
@@ -282,86 +303,11 @@ bool TraceRaysNode::LoadRTXFunctions() {
 }
 
 // ============================================================================
-// DESCRIPTOR RESOURCES
+// DESCRIPTOR RESOURCES - REMOVED
 // ============================================================================
-
-bool TraceRaysNode::CreateDescriptorResources() {
-    VkDevice device = vulkanDevice_->device;
-
-    // Create descriptor pool
-    std::array<VkDescriptorPoolSize, 3> poolSizes{};
-
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    poolSizes[0].descriptorCount = 1;
-
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[1].descriptorCount = 1;
-
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[2].descriptorCount = 2;
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-
-    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
-        NODE_LOG_ERROR("Failed to create descriptor pool");
-        return false;
-    }
-
-    // Allocate descriptor set
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool_;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &pipelineData_->descriptorSetLayout;
-
-    if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet_) != VK_SUCCESS) {
-        NODE_LOG_ERROR("Failed to allocate descriptor set");
-        return false;
-    }
-
-    NODE_LOG_INFO("Created descriptor resources for TraceRaysNode");
-    return true;
-}
-
-void TraceRaysNode::UpdateDescriptorSet(VkImageView outputImage) {
-    VkDevice device = vulkanDevice_->device;
-
-    // Acceleration structure write
-    VkWriteDescriptorSetAccelerationStructureKHR accelWrite{};
-    accelWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-    accelWrite.accelerationStructureCount = 1;
-    accelWrite.pAccelerationStructures = &accelData_->tlas;
-
-    VkWriteDescriptorSet accelDescWrite{};
-    accelDescWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    accelDescWrite.pNext = &accelWrite;
-    accelDescWrite.dstSet = descriptorSet_;
-    accelDescWrite.dstBinding = 0;
-    accelDescWrite.descriptorCount = 1;
-    accelDescWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-
-    // Output image write
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.imageView = outputImage;
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-    VkWriteDescriptorSet imageWrite{};
-    imageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    imageWrite.dstSet = descriptorSet_;
-    imageWrite.dstBinding = 1;
-    imageWrite.descriptorCount = 1;
-    imageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    imageWrite.pImageInfo = &imageInfo;
-
-    std::array<VkWriteDescriptorSet, 2> writes = { accelDescWrite, imageWrite };
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()),
-                           writes.data(), 0, nullptr);
-}
+// NOTE: Descriptor pool/set creation is now handled by DescriptorSetNode.
+// TraceRaysNode receives descriptor sets via DESCRIPTOR_SETS input slot.
+// This follows the same pattern as ComputeDispatchNode for consistency.
 
 bool TraceRaysNode::AllocateCommandBuffers() {
     VkDevice device = vulkanDevice_->device;
@@ -398,12 +344,8 @@ void TraceRaysNode::DestroyResources() {
         commandBuffers_.clear();
     }
 
-    // Destroy descriptor pool (also frees descriptor set)
-    if (descriptorPool_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(device, descriptorPool_, nullptr);
-        descriptorPool_ = VK_NULL_HANDLE;
-        descriptorSet_ = VK_NULL_HANDLE;
-    }
+    // NOTE: Descriptor pool/set cleanup is handled by DescriptorSetNode
+    // TraceRaysNode no longer owns descriptor resources
 
     NODE_LOG_INFO("Destroyed TraceRaysNode resources");
 }
