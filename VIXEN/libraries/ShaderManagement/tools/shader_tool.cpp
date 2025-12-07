@@ -29,17 +29,70 @@
 #include "ShaderPipelineUtils.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <vector>
 #include <string>
 #include <optional>
+#include <algorithm>
 #include <nlohmann/json.hpp>  // For batch config parsing
+
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#define isatty _isatty
+#define fileno _fileno
+#else
+#include <unistd.h>
+#endif
 
 using namespace ShaderManagement;
 namespace fs = std::filesystem;
 
 // Tool version - update on releases
-constexpr const char* SDI_TOOL_VERSION = "1.0.0";
+constexpr const char* SDI_TOOL_VERSION = "1.1.0";
+
+// ===== Exit Codes (semantic codes for CI/CD debugging) =====
+namespace ExitCode {
+    constexpr int Success = 0;       // All operations completed successfully
+    constexpr int UsageError = 2;    // Bad arguments, invalid options, show help
+    constexpr int InputError = 3;    // File not found, invalid path, missing input
+    constexpr int CompileError = 4;  // Shader compilation or reflection failed
+    constexpr int IOError = 5;       // Can't write output, disk full, permission denied
+}
+
+// ===== Stdin Reading Helper =====
+
+/**
+ * @brief Read file paths from stdin (for piping support)
+ *
+ * Reads lines from stdin, treating each non-empty line as a file path.
+ * Supports piping from commands like: find . -name "*.comp" | sdi_tool -
+ *
+ * @param paths Output vector to populate with paths
+ * @return true if successful, false if stdin is a terminal (no piped input)
+ */
+bool ReadPathsFromStdin(std::vector<std::string>& paths) {
+    // Check if stdin has piped input (not a terminal)
+    if (isatty(fileno(stdin))) {
+        return false;  // No piped input
+    }
+
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        // Trim whitespace
+        size_t start = line.find_first_not_of(" \t\r\n");
+        size_t end = line.find_last_not_of(" \t\r\n");
+        if (start != std::string::npos && end != std::string::npos) {
+            std::string trimmed = line.substr(start, end - start + 1);
+            if (!trimmed.empty() && trimmed[0] != '#') {  // Skip empty lines and comments
+                paths.push_back(trimmed);
+            }
+        }
+    }
+
+    return !paths.empty();
+}
 
 // ===== Default Paths (single source of truth) =====
 constexpr const char* DEFAULT_OUTPUT_DIR = "./generated";
@@ -144,11 +197,13 @@ SDI Tool - Shader compiler and descriptor interface generator
 
 Usage:
   sdi_tool <shader_files...> [options]    (auto-detect pipeline type)
+  sdi_tool - [options]                    (read file list from stdin)
   sdi_tool compile <input_files...> [options]
   sdi_tool batch <config.json> [options]
   sdi_tool build-registry <bundle1.json> ... [options]
   sdi_tool cleanup <output-dir> [options]
   sdi_tool cleanup-sdi <sdi-dir> [options]
+  sdi_tool completion <shell>             (generate shell completion script)
   sdi_tool --help                         (show this help)
 
 Auto-Detection:
@@ -174,6 +229,7 @@ Commands:
   build-registry    Build central SDI registry from bundles
   cleanup           Remove orphaned SPIRV files from output directory
   cleanup-sdi       Remove orphaned SDI headers not referenced by any Names.h
+  completion        Generate shell completion script (bash|zsh|fish|powershell)
 
 Options:
   -o, --output <path>      Output file path
@@ -211,6 +267,14 @@ Examples:
   # Clean up orphaned files
   sdi_tool cleanup ./generated -v
   sdi_tool cleanup-sdi ./generated/sdi -v
+
+  # Piping from stdin (useful with find/ls)
+  find . -name "*.comp" | sdi_tool -
+  echo "Shaders/test.comp" | sdi_tool - --dry-run
+
+  # Generate shell completions
+  sdi_tool completion bash >> ~/.bashrc
+  sdi_tool completion powershell >> $PROFILE
 
 Batch Config Format (JSON):
   {
@@ -314,8 +378,50 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
         std::exit(0);
     }
 
+    // Handle stdin input: "-" as first argument reads file list from stdin
+    if (firstArg == "-") {
+        // Read file paths from stdin (piped input)
+        if (!ReadPathsFromStdin(options.inputFiles)) {
+            std::cerr << "Error: No input provided via stdin\n";
+            std::cerr << "Hint: Pipe file paths to sdi_tool, e.g.: find . -name \"*.comp\" | sdi_tool -\n";
+            std::exit(ExitCode::InputError);
+        }
+
+        // Parse remaining args for options
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            std::string nextArg = (i + 1 < argc) ? argv[i + 1] : "";
+            int skip = 0;
+
+            int result = ParseOption(arg, nextArg, i + 1 < argc, options, skip);
+            if (result == -1) {
+                return false;  // Show help
+            } else if (result == 1) {
+                std::cerr << "Error: Unknown option '" << arg << "'\n";
+                std::cerr << "Run 'sdi_tool --help' for usage information.\n";
+                std::exit(ExitCode::UsageError);
+            } else if (result == 2) {
+                // Additional input files from command line (mixed mode)
+                options.inputFiles.push_back(arg);
+            }
+            i += skip;
+        }
+
+        // Default to compile mode for stdin input
+        options.command = "compile";
+
+        // Auto-generate name from first input file if not specified
+        if (options.programName.empty() && !options.inputFiles.empty()) {
+            options.programName = fs::path(options.inputFiles[0]).stem().string();
+        }
+
+        // Default output directory
+        if (options.outputDir.empty()) {
+            options.outputDir = DEFAULT_OUTPUT_DIR;
+        }
+    }
     // Smart default: if first arg is a file path, auto-detect command
-    if (firstArg[0] != '-' && (firstArg.find('/') != std::string::npos ||
+    else if (firstArg[0] != '-' && (firstArg.find('/') != std::string::npos ||
                                 firstArg.find('\\') != std::string::npos ||
                                 firstArg.find('.') != std::string::npos)) {
         // Looks like a file path - collect all shader files first for proper detection
@@ -337,7 +443,7 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
             } else if (result == 1) {
                 std::cerr << "Error: Unknown option '" << arg << "'\n";
                 std::cerr << "Run 'sdi_tool --help' for usage information.\n";
-                std::exit(1);
+                std::exit(ExitCode::UsageError);
             } else if (result == 2) {
                 options.inputFiles.push_back(arg);
             }
@@ -378,7 +484,7 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
             } else if (result == 1) {
                 std::cerr << "Error: Unknown option '" << arg << "'\n";
                 std::cerr << "Run 'sdi_tool --help' for usage information.\n";
-                std::exit(1);
+                std::exit(ExitCode::UsageError);
             } else if (result == 2) {
                 options.inputFiles.push_back(arg);
             }
@@ -452,13 +558,13 @@ int CommandCompile(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No input files specified\n";
         std::cerr << "Hint: Provide shader files as arguments, e.g.: sdi_tool shader.vert shader.frag\n";
-        return 1;
+        return ExitCode::UsageError;
     }
 
     if (options.programName.empty()) {
         std::cerr << "Error: Program name not specified\n";
         std::cerr << "Hint: Use -n or --name to specify the shader program name\n";
-        return 1;
+        return ExitCode::UsageError;
     }
 
     // Make a mutable copy of input files (may be expanded by sibling discovery)
@@ -471,12 +577,12 @@ int CommandCompile(const ToolOptions& options) {
         if (validatedPath.empty()) {
             std::cerr << "Error: Invalid or unsafe input path: " << inputFile << "\n";
             std::cerr << "Hint: Use absolute paths or paths relative to current directory\n";
-            return 1;
+            return ExitCode::InputError;
         }
         if (!fs::exists(validatedPath)) {
             std::cerr << "Error: Input file not found: " << inputFile << "\n";
             std::cerr << "Hint: Check the file path and ensure the file exists\n";
-            return 1;
+            return ExitCode::InputError;
         }
     }
 
@@ -589,7 +695,7 @@ int CommandCompile(const ToolOptions& options) {
     if (!result.success) {
         std::cerr << "Error: Compilation failed: " << result.errorMessage << "\n";
         std::cerr << "Hint: Check shader syntax with 'glslangValidator <shader_file>'\n";
-        return 1;
+        return ExitCode::CompileError;
     }
 
     // Print warnings (unless quiet)
@@ -630,7 +736,7 @@ int CommandCompile(const ToolOptions& options) {
     if (validatedOutputPath.empty()) {
         std::cerr << "Error: Invalid or unsafe output path: " << outputPath << "\n";
         std::cerr << "Hint: Ensure the output directory exists and is writable\n";
-        return 1;
+        return ExitCode::IOError;
     }
 
     // Create file manifest for tracking
@@ -647,7 +753,7 @@ int CommandCompile(const ToolOptions& options) {
     if (!ShaderBundleSerializer::SaveToJson(*result.bundle, validatedOutputPath, serializerConfig)) {
         std::cerr << "Error: Failed to save bundle\n";
         std::cerr << "Hint: Check disk space and write permissions for " << outputDir << "\n";
-        return 1;
+        return ExitCode::IOError;
     }
 
     // Save manifest
@@ -667,7 +773,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No input bundles specified\n";
         std::cerr << "Hint: Provide bundle JSON files, e.g.: sdi_tool build-registry shader1.json shader2.json\n";
-        return 1;
+        return ExitCode::UsageError;
     }
 
     if (options.shouldPrintVerbose()) {
@@ -722,7 +828,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
     if (!registry.RegenerateRegistry()) {
         std::cerr << "Error: Failed to generate registry header\n";
         std::cerr << "Hint: Check write permissions for " << registryPath << "\n";
-        return 1;
+        return ExitCode::IOError;
     }
 
     fs::path outputFile = registryConfig.registryHeaderPath;
@@ -742,14 +848,14 @@ int CommandBatch(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No config file specified\n";
         std::cerr << "Hint: Provide a JSON config file, e.g.: sdi_tool batch shaders.json\n";
-        return 1;
+        return ExitCode::UsageError;
     }
 
     fs::path configPath = options.inputFiles[0];
     if (!fs::exists(configPath)) {
         std::cerr << "Error: Config file not found: " << configPath << "\n";
         std::cerr << "Hint: Create a batch config JSON file (see --help for format)\n";
-        return 1;
+        return ExitCode::InputError;
     }
 
     // Load config
@@ -760,14 +866,14 @@ int CommandBatch(const ToolOptions& options) {
     } catch (const std::exception& e) {
         std::cerr << "Error: Failed to parse config: " << e.what() << "\n";
         std::cerr << "Hint: Ensure the config file is valid JSON (see --help for format)\n";
-        return 1;
+        return ExitCode::InputError;
     }
 
     // Validate config has required fields
     if (!config.contains("shaders") || !config["shaders"].is_array()) {
         std::cerr << "Error: Config file missing 'shaders' array\n";
         std::cerr << "Hint: Config must have format: { \"shaders\": [...] }\n";
-        return 1;
+        return ExitCode::InputError;
     }
 
     std::string outputDir = options.outputDir.empty() ? DEFAULT_OUTPUT_DIR : options.outputDir;
@@ -789,7 +895,7 @@ int CommandBatch(const ToolOptions& options) {
 
         if (!shaderConfig.contains("name") || !shaderConfig.contains("stages")) {
             std::cerr << "Error: Shader entry missing 'name' or 'stages' field\n";
-            return 1;
+            return ExitCode::InputError;
         }
 
         ToolOptions shaderOptions = options;
@@ -899,7 +1005,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     if (!fs::exists(sdiDir)) {
         std::cerr << "Error: SDI directory does not exist: " << sdiDir << "\n";
         std::cerr << "Hint: Specify SDI directory, e.g.: sdi_tool cleanup-sdi ./generated/sdi\n";
-        return 1;
+        return ExitCode::InputError;
     }
 
     if (options.shouldPrintVerbose()) {
@@ -962,7 +1068,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     );
 
     // Print deleted files in verbose mode
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         for (const auto& orphan : orphanedFiles) {
             std::cout << "  Deleted: " << orphan.filename() << "\n";
         }
@@ -993,10 +1099,10 @@ int CommandCleanup(const ToolOptions& options) {
 
     if (!fs::exists(outputDir)) {
         std::cerr << "Error: Output directory does not exist: " << outputDir << "\n";
-        return 1;
+        return ExitCode::InputError;
     }
 
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Cleaning up orphaned files in: " << outputDir << "\n";
     }
 
@@ -1014,6 +1120,265 @@ int CommandCleanup(const ToolOptions& options) {
     return 0;
 }
 
+/**
+ * @brief Command: Generate shell completion scripts
+ *
+ * Generates completion scripts for various shells:
+ * - bash: Bash completion script
+ * - zsh: Zsh completion script
+ * - fish: Fish shell completion script
+ * - powershell: PowerShell completion script
+ */
+int CommandCompletion(const ToolOptions& options) {
+    if (options.inputFiles.empty()) {
+        std::cerr << "Error: No shell type specified\n";
+        std::cerr << "Usage: sdi_tool completion <bash|zsh|fish|powershell>\n";
+        return ExitCode::UsageError;
+    }
+
+    std::string shell = options.inputFiles[0];
+
+    // Convert to lowercase for comparison
+    std::transform(shell.begin(), shell.end(), shell.begin(), ::tolower);
+
+    if (shell == "bash") {
+        std::cout << R"COMPLETION(# Bash completion script for sdi_tool
+# Add to ~/.bashrc or /etc/bash_completion.d/sdi_tool
+
+_sdi_tool_completions() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    local commands="compile batch build-registry cleanup cleanup-sdi completion"
+    local options="--output --output-dir --name --sdi-namespace --sdi-dir --no-sdi --embed-spirv --verbose --quiet --dry-run --help --version"
+    local short_options="-o -d -n -v -q -h"
+    local all_options="${options} ${short_options}"
+
+    # First argument: command or shader file
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+        # Complete commands, options, or shader files
+        if [[ ${cur} == -* ]]; then
+            COMPREPLY=($(compgen -W "${all_options}" -- ${cur}))
+        else
+            COMPREPLY=($(compgen -W "${commands}" -- ${cur}))
+            # Also complete shader files
+            COMPREPLY+=($(compgen -f -X '!*.@(vert|frag|comp|geom|tesc|tese|rgen|rmiss|rchit|rint|rahit|rcall|mesh|task|json)' -- ${cur}))
+        fi
+        return 0
+    fi
+
+    # After completion command: shell type
+    if [[ ${prev} == "completion" ]]; then
+        COMPREPLY=($(compgen -W "bash zsh fish powershell" -- ${cur}))
+        return 0
+    fi
+
+    # After options that expect a value
+    case ${prev} in
+        -o|--output)
+            COMPREPLY=($(compgen -f -- ${cur}))
+            return 0
+            ;;
+        -d|--output-dir|--sdi-dir)
+            COMPREPLY=($(compgen -d -- ${cur}))
+            return 0
+            ;;
+        -n|--name|--sdi-namespace)
+            # No completion for name/namespace
+            return 0
+            ;;
+    esac
+
+    # Complete options or files
+    if [[ ${cur} == -* ]]; then
+        COMPREPLY=($(compgen -W "${all_options}" -- ${cur}))
+    else
+        # Complete shader files
+        COMPREPLY=($(compgen -f -X '!*.@(vert|frag|comp|geom|tesc|tese|rgen|rmiss|rchit|rint|rahit|rcall|mesh|task|json)' -- ${cur}))
+    fi
+}
+
+complete -F _sdi_tool_completions sdi_tool
+)COMPLETION";
+    } else if (shell == "zsh") {
+        std::cout << R"COMPLETION(#compdef sdi_tool
+# Zsh completion script for sdi_tool
+# Add to ~/.zshrc or place in a directory in $fpath
+
+_sdi_tool() {
+    local -a commands=(
+        'compile:Compile shader stages into bundle'
+        'batch:Process multiple shaders from config file'
+        'build-registry:Build central SDI registry from bundles'
+        'cleanup:Remove orphaned SPIRV files'
+        'cleanup-sdi:Remove orphaned SDI headers'
+        'completion:Generate shell completion script'
+    )
+
+    local -a options=(
+        '-o[Output file path]:output file:_files'
+        '--output[Output file path]:output file:_files'
+        '-d[Output directory]:output dir:_files -/'
+        '--output-dir[Output directory]:output dir:_files -/'
+        '-n[Program name]:name:'
+        '--name[Program name]:name:'
+        '--sdi-namespace[SDI namespace prefix]:namespace:'
+        '--sdi-dir[SDI output directory]:sdi dir:_files -/'
+        '--no-sdi[Disable SDI generation]'
+        '--embed-spirv[Embed SPIRV in JSON]'
+        '-v[Print detailed output]'
+        '--verbose[Print detailed output]'
+        '-q[Suppress output except errors]'
+        '--quiet[Suppress output except errors]'
+        '--dry-run[Preview operations]'
+        '-h[Show help]'
+        '--help[Show help]'
+        '--version[Show version]'
+    )
+
+    local -a shells=(bash zsh fish powershell)
+
+    _arguments -C \
+        '1:command:->command' \
+        '*:argument:->args' \
+        && return 0
+
+    case $state in
+        command)
+            _describe -t commands 'sdi_tool commands' commands
+            _alternative \
+                'files:shader files:_files -g "*.{vert,frag,comp,geom,tesc,tese,rgen,rmiss,rchit,rint,rahit,rcall,mesh,task,json}"'
+            ;;
+        args)
+            if [[ ${words[2]} == "completion" ]]; then
+                _describe -t shells 'shell types' shells
+            else
+                _arguments $options
+                _files -g "*.{vert,frag,comp,geom,tesc,tese,rgen,rmiss,rchit,rint,rahit,rcall,mesh,task,json}"
+            fi
+            ;;
+    esac
+}
+
+_sdi_tool "$@"
+)COMPLETION";
+    } else if (shell == "fish") {
+        std::cout << R"COMPLETION(# Fish completion script for sdi_tool
+# Save to ~/.config/fish/completions/sdi_tool.fish
+
+# Commands
+complete -c sdi_tool -n "__fish_use_subcommand" -a "compile" -d "Compile shader stages into bundle"
+complete -c sdi_tool -n "__fish_use_subcommand" -a "batch" -d "Process multiple shaders from config file"
+complete -c sdi_tool -n "__fish_use_subcommand" -a "build-registry" -d "Build central SDI registry from bundles"
+complete -c sdi_tool -n "__fish_use_subcommand" -a "cleanup" -d "Remove orphaned SPIRV files"
+complete -c sdi_tool -n "__fish_use_subcommand" -a "cleanup-sdi" -d "Remove orphaned SDI headers"
+complete -c sdi_tool -n "__fish_use_subcommand" -a "completion" -d "Generate shell completion script"
+
+# Options
+complete -c sdi_tool -s o -l output -d "Output file path" -r
+complete -c sdi_tool -s d -l output-dir -d "Output directory" -r -a "(__fish_complete_directories)"
+complete -c sdi_tool -s n -l name -d "Program name" -r
+complete -c sdi_tool -l sdi-namespace -d "SDI namespace prefix" -r
+complete -c sdi_tool -l sdi-dir -d "SDI output directory" -r -a "(__fish_complete_directories)"
+complete -c sdi_tool -l no-sdi -d "Disable SDI generation"
+complete -c sdi_tool -l embed-spirv -d "Embed SPIRV in JSON"
+complete -c sdi_tool -s v -l verbose -d "Print detailed output"
+complete -c sdi_tool -s q -l quiet -d "Suppress output except errors"
+complete -c sdi_tool -l dry-run -d "Preview operations"
+complete -c sdi_tool -s h -l help -d "Show help"
+complete -c sdi_tool -l version -d "Show version"
+
+# Shell types for completion subcommand
+complete -c sdi_tool -n "__fish_seen_subcommand_from completion" -a "bash zsh fish powershell"
+
+# File completions for shader files
+complete -c sdi_tool -n "__fish_use_subcommand" -a "(__fish_complete_suffix .vert .frag .comp .geom .tesc .tese .rgen .rmiss .rchit .rint .rahit .rcall .mesh .task .json)"
+)COMPLETION";
+    } else if (shell == "powershell" || shell == "pwsh") {
+        std::cout << R"COMPLETION(# PowerShell completion script for sdi_tool
+# Add to your $PROFILE (usually ~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1)
+
+$sdi_tool_commands = @('compile', 'batch', 'build-registry', 'cleanup', 'cleanup-sdi', 'completion')
+$sdi_tool_options = @('--output', '--output-dir', '--name', '--sdi-namespace', '--sdi-dir', '--no-sdi', '--embed-spirv', '--verbose', '--quiet', '--dry-run', '--help', '--version', '-o', '-d', '-n', '-v', '-q', '-h')
+$sdi_tool_shells = @('bash', 'zsh', 'fish', 'powershell')
+$shader_extensions = @('.vert', '.frag', '.comp', '.geom', '.tesc', '.tese', '.rgen', '.rmiss', '.rchit', '.rint', '.rahit', '.rcall', '.mesh', '.task', '.json')
+
+Register-ArgumentCompleter -CommandName sdi_tool -Native -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $commandElements = $commandAst.CommandElements
+    $command = @()
+    $commandElements | ForEach-Object { $command += $_.ToString() }
+
+    # Get the current element index
+    $counter = 1
+    $lastComplete = $false
+    $commandElements | ForEach-Object {
+        $element = $_.ToString()
+        if ($element -eq $wordToComplete -and $_.Extent.EndOffset -eq $cursorPosition) {
+            $lastComplete = $true
+        }
+        elseif (-not $lastComplete) {
+            $counter++
+        }
+    }
+
+    # First argument: command or file
+    if ($counter -eq 2) {
+        if ($wordToComplete.StartsWith('-')) {
+            $sdi_tool_options | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
+        }
+        else {
+            # Commands
+            $sdi_tool_commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'Command', $_)
+            }
+            # Shader files
+            Get-ChildItem -Path "$wordToComplete*" -File -ErrorAction SilentlyContinue | Where-Object {
+                $shader_extensions -contains $_.Extension
+            } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_.Name, $_.Name, 'ProviderItem', $_.FullName)
+            }
+        }
+    }
+    # After completion command: shell types
+    elseif ($command.Count -ge 2 -and $command[1] -eq 'completion') {
+        $sdi_tool_shells | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }
+    }
+    # Options and files
+    else {
+        if ($wordToComplete.StartsWith('-')) {
+            $sdi_tool_options | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
+        }
+        else {
+            # Shader files
+            Get-ChildItem -Path "$wordToComplete*" -File -ErrorAction SilentlyContinue | Where-Object {
+                $shader_extensions -contains $_.Extension
+            } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_.Name, $_.Name, 'ProviderItem', $_.FullName)
+            }
+            # Directories for output options
+            Get-ChildItem -Path "$wordToComplete*" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_.Name, $_.Name, 'ProviderContainer', $_.FullName)
+            }
+        }
+    }
+}
+)COMPLETION";
+    } else {
+        std::cerr << "Error: Unknown shell type: " << shell << "\n";
+        std::cerr << "Supported shells: bash, zsh, fish, powershell\n";
+        return ExitCode::UsageError;
+    }
+
+    return ExitCode::Success;
+}
+
 // ===== Main Entry Point =====
 
 int main(int argc, char** argv) {
@@ -1021,7 +1386,7 @@ int main(int argc, char** argv) {
 
     if (!ParseCommandLine(argc, argv, options)) {
         PrintUsage();
-        return 1;
+        return ExitCode::UsageError;
     }
 
     try {
@@ -1043,15 +1408,17 @@ int main(int argc, char** argv) {
             return CommandCleanup(options);
         } else if (options.command == "cleanup-sdi") {
             return CommandCleanupSdi(options);
+        } else if (options.command == "completion") {
+            return CommandCompletion(options);
         } else {
             std::cerr << "Error: Unknown command: " << options.command << "\n";
             PrintUsage();
-            return 1;
+            return ExitCode::UsageError;
         }
     } catch (const std::exception& e) {
         std::cerr << "Fatal error: " << e.what() << "\n";
-        return 1;
+        return ExitCode::IOError;  // Generic fatal error
     }
 
-    return 0;
+    return ExitCode::Success;
 }
