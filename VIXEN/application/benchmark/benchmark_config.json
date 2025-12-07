@@ -26,13 +26,14 @@
         "enabled": false,
         "shader_groups": [
           ["VoxelRayMarch.comp"],
-          ["VoxelRayMarch_Optimized.comp"]
+          ["VoxelRayMarch_Compressed.comp"]
         ]
       },
       "fragment": {
         "enabled": false,
         "shader_groups": [
-          ["Fullscreen.vert", "VoxelRayMarch.frag"]
+          ["Fullscreen.vert", "VoxelRayMarch.frag"],
+          ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]
         ]
       },
       "hardware_rt": {
