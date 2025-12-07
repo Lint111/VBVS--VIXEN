@@ -8,11 +8,12 @@
 
 ## Latest Session (2025-12-07)
 
-**RTX pipeline scene switching fixed!** All scenes (cornell, noise, tunnels, cityscape) now render correctly in hardware RT mode.
+**Compressed RTX implementation complete!** Brick mapping buffer now enables true DXT-compressed color access in RTX shaders.
 
 ### Quick Reference
-- **Next Task:** Implement proper compressed RTX (requires brick index mapping from VoxelAABBConverterNode)
-- **RTX Status:** Working for all scenes; compressed variant uses material fallback (renders identically to uncompressed)
+- **Completed:** Brick mapping buffer implementation for compressed RTX
+- **RTX Status:** VoxelRT_Compressed.rchit uses binding 8 for `(brickIndex, localVoxelIdx)` lookup
+- **sdi_tool:** Added `-I`/`--include` flags for #include directive resolution
 
 ---
 
@@ -20,77 +21,60 @@
 
 ### Completed This Session
 
-| Fix | File | Description |
-|-----|------|-------------|
-| Scene switching | `BenchmarkGraphFactory.cpp` | `ConfigureHardwareRTParams` now passes scene type to `VoxelAABBConverterNode` |
-| Compressed shader fallback | `VoxelRT_Compressed.rchit` | Falls back to `materialIdBuffer` lookup (same as uncompressed) |
-| SDI regeneration | Used `sdi_tool.exe` | Regenerated VoxelRTNames.h with correct binding names |
+| Task | Files | Description |
+|------|-------|-------------|
+| VoxelBrickMapping struct | `VoxelAABBConverterNodeConfig.h` | New struct: `{uint32_t brickIndex, uint32_t localVoxelIdx}` |
+| BRICK_MAPPING_BUFFER slot | `VoxelAABBConverterNodeConfig.h` | Output slot 3, one entry per AABB primitive |
+| Brick mapping generation | `VoxelAABBConverterNode.cpp` | Computes brick coords and local voxel index during AABB extraction |
+| Buffer create/upload | `VoxelAABBConverterNode.cpp` | `CreateBrickMappingBuffer()`, `UploadBrickMappingData()` |
+| Binding 8 wiring | `BenchmarkGraphFactory.cpp` | `BRICK_MAPPING_BUFFER` connected when `useCompressed=true` |
+| Shader update | `VoxelRT_Compressed.rchit` | Uses `brickMapping[gl_PrimitiveID]` for DXT access |
+| SDI tool include paths | `shader_tool.cpp` | `-I`/`--include` flags, auto-adds input file directories |
+| SDI generation | `VoxelRT_CompressedNames.h` | Generated with binding 8 for brickMapping |
 
-### Root Cause: Scene Switching Bug
-`VoxelAABBConverterNode` defaulted to `"cornell"` scene type because `ConfigureHardwareRTParams` didn't set the `scene_type` parameter. Fixed by adding `SceneInfo` parameter to the function.
+### Implementation Details
 
-### Root Cause: Compressed Shader Artifacts
-**Problem:** Compressed RTX shader tried to compute `brickIndex` from spatial position, but:
-1. RTX AABBs are sparse (only solid voxels), not a dense grid
-2. `compressedColors[brickIndex * 32 + blockIdx]` requires brick-to-primitive mapping
-3. `VoxelAABBConverterNode` only outputs `materialIds[primitiveID]`, not brick indices
-
-**Current Workaround:** Compressed shader uses material-based coloring (same as uncompressed):
-```glsl
-uint matID = materialIdBuffer.materialIds[gl_PrimitiveID];
-vec3 baseColor = getMaterialColor(matID);
-```
-
----
-
-## Handoff: Implementing Proper Compressed RTX
-
-### The Problem
-For compressed RTX to work, the shader needs `(brickIndex, localVoxelIdx)` per primitive to access:
-- `compressedColors[brickIndex * 32 + blockIdx]`
-- `compressedNormals[brickIndex * 32 + blockIdx]`
-
-But `VoxelAABBConverterNode` only outputs `materialIds[]`.
-
-### Solution Options
-
-**Option 1: Add Brick Mapping Buffer** (Recommended)
-Modify `VoxelAABBConverterNode` to output additional buffer:
+**VoxelBrickMapping Buffer (8 bytes per AABB primitive):**
 ```cpp
 struct VoxelBrickMapping {
-    uint16_t brickIndex;      // Index into compressed buffer arrays
-    uint16_t localVoxelIdx;   // Position within brick (0-511)
+    uint32_t brickIndex;      // Index into compressed buffer arrays
+    uint32_t localVoxelIdx;   // Position within 8x8x8 brick (0-511)
 };
-// Output: VkBuffer brickMappingBuffer - one entry per AABB primitive
 ```
 
-Shader access:
+**Brick Index Calculation (ZYX order):**
+```cpp
+uint32_t brickX = x / 8, brickY = y / 8, brickZ = z / 8;
+uint32_t brickIndex = brickZ * bricksPerAxis * bricksPerAxis + brickY * bricksPerAxis + brickX;
+uint32_t localVoxelIdx = (z % 8) * 64 + (y % 8) * 8 + (x % 8);
+```
+
+**Shader Access (VoxelRT_Compressed.rchit):**
 ```glsl
-layout(binding = 8) readonly buffer BrickMappingBuffer {
-    uvec2 brickMapping[];  // Packed (brickIndex, localVoxelIdx)
+layout(std430, binding = 8) readonly buffer BrickMappingBuffer {
+    uvec2 brickMapping[];  // .x = brickIndex, .y = localVoxelIdx
 };
 
 void main() {
     uvec2 mapping = brickMapping[gl_PrimitiveID];
-    uint brickIndex = mapping.x;
-    int voxelLinearIdx = int(mapping.y);
-    vec3 color = getCompressedVoxelColor(brickIndex, voxelLinearIdx);
+    vec3 baseColor = getCompressedVoxelColor(mapping.x, int(mapping.y));
 }
 ```
 
-**Option 2: Store Voxel Coordinates**
-Output `(x, y, z)` per primitive and compute brick index in shader. Requires 12 bytes/primitive vs 4 bytes for Option 1.
+### SDI Tool Enhancement
 
-**Option 3: Keep Material Fallback**
-Compressed RTX renders same as uncompressed. Simpler but no memory benefit.
+Added include path support to `sdi_tool`:
+- `-I <dir>` / `--include <dir>` flags (can be specified multiple times)
+- `-I<dir>` format also supported (no space)
+- Auto-adds input file directories as default include paths
+- Enables compilation of shaders with `#include "Compression.glsl"` etc.
 
-### Files to Modify for Option 1
-1. `VoxelAABBConverterNodeConfig.h` - Add `BRICK_MAPPING_BUFFER` output slot
-2. `VoxelAABBConverterNode.cpp` - Generate brick mapping during AABB extraction
-3. `BenchmarkGraphFactory.cpp` - Wire new buffer to descriptor gatherer
-4. `VoxelRT_Compressed.rchit` - Use brick mapping for compressed buffer access
+**Example:**
+```bash
+sdi_tool shaders/VoxelRT.rgen shaders/VoxelRT.rmiss shaders/VoxelRT_Compressed.rchit shaders/VoxelRT.rint -n VoxelRT_Compressed -d generated
+```
 
-### Current Descriptor Bindings (VoxelRT)
+### Current Descriptor Bindings (VoxelRT_Compressed)
 | Binding | Resource | Type |
 |---------|----------|------|
 | 0 | outputImage | STORAGE_IMAGE |
@@ -98,9 +82,9 @@ Compressed RTX renders same as uncompressed. Simpler but no memory benefit.
 | 2 | aabbBuffer | STORAGE_BUFFER |
 | 3 | materialIdBuffer | STORAGE_BUFFER |
 | 5 | octreeConfig | UNIFORM_BUFFER |
-| 6 | compressedColors | STORAGE_BUFFER (compressed only) |
-| 7 | compressedNormals | STORAGE_BUFFER (compressed only) |
-| 8 | brickMapping | STORAGE_BUFFER (TODO - compressed only) |
+| 6 | compressedColors | STORAGE_BUFFER |
+| 7 | compressedNormals | STORAGE_BUFFER |
+| 8 | brickMapping | STORAGE_BUFFER ✅ |
 
 ---
 

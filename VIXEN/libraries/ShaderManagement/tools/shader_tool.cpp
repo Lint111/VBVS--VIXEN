@@ -35,6 +35,7 @@
 #include <string>
 #include <optional>
 #include <algorithm>
+#include <set>
 #include <nlohmann/json.hpp>  // For batch config parsing
 
 #ifdef _WIN32
@@ -181,6 +182,10 @@ struct ToolOptions {
     bool dryRun = false;      // Preview operations without executing
     bool embedSpirv = false;  // Embed SPIRV in JSON (base64) instead of separate files
 
+    // Include paths for #include directive resolution
+    // Default paths are automatically added based on input file locations
+    std::vector<std::string> includePaths;
+
     SdiGeneratorConfig sdiConfig;
 
     // Helper: should we print informational messages?
@@ -235,6 +240,8 @@ Options:
   -o, --output <path>      Output file path
   -d, --output-dir <dir>   Output directory (default: ./generated)
   -n, --name <name>        Program name (default: first input file stem)
+  -I, --include <dir>      Add include search path for #include directives
+                           (can be specified multiple times)
   --sdi-namespace <ns>     SDI namespace prefix (default: SDI)
   --sdi-dir <dir>          SDI output directory (default: ./generated/sdi)
   --no-sdi                 Disable SDI generation
@@ -244,6 +251,13 @@ Options:
   --dry-run                Preview operations without modifying files
   -h, --help               Show this help
   --version                Show version information
+
+Include Path Resolution:
+  By default, the tool searches for #include files in:
+  1. The directory containing the shader file being compiled
+  2. Any paths specified with -I/--include (in order specified)
+
+  Example: sdi_tool -I shaders -I common VoxelRT_Compressed.rchit
 
 Examples:
   # Auto-detect pipeline type (easiest)
@@ -319,6 +333,16 @@ int ParseOption(const std::string& arg, const std::string& nextArg, bool hasNext
     // Program name
     if (arg == "--name" || arg == "-n") {
         if (hasNext) { options.programName = nextArg; skip = 1; }
+        return 0;
+    }
+    // Include path (can be specified multiple times)
+    if (arg == "--include" || arg == "-I") {
+        if (hasNext) { options.includePaths.push_back(nextArg); skip = 1; }
+        return 0;
+    }
+    // Handle -I<path> format (no space)
+    if (arg.size() > 2 && arg.substr(0, 2) == "-I") {
+        options.includePaths.push_back(arg.substr(2));
         return 0;
     }
     // SDI namespace
@@ -664,6 +688,39 @@ int CommandCompile(const ToolOptions& options) {
            .SetPipelineType(pipelineType)
            .SetSdiConfig(options.sdiConfig)
            .EnableSdiGeneration(options.generateSdi);
+
+    // Add default include paths based on input file directories
+    // This allows shaders to #include files in the same directory
+    std::set<std::string> defaultIncludePaths;
+    for (const auto& inputFile : inputFiles) {
+        fs::path fileDir = fs::path(inputFile).parent_path();
+        if (!fileDir.empty() && fs::exists(fileDir)) {
+            defaultIncludePaths.insert(fs::canonical(fileDir).string());
+        }
+    }
+
+    // Add default include paths first (shader directories)
+    for (const auto& path : defaultIncludePaths) {
+        builder.AddIncludePath(path);
+        if (options.shouldPrintVerbose()) {
+            std::cout << "Default include path: " << path << "\n";
+        }
+    }
+
+    // Add user-specified include paths (in order specified)
+    for (const auto& path : options.includePaths) {
+        fs::path includePath(path);
+        if (fs::exists(includePath)) {
+            builder.AddIncludePath(fs::canonical(includePath));
+            if (options.shouldPrintVerbose()) {
+                std::cout << "User include path: " << fs::canonical(includePath) << "\n";
+            }
+        } else {
+            if (options.shouldPrint()) {
+                std::cerr << "Warning: Include path does not exist: " << path << "\n";
+            }
+        }
+    }
 
     // Add stages with path validation
     for (const auto& inputFile : inputFiles) {
