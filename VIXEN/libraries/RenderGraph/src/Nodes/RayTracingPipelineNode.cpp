@@ -130,11 +130,14 @@ void RayTracingPipelineNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[RayTracingPipelineNode] Failed to load RTX functions");
     }
 
-    // Create pipeline components
-    if (!CreateDescriptorSetLayout()) {
-        throw std::runtime_error("[RayTracingPipelineNode] Failed to create descriptor set layout");
+    // Get descriptor set layout from DescriptorSetNode (via SDI pattern)
+    pipelineData_.descriptorSetLayout = ctx.In(RayTracingPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
+    if (pipelineData_.descriptorSetLayout == VK_NULL_HANDLE) {
+        throw std::runtime_error("[RayTracingPipelineNode] DESCRIPTOR_SET_LAYOUT input is null");
     }
+    NODE_LOG_INFO("Using descriptor set layout from DescriptorSetNode");
 
+    // Create pipeline layout (uses the input descriptor set layout)
     if (!CreatePipelineLayout()) {
         throw std::runtime_error("[RayTracingPipelineNode] Failed to create pipeline layout");
     }
@@ -333,54 +336,12 @@ bool RayTracingPipelineNode::LoadRTXFunctions() {
 }
 
 // ============================================================================
-// DESCRIPTOR SET LAYOUT
+// DESCRIPTOR SET LAYOUT - Now provided by DescriptorSetNode via SDI
 // ============================================================================
-
-bool RayTracingPipelineNode::CreateDescriptorSetLayout() {
-    VkDevice device = vulkanDevice_->device;
-
-    std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
-
-    // Binding 0: Acceleration Structure (TLAS)
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR |
-                             VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    // Binding 1: Output Image (storage image)
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-
-    // Binding 2: Octree nodes buffer
-    bindings[2].binding = 2;
-    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[2].descriptorCount = 1;
-    bindings[2].stageFlags = VK_SHADER_STAGE_INTERSECTION_BIT_KHR |
-                             VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    // Binding 3: Materials buffer
-    bindings[3].binding = 3;
-    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[3].descriptorCount = 1;
-    bindings[3].stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
-
-    if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr,
-                                    &pipelineData_.descriptorSetLayout) != VK_SUCCESS) {
-        NODE_LOG_ERROR("Failed to create descriptor set layout");
-        return false;
-    }
-
-    NODE_LOG_INFO("Created RT descriptor set layout with 4 bindings");
-    return true;
-}
+// NOTE: CreateDescriptorSetLayout() removed - we now receive the descriptor
+// set layout from DescriptorSetNode which creates it from shader reflection.
+// The layout is set in CompileImpl via:
+//   pipelineData_.descriptorSetLayout = ctx.In(DESCRIPTOR_SET_LAYOUT);
 
 // ============================================================================
 // PIPELINE LAYOUT
@@ -404,9 +365,11 @@ bool RayTracingPipelineNode::CreatePipelineLayout() {
         }
     }
 
-    // Push constant for camera data
+    // Push constant for camera data (used by raygen and closest hit shaders)
     VkPushConstantRange pushConstant{};
-    pushConstant.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+    pushConstant.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR |
+                              VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+                              VK_SHADER_STAGE_MISS_BIT_KHR;
     pushConstant.offset = 0;
     pushConstant.size = pushConstantSize;
 
@@ -702,11 +665,9 @@ void RayTracingPipelineNode::DestroyPipeline() {
         pipelineData_.pipelineLayout = VK_NULL_HANDLE;
     }
 
-    // Destroy descriptor set layout
-    if (pipelineData_.descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(device, pipelineData_.descriptorSetLayout, nullptr);
-        pipelineData_.descriptorSetLayout = VK_NULL_HANDLE;
-    }
+    // NOTE: We do NOT destroy descriptorSetLayout - it's owned by DescriptorSetNode
+    // Just clear our reference
+    pipelineData_.descriptorSetLayout = VK_NULL_HANDLE;
 
     NODE_LOG_INFO("Destroyed RT pipeline resources");
 }

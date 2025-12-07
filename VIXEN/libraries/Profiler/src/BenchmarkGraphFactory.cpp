@@ -1080,12 +1080,19 @@ HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
 
     HardwareRTNodes nodes{};
 
-    // Create hardware RT nodes
+    // Create hardware RT nodes (following same pattern as compute/fragment pipelines)
+
     // ShaderLibraryNode: Compiles and manages RT shaders
     nodes.shaderLib = graph->AddNode<RG::ShaderLibraryNodeType>("benchmark_rt_shader_lib");
 
+    // DescriptorResourceGathererNode: Gathers descriptor resources from variadic connections
+    nodes.descriptorGatherer = graph->AddNode<RG::DescriptorResourceGathererNodeType>("benchmark_rt_desc_gatherer");
+
     // PushConstantGathererNode: Gathers camera push constants for ray tracing
     nodes.pushConstantGatherer = graph->AddNode<RG::PushConstantGathererNodeType>("benchmark_rt_pc_gatherer");
+
+    // DescriptorSetNode: Creates descriptor set layout and descriptor sets
+    nodes.descriptorSet = graph->AddNode<RG::DescriptorSetNodeType>("benchmark_rt_descriptors");
 
     // VoxelAABBConverterNode: Extracts AABBs from voxel grid for BLAS
     nodes.aabbConverter = graph->AddNode<RG::VoxelAABBConverterNodeType>("benchmark_aabb_converter");
@@ -1270,9 +1277,36 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::VULKAN_DEVICE_IN);
 
+    // Device -> DescriptorSetNode
+    batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::VULKAN_DEVICE_IN);
+
     // Device -> RayTracingPipelineNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::VULKAN_DEVICE_IN);
+
+    // Shader -> DescriptorResourceGatherer
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::SHADER_DATA_BUNDLE);
+
+    // DescriptorResourceGatherer -> DescriptorSetNode
+    batch.Connect(hardwareRT.descriptorGatherer, RG::DescriptorResourceGathererNodeConfig::DESCRIPTOR_RESOURCES,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_RESOURCES);
+
+    // Shader -> DescriptorSetNode
+    batch.Connect(hardwareRT.shaderLib, RG::ShaderLibraryNodeConfig::SHADER_DATA_BUNDLE,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SHADER_DATA_BUNDLE);
+
+    // SwapChain -> DescriptorSetNode (image count and image index)
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::SWAPCHAIN_PUBLIC,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::SWAPCHAIN_IMAGE_COUNT,
+                  &SwapChainPublicVariables::swapChainImageCount);
+    batch.Connect(infra.swapchain, RG::SwapChainNodeConfig::IMAGE_INDEX,
+                  hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::IMAGE_INDEX);
+
+    // DescriptorSetNode -> RayTracingPipelineNode (descriptor set layout)
+    batch.Connect(hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SET_LAYOUT,
+                  hardwareRT.rtPipeline, RG::RayTracingPipelineNodeConfig::DESCRIPTOR_SET_LAYOUT);
 
     // AccelerationStructureNode -> RayTracingPipelineNode
     batch.Connect(hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA,
@@ -1289,6 +1323,10 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     // PushConstantGathererNode -> TraceRaysNode (camera push constants)
     batch.Connect(hardwareRT.pushConstantGatherer, RG::PushConstantGathererNodeConfig::PUSH_CONSTANT_DATA,
                   hardwareRT.traceRays, RG::TraceRaysNodeConfig::PUSH_CONSTANT_DATA);
+
+    // DescriptorSetNode -> TraceRaysNode (descriptor sets for binding)
+    batch.Connect(hardwareRT.descriptorSet, RG::DescriptorSetNodeConfig::DESCRIPTOR_SETS,
+                  hardwareRT.traceRays, RG::TraceRaysNodeConfig::DESCRIPTOR_SETS);
 
     // Device -> TraceRaysNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
@@ -2086,6 +2124,19 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
             hardwareRT.pushConstantGatherer, PC_DEBUG_MODE,
             &InputState::debugMode, SlotRole::Execute);
     }
+
+    //--------------------------------------------------------------------------
+    // VoxelRT.rgen Descriptor Bindings
+    //--------------------------------------------------------------------------
+    // layout(binding = 0, rgba8) uniform image2D outputImage;
+    // layout(binding = 1) uniform accelerationStructureEXT topLevelAS;
+    //
+    // NOTE: RT shader descriptor bindings are handled specially:
+    // - Output image is bound from swapchain at execute time by TraceRaysNode
+    // - TLAS is bound from AccelerationStructureNode at execute time by TraceRaysNode
+    // The DescriptorSetNode will create the layout from shader reflection,
+    // but actual resource binding happens at execute time in TraceRaysNode.
+    // TODO: Implement proper SDI for RT shaders with AccelerationStructure bindings
 
     // Register all connections atomically
     batch.RegisterAll();

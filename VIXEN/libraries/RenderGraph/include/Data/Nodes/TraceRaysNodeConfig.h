@@ -14,7 +14,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // ============================================================================
 
 namespace TraceRaysNodeCounts {
-    static constexpr size_t INPUTS = 11;
+    static constexpr size_t INPUTS = 12;  // Added DESCRIPTOR_SETS
     static constexpr size_t OUTPUTS = 2;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -117,6 +117,13 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Descriptor sets from DescriptorSetNode
+    INPUT_SLOT(DESCRIPTOR_SETS, const std::vector<VkDescriptorSet>&, 11,
+        SlotNullability::Required,
+        SlotRole::Execute,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS =====
 
     OUTPUT_SLOT(COMMAND_BUFFER, VkCommandBuffer, 0,
@@ -159,6 +166,9 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
         HandleDescriptor pushConstDataDesc{"std::vector<uint8_t>"};
         INIT_INPUT_DESC(PUSH_CONSTANT_DATA, "push_constant_data", ResourceLifetime::Transient, pushConstDataDesc);
 
+        HandleDescriptor descSetsDesc{"std::vector<VkDescriptorSet>"};
+        INIT_INPUT_DESC(DESCRIPTOR_SETS, "descriptor_sets", ResourceLifetime::Persistent, descSetsDesc);
+
         // Outputs
         HandleDescriptor cmdBufferDesc{"VkCommandBuffer"};
         INIT_OUTPUT_DESC(COMMAND_BUFFER, "command_buffer", ResourceLifetime::Transient, cmdBufferDesc);
@@ -180,6 +190,7 @@ CONSTEXPR_NODE_CONFIG(TraceRaysNodeConfig,
     static_assert(IMAGE_AVAILABLE_SEMAPHORES_ARRAY_Slot::index == 8);
     static_assert(RENDER_COMPLETE_SEMAPHORES_ARRAY_Slot::index == 9);
     static_assert(PUSH_CONSTANT_DATA_Slot::index == 10);
+    static_assert(DESCRIPTOR_SETS_Slot::index == 11);
     static_assert(COMMAND_BUFFER_Slot::index == 0);
     static_assert(RENDER_COMPLETE_SEMAPHORE_Slot::index == 1);
 };

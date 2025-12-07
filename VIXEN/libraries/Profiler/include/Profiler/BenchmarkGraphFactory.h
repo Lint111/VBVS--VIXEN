@@ -101,7 +101,9 @@ struct FragmentPipelineNodes {
 /// Hardware ray tracing pipeline nodes (Phase K)
 struct HardwareRTNodes {
     RG::NodeHandle shaderLib;            // ShaderLibraryNode for RT shaders
+    RG::NodeHandle descriptorGatherer;   // DescriptorResourceGathererNode
     RG::NodeHandle pushConstantGatherer; // PushConstantGathererNode for camera data
+    RG::NodeHandle descriptorSet;        // DescriptorSetNode
     RG::NodeHandle aabbConverter;        // VoxelAABBConverterNode
     RG::NodeHandle accelerationStructure; // AccelerationStructureNode (BLAS + TLAS)
     RG::NodeHandle rtPipeline;           // RayTracingPipelineNode
@@ -109,7 +111,8 @@ struct HardwareRTNodes {
 
     /// Check if all required nodes are valid
     bool IsValid() const {
-        return shaderLib.IsValid() && pushConstantGatherer.IsValid() &&
+        return shaderLib.IsValid() && descriptorGatherer.IsValid() &&
+               pushConstantGatherer.IsValid() && descriptorSet.IsValid() &&
                aabbConverter.IsValid() && accelerationStructure.IsValid() &&
                rtPipeline.IsValid() && traceRays.IsValid();
     }

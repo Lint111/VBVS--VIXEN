@@ -76,7 +76,7 @@ struct RayTracingPipelineData {
 // ============================================================================
 
 namespace RayTracingPipelineNodeCounts {
-    static constexpr size_t INPUTS = 3;  // Device, AccelStruct, ShaderDataBundle
+    static constexpr size_t INPUTS = 4;  // Device, AccelStruct, ShaderDataBundle, DescriptorSetLayout
     static constexpr size_t OUTPUTS = 1;
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -123,6 +123,13 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
 
+    // Descriptor set layout from DescriptorSetNode (for pipeline layout creation)
+    INPUT_SLOT(DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout, 3,
+        SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
     // ===== OUTPUTS =====
 
     OUTPUT_SLOT(RT_PIPELINE_DATA, RayTracingPipelineData*, 0,
@@ -152,6 +159,9 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
         HandleDescriptor shaderBundleDesc{"ShaderDataBundle*"};
         INIT_INPUT_DESC(SHADER_DATA_BUNDLE, "shader_data_bundle", ResourceLifetime::Persistent, shaderBundleDesc);
 
+        HandleDescriptor descSetLayoutDesc{"VkDescriptorSetLayout"};
+        INIT_INPUT_DESC(DESCRIPTOR_SET_LAYOUT, "descriptor_set_layout", ResourceLifetime::Persistent, descSetLayoutDesc);
+
         HandleDescriptor pipelineDesc{"RayTracingPipelineData*"};
         INIT_OUTPUT_DESC(RT_PIPELINE_DATA, "rt_pipeline", ResourceLifetime::Persistent, pipelineDesc);
     }
@@ -161,6 +171,7 @@ CONSTEXPR_NODE_CONFIG(RayTracingPipelineNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(ACCELERATION_STRUCTURE_DATA_Slot::index == 1);
     static_assert(SHADER_DATA_BUNDLE_Slot::index == 2);
+    static_assert(DESCRIPTOR_SET_LAYOUT_Slot::index == 3);
     static_assert(RT_PIPELINE_DATA_Slot::index == 0);
 };
 

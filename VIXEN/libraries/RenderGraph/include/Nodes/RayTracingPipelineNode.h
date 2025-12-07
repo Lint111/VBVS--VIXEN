@@ -88,8 +88,11 @@ private:
      * - 1: Output image (storage image)
      * - 2: Camera data (uniform buffer or push constants)
      * - 3: Voxel data buffers (octree, materials)
+     *
+     * NOTE: Removed - now provided by DescriptorSetNode via SDI pattern.
+     * The descriptor set layout is received as an input in CompileImpl.
      */
-    bool CreateDescriptorSetLayout();
+    // bool CreateDescriptorSetLayout(); // REMOVED - now from DescriptorSetNode
 
     /**
      * @brief Create pipeline layout with push constants
