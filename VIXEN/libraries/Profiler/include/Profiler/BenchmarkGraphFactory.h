@@ -734,12 +734,14 @@ private:
      *
      * @param graph Target render graph
      * @param nodes Hardware RT nodes
+     * @param scene Scene info (provides scene type and resolution)
      * @param width Output width in pixels
      * @param height Output height in pixels
      */
     static void ConfigureHardwareRTParams(
         RG::RenderGraph* graph,
         const HardwareRTNodes& nodes,
+        const SceneInfo& scene,
         uint32_t width,
         uint32_t height
     );

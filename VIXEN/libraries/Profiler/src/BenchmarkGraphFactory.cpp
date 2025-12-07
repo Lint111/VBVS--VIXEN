@@ -1115,6 +1115,7 @@ HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
 void BenchmarkGraphFactory::ConfigureHardwareRTParams(
     RG::RenderGraph* graph,
     const HardwareRTNodes& nodes,
+    const SceneInfo& scene,
     uint32_t width,
     uint32_t height)
 {
@@ -1122,7 +1123,9 @@ void BenchmarkGraphFactory::ConfigureHardwareRTParams(
     auto* aabbConverter = static_cast<RG::VoxelAABBConverterNode*>(
         graph->GetInstance(nodes.aabbConverter));
     if (aabbConverter) {
-        // Grid resolution will come from VoxelGridNode connection
+        // Set scene type and resolution to match VoxelGridNode (critical for correct AABB generation)
+        aabbConverter->SetParameter("scene_type", scene.sceneType);
+        aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_GRID_RESOLUTION, static_cast<uint32_t>(scene.resolution));
         aabbConverter->SetParameter(RG::VoxelAABBConverterNodeConfig::PARAM_VOXEL_SIZE, 1.0f);
     }
 
@@ -1428,8 +1431,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     result.hardwareRT = BuildHardwareRT(graph, result.infra);
     result.output = BuildOutput(graph, result.infra, false);
 
-    // Configure hardware RT parameters
-    ConfigureHardwareRTParams(graph, result.hardwareRT, width, height);
+    // Configure hardware RT parameters (including scene type for AABB converter)
+    ConfigureHardwareRTParams(graph, result.hardwareRT, scene, width, height);
 
     // Determine if compressed RTX shaders should be used
     // Check config.shader OR config.shaderGroup for "Compressed" suffix
