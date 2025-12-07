@@ -73,9 +73,10 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     // We also have OCTREE_NODES_BUFFER but for AABB extraction we use the cached grid
     // (GPU buffer readback would be slow and unnecessary since we have VoxelDataCache)
 
-    // Extract AABBs and material IDs from cached voxel grid
+    // Extract AABBs, material IDs, and brick mappings from cached voxel grid
     std::vector<uint32_t> materialIds;
-    std::vector<VoxelAABB> aabbs = ExtractAABBsFromGrid(materialIds);
+    std::vector<VoxelBrickMapping> brickMappings;
+    std::vector<VoxelAABB> aabbs = ExtractAABBsFromGrid(materialIds, brickMappings);
 
     if (aabbs.empty()) {
         NODE_LOG_WARNING("No solid voxels found - AABB buffer will be empty");
@@ -93,6 +94,10 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
         // Create and upload material ID buffer
         CreateMaterialIdBuffer(materialIds);
         UploadMaterialIdData(materialIds);
+
+        // Create and upload brick mapping buffer (for compressed RTX shaders)
+        CreateBrickMappingBuffer(brickMappings);
+        UploadBrickMappingData(brickMappings);
     }
 
     // Output the AABB data struct (pointer to member)
@@ -101,6 +106,7 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     // Also output raw buffers for shader descriptor binding
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
     ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, aabbData_.materialIdBuffer);
+    ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, aabbData_.brickMappingBuffer);
 
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] COMPLETED");
@@ -112,6 +118,7 @@ void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, &aabbData_);
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
     ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, aabbData_.materialIdBuffer);
+    ctx.Out(VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER, aabbData_.brickMappingBuffer);
 }
 
 void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -123,7 +130,10 @@ void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
 // AABB EXTRACTION
 // ============================================================================
 
-std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(std::vector<uint32_t>& outMaterialIds) {
+std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(
+    std::vector<uint32_t>& outMaterialIds,
+    std::vector<VoxelBrickMapping>& outBrickMappings)
+{
     NODE_LOG_INFO("Extracting AABBs from grid: resolution=" + std::to_string(gridResolution_) +
                   ", scene=" + sceneType_);
 
@@ -143,6 +153,12 @@ std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(std::vector<
     std::vector<VoxelAABB> aabbs;
     aabbs.reserve(grid.CountSolidVoxels());
     outMaterialIds.reserve(grid.CountSolidVoxels());
+    outBrickMappings.reserve(grid.CountSolidVoxels());
+
+    // Brick size is 8x8x8 = 512 voxels per brick
+    // This matches the compressed buffer layout used by VoxelGridNode
+    constexpr uint32_t BRICK_SIZE = 8;
+    const uint32_t bricksPerAxis = (gridResolution_ + BRICK_SIZE - 1) / BRICK_SIZE;
 
     // Iterate through all voxels and collect solid ones
     const uint32_t res = grid.GetResolution();
@@ -165,13 +181,40 @@ std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(std::vector<
                     );
                     aabbs.push_back(aabb);
                     outMaterialIds.push_back(static_cast<uint32_t>(materialId));
+
+                    // Compute brick mapping for compressed buffer access
+                    // Brick coordinates (which 8x8x8 brick this voxel belongs to)
+                    uint32_t brickX = x / BRICK_SIZE;
+                    uint32_t brickY = y / BRICK_SIZE;
+                    uint32_t brickZ = z / BRICK_SIZE;
+
+                    // Linear brick index (ZYX order, matching compressed buffer layout)
+                    uint32_t brickIndex = brickZ * bricksPerAxis * bricksPerAxis +
+                                         brickY * bricksPerAxis +
+                                         brickX;
+
+                    // Local position within brick (0-7 for each axis)
+                    uint32_t localX = x % BRICK_SIZE;
+                    uint32_t localY = y % BRICK_SIZE;
+                    uint32_t localZ = z % BRICK_SIZE;
+
+                    // Linear index within brick (ZYX order, 0-511)
+                    uint32_t localVoxelIdx = localZ * BRICK_SIZE * BRICK_SIZE +
+                                            localY * BRICK_SIZE +
+                                            localX;
+
+                    VoxelBrickMapping mapping;
+                    mapping.brickIndex = brickIndex;
+                    mapping.localVoxelIdx = localVoxelIdx;
+                    outBrickMappings.push_back(mapping);
                 }
             }
         }
     }
 
     NODE_LOG_INFO("Extracted " + std::to_string(aabbs.size()) + " AABBs (" +
-                  std::to_string(aabbs.size() * 100 / (res * res * res)) + "% density)");
+                  std::to_string(aabbs.size() * 100 / (res * res * res)) + "% density), " +
+                  "bricksPerAxis=" + std::to_string(bricksPerAxis));
 
     return aabbs;
 }
@@ -473,6 +516,147 @@ void VoxelAABBConverterNode::UploadMaterialIdData(const std::vector<uint32_t>& m
     NODE_LOG_INFO("Uploaded " + std::to_string(bufferSize) + " bytes of material ID data to GPU");
 }
 
+void VoxelAABBConverterNode::CreateBrickMappingBuffer(const std::vector<VoxelBrickMapping>& brickMappings) {
+    if (!vulkanDevice_ || brickMappings.empty()) {
+        return;
+    }
+
+    VkDevice device = vulkanDevice_->device;
+    VkDeviceSize bufferSize = brickMappings.size() * sizeof(VoxelBrickMapping);
+
+    // Create storage buffer for shader access
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &aabbData_.brickMappingBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to create brick mapping buffer");
+    }
+
+    // Allocate memory
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, aabbData_.brickMappingBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+
+    // Find device-local memory type
+    auto memTypeResult = vulkanDevice_->MemoryTypeFromProperties(
+        memRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    );
+
+    if (!memTypeResult.has_value()) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to find suitable memory type for brick mappings");
+    }
+    allocInfo.memoryTypeIndex = memTypeResult.value();
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &aabbData_.brickMappingBufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to allocate brick mapping buffer memory");
+    }
+
+    vkBindBufferMemory(device, aabbData_.brickMappingBuffer, aabbData_.brickMappingBufferMemory, 0);
+    aabbData_.brickMappingBufferSize = bufferSize;
+
+    NODE_LOG_INFO("Created brick mapping buffer: " + std::to_string(bufferSize) + " bytes for " +
+                  std::to_string(brickMappings.size()) + " mappings");
+}
+
+void VoxelAABBConverterNode::UploadBrickMappingData(const std::vector<VoxelBrickMapping>& brickMappings) {
+    if (!vulkanDevice_ || brickMappings.empty() || aabbData_.brickMappingBuffer == VK_NULL_HANDLE) {
+        return;
+    }
+
+    VkDevice device = vulkanDevice_->device;
+    VkDeviceSize bufferSize = brickMappings.size() * sizeof(VoxelBrickMapping);
+
+    // Create staging buffer
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingMemory;
+
+    VkBufferCreateInfo stagingBufferInfo{};
+    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufferInfo.size = bufferSize;
+    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to create brick mapping staging buffer");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+
+    auto memTypeResult = vulkanDevice_->MemoryTypeFromProperties(
+        memRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+
+    if (!memTypeResult.has_value()) {
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to find staging memory type for brick mappings");
+    }
+    allocInfo.memoryTypeIndex = memTypeResult.value();
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS) {
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to allocate staging memory for brick mappings");
+    }
+
+    vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
+
+    // Map and copy data
+    void* data;
+    vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
+    memcpy(data, brickMappings.data(), bufferSize);
+    vkUnmapMemory(device, stagingMemory);
+
+    // Copy from staging to device-local buffer
+    VkCommandBufferAllocateInfo cmdAllocInfo{};
+    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmdAllocInfo.commandPool = commandPool_;
+    cmdAllocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmdBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = bufferSize;
+    vkCmdCopyBuffer(cmdBuffer, stagingBuffer, aabbData_.brickMappingBuffer, 1, &copyRegion);
+
+    vkEndCommandBuffer(cmdBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vulkanDevice_->queue);
+
+    // Cleanup staging resources
+    vkFreeCommandBuffers(device, commandPool_, 1, &cmdBuffer);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingMemory, nullptr);
+
+    NODE_LOG_INFO("Uploaded " + std::to_string(bufferSize) + " bytes of brick mapping data to GPU");
+}
+
 void VoxelAABBConverterNode::DestroyAABBBuffer() {
     if (!vulkanDevice_) {
         return;
@@ -500,9 +684,20 @@ void VoxelAABBConverterNode::DestroyAABBBuffer() {
         aabbData_.materialIdBufferMemory = VK_NULL_HANDLE;
     }
 
+    if (aabbData_.brickMappingBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, aabbData_.brickMappingBuffer, nullptr);
+        aabbData_.brickMappingBuffer = VK_NULL_HANDLE;
+    }
+
+    if (aabbData_.brickMappingBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, aabbData_.brickMappingBufferMemory, nullptr);
+        aabbData_.brickMappingBufferMemory = VK_NULL_HANDLE;
+    }
+
     aabbData_.aabbCount = 0;
     aabbData_.aabbBufferSize = 0;
     aabbData_.materialIdBufferSize = 0;
+    aabbData_.brickMappingBufferSize = 0;
 
     NODE_LOG_INFO("Destroyed AABB buffer resources");
 }

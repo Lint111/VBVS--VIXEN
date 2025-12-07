@@ -61,15 +61,18 @@ protected:
 
 private:
     /**
-     * @brief Extract AABBs and material IDs from dense voxel grid
+     * @brief Extract AABBs, material IDs, and brick mappings from dense voxel grid
      *
      * Iterates through grid resolution³ positions and collects
-     * solid voxels into AABB array with corresponding material IDs.
+     * solid voxels into AABB array with corresponding material IDs and brick mappings.
      *
      * @param outMaterialIds Output vector of material IDs (one per AABB)
+     * @param outBrickMappings Output vector of brick mappings (one per AABB)
      * @return Vector of VoxelAABB for upload to GPU
      */
-    std::vector<VoxelAABB> ExtractAABBsFromGrid(std::vector<uint32_t>& outMaterialIds);
+    std::vector<VoxelAABB> ExtractAABBsFromGrid(
+        std::vector<uint32_t>& outMaterialIds,
+        std::vector<VoxelBrickMapping>& outBrickMappings);
 
     /**
      * @brief Create GPU buffer for AABB data
@@ -93,6 +96,16 @@ private:
      * @brief Upload material ID data via staging buffer
      */
     void UploadMaterialIdData(const std::vector<uint32_t>& materialIds);
+
+    /**
+     * @brief Create GPU buffer for brick mappings
+     */
+    void CreateBrickMappingBuffer(const std::vector<VoxelBrickMapping>& brickMappings);
+
+    /**
+     * @brief Upload brick mapping data via staging buffer
+     */
+    void UploadBrickMappingData(const std::vector<VoxelBrickMapping>& brickMappings);
 
     /**
      * @brief Cleanup GPU resources

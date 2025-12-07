@@ -8,78 +8,89 @@
 
 ## Latest Session (2025-12-07)
 
-**Compressed RTX shader implemented!** Added `VoxelRT_Compressed.rchit` for DXT-compressed voxel data in hardware ray tracing pipeline.
+**RTX pipeline scene switching fixed!** All scenes (cornell, noise, tunnels, cityscape) now render correctly in hardware RT mode.
 
 ### Quick Reference
-- **Full Summary:** [[Sessions/2025-12-07-summary]]
-- **Next Task:** Fix validation warnings, investigate phantom slot, collect performance benchmarks
-- **RTX Status:** Working (both uncompressed and compressed variants)
+- **Next Task:** Implement proper compressed RTX (requires brick index mapping from VoxelAABBConverterNode)
+- **RTX Status:** Working for all scenes; compressed variant uses material fallback (renders identically to uncompressed)
 
 ---
 
 ## Session Summary
 
-**Hardware RT (RTX) pipeline now rendering successfully!** Fixed critical descriptor gatherer validation issues that caused black screen. RTX ray tracing pipeline executes and renders voxel scene.
-
-### Completed This Session (December 7, 2025)
-
-**Phase K - Hardware RT Pipeline Fixes:**
+### Completed This Session
 
 | Fix | File | Description |
 |-----|------|-------------|
-| AccelerationStructure type handling | `DescriptorResourceGathererNode.cpp:657-659,695-697` | Added `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` to `CheckUsageCompatibility()` and `IsResourceTypeCompatibleWithDescriptor()` |
-| Empty placeholder slot skip | `DescriptorResourceGathererNode.cpp:417-424` | Skip validation for slots with empty name and NULL resource (incomplete wiring placeholders) |
-| Verbose error logging | `DescriptorResourceGathererNode.cpp:661-666,703-706` | Added error logging for unhandled VkDescriptorType in default cases |
-| Slot role logging | `DescriptorResourceGathererNode.cpp:386-387` | Added role and hasFieldExtract to validation debug output |
+| Scene switching | `BenchmarkGraphFactory.cpp` | `ConfigureHardwareRTParams` now passes scene type to `VoxelAABBConverterNode` |
+| Compressed shader fallback | `VoxelRT_Compressed.rchit` | Falls back to `materialIdBuffer` lookup (same as uncompressed) |
+| SDI regeneration | Used `sdi_tool.exe` | Regenerated VoxelRTNames.h with correct binding names |
 
-**Root Cause Analysis:**
-- `DescriptorResourceGathererNode` didn't handle `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR` (value 1000150000)
-- RTX pipeline uses TLAS at binding 1, which requires AccelerationStructure ResourceType validation
-- Additional phantom slot with empty name was created but not wired, causing validation failure
+### Root Cause: Scene Switching Bug
+`VoxelAABBConverterNode` defaulted to `"cornell"` scene type because `ConfigureHardwareRTParams` didn't set the `scene_type` parameter. Fixed by adding `SceneInfo` parameter to the function.
 
-**RTX Pipeline Architecture (Working):**
-- `VoxelRT.rgen` - Ray generation shader with coordinate transforms
-- `VoxelRT.rmiss` - Miss shader with sky gradient
-- `VoxelRT.rchit` - Closest hit shader with material lookup and lighting
-- `VoxelRT.rint` - Intersection shader for AABB/ray intersection
-- OctreeConfigUBO at binding 5 for world↔local transforms (matches compute shader)
+### Root Cause: Compressed Shader Artifacts
+**Problem:** Compressed RTX shader tried to compute `brickIndex` from spatial position, but:
+1. RTX AABBs are sparse (only solid voxels), not a dense grid
+2. `compressedColors[brickIndex * 32 + blockIdx]` requires brick-to-primitive mapping
+3. `VoxelAABBConverterNode` only outputs `materialIds[primitiveID]`, not brick indices
+
+**Current Workaround:** Compressed shader uses material-based coloring (same as uncompressed):
+```glsl
+uint matID = materialIdBuffer.materialIds[gl_PrimitiveID];
+vec3 baseColor = getMaterialColor(matID);
+```
 
 ---
 
-## Handoff Summary for Next Engineer
+## Handoff: Implementing Proper Compressed RTX
 
-### What Was Done (December 7, 2025)
-The Hardware RT (RTX) pipeline was debugged and is now rendering correctly. The main issue was that `DescriptorResourceGathererNode` didn't support `VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR`, causing validation failures that resulted in a black screen.
+### The Problem
+For compressed RTX to work, the shader needs `(brickIndex, localVoxelIdx)` per primitive to access:
+- `compressedColors[brickIndex * 32 + blockIdx]`
+- `compressedNormals[brickIndex * 32 + blockIdx]`
 
-### Key Files Modified
-| File | Change |
-|------|--------|
-| `libraries/RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp` | Added AccelerationStructure handling, empty slot skip, verbose error logging |
-| `shaders/VoxelRT.rgen` | Coordinate space transforms (world→local→voxel space) |
-| `shaders/VoxelRT.rchit` | OctreeConfigUBO at binding 5 for transforms |
-| `shaders/VoxelRT_Compressed.rchit` | **NEW** - Compressed RTX closest-hit shader with DXT color/normal buffers (bindings 6,7) |
-| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Wired OCTREE_CONFIG_BUFFER to RTX, added compressed buffer bindings 6-7, compressed shader detection |
+But `VoxelAABBConverterNode` only outputs `materialIds[]`.
 
-### How to Run RTX Benchmark
-```bash
-cd /c/cpp/VBVS--VIXEN/VIXEN
-cmake --build build --config Debug --target vixen_benchmark --parallel 8
-./binaries/vixen_benchmark.exe --render --pipelines hardware_rt --iterations 300 --warmup 30 --resolutions 64
+### Solution Options
+
+**Option 1: Add Brick Mapping Buffer** (Recommended)
+Modify `VoxelAABBConverterNode` to output additional buffer:
+```cpp
+struct VoxelBrickMapping {
+    uint16_t brickIndex;      // Index into compressed buffer arrays
+    uint16_t localVoxelIdx;   // Position within brick (0-511)
+};
+// Output: VkBuffer brickMappingBuffer - one entry per AABB primitive
 ```
 
-### Known Issues / Next Steps
-1. **Validation warnings**: `VUID-VkWriteDescriptorSet-descriptorType-00331` errors for STORAGE_BUFFER - some buffers may need `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`
-2. **Phantom slot bug**: Slot[4] with empty name gets created during wiring but isn't used - workaround in place, root cause not fully traced
-3. ~~**Compressed RTX variant**: Not yet implemented~~ **DONE** - `VoxelRT_Compressed.rchit` created
-4. **Performance comparison**: RTX vs Compute vs Fragment benchmarks not yet collected
+Shader access:
+```glsl
+layout(binding = 8) readonly buffer BrickMappingBuffer {
+    uvec2 brickMapping[];  // Packed (brickIndex, localVoxelIdx)
+};
 
-### Architecture Notes
-- RTX uses **AABB procedural geometry** via `VK_GEOMETRY_TYPE_AABBS_KHR`
-- AABBs generated by `VoxelAABBConverterNode` from octree leaf voxels
-- Coordinate space: Rays transformed from world→local [0,1]→voxel [0,resolution] in rgen shader
-- TLAS uses identity transform (AABBs already in voxel space)
+void main() {
+    uvec2 mapping = brickMapping[gl_PrimitiveID];
+    uint brickIndex = mapping.x;
+    int voxelLinearIdx = int(mapping.y);
+    vec3 color = getCompressedVoxelColor(brickIndex, voxelLinearIdx);
+}
+```
 
-### Descriptor Bindings (VoxelRT shaders)
+**Option 2: Store Voxel Coordinates**
+Output `(x, y, z)` per primitive and compute brick index in shader. Requires 12 bytes/primitive vs 4 bytes for Option 1.
+
+**Option 3: Keep Material Fallback**
+Compressed RTX renders same as uncompressed. Simpler but no memory benefit.
+
+### Files to Modify for Option 1
+1. `VoxelAABBConverterNodeConfig.h` - Add `BRICK_MAPPING_BUFFER` output slot
+2. `VoxelAABBConverterNode.cpp` - Generate brick mapping during AABB extraction
+3. `BenchmarkGraphFactory.cpp` - Wire new buffer to descriptor gatherer
+4. `VoxelRT_Compressed.rchit` - Use brick mapping for compressed buffer access
+
+### Current Descriptor Bindings (VoxelRT)
 | Binding | Resource | Type |
 |---------|----------|------|
 | 0 | outputImage | STORAGE_IMAGE |
@@ -87,6 +98,9 @@ cmake --build build --config Debug --target vixen_benchmark --parallel 8
 | 2 | aabbBuffer | STORAGE_BUFFER |
 | 3 | materialIdBuffer | STORAGE_BUFFER |
 | 5 | octreeConfig | UNIFORM_BUFFER |
+| 6 | compressedColors | STORAGE_BUFFER (compressed only) |
+| 7 | compressedNormals | STORAGE_BUFFER (compressed only) |
+| 8 | brickMapping | STORAGE_BUFFER (TODO - compressed only) |
 
 ---
 

@@ -12,8 +12,8 @@
     }
   },
   "profiling": {
-    "warmup_frames": 50,
-    "measurement_frames": 100
+    "warmup_frames": 200,
+    "measurement_frames": 600
   },
   "matrix": {
     "global": {

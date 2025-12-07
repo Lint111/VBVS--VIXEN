@@ -2193,12 +2193,13 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     // Compressed Buffer Bindings (VoxelRT_Compressed.rchit only)
     //--------------------------------------------------------------------------
     // Only wire compressed bindings when using compressed shader.
-    // The uncompressed shader doesn't declare bindings 6-7, and wiring them
+    // The uncompressed shader doesn't declare bindings 6-8, and wiring them
     // would cause DescriptorResourceGathererNode::Execute to fail with
     // "Binding X out of range" errors.
     if (useCompressed) {
         constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
         constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
+        constexpr uint32_t BINDING_BRICK_MAPPING = 8;
 
         // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
         batch.ConnectVariadic(
@@ -2210,6 +2211,13 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
         batch.ConnectVariadic(
             rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
             hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
+            SlotRole::Dependency | SlotRole::Execute);
+
+        // Binding 8: brickMapping (SSBO) - Maps gl_PrimitiveID to (brickIndex, localVoxelIdx)
+        // Required for compressed RTX shaders to access DXT-compressed color/normal buffers
+        batch.ConnectVariadic(
+            hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_MAPPING_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_BRICK_MAPPING,
             SlotRole::Dependency | SlotRole::Execute);
     }
 
