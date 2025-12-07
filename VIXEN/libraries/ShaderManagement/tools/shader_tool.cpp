@@ -38,6 +38,14 @@
 using namespace ShaderManagement;
 namespace fs = std::filesystem;
 
+// Tool version - update on releases
+constexpr const char* SDI_TOOL_VERSION = "1.0.0";
+
+// ===== Default Paths (single source of truth) =====
+constexpr const char* DEFAULT_OUTPUT_DIR = "./generated";
+constexpr const char* DEFAULT_SDI_SUBDIR = "sdi";
+constexpr const char* DEFAULT_SDI_NAMESPACE = "SDI";
+
 // ===== Security Helpers =====
 
 /**
@@ -116,9 +124,16 @@ struct ToolOptions {
     PipelineTypeConstraint pipelineType = PipelineTypeConstraint::Graphics;
     bool generateSdi = true;
     bool verbose = false;
+    bool quiet = false;       // CI mode: only output errors
+    bool dryRun = false;      // Preview operations without executing
     bool embedSpirv = false;  // Embed SPIRV in JSON (base64) instead of separate files
 
     SdiGeneratorConfig sdiConfig;
+
+    // Helper: should we print informational messages?
+    bool shouldPrint() const { return !quiet; }
+    // Helper: should we print verbose messages?
+    bool shouldPrintVerbose() const { return verbose && !quiet; }
 };
 
 // FileManifest is now in the library (FileManifest.h)
@@ -130,13 +145,11 @@ SDI Tool - Shader compiler and descriptor interface generator
 Usage:
   sdi_tool <shader_files...> [options]    (auto-detect pipeline type)
   sdi_tool compile <input_files...> [options]
-  sdi_tool compile-compute <input.comp> [options]
-  sdi_tool generate-sdi <bundle.json> [options]
-  sdi_tool build-registry <bundle1.json> <bundle2.json> ... [options]
   sdi_tool batch <config.json> [options]
+  sdi_tool build-registry <bundle1.json> ... [options]
   sdi_tool cleanup <output-dir> [options]
   sdi_tool cleanup-sdi <sdi-dir> [options]
-  sdi_tool /help                          (show this help)
+  sdi_tool --help                         (show this help)
 
 Auto-Detection:
   Pipeline type is automatically detected from file extensions:
@@ -157,47 +170,132 @@ Sibling Auto-Discovery:
 
 Commands:
   compile           Compile shader stages into bundle (auto-detect pipeline)
-  compile-compute   Compile compute shader (explicit Compute pipeline)
-  generate-sdi      Generate SDI header from bundle
-  build-registry    Build central SDI registry from bundles
   batch             Process multiple shaders from config file
+  build-registry    Build central SDI registry from bundles
   cleanup           Remove orphaned SPIRV files from output directory
   cleanup-sdi       Remove orphaned SDI headers not referenced by any Names.h
 
 Options:
-  --output <path>          Output file path
-  --output-dir <dir>       Output directory for generated files
-  --name <name>            Program name (default: first input file stem)
-  --sdi-namespace <ns>     SDI namespace prefix (default: "SDI")
-  --sdi-dir <dir>          SDI output directory (default: "./generated/sdi")
+  -o, --output <path>      Output file path
+  -d, --output-dir <dir>   Output directory (default: ./generated)
+  -n, --name <name>        Program name (default: first input file stem)
+  --sdi-namespace <ns>     SDI namespace prefix (default: SDI)
+  --sdi-dir <dir>          SDI output directory (default: ./generated/sdi)
   --no-sdi                 Disable SDI generation
   --embed-spirv            Embed SPIRV in JSON (prevents orphaned .spv files)
-  --verbose                Print detailed output
-  --help                   Show this help
+  -v, --verbose            Print detailed output
+  -q, --quiet              Suppress all output except errors (for CI/CD)
+  --dry-run                Preview operations without modifying files
+  -h, --help               Show this help
+  --version                Show version information
 
 Examples:
   # Auto-detect pipeline type (easiest)
   sdi_tool Shaders/ComputeTest.comp                    # -> Compute
-  sdi_tool shader.vert shader.frag --name MyShader     # -> Graphics
+  sdi_tool shader.vert shader.frag -n MyShader         # -> Graphics
   sdi_tool raygen.rgen miss.rmiss hit.rchit            # -> RayTracing
-  sdi_tool mesh.mesh frag.frag                         # -> Mesh
 
-  # Explicit commands
-  sdi_tool compile shader.vert shader.frag --name MyShader --output-dir ./out
-  sdi_tool compile-compute compute.comp --name MyCompute --output-dir ./out
+  # With options
+  sdi_tool shader.vert shader.frag -n MyShader -d ./out -v
+  sdi_tool compute.comp --dry-run                      # Preview only
 
   # Build registry from existing bundles
-  sdi_tool build-registry shader1.json shader2.json --output SDI_Registry.h
+  sdi_tool build-registry shader1.json shader2.json -o SDI_Registry.h
 
   # Batch process from config
-  sdi_tool batch shaders.json --output-dir ./generated
+  sdi_tool batch shaders.json -d ./generated
 
-  # Clean up orphaned SPIRV files
-  sdi_tool cleanup ./generated --verbose
+  # CI/CD mode (quiet, errors only)
+  sdi_tool batch shaders.json -q
 
-  # Clean up orphaned SDI headers (keeps only those referenced by *Names.h)
-  sdi_tool cleanup-sdi ./generated/sdi --verbose
+  # Clean up orphaned files
+  sdi_tool cleanup ./generated -v
+  sdi_tool cleanup-sdi ./generated/sdi -v
+
+Batch Config Format (JSON):
+  {
+    "shaders": [
+      {
+        "name": "MyShader",
+        "stages": ["shader.vert", "shader.frag"],
+        "pipeline": "graphics"  // optional: graphics|compute|mesh|raytracing
+      }
+    ],
+    "buildRegistry": true  // optional: generate SDI_Registry.h
+  }
 )" << std::endl;
+}
+
+/**
+ * @brief Parse a single command-line option
+ * @return 0 = recognized option, 1 = unrecognized option starting with -, 2 = input file
+ */
+int ParseOption(const std::string& arg, const std::string& nextArg, bool hasNext, ToolOptions& options, int& skip) {
+    skip = 0;
+
+    // Help flags
+    if (arg == "--help" || arg == "-h") {
+        return -1;  // Signal to show help
+    }
+    // Version flag
+    if (arg == "--version") {
+        std::cout << "sdi_tool version " << SDI_TOOL_VERSION << "\n";
+        std::exit(0);
+    }
+    // Output path
+    if (arg == "--output" || arg == "-o") {
+        if (hasNext) { options.outputPath = nextArg; skip = 1; }
+        return 0;
+    }
+    // Output directory
+    if (arg == "--output-dir" || arg == "-d") {
+        if (hasNext) { options.outputDir = nextArg; skip = 1; }
+        return 0;
+    }
+    // Program name
+    if (arg == "--name" || arg == "-n") {
+        if (hasNext) { options.programName = nextArg; skip = 1; }
+        return 0;
+    }
+    // SDI namespace
+    if (arg == "--sdi-namespace") {
+        if (hasNext) { options.sdiConfig.namespacePrefix = nextArg; skip = 1; }
+        return 0;
+    }
+    // SDI directory
+    if (arg == "--sdi-dir") {
+        if (hasNext) { options.sdiConfig.outputDirectory = nextArg; skip = 1; }
+        return 0;
+    }
+    // Boolean flags
+    if (arg == "--no-sdi") {
+        options.generateSdi = false;
+        return 0;
+    }
+    if (arg == "--embed-spirv") {
+        options.embedSpirv = true;
+        return 0;
+    }
+    if (arg == "--verbose" || arg == "-v") {
+        options.verbose = true;
+        return 0;
+    }
+    if (arg == "--quiet" || arg == "-q") {
+        options.quiet = true;
+        return 0;
+    }
+    if (arg == "--dry-run") {
+        options.dryRun = true;
+        return 0;
+    }
+
+    // Unknown option (starts with -)
+    if (!arg.empty() && arg[0] == '-') {
+        return 1;  // Unknown option
+    }
+
+    // Input file
+    return 2;
 }
 
 bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
@@ -207,9 +305,13 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
 
     std::string firstArg = argv[1];
 
-    // Support /help, --help, -h, help
-    if (firstArg == "/help" || firstArg == "--help" || firstArg == "-h" || firstArg == "help") {
+    // Help and version handling
+    if (firstArg == "--help" || firstArg == "-h" || firstArg == "help") {
         return false;
+    }
+    if (firstArg == "--version") {
+        std::cout << "sdi_tool version " << SDI_TOOL_VERSION << "\n";
+        std::exit(0);
     }
 
     // Smart default: if first arg is a file path, auto-detect command
@@ -226,27 +328,20 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
         // Parse remaining args early to collect all input files
         for (int i = 2; i < argc; ++i) {
             std::string arg = argv[i];
-            if (arg == "--help" || arg == "-h" || arg == "/help") {
-                return false;
-            } else if (arg == "--output") {
-                if (i + 1 < argc) options.outputPath = argv[++i];
-            } else if (arg == "--output-dir") {
-                if (i + 1 < argc) options.outputDir = argv[++i];
-            } else if (arg == "--name") {
-                if (i + 1 < argc) options.programName = argv[++i];
-            } else if (arg == "--sdi-namespace") {
-                if (i + 1 < argc) options.sdiConfig.namespacePrefix = argv[++i];
-            } else if (arg == "--sdi-dir") {
-                if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
-            } else if (arg == "--no-sdi") {
-                options.generateSdi = false;
-            } else if (arg == "--embed-spirv") {
-                options.embedSpirv = true;
-            } else if (arg == "--verbose" || arg == "-v") {
-                options.verbose = true;
-            } else if (arg[0] != '-') {
+            std::string nextArg = (i + 1 < argc) ? argv[i + 1] : "";
+            int skip = 0;
+
+            int result = ParseOption(arg, nextArg, i + 1 < argc, options, skip);
+            if (result == -1) {
+                return false;  // Show help
+            } else if (result == 1) {
+                std::cerr << "Error: Unknown option '" << arg << "'\n";
+                std::cerr << "Run 'sdi_tool --help' for usage information.\n";
+                std::exit(1);
+            } else if (result == 2) {
                 options.inputFiles.push_back(arg);
             }
+            i += skip;
         }
 
         // JSON file -> batch mode
@@ -265,7 +360,7 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
 
         // Default output directory
         if (options.outputDir.empty()) {
-            options.outputDir = "./generated";
+            options.outputDir = DEFAULT_OUTPUT_DIR;
         }
         // Args already parsed above
     } else {
@@ -274,39 +369,37 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
 
         for (int i = 2; i < argc; ++i) {
             std::string arg = argv[i];
+            std::string nextArg = (i + 1 < argc) ? argv[i + 1] : "";
+            int skip = 0;
 
-            if (arg == "--help" || arg == "-h" || arg == "/help") {
-                return false;
-            } else if (arg == "--output") {
-                if (i + 1 < argc) options.outputPath = argv[++i];
-            } else if (arg == "--output-dir") {
-                if (i + 1 < argc) options.outputDir = argv[++i];
-            } else if (arg == "--name") {
-                if (i + 1 < argc) options.programName = argv[++i];
-            } else if (arg == "--sdi-namespace") {
-                if (i + 1 < argc) options.sdiConfig.namespacePrefix = argv[++i];
-            } else if (arg == "--sdi-dir") {
-                if (i + 1 < argc) options.sdiConfig.outputDirectory = argv[++i];
-            } else if (arg == "--no-sdi") {
-                options.generateSdi = false;
-            } else if (arg == "--embed-spirv") {
-                options.embedSpirv = true;
-            } else if (arg == "--verbose" || arg == "-v") {
-                options.verbose = true;
-            } else if (arg[0] != '-') {
+            int result = ParseOption(arg, nextArg, i + 1 < argc, options, skip);
+            if (result == -1) {
+                return false;  // Show help
+            } else if (result == 1) {
+                std::cerr << "Error: Unknown option '" << arg << "'\n";
+                std::cerr << "Run 'sdi_tool --help' for usage information.\n";
+                std::exit(1);
+            } else if (result == 2) {
                 options.inputFiles.push_back(arg);
             }
+            i += skip;
         }
     }
 
-    // Set defaults
+    // Set defaults using constants
     if (options.sdiConfig.namespacePrefix.empty()) {
-        options.sdiConfig.namespacePrefix = "SDI";
+        options.sdiConfig.namespacePrefix = DEFAULT_SDI_NAMESPACE;
     }
     if (options.sdiConfig.outputDirectory.empty() && !options.outputDir.empty()) {
-        options.sdiConfig.outputDirectory = fs::path(options.outputDir) / "sdi";
+        options.sdiConfig.outputDirectory = fs::path(options.outputDir) / DEFAULT_SDI_SUBDIR;
     } else if (options.sdiConfig.outputDirectory.empty()) {
-        options.sdiConfig.outputDirectory = "./generated/sdi";
+        options.sdiConfig.outputDirectory = fs::path(DEFAULT_OUTPUT_DIR) / DEFAULT_SDI_SUBDIR;
+    }
+
+    // Validate: --quiet and --verbose are mutually exclusive
+    if (options.quiet && options.verbose) {
+        std::cerr << "Warning: --quiet and --verbose are mutually exclusive. Using --quiet.\n";
+        options.verbose = false;
     }
 
     return true;
@@ -358,15 +451,36 @@ void CleanupOldSdiFiles(const std::string& oldUuid, const fs::path& sdiDir, bool
 int CommandCompile(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No input files specified\n";
+        std::cerr << "Hint: Provide shader files as arguments, e.g.: sdi_tool shader.vert shader.frag\n";
         return 1;
     }
 
     if (options.programName.empty()) {
-        std::cerr << "Error: Program name not specified (use --name)\n";
+        std::cerr << "Error: Program name not specified\n";
+        std::cerr << "Hint: Use -n or --name to specify the shader program name\n";
         return 1;
     }
 
-    if (options.verbose) {
+    // Make a mutable copy of input files (may be expanded by sibling discovery)
+    std::vector<std::string> inputFiles = options.inputFiles;
+
+    // === Phase 1: Validate all inputs upfront before any work ===
+    for (const auto& inputFile : inputFiles) {
+        fs::path filePath(inputFile);
+        fs::path validatedPath = ValidateAndSanitizePath(filePath, false);
+        if (validatedPath.empty()) {
+            std::cerr << "Error: Invalid or unsafe input path: " << inputFile << "\n";
+            std::cerr << "Hint: Use absolute paths or paths relative to current directory\n";
+            return 1;
+        }
+        if (!fs::exists(validatedPath)) {
+            std::cerr << "Error: Input file not found: " << inputFile << "\n";
+            std::cerr << "Hint: Check the file path and ensure the file exists\n";
+            return 1;
+        }
+    }
+
+    if (options.shouldPrintVerbose()) {
         std::cout << "Compiling shader program: " << options.programName << "\n";
         std::cout << "Input files: ";
         for (const auto& file : options.inputFiles) {
@@ -382,7 +496,9 @@ int CommandCompile(const ToolOptions& options) {
         outputPath = options.outputPath;
         outputDir = outputPath.parent_path();
     } else if (!options.outputDir.empty()) {
-        fs::create_directories(options.outputDir);
+        if (!options.dryRun) {
+            fs::create_directories(options.outputDir);
+        }
         outputDir = options.outputDir;
         outputPath = fs::path(options.outputDir) / (options.programName + ".json");
     } else {
@@ -392,38 +508,48 @@ int CommandCompile(const ToolOptions& options) {
 
     // Load old UUID before building (for cleanup if hash changes)
     std::string oldUuid = ShaderBundleSerializer::LoadUuid(outputPath);
-    if (options.verbose && !oldUuid.empty()) {
+    if (options.shouldPrintVerbose() && !oldUuid.empty()) {
         std::cout << "Existing bundle UUID: " << oldUuid << "\n";
     }
-
-    // Make a mutable copy of input files (may be expanded by sibling discovery)
-    std::vector<std::string> inputFiles = options.inputFiles;
 
     // Smart pipeline type detection from input files (using library utility)
     PipelineTypeConstraint pipelineType = options.pipelineType;
     auto detection = ShaderPipelineUtils::DetectPipelineFromFiles(inputFiles);
     if (detection.confident) {
         pipelineType = detection.type;
-        if (options.verbose) {
+        if (options.shouldPrintVerbose()) {
             std::cout << "Pipeline type auto-detected: " << detection.reason << "\n";
         }
-    } else if (options.verbose) {
+    } else if (options.shouldPrintVerbose()) {
         std::cout << "Pipeline type: " << detection.reason << "\n";
     }
 
     // Auto-discover sibling shader files with same base name (using library utility)
     uint32_t discovered = ShaderPipelineUtils::DiscoverSiblingShaders(inputFiles, pipelineType);
-    if (discovered > 0) {
-        if (options.verbose) {
-            std::cout << "Discovered " << discovered << " additional shader file(s)\n";
-        }
+    if (discovered > 0 && options.shouldPrintVerbose()) {
+        std::cout << "Discovered " << discovered << " additional shader file(s)\n";
     }
 
     // Validate required stages are present (using library utility)
     std::string validationError = ShaderPipelineUtils::ValidatePipelineStages(inputFiles, pipelineType);
-    if (!validationError.empty()) {
+    if (!validationError.empty() && options.shouldPrint()) {
         std::cerr << "Warning: " << validationError << "\n";
         // Continue anyway - user may have intentional partial pipeline
+    }
+
+    // === Dry run: show what would happen and exit ===
+    if (options.dryRun) {
+        std::cout << "[DRY RUN] Would compile shader program: " << options.programName << "\n";
+        std::cout << "[DRY RUN] Input files:\n";
+        for (const auto& file : inputFiles) {
+            auto stageOpt = ShaderPipelineUtils::DetectStageFromPath(file);
+            std::string stageName = stageOpt ? ShaderStageName(*stageOpt) : "Unknown";
+            std::cout << "  - " << file << " (" << stageName << ")\n";
+        }
+        std::cout << "[DRY RUN] Output: " << outputPath << "\n";
+        std::cout << "[DRY RUN] SDI dir: " << options.sdiConfig.outputDirectory << "\n";
+        std::cout << "[DRY RUN] Pipeline type: " << PipelineTypeName(pipelineType) << "\n";
+        return 0;
     }
 
     // Create builder
@@ -436,28 +562,17 @@ int CommandCompile(const ToolOptions& options) {
     // Add stages with path validation
     for (const auto& inputFile : inputFiles) {
         fs::path filePath(inputFile);
-
-        // Security: Validate input path
         fs::path validatedPath = ValidateAndSanitizePath(filePath, false);
-        if (validatedPath.empty()) {
-            std::cerr << "Error: Invalid or unsafe input path: " << inputFile << "\n";
-            return 1;
-        }
-
-        if (!fs::exists(validatedPath)) {
-            std::cerr << "Error: Input file not found: " << inputFile << "\n";
-            return 1;
-        }
 
         // Use library utility for stage detection (single source of truth)
         auto stageOpt = ShaderPipelineUtils::DetectStageFromPath(validatedPath);
-        if (!stageOpt) {
+        if (!stageOpt && options.shouldPrint()) {
             std::cerr << "Warning: Unknown shader stage for extension '"
                       << validatedPath.extension() << "', defaulting to Vertex\n";
         }
         ShaderStage stage = stageOpt.value_or(ShaderStage::Vertex);
 
-        if (options.verbose) {
+        if (options.shouldPrintVerbose()) {
             std::cout << "Adding stage: " << ShaderStageName(stage) << " from " << validatedPath << "\n";
         }
 
@@ -465,7 +580,7 @@ int CommandCompile(const ToolOptions& options) {
     }
 
     // Build
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Building shader bundle...\n";
     }
 
@@ -473,11 +588,12 @@ int CommandCompile(const ToolOptions& options) {
 
     if (!result.success) {
         std::cerr << "Error: Compilation failed: " << result.errorMessage << "\n";
+        std::cerr << "Hint: Check shader syntax with 'glslangValidator <shader_file>'\n";
         return 1;
     }
 
-    // Print warnings
-    if (!result.warnings.empty()) {
+    // Print warnings (unless quiet)
+    if (!result.warnings.empty() && options.shouldPrint()) {
         std::cout << "Warnings:\n";
         for (const auto& warning : result.warnings) {
             std::cout << "  - " << warning << "\n";
@@ -485,7 +601,7 @@ int CommandCompile(const ToolOptions& options) {
     }
 
     // Print statistics
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Compilation successful!\n";
         std::cout << "  Compile time: " << result.compileTime.count() << "ms\n";
         std::cout << "  Reflect time: " << result.reflectTime.count() << "ms\n";
@@ -501,11 +617,11 @@ int CommandCompile(const ToolOptions& options) {
     // Clean up old SDI files if UUID changed (outputPath/outputDir already determined above)
     const std::string& newUuid = result.bundle->uuid;
     if (!oldUuid.empty() && oldUuid != newUuid) {
-        if (options.verbose) {
+        if (options.shouldPrintVerbose()) {
             std::cout << "UUID changed: " << oldUuid << " -> " << newUuid << "\n";
         }
-        CleanupOldSdiFiles(oldUuid, options.sdiConfig.outputDirectory, options.verbose);
-    } else if (!oldUuid.empty() && options.verbose) {
+        CleanupOldSdiFiles(oldUuid, options.sdiConfig.outputDirectory, options.shouldPrintVerbose());
+    } else if (!oldUuid.empty() && options.shouldPrintVerbose()) {
         std::cout << "UUID unchanged, reusing existing SDI\n";
     }
 
@@ -513,6 +629,7 @@ int CommandCompile(const ToolOptions& options) {
     fs::path validatedOutputPath = ValidateAndSanitizePath(outputPath, true);
     if (validatedOutputPath.empty()) {
         std::cerr << "Error: Invalid or unsafe output path: " << outputPath << "\n";
+        std::cerr << "Hint: Ensure the output directory exists and is writable\n";
         return 1;
     }
 
@@ -529,13 +646,14 @@ int CommandCompile(const ToolOptions& options) {
     // Save bundle using library serializer
     if (!ShaderBundleSerializer::SaveToJson(*result.bundle, validatedOutputPath, serializerConfig)) {
         std::cerr << "Error: Failed to save bundle\n";
+        std::cerr << "Hint: Check disk space and write permissions for " << outputDir << "\n";
         return 1;
     }
 
     // Save manifest
     manifest.Save();
 
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Bundle saved to: " << outputPath << "\n";
     }
 
@@ -548,10 +666,11 @@ int CommandCompile(const ToolOptions& options) {
 int CommandBuildRegistry(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No input bundles specified\n";
+        std::cerr << "Hint: Provide bundle JSON files, e.g.: sdi_tool build-registry shader1.json shader2.json\n";
         return 1;
     }
 
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Building SDI registry from " << options.inputFiles.size() << " bundles\n";
     }
 
@@ -562,7 +681,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
     } else if (!options.outputDir.empty()) {
         registryPath = options.outputDir;
     } else {
-        registryPath = "./generated";
+        registryPath = DEFAULT_OUTPUT_DIR;
     }
 
     SdiGeneratorConfig sdiConfig;
@@ -594,7 +713,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
 
         if (!registry.RegisterShader(entry)) {
             std::cerr << "Warning: Failed to register shader: " << bundle.program.name << "\n";
-        } else if (options.verbose) {
+        } else if (options.shouldPrintVerbose()) {
             std::cout << "Registered: " << bundle.program.name << " (UUID: " << bundle.uuid << ")\n";
         }
     }
@@ -602,12 +721,13 @@ int CommandBuildRegistry(const ToolOptions& options) {
     // Generate registry header (happens automatically via RegenerateRegistry)
     if (!registry.RegenerateRegistry()) {
         std::cerr << "Error: Failed to generate registry header\n";
+        std::cerr << "Hint: Check write permissions for " << registryPath << "\n";
         return 1;
     }
 
     fs::path outputFile = registryConfig.registryHeaderPath;
 
-    if (options.verbose) {
+    if (options.shouldPrint()) {
         std::cout << "Registry header generated: " << outputFile << "\n";
         std::cout << "Total shaders registered: " << options.inputFiles.size() << "\n";
     }
@@ -621,12 +741,14 @@ int CommandBuildRegistry(const ToolOptions& options) {
 int CommandBatch(const ToolOptions& options) {
     if (options.inputFiles.empty()) {
         std::cerr << "Error: No config file specified\n";
+        std::cerr << "Hint: Provide a JSON config file, e.g.: sdi_tool batch shaders.json\n";
         return 1;
     }
 
     fs::path configPath = options.inputFiles[0];
     if (!fs::exists(configPath)) {
         std::cerr << "Error: Config file not found: " << configPath << "\n";
+        std::cerr << "Hint: Create a batch config JSON file (see --help for format)\n";
         return 1;
     }
 
@@ -637,19 +759,39 @@ int CommandBatch(const ToolOptions& options) {
         configFile >> config;
     } catch (const std::exception& e) {
         std::cerr << "Error: Failed to parse config: " << e.what() << "\n";
+        std::cerr << "Hint: Ensure the config file is valid JSON (see --help for format)\n";
         return 1;
     }
 
-    std::string outputDir = options.outputDir.empty() ? "./generated" : options.outputDir;
-    fs::create_directories(outputDir);
+    // Validate config has required fields
+    if (!config.contains("shaders") || !config["shaders"].is_array()) {
+        std::cerr << "Error: Config file missing 'shaders' array\n";
+        std::cerr << "Hint: Config must have format: { \"shaders\": [...] }\n";
+        return 1;
+    }
+
+    std::string outputDir = options.outputDir.empty() ? DEFAULT_OUTPUT_DIR : options.outputDir;
+
+    if (!options.dryRun) {
+        fs::create_directories(outputDir);
+    }
 
     // Create file manifest for tracking all generated files
     FileManifest manifest(outputDir);
 
     std::vector<std::string> generatedBundles;
+    size_t totalShaders = config["shaders"].size();
+    size_t currentShader = 0;
 
     // Process each shader
     for (const auto& shaderConfig : config["shaders"]) {
+        currentShader++;
+
+        if (!shaderConfig.contains("name") || !shaderConfig.contains("stages")) {
+            std::cerr << "Error: Shader entry missing 'name' or 'stages' field\n";
+            return 1;
+        }
+
         ToolOptions shaderOptions = options;
         shaderOptions.command = "compile";
         shaderOptions.programName = shaderConfig["name"];
@@ -668,15 +810,27 @@ int CommandBatch(const ToolOptions& options) {
             else if (pipeline == "raytracing") shaderOptions.pipelineType = PipelineTypeConstraint::RayTracing;
         }
 
-        if (options.verbose) {
-            std::cout << "\n=== Processing: " << shaderOptions.programName << " ===\n";
+        // Progress indication
+        if (options.shouldPrint()) {
+            std::cout << "[" << currentShader << "/" << totalShaders << "] "
+                      << shaderOptions.programName;
+            if (options.shouldPrintVerbose()) {
+                std::cout << "\n";
+            } else {
+                std::cout << "... ";
+                std::cout.flush();
+            }
         }
 
         int result = CommandCompile(shaderOptions);
         if (result != 0) {
-            std::cerr << "Error: Failed to compile shader: " << shaderOptions.programName << "\n";
+            std::cerr << "\nError: Failed to compile shader: " << shaderOptions.programName << "\n";
             std::cerr << "Batch processing aborted due to compilation failure.\n";
             return result;  // Fail fast - exit immediately with error code
+        }
+
+        if (options.shouldPrint() && !options.shouldPrintVerbose()) {
+            std::cout << "OK\n";
         }
 
         generatedBundles.push_back((fs::path(outputDir) / (shaderOptions.programName + ".json")).string());
@@ -684,8 +838,9 @@ int CommandBatch(const ToolOptions& options) {
 
     // Build registry if requested
     if (config.contains("buildRegistry") && config["buildRegistry"].get<bool>()) {
-        if (options.verbose) {
-            std::cout << "\n=== Building Registry ===\n";
+        if (options.shouldPrint()) {
+            std::cout << "[Registry] Building SDI_Registry.h... ";
+            std::cout.flush();
         }
 
         ToolOptions registryOptions = options;
@@ -695,23 +850,31 @@ int CommandBatch(const ToolOptions& options) {
 
         int result = CommandBuildRegistry(registryOptions);
         if (result != 0) {
-            std::cerr << "Error: Failed to build registry\n";
+            std::cerr << "\nError: Failed to build registry\n";
             return result;  // Return error code for CI/CD
+        }
+
+        if (options.shouldPrint() && !options.shouldPrintVerbose()) {
+            std::cout << "OK\n";
         }
     }
 
-    // Cleanup orphaned files
-    uint32_t removed = manifest.CleanupOrphaned();
-    if (removed > 0 && options.verbose) {
-        std::cout << "Cleaned up " << removed << " orphaned files\n";
+    // Cleanup orphaned files (skip in dry run)
+    if (!options.dryRun) {
+        uint32_t removed = manifest.CleanupOrphaned();
+        if (removed > 0 && options.shouldPrintVerbose()) {
+            std::cout << "Cleaned up " << removed << " orphaned files\n";
+        }
+
+        // Save final manifest
+        manifest.Save();
     }
 
-    // Save final manifest
-    manifest.Save();
-
-    std::cout << "\nBatch processing complete!\n";
-    std::cout << "Processed " << generatedBundles.size() << " shaders\n";
-    std::cout << "Output directory: " << outputDir << "\n";
+    if (options.shouldPrint()) {
+        std::cout << "\nBatch processing complete!\n";
+        std::cout << "Processed " << generatedBundles.size() << " shaders\n";
+        std::cout << "Output directory: " << outputDir << "\n";
+    }
 
     return 0;
 }
@@ -730,15 +893,16 @@ int CommandCleanupSdi(const ToolOptions& options) {
     } else if (!options.outputDir.empty()) {
         sdiDir = options.outputDir;
     } else {
-        sdiDir = "./generated/sdi";
+        sdiDir = fs::path(DEFAULT_OUTPUT_DIR) / DEFAULT_SDI_SUBDIR;
     }
 
     if (!fs::exists(sdiDir)) {
         std::cerr << "Error: SDI directory does not exist: " << sdiDir << "\n";
+        std::cerr << "Hint: Specify SDI directory, e.g.: sdi_tool cleanup-sdi ./generated/sdi\n";
         return 1;
     }
 
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         std::cout << "Scanning SDI directory: " << sdiDir << "\n";
     }
 
@@ -746,7 +910,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     SdiFileManager sdiManager(sdiDir);
 
     // Get referenced UUIDs for verbose output
-    if (options.verbose) {
+    if (options.shouldPrintVerbose()) {
         auto referencedUuids = sdiManager.GetReferencedUuids();
 
         // Print naming file -> SDI mappings
@@ -862,7 +1026,12 @@ int main(int argc, char** argv) {
 
     try {
         if (options.command == "compile" || options.command == "compile-compute") {
+            // Deprecation warning for compile-compute
             if (options.command == "compile-compute") {
+                if (!options.quiet) {
+                    std::cerr << "Warning: 'compile-compute' is deprecated. "
+                              << "Use 'compile' with a .comp file instead (auto-detected).\n";
+                }
                 options.pipelineType = PipelineTypeConstraint::Compute;
             }
             return CommandCompile(options);
