@@ -8,8 +8,9 @@
 // Results are written to the output storage image.
 // ============================================================================
 
-// Output image
-layout(binding = 0, rgba8) uniform image2D outputImage;
+// Output image (format unspecified - matches swapchain dynamically)
+// Requires shaderStorageImageWriteWithoutFormat feature (widely supported)
+layout(binding = 0) uniform writeonly image2D outputImage;
 
 // Acceleration structure (TLAS)
 layout(binding = 1) uniform accelerationStructureEXT topLevelAS;

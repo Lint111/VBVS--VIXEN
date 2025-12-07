@@ -2161,6 +2161,14 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
         hardwareRT.descriptorGatherer, VoxelRT::topLevelAS::BINDING,
         SlotRole::Dependency | SlotRole::Execute);
 
+    // Binding 2: aabbBuffer (SSBO) - Dependency + Execute
+    // AABB buffer for intersection shader to look up actual voxel bounds
+    // SDI reference: VoxelRT::aabbBuffer::BINDING
+    batch.ConnectVariadic(
+        hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::aabbBuffer::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
     // Register all connections atomically
     batch.RegisterAll();
 }

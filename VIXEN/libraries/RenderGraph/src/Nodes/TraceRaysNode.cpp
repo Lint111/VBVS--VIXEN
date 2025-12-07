@@ -194,13 +194,13 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
         nullptr
     );
 
-    // Push constants
-    if (!pushConstData.empty()) {
+    // Push constants - get stage flags from pipeline data (set by RayTracingPipelineNode)
+    if (!pushConstData.empty() && pipelineData_->pushConstantStages != 0) {
         vkCmdPushConstants(
             cmdBuffer,
             pipelineData_->pipelineLayout,
-            VK_SHADER_STAGE_RAYGEN_BIT_KHR,
-            0,
+            pipelineData_->pushConstantStages,
+            pipelineData_->pushConstantOffset,
             static_cast<uint32_t>(pushConstData.size()),
             pushConstData.data()
         );

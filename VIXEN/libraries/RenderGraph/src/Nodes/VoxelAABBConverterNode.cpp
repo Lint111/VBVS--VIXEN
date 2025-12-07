@@ -93,6 +93,9 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     // Output the AABB data struct (pointer to member)
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, &aabbData_);
 
+    // Also output raw buffer for shader descriptor binding
+    ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
+
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] COMPLETED");
 }
@@ -101,6 +104,7 @@ void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // AABB data is static (created during compile)
     // Just pass through the cached data pointer
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, &aabbData_);
+    ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
 }
 
 void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {

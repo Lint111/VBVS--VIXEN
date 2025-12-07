@@ -48,7 +48,7 @@ struct VoxelAABBData {
 
 namespace VoxelAABBConverterNodeCounts {
     static constexpr size_t INPUTS = 3;
-    static constexpr size_t OUTPUTS = 1;
+    static constexpr size_t OUTPUTS = 2;  // AABB_DATA + AABB_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -95,6 +95,11 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Raw AABB buffer for shader descriptor binding (intersection shader needs this)
+    OUTPUT_SLOT(AABB_BUFFER, VkBuffer, 1,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_GRID_RESOLUTION = "grid_resolution";
     static constexpr const char* PARAM_VOXEL_SIZE = "voxel_size";
@@ -112,6 +117,9 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
 
         HandleDescriptor aabbDataDesc{"VoxelAABBData"};
         INIT_OUTPUT_DESC(AABB_DATA, "aabb_data", ResourceLifetime::Persistent, aabbDataDesc);
+
+        BufferDescriptor aabbBufferDesc{};
+        INIT_OUTPUT_DESC(AABB_BUFFER, "aabb_buffer", ResourceLifetime::Persistent, aabbBufferDesc);
     }
 
     VALIDATE_NODE_CONFIG(VoxelAABBConverterNodeConfig, VoxelAABBConverterNodeCounts);
@@ -120,6 +128,7 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     static_assert(COMMAND_POOL_Slot::index == 1);
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 2);
     static_assert(AABB_DATA_Slot::index == 0);
+    static_assert(AABB_BUFFER_Slot::index == 1);
 };
 
 } // namespace Vixen::RenderGraph

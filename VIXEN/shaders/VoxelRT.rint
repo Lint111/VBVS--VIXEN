@@ -1,5 +1,7 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
 
 // ============================================================================
 // VoxelRT.rint - Intersection Shader (Phase K: Hardware Ray Tracing)
@@ -9,6 +11,17 @@
 // Reports hit via reportIntersectionEXT if ray hits the AABB.
 // ============================================================================
 
+// AABB structure matching VoxelAABB in C++ (24 bytes)
+struct AABB {
+    float minX, minY, minZ;
+    float maxX, maxY, maxZ;
+};
+
+// AABB buffer for looking up voxel bounds by primitive ID
+layout(binding = 2, set = 0, scalar) readonly buffer AABBBuffer {
+    AABB aabbs[];
+} aabbBuffer;
+
 // Hit attributes passed to closest-hit shader
 hitAttributeEXT vec3 hitNormal;
 
@@ -17,20 +30,16 @@ void main() {
     // gl_ObjectRayDirectionEXT - ray direction in object space
     // gl_RayTminEXT - minimum t value
     // gl_RayTmaxEXT - maximum t value (current closest hit)
-
-    // The AABB bounds are implicitly defined by the geometry.
-    // For procedural AABBs, we get the primitive ID to look up actual bounds.
-    // In our case, each voxel AABB is unit-sized at its stored position.
+    // gl_PrimitiveID - index of the AABB being tested
 
     vec3 rayOrigin = gl_ObjectRayOriginEXT;
     vec3 rayDir = gl_ObjectRayDirectionEXT;
     vec3 invDir = 1.0 / rayDir;
 
-    // AABB bounds - each voxel AABB was stored with its actual min/max
-    // The hardware already knows the AABB bounds, so we just test intersection
-    // For unit cube at origin (0,0,0) to (1,1,1) in object space:
-    vec3 aabbMin = vec3(0.0);
-    vec3 aabbMax = vec3(1.0);
+    // Look up actual AABB bounds from buffer using primitive ID
+    AABB aabb = aabbBuffer.aabbs[gl_PrimitiveID];
+    vec3 aabbMin = vec3(aabb.minX, aabb.minY, aabb.minZ);
+    vec3 aabbMax = vec3(aabb.maxX, aabb.maxY, aabb.maxZ);
 
     // Ray-AABB intersection (slab method)
     vec3 t0 = (aabbMin - rayOrigin) * invDir;

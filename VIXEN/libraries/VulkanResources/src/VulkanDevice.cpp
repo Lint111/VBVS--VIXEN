@@ -102,6 +102,8 @@ VulkanStatus VulkanDevice::CreateDevice(std::vector<const char*>& layers,
 
     // When using VkPhysicalDeviceFeatures2 in pNext, features go in deviceFeatures2.features, not pEnabledFeatures
     deviceFeatures2.features.samplerAnisotropy = deviceFeatures.samplerAnisotropy;
+    // Required for storage image writes without format specifier (shader uses layout(binding=0) without format)
+    deviceFeatures2.features.shaderStorageImageWriteWithoutFormat = deviceFeatures.shaderStorageImageWriteWithoutFormat;
 
     // Create the logical device representation
     VkDeviceCreateInfo deviceInfo = {};

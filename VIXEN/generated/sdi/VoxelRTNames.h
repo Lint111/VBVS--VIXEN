@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRT
-// UUID: 6938553ec113b17a
-// Generated: 2025-12-07 15:55:16
+// UUID: 9f672bc594467878
+// Generated: 2025-12-07 16:44:40
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "6938553ec113b17a-SDI.h"
+#include "9f672bc594467878-SDI.h"
 
 namespace VoxelRT {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_6938553ec113b17a;
+namespace SDI = ShaderInterface::_9f672bc594467878;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -37,6 +37,9 @@ constexpr const char* outputImage_name = "outputImage";
 // topLevelAS (Set 0, Binding 1)
 using topLevelAS = SDI::Set0::Binding1;
 constexpr const char* topLevelAS_name = "topLevelAS";
+// aabbBuffer (Set 0, Binding 2)
+using aabbBuffer = SDI::Set0::Binding2;
+constexpr const char* aabbBuffer_name = "aabbBuffer";
 
 // ============================================================================
 // Push Constant Member Aliases (With Metadata)

@@ -1,0 +1,14 @@
+{
+    "shaders": [
+        {
+            "name": "VoxelRT",
+            "pipeline": "raytracing",
+            "stages": [
+                "shaders/VoxelRT.rgen",
+                "shaders/VoxelRT.rmiss",
+                "shaders/VoxelRT.rchit",
+                "shaders/VoxelRT.rint"
+            ]
+        }
+    ]
+}

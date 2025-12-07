@@ -66,6 +66,11 @@ struct RayTracingPipelineData {
     uint32_t missShaderCount = 0;
     uint32_t hitShaderCount = 0;    // Includes closest-hit, any-hit, intersection
 
+    // Push constant configuration (populated from pipeline layout creation)
+    VkShaderStageFlags pushConstantStages = 0;
+    uint32_t pushConstantOffset = 0;
+    uint32_t pushConstantSize = 0;
+
     bool IsValid() const {
         return pipeline != VK_NULL_HANDLE && sbt.IsValid();
     }

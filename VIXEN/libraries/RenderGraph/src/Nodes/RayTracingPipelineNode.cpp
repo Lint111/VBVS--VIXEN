@@ -366,10 +366,13 @@ bool RayTracingPipelineNode::CreatePipelineLayout() {
     }
 
     // Push constant for camera data (used by raygen and closest hit shaders)
+    constexpr VkShaderStageFlags RT_PUSH_CONSTANT_STAGES =
+        VK_SHADER_STAGE_RAYGEN_BIT_KHR |
+        VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+        VK_SHADER_STAGE_MISS_BIT_KHR;
+
     VkPushConstantRange pushConstant{};
-    pushConstant.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR |
-                              VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
-                              VK_SHADER_STAGE_MISS_BIT_KHR;
+    pushConstant.stageFlags = RT_PUSH_CONSTANT_STAGES;
     pushConstant.offset = 0;
     pushConstant.size = pushConstantSize;
 
@@ -385,6 +388,11 @@ bool RayTracingPipelineNode::CreatePipelineLayout() {
         NODE_LOG_ERROR("Failed to create pipeline layout");
         return false;
     }
+
+    // Store push constant config in pipeline data for consumers (e.g., TraceRaysNode)
+    pipelineData_.pushConstantStages = RT_PUSH_CONSTANT_STAGES;
+    pipelineData_.pushConstantOffset = 0;
+    pipelineData_.pushConstantSize = pushConstantSize;
 
     NODE_LOG_INFO("Created RT pipeline layout with push constant size: " + std::to_string(pushConstantSize));
     return true;

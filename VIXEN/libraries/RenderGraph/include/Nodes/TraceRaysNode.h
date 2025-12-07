@@ -4,6 +4,7 @@
 #include "Core/NodeType.h"
 #include "Core/NodeLogging.h"
 #include "Data/Nodes/TraceRaysNodeConfig.h"
+#include "Data/Nodes/FrameSyncNodeConfig.h"
 #include <memory>
 
 namespace Vixen::Vulkan::Resources {
@@ -90,7 +91,7 @@ private:
 
     // Command buffers (one per frame in flight)
     std::vector<VkCommandBuffer> commandBuffers_;
-    uint32_t framesInFlight_ = 2;
+    static constexpr uint32_t framesInFlight_ = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
 
     // Dispatch dimensions
     uint32_t width_ = 1920;
