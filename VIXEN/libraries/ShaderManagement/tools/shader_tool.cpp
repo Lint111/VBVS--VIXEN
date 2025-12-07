@@ -23,6 +23,8 @@
 #include "SdiRegistryManager.h"
 #include "ShaderCompiler.h"
 #include "SPIRVReflection.h"
+#include "SpirvInterfaceGenerator.h"
+#include "ShaderPipelineUtils.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -364,8 +366,7 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
             options.command = "batch";
         } else {
             // Use smart pipeline detection from ALL input files
-            // This is a forward reference - DetectPipelineFromFiles is defined later
-            // For now, just set command to "compile" and detect pipeline type later
+            // Pipeline type will be detected in CommandCompile using ShaderPipelineUtils
             options.command = "compile";
         }
 
@@ -424,290 +425,8 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
 }
 
 // ===== Command Implementations =====
-
-/**
- * @brief Detect shader stage from file extension
- */
-ShaderStage DetectStageFromExtension(const fs::path& path) {
-    std::string ext = path.extension().string();
-    if (ext == ".vert") return ShaderStage::Vertex;
-    if (ext == ".frag") return ShaderStage::Fragment;
-    if (ext == ".comp") return ShaderStage::Compute;
-    if (ext == ".geom") return ShaderStage::Geometry;
-    if (ext == ".tesc") return ShaderStage::TessControl;
-    if (ext == ".tese") return ShaderStage::TessEval;
-    if (ext == ".mesh") return ShaderStage::Mesh;
-    if (ext == ".task") return ShaderStage::Task;
-    if (ext == ".rgen") return ShaderStage::RayGen;
-    if (ext == ".rmiss") return ShaderStage::Miss;
-    if (ext == ".rchit") return ShaderStage::ClosestHit;
-    if (ext == ".rahit") return ShaderStage::AnyHit;
-    if (ext == ".rint") return ShaderStage::Intersection;
-    if (ext == ".rcall") return ShaderStage::Callable;
-
-    std::cerr << "Warning: Unknown shader stage for extension '" << ext << "', defaulting to Vertex\n";
-    return ShaderStage::Vertex;
-}
-
-/**
- * @brief Detect pipeline type from a single file extension
- * @return Detected pipeline type, or std::nullopt if unknown
- */
-std::optional<PipelineTypeConstraint> DetectPipelineFromExtension(const std::string& ext) {
-    // Compute pipeline
-    if (ext == ".comp") {
-        return PipelineTypeConstraint::Compute;
-    }
-
-    // Ray tracing pipeline
-    if (ext == ".rgen" || ext == ".rmiss" || ext == ".rchit" ||
-        ext == ".rahit" || ext == ".rint" || ext == ".rcall") {
-        return PipelineTypeConstraint::RayTracing;
-    }
-
-    // Mesh shading pipeline
-    if (ext == ".mesh" || ext == ".task") {
-        return PipelineTypeConstraint::Mesh;
-    }
-
-    // Graphics pipeline (traditional rasterization)
-    if (ext == ".vert" || ext == ".frag" || ext == ".geom" ||
-        ext == ".tesc" || ext == ".tese") {
-        return PipelineTypeConstraint::Graphics;
-    }
-
-    return std::nullopt;
-}
-
-/**
- * @brief Detect pipeline type from multiple input files
- *
- * Priority rules:
- * 1. Ray tracing stages -> RayTracing pipeline (highest priority)
- * 2. Mesh/Task stages -> Mesh pipeline
- * 3. Compute stage alone -> Compute pipeline
- * 4. Traditional stages -> Graphics pipeline (default)
- *
- * @param files List of shader file paths
- * @return Detected pipeline type with confidence
- */
-struct PipelineDetectionResult {
-    PipelineTypeConstraint type = PipelineTypeConstraint::Graphics;
-    std::string reason;
-    bool confident = false;
-};
-
-PipelineDetectionResult DetectPipelineFromFiles(const std::vector<std::string>& files) {
-    PipelineDetectionResult result;
-
-    bool hasRayTracing = false;
-    bool hasMesh = false;
-    bool hasCompute = false;
-    bool hasGraphics = false;
-
-    std::string rtStage, meshStage, computeStage, graphicsStage;
-
-    for (const auto& file : files) {
-        fs::path filePath(file);
-        std::string ext = filePath.extension().string();
-
-        auto detected = DetectPipelineFromExtension(ext);
-        if (!detected) continue;
-
-        switch (*detected) {
-            case PipelineTypeConstraint::RayTracing:
-                hasRayTracing = true;
-                if (rtStage.empty()) rtStage = ext;
-                break;
-            case PipelineTypeConstraint::Mesh:
-                hasMesh = true;
-                if (meshStage.empty()) meshStage = ext;
-                break;
-            case PipelineTypeConstraint::Compute:
-                hasCompute = true;
-                if (computeStage.empty()) computeStage = ext;
-                break;
-            case PipelineTypeConstraint::Graphics:
-                hasGraphics = true;
-                if (graphicsStage.empty()) graphicsStage = ext;
-                break;
-        }
-    }
-
-    // Priority: RayTracing > Mesh > Compute > Graphics
-    if (hasRayTracing) {
-        result.type = PipelineTypeConstraint::RayTracing;
-        result.reason = "detected ray tracing stage (" + rtStage + ")";
-        result.confident = true;
-    } else if (hasMesh) {
-        result.type = PipelineTypeConstraint::Mesh;
-        result.reason = "detected mesh shading stage (" + meshStage + ")";
-        result.confident = true;
-    } else if (hasCompute && !hasGraphics) {
-        result.type = PipelineTypeConstraint::Compute;
-        result.reason = "detected compute stage (" + computeStage + ")";
-        result.confident = true;
-    } else if (hasGraphics) {
-        result.type = PipelineTypeConstraint::Graphics;
-        result.reason = "detected graphics stage (" + graphicsStage + ")";
-        result.confident = true;
-    } else {
-        result.type = PipelineTypeConstraint::Graphics;
-        result.reason = "no recognized shader extensions, defaulting to graphics";
-        result.confident = false;
-    }
-
-    // Warn about mixed pipeline types (unusual but not necessarily wrong)
-    int pipelineCount = (hasRayTracing ? 1 : 0) + (hasMesh ? 1 : 0) +
-                        (hasCompute ? 1 : 0) + (hasGraphics ? 1 : 0);
-    if (pipelineCount > 1) {
-        std::cerr << "Warning: Mixed pipeline types detected in input files. "
-                  << "Using " << result.reason << "\n";
-    }
-
-    return result;
-}
-
-// ===== Sibling Shader Discovery =====
-
-/**
- * @brief Get expected/optional extensions for a given pipeline type
- */
-struct PipelineExtensions {
-    std::vector<std::string> required;   // At least one of these must exist
-    std::vector<std::string> optional;   // Will be included if found
-};
-
-PipelineExtensions GetPipelineExtensions(PipelineTypeConstraint pipelineType) {
-    PipelineExtensions ext;
-    
-    switch (pipelineType) {
-        case PipelineTypeConstraint::Graphics:
-            ext.required = {".vert", ".frag"};  // Minimal graphics pipeline
-            ext.optional = {".geom", ".tesc", ".tese"};
-            break;
-            
-        case PipelineTypeConstraint::Compute:
-            ext.required = {".comp"};
-            ext.optional = {};  // Compute is standalone
-            break;
-            
-        case PipelineTypeConstraint::RayTracing:
-            ext.required = {".rgen"};  // Ray gen is required
-            ext.optional = {".rmiss", ".rchit", ".rahit", ".rint", ".rcall"};
-            break;
-            
-        case PipelineTypeConstraint::Mesh:
-            ext.required = {".mesh"};  // Mesh shader is required
-            ext.optional = {".task", ".frag"};  // Task is optional, frag for output
-            break;
-    }
-    
-    return ext;
-}
-
-/**
- * @brief Discover sibling shader files based on naming convention
- * 
- * Given a shader file like "VoxelRT.rgen", this will look for:
- * - VoxelRT.rmiss, VoxelRT.rchit, VoxelRT.rint, etc.
- * 
- * @param inputFiles Current list of input files (will be expanded)
- * @param pipelineType Detected pipeline type
- * @param verbose Print discovery messages
- * @return Number of files discovered and added
- */
-uint32_t DiscoverSiblingShaders(
-    std::vector<std::string>& inputFiles,
-    PipelineTypeConstraint pipelineType,
-    bool verbose
-) {
-    if (inputFiles.empty()) return 0;
-    
-    // Get the base path from the first input file
-    fs::path firstFile(inputFiles[0]);
-    fs::path directory = firstFile.parent_path();
-    std::string baseName = firstFile.stem().string();
-    
-    // Collect already-specified extensions
-    std::unordered_set<std::string> existingExtensions;
-    for (const auto& file : inputFiles) {
-        fs::path p(file);
-        existingExtensions.insert(p.extension().string());
-    }
-    
-    // Get expected extensions for this pipeline type
-    auto pipelineExt = GetPipelineExtensions(pipelineType);
-    
-    // Combine required and optional into search list
-    std::vector<std::string> searchExtensions;
-    searchExtensions.insert(searchExtensions.end(), 
-                           pipelineExt.required.begin(), 
-                           pipelineExt.required.end());
-    searchExtensions.insert(searchExtensions.end(), 
-                           pipelineExt.optional.begin(), 
-                           pipelineExt.optional.end());
-    
-    uint32_t discovered = 0;
-    
-    for (const auto& ext : searchExtensions) {
-        // Skip if already in input files
-        if (existingExtensions.count(ext) > 0) continue;
-        
-        // Try to find sibling file
-        fs::path siblingPath = directory / (baseName + ext);
-        
-        if (fs::exists(siblingPath)) {
-            inputFiles.push_back(siblingPath.string());
-            existingExtensions.insert(ext);
-            ++discovered;
-            
-            if (verbose) {
-                std::cout << "Auto-discovered sibling shader: " << siblingPath << "\n";
-            }
-        }
-    }
-    
-    return discovered;
-}
-
-/**
- * @brief Validate that required stages are present for a pipeline type
- * @return Error message if validation fails, empty string if OK
- */
-std::string ValidatePipelineStages(
-    const std::vector<std::string>& inputFiles,
-    PipelineTypeConstraint pipelineType
-) {
-    auto pipelineExt = GetPipelineExtensions(pipelineType);
-    
-    // Collect extensions from input files
-    std::unordered_set<std::string> presentExtensions;
-    for (const auto& file : inputFiles) {
-        fs::path p(file);
-        presentExtensions.insert(p.extension().string());
-    }
-    
-    // Check if at least one required extension is present
-    bool hasRequired = false;
-    for (const auto& req : pipelineExt.required) {
-        if (presentExtensions.count(req) > 0) {
-            hasRequired = true;
-            break;
-        }
-    }
-    
-    if (!hasRequired && !pipelineExt.required.empty()) {
-        std::string reqList;
-        for (size_t i = 0; i < pipelineExt.required.size(); ++i) {
-            if (i > 0) reqList += ", ";
-            reqList += pipelineExt.required[i];
-        }
-        return "Missing required shader stage. Expected one of: " + reqList;
-    }
-    
-    return "";
-}
+// Pipeline detection and sibling discovery use ShaderPipelineUtils from the library
+// (single source of truth - no duplicate implementations)
 
 /**
  * @brief Save bundle to JSON file
@@ -949,9 +668,9 @@ int CommandCompile(const ToolOptions& options) {
     // Make a mutable copy of input files (may be expanded by sibling discovery)
     std::vector<std::string> inputFiles = options.inputFiles;
 
-    // Smart pipeline type detection from input files
+    // Smart pipeline type detection from input files (using library utility)
     PipelineTypeConstraint pipelineType = options.pipelineType;
-    auto detection = DetectPipelineFromFiles(inputFiles);
+    auto detection = ShaderPipelineUtils::DetectPipelineFromFiles(inputFiles);
     if (detection.confident) {
         pipelineType = detection.type;
         if (options.verbose) {
@@ -961,14 +680,16 @@ int CommandCompile(const ToolOptions& options) {
         std::cout << "Pipeline type: " << detection.reason << "\n";
     }
 
-    // Auto-discover sibling shader files with same base name
-    uint32_t discovered = DiscoverSiblingShaders(inputFiles, pipelineType, options.verbose);
-    if (discovered > 0 && options.verbose) {
-        std::cout << "Discovered " << discovered << " additional shader file(s)\n";
+    // Auto-discover sibling shader files with same base name (using library utility)
+    uint32_t discovered = ShaderPipelineUtils::DiscoverSiblingShaders(inputFiles, pipelineType);
+    if (discovered > 0) {
+        if (options.verbose) {
+            std::cout << "Discovered " << discovered << " additional shader file(s)\n";
+        }
     }
 
-    // Validate required stages are present
-    std::string validationError = ValidatePipelineStages(inputFiles, pipelineType);
+    // Validate required stages are present (using library utility)
+    std::string validationError = ShaderPipelineUtils::ValidatePipelineStages(inputFiles, pipelineType);
     if (!validationError.empty()) {
         std::cerr << "Warning: " << validationError << "\n";
         // Continue anyway - user may have intentional partial pipeline
@@ -997,7 +718,13 @@ int CommandCompile(const ToolOptions& options) {
             return 1;
         }
 
-        ShaderStage stage = DetectStageFromExtension(validatedPath);
+        // Use library utility for stage detection (single source of truth)
+        auto stageOpt = ShaderPipelineUtils::DetectStageFromPath(validatedPath);
+        if (!stageOpt) {
+            std::cerr << "Warning: Unknown shader stage for extension '"
+                      << validatedPath.extension() << "', defaulting to Vertex\n";
+        }
+        ShaderStage stage = stageOpt.value_or(ShaderStage::Vertex);
 
         if (options.verbose) {
             std::cout << "Adding stage: " << ShaderStageName(stage) << " from " << validatedPath << "\n";
@@ -1252,34 +979,10 @@ int CommandBatch(const ToolOptions& options) {
 }
 
 /**
- * @brief Extract UUID from SDI include directive
- * @param includeLine Line like: #include "2744040dfb644549-SDI.h"
- * @return UUID string or empty if not found
- */
-std::string ExtractSdiUuidFromInclude(const std::string& includeLine) {
-    // Look for pattern: #include "XXXXXXXXXXXXXXXX-SDI.h"
-    size_t startQuote = includeLine.find('"');
-    if (startQuote == std::string::npos) return "";
-
-    size_t endQuote = includeLine.find('"', startQuote + 1);
-    if (endQuote == std::string::npos) return "";
-
-    std::string filename = includeLine.substr(startQuote + 1, endQuote - startQuote - 1);
-
-    // Check if it ends with -SDI.h
-    const std::string suffix = "-SDI.h";
-    if (filename.size() <= suffix.size()) return "";
-    if (filename.substr(filename.size() - suffix.size()) != suffix) return "";
-
-    // Extract UUID (everything before -SDI.h)
-    return filename.substr(0, filename.size() - suffix.size());
-}
-
-/**
  * @brief Command: Clean up orphaned SDI header files
  *
- * Scans all *Names.h files in the SDI directory, extracts the UUIDs they reference,
- * and deletes any *-SDI.h files not referenced by any naming file.
+ * Uses the library's SdiFileManager to scan naming files and delete orphaned SDIs.
+ * This ensures single source of truth - the same logic is used by both tool and library.
  */
 int CommandCleanupSdi(const ToolOptions& options) {
     // Check inputFiles first (positional arg), then outputDir, then default
@@ -1301,92 +1004,72 @@ int CommandCleanupSdi(const ToolOptions& options) {
         std::cout << "Scanning SDI directory: " << sdiDir << "\n";
     }
 
-    // Step 1: Find all naming files (*Names.h) and extract referenced UUIDs
-    std::unordered_set<std::string> referencedUuids;
-    std::vector<std::string> namingFiles;
+    // Use library's SdiFileManager for cleanup (single source of truth)
+    SdiFileManager sdiManager(sdiDir);
 
-    for (const auto& entry : fs::directory_iterator(sdiDir)) {
-        if (!entry.is_regular_file()) continue;
+    // Get referenced UUIDs for verbose output
+    if (options.verbose) {
+        auto referencedUuids = sdiManager.GetReferencedUuids();
 
-        std::string filename = entry.path().filename().string();
+        // Print naming file -> SDI mappings
+        for (const auto& entry : fs::directory_iterator(sdiDir)) {
+            if (!entry.is_regular_file()) continue;
+            std::string filename = entry.path().filename().string();
 
-        // Check if it's a naming file (ends with Names.h but not -SDI.h)
-        if (filename.size() > 7 &&
-            filename.substr(filename.size() - 7) == "Names.h" &&
-            filename.find("-SDI.h") == std::string::npos) {
+            if (filename.size() > 7 &&
+                filename.substr(filename.size() - 7) == "Names.h" &&
+                filename.find("-SDI.h") == std::string::npos) {
 
-            namingFiles.push_back(entry.path().string());
-
-            // Read the file and find #include "*-SDI.h" lines
-            std::ifstream file(entry.path());
-            if (file.is_open()) {
-                std::string line;
-                while (std::getline(file, line)) {
-                    if (line.find("#include") != std::string::npos &&
-                        line.find("-SDI.h") != std::string::npos) {
-                        std::string uuid = ExtractSdiUuidFromInclude(line);
-                        if (!uuid.empty()) {
-                            referencedUuids.insert(uuid);
-                            if (options.verbose) {
+                std::ifstream file(entry.path());
+                if (file.is_open()) {
+                    std::string line;
+                    while (std::getline(file, line)) {
+                        if (line.find("#include") != std::string::npos &&
+                            line.find("-SDI.h") != std::string::npos) {
+                            std::string uuid = SdiFileManager::ExtractSdiUuidFromInclude(line);
+                            if (!uuid.empty()) {
                                 std::cout << "  " << filename << " -> " << uuid << "-SDI.h\n";
                             }
                         }
                     }
+                    file.close();
                 }
-                file.close();
             }
         }
+
+        std::cout << "Found " << referencedUuids.size() << " unique SDI(s) referenced by naming files\n";
     }
 
-    if (options.verbose) {
-        std::cout << "Found " << namingFiles.size() << " naming file(s) referencing "
-                  << referencedUuids.size() << " unique SDI(s)\n";
-    }
-
-    // Step 2: Find all SDI files (*-SDI.h) and identify orphans
-    std::vector<fs::path> orphanedSdis;
+    // Count total SDIs before cleanup for statistics
     uint32_t totalSdis = 0;
-
     for (const auto& entry : fs::directory_iterator(sdiDir)) {
         if (!entry.is_regular_file()) continue;
-
         std::string filename = entry.path().filename().string();
-
-        // Check if it's an SDI file (ends with -SDI.h)
-        const std::string suffix = "-SDI.h";
-        if (filename.size() > suffix.size() &&
-            filename.substr(filename.size() - suffix.size()) == suffix) {
-
+        if (filename.size() > 7 && filename.substr(filename.size() - 7) == "-SDI.h") {
             ++totalSdis;
-            std::string uuid = filename.substr(0, filename.size() - suffix.size());
-
-            if (referencedUuids.find(uuid) == referencedUuids.end()) {
-                orphanedSdis.push_back(entry.path());
-                if (options.verbose) {
-                    std::cout << "  Orphaned: " << filename << "\n";
-                }
-            }
         }
     }
 
-    // Step 3: Delete orphaned SDI files
-    uint32_t removed = 0;
-    for (const auto& orphan : orphanedSdis) {
-        std::error_code ec;
-        if (fs::remove(orphan, ec)) {
-            ++removed;
-            if (options.verbose) {
-                std::cout << "  Deleted: " << orphan.filename() << "\n";
-            }
-        } else if (options.verbose) {
-            std::cerr << "  Failed to delete: " << orphan.filename() << " (" << ec.message() << ")\n";
+    // Perform cleanup using library function
+    std::vector<std::string> referencedUuidsOut;
+    std::vector<fs::path> orphanedFiles;
+    uint32_t removed = sdiManager.CleanupOrphanedSdis(
+        options.verbose,
+        &referencedUuidsOut,
+        &orphanedFiles
+    );
+
+    // Print deleted files in verbose mode
+    if (options.verbose) {
+        for (const auto& orphan : orphanedFiles) {
+            std::cout << "  Deleted: " << orphan.filename() << "\n";
         }
     }
 
     // Summary
     std::cout << "SDI cleanup complete:\n";
     std::cout << "  Total SDI files: " << totalSdis << "\n";
-    std::cout << "  Referenced by Names.h: " << referencedUuids.size() << "\n";
+    std::cout << "  Referenced by Names.h: " << referencedUuidsOut.size() << "\n";
     std::cout << "  Orphaned (deleted): " << removed << "\n";
 
     return 0;

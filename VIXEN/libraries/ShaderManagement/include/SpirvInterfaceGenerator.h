@@ -4,6 +4,8 @@
 #include "ILoggable.h"
 #include <filesystem>
 #include <string>
+#include <unordered_set>
+#include <fstream>
 
 namespace ShaderManagement {
 
@@ -179,7 +181,7 @@ public:
     std::vector<std::string> GetRegisteredUuids() const;
 
     /**
-     * @brief Clean up orphaned SDI files
+     * @brief Clean up orphaned SDI files (registry-based)
      *
      * Removes SDI files that aren't in the registered set.
      * Useful after shader program deletions.
@@ -187,6 +189,41 @@ public:
      * @return Number of orphaned files deleted
      */
     uint32_t CleanupOrphans();
+
+    /**
+     * @brief Clean up orphaned SDI files (naming-file-based)
+     *
+     * Scans all *Names.h files in the directory, extracts the UUIDs they reference,
+     * and deletes any *-SDI.h files not referenced by any naming file.
+     * This is more robust than registry-based cleanup as it uses actual file references.
+     *
+     * @param verbose If true, populate referencedUuids and orphanedFiles output params
+     * @param referencedUuids Optional output: UUIDs found in naming files
+     * @param orphanedFiles Optional output: Paths of deleted orphaned files
+     * @return Number of orphaned files deleted
+     */
+    uint32_t CleanupOrphanedSdis(
+        bool verbose = false,
+        std::vector<std::string>* referencedUuids = nullptr,
+        std::vector<std::filesystem::path>* orphanedFiles = nullptr
+    );
+
+    /**
+     * @brief Extract UUID from an SDI include directive
+     *
+     * Parses lines like: #include "2744040dfb644549-SDI.h"
+     *
+     * @param includeLine The line containing the include directive
+     * @return UUID string if found, empty string otherwise
+     */
+    static std::string ExtractSdiUuidFromInclude(const std::string& includeLine);
+
+    /**
+     * @brief Scan naming files and return referenced SDI UUIDs
+     *
+     * @return Set of UUIDs referenced by *Names.h files
+     */
+    std::unordered_set<std::string> GetReferencedUuids() const;
 
     /**
      * @brief Delete all SDI files
