@@ -13,10 +13,11 @@
 // - Normal: 32 blocks * 16 bytes = 512 bytes per brick
 // - Total:  768 bytes per brick (4:1 compression vs uncompressed)
 //
-// BINDING DIFFERENCES FROM VoxelRT.rchit:
-// - Binding 3: brickData (material IDs for voxel lookup)
-// - Binding 6: compressedColors (DXT1 color blocks)
-// - Binding 7: compressedNormals (DXT normal blocks)
+// BINDING LAYOUT (consistent with VoxelRT.rchit):
+// - Binding 3: materialIdBuffer (same as uncompressed)
+// - Binding 5: octreeConfig (UBO, same as uncompressed)
+// - Binding 6: compressedColors (DXT1 color blocks) [compressed only]
+// - Binding 7: compressedNormals (DXT normal blocks) [compressed only]
 // ============================================================================
 
 #include "Compression.glsl"
@@ -27,11 +28,11 @@ hitAttributeEXT vec3 hitNormal;
 // Ray payload - color output
 layout(location = 0) rayPayloadInEXT vec3 hitColor;
 
-// Brick data buffer - indexed by gl_PrimitiveID to get brick index
-// Each AABB corresponds to a voxel, and we need to find which brick it belongs to
-layout(std430, binding = 3) readonly buffer BrickDataBuffer {
-    uint brickData[];  // Material IDs (512 per brick)
-} brickDataBuffer;
+// Material ID buffer - indexed by gl_PrimitiveID to get material
+// Same binding as uncompressed shader for consistent naming
+layout(std430, binding = 3) readonly buffer MaterialIdBuffer {
+    uint materialIds[];  // Material IDs (512 per brick)
+} materialIdBuffer;
 
 // DXT1 compressed colors - 32 blocks per brick, 8 bytes (uvec2) per block
 layout(std430, binding = 6) readonly buffer CompressedColorBuffer {

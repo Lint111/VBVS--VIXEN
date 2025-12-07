@@ -8,13 +8,12 @@
 
 ## Latest Session (2025-12-07)
 
-**Created session-summary skill** for generating comprehensive handoff documentation.
-**Hardware RT (RTX) pipeline now rendering successfully!** Fixed critical descriptor gatherer validation issues that caused black screen.
+**Compressed RTX shader implemented!** Added `VoxelRT_Compressed.rchit` for DXT-compressed voxel data in hardware ray tracing pipeline.
 
 ### Quick Reference
 - **Full Summary:** [[Sessions/2025-12-07-summary]]
-- **Next Task:** Fix validation warnings, investigate phantom slot, implement compressed RTX variant
-- **RTX Status:** Working and rendering
+- **Next Task:** Fix validation warnings, investigate phantom slot, collect performance benchmarks
+- **RTX Status:** Working (both uncompressed and compressed variants)
 
 ---
 
@@ -58,7 +57,8 @@ The Hardware RT (RTX) pipeline was debugged and is now rendering correctly. The 
 | `libraries/RenderGraph/src/Nodes/DescriptorResourceGathererNode.cpp` | Added AccelerationStructure handling, empty slot skip, verbose error logging |
 | `shaders/VoxelRT.rgen` | Coordinate space transforms (world→local→voxel space) |
 | `shaders/VoxelRT.rchit` | OctreeConfigUBO at binding 5 for transforms |
-| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Wired OCTREE_CONFIG_BUFFER to RTX descriptor gatherer |
+| `shaders/VoxelRT_Compressed.rchit` | **NEW** - Compressed RTX closest-hit shader with DXT color/normal buffers (bindings 6,7) |
+| `libraries/Profiler/src/BenchmarkGraphFactory.cpp` | Wired OCTREE_CONFIG_BUFFER to RTX, added compressed buffer bindings 6-7, compressed shader detection |
 
 ### How to Run RTX Benchmark
 ```bash
@@ -70,7 +70,7 @@ cmake --build build --config Debug --target vixen_benchmark --parallel 8
 ### Known Issues / Next Steps
 1. **Validation warnings**: `VUID-VkWriteDescriptorSet-descriptorType-00331` errors for STORAGE_BUFFER - some buffers may need `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`
 2. **Phantom slot bug**: Slot[4] with empty name gets created during wiring but isn't used - workaround in place, root cause not fully traced
-3. **Compressed RTX variant**: Not yet implemented (VoxelRT_Compressed shaders)
+3. ~~**Compressed RTX variant**: Not yet implemented~~ **DONE** - `VoxelRT_Compressed.rchit` created
 4. **Performance comparison**: RTX vs Compute vs Fragment benchmarks not yet collected
 
 ### Architecture Notes

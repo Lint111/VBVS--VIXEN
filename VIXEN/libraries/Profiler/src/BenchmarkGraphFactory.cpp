@@ -1432,11 +1432,18 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     ConfigureHardwareRTParams(graph, result.hardwareRT, width, height);
 
     // Determine if compressed RTX shaders should be used
-    // Check config.shader for "Compressed" suffix (similar to compute/fragment pipelines)
+    // Check config.shader OR config.shaderGroup for "Compressed" suffix
     bool useCompressed = false;
     if (!config.shader.empty() &&
         config.shader.find("Compressed") != std::string::npos) {
         useCompressed = true;
+    }
+    // Also check shaderGroup (array of RT shaders: [rgen, rmiss, rchit, rint])
+    for (const auto& shaderName : config.shaderGroup) {
+        if (shaderName.find("Compressed") != std::string::npos) {
+            useCompressed = true;
+            break;
+        }
     }
 
     // Register RT shaders (raygen, miss, closest hit, intersection)
@@ -1451,7 +1458,8 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
         "VoxelRT.rint");     // Intersection shader (shared)
 
     // Wire variadic resources (camera -> push constants, swapchain -> output image)
-    WireHardwareRTVariadicResources(graph, result.infra, result.hardwareRT, result.rayMarch);
+    // Pass useCompressed to conditionally wire bindings 6-7 for compressed shaders
+    WireHardwareRTVariadicResources(graph, result.infra, result.hardwareRT, result.rayMarch, useCompressed);
 
     // Connect all subgraphs
     ConnectHardwareRT(graph, result.infra, result.hardwareRT, result.rayMarch, result.output);
@@ -2071,7 +2079,8 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     RG::RenderGraph* graph,
     const InfrastructureNodes& infra,
     const HardwareRTNodes& hardwareRT,
-    const RayMarchNodes& rayMarch)
+    const RayMarchNodes& rayMarch,
+    bool useCompressed)
 {
     if (!graph) {
         throw std::invalid_argument("BenchmarkGraphFactory::WireHardwareRTVariadicResources: graph is null");
@@ -2180,22 +2189,26 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     //--------------------------------------------------------------------------
     // Compressed Buffer Bindings (VoxelRT_Compressed.rchit only)
     //--------------------------------------------------------------------------
-    // These are wired for all RTX pipelines but only used by compressed shader.
-    // The uncompressed shader ignores these bindings.
-    constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
-    constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
+    // Only wire compressed bindings when using compressed shader.
+    // The uncompressed shader doesn't declare bindings 6-7, and wiring them
+    // would cause DescriptorResourceGathererNode::Execute to fail with
+    // "Binding X out of range" errors.
+    if (useCompressed) {
+        constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
+        constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
 
-    // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
-    batch.ConnectVariadic(
-        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
-        hardwareRT.descriptorGatherer, BINDING_COMPRESSED_COLOR,
-        SlotRole::Dependency | SlotRole::Execute);
+        // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
+        batch.ConnectVariadic(
+            rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_COMPRESSED_COLOR,
+            SlotRole::Dependency | SlotRole::Execute);
 
-    // Binding 7: compressedNormals (DXT normal blocks) - Dependency + Execute
-    batch.ConnectVariadic(
-        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
-        hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
-        SlotRole::Dependency | SlotRole::Execute);
+        // Binding 7: compressedNormals (DXT normal blocks) - Dependency + Execute
+        batch.ConnectVariadic(
+            rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+            hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
+            SlotRole::Dependency | SlotRole::Execute);
+    }
 
     // Register all connections atomically
     batch.RegisterAll();

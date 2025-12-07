@@ -717,12 +717,14 @@ private:
      * @param infra Infrastructure nodes (provides swapchain for output image)
      * @param hardwareRT Hardware RT pipeline nodes
      * @param rayMarch Ray march scene nodes (provides camera data)
+     * @param useCompressed If true, wire compressed buffer bindings (6, 7) for compressed shaders
      */
     static void WireHardwareRTVariadicResources(
         RG::RenderGraph* graph,
         const InfrastructureNodes& infra,
         const HardwareRTNodes& hardwareRT,
-        const RayMarchNodes& rayMarch
+        const RayMarchNodes& rayMarch,
+        bool useCompressed = false
     );
 
     /**
