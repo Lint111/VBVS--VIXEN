@@ -893,7 +893,7 @@ int CommandCleanupSdi(const ToolOptions& options) {
     } else if (!options.outputDir.empty()) {
         sdiDir = options.outputDir;
     } else {
-        sdiDir = fs::path(DEFAULT_OUTPUT_DIR) / DEFAULT_SDI_SUBDIR;
+        sdiDir = (fs::path(DEFAULT_OUTPUT_DIR) / DEFAULT_SDI_SUBDIR).string();
     }
 
     if (!fs::exists(sdiDir)) {
