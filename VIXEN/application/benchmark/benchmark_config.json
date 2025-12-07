@@ -38,7 +38,8 @@
       "hardware_rt": {
         "enabled": true,
         "shader_groups": [
-          ["ray_march_rt.rgen", "ray_march_rt.rmiss", "ray_march_rt.rchit"]
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit"],
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT_Compressed.rchit"]
         ]
       }
     }

@@ -56,11 +56,6 @@ void main() {
     ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
     ivec2 imageSize = ivec2(gl_LaunchSizeEXT.xy);
 
-    // DEBUG FORCE: Output magenta to verify rgen shader executes at all
-    // REMOVE THIS AFTER DEBUGGING
-    imageStore(outputImage, pixelCoords, vec4(1.0, 0.0, 1.0, 1.0));
-    return;
-
     // Compute UV coordinates (0-1 range, centered)
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
     vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
@@ -95,19 +90,6 @@ void main() {
     // Initialize payload
     hitColor = vec3(0.0);
 
-    // DEBUG: Test basic pipeline by outputting solid color if debugMode == 99
-    // This bypasses ray tracing entirely to verify output image binding
-    if (pc.debugMode == 99) {
-        imageStore(outputImage, pixelCoords, vec4(1.0, 0.0, 1.0, 1.0));  // Magenta
-        return;
-    }
-
-    // DEBUG: Output UV-based gradient if debugMode == 98 (tests image write without ray tracing)
-    if (pc.debugMode == 98) {
-        imageStore(outputImage, pixelCoords, vec4(uv.x, uv.y, 0.5, 1.0));
-        return;
-    }
-
     // Trace ray in local voxel space
     traceRayEXT(
         topLevelAS,           // Acceleration structure
@@ -122,14 +104,6 @@ void main() {
         tMax,                 // Max distance
         0                     // Payload location
     );
-
-    // DEBUG: Output ray origin info if debugMode == 97 (tests coordinate transform)
-    if (pc.debugMode == 97) {
-        // Visualize ray origin in voxel space as color
-        vec3 normalizedOrigin = rayOriginLocal / resolution;
-        imageStore(outputImage, pixelCoords, vec4(normalizedOrigin, 1.0));
-        return;
-    }
 
     // Write result to output image
     imageStore(outputImage, pixelCoords, vec4(hitColor, 1.0));

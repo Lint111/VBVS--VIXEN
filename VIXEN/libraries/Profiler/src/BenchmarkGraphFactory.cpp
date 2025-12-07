@@ -1431,12 +1431,24 @@ BenchmarkGraph BenchmarkGraphFactory::BuildHardwareRTGraph(
     // Configure hardware RT parameters
     ConfigureHardwareRTParams(graph, result.hardwareRT, width, height);
 
+    // Determine if compressed RTX shaders should be used
+    // Check config.shader for "Compressed" suffix (similar to compute/fragment pipelines)
+    bool useCompressed = false;
+    if (!config.shader.empty() &&
+        config.shader.find("Compressed") != std::string::npos) {
+        useCompressed = true;
+    }
+
     // Register RT shaders (raygen, miss, closest hit, intersection)
+    // Only the closest-hit shader differs between compressed/uncompressed
+    // since it's the only one that reads color/normal data
+    std::string closestHitShader = useCompressed ? "VoxelRT_Compressed.rchit" : "VoxelRT.rchit";
+
     RegisterRTXShader(graph, result.hardwareRT,
-        "VoxelRT.rgen",    // Ray generation shader
-        "VoxelRT.rmiss",   // Miss shader
-        "VoxelRT.rchit",   // Closest hit shader
-        "VoxelRT.rint");   // Intersection shader
+        "VoxelRT.rgen",      // Ray generation shader (shared)
+        "VoxelRT.rmiss",     // Miss shader (shared)
+        closestHitShader,    // Closest hit shader (compressed or uncompressed)
+        "VoxelRT.rint");     // Intersection shader (shared)
 
     // Wire variadic resources (camera -> push constants, swapchain -> output image)
     WireHardwareRTVariadicResources(graph, result.infra, result.hardwareRT, result.rayMarch);
@@ -2163,6 +2175,26 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     batch.ConnectVariadic(
         rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
         hardwareRT.descriptorGatherer, VoxelRT::octreeConfig::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    //--------------------------------------------------------------------------
+    // Compressed Buffer Bindings (VoxelRT_Compressed.rchit only)
+    //--------------------------------------------------------------------------
+    // These are wired for all RTX pipelines but only used by compressed shader.
+    // The uncompressed shader ignores these bindings.
+    constexpr uint32_t BINDING_COMPRESSED_COLOR = 6;
+    constexpr uint32_t BINDING_COMPRESSED_NORMAL = 7;
+
+    // Binding 6: compressedColors (DXT1 color blocks) - Dependency + Execute
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_COLOR_BUFFER,
+        hardwareRT.descriptorGatherer, BINDING_COMPRESSED_COLOR,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 7: compressedNormals (DXT normal blocks) - Dependency + Execute
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER,
+        hardwareRT.descriptorGatherer, BINDING_COMPRESSED_NORMAL,
         SlotRole::Dependency | SlotRole::Execute);
 
     // Register all connections atomically

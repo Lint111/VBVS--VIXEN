@@ -382,7 +382,9 @@ bool DescriptorResourceGathererNode::ValidateVariadicInputsImpl(VariadicCompileC
         std::cerr << "  slot[" << i << "]: binding=" << (slotInfo ? slotInfo->binding : -1)
                   << " name='" << (slotInfo ? slotInfo->slotName : "NULL") << "'"
                   << " descType=" << (slotInfo ? (int)slotInfo->descriptorType : -1)
-                  << " state=" << (slotInfo ? (int)slotInfo->state : -1) << std::endl;
+                  << " state=" << (slotInfo ? (int)slotInfo->state : -1)
+                  << " role=" << (slotInfo ? static_cast<int>(slotInfo->slotRole) : -1)
+                  << " hasFieldExtract=" << (slotInfo ? slotInfo->hasFieldExtraction : false) << std::endl;
         if (!ValidateSingleInput(ctx, i)) {
             allValid = false;
         }
@@ -412,8 +414,16 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
         return true;
     }
 
-    // Validate resource type against expected descriptor type
+    // Skip slots with empty name and no resource - these are placeholder slots from
+    // incomplete wiring that should not cause validation failure
     Resource* res = ctx.InVariadicResource(slotIndex);
+    if (!res && slotInfo->slotName.empty()) {
+        NODE_LOG_DEBUG("[ValidateSingleInput] Skipping empty placeholder slot " +
+                      std::to_string(slotIndex) + " at binding " + std::to_string(slotInfo->binding));
+        return true;
+    }
+
+    // Validate resource type against expected descriptor type
     VkDescriptorType expectedType = slotInfo->descriptorType;
 
     if (!ValidateResourceType(res, expectedType)) {
@@ -654,7 +664,15 @@ bool DescriptorResourceGathererNode::CheckUsageCompatibility(
             // Samplers are separate resources - check ResourceType
             return resType == ResourceType::Buffer;  // VkSampler registered as Buffer type
 
+        case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+            // Acceleration structures (RTX) - must be AccelerationStructure type
+            return resType == ResourceType::AccelerationStructure;
+
         default:
+            // Unknown descriptor type - log error for debugging
+            std::cerr << "[CheckUsageCompatibility] ERROR: Unhandled VkDescriptorType=" << descriptorType
+                      << " for ResourceType=" << static_cast<int>(resType)
+                      << " with usage=" << static_cast<uint32_t>(usage) << std::endl;
             return false;
     }
 }
@@ -688,7 +706,14 @@ bool DescriptorResourceGathererNode::IsResourceTypeCompatibleWithDescriptor(
         case VK_DESCRIPTOR_TYPE_SAMPLER:
             return resType == ResourceType::Buffer;  // VkSampler uses Buffer ResourceType
 
+        case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
+            // Acceleration structures (RTX) - must be AccelerationStructure type
+            return resType == ResourceType::AccelerationStructure;
+
         default:
+            // Unknown descriptor type - log error for debugging
+            std::cerr << "[IsResourceTypeCompatibleWithDescriptor] ERROR: Unhandled VkDescriptorType=" << descriptorType
+                      << " for ResourceType=" << static_cast<int>(resType) << std::endl;
             return false;
     }
 }
