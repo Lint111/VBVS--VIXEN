@@ -2155,6 +2155,16 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
         hardwareRT.descriptorGatherer, VoxelRT::materialIdBuffer::BINDING,
         SlotRole::Dependency | SlotRole::Execute);
 
+    // Binding 5: OctreeConfigUBO (UBO) - Dependency + Execute
+    // Contains world<->local transformation matrices for coordinate space alignment
+    // This matches compute shader binding 5, ensuring RTX rays are in the same
+    // coordinate space as the AABB geometry.
+    // SDI reference: VoxelRT::octreeConfig::BINDING
+    batch.ConnectVariadic(
+        rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_CONFIG_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::octreeConfig::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
     // Register all connections atomically
     batch.RegisterAll();
 }

@@ -470,7 +470,17 @@ std::string SpirvInterfaceGenerator::GenerateStructDefinitions(
     code << "// ============================================================================\n";
     code << "\n";
 
+    // Track emitted struct names to avoid duplicates (safety check)
+    // This handles any edge cases where duplicates slip through MergeReflectionData
+    std::set<std::string> emittedStructs;
+
     for (const auto& structDef : data.structDefinitions) {
+        // Skip if already emitted (deduplication)
+        if (emittedStructs.count(structDef.name) > 0) {
+            continue;
+        }
+        emittedStructs.insert(structDef.name);
+
         code << GenerateStructDefinition(structDef);
         code << "\n";
     }

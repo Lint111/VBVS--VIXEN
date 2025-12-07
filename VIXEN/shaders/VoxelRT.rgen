@@ -6,14 +6,35 @@
 // ============================================================================
 // Generates primary camera rays and dispatches them via traceRayEXT.
 // Results are written to the output storage image.
+//
+// COORDINATE SPACE: Rays are transformed to local voxel space [0, resolution]
+// to match the AABB coordinates. This aligns with compute shader behavior.
 // ============================================================================
 
 // Output image (format unspecified - matches swapchain dynamically)
-// Requires shaderStorageImageWriteWithoutFormat feature (widely supported)
 layout(binding = 0) uniform writeonly image2D outputImage;
 
 // Acceleration structure (TLAS)
 layout(binding = 1) uniform accelerationStructureEXT topLevelAS;
+
+// OctreeConfigUBO - matches compute shader binding 5
+// Contains world<->local transformation matrices for proper coordinate handling
+layout(std140, binding = 5) uniform OctreeConfigUBO {
+    int esvoMaxScale;
+    int userMaxLevels;
+    int brickDepthLevels;
+    int brickSize;
+    int minESVOScale;
+    int brickESVOScale;
+    int bricksPerAxis;
+    int _padding1;
+    vec3 gridMin;
+    float _padding2;
+    vec3 gridMax;
+    float _padding3;
+    mat4 localToWorld;
+    mat4 worldToLocal;
+} octreeConfig;
 
 // Push constants (same as compute shader)
 layout(push_constant) uniform PushConstants {
@@ -39,28 +60,37 @@ void main() {
     vec2 uv = (vec2(pixelCoords) + 0.5) / vec2(imageSize);
     vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
 
-    // Generate ray direction from camera parameters
+    // Generate ray direction from camera parameters (world space)
     float tanHalfFov = tan(pc.fov * 0.5);
-    vec3 rayDir = normalize(
+    vec3 rayDirWorld = normalize(
         pc.cameraDir +
         ndc.x * pc.aspect * tanHalfFov * pc.cameraRight +
         ndc.y * tanHalfFov * pc.cameraUp
     );
 
-    // Ray parameters
-    vec3 rayOrigin = pc.cameraPos;
+    // Transform ray from world space to local voxel space
+    // This matches how compute shader transforms rays before octree traversal
+    vec3 rayOriginWorld = pc.cameraPos;
+
+    // Transform origin: world -> local [0,1] -> voxel [0, resolution]
+    // worldToLocal transforms to normalized [0,1] space
+    // We need to scale to voxel space [0, resolution] to match AABB coordinates
+    vec3 rayOriginLocal = (octreeConfig.worldToLocal * vec4(rayOriginWorld, 1.0)).xyz;
+    vec3 rayDirLocal = normalize(mat3(octreeConfig.worldToLocal) * rayDirWorld);
+
+    // Scale from [0,1] to voxel coordinates [0, resolution]
+    // AABBs are generated in voxel space with voxelSize = 1.0
+    float resolution = float(1 << octreeConfig.userMaxLevels);  // 2^userMaxLevels
+    rayOriginLocal *= resolution;
+    // Direction doesn't need scaling (normalized direction is scale-invariant)
+
     float tMin = 0.001;
     float tMax = 10000.0;
 
     // Initialize payload
     hitColor = vec3(0.0);
 
-    // Trace ray
-    // Flags: gl_RayFlagsOpaqueEXT - treat all geometry as opaque
-    // Cull mask: 0xFF - hit all geometry
-    // SBT offset: 0 - use first hit group
-    // SBT stride: 0 - single hit group
-    // Miss index: 0 - use first miss shader
+    // Trace ray in local voxel space
     traceRayEXT(
         topLevelAS,           // Acceleration structure
         gl_RayFlagsOpaqueEXT, // Ray flags
@@ -68,9 +98,9 @@ void main() {
         0,                    // SBT record offset
         0,                    // SBT record stride
         0,                    // Miss index
-        rayOrigin,            // Ray origin
+        rayOriginLocal,       // Ray origin (local voxel space)
         tMin,                 // Min distance
-        rayDir,               // Ray direction
+        rayDirLocal,          // Ray direction (local space)
         tMax,                 // Max distance
         0                     // Payload location
     );

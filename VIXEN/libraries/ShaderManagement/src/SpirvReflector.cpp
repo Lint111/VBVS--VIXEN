@@ -515,6 +515,9 @@ void SpirvReflector::ReflectDescriptors(
 
                 // Link descriptor to struct definition by index
                 desc.structDefIndex = static_cast<int>(data.structDefinitions.size()) - 1;
+
+                // Also set typeInfo.structName for use during merge deduplication
+                desc.typeInfo.structName = structDef.name;
             }
         }
 
@@ -804,9 +807,49 @@ void SpirvReflector::MergeReflectionData(SpirvReflectionData& dest, const SpirvR
         dest.stageOutputs[stage].insert(dest.stageOutputs[stage].end(), ios.begin(), ios.end());
     }
 
-    // Merge struct definitions
-    dest.structDefinitions.insert(dest.structDefinitions.end(),
-        src.structDefinitions.begin(), src.structDefinitions.end());
+    // Merge struct definitions with deduplication
+    // Build a map of existing struct names to their indices for quick lookup
+    std::unordered_map<std::string, int> existingStructIndices;
+    for (size_t i = 0; i < dest.structDefinitions.size(); ++i) {
+        existingStructIndices[dest.structDefinitions[i].name] = static_cast<int>(i);
+    }
+
+    // Map from old source index to new destination index (for updating references)
+    std::unordered_map<int, int> srcToDstIndexMap;
+
+    for (size_t i = 0; i < src.structDefinitions.size(); ++i) {
+        const auto& structDef = src.structDefinitions[i];
+        auto it = existingStructIndices.find(structDef.name);
+
+        if (it != existingStructIndices.end()) {
+            // Struct already exists - map source index to existing dest index
+            srcToDstIndexMap[static_cast<int>(i)] = it->second;
+        } else {
+            // New struct - add it and update the map
+            int newIndex = static_cast<int>(dest.structDefinitions.size());
+            dest.structDefinitions.push_back(structDef);
+            existingStructIndices[structDef.name] = newIndex;
+            srcToDstIndexMap[static_cast<int>(i)] = newIndex;
+        }
+    }
+
+    // Update structDefIndex references in the newly merged descriptor bindings
+    // Note: We need to update bindings that came from src and now reference the mapped indices
+    for (auto& [setIndex, bindings] : dest.descriptorSets) {
+        for (auto& binding : bindings) {
+            // Check if this binding's structDefIndex was from the source
+            // by checking if it's >= the original dest size (before merge)
+            // However, since we've already added the bindings, we need a different approach:
+            // Just ensure all structDefIndices are valid and within bounds
+            if (binding.structDefIndex >= 0) {
+                // Find the struct by name in our new combined list
+                auto nameIt = existingStructIndices.find(binding.typeInfo.structName);
+                if (nameIt != existingStructIndices.end()) {
+                    binding.structDefIndex = nameIt->second;
+                }
+            }
+        }
+    }
 }
 
 } // namespace ShaderManagement
