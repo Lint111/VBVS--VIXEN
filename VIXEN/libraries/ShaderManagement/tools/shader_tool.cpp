@@ -20,6 +20,8 @@
  */
 
 #include "ShaderBundleBuilder.h"
+#include "ShaderBundleSerializer.h"
+#include "FileManifest.h"
 #include "SdiRegistryManager.h"
 #include "ShaderCompiler.h"
 #include "SPIRVReflection.h"
@@ -31,7 +33,7 @@
 #include <vector>
 #include <string>
 #include <optional>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json.hpp>  // For batch config parsing
 
 using namespace ShaderManagement;
 namespace fs = std::filesystem;
@@ -119,121 +121,7 @@ struct ToolOptions {
     SdiGeneratorConfig sdiConfig;
 };
 
-// ===== File Tracking for Cleanup =====
-
-/**
- * @brief Manifest tracking generated SPIRV files
- *
- * Prevents orphaned files by recording all generated outputs.
- * Format: .shader_tool_manifest.json in output directory
- */
-class FileManifest {
-public:
-    explicit FileManifest(const fs::path& outputDir)
-        : manifestPath_(outputDir / ".shader_tool_manifest.json")
-        , outputDir_(outputDir) {
-        Load();
-    }
-
-    ~FileManifest() {
-        Save();
-    }
-
-    void TrackFile(const fs::path& file) {
-        fs::path relPath = fs::relative(file, outputDir_);
-        trackedFiles_.insert(relPath.string());
-    }
-
-    void UntrackFile(const fs::path& file) {
-        fs::path relPath = fs::relative(file, outputDir_);
-        trackedFiles_.erase(relPath.string());
-    }
-
-    uint32_t CleanupOrphaned() {
-        std::unordered_set<std::string> existingFiles;
-
-        // Find all .spv and .json files in output directory
-        if (fs::exists(outputDir_)) {
-            for (const auto& entry : fs::recursive_directory_iterator(outputDir_)) {
-                if (entry.is_regular_file()) {
-                    auto ext = entry.path().extension();
-                    if (ext == ".spv" || ext == ".json") {
-                        fs::path relPath = fs::relative(entry.path(), outputDir_);
-                        existingFiles.insert(relPath.string());
-                    }
-                }
-            }
-        }
-
-        // Find orphaned files (exist on disk but not in manifest)
-        uint32_t removed = 0;
-        for (const auto& file : existingFiles) {
-            if (file == ".shader_tool_manifest.json") continue;  // Skip manifest itself
-
-            if (trackedFiles_.find(file) == trackedFiles_.end()) {
-                // Orphaned file - remove it
-                fs::path fullPath = outputDir_ / file;
-                std::error_code ec;
-                if (fs::remove(fullPath, ec)) {
-                    ++removed;
-                }
-            }
-        }
-
-        // Remove dead entries from manifest (tracked but don't exist)
-        auto it = trackedFiles_.begin();
-        while (it != trackedFiles_.end()) {
-            if (existingFiles.find(*it) == existingFiles.end()) {
-                it = trackedFiles_.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        return removed;
-    }
-
-    size_t GetTrackedCount() const { return trackedFiles_.size(); }
-
-    void Save() {
-        nlohmann::json j;
-        j["version"] = 1;
-        j["files"] = nlohmann::json::array();
-        for (const auto& file : trackedFiles_) {
-            j["files"].push_back(file);
-        }
-
-        std::ofstream file(manifestPath_);
-        if (file.is_open()) {
-            file << j.dump(2);
-        }
-    }
-
-private:
-    void Load() {
-        if (!fs::exists(manifestPath_)) return;
-
-        std::ifstream file(manifestPath_);
-        if (!file.is_open()) return;
-
-        try {
-            nlohmann::json j;
-            file >> j;
-            if (j.contains("files") && j["files"].is_array()) {
-                for (const auto& item : j["files"]) {
-                    trackedFiles_.insert(item.get<std::string>());
-                }
-            }
-        } catch (...) {
-            // Corrupted manifest - start fresh
-            trackedFiles_.clear();
-        }
-    }
-
-    fs::path manifestPath_;
-    fs::path outputDir_;
-    std::unordered_set<std::string> trackedFiles_;
-};
+// FileManifest is now in the library (FileManifest.h)
 
 void PrintUsage() {
     std::cout << R"(
@@ -426,188 +314,31 @@ bool ParseCommandLine(int argc, char** argv, ToolOptions& options) {
 
 // ===== Command Implementations =====
 // Pipeline detection and sibling discovery use ShaderPipelineUtils from the library
+// Serialization uses ShaderBundleSerializer from the library
 // (single source of truth - no duplicate implementations)
 
 /**
- * @brief Save bundle to JSON file
- */
-bool SaveBundleToJson(
-    const ShaderDataBundle& bundle,
-    const fs::path& outputPath,
-    bool embedSpirv = false,
-    FileManifest* manifest = nullptr
-) {
-    nlohmann::json j;
-
-    j["uuid"] = bundle.uuid;
-    j["programName"] = bundle.program.name;
-    j["pipelineType"] = static_cast<int>(bundle.program.pipelineType);
-    j["descriptorInterfaceHash"] = bundle.descriptorInterfaceHash;
-    j["sdiHeaderPath"] = bundle.sdiHeaderPath.string();
-    j["sdiNamespace"] = bundle.sdiNamespace;
-
-    // Save stages
-    j["stages"] = nlohmann::json::array();
-    for (const auto& stage : bundle.program.stages) {
-        nlohmann::json stageJson;
-        stageJson["stage"] = static_cast<int>(stage.stage);
-        stageJson["entryPoint"] = stage.entryPoint;
-        stageJson["spirvSize"] = stage.spirvCode.size();
-
-        if (embedSpirv) {
-            // Embed SPIRV directly in JSON (prevents orphaned .spv files)
-            std::vector<uint32_t> spirvCopy = stage.spirvCode;  // nlohmann::json needs lvalue
-            stageJson["spirvData"] = spirvCopy;
-        } else {
-            // Save SPIRV to separate file
-            fs::path spirvPath = outputPath.parent_path() / (bundle.uuid + "_stage" + std::to_string(static_cast<int>(stage.stage)) + ".spv");
-            std::ofstream spirvFile(spirvPath, std::ios::binary);
-            if (!spirvFile.is_open()) {
-                std::cerr << "Error: Failed to create SPIRV file: " << spirvPath << "\n";
-                return false;
-            }
-
-            spirvFile.write(reinterpret_cast<const char*>(stage.spirvCode.data()),
-                           stage.spirvCode.size() * sizeof(uint32_t));
-            spirvFile.close();
-
-            stageJson["spirvFile"] = spirvPath.string();
-
-            // Track SPIRV file in manifest
-            if (manifest) {
-                manifest->TrackFile(spirvPath);
-            }
-        }
-
-        j["stages"].push_back(stageJson);
-    }
-
-    // Write JSON
-    std::ofstream outFile(outputPath);
-    if (!outFile.is_open()) {
-        std::cerr << "Error: Failed to open output file: " << outputPath << "\n";
-        return false;
-    }
-
-    outFile << j.dump(2);
-    outFile.close();
-
-    // Track bundle JSON in manifest
-    if (manifest) {
-        manifest->TrackFile(outputPath);
-    }
-
-    return true;
-}
-
-/**
- * @brief Load bundle from JSON file
- */
-bool LoadBundleFromJson(const fs::path& jsonPath, ShaderDataBundle& bundle) {
-    std::ifstream inFile(jsonPath);
-    if (!inFile.is_open()) {
-        std::cerr << "Error: Failed to open bundle file: " << jsonPath << "\n";
-        return false;
-    }
-
-    nlohmann::json j;
-    try {
-        inFile >> j;
-    } catch (const std::exception& e) {
-        std::cerr << "Error: Failed to parse JSON: " << e.what() << "\n";
-        return false;
-    }
-
-    bundle.uuid = j["uuid"];
-    bundle.program.name = j["programName"];
-    bundle.program.pipelineType = static_cast<PipelineTypeConstraint>(j["pipelineType"]);
-    bundle.descriptorInterfaceHash = j["descriptorInterfaceHash"];
-    bundle.sdiHeaderPath = j["sdiHeaderPath"].get<std::string>();
-    bundle.sdiNamespace = j["sdiNamespace"];
-
-    // Load stages
-    for (const auto& stageJson : j["stages"]) {
-        CompiledShaderStage stage;
-        stage.stage = static_cast<ShaderStage>(stageJson["stage"]);
-        stage.entryPoint = stageJson["entryPoint"];
-
-        // Load SPIRV - check for embedded vs external file
-        if (stageJson.contains("spirvData")) {
-            // Embedded SPIRV (stored directly in JSON)
-            stage.spirvCode = stageJson["spirvData"].get<std::vector<uint32_t>>();
-        } else if (stageJson.contains("spirvFile")) {
-            // External SPIRV file
-            fs::path spirvPath = stageJson["spirvFile"].get<std::string>();
-            std::ifstream spirvFile(spirvPath, std::ios::binary | std::ios::ate);
-            if (!spirvFile.is_open()) {
-                std::cerr << "Error: Failed to open SPIRV file: " << spirvPath << "\n";
-                return false;
-            }
-
-            size_t fileSize = spirvFile.tellg();
-            spirvFile.seekg(0);
-
-            stage.spirvCode.resize(fileSize / sizeof(uint32_t));
-            spirvFile.read(reinterpret_cast<char*>(stage.spirvCode.data()), fileSize);
-            spirvFile.close();
-        } else {
-            std::cerr << "Error: Stage missing both spirvData and spirvFile\n";
-            return false;
-        }
-
-        bundle.program.stages.push_back(stage);
-    }
-
-    return true;
-}
-
-/**
- * @brief Load old bundle UUID from JSON file (for cleanup)
- * @return Old UUID if file exists and is valid, empty string otherwise
- */
-std::string LoadOldBundleUuid(const fs::path& jsonPath) {
-    if (!fs::exists(jsonPath)) {
-        return "";
-    }
-
-    std::ifstream inFile(jsonPath);
-    if (!inFile.is_open()) {
-        return "";
-    }
-
-    try {
-        nlohmann::json j;
-        inFile >> j;
-        if (j.contains("uuid")) {
-            return j["uuid"].get<std::string>();
-        }
-    } catch (const std::exception&) {
-        // Ignore parse errors
-    }
-
-    return "";
-}
-
-/**
  * @brief Clean up old SDI and SPIRV files when UUID changes
+ *
+ * Uses SdiFileManager for SDI cleanup and manual cleanup for SPIRV files.
  */
 void CleanupOldSdiFiles(const std::string& oldUuid, const fs::path& sdiDir, bool verbose) {
     if (oldUuid.empty()) {
         return;
     }
 
-    // Delete old SDI header
-    fs::path oldSdiPath = sdiDir / (oldUuid + "-SDI.h");
-    if (fs::exists(oldSdiPath)) {
+    // Use SdiFileManager to delete old SDI header
+    SdiFileManager sdiManager(sdiDir);
+    if (sdiManager.UnregisterSdi(oldUuid, true)) {
         if (verbose) {
-            std::cout << "Cleaning up old SDI: " << oldSdiPath << "\n";
+            std::cout << "Cleaning up old SDI: " << oldUuid << "-SDI.h\n";
         }
-        fs::remove(oldSdiPath);
     }
 
     // Delete old SPIRV files (pattern: {uuid}_stage*.spv)
+    // These are in the output directory, not the SDI directory
     try {
-        for (const auto& entry : fs::directory_iterator(sdiDir)) {
+        for (const auto& entry : fs::directory_iterator(sdiDir.parent_path())) {
             std::string filename = entry.path().filename().string();
             if (filename.find(oldUuid + "_stage") == 0 && filename.ends_with(".spv")) {
                 if (verbose) {
@@ -660,7 +391,7 @@ int CommandCompile(const ToolOptions& options) {
     }
 
     // Load old UUID before building (for cleanup if hash changes)
-    std::string oldUuid = LoadOldBundleUuid(outputPath);
+    std::string oldUuid = ShaderBundleSerializer::LoadUuid(outputPath);
     if (options.verbose && !oldUuid.empty()) {
         std::cout << "Existing bundle UUID: " << oldUuid << "\n";
     }
@@ -788,8 +519,15 @@ int CommandCompile(const ToolOptions& options) {
     // Create file manifest for tracking
     FileManifest manifest(outputDir);
 
-    // Save bundle
-    if (!SaveBundleToJson(*result.bundle, validatedOutputPath, options.embedSpirv, &manifest)) {
+    // Configure serializer with manifest tracking
+    BundleSerializerConfig serializerConfig;
+    serializerConfig.embedSpirv = options.embedSpirv;
+    serializerConfig.onFileWritten = [&manifest](const fs::path& file) {
+        manifest.TrackFile(file);
+    };
+
+    // Save bundle using library serializer
+    if (!ShaderBundleSerializer::SaveToJson(*result.bundle, validatedOutputPath, serializerConfig)) {
         std::cerr << "Error: Failed to save bundle\n";
         return 1;
     }
@@ -842,7 +580,7 @@ int CommandBuildRegistry(const ToolOptions& options) {
     // Load and register each bundle
     for (const auto& bundleFile : options.inputFiles) {
         ShaderDataBundle bundle;
-        if (!LoadBundleFromJson(bundleFile, bundle)) {
+        if (!ShaderBundleSerializer::LoadFromJson(bundleFile, bundle)) {
             std::cerr << "Error: Failed to load bundle: " << bundleFile << "\n";
             continue;
         }
