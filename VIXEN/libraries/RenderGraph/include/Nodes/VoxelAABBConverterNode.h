@@ -61,14 +61,15 @@ protected:
 
 private:
     /**
-     * @brief Extract AABBs from dense voxel grid
+     * @brief Extract AABBs and material IDs from dense voxel grid
      *
      * Iterates through grid resolution³ positions and collects
-     * solid voxels into AABB array.
+     * solid voxels into AABB array with corresponding material IDs.
      *
+     * @param outMaterialIds Output vector of material IDs (one per AABB)
      * @return Vector of VoxelAABB for upload to GPU
      */
-    std::vector<VoxelAABB> ExtractAABBsFromGrid();
+    std::vector<VoxelAABB> ExtractAABBsFromGrid(std::vector<uint32_t>& outMaterialIds);
 
     /**
      * @brief Create GPU buffer for AABB data
@@ -82,6 +83,16 @@ private:
      * @brief Upload AABB data via staging buffer
      */
     void UploadAABBData(const std::vector<VoxelAABB>& aabbs);
+
+    /**
+     * @brief Create GPU buffer for material IDs
+     */
+    void CreateMaterialIdBuffer(const std::vector<uint32_t>& materialIds);
+
+    /**
+     * @brief Upload material ID data via staging buffer
+     */
+    void UploadMaterialIdData(const std::vector<uint32_t>& materialIds);
 
     /**
      * @brief Cleanup GPU resources

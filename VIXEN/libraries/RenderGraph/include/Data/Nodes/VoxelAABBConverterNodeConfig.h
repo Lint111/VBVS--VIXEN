@@ -33,6 +33,11 @@ struct VoxelAABBData {
     uint32_t aabbCount = 0;                         // Number of AABBs (solid voxels)
     VkDeviceSize aabbBufferSize = 0;                // Total buffer size in bytes
 
+    // Material ID buffer - one uint32 per AABB, indexed by gl_PrimitiveID
+    VkBuffer materialIdBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory materialIdBufferMemory = VK_NULL_HANDLE;
+    VkDeviceSize materialIdBufferSize = 0;
+
     // Original grid info for SVO lookup in shaders
     uint32_t gridResolution = 0;                    // Original grid size (e.g., 128)
     float voxelSize = 1.0f;                         // Size of each voxel in world units
@@ -48,7 +53,7 @@ struct VoxelAABBData {
 
 namespace VoxelAABBConverterNodeCounts {
     static constexpr size_t INPUTS = 3;
-    static constexpr size_t OUTPUTS = 2;  // AABB_DATA + AABB_BUFFER
+    static constexpr size_t OUTPUTS = 3;  // AABB_DATA + AABB_BUFFER + MATERIAL_ID_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -100,6 +105,11 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
         SlotNullability::Required,
         SlotMutability::WriteOnly);
 
+    // Material ID buffer - one uint8 per AABB, indexed by gl_PrimitiveID in RT shaders
+    OUTPUT_SLOT(MATERIAL_ID_BUFFER, VkBuffer, 2,
+        SlotNullability::Required,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_GRID_RESOLUTION = "grid_resolution";
     static constexpr const char* PARAM_VOXEL_SIZE = "voxel_size";
@@ -120,6 +130,9 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
 
         BufferDescriptor aabbBufferDesc{};
         INIT_OUTPUT_DESC(AABB_BUFFER, "aabb_buffer", ResourceLifetime::Persistent, aabbBufferDesc);
+
+        BufferDescriptor materialIdBufferDesc{};
+        INIT_OUTPUT_DESC(MATERIAL_ID_BUFFER, "material_id_buffer", ResourceLifetime::Persistent, materialIdBufferDesc);
     }
 
     VALIDATE_NODE_CONFIG(VoxelAABBConverterNodeConfig, VoxelAABBConverterNodeCounts);
@@ -129,6 +142,7 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 2);
     static_assert(AABB_DATA_Slot::index == 0);
     static_assert(AABB_BUFFER_Slot::index == 1);
+    static_assert(MATERIAL_ID_BUFFER_Slot::index == 2);
 };
 
 } // namespace Vixen::RenderGraph

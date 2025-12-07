@@ -73,8 +73,9 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
     // We also have OCTREE_NODES_BUFFER but for AABB extraction we use the cached grid
     // (GPU buffer readback would be slow and unnecessary since we have VoxelDataCache)
 
-    // Extract AABBs from cached voxel grid
-    std::vector<VoxelAABB> aabbs = ExtractAABBsFromGrid();
+    // Extract AABBs and material IDs from cached voxel grid
+    std::vector<uint32_t> materialIds;
+    std::vector<VoxelAABB> aabbs = ExtractAABBsFromGrid(materialIds);
 
     if (aabbs.empty()) {
         NODE_LOG_WARNING("No solid voxels found - AABB buffer will be empty");
@@ -88,13 +89,18 @@ void VoxelAABBConverterNode::CompileImpl(TypedCompileContext& ctx) {
         // Create and upload AABB buffer
         CreateAABBBuffer(aabbs);
         UploadAABBData(aabbs);
+
+        // Create and upload material ID buffer
+        CreateMaterialIdBuffer(materialIds);
+        UploadMaterialIdData(materialIds);
     }
 
     // Output the AABB data struct (pointer to member)
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, &aabbData_);
 
-    // Also output raw buffer for shader descriptor binding
+    // Also output raw buffers for shader descriptor binding
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
+    ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, aabbData_.materialIdBuffer);
 
     NODE_LOG_INFO("=== VoxelAABBConverterNode::CompileImpl COMPLETE ===");
     NODE_LOG_DEBUG("[VoxelAABBConverterNode::CompileImpl] COMPLETED");
@@ -105,6 +111,7 @@ void VoxelAABBConverterNode::ExecuteImpl(TypedExecuteContext& ctx) {
     // Just pass through the cached data pointer
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_DATA, &aabbData_);
     ctx.Out(VoxelAABBConverterNodeConfig::AABB_BUFFER, aabbData_.aabbBuffer);
+    ctx.Out(VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER, aabbData_.materialIdBuffer);
 }
 
 void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
@@ -116,7 +123,7 @@ void VoxelAABBConverterNode::CleanupImpl(TypedCleanupContext& ctx) {
 // AABB EXTRACTION
 // ============================================================================
 
-std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid() {
+std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(std::vector<uint32_t>& outMaterialIds) {
     NODE_LOG_INFO("Extracting AABBs from grid: resolution=" + std::to_string(gridResolution_) +
                   ", scene=" + sceneType_);
 
@@ -135,13 +142,15 @@ std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid() {
     const VoxelGrid& grid = *cachedGrid;
     std::vector<VoxelAABB> aabbs;
     aabbs.reserve(grid.CountSolidVoxels());
+    outMaterialIds.reserve(grid.CountSolidVoxels());
 
     // Iterate through all voxels and collect solid ones
     const uint32_t res = grid.GetResolution();
     for (uint32_t z = 0; z < res; ++z) {
         for (uint32_t y = 0; y < res; ++y) {
             for (uint32_t x = 0; x < res; ++x) {
-                if (grid.Get(x, y, z) != 0) {
+                uint8_t materialId = grid.Get(x, y, z);
+                if (materialId != 0) {
                     // Create AABB for this voxel
                     VoxelAABB aabb;
                     aabb.min = glm::vec3(
@@ -155,6 +164,7 @@ std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid() {
                         static_cast<float>(z + 1) * voxelSize_
                     );
                     aabbs.push_back(aabb);
+                    outMaterialIds.push_back(static_cast<uint32_t>(materialId));
                 }
             }
         }
@@ -322,6 +332,147 @@ void VoxelAABBConverterNode::UploadAABBData(const std::vector<VoxelAABB>& aabbs)
     NODE_LOG_INFO("Uploaded " + std::to_string(bufferSize) + " bytes of AABB data to GPU");
 }
 
+void VoxelAABBConverterNode::CreateMaterialIdBuffer(const std::vector<uint32_t>& materialIds) {
+    if (!vulkanDevice_ || materialIds.empty()) {
+        return;
+    }
+
+    VkDevice device = vulkanDevice_->device;
+    VkDeviceSize bufferSize = materialIds.size() * sizeof(uint32_t);
+
+    // Create storage buffer for shader access
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &aabbData_.materialIdBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to create material ID buffer");
+    }
+
+    // Allocate memory
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, aabbData_.materialIdBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+
+    // Find device-local memory type
+    auto memTypeResult = vulkanDevice_->MemoryTypeFromProperties(
+        memRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    );
+
+    if (!memTypeResult.has_value()) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to find suitable memory type for material IDs");
+    }
+    allocInfo.memoryTypeIndex = memTypeResult.value();
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &aabbData_.materialIdBufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to allocate material ID buffer memory");
+    }
+
+    vkBindBufferMemory(device, aabbData_.materialIdBuffer, aabbData_.materialIdBufferMemory, 0);
+    aabbData_.materialIdBufferSize = bufferSize;
+
+    NODE_LOG_INFO("Created material ID buffer: " + std::to_string(bufferSize) + " bytes for " +
+                  std::to_string(materialIds.size()) + " material IDs");
+}
+
+void VoxelAABBConverterNode::UploadMaterialIdData(const std::vector<uint32_t>& materialIds) {
+    if (!vulkanDevice_ || materialIds.empty() || aabbData_.materialIdBuffer == VK_NULL_HANDLE) {
+        return;
+    }
+
+    VkDevice device = vulkanDevice_->device;
+    VkDeviceSize bufferSize = materialIds.size() * sizeof(uint32_t);
+
+    // Create staging buffer
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingMemory;
+
+    VkBufferCreateInfo stagingBufferInfo{};
+    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufferInfo.size = bufferSize;
+    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to create material staging buffer");
+    }
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+
+    auto memTypeResult = vulkanDevice_->MemoryTypeFromProperties(
+        memRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+
+    if (!memTypeResult.has_value()) {
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to find staging memory type for material IDs");
+    }
+    allocInfo.memoryTypeIndex = memTypeResult.value();
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS) {
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        throw std::runtime_error("[VoxelAABBConverterNode] Failed to allocate staging memory for material IDs");
+    }
+
+    vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
+
+    // Map and copy data
+    void* data;
+    vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
+    memcpy(data, materialIds.data(), bufferSize);
+    vkUnmapMemory(device, stagingMemory);
+
+    // Copy from staging to device-local buffer
+    VkCommandBufferAllocateInfo cmdAllocInfo{};
+    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmdAllocInfo.commandPool = commandPool_;
+    cmdAllocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmdBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = bufferSize;
+    vkCmdCopyBuffer(cmdBuffer, stagingBuffer, aabbData_.materialIdBuffer, 1, &copyRegion);
+
+    vkEndCommandBuffer(cmdBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    vkQueueSubmit(vulkanDevice_->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vulkanDevice_->queue);
+
+    // Cleanup staging resources
+    vkFreeCommandBuffers(device, commandPool_, 1, &cmdBuffer);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingMemory, nullptr);
+
+    NODE_LOG_INFO("Uploaded " + std::to_string(bufferSize) + " bytes of material ID data to GPU");
+}
+
 void VoxelAABBConverterNode::DestroyAABBBuffer() {
     if (!vulkanDevice_) {
         return;
@@ -339,8 +490,19 @@ void VoxelAABBConverterNode::DestroyAABBBuffer() {
         aabbData_.aabbBufferMemory = VK_NULL_HANDLE;
     }
 
+    if (aabbData_.materialIdBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, aabbData_.materialIdBuffer, nullptr);
+        aabbData_.materialIdBuffer = VK_NULL_HANDLE;
+    }
+
+    if (aabbData_.materialIdBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(device, aabbData_.materialIdBufferMemory, nullptr);
+        aabbData_.materialIdBufferMemory = VK_NULL_HANDLE;
+    }
+
     aabbData_.aabbCount = 0;
     aabbData_.aabbBufferSize = 0;
+    aabbData_.materialIdBufferSize = 0;
 
     NODE_LOG_INFO("Destroyed AABB buffer resources");
 }

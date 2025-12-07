@@ -2072,67 +2072,45 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
 
     RG::ConnectionBatch batch(graph);
 
-    //--------------------------------------------------------------------------
-    // VoxelRT.rgen Push Constant Layout (matches compute/fragment shaders)
-    //--------------------------------------------------------------------------
-    // layout(push_constant) uniform PushConstants {
-    //     vec3 cameraPos;     // offset 0
-    //     float time;         // offset 12
-    //     vec3 cameraDir;     // offset 16
-    //     float fov;          // offset 28
-    //     vec3 cameraUp;      // offset 32
-    //     float aspect;       // offset 44
-    //     vec3 cameraRight;   // offset 48
-    //     int debugMode;      // offset 60
-    // };                      // total: 64 bytes (but with vec3 padding = 80 bytes)
-
-    constexpr uint32_t PC_CAMERA_POS = 0;
-    constexpr uint32_t PC_TIME = 1;
-    constexpr uint32_t PC_CAMERA_DIR = 2;
-    constexpr uint32_t PC_FOV = 3;
-    constexpr uint32_t PC_CAMERA_UP = 4;
-    constexpr uint32_t PC_ASPECT = 5;
-    constexpr uint32_t PC_CAMERA_RIGHT = 6;
-    constexpr uint32_t PC_DEBUG_MODE = 7;
 
     // Connect camera data to push constants using field extraction
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_CAMERA_POS,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraPos::BINDING,
         &CameraData::cameraPos, SlotRole::Execute);
 
     // Note: time field (PC_TIME) not connected - will be zero (no animation)
 
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_CAMERA_DIR,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraDir::BINDING,
         &CameraData::cameraDir, SlotRole::Execute);
 
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_FOV,
+        hardwareRT.pushConstantGatherer, VoxelRT::fov::BINDING,
         &CameraData::fov, SlotRole::Execute);
 
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_CAMERA_UP,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraUp::BINDING,
         &CameraData::cameraUp, SlotRole::Execute);
 
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_ASPECT,
+        hardwareRT.pushConstantGatherer, VoxelRT::aspect::BINDING,
         &CameraData::aspect, SlotRole::Execute);
 
     batch.ConnectVariadic(
         rayMarch.camera, RG::CameraNodeConfig::CAMERA_DATA,
-        hardwareRT.pushConstantGatherer, PC_CAMERA_RIGHT,
+        hardwareRT.pushConstantGatherer, VoxelRT::cameraRight::BINDING,
         &CameraData::cameraRight, SlotRole::Execute);
 
     // Connect debugMode from input node (if valid)
     if (rayMarch.input.IsValid()) {
         batch.ConnectVariadic(
             rayMarch.input, RG::InputNodeConfig::INPUT_STATE,
-            hardwareRT.pushConstantGatherer, PC_DEBUG_MODE,
+            hardwareRT.pushConstantGatherer, VoxelRT::debugMode::BINDING,
             &InputState::debugMode, SlotRole::Execute);
     }
 
@@ -2167,6 +2145,14 @@ void BenchmarkGraphFactory::WireHardwareRTVariadicResources(
     batch.ConnectVariadic(
         hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::AABB_BUFFER,
         hardwareRT.descriptorGatherer, VoxelRT::aabbBuffer::BINDING,
+        SlotRole::Dependency | SlotRole::Execute);
+
+    // Binding 3: materialIdBuffer (SSBO) - Dependency + Execute
+    // Material ID buffer for closest-hit shader to get voxel colors
+    // SDI reference: VoxelRT::materialIdBuffer::BINDING
+    batch.ConnectVariadic(
+        hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::MATERIAL_ID_BUFFER,
+        hardwareRT.descriptorGatherer, VoxelRT::materialIdBuffer::BINDING,
         SlotRole::Dependency | SlotRole::Execute);
 
     // Register all connections atomically

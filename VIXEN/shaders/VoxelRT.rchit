@@ -14,6 +14,11 @@ hitAttributeEXT vec3 hitNormal;
 // Ray payload - color output
 layout(location = 0) rayPayloadInEXT vec3 hitColor;
 
+// Material ID buffer - indexed by gl_PrimitiveID
+layout(binding = 3, set = 0) readonly buffer MaterialIdBuffer {
+    uint materialIds[];
+} materialIdBuffer;
+
 // Push constants
 layout(push_constant) uniform PushConstants {
     vec3 cameraPos;
@@ -25,6 +30,18 @@ layout(push_constant) uniform PushConstants {
     vec3 cameraRight;
     int debugMode;
 } pc;
+
+// Material color lookup - matches compute shader material IDs
+vec3 getMaterialColor(uint matID) {
+    // Same material colors as VoxelRayMarch.comp
+    if (matID == 1u) return vec3(1.0, 0.0, 0.0);      // Red
+    else if (matID == 2u) return vec3(0.0, 1.0, 0.0); // Green
+    else if (matID == 3u) return vec3(0.9, 0.9, 0.9); // Light gray (white wall)
+    else if (matID == 4u) return vec3(1.0, 0.8, 0.0); // Yellow/Gold
+    else if (matID == 5u) return vec3(0.8, 0.8, 0.8); // Medium gray
+    else if (matID == 6u) return vec3(0.7, 0.7, 0.7); // Darker gray
+    else return vec3(float(matID) / 10.0);            // Fallback gradient
+}
 
 void main() {
     // Get ray direction for lighting calculations
@@ -42,22 +59,9 @@ void main() {
     // Ambient term
     float ambient = 0.3;
 
-    // Base voxel color - use primitive ID for variation
-    // gl_PrimitiveID gives us the AABB index
-    uint primID = gl_PrimitiveID;
-
-    // Generate color from primitive ID (simple hash for variety)
-    vec3 baseColor;
-    uint colorSeed = primID * 2654435761u;  // Golden ratio hash
-
-    // Create distinct colors for different voxels
-    float r = float((colorSeed >> 0) & 0xFF) / 255.0;
-    float g = float((colorSeed >> 8) & 0xFF) / 255.0;
-    float b = float((colorSeed >> 16) & 0xFF) / 255.0;
-
-    // Boost saturation and brightness
-    baseColor = mix(vec3(0.5), vec3(r, g, b), 0.7);
-    baseColor = baseColor * 0.8 + 0.2;
+    // Get material ID from buffer using primitive ID
+    uint matID = materialIdBuffer.materialIds[gl_PrimitiveID];
+    vec3 baseColor = getMaterialColor(matID);
 
     // Final color with lighting
     float lighting = ambient + (1.0 - ambient) * NdotL;
@@ -75,5 +79,8 @@ void main() {
         // Depth visualization
         float depth = gl_HitTEXT / 100.0;
         hitColor = vec3(depth, depth * 0.5, 1.0 - depth);
+    } else if (pc.debugMode == 8) {
+        // Material ID visualization
+        hitColor = vec3(float(matID) / 10.0, float(matID % 3u) / 3.0, float(matID % 5u) / 5.0);
     }
 }
