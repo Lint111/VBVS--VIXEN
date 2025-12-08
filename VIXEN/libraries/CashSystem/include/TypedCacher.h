@@ -59,7 +59,7 @@ public:
             std::shared_lock rlock(m_lock);
             auto it = m_entries.find(key);
             if (it != m_entries.end()) {
-                std::cout << "[" << GetName() << "] CACHE HIT (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
+                std::cout << "[" << name() << "] CACHE HIT (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
                 return it->second.resource;
             }
             auto pit = m_pending.find(key);
@@ -70,13 +70,13 @@ public:
         std::unique_lock wlock(m_lock);
         auto it = m_entries.find(key);
         if (it != m_entries.end()) {
-            std::cout << "[" << GetName() << "] CACHE HIT (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
+            std::cout << "[" << name() << "] CACHE HIT (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
             return it->second.resource;
         }
         auto pit = m_pending.find(key);
         if (pit != m_pending.end()) return pit->second.get();
 
-        std::cout << "[" << GetName() << "] CACHE MISS (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
+        std::cout << "[" << name() << "] CACHE MISS (key=" << key << ", entries=" << m_entries.size() << ")" << std::endl;
 
         // create a promise to signal others
         auto prom = std::make_shared<std::promise<PtrT>>();

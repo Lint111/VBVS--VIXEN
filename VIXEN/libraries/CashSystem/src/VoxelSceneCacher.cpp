@@ -13,6 +13,7 @@
 #include "Data/SceneGenerator.h"
 
 #include <iostream>
+#include <fstream>
 #include <cstring>
 #include <stdexcept>
 #include <cmath>
@@ -180,19 +181,195 @@ void VoxelSceneCacher::Cleanup() {
 }
 
 // ============================================================================
-// SERIALIZATION (Stub - scene data is regeneratable)
+// SERIALIZATION - Persist CPU-side scene data to disk
 // ============================================================================
 
-bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const {
-    // Scene data is deterministically generated from (sceneType, resolution, density, seed)
-    // No need to serialize - can be regenerated on demand
-    std::cout << "[VoxelSceneCacher::SerializeToFile] Scene data is regeneratable - skipping serialization" << std::endl;
+// File format version - increment when format changes
+static constexpr uint32_t VOXEL_SCENE_CACHE_VERSION = 1;
+static constexpr uint32_t VOXEL_SCENE_CACHE_MAGIC = 0x56534341; // "VSCA"
+
+// Helper to write a vector to file
+template<typename T>
+static void WriteVector(std::ofstream& out, const std::vector<T>& vec) {
+    uint64_t size = vec.size();
+    out.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    if (size > 0) {
+        out.write(reinterpret_cast<const char*>(vec.data()), size * sizeof(T));
+    }
+}
+
+// Helper to read a vector from file
+template<typename T>
+static bool ReadVector(std::ifstream& in, std::vector<T>& vec) {
+    uint64_t size = 0;
+    in.read(reinterpret_cast<char*>(&size), sizeof(size));
+    if (!in) return false;
+
+    vec.resize(size);
+    if (size > 0) {
+        in.read(reinterpret_cast<char*>(vec.data()), size * sizeof(T));
+        if (!in) return false;
+    }
     return true;
 }
 
-bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    // Scene data is regenerated on demand
-    std::cout << "[VoxelSceneCacher::DeserializeFromFile] Scene data regenerated on demand - skipping deserialization" << std::endl;
+bool VoxelSceneCacher::SerializeToFile(const std::filesystem::path& path) const {
+    std::lock_guard lock(m_lock);
+
+    if (m_entries.empty()) {
+        std::cout << "[VoxelSceneCacher::SerializeToFile] No entries to serialize" << std::endl;
+        return true;
+    }
+
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        std::cerr << "[VoxelSceneCacher::SerializeToFile] Failed to open file: " << path << std::endl;
+        return false;
+    }
+
+    // Write header
+    out.write(reinterpret_cast<const char*>(&VOXEL_SCENE_CACHE_MAGIC), sizeof(VOXEL_SCENE_CACHE_MAGIC));
+    out.write(reinterpret_cast<const char*>(&VOXEL_SCENE_CACHE_VERSION), sizeof(VOXEL_SCENE_CACHE_VERSION));
+
+    uint32_t entryCount = static_cast<uint32_t>(m_entries.size());
+    out.write(reinterpret_cast<const char*>(&entryCount), sizeof(entryCount));
+
+    std::cout << "[VoxelSceneCacher::SerializeToFile] Serializing " << entryCount << " scene entries to " << path << std::endl;
+
+    // Write each entry
+    for (const auto& [key, entry] : m_entries) {
+        const auto& ci = entry.ci;
+        const auto& data = entry.resource;
+
+        // Write key (for validation on load)
+        out.write(reinterpret_cast<const char*>(&key), sizeof(key));
+
+        // Write CreateInfo
+        out.write(reinterpret_cast<const char*>(&ci.sceneType), sizeof(ci.sceneType));
+        out.write(reinterpret_cast<const char*>(&ci.resolution), sizeof(ci.resolution));
+        out.write(reinterpret_cast<const char*>(&ci.density), sizeof(ci.density));
+        out.write(reinterpret_cast<const char*>(&ci.seed), sizeof(ci.seed));
+
+        // Write CPU data vectors
+        WriteVector(out, data->esvoNodesCPU);
+        WriteVector(out, data->brickDataCPU);
+        WriteVector(out, data->materialsCPU);
+        WriteVector(out, data->compressedColorsCPU);
+        WriteVector(out, data->compressedNormalsCPU);
+        WriteVector(out, data->brickGridLookupCPU);
+
+        // Write OctreeConfig (fixed-size struct)
+        out.write(reinterpret_cast<const char*>(&data->configCPU), sizeof(OctreeConfig));
+
+        // Write metadata
+        out.write(reinterpret_cast<const char*>(&data->nodeCount), sizeof(data->nodeCount));
+        out.write(reinterpret_cast<const char*>(&data->brickCount), sizeof(data->brickCount));
+        out.write(reinterpret_cast<const char*>(&data->solidVoxelCount), sizeof(data->solidVoxelCount));
+        out.write(reinterpret_cast<const char*>(&data->resolution), sizeof(data->resolution));
+        out.write(reinterpret_cast<const char*>(&data->sceneType), sizeof(data->sceneType));
+    }
+
+    std::cout << "[VoxelSceneCacher::SerializeToFile] Serialization complete" << std::endl;
+    return out.good();
+}
+
+bool VoxelSceneCacher::DeserializeFromFile(const std::filesystem::path& path, void* devicePtr) {
+    if (!std::filesystem::exists(path)) {
+        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Cache file not found: " << path << std::endl;
+        return true; // Not an error - just no cached data
+    }
+
+    auto* vulkanDevice = static_cast<Vixen::Vulkan::Resources::VulkanDevice*>(devicePtr);
+    if (!vulkanDevice) {
+        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Invalid device pointer" << std::endl;
+        return false;
+    }
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Failed to open file: " << path << std::endl;
+        return false;
+    }
+
+    // Read and validate header
+    uint32_t magic = 0, version = 0;
+    in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+    in.read(reinterpret_cast<char*>(&version), sizeof(version));
+
+    if (magic != VOXEL_SCENE_CACHE_MAGIC) {
+        std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Invalid magic number" << std::endl;
+        return false;
+    }
+
+    if (version != VOXEL_SCENE_CACHE_VERSION) {
+        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Version mismatch (got " << version
+                  << ", expected " << VOXEL_SCENE_CACHE_VERSION << "), regenerating" << std::endl;
+        return true; // Stale cache - will regenerate on demand
+    }
+
+    uint32_t entryCount = 0;
+    in.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
+
+    std::cout << "[VoxelSceneCacher::DeserializeFromFile] Loading " << entryCount << " scene entries from " << path << std::endl;
+
+    std::lock_guard lock(m_lock);
+
+    for (uint32_t i = 0; i < entryCount; ++i) {
+        uint64_t key = 0;
+        in.read(reinterpret_cast<char*>(&key), sizeof(key));
+
+        // Read CreateInfo
+        VoxelSceneCreateInfo ci;
+        in.read(reinterpret_cast<char*>(&ci.sceneType), sizeof(ci.sceneType));
+        in.read(reinterpret_cast<char*>(&ci.resolution), sizeof(ci.resolution));
+        in.read(reinterpret_cast<char*>(&ci.density), sizeof(ci.density));
+        in.read(reinterpret_cast<char*>(&ci.seed), sizeof(ci.seed));
+
+        // Validate key matches computed hash
+        if (ci.ComputeHash() != key) {
+            std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Key mismatch for entry " << i << std::endl;
+            return false;
+        }
+
+        // Create scene data and read CPU vectors
+        auto data = std::make_shared<VoxelSceneData>();
+
+        if (!ReadVector(in, data->esvoNodesCPU)) return false;
+        if (!ReadVector(in, data->brickDataCPU)) return false;
+        if (!ReadVector(in, data->materialsCPU)) return false;
+        if (!ReadVector(in, data->compressedColorsCPU)) return false;
+        if (!ReadVector(in, data->compressedNormalsCPU)) return false;
+        if (!ReadVector(in, data->brickGridLookupCPU)) return false;
+
+        // Read OctreeConfig
+        in.read(reinterpret_cast<char*>(&data->configCPU), sizeof(OctreeConfig));
+
+        // Read metadata
+        in.read(reinterpret_cast<char*>(&data->nodeCount), sizeof(data->nodeCount));
+        in.read(reinterpret_cast<char*>(&data->brickCount), sizeof(data->brickCount));
+        in.read(reinterpret_cast<char*>(&data->solidVoxelCount), sizeof(data->solidVoxelCount));
+        in.read(reinterpret_cast<char*>(&data->resolution), sizeof(data->resolution));
+        in.read(reinterpret_cast<char*>(&data->sceneType), sizeof(data->sceneType));
+
+        if (!in) {
+            std::cerr << "[VoxelSceneCacher::DeserializeFromFile] Read error at entry " << i << std::endl;
+            return false;
+        }
+
+        // Re-upload CPU data to GPU
+        std::cout << "[VoxelSceneCacher::DeserializeFromFile] Re-uploading entry " << i
+                  << " (" << SceneTypeToString(ci.sceneType) << " @ " << ci.resolution << "^3) to GPU" << std::endl;
+        UploadToGPU(*data);
+
+        // Store in cache
+        CacheEntry entry;
+        entry.key = key;
+        entry.ci = ci;
+        entry.resource = data;
+        m_entries.emplace(key, std::move(entry));
+    }
+
+    std::cout << "[VoxelSceneCacher::DeserializeFromFile] Loaded " << entryCount << " entries" << std::endl;
     return true;
 }
 

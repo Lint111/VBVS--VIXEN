@@ -96,6 +96,8 @@ RenderGraph::RenderGraph(
 }
 
 RenderGraph::~RenderGraph() {
+    std::cout << "[RenderGraph::~RenderGraph] Destructor called" << std::endl;
+
     // Note: Device-dependent cache cleanup happens in DeviceNode::CleanupImpl()
     // Only cleanup global (device-independent) caches here
     // Guard against corrupted pointer (can happen during exception-triggered destruction)
@@ -321,6 +323,21 @@ void RenderGraph::RemoveNode(NodeHandle handle) {
 }
 
 void RenderGraph::Clear() {
+    // Save persistent caches BEFORE cleanup destroys resources
+    if (mainCacher) {
+        std::filesystem::path cacheDir = "cache";
+        std::cout << "[RenderGraph::Clear] Saving persistent caches to: " << cacheDir.string() << std::endl;
+
+        auto saveFuture = mainCacher->SaveAllAsync(cacheDir);
+        bool saveSuccess = saveFuture.get();
+
+        if (saveSuccess) {
+            std::cout << "[RenderGraph::Clear] Persistent caches saved successfully" << std::endl;
+        } else {
+            std::cout << "[RenderGraph::Clear] Warning: Some caches failed to save" << std::endl;
+        }
+    }
+
     // Execute cleanup callbacks in dependency order BEFORE clearing instances
     ExecuteCleanup();
 
