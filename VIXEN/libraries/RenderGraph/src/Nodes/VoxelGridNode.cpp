@@ -436,6 +436,44 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
 
         std::cout << "[VoxelGridNode] DXT compressed buffers uploaded ("
                   << octree.getCompressedBrickCount() << " bricks)" << std::endl;
+
+        // ====================================================================
+        // Create and upload brick grid lookup buffer
+        // Maps (brickX, brickY, brickZ) -> brickIndex for hardware RT
+        // ====================================================================
+        {
+            const uint32_t bricksPerAxis = octreeData->bricksPerAxis;
+            const uint32_t totalGridSlots = bricksPerAxis * bricksPerAxis * bricksPerAxis;
+            const VkDeviceSize lookupBufferSize = totalGridSlots * sizeof(uint32_t);
+
+            // Build lookup table from brickGridToBrickView mapping
+            std::vector<uint32_t> lookupData(totalGridSlots, 0xFFFFFFFF);  // 0xFFFFFFFF = empty
+
+            for (const auto& [key, brickIdx] : octreeData->root->brickGridToBrickView) {
+                // Decode grid key: brickX | (brickY << 10) | (brickZ << 20)
+                uint32_t brickX = key & 0x3FF;
+                uint32_t brickY = (key >> 10) & 0x3FF;
+                uint32_t brickZ = (key >> 20) & 0x3FF;
+
+                // Linear index into lookup buffer (XYZ order matching shader access)
+                uint32_t linearIdx = brickX +
+                                    brickY * bricksPerAxis +
+                                    brickZ * bricksPerAxis * bricksPerAxis;
+
+                if (linearIdx < totalGridSlots) {
+                    lookupData[linearIdx] = brickIdx;
+                }
+            }
+
+            createAndUploadBuffer(brickGridLookupBuffer, brickGridLookupMemory,
+                                 lookupData.data(), lookupBufferSize,
+                                 "brickGridLookupBuffer");
+
+            std::cout << "[VoxelGridNode] Brick grid lookup buffer: "
+                      << totalGridSlots << " slots (" << lookupBufferSize << " bytes), "
+                      << octreeData->root->brickGridToBrickView.size() << " populated bricks"
+                      << std::endl;
+        }
     } else {
         std::cout << "[VoxelGridNode] No compressed data available (compression not enabled)" << std::endl;
     }
@@ -646,6 +684,10 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
         std::cout << "  COMPRESSED_NORMAL_BUFFER=" << compressedNormalBuffer << std::endl;
     }
+    if (brickGridLookupBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
+        std::cout << "  BRICK_GRID_LOOKUP_BUFFER=" << brickGridLookupBuffer << std::endl;
+    }
 
     // Output debug capture buffer with IDebugCapture interface attached
     // When connected with SlotRole::Debug, the gatherer will auto-collect it
@@ -696,6 +738,9 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
     }
     if (compressedNormalBuffer != VK_NULL_HANDLE) {
         ctx.Out(VoxelGridNodeConfig::COMPRESSED_NORMAL_BUFFER, compressedNormalBuffer);
+    }
+    if (brickGridLookupBuffer != VK_NULL_HANDLE) {
+        ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
     }
 
     // Re-output debug capture buffer (with interface)
@@ -790,6 +835,19 @@ void VoxelGridNode::DestroyOctreeBuffers() {
         vkFreeMemory(vulkanDevice->device, compressedNormalMemory, nullptr);
         compressedNormalMemory = VK_NULL_HANDLE;
         LogCleanupProgress("compressedNormalMemory freed");
+    }
+
+    // Destroy brick grid lookup buffer and memory
+    if (brickGridLookupBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(vulkanDevice->device, brickGridLookupBuffer, nullptr);
+        brickGridLookupBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("brickGridLookupBuffer destroyed");
+    }
+
+    if (brickGridLookupMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(vulkanDevice->device, brickGridLookupMemory, nullptr);
+        brickGridLookupMemory = VK_NULL_HANDLE;
+        LogCleanupProgress("brickGridLookupMemory freed");
     }
 }
 

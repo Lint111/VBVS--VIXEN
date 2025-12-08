@@ -113,6 +113,12 @@ private:
     VkBuffer compressedNormalBuffer = VK_NULL_HANDLE;
     VkDeviceMemory compressedNormalMemory = VK_NULL_HANDLE;
 
+    // Brick grid lookup buffer - maps (brickX, brickY, brickZ) to brick index
+    // Size: bricksPerAxis^3 * sizeof(uint32_t)
+    // Used by hardware RT shaders for compressed buffer access
+    VkBuffer brickGridLookupBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory brickGridLookupMemory = VK_NULL_HANDLE;
+
     // Debug capture resource (owns buffer, implements IDebugCapture)
     std::unique_ptr<Debug::DebugCaptureResource> debugCaptureResource_;
 

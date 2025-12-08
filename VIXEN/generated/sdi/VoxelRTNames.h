@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRT
-// UUID: 1d0ef9451666e143
-// Generated: 2025-12-07 21:46:21
+// UUID: 4f3ab9145d1784fb
+// Generated: 2025-12-07 22:11:28
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "1d0ef9451666e143-SDI.h"
+#include "4f3ab9145d1784fb-SDI.h"
 
 namespace VoxelRT {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::_1d0ef9451666e143;
+namespace SDI = ShaderInterface::_4f3ab9145d1784fb;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -49,6 +49,9 @@ constexpr const char* compressedColors_name = "compressedColors";
 // compressedNormals (Set 0, Binding 7)
 using compressedNormals = SDI::Set0::Binding7;
 constexpr const char* compressedNormals_name = "compressedNormals";
+// brickMapping (Set 0, Binding 8)
+using brickMapping = SDI::Set0::Binding8;
+constexpr const char* brickMapping_name = "brickMapping";
 // aabbBuffer (Set 0, Binding 2)
 using aabbBuffer = SDI::Set0::Binding2;
 constexpr const char* aabbBuffer_name = "aabbBuffer";

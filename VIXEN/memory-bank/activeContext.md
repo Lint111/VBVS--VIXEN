@@ -6,7 +6,51 @@
 
 ---
 
-## Latest Session (2025-12-07)
+## Latest Session (2025-12-07 - Session 2)
+
+**Brick Index Mismatch Bug Investigation & Fix Attempt**
+
+### Issue Identified
+Compressed RTX rendering showed incorrect colors (some tests pure black, others partial color loss). Root cause: **brick index mismatch** between:
+- VoxelAABBConverterNode: Uses simple ZYX grid order (`brickZ * bricksPerAxis² + brickY * bricksPerAxis + brickX`)
+- LaineKarrasOctree: Uses **Morton-sorted insertion order** for brick indices
+
+### Changes Made This Session
+
+| Task | Files | Description |
+|------|-------|-------------|
+| Fixed localVoxelIdx order | `VoxelAABBConverterNode.cpp:201-209` | Changed from ZYX to XYZ to match SVORebuild.cpp |
+| Added BRICK_GRID_LOOKUP_BUFFER | `VoxelGridNodeConfig.h:89-95, 150-154` | New output slot (index 7) for brick grid lookup |
+| Lookup buffer creation | `VoxelGridNode.cpp:440-476` | Creates CPU-side lookup from brickGridToBrickView |
+| Lookup buffer cleanup | `VoxelGridNode.cpp:840-851` | Proper resource cleanup |
+| Added input slot | `VoxelAABBConverterNodeConfig.h:118-125` | BRICK_GRID_LOOKUP_BUFFER input slot |
+| Wired connection | `BenchmarkGraphFactory.cpp:1270-1273` | VoxelGrid → VoxelAABBConverter connection |
+
+### Technical Details
+
+**Local Voxel Index Fix (XYZ order to match compression):**
+```cpp
+// Must match SVORebuild.cpp: x = voxelLinearIdx & 7, y = (>>3)&7, z = (>>6)&7
+// So: voxelLinearIdx = x + y*8 + z*64
+uint32_t localVoxelIdx = localX +
+                        localY * BRICK_SIZE +
+                        localZ * BRICK_SIZE * BRICK_SIZE;
+```
+
+**Brick Grid Lookup Buffer:**
+- Size: `bricksPerAxis³ * sizeof(uint32_t)`
+- Maps grid coord `(brickX, brickY, brickZ)` to Morton-sorted brick index
+- 0xFFFFFFFF for empty bricks
+- Populated from `octreeData->root->brickGridToBrickView`
+
+### Known Issue (Deferred)
+VoxelAABBConverterNode still needs to **consume** the lookup buffer to get correct brick indices. Current implementation computes grid-based brick index which doesn't match Morton-sorted octree order.
+
+**TODO:** Have VoxelAABBConverterNode use the lookup buffer data when generating brick mappings.
+
+---
+
+## Previous Session (2025-12-07 - Session 1)
 
 **Compressed RTX implementation complete!** Brick mapping buffer now enables true DXT-compressed color access in RTX shaders.
 
@@ -14,65 +58,6 @@
 - **Completed:** Brick mapping buffer implementation for compressed RTX
 - **RTX Status:** VoxelRT_Compressed.rchit uses binding 8 for `(brickIndex, localVoxelIdx)` lookup
 - **sdi_tool:** Added `-I`/`--include` flags for #include directive resolution
-
----
-
-## Session Summary
-
-### Completed This Session
-
-| Task | Files | Description |
-|------|-------|-------------|
-| VoxelBrickMapping struct | `VoxelAABBConverterNodeConfig.h` | New struct: `{uint32_t brickIndex, uint32_t localVoxelIdx}` |
-| BRICK_MAPPING_BUFFER slot | `VoxelAABBConverterNodeConfig.h` | Output slot 3, one entry per AABB primitive |
-| Brick mapping generation | `VoxelAABBConverterNode.cpp` | Computes brick coords and local voxel index during AABB extraction |
-| Buffer create/upload | `VoxelAABBConverterNode.cpp` | `CreateBrickMappingBuffer()`, `UploadBrickMappingData()` |
-| Binding 8 wiring | `BenchmarkGraphFactory.cpp` | `BRICK_MAPPING_BUFFER` connected when `useCompressed=true` |
-| Shader update | `VoxelRT_Compressed.rchit` | Uses `brickMapping[gl_PrimitiveID]` for DXT access |
-| SDI tool include paths | `shader_tool.cpp` | `-I`/`--include` flags, auto-adds input file directories |
-| SDI generation | `VoxelRT_CompressedNames.h` | Generated with binding 8 for brickMapping |
-
-### Implementation Details
-
-**VoxelBrickMapping Buffer (8 bytes per AABB primitive):**
-```cpp
-struct VoxelBrickMapping {
-    uint32_t brickIndex;      // Index into compressed buffer arrays
-    uint32_t localVoxelIdx;   // Position within 8x8x8 brick (0-511)
-};
-```
-
-**Brick Index Calculation (ZYX order):**
-```cpp
-uint32_t brickX = x / 8, brickY = y / 8, brickZ = z / 8;
-uint32_t brickIndex = brickZ * bricksPerAxis * bricksPerAxis + brickY * bricksPerAxis + brickX;
-uint32_t localVoxelIdx = (z % 8) * 64 + (y % 8) * 8 + (x % 8);
-```
-
-**Shader Access (VoxelRT_Compressed.rchit):**
-```glsl
-layout(std430, binding = 8) readonly buffer BrickMappingBuffer {
-    uvec2 brickMapping[];  // .x = brickIndex, .y = localVoxelIdx
-};
-
-void main() {
-    uvec2 mapping = brickMapping[gl_PrimitiveID];
-    vec3 baseColor = getCompressedVoxelColor(mapping.x, int(mapping.y));
-}
-```
-
-### SDI Tool Enhancement
-
-Added include path support to `sdi_tool`:
-- `-I <dir>` / `--include <dir>` flags (can be specified multiple times)
-- `-I<dir>` format also supported (no space)
-- Auto-adds input file directories as default include paths
-- Enables compilation of shaders with `#include "Compression.glsl"` etc.
-
-**Example:**
-```bash
-sdi_tool shaders/VoxelRT.rgen shaders/VoxelRT.rmiss shaders/VoxelRT_Compressed.rchit shaders/VoxelRT.rint -n VoxelRT_Compressed -d generated
-```
 
 ### Current Descriptor Bindings (VoxelRT_Compressed)
 | Binding | Resource | Type |

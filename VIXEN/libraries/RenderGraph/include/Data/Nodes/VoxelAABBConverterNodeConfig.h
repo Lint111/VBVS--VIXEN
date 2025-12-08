@@ -74,7 +74,7 @@ struct VoxelAABBData {
 // ============================================================================
 
 namespace VoxelAABBConverterNodeCounts {
-    static constexpr size_t INPUTS = 3;
+    static constexpr size_t INPUTS = 4;  // Added BRICK_GRID_LOOKUP_BUFFER
     static constexpr size_t OUTPUTS = 4;  // AABB_DATA + AABB_BUFFER + MATERIAL_ID_BUFFER + BRICK_MAPPING_BUFFER
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -85,8 +85,8 @@ namespace VoxelAABBConverterNodeCounts {
  * Converts sparse voxel octree to AABB buffer for BLAS construction.
  * Iterates octree leaf nodes and emits one AABB per solid voxel.
  *
- * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, VOXEL_GRID_DATA)
- * Outputs: 1 (AABB_DATA - single struct with buffer + count + memory)
+ * Inputs: 4 (VULKAN_DEVICE_IN, COMMAND_POOL, OCTREE_NODES_BUFFER, BRICK_GRID_LOOKUP_BUFFER)
+ * Outputs: 4 (AABB_DATA, AABB_BUFFER, MATERIAL_ID_BUFFER, BRICK_MAPPING_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
                       VoxelAABBConverterNodeCounts::INPUTS,
@@ -111,6 +111,15 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     // Contains esvoNodes for traversal to find solid voxels
     INPUT_SLOT(OCTREE_NODES_BUFFER, VkBuffer, 2,
         SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Brick grid lookup buffer from VoxelGridNode
+    // Maps (brickX, brickY, brickZ) grid coord to brick index in compressed buffers
+    // Optional: only used for compressed RTX shader paths
+    INPUT_SLOT(BRICK_GRID_LOOKUP_BUFFER, VkBuffer, 3,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -153,6 +162,9 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
         BufferDescriptor octreeNodesDesc{};
         INIT_INPUT_DESC(OCTREE_NODES_BUFFER, "octree_nodes_buffer", ResourceLifetime::Persistent, octreeNodesDesc);
 
+        BufferDescriptor brickGridLookupDesc{};
+        INIT_INPUT_DESC(BRICK_GRID_LOOKUP_BUFFER, "brick_grid_lookup_buffer", ResourceLifetime::Persistent, brickGridLookupDesc);
+
         HandleDescriptor aabbDataDesc{"VoxelAABBData"};
         INIT_OUTPUT_DESC(AABB_DATA, "aabb_data", ResourceLifetime::Persistent, aabbDataDesc);
 
@@ -171,6 +183,7 @@ CONSTEXPR_NODE_CONFIG(VoxelAABBConverterNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(COMMAND_POOL_Slot::index == 1);
     static_assert(OCTREE_NODES_BUFFER_Slot::index == 2);
+    static_assert(BRICK_GRID_LOOKUP_BUFFER_Slot::index == 3);
     static_assert(AABB_DATA_Slot::index == 0);
     static_assert(AABB_BUFFER_Slot::index == 1);
     static_assert(MATERIAL_ID_BUFFER_Slot::index == 2);

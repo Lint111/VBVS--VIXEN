@@ -1267,6 +1267,11 @@ void BenchmarkGraphFactory::ConnectHardwareRT(
     batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::OCTREE_NODES_BUFFER,
                   hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::OCTREE_NODES_BUFFER);
 
+    // VoxelGrid -> VoxelAABBConverterNode (brick grid lookup for compressed color access)
+    // Optional: only needed for compressed RTX shaders to map grid coords to brick indices
+    batch.Connect(rayMarch.voxelGrid, RG::VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER,
+                  hardwareRT.aabbConverter, RG::VoxelAABBConverterNodeConfig::BRICK_GRID_LOOKUP_BUFFER);
+
     // Device -> AccelerationStructureNode
     batch.Connect(infra.device, RG::DeviceNodeConfig::VULKAN_DEVICE_OUT,
                   hardwareRT.accelerationStructure, RG::AccelerationStructureNodeConfig::VULKAN_DEVICE_IN);

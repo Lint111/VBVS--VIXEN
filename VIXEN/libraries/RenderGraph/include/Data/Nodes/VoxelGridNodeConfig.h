@@ -15,7 +15,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 8;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, BRICK_BASE_INDEX, COMPRESSED_COLOR, COMPRESSED_NORMAL
+    static constexpr size_t OUTPUTS = 9;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, COMPRESSED_COLOR, COMPRESSED_NORMAL, BRICK_GRID_LOOKUP
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -26,7 +26,7 @@ namespace VoxelGridNodeCounts {
  * Outputs SSBO buffers for octree-based ray marching.
  *
  * Inputs: 2 (VULKAN_DEVICE_IN, COMMAND_POOL)
- * Outputs: 8 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, BRICK_BASE_INDEX_BUFFER, COMPRESSED_COLOR_BUFFER, COMPRESSED_NORMAL_BUFFER)
+ * Outputs: 9 (OCTREE_NODES_BUFFER, OCTREE_BRICKS_BUFFER, OCTREE_MATERIALS_BUFFER, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG_BUFFER, COMPRESSED_COLOR_BUFFER, COMPRESSED_NORMAL_BUFFER, BRICK_GRID_LOOKUP_BUFFER)
  */
 CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
                       VoxelGridNodeCounts::INPUTS,
@@ -86,6 +86,14 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    // Brick grid lookup buffer - maps (brickX, brickY, brickZ) to brick index
+    // Size: bricksPerAxis^3 * sizeof(uint32_t)
+    // Value: brick index (0 to numBricks-1) or 0xFFFFFFFF for empty bricks
+    // Used by hardware RT shaders to look up correct compressed buffer offset
+    OUTPUT_SLOT(BRICK_GRID_LOOKUP_BUFFER, VkBuffer, 7,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -138,6 +146,12 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         compressedNormalDesc.size = 1024 * 512;  // Initial capacity: 1024 bricks * 512 bytes
         compressedNormalDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(COMPRESSED_NORMAL_BUFFER, "compressed_normal_buffer", ResourceLifetime::Persistent, compressedNormalDesc);
+
+        // Brick grid lookup buffer - maps grid coords to brick index
+        BufferDescriptor brickGridLookupDesc{};
+        brickGridLookupDesc.size = 64 * 64 * 64 * sizeof(uint32_t);  // Max 64^3 bricks = 1MB
+        brickGridLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
+        INIT_OUTPUT_DESC(BRICK_GRID_LOOKUP_BUFFER, "brick_grid_lookup_buffer", ResourceLifetime::Persistent, brickGridLookupDesc);
     }
 
     // Automated config validation
@@ -152,6 +166,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(OCTREE_CONFIG_BUFFER_Slot::index == 4, "OCTREE_CONFIG_BUFFER must be at index 4");
     static_assert(COMPRESSED_NORMAL_BUFFER_Slot::index == 5, "COMPRESSED_NORMAL_BUFFER must be at index 5");
     static_assert(COMPRESSED_COLOR_BUFFER_Slot::index == 6, "COMPRESSED_COLOR_BUFFER must be at index 6");
+    static_assert(BRICK_GRID_LOOKUP_BUFFER_Slot::index == 7, "BRICK_GRID_LOOKUP_BUFFER must be at index 7");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -163,6 +178,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<OCTREE_CONFIG_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_COLOR_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_NORMAL_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<BRICK_GRID_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
 };
 
 } // namespace Vixen::RenderGraph

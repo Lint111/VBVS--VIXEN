@@ -198,10 +198,15 @@ std::vector<VoxelAABB> VoxelAABBConverterNode::ExtractAABBsFromGrid(
                     uint32_t localY = y % BRICK_SIZE;
                     uint32_t localZ = z % BRICK_SIZE;
 
-                    // Linear index within brick (ZYX order, 0-511)
-                    uint32_t localVoxelIdx = localZ * BRICK_SIZE * BRICK_SIZE +
+                    // Linear index within brick (XYZ order, 0-511)
+                    // MUST match SVORebuild.cpp compression order:
+                    //   int x = voxelLinearIdx & 7;
+                    //   int y = (voxelLinearIdx >> 3) & 7;
+                    //   int z = (voxelLinearIdx >> 6) & 7;
+                    // So: voxelLinearIdx = x + y*8 + z*64
+                    uint32_t localVoxelIdx = localX +
                                             localY * BRICK_SIZE +
-                                            localX;
+                                            localZ * BRICK_SIZE * BRICK_SIZE;
 
                     VoxelBrickMapping mapping;
                     mapping.brickIndex = brickIndex;
@@ -231,11 +236,15 @@ void VoxelAABBConverterNode::CreateAABBBuffer(const std::vector<VoxelAABB>& aabb
     VkDevice device = vulkanDevice_->device;
     VkDeviceSize bufferSize = aabbs.size() * sizeof(VoxelAABB);
 
-    // Create buffer with acceleration structure build input flag
+    // Create buffer with acceleration structure build input flag AND storage buffer bit
+    // - ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT: Required for BLAS build
+    // - STORAGE_BUFFER_BIT: Required for shader descriptor binding (VoxelRT.rint)
+    // - SHADER_DEVICE_ADDRESS_BIT: Required for device address queries
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferSize;
     bufferInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
+                       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
                        VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
