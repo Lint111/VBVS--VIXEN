@@ -53,6 +53,30 @@ using namespace Vixen::VoxelData::Compression;
 namespace Vixen::SVO {
 
 // ============================================================================
+// Material-to-Color Mapping (Single Source of Truth)
+// ============================================================================
+// Converts material IDs to RGB colors for DXT compression when Color component
+// is not explicitly set on voxel entities. This allows VoxelGridNode to store
+// only Material IDs while still getting proper colors in compressed buffers.
+//
+// NOTE: Keep in sync with shader getMaterialColor() in VoxelRT_Compressed.rchit
+static glm::vec3 MaterialIdToColor(uint32_t matID) {
+    switch (matID) {
+        case 1:  return glm::vec3(1.0f, 0.0f, 0.0f);      // Red (left wall)
+        case 2:  return glm::vec3(0.0f, 1.0f, 0.0f);      // Green (right wall)
+        case 3:  return glm::vec3(0.9f, 0.9f, 0.9f);      // Light gray (white wall)
+        case 4:  return glm::vec3(1.0f, 0.8f, 0.0f);      // Yellow/Gold
+        case 5:  return glm::vec3(0.95f, 0.95f, 0.95f);   // White (ceiling)
+        case 6:  return glm::vec3(0.8f, 0.8f, 0.8f);      // Medium gray (floor light)
+        case 7:  return glm::vec3(0.4f, 0.4f, 0.4f);      // Darker gray (floor dark)
+        case 10: return glm::vec3(0.8f, 0.6f, 0.2f);      // Tan/wooden (left cube)
+        case 11: return glm::vec3(0.6f, 0.8f, 0.9f);      // Light blue (right cube)
+        case 20: return glm::vec3(1.0f, 0.98f, 0.9f);     // Warm white (ceiling light)
+        default: return glm::vec3(static_cast<float>(matID) / 255.0f);  // Gradient fallback
+    }
+}
+
+// ============================================================================
 // Geometric Normal Computation (Phase B.1)
 // ============================================================================
 // Computes surface normals from voxel topology using 6-neighbor gradient method.
@@ -604,9 +628,16 @@ void LaineKarrasOctree::rebuild(GaiaVoxelWorld& world, const glm::vec3& worldMin
                         continue;
                     }
 
-                    // Color: still from entity component (user-defined)
+                    // Color: from entity component, or derive from Material if not set
                     auto colorOpt = brickView.getComponentValue<Color>(voxelLinearIdx);
-                    blockColors[texelIdx] = colorOpt.value_or(glm::vec3(0.5f));
+                    if (colorOpt.has_value()) {
+                        blockColors[texelIdx] = colorOpt.value();
+                    } else {
+                        // Derive color from Material ID (single source of truth)
+                        auto matOpt = brickView.getComponentValue<Material>(voxelLinearIdx);
+                        uint32_t matID = matOpt.has_value() ? matOpt.value() : 0;
+                        blockColors[texelIdx] = MaterialIdToColor(matID);
+                    }
 
                     // Phase B.1: Use pre-computed geometric normal from voxel topology
                     // This replaces entity Normal component with topology-derived normal

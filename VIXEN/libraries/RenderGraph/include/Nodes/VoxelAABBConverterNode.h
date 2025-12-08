@@ -68,11 +68,13 @@ private:
      *
      * @param outMaterialIds Output vector of material IDs (one per AABB)
      * @param outBrickMappings Output vector of brick mappings (one per AABB)
+     * @param brickGridLookup Lookup buffer from VoxelGridNode mapping grid coords to Morton-sorted brick indices
      * @return Vector of VoxelAABB for upload to GPU
      */
     std::vector<VoxelAABB> ExtractAABBsFromGrid(
         std::vector<uint32_t>& outMaterialIds,
-        std::vector<VoxelBrickMapping>& outBrickMappings);
+        std::vector<VoxelBrickMapping>& outBrickMappings,
+        const std::vector<uint32_t>& brickGridLookup);
 
     /**
      * @brief Create GPU buffer for AABB data
@@ -106,6 +108,18 @@ private:
      * @brief Upload brick mapping data via staging buffer
      */
     void UploadBrickMappingData(const std::vector<VoxelBrickMapping>& brickMappings);
+
+    /**
+     * @brief Download GPU buffer contents to host memory
+     *
+     * Used to read the brick grid lookup buffer from VoxelGridNode
+     * for Morton-sorted brick index lookup during AABB extraction.
+     *
+     * @param srcBuffer Source GPU buffer to download
+     * @param bufferSize Size of buffer in bytes
+     * @return Vector of uint32_t values from the buffer
+     */
+    std::vector<uint32_t> DownloadBufferToHost(VkBuffer srcBuffer, VkDeviceSize bufferSize);
 
     /**
      * @brief Cleanup GPU resources

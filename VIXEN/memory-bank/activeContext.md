@@ -1,12 +1,65 @@
 # Active Context
 
-**Last Updated**: December 7, 2025
+**Last Updated**: December 8, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Phase K IN PROGRESS - Hardware RT Pipeline Working
+**Status**: Phase K IN PROGRESS - Hardware RT Pipeline **FIXED** ✅
 
 ---
 
-## Latest Session (2025-12-07 - Session 2)
+## Latest Session (2025-12-08)
+
+**Hardware RT Black Screen / Flickering Bug - ROOT CAUSE FIXED**
+
+### Issue Symptoms
+- Cornell box rendered completely black
+- Other scenes showed black flickering or "1 frame then black" behavior
+- Some tests worked intermittently (noise, cityscape)
+
+### Root Cause Identified
+**Uninitialized `VariadicSlotInfo::binding` default value collision**
+
+In `VariadicTypedNode.h:37`, the binding field defaulted to `0`:
+```cpp
+uint32_t binding = 0;  // BUG: Default collided with real binding 0
+```
+
+When `UpdateVariadicSlot(bindingIndex, ...)` is called with high binding indices (e.g., 5), the vector resizes creating **gaps** (slots 2, 3, 4). These gaps were default-initialized with `binding = 0`, causing them to **overwrite** the real binding 0 entry in `resourceArray_[binding]`.
+
+Debug output showed:
+- slot[0]: binding=0, role=Execute ✓
+- slot[4]: binding=0, role=Dependency (default) → **overwrote binding 0!**
+
+Result: `outputImage` (binding 0) lost its `Execute` role, preventing per-frame swapchain image updates.
+
+### The Fix
+
+| File | Change |
+|------|--------|
+| `VariadicTypedNode.h:37` | Changed default `binding = 0` → `binding = UINT32_MAX` (sentinel) |
+| `DescriptorResourceGathererNode.cpp` | Added 4 checks to skip slots with `binding == UINT32_MAX` |
+
+**Locations of UINT32_MAX checks:**
+1. `ProcessSlot()` - Skip uninitialized slots during resource gathering
+2. `ExecuteImpl()` - Skip during per-frame transient resource updates
+3. `ValidateTentativeSlotsAgainstShader()` - Skip during shader validation
+4. `ValidateSingleInput()` - Skip during input validation
+
+### Additional Fixes Applied
+
+| Fix | File | Description |
+|-----|------|-------------|
+| FOV radians conversion | `VoxelRT.rgen:64-65` | Added `radians()` - FOV was being used as radians directly |
+| Command buffer indexing | `TraceRaysNode.cpp` | Changed from `currentFrame` to `imageIndex` (matches ComputeDispatchNode) |
+| Command buffer count | `TraceRaysNode.cpp` | Changed from `framesInFlight_` to `swapChainImageCount_` |
+| Removed ONE_TIME_SUBMIT | `TraceRaysNode.cpp:154` | Match ComputeDispatchNode pattern |
+
+### Verification
+- All 24 RT benchmark tests now run without black screens or flickering
+- `PushConstantGathererNode` is **NOT affected** - it iterates by slot index, not binding
+
+---
+
+## Previous Session (2025-12-07 - Session 2)
 
 **Brick Index Mismatch Bug Investigation & Fix Attempt**
 
