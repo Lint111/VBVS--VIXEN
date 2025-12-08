@@ -23,6 +23,10 @@ namespace Vixen::SVO {
     struct Octree;
 }
 
+namespace CashSystem {
+    class VoxelSceneCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -128,6 +132,12 @@ private:
 
     // Memory tracking for benchmarking (Week 3)
     std::shared_ptr<GPUPerformanceLogger> memoryLogger_;
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::VoxelSceneCacher* voxelSceneCacher_ = nullptr;
+
+    // Cacher registration helper
+    void RegisterVoxelSceneCacher();
 };
 
 } // namespace Vixen::RenderGraph

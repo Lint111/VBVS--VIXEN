@@ -24,6 +24,12 @@ using namespace VIXEN::RenderGraph;
 namespace CashSystem {
 
 // ============================================================================
+// VOXEL SCENE CACHER - DESTRUCTOR
+// ============================================================================
+
+VoxelSceneCacher::~VoxelSceneCacher() = default;
+
+// ============================================================================
 // VOXEL SCENE DATA - CLEANUP
 // ============================================================================
 
@@ -434,6 +440,14 @@ void VoxelSceneCacher::BuildOctree(VoxelSceneData& data) {
     constexpr float WORLD_GRID_SIZE = 10.0f;
     data.configCPU.worldGridSize = WORLD_GRID_SIZE;
 
+    // Grid bounds
+    data.configCPU.gridMinX = 0.0f;
+    data.configCPU.gridMinY = 0.0f;
+    data.configCPU.gridMinZ = 0.0f;
+    data.configCPU.gridMaxX = static_cast<float>(resolution);
+    data.configCPU.gridMaxY = static_cast<float>(resolution);
+    data.configCPU.gridMaxZ = static_cast<float>(resolution);
+
     // Coordinate transformations
     glm::vec3 gridScale(WORLD_GRID_SIZE);
     glm::vec3 gridTranslation(0.0f);
@@ -739,7 +753,7 @@ void VoxelSceneCacher::UploadBufferData(VkBuffer buffer, const void* srcData, Vk
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->queueFamilyIndex;
+        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
 
         VkResult result = vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_transferCommandPool);
         if (result != VK_SUCCESS) {

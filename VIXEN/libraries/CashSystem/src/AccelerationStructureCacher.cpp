@@ -2,8 +2,11 @@
 #include "AccelerationStructureCacher.h"
 #include "VulkanDevice.h"
 
-// SVO library for ESVO node parsing
+// SVO library for ESVO node parsing and complete types for unique_ptr
 #include "SVOTypes.h"
+#include "LaineKarrasOctree.h"
+#include "GaiaVoxelWorld.h"
+#include "Data/SceneGenerator.h"
 
 #include <iostream>
 #include <cstring>
@@ -643,7 +646,7 @@ void AccelerationStructureCacher::BuildBLAS(const AccelStructCreateInfo& ci, Vox
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->queueFamilyIndex;
+        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
         vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_buildCommandPool);
     }
 
@@ -902,7 +905,7 @@ void AccelerationStructureCacher::UploadBufferData(VkBuffer buffer, const void* 
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        poolInfo.queueFamilyIndex = m_device->queueFamilyIndex;
+        poolInfo.queueFamilyIndex = m_device->graphicsQueueIndex;
         vkCreateCommandPool(m_device->device, &poolInfo, nullptr, &m_buildCommandPool);
     }
 

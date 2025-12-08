@@ -10,6 +10,10 @@ namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
 }
 
+namespace CashSystem {
+    class AccelerationStructureCacher;
+}
+
 namespace Vixen::RenderGraph {
 
 /**
@@ -173,6 +177,12 @@ private:
     PFN_vkCmdBuildAccelerationStructuresKHR vkCmdBuildAccelerationStructuresKHR_ = nullptr;
     PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR_ = nullptr;
     PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR_ = nullptr;
+
+    // CashSystem integration - cached during Compile()
+    CashSystem::AccelerationStructureCacher* accelStructCacher_ = nullptr;
+
+    // Cacher registration helper
+    void RegisterAccelerationStructureCacher();
 };
 
 } // namespace Vixen::RenderGraph

@@ -1,6 +1,9 @@
 #include "Nodes/AccelerationStructureNode.h"
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/RenderGraph.h"
+#include "MainCacher.h"
+#include "AccelerationStructureCacher.h"
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -75,6 +78,9 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     if (commandPool_ == VK_NULL_HANDLE) {
         throw std::runtime_error("[AccelerationStructureNode] COMMAND_POOL is null");
     }
+
+    // Register AccelerationStructureCacher with CashSystem (idempotent)
+    RegisterAccelerationStructureCacher();
 
     // Get AABB data
     VoxelAABBData* aabbData = ctx.In(AccelerationStructureNodeConfig::AABB_DATA);
@@ -715,6 +721,40 @@ void AccelerationStructureNode::DestroyAccelerationStructures() {
     accelData_.tlasDeviceAddress = 0;
 
     NODE_LOG_INFO("Destroyed all acceleration structure resources");
+}
+
+// ============================================================================
+// CACHER REGISTRATION
+// ============================================================================
+
+void AccelerationStructureNode::RegisterAccelerationStructureCacher() {
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+
+    // Register AccelerationStructureCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::CachedAccelerationStructure))) {
+        mainCacher.RegisterCacher<
+            CashSystem::AccelerationStructureCacher,
+            CashSystem::CachedAccelerationStructure,
+            CashSystem::AccelStructCreateInfo
+        >(
+            typeid(CashSystem::CachedAccelerationStructure),
+            "AccelerationStructure",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("AccelerationStructureNode: Registered AccelerationStructureCacher");
+    }
+
+    // Cache the cacher reference for use throughout node lifetime
+    accelStructCacher_ = mainCacher.GetCacher<
+        CashSystem::AccelerationStructureCacher,
+        CashSystem::CachedAccelerationStructure,
+        CashSystem::AccelStructCreateInfo
+    >(typeid(CashSystem::CachedAccelerationStructure), device);
+
+    if (accelStructCacher_) {
+        NODE_LOG_INFO("AccelerationStructureNode: AccelerationStructure cache ready");
+    }
 }
 
 } // namespace Vixen::RenderGraph

@@ -103,29 +103,39 @@ static_assert(sizeof(GPUMaterial) == 32, "GPUMaterial must be 32 bytes for GPU a
  * Layout: std140 requires vec3 alignment to 16 bytes.
  */
 struct OctreeConfig {
-    // ESVO scale parameters
+    // ESVO scale parameters (matching LaineKarrasOctree.h)
     int32_t esvoMaxScale;       // Always 22 (ESVO normalized space)
     int32_t userMaxLevels;      // log2(resolution) = 7 for 128^3
     int32_t brickDepthLevels;   // 3 for 8^3 bricks
     int32_t brickSize;          // 8 (voxels per brick axis)
 
-    int32_t minESVOScale;       // esvoMaxScale - (userMaxLevels - 1) - brickDepthLevels
-    int32_t brickESVOScale;     // esvoMaxScale - (userMaxLevels - 1)
-    int32_t bricksPerAxis;      // resolution / brickSize
-    int32_t _padding1;          // Align to 16 bytes
+    // Derived scale values
+    int32_t minESVOScale;       // esvoMaxScale - userMaxLevels + 1 = 16
+    int32_t brickESVOScale;     // Scale at which nodes are brick parents = 20
+    int32_t bricksPerAxis;      // resolution / brickSize = 16
+    int32_t _padding1;          // Pad to 16-byte alignment
 
-    float worldGridSize;        // World space extent of the grid
-    float _padding2[3];         // Align to 16 bytes
+    // Grid bounds (in world units)
+    float gridMinX, gridMinY, gridMinZ;
+    float _padding2;            // Pad vec3 to vec4
 
-    float colorPalette[8][4];   // 8 colors * vec4 = 128 bytes (std140: vec4 aligned)
+    float gridMaxX, gridMaxY, gridMaxZ;
+    float _padding3;            // Pad vec3 to vec4
 
+    // Coordinate Transformations
     glm::mat4 localToWorld;     // 64 bytes
     glm::mat4 worldToLocal;     // 64 bytes
 
-    // Pad to 256 bytes for std140 alignment
+    // Padding to reach 256 bytes (std140 alignment)
+    // Current size: 16 + 16 + 16 + 16 + 64 + 64 = 192 bytes
+    // Needed: 256 - 192 = 64 bytes
     float _padding4[16];
+
+    // Non-UBO field (not uploaded) for convenience
+    float worldGridSize;        // World space extent of the grid (used by code, not shader)
 };
-static_assert(sizeof(OctreeConfig) == 256, "OctreeConfig must be 256 bytes for std140 alignment");
+// Note: worldGridSize is outside the 256 byte UBO - only first 256 bytes are uploaded
+static_assert(offsetof(OctreeConfig, worldGridSize) == 256, "OctreeConfig UBO portion must be 256 bytes");
 
 // ============================================================================
 // VOXEL SCENE CREATE INFO
@@ -267,7 +277,7 @@ struct VoxelSceneData {
 class VoxelSceneCacher : public TypedCacher<VoxelSceneData, VoxelSceneCreateInfo> {
 public:
     VoxelSceneCacher() = default;
-    ~VoxelSceneCacher() override = default;
+    ~VoxelSceneCacher() override;  // Defined in .cpp where complete types are available
 
     /**
      * @brief Get or create cached scene data

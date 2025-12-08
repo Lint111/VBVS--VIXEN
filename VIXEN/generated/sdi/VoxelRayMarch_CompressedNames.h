@@ -3,8 +3,8 @@
 // ============================================================================
 //
 // Program: VoxelRayMarch_Compressed
-// UUID: a507325d3b324224
-// Generated: 2025-12-08 19:27:44
+// UUID: ed2c35a6e764d8b1
+// Generated: 2025-12-08 19:50:38
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.
@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "a507325d3b324224-SDI.h"
+#include "ed2c35a6e764d8b1-SDI.h"
 
 namespace VoxelRayMarch_Compressed {
 
 // Reference to generic SDI namespace
-namespace SDI = ShaderInterface::a507325d3b324224;
+namespace SDI = ShaderInterface::ed2c35a6e764d8b1;
 
 // Forward declare push constant type to prevent error messages
 using pc = SDI::pc;
@@ -31,15 +31,15 @@ using pc = SDI::pc;
 // Descriptor Binding Aliases
 // ============================================================================
 
-// outputImage (Set 0, Binding 0)
-using outputImage = SDI::Set0::Binding0;
-constexpr const char* outputImage_name = "outputImage";
 // esvoNodes (Set 0, Binding 1)
 using esvoNodes = SDI::Set0::Binding1;
 constexpr const char* esvoNodes_name = "esvoNodes";
 // brickData (Set 0, Binding 2)
 using brickData = SDI::Set0::Binding2;
 constexpr const char* brickData_name = "brickData";
+// materials (Set 0, Binding 3)
+using materials = SDI::Set0::Binding3;
+constexpr const char* materials_name = "materials";
 // traceWriteIndex (Set 0, Binding 4)
 using traceWriteIndex = SDI::Set0::Binding4;
 constexpr const char* traceWriteIndex_name = "traceWriteIndex";

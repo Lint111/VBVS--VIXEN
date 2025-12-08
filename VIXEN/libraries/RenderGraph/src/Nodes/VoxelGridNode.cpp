@@ -3,6 +3,9 @@
 #include "Data/VoxelOctree.h" // Legacy - will be removed
 #include "VulkanDevice.h"
 #include "Core/NodeLogging.h"
+#include "Core/RenderGraph.h"
+#include "MainCacher.h"
+#include "VoxelSceneCacher.h"
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -125,6 +128,9 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     if (nodeLogger) {
         nodeLogger->AddChild(memoryLogger_);
     }
+
+    // Register VoxelSceneCacher with CashSystem (idempotent)
+    RegisterVoxelSceneCacher();
 
     // Generate procedural voxel scene (using cache for performance)
     std::cout << "[VoxelGridNode] Requesting voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
@@ -1801,6 +1807,40 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
     NODE_LOG_INFO("Uploaded ESVO buffers to GPU (sparse brick architecture)");
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
               << brickViews.size() << std::endl;
+}
+
+// ============================================================================
+// CACHER REGISTRATION
+// ============================================================================
+
+void VoxelGridNode::RegisterVoxelSceneCacher() {
+    // Get MainCacher from owning graph
+    auto& mainCacher = GetOwningGraph()->GetMainCacher();
+
+    // Register VoxelSceneCacher (idempotent - safe to call multiple times)
+    if (!mainCacher.IsRegistered(typeid(CashSystem::VoxelSceneData))) {
+        mainCacher.RegisterCacher<
+            CashSystem::VoxelSceneCacher,
+            CashSystem::VoxelSceneData,
+            CashSystem::VoxelSceneCreateInfo
+        >(
+            typeid(CashSystem::VoxelSceneData),
+            "VoxelScene",
+            true  // device-dependent
+        );
+        NODE_LOG_DEBUG("VoxelGridNode: Registered VoxelSceneCacher");
+    }
+
+    // Cache the cacher reference for use throughout node lifetime
+    voxelSceneCacher_ = mainCacher.GetCacher<
+        CashSystem::VoxelSceneCacher,
+        CashSystem::VoxelSceneData,
+        CashSystem::VoxelSceneCreateInfo
+    >(typeid(CashSystem::VoxelSceneData), device);
+
+    if (voxelSceneCacher_) {
+        NODE_LOG_INFO("VoxelGridNode: VoxelScene cache ready");
+    }
 }
 
 } // namespace Vixen::RenderGraph
