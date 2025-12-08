@@ -7,6 +7,11 @@ namespace Vixen::RenderGraph::Debug {
     class IDebugCapture;
 }
 
+// Forward declaration for CashSystem cached scene data
+namespace CashSystem {
+    struct VoxelSceneData;
+}
+
 namespace Vixen::RenderGraph {
 
 // Type alias for VulkanDevice (use VulkanDevice* explicitly in slots)
@@ -15,7 +20,7 @@ using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
 // Compile-time slot counts
 namespace VoxelGridNodeCounts {
     static constexpr size_t INPUTS = 2;
-    static constexpr size_t OUTPUTS = 9;  // OCTREE_NODES, OCTREE_BRICKS, OCTREE_MATERIALS, DEBUG_CAPTURE_BUFFER, OCTREE_CONFIG, COMPRESSED_COLOR, COMPRESSED_NORMAL, BRICK_GRID_LOOKUP
+    static constexpr size_t OUTPUTS = 10;  // +VOXEL_SCENE_DATA (cached scene for AccelerationStructureNode)
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
 
@@ -94,6 +99,13 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         SlotNullability::Optional,
         SlotMutability::WriteOnly);
 
+    // Cached voxel scene data - provides readonly reference for AccelerationStructureNode
+    // Contains CPU+GPU scene data created by VoxelSceneCacher
+    // Used by AccelerationStructureCacher to build BLAS/TLAS from scene geometry
+    OUTPUT_SLOT(VOXEL_SCENE_DATA, CashSystem::VoxelSceneData*, 8,
+        SlotNullability::Optional,
+        SlotMutability::WriteOnly);
+
     // ===== PARAMETERS =====
     static constexpr const char* PARAM_RESOLUTION = "resolution";
     static constexpr const char* PARAM_SCENE_TYPE = "scene_type";
@@ -152,6 +164,10 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
         brickGridLookupDesc.size = 64 * 64 * 64 * sizeof(uint32_t);  // Max 64^3 bricks = 1MB
         brickGridLookupDesc.usage = ResourceUsage::StorageBuffer | ResourceUsage::TransferDst;
         INIT_OUTPUT_DESC(BRICK_GRID_LOOKUP_BUFFER, "brick_grid_lookup_buffer", ResourceLifetime::Persistent, brickGridLookupDesc);
+
+        // Cached scene data handle - provides readonly reference for downstream nodes
+        HandleDescriptor voxelSceneDataDesc{"CashSystem::VoxelSceneData*"};
+        INIT_OUTPUT_DESC(VOXEL_SCENE_DATA, "voxel_scene_data", ResourceLifetime::Persistent, voxelSceneDataDesc);
     }
 
     // Automated config validation
@@ -167,6 +183,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(COMPRESSED_NORMAL_BUFFER_Slot::index == 5, "COMPRESSED_NORMAL_BUFFER must be at index 5");
     static_assert(COMPRESSED_COLOR_BUFFER_Slot::index == 6, "COMPRESSED_COLOR_BUFFER must be at index 6");
     static_assert(BRICK_GRID_LOOKUP_BUFFER_Slot::index == 7, "BRICK_GRID_LOOKUP_BUFFER must be at index 7");
+    static_assert(VOXEL_SCENE_DATA_Slot::index == 8, "VOXEL_SCENE_DATA must be at index 8");
 
     // Type validations
     static_assert(std::is_same_v<VULKAN_DEVICE_IN_Slot::Type, VulkanDevice*>);
@@ -179,6 +196,7 @@ CONSTEXPR_NODE_CONFIG(VoxelGridNodeConfig,
     static_assert(std::is_same_v<COMPRESSED_COLOR_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<COMPRESSED_NORMAL_BUFFER_Slot::Type, VkBuffer>);
     static_assert(std::is_same_v<BRICK_GRID_LOOKUP_BUFFER_Slot::Type, VkBuffer>);
+    static_assert(std::is_same_v<VOXEL_SCENE_DATA_Slot::Type, CashSystem::VoxelSceneData*>);
 };
 
 } // namespace Vixen::RenderGraph

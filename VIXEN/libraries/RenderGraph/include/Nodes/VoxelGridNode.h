@@ -25,6 +25,7 @@ namespace Vixen::SVO {
 
 namespace CashSystem {
     class VoxelSceneCacher;
+    struct VoxelSceneData;
 }
 
 namespace Vixen::RenderGraph {
@@ -135,9 +136,13 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::VoxelSceneCacher* voxelSceneCacher_ = nullptr;
+    std::shared_ptr<CashSystem::VoxelSceneData> cachedSceneData_;
 
     // Cacher registration helper
     void RegisterVoxelSceneCacher();
+
+    // GetOrCreate helper - builds params and calls cacher
+    void CreateSceneViaCacher();
 };
 
 } // namespace Vixen::RenderGraph

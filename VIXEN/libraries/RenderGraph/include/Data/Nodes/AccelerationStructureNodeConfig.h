@@ -3,6 +3,11 @@
 #include "Data/Nodes/VoxelAABBConverterNodeConfig.h"
 #include "VulkanDevice.h"
 
+// Forward declaration for CashSystem cached scene data
+namespace CashSystem {
+    struct VoxelSceneData;
+}
+
 namespace Vixen::RenderGraph {
 
 using VulkanDevice = Vixen::Vulkan::Resources::VulkanDevice;
@@ -53,7 +58,7 @@ struct AccelerationStructureData {
 // ============================================================================
 
 namespace AccelerationStructureNodeCounts {
-    static constexpr size_t INPUTS = 3;
+    static constexpr size_t INPUTS = 4;  // +VOXEL_SCENE_DATA (from VoxelGridNode)
     static constexpr size_t OUTPUTS = 2;  // ACCELERATION_STRUCTURE_DATA + TLAS_HANDLE
     static constexpr SlotArrayMode ARRAY_MODE = SlotArrayMode::Single;
 }
@@ -64,8 +69,8 @@ namespace AccelerationStructureNodeCounts {
  * Builds BLAS from voxel AABBs and TLAS containing single static instance.
  * For dynamic scenes, TLAS can be rebuilt each frame while BLAS stays static.
  *
- * Inputs: 3 (VULKAN_DEVICE_IN, COMMAND_POOL, AABB_DATA)
- * Outputs: 1 (ACCELERATION_STRUCTURE_DATA)
+ * Inputs: 4 (VULKAN_DEVICE_IN, COMMAND_POOL, AABB_DATA, VOXEL_SCENE_DATA)
+ * Outputs: 2 (ACCELERATION_STRUCTURE_DATA, TLAS_HANDLE)
  */
 CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
                       AccelerationStructureNodeCounts::INPUTS,
@@ -89,6 +94,15 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
     // AABB data from VoxelAABBConverterNode
     INPUT_SLOT(AABB_DATA, VoxelAABBData*, 2,
         SlotNullability::Required,
+        SlotRole::Dependency,
+        SlotMutability::ReadOnly,
+        SlotScope::NodeLevel);
+
+    // Cached voxel scene data from VoxelGridNode
+    // Required for AccelerationStructureCacher to build BLAS/TLAS using GetOrCreate pattern
+    // Contains scene geometry (ESVO nodes, bricks) and metadata
+    INPUT_SLOT(VOXEL_SCENE_DATA, CashSystem::VoxelSceneData*, 3,
+        SlotNullability::Optional,
         SlotRole::Dependency,
         SlotMutability::ReadOnly,
         SlotScope::NodeLevel);
@@ -124,6 +138,9 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
         HandleDescriptor aabbDataDesc{"VoxelAABBData*"};
         INIT_INPUT_DESC(AABB_DATA, "aabb_data", ResourceLifetime::Persistent, aabbDataDesc);
 
+        HandleDescriptor voxelSceneDataDesc{"CashSystem::VoxelSceneData*"};
+        INIT_INPUT_DESC(VOXEL_SCENE_DATA, "voxel_scene_data", ResourceLifetime::Persistent, voxelSceneDataDesc);
+
         HandleDescriptor accelStructDesc{"AccelerationStructureData*"};
         INIT_OUTPUT_DESC(ACCELERATION_STRUCTURE_DATA, "acceleration_structure", ResourceLifetime::Persistent, accelStructDesc);
 
@@ -136,6 +153,7 @@ CONSTEXPR_NODE_CONFIG(AccelerationStructureNodeConfig,
     static_assert(VULKAN_DEVICE_IN_Slot::index == 0);
     static_assert(COMMAND_POOL_Slot::index == 1);
     static_assert(AABB_DATA_Slot::index == 2);
+    static_assert(VOXEL_SCENE_DATA_Slot::index == 3);
     static_assert(ACCELERATION_STRUCTURE_DATA_Slot::index == 0);
     static_assert(TLAS_HANDLE_Slot::index == 1);
 };

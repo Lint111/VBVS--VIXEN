@@ -12,6 +12,8 @@ namespace Vixen::Vulkan::Resources {
 
 namespace CashSystem {
     class AccelerationStructureCacher;
+    struct CachedAccelerationStructure;
+    struct VoxelSceneData;
 }
 
 namespace Vixen::RenderGraph {
@@ -180,9 +182,16 @@ private:
 
     // CashSystem integration - cached during Compile()
     CashSystem::AccelerationStructureCacher* accelStructCacher_ = nullptr;
+    std::shared_ptr<CashSystem::CachedAccelerationStructure> cachedAccelStruct_;
+
+    // VoxelSceneData from VoxelGridNode (for cacher integration)
+    CashSystem::VoxelSceneData* voxelSceneData_ = nullptr;
 
     // Cacher registration helper
     void RegisterAccelerationStructureCacher();
+
+    // GetOrCreate helper - builds params and calls cacher
+    void CreateAccelStructViaCacher(const VoxelAABBData& aabbData);
 };
 
 } // namespace Vixen::RenderGraph

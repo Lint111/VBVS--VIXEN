@@ -132,6 +132,29 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     // Register VoxelSceneCacher with CashSystem (idempotent)
     RegisterVoxelSceneCacher();
 
+    // ========================================================================
+    // Create scene via cacher (the only path now)
+    // ========================================================================
+    if (!voxelSceneCacher_) {
+        throw std::runtime_error("[VoxelGridNode] VoxelSceneCacher not registered - cannot proceed");
+    }
+    CreateSceneViaCacher();
+    NODE_LOG_INFO("VoxelGridNode: Scene created via cacher");
+
+#if 0  // ========================================================================
+       // LEGACY MANUAL CREATION PATH - Now handled by VoxelSceneCacher
+       // ========================================================================
+       // This entire block is commented out because VoxelSceneCacher now handles:
+       // - Scene generation (VoxelGrid creation from SceneGeneratorFactory)
+       // - GaiaVoxelWorld population
+       // - LaineKarrasOctree building
+       // - DXT compression of colors/normals
+       // - GPU buffer creation and upload
+       // - OctreeConfig UBO creation
+       // - Brick grid lookup buffer creation
+       // ========================================================================
+    {
+
     // Generate procedural voxel scene (using cache for performance)
     std::cout << "[VoxelGridNode] Requesting voxel grid: resolution=" << resolution << ", sceneType=" << sceneType << std::endl;
 
@@ -667,6 +690,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
         std::cout << "[VoxelGridNode] OctreeConfig UBO uploaded (" << sizeof(OctreeConfig) << " bytes)" << std::endl;
     }
 
+    } // End of legacy path block
+#endif // LEGACY MANUAL CREATION PATH
+
+    // ========================================================================
+    // Debug capture buffer (used by cacher path)
+    // ========================================================================
+
     // Create ray trace buffer for per-ray traversal capture
     // Each ray captures up to 64 steps * 48 bytes + 16 byte header = 3088 bytes/ray
     // 256 rays = ~790KB buffer, reasonable for debug capture
@@ -712,6 +742,13 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     if (brickGridLookupBuffer != VK_NULL_HANDLE) {
         ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
         std::cout << "  BRICK_GRID_LOOKUP_BUFFER=" << brickGridLookupBuffer << std::endl;
+    }
+
+    // Output cached scene data for downstream nodes (AccelerationStructureNode)
+    // This provides readonly access to the complete scene for building AS
+    if (cachedSceneData_) {
+        ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
+        std::cout << "  VOXEL_SCENE_DATA=" << cachedSceneData_.get() << std::endl;
     }
 
     // Output debug capture buffer with IDebugCapture interface attached
@@ -768,6 +805,11 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
         ctx.Out(VoxelGridNodeConfig::BRICK_GRID_LOOKUP_BUFFER, brickGridLookupBuffer);
     }
 
+    // Re-output cached scene data for downstream nodes
+    if (cachedSceneData_) {
+        ctx.Out(VoxelGridNodeConfig::VOXEL_SCENE_DATA, cachedSceneData_.get());
+    }
+
     // Re-output debug capture buffer (with interface)
     if (debugCaptureResource_ && debugCaptureResource_->IsValid()) {
         // Reset write index before each frame to allow fresh capture
@@ -783,6 +825,24 @@ void VoxelGridNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
 void VoxelGridNode::DestroyOctreeBuffers() {
     if (!vulkanDevice) return;
+
+    // If using cached data, just release the shared_ptr - cacher owns the resources
+    if (cachedSceneData_) {
+        NODE_LOG_DEBUG("VoxelGridNode: Releasing cached scene data (cacher owns resources)");
+        cachedSceneData_.reset();
+        // Reset all buffer handles (we don't own them)
+        octreeNodesBuffer = VK_NULL_HANDLE;
+        octreeBricksBuffer = VK_NULL_HANDLE;
+        octreeMaterialsBuffer = VK_NULL_HANDLE;
+        octreeConfigBuffer = VK_NULL_HANDLE;
+        compressedColorBuffer = VK_NULL_HANDLE;
+        compressedNormalBuffer = VK_NULL_HANDLE;
+        brickGridLookupBuffer = VK_NULL_HANDLE;
+        LogCleanupProgress("cached scene data released");
+        return;  // Don't destroy anything - cacher manages resources
+    }
+
+    // Legacy path: manually destroy buffers we own
 
     // Destroy nodes buffer and memory
     if (octreeNodesBuffer != VK_NULL_HANDLE) {
@@ -905,6 +965,16 @@ void VoxelGridNode::CleanupImpl(TypedCleanupContext& ctx) {
 
     NODE_LOG_INFO("[VoxelGridNode::CleanupImpl] Cleanup complete");
 }
+
+#if 0  // ========================================================================
+       // LEGACY HELPER METHODS - Now handled by VoxelSceneCacher
+       // ========================================================================
+       // These methods are no longer used because VoxelSceneCacher handles:
+       // - GenerateProceduralScene: Scene generation via SceneGeneratorFactory
+       // - UploadOctreeBuffers: Legacy octree buffer upload (superseded by ESVO)
+       // - UploadESVOBuffers: ESVO buffer upload
+       // - ExtractNodeData: Helper for legacy UploadOctreeBuffers
+       // ========================================================================
 
 void VoxelGridNode::GenerateProceduralScene(VoxelGrid& grid) {
     std::cout << "[VoxelGridNode] GenerateProceduralScene: sceneType=\"" << sceneType << "\" (length=" << sceneType.length() << ")" << std::endl;
@@ -1808,6 +1878,7 @@ void VoxelGridNode::UploadESVOBuffers(const Vixen::SVO::Octree& octree, const Vo
     std::cout << "[VoxelGridNode::UploadESVOBuffers] Upload complete - sparse bricks: "
               << brickViews.size() << std::endl;
 }
+#endif // LEGACY HELPER METHODS
 
 // ============================================================================
 // CACHER REGISTRATION
@@ -1841,6 +1912,66 @@ void VoxelGridNode::RegisterVoxelSceneCacher() {
     if (voxelSceneCacher_) {
         NODE_LOG_INFO("VoxelGridNode: VoxelScene cache ready");
     }
+}
+
+// ============================================================================
+// CACHER GET-OR-CREATE
+// ============================================================================
+
+void VoxelGridNode::CreateSceneViaCacher() {
+    if (!voxelSceneCacher_) {
+        throw std::runtime_error("[VoxelGridNode] VoxelSceneCacher not registered");
+    }
+
+    // Build cache parameters from node config
+    CashSystem::VoxelSceneCreateInfo params;
+    params.sceneType = CashSystem::StringToSceneType(sceneType);
+    params.resolution = resolution;
+    params.density = 0.5f;  // Default density (some generators use this)
+    params.seed = 42;       // Fixed seed for reproducibility
+
+    NODE_LOG_INFO("VoxelGridNode: Requesting scene via cacher: type=" + sceneType +
+                  ", resolution=" + std::to_string(resolution));
+
+    // Call GetOrCreate - cacher handles scene gen, octree build, compression, GPU upload
+    cachedSceneData_ = voxelSceneCacher_->GetOrCreate(params);
+
+    if (!cachedSceneData_ || !cachedSceneData_->IsValid()) {
+        throw std::runtime_error("[VoxelGridNode] Failed to get or create cached scene data");
+    }
+
+    // Extract buffer handles from cached data for outputs
+    octreeNodesBuffer = cachedSceneData_->esvoNodesBuffer;
+    octreeBricksBuffer = cachedSceneData_->brickDataBuffer;
+    octreeMaterialsBuffer = cachedSceneData_->materialsBuffer;
+    octreeConfigBuffer = cachedSceneData_->octreeConfigBuffer;
+    compressedColorBuffer = cachedSceneData_->compressedColorsBuffer;
+    compressedNormalBuffer = cachedSceneData_->compressedNormalsBuffer;
+    brickGridLookupBuffer = cachedSceneData_->brickGridLookupBuffer;
+
+    // Note: Memory is owned by cachedSceneData_, not these individual members
+    // We set the memory handles to NULL_HANDLE to indicate we don't own them
+    octreeNodesMemory = VK_NULL_HANDLE;
+    octreeBricksMemory = VK_NULL_HANDLE;
+    octreeMaterialsMemory = VK_NULL_HANDLE;
+    octreeConfigMemory = VK_NULL_HANDLE;
+    compressedColorMemory = VK_NULL_HANDLE;
+    compressedNormalMemory = VK_NULL_HANDLE;
+    brickGridLookupMemory = VK_NULL_HANDLE;
+
+    NODE_LOG_INFO("VoxelGridNode: Scene created via cacher: " +
+                  std::to_string(cachedSceneData_->nodeCount) + " nodes, " +
+                  std::to_string(cachedSceneData_->brickCount) + " bricks, " +
+                  std::to_string(cachedSceneData_->solidVoxelCount) + " voxels");
+
+    std::cout << "[VoxelGridNode] Scene created via cacher:" << std::endl;
+    std::cout << "  esvoNodesBuffer=" << octreeNodesBuffer << std::endl;
+    std::cout << "  brickDataBuffer=" << octreeBricksBuffer << std::endl;
+    std::cout << "  materialsBuffer=" << octreeMaterialsBuffer << std::endl;
+    std::cout << "  octreeConfigBuffer=" << octreeConfigBuffer << std::endl;
+    std::cout << "  compressedColorsBuffer=" << compressedColorBuffer << std::endl;
+    std::cout << "  compressedNormalsBuffer=" << compressedNormalBuffer << std::endl;
+    std::cout << "  brickGridLookupBuffer=" << brickGridLookupBuffer << std::endl;
 }
 
 } // namespace Vixen::RenderGraph

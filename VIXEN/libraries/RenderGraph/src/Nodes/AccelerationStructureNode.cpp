@@ -4,6 +4,7 @@
 #include "Core/RenderGraph.h"
 #include "MainCacher.h"
 #include "AccelerationStructureCacher.h"
+#include "VoxelSceneCacher.h"  // For CashSystem::VoxelSceneData
 #include <cstring>
 
 namespace Vixen::RenderGraph {
@@ -86,6 +87,16 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     VoxelAABBData* aabbData = ctx.In(AccelerationStructureNodeConfig::AABB_DATA);
     if (!aabbData || !aabbData->IsValid()) {
         throw std::runtime_error("[AccelerationStructureNode] AABB_DATA is null or invalid");
+    }
+
+    // Get VoxelSceneData (optional - used for cacher integration)
+    voxelSceneData_ = ctx.In(AccelerationStructureNodeConfig::VOXEL_SCENE_DATA);
+    if (voxelSceneData_) {
+        NODE_LOG_INFO("AccelerationStructureNode: Received VoxelSceneData with " +
+                      std::to_string(voxelSceneData_->nodeCount) + " nodes, " +
+                      std::to_string(voxelSceneData_->brickCount) + " bricks");
+    } else {
+        NODE_LOG_DEBUG("AccelerationStructureNode: No VoxelSceneData provided (using manual BLAS/TLAS build)");
     }
 
     NODE_LOG_INFO("Building acceleration structures for " +
@@ -755,6 +766,81 @@ void AccelerationStructureNode::RegisterAccelerationStructureCacher() {
     if (accelStructCacher_) {
         NODE_LOG_INFO("AccelerationStructureNode: AccelerationStructure cache ready");
     }
+}
+
+// ============================================================================
+// CACHER GET-OR-CREATE
+// ============================================================================
+
+void AccelerationStructureNode::CreateAccelStructViaCacher(const VoxelAABBData& aabbData) {
+    if (!accelStructCacher_) {
+        throw std::runtime_error("[AccelerationStructureNode] AccelerationStructureCacher not registered");
+    }
+
+    if (!voxelSceneData_) {
+        throw std::runtime_error("[AccelerationStructureNode] VoxelSceneData not provided - cannot use cacher");
+    }
+
+    // Build cache parameters from node config
+    // NOTE: We need to create a shared_ptr for the cacher's AccelStructCreateInfo.
+    // Since the VoxelSceneData is owned by VoxelGridNode's cachedSceneData_ (shared_ptr),
+    // we create a non-owning shared_ptr using aliasing constructor with empty deleter.
+    // This is safe because:
+    // 1. VoxelGridNode's cachedSceneData_ keeps the data alive for the node lifetime
+    // 2. The cacher only needs the data during Create() - it doesn't store the shared_ptr
+    auto nonOwningSceneData = std::shared_ptr<CashSystem::VoxelSceneData>(
+        std::shared_ptr<CashSystem::VoxelSceneData>{},  // empty control block
+        voxelSceneData_  // managed pointer (non-owning)
+    );
+
+    // Compute scene data key from the scene metadata
+    // We reconstruct the key from the stored metadata in VoxelSceneData
+    CashSystem::VoxelSceneCreateInfo sceneParams;
+    sceneParams.sceneType = voxelSceneData_->sceneType;
+    sceneParams.resolution = voxelSceneData_->resolution;
+    sceneParams.density = 0.5f;  // Default density (not stored in VoxelSceneData)
+    sceneParams.seed = 42;       // Default seed (not stored in VoxelSceneData)
+    uint64_t sceneDataKey = sceneParams.ComputeHash();
+
+    CashSystem::AccelStructCreateInfo params;
+    params.sceneData = nonOwningSceneData;
+    params.sceneDataKey = sceneDataKey;
+    params.preferFastTrace = preferFastTrace_;
+    params.allowUpdate = allowUpdate_;
+    params.allowCompaction = allowCompaction_;
+
+    NODE_LOG_INFO("AccelerationStructureNode: Requesting AS via cacher: sceneKey=" +
+                  std::to_string(sceneDataKey) +
+                  ", fastTrace=" + std::to_string(preferFastTrace_) +
+                  ", update=" + std::to_string(allowUpdate_) +
+                  ", compact=" + std::to_string(allowCompaction_));
+
+    // Call GetOrCreate - cacher handles AABB conversion and BLAS/TLAS build
+    cachedAccelStruct_ = accelStructCacher_->GetOrCreate(params);
+
+    if (!cachedAccelStruct_ || !cachedAccelStruct_->accelStruct.IsValid()) {
+        throw std::runtime_error("[AccelerationStructureNode] Failed to get or create cached acceleration structure");
+    }
+
+    // Extract handles from cached data - copy fields manually between namespaced structs
+    // CashSystem::AccelerationStructureData -> Vixen::RenderGraph::AccelerationStructureData
+    const auto& src = cachedAccelStruct_->accelStruct;
+    accelData_.blas = src.blas;
+    accelData_.blasBuffer = src.blasBuffer;
+    accelData_.blasMemory = src.blasMemory;
+    accelData_.blasDeviceAddress = src.blasDeviceAddress;
+    accelData_.tlas = src.tlas;
+    accelData_.tlasBuffer = src.tlasBuffer;
+    accelData_.tlasMemory = src.tlasMemory;
+    accelData_.tlasDeviceAddress = src.tlasDeviceAddress;
+    accelData_.instanceBuffer = src.instanceBuffer;
+    accelData_.instanceMemory = src.instanceMemory;
+    accelData_.scratchBuffer = src.scratchBuffer;
+    accelData_.scratchMemory = src.scratchMemory;
+    accelData_.primitiveCount = src.primitiveCount;
+
+    NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher: " +
+                  std::to_string(accelData_.primitiveCount) + " primitives");
 }
 
 } // namespace Vixen::RenderGraph

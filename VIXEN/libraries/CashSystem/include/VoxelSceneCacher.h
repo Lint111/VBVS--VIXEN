@@ -3,6 +3,11 @@
 #include "TypedCacher.h"
 #include "MainCacher.h"
 
+// Required for unique_ptr members (MSVC requires complete types for unique_ptr destructors)
+#include "LaineKarrasOctree.h"
+#include "GaiaVoxelWorld.h"
+#include "Data/SceneGenerator.h"
+
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
@@ -15,18 +20,6 @@
 // Forward declarations
 namespace Vixen::Vulkan::Resources {
     class VulkanDevice;
-}
-
-namespace Vixen::SVO {
-    class LaineKarrasOctree;
-}
-
-namespace Vixen::GaiaVoxel {
-    class GaiaVoxelWorld;
-}
-
-namespace VIXEN::RenderGraph {
-    class VoxelGrid;
 }
 
 namespace CashSystem {
