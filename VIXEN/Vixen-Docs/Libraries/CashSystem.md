@@ -21,7 +21,7 @@ Type-safe resource caching system with virtual cleanup architecture. Eliminates 
 flowchart TB
     subgraph CashSystem
         MC[MainCacher]
-        TC[TypedCacher<T>]
+        TC[TypedCacher]
     end
 
     subgraph Cachers
@@ -34,6 +34,8 @@ flowchart TB
         RPC[RenderPassCacher]
         FBC[FramebufferCacher]
         IC[ImageCacher]
+        VSC[VoxelSceneCacher]
+        ASC[AccelerationStructureCacher]
     end
 
     MC --> TC
@@ -46,9 +48,13 @@ flowchart TB
     TC --> RPC
     TC --> FBC
     TC --> IC
+    TC --> VSC
+    TC --> ASC
 
     style MC fill:#4a9eff
     style TC fill:#26de81
+    style VSC fill:#ff9f43
+    style ASC fill:#ff9f43
 ```
 
 ---
@@ -139,6 +145,42 @@ VkPipelineLayout layout = layoutCacher.GetOrCreate(
 VkPipelineLayout layout = layoutCacher.GetOrCreateFromShaders(shaderModules);
 ```
 
+### 3.4 VoxelSceneCacher (NEW)
+
+Caches complete voxel scene data including octree, compressed colors/normals, and GPU buffers.
+
+```cpp
+auto& sceneCacher = MainCacher::GetInstance().GetVoxelSceneCacher();
+VoxelSceneCreateInfo ci{
+    .sceneType = SceneType::Cornell,
+    .resolution = 256,
+    .density = 0.5f
+};
+auto sceneData = sceneCacher.GetOrCreate(ci);
+// Returns shared_ptr<VoxelSceneData> with all CPU + GPU buffers
+```
+
+**Key:** `hash(sceneType, resolution, density)`
+**Cached:** Octree nodes, brick data, materials, compressed colors/normals, OctreeConfig UBO, brick grid lookup
+
+### 3.5 AccelerationStructureCacher (NEW)
+
+Caches hardware RT acceleration structures built from voxel scene data.
+
+```cpp
+auto& asCacher = MainCacher::GetInstance().GetAccelerationStructureCacher();
+AccelStructCreateInfo ci{
+    .sceneData = sceneDataPtr,  // From VoxelSceneCacher
+    .device = device,
+    .physicalDevice = physicalDevice
+};
+auto accelStruct = asCacher.GetOrCreate(ci);
+// Returns shared_ptr<CachedAccelerationStructure> with BLAS/TLAS
+```
+
+**Key:** `hash(sceneData pointer, buildFlags)`
+**Cached:** AABBs, BLAS, TLAS, instance buffer, device addresses
+
 ---
 
 ## 4. Cleanup Flow
@@ -214,6 +256,10 @@ flowchart LR
 | `libraries/CashSystem/include/TypedCacher.h` | Template base |
 | `libraries/CashSystem/include/ShaderModuleCacher.h` | Shader caching |
 | `libraries/CashSystem/include/PipelineCacher.h` | Pipeline caching |
+| `libraries/CashSystem/include/VoxelSceneCacher.h` | Voxel scene data caching |
+| `libraries/CashSystem/src/VoxelSceneCacher.cpp` | Scene generation + compression |
+| `libraries/CashSystem/include/AccelerationStructureCacher.h` | RT accel struct caching |
+| `libraries/CashSystem/src/AccelerationStructureCacher.cpp` | BLAS/TLAS building |
 
 ---
 
@@ -222,3 +268,4 @@ flowchart LR
 - [[Overview]] - Library index
 - [[VulkanResources]] - Vulkan resource management
 - [[RenderGraph]] - Node cacher integration
+- [[../04-Development/SceneDataCacher-Design|SceneDataCacher Design]] - VoxelSceneCacher + AccelerationStructureCacher design doc

@@ -1,12 +1,14 @@
 ---
 title: Scene Data Cacher Design
-tags: [design, caching, optimization, implemented]
+tags: [design, caching, optimization, implemented, complete]
 created: 2025-12-08
-status: implemented
+status: complete
 updated: 2025-12-08
 ---
 
 # Scene Data Cacher Design
+
+**STATUS: COMPLETE** - Both cachers are fully integrated and operational.
 
 Design for caching voxel scene data to speed up benchmark test setup.
 
@@ -204,11 +206,11 @@ libraries/CashSystem/
 1. [x] Define `VoxelSceneData` and `VoxelSceneCreateInfo` structs
 2. [x] Implement `VoxelSceneCacher : TypedCacher<VoxelSceneData, VoxelSceneCreateInfo>`
 3. [x] Register in MainCacher (via `RegisterVoxelSceneCacher()` helper)
-4. [ ] Modify VoxelGridNode to use cacher
+4. [x] Modify VoxelGridNode to use cacher
 5. [x] Define `CachedAccelerationStructure` and `AccelStructCreateInfo`
 6. [x] Implement `AccelerationStructureCacher`
-7. [ ] Modify AccelerationStructureNode to use cacher
-8. [ ] Add tests
+7. [x] Modify AccelerationStructureNode to use cacher
+8. [ ] Add tests (deferred to post-benchmark validation)
 
 ---
 
@@ -221,42 +223,55 @@ libraries/CashSystem/
 - `libraries/CashSystem/include/AccelerationStructureCacher.h`
 - `libraries/CashSystem/src/AccelerationStructureCacher.cpp`
 
-### Current Status: Stub Implementation
+### Current Status: COMPLETE ✅
 
-The cacher framework is complete and compiles. The following methods are stubs that need integration with RenderGraph/SVO libraries:
+Both cachers are fully integrated and operational. Legacy manual creation paths in the nodes have been disabled via `#if 0 ... #endif` blocks.
 
-1. **VoxelSceneCacher**:
-   - `GenerateScene()` - needs SceneGeneratorFactory integration
-   - `BuildOctree()` - needs LaineKarrasOctree integration
-   - `CompressData()` - needs DXT compression from octree
-   - GPU upload logic is complete
+**VoxelSceneCacher handles:**
+- Scene generation via `SceneGeneratorFactory`
+- `GaiaVoxelWorld` population
+- `LaineKarrasOctree` building
+- DXT compression
+- GPU buffer creation and upload
+- OctreeConfig UBO
+- Brick grid lookup buffer
 
-2. **AccelerationStructureCacher**:
-   - `ConvertToAABBs()` - needs ESVO leaf traversal
-   - `BuildBLAS()` - needs full RT extension implementation
-   - `BuildTLAS()` - needs full RT extension implementation
-   - RT function loading is complete
+**AccelerationStructureCacher handles:**
+- AABB conversion from scene data
+- BLAS creation
+- TLAS creation with instance buffer
+- Device address management
+
+### Node Integration
+
+**VoxelGridNode:**
+- Registers `VoxelSceneCacher` on-demand (idempotent)
+- Legacy `GenerateProceduralScene()`, `ExtractNodeData()`, `UploadOctreeBuffers()`, `UploadESVOBuffers()` wrapped in `#if 0`
+- `DestroyOctreeBuffers()` releases `shared_ptr` to cacher-owned resources
+
+**AccelerationStructureNode:**
+- Registers `AccelerationStructureCacher` on-demand (idempotent)
+- `VOXEL_SCENE_DATA` input now **required** (was optional)
+- Legacy `BuildBLAS()`, `BuildTLAS()`, `CreateInstanceBuffer()`, etc. wrapped in `#if 0`
+- `DestroyAccelerationStructures()` releases `shared_ptr` to cacher-owned resources
 
 ### Registration
 
-To use the cachers, call registration during application initialization:
+Cachers are registered on-demand by their respective nodes during `CompileImpl()`:
 
 ```cpp
-#include <VoxelSceneCacher.h>
-#include <AccelerationStructureCacher.h>
+// VoxelGridNode::CompileImpl()
+CashSystem::RegisterVoxelSceneCacher();  // Idempotent
 
-// In initialization code:
-CashSystem::RegisterVoxelSceneCacher();
-CashSystem::RegisterAccelerationStructureCacher();
+// AccelerationStructureNode::CompileImpl()
+CashSystem::RegisterAccelerationStructureCacher();  // Idempotent
 ```
 
-### Next Steps
+### Future Cleanup
 
-1. Add RenderGraph dependency to CashSystem (for SceneGenerator)
-2. Add SVO dependency to CashSystem (for LaineKarrasOctree)
-3. Port scene generation logic from VoxelGridNode
-4. Port AABB conversion logic from VoxelAABBConverterNode
-5. Port AS build logic from AccelerationStructureNode
+After benchmark validation confirms stability, remove the `#if 0` legacy blocks from:
+- `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp`
+- `libraries/RenderGraph/src/Nodes/AccelerationStructureNode.cpp`
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Last Updated**: December 8, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Phase K COMPLETE - Ready for Phase L (Benchmark Data Collection)
+**Status**: Cacher Integration COMPLETE - Ready for Phase L (Benchmark Data Collection)
 
 ---
 
@@ -15,6 +15,21 @@
 | Compute | VoxelRayMarch.comp | VoxelRayMarch_Compressed.comp |
 | Fragment | VoxelRayMarch.frag | VoxelRayMarch_Compressed.frag |
 | Hardware RT | VoxelRT.rgen/rmiss/rchit/rint | VoxelRT_Compressed.rchit |
+
+### Cacher Integration Complete ✅
+
+Both scene data and acceleration structure creation now use the cacher system exclusively:
+
+| Cacher | Node | Responsibilities |
+|--------|------|------------------|
+| **VoxelSceneCacher** | VoxelGridNode | Scene generation, octree building, DXT compression, GPU buffers, OctreeConfig UBO |
+| **AccelerationStructureCacher** | AccelerationStructureNode | AABB conversion, BLAS/TLAS creation, instance buffer, device addresses |
+
+**Key Changes:**
+- Legacy manual creation paths wrapped in `#if 0 ... #endif`
+- Cacher registration is on-demand and idempotent
+- Nodes release `shared_ptr` to cacher-owned resources on destroy
+- VOXEL_SCENE_DATA input now **required** (was optional) in AccelerationStructureNode
 
 ### Test Results
 - **24/24 RT benchmark tests passing**
@@ -85,7 +100,8 @@ How do different Vulkan ray tracing pipeline architectures affect performance, b
 - [ ] Node-specific hook registration (O(1) dispatch vs O(N) broadcast)
 - [ ] Window resolution bug - render resolution vs window size mismatch
 - [ ] Brick index lookup buffer consumption in VoxelAABBConverterNode
-- [ ] Create SceneDataCacher in CashSystem library - Add TypedCacher for voxel scene data. Key by (scene, resolution, density), cache: octree nodes, brick data, materials, compressed colors/normals, AABB buffers. Follow CacherBase/TypedCacher patterns. **Speeds up benchmark test setup** - build scene once per unique config instead of every test
+- [x] ~~Create SceneDataCacher in CashSystem library~~ → VoxelSceneCacher + AccelerationStructureCacher DONE
+- [ ] Remove legacy `#if 0` blocks after benchmark validation confirms stability
 
 ---
 

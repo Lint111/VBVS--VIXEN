@@ -89,24 +89,35 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[AccelerationStructureNode] AABB_DATA is null or invalid");
     }
 
-    // Get VoxelSceneData (optional - used for cacher integration)
+    // Get VoxelSceneData (required for cacher integration)
     voxelSceneData_ = ctx.In(AccelerationStructureNodeConfig::VOXEL_SCENE_DATA);
-    if (voxelSceneData_) {
-        NODE_LOG_INFO("AccelerationStructureNode: Received VoxelSceneData with " +
-                      std::to_string(voxelSceneData_->nodeCount) + " nodes, " +
-                      std::to_string(voxelSceneData_->brickCount) + " bricks");
-    } else {
-        NODE_LOG_DEBUG("AccelerationStructureNode: No VoxelSceneData provided (using manual BLAS/TLAS build)");
+    if (!voxelSceneData_) {
+        throw std::runtime_error("[AccelerationStructureNode] VOXEL_SCENE_DATA is required - connect VoxelGridNode.VOXEL_SCENE_DATA");
     }
+    NODE_LOG_INFO("AccelerationStructureNode: Received VoxelSceneData with " +
+                  std::to_string(voxelSceneData_->nodeCount) + " nodes, " +
+                  std::to_string(voxelSceneData_->brickCount) + " bricks");
 
     NODE_LOG_INFO("Building acceleration structures for " +
                   std::to_string(aabbData->aabbCount) + " AABBs");
 
-    // Load RTX extension functions
+    // Load RTX extension functions (still needed for cacher)
     if (!LoadRTXFunctions()) {
         throw std::runtime_error("[AccelerationStructureNode] Failed to load RTX extension functions");
     }
 
+    // ========================================================================
+    // Build BLAS/TLAS via cacher (the only path now)
+    // ========================================================================
+    if (!accelStructCacher_) {
+        throw std::runtime_error("[AccelerationStructureNode] AccelerationStructureCacher not registered - cannot proceed");
+    }
+    CreateAccelStructViaCacher(*aabbData);
+    NODE_LOG_INFO("AccelerationStructureNode: AS created via cacher");
+
+#if 0  // ========================================================================
+       // LEGACY MANUAL BLAS/TLAS BUILD - Now handled by AccelerationStructureCacher
+       // ========================================================================
     // Build BLAS from AABBs
     if (!BuildBLAS(*aabbData)) {
         throw std::runtime_error("[AccelerationStructureNode] Failed to build BLAS");
@@ -116,6 +127,7 @@ void AccelerationStructureNode::CompileImpl(TypedCompileContext& ctx) {
     if (!BuildTLAS()) {
         throw std::runtime_error("[AccelerationStructureNode] Failed to build TLAS");
     }
+#endif // LEGACY MANUAL BLAS/TLAS BUILD
 
     // Output the acceleration structure data
     ctx.Out(AccelerationStructureNodeConfig::ACCELERATION_STRUCTURE_DATA, &accelData_);
@@ -185,6 +197,18 @@ bool AccelerationStructureNode::LoadRTXFunctions() {
 
     return success;
 }
+
+#if 0  // ========================================================================
+       // LEGACY BLAS/TLAS BUILD METHODS - Now handled by AccelerationStructureCacher
+       // ========================================================================
+       // These methods are no longer used because AccelerationStructureCacher handles:
+       // - BuildBLAS: BLAS creation from AABB data
+       // - BuildTLAS: TLAS creation with single instance
+       // - CreateInstanceBuffer: Instance buffer for TLAS
+       // - CreateBuffer: Generic buffer creation helper
+       // - QueryBLASBuildSizes / QueryTLASBuildSizes: Size queries
+       // - GetBufferDeviceAddress / GetAccelerationStructureDeviceAddress: Address helpers
+       // ========================================================================
 
 // ============================================================================
 // BLAS BUILDING
@@ -665,12 +689,24 @@ VkDeviceAddress AccelerationStructureNode::GetAccelerationStructureDeviceAddress
 
     return vkGetAccelerationStructureDeviceAddressKHR_(vulkanDevice_->device, &addressInfo);
 }
+#endif // LEGACY BLAS/TLAS BUILD METHODS
 
 void AccelerationStructureNode::DestroyAccelerationStructures() {
     if (!vulkanDevice_) {
         return;
     }
 
+    // If using cached data, just release the shared_ptr - cacher owns the resources
+    if (cachedAccelStruct_) {
+        NODE_LOG_DEBUG("AccelerationStructureNode: Releasing cached accel struct (cacher owns resources)");
+        cachedAccelStruct_.reset();
+        // Reset all handles (we don't own them)
+        accelData_ = AccelerationStructureData{};
+        NODE_LOG_INFO("Released cached acceleration structure data");
+        return;
+    }
+
+#if 0  // Legacy cleanup - only needed if manual BLAS/TLAS build was used
     VkDevice device = vulkanDevice_->device;
 
     // Destroy TLAS
@@ -732,6 +768,7 @@ void AccelerationStructureNode::DestroyAccelerationStructures() {
     accelData_.tlasDeviceAddress = 0;
 
     NODE_LOG_INFO("Destroyed all acceleration structure resources");
+#endif // Legacy cleanup
 }
 
 // ============================================================================
