@@ -77,19 +77,14 @@ public:
             return; // Already cleaned up
         }
 
-        std::cout << "[CleanupNode::ExecuteCleanup] Cleaning: " << nodeName
-                  << " (handle=" << nodeHandle.index << "), dependents=" << dependents.size() << std::endl;
-
         // Clean up all dependents first (children before parents)
         for (auto& dependent : dependents) {
             if (auto dep = dependent.lock()) {
-                std::cout << "[CleanupNode::ExecuteCleanup]   -> First cleaning dependent: " << dep->GetName() << std::endl;
                 dep->ExecuteCleanup(visited);
             }
         }
 
         // Now clean up this node
-        std::cout << "[CleanupNode::ExecuteCleanup]   -> Now cleaning self: " << nodeName << std::endl;
         if (cleanupCallback) {
             cleanupCallback();
         }
@@ -168,10 +163,6 @@ public:
         CleanupNode::CleanupCallback callback,
         const std::vector<NodeHandle>& dependencyHandles = {})
     {
-        std::cout << "[CleanupStack::Register] Registering: " << name
-                  << " (handle=" << handle.index << ") with "
-                  << dependencyHandles.size() << " dependencies" << std::endl;
-
         // If a node with this handle already exists (placeholder), update its callback
         auto itExisting = nodes.find(handle);
         std::shared_ptr<CleanupNode> node;
@@ -194,9 +185,6 @@ public:
                 nodes[depHandle] = placeholder;
                 it = nodes.find(depHandle);
             }
-
-            std::cout << "[CleanupStack::Register]   -> depends on handle=" << depHandle.index
-                      << " (name: " << it->second->GetName() << ")" << std::endl;
 
             // This node depends on depHandle, so depHandle must clean up AFTER this node
             // Therefore, this node is a dependent of depHandle

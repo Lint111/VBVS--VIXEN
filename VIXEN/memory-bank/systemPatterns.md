@@ -400,7 +400,7 @@ TEST_F(ResourceBudgetManagerTest, SetBudget) {
 
 ---
 
-### 17. shared_ptr<T> Support Pattern (November 15, 2025 - Phase H)
+### 17. shared_ptr< T > Support Pattern (November 15, 2025 - Phase H)
 **Purpose**: Enable shared ownership semantics for complex resources (ShaderDataBundle, reflection data)
 
 **Implementation**:

@@ -125,7 +125,7 @@ stateDiagram-v2
 
 **Key File:** `libraries/RenderGraph/include/Core/NodeInstance.h`
 
-### 3.3 TypedNode<Config>
+### 3.3 TypedNode< Config >
 
 Template base providing compile-time slot validation.
 

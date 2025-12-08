@@ -76,7 +76,7 @@ auto& pipelineCacher = cacher.GetPipelineCacher();
 cacher.Cleanup(device);
 ```
 
-### 2.2 TypedCacher<T>
+### 2.2 TypedCacher < T >
 
 Template base class with hash-based key deduplication.
 
