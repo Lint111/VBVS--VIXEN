@@ -183,7 +183,79 @@ auto accelStruct = asCacher.GetOrCreate(ci);
 
 ---
 
-## 4. Cleanup Flow
+## 4. Cache Persistence
+
+VoxelSceneCacher supports binary serialization for cross-session cache reuse.
+
+### 4.1 Serialization Format
+
+```
++------------------+
+| Magic (4 bytes)  |  0x56534341 "VSCA"
++------------------+
+| Version (4 bytes)|  Currently: 1
++------------------+
+| Key (8 bytes)    |  Cache lookup key
++------------------+
+| CreateInfo       |  SceneType, resolution, density
++------------------+
+| Octree Nodes     |  size + data
++------------------+
+| Brick Data       |  size + data
++------------------+
+| Brick Lookup     |  size + data
++------------------+
+| Colors (DXT1)    |  size + data
++------------------+
+| Normals (DXT)    |  size + data
++------------------+
+| Materials        |  size + data
++------------------+
+| OctreeConfig     |  UBO data
++------------------+
+```
+
+### 4.2 File Location
+
+```
+cache/devices/Device_<hash>/VoxelSceneCacher.cache
+```
+
+Typical size: ~4.6 MB for 256^3 resolution scenes.
+
+### 4.3 Serialization Trigger
+
+```cpp
+// RenderGraph::Clear() - Order is critical
+void RenderGraph::Clear() {
+    // 1. Save BEFORE cleanup destroys resources
+    if (mainCacher_) {
+        mainCacher_->SaveAllAsync();
+    }
+
+    // 2. Now safe to destroy GPU resources
+    ExecuteCleanup();
+}
+```
+
+### 4.4 Deserialization Flow
+
+```cpp
+// On load, GPU buffers are re-created
+bool DeserializeFromFile(path) {
+    // Read CPU data from file
+    ReadVectors(octreeNodes, bricks, colors, ...);
+
+    // Re-upload to GPU
+    UploadToGPU();  // Creates new VkBuffers
+
+    return true;
+}
+```
+
+---
+
+## 5. Cleanup Flow
 
 ```mermaid
 sequenceDiagram
@@ -202,9 +274,9 @@ sequenceDiagram
 
 ---
 
-## 5. Key Patterns
+## 6. Key Patterns
 
-### 5.1 Hash-Based Deduplication
+### 6.1 Hash-Based Deduplication
 
 ```cpp
 // Multiple nodes requesting same shader get same VkShaderModule
@@ -213,7 +285,7 @@ auto module2 = shaderCacher.GetOrCreate(key, createFn);  // Returns cached
 assert(module1 == module2);  // Same handle
 ```
 
-### 5.2 Virtual Cleanup
+### 6.2 Virtual Cleanup
 
 ```cpp
 class TypedCacher {
@@ -233,7 +305,7 @@ void ShaderModuleCacher::Cleanup(VkDevice device) {
 
 ---
 
-## 6. Integration
+## 7. Integration
 
 ```mermaid
 flowchart LR
@@ -248,7 +320,7 @@ flowchart LR
 
 ---
 
-## 7. Code References
+## 8. Code References
 
 | File | Purpose |
 |------|---------|
@@ -263,7 +335,7 @@ flowchart LR
 
 ---
 
-## 8. Related Pages
+## 9. Related Pages
 
 - [[Overview]] - Library index
 - [[VulkanResources]] - Vulkan resource management

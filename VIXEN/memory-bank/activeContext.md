@@ -2,7 +2,7 @@
 
 **Last Updated**: December 8, 2025
 **Current Branch**: `claude/phase-k-hardware-rt`
-**Status**: Cacher Integration COMPLETE - Ready for Phase L (Benchmark Data Collection)
+**Status**: Cache Persistence COMPLETE - Ready for Phase L (Benchmark Data Collection)
 
 ---
 
@@ -30,6 +30,21 @@ Both scene data and acceleration structure creation now use the cacher system ex
 - Cacher registration is on-demand and idempotent
 - Nodes release `shared_ptr` to cacher-owned resources on destroy
 - VOXEL_SCENE_DATA input now **required** (was optional) in AccelerationStructureNode
+
+### Cache Persistence Complete ✅
+
+Scene data now persists to disk between benchmark runs:
+
+| Component | Change |
+|-----------|--------|
+| **RenderGraph::Clear()** | Calls `SaveAllAsync()` before `ExecuteCleanup()` |
+| **VoxelSceneCacher::SerializeToFile()** | Binary serialization of CPU data + metadata |
+| **VoxelSceneCacher::DeserializeFromFile()** | Loads from disk + re-uploads to GPU |
+| **BenchmarkRunner** | Now passes MainCacher + Logger to RenderGraph |
+
+**Cache location:** `cache/devices/Device_<id>/VoxelSceneCacher.cache` (~4.6 MB for test data)
+
+**Verified:** Cache hits observed during benchmark transitions - scene data reused across tests with same (sceneType, resolution, density, seed)
 
 ### Test Results
 - **24/24 RT benchmark tests passing**
@@ -100,8 +115,9 @@ How do different Vulkan ray tracing pipeline architectures affect performance, b
 - [ ] Node-specific hook registration (O(1) dispatch vs O(N) broadcast)
 - [ ] Window resolution bug - render resolution vs window size mismatch
 - [ ] Brick index lookup buffer consumption in VoxelAABBConverterNode
-- [x] ~~Create SceneDataCacher in CashSystem library~~ → VoxelSceneCacher + AccelerationStructureCacher DONE
-- [ ] Remove legacy `#if 0` blocks after benchmark validation confirms stability
+- [x] ~~Create SceneDataCacher in CashSystem library~~ - VoxelSceneCacher + AccelerationStructureCacher DONE
+- [x] ~~Cache persistence (serialization/deserialization)~~ - Binary format with GPU re-upload DONE
+- [x] ~~Remove legacy `#if 0` blocks~~ - ~1450 lines removed from VoxelGridNode + AccelerationStructureNode
 
 ---
 

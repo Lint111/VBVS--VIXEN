@@ -8,6 +8,8 @@
 #include <Core/NodeTypeRegistry.h>
 #include <MessageBus.h>
 #include <Message.h>
+#include <MainCacher.h>
+#include <Logger.h>
 
 // Node type registrations for graph building
 #include <Nodes/InstanceNode.h>
@@ -617,12 +619,21 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
     // Create message bus for event coordination
     auto messageBus = std::make_unique<Vixen::EventBus::MessageBus>();
 
+    // Get global MainCacher instance for cache persistence
+    auto& mainCacher = CashSystem::MainCacher::Instance();
+    mainCacher.Initialize(messageBus.get());
+
+    // Create logger for RenderGraph (kept as unique_ptr for lifetime management)
+    // Use global ::Logger (exposed via 'using Vixen::Log::Logger;' in Logger.h)
+    auto graphLogger = std::make_unique<::Logger>("BenchmarkGraph", false);
+    graphLogger->SetTerminalOutput(false);  // Set to true for debugging
+
     // Create render graph
     auto renderGraph = std::make_unique<RG::RenderGraph>(
         nodeRegistry.get(),
         messageBus.get(),
-        nullptr,  // No logger
-        nullptr   // No cache
+        graphLogger.get(),
+        &mainCacher
     );
 
     // Subscribe to window close events
@@ -890,8 +901,8 @@ TestSuiteResults BenchmarkRunner::RunSuiteWithWindow(const BenchmarkSuiteConfig&
         renderGraph = std::make_unique<RG::RenderGraph>(
             nodeRegistry.get(),
             messageBus.get(),
-            nullptr,
-            nullptr
+            graphLogger.get(),
+            &mainCacher
         );
     }
 

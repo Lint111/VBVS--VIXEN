@@ -210,16 +210,29 @@ void AccelerationStructureCacher::Cleanup() {
 }
 
 // ============================================================================
-// SERIALIZATION (Stub - AS must be rebuilt per device)
+// SERIALIZATION
+// ============================================================================
+// Note: AccelerationStructureCacher deliberately does not persist to disk.
+// Reasons:
+// 1. VkAccelerationStructureKHR objects are device-specific (cannot serialize)
+// 2. VoxelSceneData is already cached/serialized by VoxelSceneCacher
+// 3. AABB conversion from cached scene data is fast (CPU iteration only)
+// 4. BLAS/TLAS must be rebuilt per-device anyway
+//
+// The cacher provides VALUE via in-memory caching during a single benchmark run
+// (avoiding repeated BLAS/TLAS builds for same scene). Cross-session persistence
+// is handled by VoxelSceneCacher at the scene data level.
 // ============================================================================
 
 bool AccelerationStructureCacher::SerializeToFile(const std::filesystem::path& path) const {
-    std::cout << "[AccelerationStructureCacher::SerializeToFile] AS is device-specific - skipping serialization" << std::endl;
+    // No-op: AS is device-specific and rebuilt from cached VoxelSceneData
+    // (Intentional design - see comment block above)
     return true;
 }
 
 bool AccelerationStructureCacher::DeserializeFromFile(const std::filesystem::path& path, void* device) {
-    std::cout << "[AccelerationStructureCacher::DeserializeFromFile] AS rebuilt on demand - skipping deserialization" << std::endl;
+    // No-op: AS will be rebuilt on-demand when requested via GetOrCreate()
+    // (Intentional design - see comment block above)
     return true;
 }
 

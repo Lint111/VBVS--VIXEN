@@ -210,7 +210,8 @@ libraries/CashSystem/
 5. [x] Define `CachedAccelerationStructure` and `AccelStructCreateInfo`
 6. [x] Implement `AccelerationStructureCacher`
 7. [x] Modify AccelerationStructureNode to use cacher
-8. [ ] Add tests (deferred to post-benchmark validation)
+8. [x] Implement cache persistence (serialization/deserialization)
+9. [ ] Add tests (deferred to post-benchmark validation)
 
 ---
 
@@ -267,11 +268,43 @@ CashSystem::RegisterVoxelSceneCacher();  // Idempotent
 CashSystem::RegisterAccelerationStructureCacher();  // Idempotent
 ```
 
-### Future Cleanup
+### Cache Persistence (Added December 8, 2025)
 
-After benchmark validation confirms stability, remove the `#if 0` legacy blocks from:
-- `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp`
-- `libraries/RenderGraph/src/Nodes/AccelerationStructureNode.cpp`
+Binary serialization for cross-session cache reuse:
+
+**Format:**
+- Magic: `0x56534341` ("VSCA")
+- Version: 1
+- Key + CreateInfo
+- CPU vectors: octree nodes, bricks, brick lookup, colors, normals, materials
+- OctreeConfig
+
+**Location:** `cache/devices/Device_<id>/VoxelSceneCacher.cache` (~4.6 MB)
+
+**Key Integration Points:**
+- `RenderGraph::Clear()` calls `SaveAllAsync()` BEFORE `ExecuteCleanup()`
+- `DeserializeFromFile()` calls `UploadToGPU()` to re-create GPU buffers
+- Uses `GRAPH_LOG` macros for logging (not `std::cout`)
+
+### BenchmarkRunner Integration
+
+BenchmarkRunner now initializes and passes MainCacher + Logger to RenderGraph:
+
+```cpp
+// BenchmarkRunner.cpp
+auto mainCacher = std::make_shared<MainCacher>();
+auto logger = std::make_shared<::Logger>();  // Global scope, not Vixen::Profiler::Logger
+
+renderGraph = std::make_unique<RenderGraph>(mainCacher, logger);
+```
+
+### Legacy Code Cleanup ✅
+
+Legacy `#if 0` blocks have been removed from:
+- `libraries/RenderGraph/src/Nodes/VoxelGridNode.cpp` - ~900 lines removed
+- `libraries/RenderGraph/src/Nodes/AccelerationStructureNode.cpp` - ~550 lines removed
+
+All scene generation, octree building, GPU buffer upload, and BLAS/TLAS creation now exclusively use the cacher path.
 
 ---
 
