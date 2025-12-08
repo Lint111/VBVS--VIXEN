@@ -345,7 +345,21 @@ void DescriptorSetNode::ExecuteImpl(TypedExecuteContext& ctx) {
                                        perFrameImageInfos[imageIndex], perFrameBufferInfos[imageIndex],
                                        SlotRole::Execute);
 
-    NODE_LOG_DEBUG("[DescriptorSetNode::Execute] BuildDescriptorWrites returned " + std::to_string(writes.size()) + " Execute writes");
+    // DEBUG: Use INFO level to see in console
+    static int debugFrameCount = 0;
+    if (debugFrameCount++ < 10) {
+        NODE_LOG_INFO("[DescriptorSetNode::Execute] Frame " + std::to_string(imageIndex) +
+                      ": BuildDescriptorWrites returned " + std::to_string(writes.size()) + " Execute writes");
+        // Show binding 0 (outputImage) status
+        if (!descriptorResources.empty()) {
+            const auto& entry0 = descriptorResources[0];
+            NODE_LOG_INFO("  Binding 0 (outputImage): " +
+                std::string(std::holds_alternative<std::monostate>(entry0.handle) ? "monostate" :
+                std::holds_alternative<VkImageView>(entry0.handle) ? "VkImageView" :
+                std::holds_alternative<VkBuffer>(entry0.handle) ? "VkBuffer" : "other") +
+                ", role=" + std::to_string(static_cast<uint8_t>(entry0.slotRole)));
+        }
+    }
 
     if (!writes.empty()) {
         vkUpdateDescriptorSets(GetDevice()->device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);

@@ -73,6 +73,14 @@ void TraceRaysNode::CompileImpl(TypedCompileContext& ctx) {
         throw std::runtime_error("[TraceRaysNode] ACCELERATION_STRUCTURE_DATA is null or invalid");
     }
 
+    // Get swapchain info for command buffer allocation count (matches ComputeDispatchNode)
+    SwapChainPublicVariables* swapchainInfo = ctx.In(TraceRaysNodeConfig::SWAPCHAIN_INFO);
+    if (!swapchainInfo) {
+        throw std::runtime_error("[TraceRaysNode] SWAPCHAIN_INFO is null");
+    }
+    swapChainImageCount_ = swapchainInfo->swapChainImageCount;
+    NODE_LOG_INFO("[TraceRaysNode] Swapchain image count: " + std::to_string(swapChainImageCount_));
+
     // Load RTX functions
     if (!LoadRTXFunctions()) {
         throw std::runtime_error("[TraceRaysNode] Failed to load RTX functions");
@@ -135,18 +143,23 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
 
     VkDevice device = vulkanDevice_->device;
 
-    // Wait for previous frame to complete
-    vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+    // Reset fence before submitting (fence was already waited on by FrameSyncNode)
+    // This matches ComputeDispatchNode pattern exactly
     vkResetFences(device, 1, &inFlightFence);
 
-    // Get command buffer for this frame
-    VkCommandBuffer cmdBuffer = commandBuffers_[currentFrame];
-    vkResetCommandBuffer(cmdBuffer, 0);
+    // Guard against invalid image index (matches ComputeDispatchNode)
+    if (imageIndex == UINT32_MAX || imageIndex >= commandBuffers_.size()) {
+        NODE_LOG_WARNING("[TraceRaysNode] Invalid image index - skipping frame");
+        return;
+    }
 
-    // Begin command buffer
+    // Get command buffer for this IMAGE (not frame) - matches ComputeDispatchNode pattern
+    VkCommandBuffer cmdBuffer = commandBuffers_[imageIndex];
+
+    // Begin command buffer (matches ComputeDispatchNode pattern - no special flags)
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    beginInfo.flags = 0;  // Match ComputeDispatchNode - no ONE_TIME_SUBMIT
 
     vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
@@ -154,9 +167,13 @@ void TraceRaysNode::ExecuteImpl(TypedExecuteContext& ctx) {
     VkImage outputImage = swapchainInfo->colorBuffers[imageIndex].image;
 
     // Transition image to GENERAL for ray tracing output
+    // After present, swapchain images are in PRESENT_SRC_KHR layout.
+    // We use UNDEFINED to discard previous contents (works for any source layout).
+    // Note: First frame image might be in UNDEFINED, but UNDEFINED->GENERAL is valid.
+    // If validation complains about layout mismatch, the real issue is elsewhere.
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;  // Discard previous contents
     barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -312,20 +329,22 @@ bool TraceRaysNode::LoadRTXFunctions() {
 bool TraceRaysNode::AllocateCommandBuffers() {
     VkDevice device = vulkanDevice_->device;
 
-    commandBuffers_.resize(framesInFlight_);
+    // Allocate one command buffer per swapchain image (matches ComputeDispatchNode pattern)
+    // swapChainImageCount_ is set during CompileImpl from SWAPCHAIN_INFO
+    commandBuffers_.resize(swapChainImageCount_);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool_;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = framesInFlight_;
+    allocInfo.commandBufferCount = swapChainImageCount_;
 
     if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers_.data()) != VK_SUCCESS) {
         NODE_LOG_ERROR("Failed to allocate command buffers");
         return false;
     }
 
-    NODE_LOG_INFO("Allocated " + std::to_string(framesInFlight_) + " command buffers");
+    NODE_LOG_INFO("Allocated " + std::to_string(swapChainImageCount_) + " command buffers (one per swapchain image)");
     return true;
 }
 

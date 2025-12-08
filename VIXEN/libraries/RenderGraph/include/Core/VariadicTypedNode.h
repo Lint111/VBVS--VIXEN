@@ -34,7 +34,7 @@ struct VariadicSlotInfo {
     Resource* resource = nullptr;      // Resource pointer for this variadic slot
     ResourceType resourceType;         // Expected resource type
     std::string slotName;              // Descriptive name (e.g., "sampled_image_0")
-    uint32_t binding = 0;              // Shader binding index (for descriptor-based nodes)
+    uint32_t binding = UINT32_MAX;     // Shader binding index (UINT32_MAX = uninitialized/unconnected)
     VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_MAX_ENUM;  // Descriptor type (if applicable)
 
     // Phase separation support

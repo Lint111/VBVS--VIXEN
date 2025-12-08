@@ -63,7 +63,7 @@ protected:
 
 private:
     /**
-     * @brief Allocate command buffers (one per frame in flight)
+     * @brief Allocate command buffers (one per swapchain image)
      */
     bool AllocateCommandBuffers();
 
@@ -89,9 +89,9 @@ private:
     // TraceRaysNode receives descriptor sets via DESCRIPTOR_SETS input slot
     // This follows the same pattern as ComputeDispatchNode
 
-    // Command buffers (one per frame in flight)
+    // Command buffers (one per swapchain image - matches ComputeDispatchNode)
     std::vector<VkCommandBuffer> commandBuffers_;
-    static constexpr uint32_t framesInFlight_ = FrameSyncNodeConfig::MAX_FRAMES_IN_FLIGHT;
+    uint32_t swapChainImageCount_ = 0;
 
     // Dispatch dimensions
     uint32_t width_ = 1920;

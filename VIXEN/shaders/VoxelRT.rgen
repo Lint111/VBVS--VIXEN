@@ -61,7 +61,8 @@ void main() {
     vec2 ndc = uv * 2.0 - 1.0;  // -1 to 1
 
     // Generate ray direction from camera parameters (world space)
-    float tanHalfFov = tan(pc.fov * 0.5);
+    // FOV is in degrees from CameraNode, must convert to radians
+    float tanHalfFov = tan(radians(pc.fov) * 0.5);
     vec3 rayDirWorld = normalize(
         pc.cameraDir +
         ndc.x * pc.aspect * tanHalfFov * pc.cameraRight +

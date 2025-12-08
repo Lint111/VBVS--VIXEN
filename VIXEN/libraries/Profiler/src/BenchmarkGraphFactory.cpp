@@ -1109,6 +1109,19 @@ HardwareRTNodes BenchmarkGraphFactory::BuildHardwareRT(
     // TraceRaysNode: Dispatches vkCmdTraceRaysKHR
     nodes.traceRays = graph->AddNode<RG::TraceRaysNodeType>("benchmark_trace_rays");
 
+    // DEBUG: Enable logging for RT descriptor nodes to diagnose black screen issues
+    // TODO: Remove after fixing RT rendering
+    auto* descSetInst = graph->GetInstance(nodes.descriptorSet);
+    if (descSetInst && descSetInst->GetLogger()) {
+        descSetInst->GetLogger()->SetEnabled(true);
+        descSetInst->GetLogger()->SetTerminalOutput(true);
+    }
+    auto* descGathererInst = graph->GetInstance(nodes.descriptorGatherer);
+    if (descGathererInst && descGathererInst->GetLogger()) {
+        descGathererInst->GetLogger()->SetEnabled(true);
+        descGathererInst->GetLogger()->SetTerminalOutput(true);
+    }
+
     return nodes;
 }
 

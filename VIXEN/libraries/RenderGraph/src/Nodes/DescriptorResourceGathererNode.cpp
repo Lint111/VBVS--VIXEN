@@ -197,6 +197,11 @@ void DescriptorResourceGathererNode::ExecuteImpl(VariadicExecuteContext& ctx) {
             continue;
         }
 
+        // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+        if (slotInfo->binding == UINT32_MAX) {
+            continue;
+        }
+
         uint8_t roleVal = static_cast<uint8_t>(slotInfo->slotRole);
         bool hasExec = HasExecute(slotInfo->slotRole);
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::Execute] Slot " + std::to_string(i) +
@@ -301,8 +306,8 @@ void DescriptorResourceGathererNode::ValidateTentativeSlotsAgainstShader(Variadi
     // Validate and update all tentative slots against shader requirements
     for (size_t i = 0; i < variadicCount; ++i) {
         const auto* slotInfo = ctx.InVariadicSlot(i);
-        if (!slotInfo || slotInfo->state != SlotState::Tentative) {
-            continue;  // Skip non-tentative slots
+        if (!slotInfo || slotInfo->binding == UINT32_MAX || slotInfo->state != SlotState::Tentative) {
+            continue;  // Skip null, uninitialized, or non-tentative slots
         }
 
         ValidateSingleSlotAgainstShader(ctx, i, slotInfo, layoutSpec);
@@ -399,6 +404,11 @@ bool DescriptorResourceGathererNode::ValidateSingleInput(VariadicCompileContext&
         return true;  // Skip null slots
     }
 
+    // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+    if (slotInfo->binding == UINT32_MAX) {
+        return true;  // Uninitialized slots are expected to be skipped
+    }
+
     // Skip Invalid slots (already marked as failed during ValidateTentativeSlotsAgainstShader)
     if (slotInfo->state == SlotState::Invalid) {
         return true;  // Invalid slots are expected to be skipped, not cause validation failure
@@ -474,6 +484,13 @@ void DescriptorResourceGathererNode::GatherResources(VariadicCompileContext& ctx
 bool DescriptorResourceGathererNode::ProcessSlot(size_t slotIndex, const VariadicSlotInfo* slotInfo) {
     if (!slotInfo) {
         NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] WARNING: Null slot at index " + std::to_string(slotIndex));
+        return false;
+    }
+
+    // Skip uninitialized slots (created by vector resize, not by ConnectVariadic)
+    // These have binding = UINT32_MAX as sentinel value
+    if (slotInfo->binding == UINT32_MAX) {
+        NODE_LOG_DEBUG("[DescriptorResourceGathererNode::ProcessSlot] Skipping uninitialized slot " + std::to_string(slotIndex));
         return false;
     }
 
