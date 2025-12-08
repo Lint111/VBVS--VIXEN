@@ -4,7 +4,7 @@
 //
 // Program: VoxelRT
 // UUID: 4f3ab9145d1784fb
-// Generated: 2025-12-08 12:44:54
+// Generated: 2025-12-08 18:21:57
 //
 // This file provides shader-specific constexpr constants and type aliases
 // that map to the generic .si.h interface.

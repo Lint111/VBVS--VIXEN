@@ -10,6 +10,7 @@
 // ============================================================================
 
 #include "SVOTypes.glsl"
+#include "Materials.glsl"
 
 // Fragment shader inputs from Fullscreen.vert
 layout(location = 0) in vec2 fragUV;  // [0,1] texture coordinates
@@ -149,14 +150,7 @@ bool marchBrickFromPos(vec3 rayDir, vec3 posInBrick, uint brickIndex,
 
         if (voxelData != 0u) {
             uint matID = voxelData & 0xFFu;
-
-            if (matID == 1u) hitColor = vec3(1.0, 0.0, 0.0);
-            else if (matID == 2u) hitColor = vec3(0.0, 1.0, 0.0);
-            else if (matID == 3u) hitColor = vec3(0.9, 0.9, 0.9);
-            else if (matID == 4u) hitColor = vec3(1.0, 0.8, 0.0);
-            else if (matID == 5u) hitColor = vec3(0.8, 0.8, 0.8);
-            else if (matID == 6u) hitColor = vec3(0.7, 0.7, 0.7);
-            else hitColor = vec3(float(matID) / 10.0);
+            hitColor = getMaterialColor(matID);
 
             hitNormal = vec3(0.0);
             if (axisMask == 1u) hitNormal.x = -float(step.x);

@@ -164,10 +164,22 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
     //    Note: Gaia ECS doesn't support concurrent structural changes, so we use single-threaded batching
     const auto& data = grid.GetData();
 
-    // First pass: count solid voxels and collect requests
-    std::vector<GaiaVoxel::VoxelCreationRequest> requests;
-    requests.reserve(data.size() / 4);  // Estimate ~25% solid
+    // First pass: count solid voxels to pre-allocate exact sizes
+    // CRITICAL: VoxelCreationRequest::components is a std::span (pointer+size, doesn't own data)
+    // We need stable memory addresses, so we must count first and reserve EXACTLY before filling
+    size_t solidCount = 0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (data[i] != 0) solidCount++;
+    }
 
+    // Pre-allocate EXACT size to prevent reallocation (which would invalidate spans)
+    std::vector<GaiaVoxel::VoxelCreationRequest> requests;
+    std::vector<GaiaVoxel::ComponentQueryRequest> componentStorage;
+    requests.reserve(solidCount);
+    componentStorage.resize(solidCount);  // RESIZE not reserve - allocates memory immediately
+
+    // Second pass: fill both vectors
+    size_t voxelIdx = 0;
     for (uint32_t z = 0; z < resolution; ++z) {
         for (uint32_t y = 0; y < resolution; ++y) {
             for (uint32_t x = 0; x < resolution; ++x) {
@@ -175,10 +187,17 @@ void VoxelGridNode::CompileImpl(TypedCompileContext& ctx) {
                              static_cast<size_t>(y) * resolution + x;
                 if (data[idx] != 0) {
                     glm::vec3 pos(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
-                    GaiaVoxel::ComponentQueryRequest components[] = {
-                        GaiaVoxel::Material{data[idx]}
-                    };
-                    requests.push_back(GaiaVoxel::VoxelCreationRequest{pos, components});
+
+                    // Store Material component in pre-allocated storage
+                    componentStorage[voxelIdx] = GaiaVoxel::Material{data[idx]};
+
+                    // Create request with span pointing to stable address in componentStorage
+                    requests.push_back(GaiaVoxel::VoxelCreationRequest{
+                        pos,
+                        std::span<const GaiaVoxel::ComponentQueryRequest>(&componentStorage[voxelIdx], 1)
+                    });
+
+                    voxelIdx++;
                 }
             }
         }

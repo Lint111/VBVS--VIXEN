@@ -1,5 +1,6 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : require
 
 // ============================================================================
 // VoxelRT.rchit - Closest Hit Shader (Phase K: Hardware Ray Tracing)
@@ -11,6 +12,8 @@
 // This is equivalent to compute shader's brickData access - both ultimately
 // retrieve the same material ID, just through different data structures.
 // ============================================================================
+
+#include "Materials.glsl"
 
 // Hit attributes from intersection shader
 hitAttributeEXT vec3 hitNormal;
@@ -55,16 +58,7 @@ layout(push_constant) uniform PushConstants {
     int debugMode;
 } pc;
 
-// Material color lookup - matches compute shader (VoxelRayMarch.comp:179-187)
-vec3 getMaterialColor(uint matID) {
-    if (matID == 1u) return vec3(1.0, 0.0, 0.0);      // Red
-    else if (matID == 2u) return vec3(0.0, 1.0, 0.0); // Green
-    else if (matID == 3u) return vec3(0.9, 0.9, 0.9); // Light gray (white wall)
-    else if (matID == 4u) return vec3(1.0, 0.8, 0.0); // Yellow/Gold
-    else if (matID == 5u) return vec3(0.8, 0.8, 0.8); // Medium gray
-    else if (matID == 6u) return vec3(0.7, 0.7, 0.7); // Darker gray
-    else return vec3(float(matID) / 10.0);            // Fallback gradient
-}
+// getMaterialColor() is now provided by Materials.glsl
 
 // Lighting computation - matches compute shader (Lighting.glsl)
 vec3 computeLighting(vec3 baseColor, vec3 normal, vec3 rayDir) {

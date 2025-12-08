@@ -22,6 +22,7 @@
 // ============================================================================
 
 #include "Compression.glsl"
+#include "Materials.glsl"
 
 // Hit attributes from intersection shader
 hitAttributeEXT vec3 hitNormal;
@@ -127,16 +128,7 @@ vec3 computeLighting(vec3 baseColor, vec3 normal, vec3 rayDir) {
     return baseColor * lighting;
 }
 
-// Material color lookup - fallback when compressed access fails
-vec3 getMaterialColor(uint matID) {
-    if (matID == 1u) return vec3(1.0, 0.0, 0.0);      // Red
-    else if (matID == 2u) return vec3(0.0, 1.0, 0.0); // Green
-    else if (matID == 3u) return vec3(0.9, 0.9, 0.9); // Light gray (white wall)
-    else if (matID == 4u) return vec3(1.0, 0.8, 0.0); // Yellow/Gold
-    else if (matID == 5u) return vec3(0.8, 0.8, 0.8); // Medium gray
-    else if (matID == 6u) return vec3(0.7, 0.7, 0.7); // Darker gray
-    else return vec3(float(matID) / 10.0);            // Fallback gradient
-}
+// getMaterialColor() is now provided by Materials.glsl
 
 void main() {
     // Get ray direction (in local voxel space, matches rgen)
@@ -154,41 +146,44 @@ void main() {
     // Get compressed color from DXT1 buffer
     vec3 baseColor = getCompressedVoxelColor(brickIndex, localVoxelIdx);
 
+    // DEBUG: Check if DXT block is all zeros (indicates buffer not populated)
+    uvec2 debugBlock = loadColorBlock(brickIndex, localVoxelIdx);
+    bool blockIsZero = (debugBlock.x == 0u && debugBlock.y == 0u);
+
     // Get compressed normal from DXT buffer (use if hitNormal is unreliable)
     // For now, use intersection shader's hitNormal since it's per-face accurate
     // vec3 compressedNormal = getCompressedVoxelNormal(brickIndex, localVoxelIdx);
 
-    // Apply lighting
-    hitColor = computeLighting(baseColor, N, rayDir);
+    // Apply lighting (or show debug red if buffer is empty)
+    if (blockIsZero) {
+        hitColor = vec3(1.0, 0.0, 0.0);  // RED = DXT block is zeros!
+    } else {
+        // DEBUG: Show raw baseColor without lighting to verify DXT decode
+        // hitColor = baseColor;  // Uncomment to see raw DXT colors
+        hitColor = computeLighting(baseColor, N, rayDir);
+    }
 
-    // Debug modes (aligned with compute shader debug modes)
+    // DEBUG: Always show raw DXT color for now (bypass lighting)
+    hitColor = baseColor;
+
+    // Debug modes (keys 0-9 accessible)
+    // 0 = normal rendering (raw DXT color)
+    // 1 = BRICK_INDEX - visualize Morton-sorted brick index
+    // 2 = DEPTH - depth visualization
+    // 3 = LOCAL_VOXEL_IDX - local voxel index within brick (0-511)
+    // 4 = DXT_BLOCK_RAW - raw RGB565 ref0 from DXT block
+    // 5 = NORMALS - surface normals
+    // 6 = POSITION - fractional hit position
+    // 7 = MATERIAL_COLOR - getMaterialColor(matID) lookup
+    // 8 = MATERIALS - material ID visualization
+    // 9 = DXT_BLOCK_NONZERO - show if block has data (green) or is zero (red)
     if (pc.debugMode > 0) {
         vec3 hitPos = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
         uint matID = materialIdBuffer.materialIds[gl_PrimitiveID];
 
         switch (pc.debugMode) {
-            case 2:  // DEBUG_MODE_DEPTH
+            case 1:  // BRICK_INDEX - visualize brick index as RGB
                 {
-                    float depth = gl_HitTEXT / 100.0;
-                    hitColor = vec3(depth, depth * 0.5, 1.0 - depth);
-                }
-                break;
-
-            case 5:  // DEBUG_MODE_NORMALS
-                hitColor = N * 0.5 + 0.5;
-                break;
-
-            case 6:  // DEBUG_MODE_POSITION
-                hitColor = fract(hitPos);
-                break;
-
-            case 8:  // DEBUG_MODE_MATERIALS
-                hitColor = vec3(float(matID) / 10.0, float(matID % 3u) / 3.0, float(matID % 5u) / 5.0);
-                break;
-
-            case 9:  // DEBUG_MODE_BRICK_INDEX (new debug mode for compressed RTX)
-                {
-                    // Visualize brick index as color (useful for debugging brick mapping)
                     float r = float(brickIndex % 8u) / 7.0;
                     float g = float((brickIndex / 8u) % 8u) / 7.0;
                     float b = float((brickIndex / 64u) % 8u) / 7.0;
@@ -196,11 +191,52 @@ void main() {
                 }
                 break;
 
-            case 10: // DEBUG_MODE_LOCAL_VOXEL_IDX (new debug mode for compressed RTX)
+            case 2:  // DEPTH
                 {
-                    // Visualize local voxel index within brick
-                    float idx = float(localVoxelIdx) / 511.0;  // Normalize 0-511 to 0-1
+                    float depth = gl_HitTEXT / 100.0;
+                    hitColor = vec3(depth, depth * 0.5, 1.0 - depth);
+                }
+                break;
+
+            case 3:  // LOCAL_VOXEL_IDX - visualize local voxel index (0-511)
+                {
+                    float idx = float(localVoxelIdx) / 511.0;
                     hitColor = vec3(idx, 1.0 - idx, 0.5);
+                }
+                break;
+
+            case 4:  // DXT_BLOCK_RAW - show raw RGB565 ref0 color from DXT
+                {
+                    uvec2 block = loadColorBlock(brickIndex, localVoxelIdx);
+                    uint ref0 = block.x & 0xFFFFu;
+                    float r0 = float((ref0 >> 11) & 0x1Fu) / 31.0;
+                    float g0 = float((ref0 >> 5) & 0x3Fu) / 63.0;
+                    float b0 = float(ref0 & 0x1Fu) / 31.0;
+                    hitColor = vec3(r0, g0, b0);
+                }
+                break;
+
+            case 5:  // NORMALS
+                hitColor = N * 0.5 + 0.5;
+                break;
+
+            case 6:  // POSITION - fractional hit position
+                hitColor = fract(hitPos);
+                break;
+
+            case 7:  // MATERIAL_COLOR - use getMaterialColor() lookup
+                hitColor = getMaterialColor(matID);
+                break;
+
+            case 8:  // MATERIALS - material ID as color gradient
+                hitColor = vec3(float(matID) / 10.0, float(matID % 3u) / 3.0, float(matID % 5u) / 5.0);
+                break;
+
+            case 9:  // DXT_BLOCK_NONZERO - green if data, red if zero
+                {
+                    uvec2 block = loadColorBlock(brickIndex, localVoxelIdx);
+                    bool hasData = (block.x != 0u || block.y != 0u);
+                    hitColor = hasData ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
                 }
                 break;
         }
