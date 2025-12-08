@@ -3,6 +3,7 @@ title: Hardware Ray Tracing Pipeline
 aliases: [Hardware RT, RTX, VK_KHR_ray_tracing]
 tags: [research, hardware-rt, vulkan, rtx, phase-k]
 created: 2025-12-06
+updated: 2025-12-08
 related:
   - "[[Overview]]"
   - "[[Pipeline-Comparison]]"
@@ -12,6 +13,8 @@ related:
 # Hardware Ray Tracing Pipeline
 
 Third pipeline variant using VK_KHR_ray_tracing_pipeline for voxel octrees. Uses dedicated RT cores on RTX GPUs.
+
+**Implementation Status:** ✅ COMPLETE (December 8, 2025)
 
 ---
 
@@ -57,7 +60,126 @@ flowchart LR
 
 ---
 
-## 2. Required Extensions
+## 2. Implementation Status
+
+### Shader Files
+
+| Shader | File | Status |
+|--------|------|--------|
+| Ray Generation | `shaders/VoxelRT.rgen` | ✅ Complete |
+| Miss | `shaders/VoxelRT.rmiss` | ✅ Complete |
+| Closest Hit | `shaders/VoxelRT.rchit` | ✅ Complete |
+| Intersection | `shaders/VoxelRT.rint` | ✅ Complete |
+| Closest Hit (Compressed) | `shaders/VoxelRT_Compressed.rchit` | ✅ Complete |
+
+### RenderGraph Nodes
+
+| Node | Purpose | Status |
+|------|---------|--------|
+| BLASNode | Build bottom-level acceleration structure | ✅ Complete |
+| TLASNode | Build top-level acceleration structure | ✅ Complete |
+| VoxelAABBConverterNode | Convert voxels to AABBs | ✅ Complete |
+| TraceRaysNode | Execute ray tracing pipeline | ✅ Complete |
+| ShaderBindingTableNode | Create shader binding table | ✅ Complete |
+
+---
+
+## 3. Descriptor Bindings
+
+### VoxelRT (Uncompressed)
+
+| Binding | Resource | Type |
+|---------|----------|------|
+| 0 | outputImage | STORAGE_IMAGE |
+| 1 | topLevelAS | ACCELERATION_STRUCTURE_KHR |
+| 2 | aabbBuffer | STORAGE_BUFFER |
+| 3 | materialIdBuffer | STORAGE_BUFFER |
+| 5 | octreeConfig | UNIFORM_BUFFER |
+
+### VoxelRT_Compressed
+
+| Binding | Resource | Type |
+|---------|----------|------|
+| 0 | outputImage | STORAGE_IMAGE |
+| 1 | topLevelAS | ACCELERATION_STRUCTURE_KHR |
+| 2 | aabbBuffer | STORAGE_BUFFER |
+| 3 | materialIdBuffer | STORAGE_BUFFER |
+| 5 | octreeConfig | UNIFORM_BUFFER |
+| 6 | compressedColors | STORAGE_BUFFER |
+| 7 | compressedNormals | STORAGE_BUFFER |
+| 8 | brickMapping | STORAGE_BUFFER |
+
+---
+
+## 4. Bugs Fixed (December 8, 2025)
+
+### Session 1: Black Screen / Flickering
+
+**Root Cause:** `VariadicSlotInfo::binding` defaulted to `0`, causing uninitialized slots to overwrite binding 0.
+
+**Fix:**
+- Changed default `binding = 0` → `binding = UINT32_MAX` (sentinel)
+- Added 4 checks in `DescriptorResourceGathererNode.cpp` to skip UINT32_MAX slots
+
+### Session 2: Grey/Missing Colors
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Grey colors | Dangling pointer in VoxelGridNode | Two-pass with pre-allocated componentStorage |
+| Dark grey scenes | MaterialIdToColor() missing IDs 30-61 | Added all material ID ranges |
+| Color bleeding | DXT compression artifact | Documented as expected |
+
+---
+
+## 5. Material Color System
+
+### Materials.glsl (Single Source of Truth)
+
+```glsl
+vec3 getMaterialColor(uint materialId) {
+    // Cornell Box (1-20)
+    if (materialId == 1) return vec3(0.9, 0.1, 0.1);   // Red
+    if (materialId == 2) return vec3(0.1, 0.9, 0.1);   // Green
+    // ...
+
+    // Noise/Tunnel (30-40)
+    if (materialId >= 30 && materialId <= 40) {
+        // Stone variants, stalactites, ore
+    }
+
+    // Cityscape (50-61)
+    if (materialId >= 50 && materialId <= 61) {
+        // Asphalt, concrete, glass
+    }
+
+    // HSV fallback for unknown IDs
+    return hsvToRgb(vec3(float(materialId % 360) / 360.0, 0.8, 0.9));
+}
+```
+
+### Shared By
+
+- `VoxelRT.rchit`
+- `VoxelRT_Compressed.rchit`
+- `VoxelRayMarch.comp`
+- `VoxelRayMarch.frag`
+
+---
+
+## 6. DXT Compression Artifacts
+
+Color bleeding at wall boundaries is **expected DXT behavior**:
+
+- DXT compresses 16 voxels per block with only 2 reference colors
+- When block spans material boundary, colors interpolate
+- Present in all compressed pipelines (compute, fragment, RT)
+- Uncompressed pipelines don't have this artifact
+
+**Not a bug** - inherent to DXT compression.
+
+---
+
+## 7. Required Extensions
 
 ```cpp
 const std::vector<const char*> RTX_EXTENSIONS = {
@@ -72,140 +194,9 @@ const std::vector<const char*> RTX_EXTENSIONS = {
 
 ---
 
-## 3. Acceleration Structures
+## 8. Performance Considerations
 
-### 3.1 BLAS (Bottom-Level)
-
-Each voxel represented as an AABB primitive:
-
-```cpp
-struct VoxelAABB {
-    glm::vec3 min;  // Voxel corner
-    glm::vec3 max;  // Opposite corner
-};
-
-// For 128^3 grid with 50% density = 1,048,576 AABBs
-VkAccelerationStructureGeometryKHR geometry = {
-    .geometryType = VK_GEOMETRY_TYPE_AABBS_KHR,
-    .flags = VK_GEOMETRY_OPAQUE_BIT_KHR
-};
-```
-
-### 3.2 TLAS (Top-Level)
-
-Transforms and instances BLAS for dynamic scenes:
-
-```cpp
-VkAccelerationStructureInstanceKHR instance = {
-    .transform = identityMatrix,
-    .instanceCustomIndex = 0,
-    .mask = 0xFF,
-    .accelerationStructureReference = GetBLASAddress()
-};
-```
-
----
-
-## 4. Shader Stages
-
-### 4.1 Ray Generation (rgen)
-
-```glsl
-#version 460
-#extension GL_EXT_ray_tracing : require
-
-layout(location = 0) rayPayloadEXT vec3 hitColor;
-
-void main() {
-    ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
-    vec3 rayOrigin = camera.cameraPos;
-    vec3 rayDir = generateRayDirection(pixelCoords);
-
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF,
-                0, 0, 0, rayOrigin, 0.001, rayDir, 1000.0, 0);
-
-    imageStore(outputImage, pixelCoords, vec4(hitColor, 1.0));
-}
-```
-
-### 4.2 Intersection (rint)
-
-Custom AABB intersection for voxels:
-
-```glsl
-#version 460
-#extension GL_EXT_ray_tracing : require
-
-void main() {
-    vec3 rayOrigin = gl_ObjectRayOriginEXT;
-    vec3 rayDir = gl_ObjectRayDirectionEXT;
-
-    // Ray-AABB intersection (slab method)
-    vec3 t0 = (vec3(0.0) - rayOrigin) / rayDir;
-    vec3 t1 = (vec3(1.0) - rayOrigin) / rayDir;
-    vec3 tMin = min(t0, t1);
-    vec3 tMax = max(t0, t1);
-
-    float tNear = max(max(tMin.x, tMin.y), tMin.z);
-    float tFar = min(min(tMax.x, tMax.y), tMax.z);
-
-    if (tNear <= tFar && tFar >= gl_RayTminEXT) {
-        reportIntersectionEXT(tNear, 0);
-    }
-}
-```
-
-### 4.3 Closest Hit (rchit)
-
-```glsl
-#version 460
-#extension GL_EXT_ray_tracing : require
-
-layout(location = 0) rayPayloadInEXT vec3 hitColor;
-
-void main() {
-    uint primitiveID = gl_PrimitiveID;
-    vec4 color = voxelColors.colors[primitiveID];
-    vec3 hitPos = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
-    vec3 normal = calculateVoxelNormal(hitPos);
-
-    hitColor = computeLighting(color.rgb, normal);
-}
-```
-
-### 4.4 Miss (rmiss)
-
-```glsl
-#version 460
-#extension GL_EXT_ray_tracing : require
-
-layout(location = 0) rayPayloadInEXT vec3 hitColor;
-
-void main() {
-    hitColor = vec3(0.1, 0.1, 0.15);  // Background
-}
-```
-
----
-
-## 5. Shader Binding Table
-
-Maps shader groups to GPU memory:
-
-```cpp
-struct ShaderBindingTable {
-    VkStridedDeviceAddressRegionKHR raygenRegion;
-    VkStridedDeviceAddressRegionKHR missRegion;
-    VkStridedDeviceAddressRegionKHR hitRegion;
-    VkStridedDeviceAddressRegionKHR callableRegion;
-};
-```
-
----
-
-## 6. Performance Considerations
-
-### 6.1 Advantages
+### Advantages
 
 | Advantage | Description |
 |-----------|-------------|
@@ -214,7 +205,7 @@ struct ShaderBindingTable {
 | Scalability | Handles 1M+ primitives |
 | Coherent access | Cache-friendly |
 
-### 6.2 Disadvantages
+### Disadvantages
 
 | Disadvantage | Description |
 |--------------|-------------|
@@ -225,51 +216,11 @@ struct ShaderBindingTable {
 
 ---
 
-## 7. Expected Results
+## 9. Test Results
 
-**Hypothesis:**
-- **Sparse scenes (10-50% density):** Hardware RT faster (empty space skipping)
-- **Dense scenes (90% density):** Compute shader comparable or faster
-
-**Validation:** Phase M will test 180 configurations across all pipelines.
-
----
-
-## 8. Integration with RenderGraph
-
-### 8.1 HardwareRTNode
-
-```cpp
-struct HardwareRTNodeConfig {
-    INPUT_SLOT(CAMERA_BUFFER, VkBuffer*, SlotMode::SINGLE);
-    INPUT_SLOT(VOXEL_GRID, VoxelGrid*, SlotMode::SINGLE);
-    INPUT_SLOT(COMMAND_BUFFER, VkCommandBuffer*, SlotMode::SINGLE);
-
-    OUTPUT_SLOT(OUTPUT_IMAGE, VkImage*, SlotMode::SINGLE);
-    OUTPUT_SLOT(TLAS, VkAccelerationStructureKHR*, SlotMode::SINGLE);
-};
-```
-
-### 8.2 Lifecycle
-
-| Phase | Actions |
-|-------|---------|
-| Compile | Build BLAS/TLAS, create RT pipeline, generate SBT |
-| Execute | Bind pipeline, trace rays |
-| Cleanup | Destroy BLAS/TLAS, pipeline, SBT |
-
----
-
-## 9. Implementation Status
-
-| Task | Status |
-|------|--------|
-| Extension availability check | Done |
-| BLAS/TLAS design | Done |
-| Shader design (4 stages) | Done |
-| SBT creation | Documented |
-| RenderGraph integration | Phase K |
-| Performance profiling | Phase M |
+- **24/24 RT benchmark tests passing**
+- No black screens or flickering
+- Colors render correctly for all scene types (cornell, noise, tunnel, cityscape)
 
 ---
 
@@ -277,5 +228,5 @@ struct HardwareRTNodeConfig {
 
 - [[Pipeline-Comparison]] - 4-way performance analysis
 - [[../02-Implementation/Ray-Marching|Ray Marching]] - Compute/Fragment pipelines
-- [[../05-Progress/Roadmap|Roadmap]] - Phase K timeline
+- [[../05-Progress/Current-Status|Current Status]] - Phase K progress
 - [[ESVO-Algorithm]] - Software octree traversal

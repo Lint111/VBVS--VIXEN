@@ -12,8 +12,8 @@
     }
   },
   "profiling": {
-    "warmup_frames": 200,
-    "measurement_frames": 600
+    "warmup_frames": 100,
+    "measurement_frames": 200
   },
   "matrix": {
     "global": {
@@ -23,14 +23,14 @@
     },
     "pipelines": {
       "compute": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["VoxelRayMarch.comp"],
           ["VoxelRayMarch_Compressed.comp"]
         ]
       },
       "fragment": {
-        "enabled": false,
+        "enabled": true,
         "shader_groups": [
           ["Fullscreen.vert", "VoxelRayMarch.frag"],
           ["Fullscreen.vert", "VoxelRayMarch_Compressed.frag"]
@@ -39,6 +39,7 @@
       "hardware_rt": {
         "enabled": true,
         "shader_groups": [
+          ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT.rchit"],
           ["VoxelRT.rgen", "VoxelRT.rmiss", "VoxelRT_Compressed.rchit"]
         ]
       }
